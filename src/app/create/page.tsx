@@ -356,7 +356,7 @@ export default function CreateGame() {
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight">Add Participants</h1>
           <p className="text-muted text-sm mt-2">
             {isMlt
-              ? 'Upload names for the poll — players join separately to vote. Gender is only used for the import sheet.'
+              ? 'Upload names for the poll — everyone on the list can be voted for; players join separately to vote'
               : 'Each round picks 3 people of the <strong className="text-white/90">same gender</strong> — upload a sheet with name + gender, or add manually.'}
           </p>
         </div>

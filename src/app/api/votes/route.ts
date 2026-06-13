@@ -83,13 +83,13 @@ export async function POST(req: NextRequest) {
 
       const { data: targetParticipant } = await supabase
         .from('participants')
-        .select('id, in_mlt_poll')
+        .select('id')
         .eq('id', targetParticipantId)
         .eq('game_id', gameId.toUpperCase())
         .maybeSingle()
 
-      if (!targetParticipant || !targetParticipant.in_mlt_poll) {
-        return NextResponse.json({ error: 'Invalid pick — name not in the game' }, { status: 400 })
+      if (!targetParticipant) {
+        return NextResponse.json({ error: 'Invalid pick — name not on the list' }, { status: 400 })
       }
 
       row = {

@@ -9,7 +9,7 @@ import { tallyRoundVotes, getCategoryMeta, getVoteCategories, tallyWyrVotes, tal
 import { parseGameType, roundPoolSize, isPairGame, isWouldYouRather, isMostLikelyTo, isNameOnlyPlayerJoin } from '@/lib/game-types'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
-import { isMltImportGame, mltPollParticipants, mltVoteTargets } from '@/lib/mlt'
+import { isMltImportGame, mltTargetIdFromVote, mltVoteTargets } from '@/lib/mlt'
 import { ParticipantRoundResults, VoteCountStat, WyrRoundResults, MltRoundResults } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import type { Game, Participant, Player, Round, Vote, Confession, VoteAssignment } from '@/types'
@@ -473,25 +473,6 @@ export default function HostPage() {
     }
   }
 
-  async function hostToggleMltPoll(participantId: string, inPoll: boolean) {
-    setAdminBusy(participantId)
-    try {
-      const res = await fetch('/api/participants', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, hostToken, participantId, inMltPoll: inPoll }),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        alert(data.error || 'Failed to update')
-        return
-      }
-      await refreshLobbyLists()
-    } finally {
-      setAdminBusy(null)
-    }
-  }
-
   async function hostAddParticipant() {
     const name = addName.trim()
     if (!name || adding) return
@@ -630,11 +611,10 @@ export default function HostPage() {
     const isMltImport = isMltImportGame(game)
     const minPool = roundPoolSize(gameType)
     const isJoinersMode = (game.participant_mode ?? 'import') === 'joiners'
-    const pollParticipants = isMltImport ? mltPollParticipants(participants) : []
     const roundParticipants = isJoinersMode
       ? participants
       : isMltImport
-      ? pollParticipants
+      ? participants
       : participantsWhoJoined(participants, players)
     const participantInputs = roundParticipants.map((p) => ({ name: p.name, gender: p.gender }))
     const genderCounts = countByGender(participantInputs)
@@ -648,7 +628,7 @@ export default function HostPage() {
       : [1, 2, 3, 4, 5, 6, 8, 10].filter((n) => n <= Math.max(maxRounds, 1))
     const voterCheck = hasVotersForPolls(roundParticipants, players)
     const canStart = isMltImport
-      ? pollParticipants.length >= 2 && players.length > 0 && !roundsTooHigh
+      ? participants.length >= 2 && players.length > 0 && !roundsTooHigh
       : isMlt
       ? players.length >= 2 && !roundsTooHigh
       : isWyr
@@ -674,7 +654,7 @@ export default function HostPage() {
             <p className="text-muted text-sm">{game.rounds_count} rounds · {game.timer_seconds}s each</p>
             <p className="text-[var(--primary)] text-xs mt-1 font-medium">
               {isMltImport
-                ? 'Most Likely To — import a list, add names to the poll, players join to vote'
+                ? 'Most Likely To — everyone on the list is in the poll; players join to vote'
                 : isMlt
                 ? 'Most Likely To — players join and vote for a friend each round'
                 : isWyr
@@ -965,12 +945,12 @@ export default function HostPage() {
           </div>
           <p className="text-faint text-xs">
             {isMltImport
-              ? 'Add names to the poll — players join separately to vote'
+              ? 'Everyone on the list can be voted for — players join separately to vote'
               : 'Tap gender to correct · Remove if someone shouldn\'t be in the poll'}
           </p>
           {isMltImport && (
             <p className="text-faint text-xs text-center">
-              {pollParticipants.length} in the poll · {players.length} voter{players.length === 1 ? '' : 's'} joined
+              {participants.length} on the list · {players.length} voter{players.length === 1 ? '' : 's'} joined
             </p>
           )}
           {participants.length > 8 && (
@@ -1012,28 +992,8 @@ export default function HostPage() {
             ) : (
             filteredListParticipants.map((p) => (
               <div key={p.id} className="flex items-center gap-2 min-w-0 surface-inset border border-white/8 rounded-xl px-3 py-2">
-                <span className={`text-sm truncate flex-1 ${p.in_mlt_poll ? 'text-amber-100 font-medium' : 'text-white/80'}`}>
-                  {p.name}
-                </span>
-                {isMltImport ? (
-                  <>
-                    {p.in_mlt_poll ? (
-                      <span className="text-[10px] uppercase tracking-wider text-amber-200/80 shrink-0">In poll</span>
-                    ) : null}
-                    <button
-                      type="button"
-                      disabled={adminBusy === p.id}
-                      onClick={() => hostToggleMltPoll(p.id, !p.in_mlt_poll)}
-                      className={`text-xs shrink-0 px-2 py-1 rounded-lg border transition-colors disabled:opacity-40 ${
-                        p.in_mlt_poll
-                          ? 'border-white/15 text-faint hover:text-white'
-                          : 'border-amber-400/40 text-amber-200 hover:bg-amber-500/10'
-                      }`}
-                    >
-                      {p.in_mlt_poll ? 'Remove' : 'Add to game'}
-                    </button>
-                  </>
-                ) : (
+                <span className="text-white/80 text-sm truncate flex-1">{p.name}</span>
+                {!isMltImport && (
                 <div className="flex gap-1 shrink-0">
                   {(['female', 'male'] as const).map((g) => (
                     <button
@@ -1073,8 +1033,8 @@ export default function HostPage() {
           {starting
             ? 'Starting...'
             : !canStart
-              ? isMltImport && pollParticipants.length < 2
-                ? `Add ${2 - pollParticipants.length} more to the poll (${pollParticipants.length}/2)`
+              ? isMltImport && participants.length < 2
+                ? `Need at least 2 names on the list (${participants.length}/2)`
               : isMltImport && players.length === 0
                 ? 'Waiting for voters to join...'
               : isMlt && !isMltImport && players.length < 2

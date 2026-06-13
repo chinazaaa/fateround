@@ -124,19 +124,21 @@ export default function GamePage() {
     }
   }
 
-  const canSubmitJoin = isJoinersMode
+  const useFreeNameJoin = isJoinersMode || isMltImport
+
+  const canSubmitJoin = useFreeNameJoin
     ? nameInput.trim().length > 0
     : selectedParticipantId !== null
 
   // If someone else claims this name while you're still on the join screen, clear your pick
   useEffect(() => {
-    if (isJoinersMode || view !== 'join' || !selectedParticipantId) return
+    if (useFreeNameJoin || view !== 'join' || !selectedParticipantId) return
     const stillAvailable = namePickerOptions.some((o) => o.id === selectedParticipantId)
     if (!stillAvailable) {
       setSelectedParticipantId(null)
       setNameInput('')
     }
-  }, [namePickerOptions, selectedParticipantId, isJoinersMode, view])
+  }, [namePickerOptions, selectedParticipantId, useFreeNameJoin, view])
   const submittedRef = useRef(false)
   const assignmentRef = useRef(assignment)
   assignmentRef.current = assignment
@@ -643,7 +645,7 @@ export default function GamePage() {
       ? { wyrChoice: wyr ?? (Math.random() < 0.5 ? 'a' : 'b') }
       : isMostLikelyTo(gameType)
       ? isMltImportGame(g!)
-        ? { targetParticipantId: mltTarget ?? participantsRef.current.find((p) => p.in_mlt_poll)?.id }
+        ? { targetParticipantId: mltTarget ?? participantsRef.current[0]?.id }
         : { targetPlayerId: mltTarget ?? plrs[0]?.id }
       : isPairGame(gameType)
       ? {
@@ -728,7 +730,7 @@ export default function GamePage() {
 
   const joinGame = async () => {
     if (joining) return
-    if (isJoinersMode ? !nameInput.trim() : !selectedParticipantId) return
+    if (useFreeNameJoin ? !nameInput.trim() : !selectedParticipantId) return
     unlockAudio()
     setJoining(true)
     try {
@@ -871,12 +873,12 @@ export default function GamePage() {
                 ? 'Join the game — your name goes in the poll'
                 : 'Select your name from the list'}
           </p>
-          {isJoinersMode ? (
+          {useFreeNameJoin ? (
             <input
               value={nameInput}
               onChange={(e) => setNameInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && canSubmitJoin && joinGame()}
-              placeholder="Your name"
+              placeholder={isMltImport ? 'Your name (any name is fine)' : 'Your name'}
               autoFocus
               className={inputCls}
             />
@@ -944,7 +946,7 @@ export default function GamePage() {
           <p className="text-faint text-xs text-center">
             {isNameOnlyJoin
               ? isMltImport
-                ? 'Join to vote — pick from the names the host added to the game'
+                ? 'Enter any name to join — you\'ll vote on people from the imported list'
                 : isMostLikelyTo(game?.game_type)
                 ? 'Vote for who fits each prompt — your choice stays anonymous'
                 : 'Pick between two options each round — your choice stays anonymous'
@@ -1019,7 +1021,6 @@ export default function GamePage() {
     const mltSelfId = isMltImport
       ? participants.find(
           (p) =>
-            p.in_mlt_poll &&
             myPlayerName &&
             p.name.toLowerCase() === myPlayerName.toLowerCase()
         )?.id ?? null

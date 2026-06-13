@@ -40,13 +40,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (isImport) {
       const { data: participantsData } = await supabase
         .from('participants')
-        .select('id, in_mlt_poll')
+        .select('id')
         .eq('game_id', code.toUpperCase())
 
-      const pollCount = (participantsData ?? []).filter((p) => p.in_mlt_poll).length
-      if (pollCount < 2) {
+      if ((participantsData ?? []).length < 2) {
         return NextResponse.json(
-          { error: 'Add at least 2 names from the list to the game before starting' },
+          { error: 'Need at least 2 names on the imported list before starting' },
           { status: 400 }
         )
       }

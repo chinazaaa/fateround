@@ -13,19 +13,13 @@ export function isMltImportGame(game: Pick<Game, 'game_type' | 'participant_mode
   return isMostLikelyTo(game.game_type) && game.participant_mode === 'import'
 }
 
-export function mltPollParticipants<T extends { in_mlt_poll?: boolean | null }>(
-  participants: T[]
-): T[] {
-  return participants.filter((p) => p.in_mlt_poll === true)
-}
-
 export function mltVoteTargets(
   game: Pick<Game, 'game_type' | 'participant_mode'>,
   participants: Participant[],
   players: Player[]
 ): MltVoteTarget[] {
   if (isMltImportGame(game)) {
-    return mltPollParticipants(participants)
+    return participants
       .map((p) => ({ id: p.id, name: p.name, kind: 'participant' as const }))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
   }
