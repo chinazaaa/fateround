@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getInitial, filterParticipantsInRounds } from '@/lib/utils'
-import { roundGenderLabel, genderLabel, getRoundParticipantGender, eligibleVotersForRound, roundVoterLabel, hasEnoughForRounds, countByGender } from '@/lib/participants'
+import { roundGenderLabel, genderLabel, playerGenderLabel, getRoundParticipantGender, eligibleVotersForRound, roundVoterLabel, hasEnoughForRounds, countByGender } from '@/lib/participants'
 import { tallyRoundVotes, VOTE_CATEGORY_META } from '@/lib/vote-stats'
 import { ParticipantRoundResults, VoteCountStat } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
@@ -462,7 +462,7 @@ export default function HostPage() {
                     {getInitial(p.name)}
                   </div>
                   <span className="text-white/80 text-sm truncate flex-1">{p.name}</span>
-                  <span className="text-[9px] uppercase text-faint shrink-0">{genderLabel(p.gender)}</span>
+                  <span className="text-[9px] uppercase text-faint shrink-0">{playerGenderLabel(p.gender)}</span>
                 </div>
               ))}
             </div>

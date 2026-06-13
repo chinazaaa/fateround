@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
     }))
   )
 
-  const playerGender = player.gender === 'male' ? 'male' : 'female'
+  const playerGender =
+    player.gender === 'male' ? 'male' : player.gender === 'both' ? 'both' : 'female'
 
   if (roundGender && !canPlayerVoteInRound(playerGender, roundGender)) {
     return NextResponse.json(

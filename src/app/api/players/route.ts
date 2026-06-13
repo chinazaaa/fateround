@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { normalizeGender } from '@/lib/participants'
+import { normalizeGender, normalizePlayerGender } from '@/lib/participants'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,9 +14,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'gameCode and playerName are required' }, { status: 400 })
   }
 
-  const gender = normalizeGender(String(rawGender ?? ''))
+  const gender = normalizePlayerGender(String(rawGender ?? ''))
   if (!gender) {
-    return NextResponse.json({ error: 'Please select male or female' }, { status: 400 })
+    return NextResponse.json({ error: 'Please select male, female, or both' }, { status: 400 })
   }
 
   const name = playerName.trim()
@@ -43,6 +43,12 @@ export async function POST(req: NextRequest) {
   }
 
   if (game.participant_mode === 'joiners') {
+    if (gender === 'both') {
+      return NextResponse.json(
+        { error: 'Pick male or female to join the game — both is for voters only' },
+        { status: 400 }
+      )
+    }
     const displayOrder = existingPlayers?.length ?? 0
 
     const { data: participant, error: partError } = await supabase

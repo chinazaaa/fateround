@@ -3,8 +3,8 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, getInitial, filterParticipantsInRounds } from '@/lib/utils'
-import { roundGenderLabel, genderLabel, getRoundParticipantGender, canPlayerVoteInRound, eligibleVotersForRound, roundVoterLabel, spectatorMessage } from '@/lib/participants'
-import type { ParticipantGender } from '@/types'
+import { roundGenderLabel, playerGenderLabel, getRoundParticipantGender, canPlayerVoteInRound, eligibleVotersForRound, roundVoterLabel, spectatorMessage } from '@/lib/participants'
+import type { PlayerGender } from '@/types'
 import { tallyRoundVotes, VOTE_CATEGORY_META, ASSIGNMENT_ACTION_META, assignmentEmoji } from '@/lib/vote-stats'
 import { ParticipantRoundResults, VoteCountStat } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
@@ -41,9 +41,9 @@ export default function GamePage() {
 
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [myPlayerName, setMyPlayerName] = useState<string | null>(null)
-  const [myPlayerGender, setMyPlayerGender] = useState<ParticipantGender | null>(null)
+  const [myPlayerGender, setMyPlayerGender] = useState<PlayerGender | null>(null)
   const [nameInput, setNameInput] = useState('')
-  const [joinGender, setJoinGender] = useState<ParticipantGender>('female')
+  const [joinGender, setJoinGender] = useState<PlayerGender>('female')
   const [joining, setJoining] = useState(false)
 
   // ── Refs that are always up-to-date (avoid stale closures in timer/auto-submit) ──
@@ -523,26 +523,41 @@ export default function GamePage() {
             className={inputCls}
           />
           <div>
-            <p className="text-faint text-xs mb-2 text-center">I am</p>
-            <div className="flex gap-2">
+            <p className="text-faint text-xs mb-2 text-center">
+              {game?.participant_mode === 'joiners' ? 'I am (for the poll)' : 'I am'}
+            </p>
+            <div className={`flex gap-2 ${game?.participant_mode !== 'joiners' ? 'flex-wrap' : ''}`}>
               <button
                 type="button"
                 onClick={() => setJoinGender('female')}
-                className={`flex-1 chip ${joinGender === 'female' ? 'chip-active' : ''}`}
+                className={`flex-1 chip min-w-[5rem] ${joinGender === 'female' ? 'chip-active' : ''}`}
               >
                 Female
               </button>
               <button
                 type="button"
                 onClick={() => setJoinGender('male')}
-                className={`flex-1 chip ${joinGender === 'male' ? 'chip-active' : ''}`}
+                className={`flex-1 chip min-w-[5rem] ${joinGender === 'male' ? 'chip-active' : ''}`}
               >
                 Male
               </button>
+              {game?.participant_mode !== 'joiners' && (
+                <button
+                  type="button"
+                  onClick={() => setJoinGender('both')}
+                  className={`flex-1 chip min-w-[5rem] ${joinGender === 'both' ? 'chip-active' : ''}`}
+                >
+                  Both
+                </button>
+              )}
             </div>
           </div>
           <p className="text-faint text-xs text-center">
-            You&apos;ll vote on the {joinGender === 'male' ? "women's" : "men's"} polls only
+            {game?.participant_mode === 'joiners'
+              ? `You'll vote on the ${joinGender === 'male' ? "women's" : "men's"} polls only`
+              : joinGender === 'both'
+                ? "You'll vote on every round — men's and women's polls"
+                : `You'll vote on the ${joinGender === 'male' ? "women's" : "men's"} polls only`}
           </p>
           <button onClick={joinGame} disabled={!nameInput.trim() || joining} className={primaryBtnCls}>
             {joining ? 'Joining...' : 'Join Game'}
@@ -571,7 +586,7 @@ export default function GamePage() {
                   {p.name}{p.name === myPlayerName ? ' (you)' : ''}
                 </span>
                 <span className="text-[10px] uppercase tracking-wider text-faint shrink-0">
-                  {genderLabel(p.gender)}
+                  {playerGenderLabel(p.gender)}
                 </span>
               </div>
             ))}

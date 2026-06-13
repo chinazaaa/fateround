@@ -1,4 +1,5 @@
 export type ParticipantGender = 'male' | 'female'
+export type PlayerGender = 'male' | 'female' | 'both'
 
 export interface ParticipantInput {
   name: string
@@ -81,8 +82,20 @@ export function hasEnoughForRounds(participants: ParticipantInput[]): boolean {
   return counts.male >= 3 || counts.female >= 3
 }
 
+export function normalizePlayerGender(raw: string): PlayerGender | null {
+  const key = raw.trim().toLowerCase()
+  if (!key) return null
+  if (key === 'both' || key === 'all' || key === 'everyone') return 'both'
+  return normalizeGender(raw)
+}
+
 export function genderLabel(gender: ParticipantGender): string {
   return gender === 'male' ? 'Male' : 'Female'
+}
+
+export function playerGenderLabel(gender: PlayerGender): string {
+  if (gender === 'both') return 'Both'
+  return genderLabel(gender)
 }
 
 export function roundGenderLabel(genders: ParticipantGender[]): string | null {
@@ -103,11 +116,12 @@ export function getRoundParticipantGender(
   return unique[0]
 }
 
-/** Men's poll → women vote; women's poll → men vote. */
+/** Opposite gender votes; `both` votes on every round. */
 export function canPlayerVoteInRound(
-  playerGender: ParticipantGender,
+  playerGender: PlayerGender,
   roundGender: ParticipantGender
 ): boolean {
+  if (playerGender === 'both') return true
   return playerGender !== roundGender
 }
 
@@ -115,24 +129,24 @@ export function voterGenderForRound(roundGender: ParticipantGender): Participant
   return roundGender === 'male' ? 'female' : 'male'
 }
 
-export function eligibleVotersForRound<T extends { id: string; gender: ParticipantGender }>(
+export function eligibleVotersForRound<T extends { id: string; gender: PlayerGender }>(
   roundGender: ParticipantGender | null,
   players: T[]
 ): T[] {
   if (!roundGender) return players
-  const voterGender = voterGenderForRound(roundGender)
-  return players.filter((p) => p.gender === voterGender)
+  return players.filter((p) => canPlayerVoteInRound(p.gender, roundGender))
 }
 
 export function roundVoterLabel(roundGender: ParticipantGender | null): string | null {
-  if (roundGender === 'male') return 'Women vote on the men'
-  if (roundGender === 'female') return 'Men vote on the women'
+  if (roundGender === 'male') return 'Women & both vote on the men'
+  if (roundGender === 'female') return 'Men & both vote on the women'
   return null
 }
 
-export function spectatorMessage(roundGender: ParticipantGender | null): string {
-  if (roundGender === 'male') return "This is the men's poll — only women vote. You're watching this round."
-  if (roundGender === 'female') return "This is the women's poll — only men vote. You're watching this round."
+export function spectatorMessage(roundGender: ParticipantGender | null, playerGender?: PlayerGender | null): string {
+  if (playerGender === 'both') return ''
+  if (roundGender === 'male') return "This is the men's poll — you're watching this round."
+  if (roundGender === 'female') return "This is the women's poll — you're watching this round."
   return "You're spectating this round."
 }
 

@@ -4,6 +4,8 @@ export type AutoSubmitBehavior = 'random' | 'no_answer'
 export type ParticipantMode = 'import' | 'joiners'
 
 export type ParticipantGender = 'male' | 'female'
+/** Gender selected when joining — `both` means vote on every round. */
+export type PlayerGender = 'male' | 'female' | 'both'
 
 export interface Game {
   id: string
@@ -34,7 +36,7 @@ export interface Player {
   id: string
   game_id: string
   name: string
-  gender: ParticipantGender
+  gender: PlayerGender
   joined_at: string
 }
 

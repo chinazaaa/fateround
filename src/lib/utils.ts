@@ -1,3 +1,5 @@
+import type { PlayerGender } from '@/types'
+
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
 export function generateGameCode(): string {
@@ -101,12 +103,10 @@ export function filterParticipantsInRounds<T extends { id: string }>(
   return participants.filter((p) => playedIds.has(p.id))
 }
 
-import type { ParticipantGender } from '@/types'
-
 export function getPlayerSession(gameCode: string): {
   playerId: string
   playerName: string
-  playerGender: ParticipantGender
+  playerGender: PlayerGender
 } | null {
   if (typeof window === 'undefined') return null
   try {
@@ -114,8 +114,9 @@ export function getPlayerSession(gameCode: string): {
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!parsed?.playerId || !parsed?.playerName) return null
-    const gender = parsed.playerGender === 'male' ? 'male' : 'female'
-    return { playerId: parsed.playerId, playerName: parsed.playerName, playerGender: gender }
+    const g = parsed.playerGender
+    const playerGender: PlayerGender = g === 'male' || g === 'both' ? g : 'female'
+    return { playerId: parsed.playerId, playerName: parsed.playerName, playerGender }
   } catch {
     return null
   }
@@ -125,7 +126,7 @@ export function setPlayerSession(
   gameCode: string,
   playerId: string,
   playerName: string,
-  playerGender: ParticipantGender
+  playerGender: PlayerGender
 ): void {
   if (typeof window === 'undefined') return
   localStorage.setItem(
