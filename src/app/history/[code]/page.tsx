@@ -180,7 +180,7 @@ export default function GameHistoryPage() {
       </div>
 
       {game.anonymous && (
-        <p className="text-amber-200/90 text-sm glass-card border border-amber-500/20 px-4 py-3">
+        <p className="callout-warning text-sm">
           This game was anonymous — individual voters are hidden. Totals per round are shown below.
         </p>
       )}
