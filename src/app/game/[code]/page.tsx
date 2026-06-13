@@ -850,7 +850,7 @@ export default function GamePage() {
   // ── Timer — NO `submitted` in deps so it keeps running after submit ───────
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current)
-    // stopTimerMusic()
+
     if (view !== 'round' || !currentRound?.started_at || !game) return
 
     const gameType = parseGameType(game.game_type)
@@ -863,7 +863,7 @@ export default function GamePage() {
 
     const tick = () => {
       const remaining = Math.max(0, Math.ceil((endMs - Date.now()) / 1000))
-      // playTimerMusic(remaining, game.timer_seconds)
+
       setTimeLeft(remaining)
 
       const roundGender = getRoundParticipantGender(currentRound.participant_ids, participantsRef.current)
@@ -889,7 +889,7 @@ export default function GamePage() {
     timerRef.current = setInterval(tick, 500)
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
-      // stopTimerMusic()
+  
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
