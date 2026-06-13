@@ -5,7 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { getInitial, filterParticipantsInRounds } from '@/lib/utils'
 import { roundGenderLabel, genderLabel, resolvePlayerIdentity, getRoundParticipantGender, eligibleVotersForRound, roundVoterLabel, hasEnoughForRounds, countByGender, hasVotersForPolls, participantsWhoJoined, maxRecommendedRounds, roundLimitHint } from '@/lib/participants'
 import type { ParticipantGender } from '@/types'
-import { tallyRoundVotes, VOTE_CATEGORY_META } from '@/lib/vote-stats'
+import { tallyRoundVotes, getCategoryMeta, getVoteCategories } from '@/lib/vote-stats'
+import { parseGameType } from '@/lib/game-types'
 import { ParticipantRoundResults, VoteCountStat } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import type { Game, Participant, Player, Round, Vote, Confession, VoteAssignment } from '@/types'
@@ -905,6 +906,7 @@ export default function HostPage() {
 
   // ── ACTIVE ────────────────────────────────────────────────────────────────
   if (game?.status === 'active' && currentRound) {
+    const gameType = parseGameType(game.game_type)
     const roundVotes = votes.filter((v) => v.round_id === currentRound.id)
     const roundParts = participants.filter((p) => currentRound.participant_ids.includes(p.id))
     const roundParticipantGender = getRoundParticipantGender(currentRound.participant_ids, participants)
@@ -990,13 +992,16 @@ export default function HostPage() {
                 const k = roundVotes.filter((v) => v.kiss_participant_id  === p.id).length
                 const m = roundVotes.filter((v) => v.marry_participant_id === p.id).length
                 const d = roundVotes.filter((v) => v.kill_participant_id  === p.id).length
+                const kissMeta = getCategoryMeta(gameType, 'kiss')
+                const marryMeta = getCategoryMeta(gameType, 'marry')
+                const smashMeta = getCategoryMeta(gameType, 'smash')
                 return (
                   <div key={p.id} className="glass-card px-4 py-3 flex items-center gap-4">
                     <p className="text-white font-semibold w-24 truncate">{p.name}</p>
                     <div className="flex gap-3 text-sm">
-                      <span className="text-orange-400">{VOTE_CATEGORY_META.kiss.emoji} {k}</span>
-                      <span className="text-amber-400">{VOTE_CATEGORY_META.marry.emoji} {m}</span>
-                      <span className="text-red-400">{VOTE_CATEGORY_META.smash.emoji} {d}</span>
+                      <span style={{ color: kissMeta.color }}>{kissMeta.emoji} {k}</span>
+                      <span style={{ color: marryMeta.color }}>{marryMeta.emoji} {m}</span>
+                      <span style={{ color: smashMeta.color }}>{smashMeta.emoji} {d}</span>
                     </div>
                   </div>
                 )
@@ -1022,6 +1027,7 @@ export default function HostPage() {
 
   // ── BETWEEN ROUNDS (results) ──────────────────────────────────────────────
   if (game?.status === 'active' && !currentRound && lastFinishedRound) {
+    const gameType = parseGameType(game.game_type)
     const roundVotes = votes.filter((v) => v.round_id === lastFinishedRound.id)
     const roundParts = participants.filter((p) => lastFinishedRound.participant_ids.includes(p.id))
     const roundConfessions = confessions.filter((c) => c.round_id === lastFinishedRound.id)
@@ -1048,6 +1054,7 @@ export default function HostPage() {
 
           return (
             <ParticipantRoundResults
+              gameType={gameType}
               tallies={tallies}
               nameById={nameById}
               voterCount={roundVotes.length}
@@ -1060,8 +1067,8 @@ export default function HostPage() {
                     <p className="text-white font-bold text-lg">{name}</p>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
-                    {(['kiss', 'marry', 'smash'] as const).map((category) => {
-                      const meta = VOTE_CATEGORY_META[category]
+                    {getVoteCategories(gameType).map((category) => {
+                      const meta = getCategoryMeta(gameType, category)
                       return (
                         <VoteCountStat
                           key={category}
@@ -1123,6 +1130,7 @@ export default function HostPage() {
 
   // ── FINISHED ──────────────────────────────────────────────────────────────
   if (game?.status === 'finished') {
+    const gameType = parseGameType(game.game_type)
     const playedParticipants = filterParticipantsInRounds(participants, allRounds)
 
     return (
@@ -1134,13 +1142,14 @@ export default function HostPage() {
         </div>
 
         <FinalGenderLeaderboards
+          gameType={gameType}
           participants={participants}
           rounds={allRounds}
           votes={votes}
           TopCard={StatCard}
         />
 
-        <FinalGenderBreakdown participants={participants} rounds={allRounds} votes={votes} />
+        <FinalGenderBreakdown gameType={gameType} participants={participants} rounds={allRounds} votes={votes} />
 
         {/* Confessions / hot takes */}
         {confessions.length > 0 && (
@@ -1179,14 +1188,12 @@ function TimerDisplay({ seconds, total }: { seconds: number; total: number }) {
   )
 }
 
-function StatCard({ emoji, label, name, count, color }: { emoji: string; label: string; name?: string; count?: number; color: string }) {
-  const map: Record<string, string> = {
-    amber: 'glass-card border-[var(--marry)]/30 bg-[var(--marry)]/8',
-    pink: 'glass-card border-[var(--kiss)]/30 bg-[var(--kiss)]/8',
-    red: 'glass-card border-[var(--kill)]/30 bg-[var(--kill)]/8',
-  }
+function StatCard({ emoji, label, name, count, accentColor }: { emoji: string; label: string; name?: string; count?: number; accentColor: string }) {
   return (
-    <div className={`border rounded-2xl p-3 text-center ${map[color]}`}>
+    <div
+      className="glass-card border rounded-2xl p-3 text-center"
+      style={{ borderColor: `${accentColor}55`, backgroundColor: `${accentColor}14` }}
+    >
       <p className="text-2xl">{emoji}</p>
       <p className="text-muted text-xs mt-1 leading-tight">{label}</p>
       <p className="text-white font-bold text-sm mt-1 truncate">{name ?? '—'}</p>

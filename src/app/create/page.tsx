@@ -1,7 +1,7 @@
 'use client'
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import type { ParticipantGender, ParticipantMode } from '@/types'
+import type { ParticipantGender, ParticipantMode, GameType } from '@/types'
 import {
   type ParticipantInput,
   parseParticipantRows,
@@ -11,6 +11,7 @@ import {
   hasEnoughForRounds,
   genderLabel,
 } from '@/lib/participants'
+import { GAME_TYPE_OPTIONS, gameTypeConfig } from '@/lib/game-types'
 
 interface Settings {
   title: string
@@ -20,6 +21,7 @@ interface Settings {
   auto_reveal: boolean
   auto_submit_behavior: 'random' | 'no_answer'
   participant_mode: ParticipantMode
+  game_type: GameType
 }
 
 type Step = 'settings' | 'participants' | 'done'
@@ -35,6 +37,7 @@ export default function CreateGame() {
     auto_reveal: true,
     auto_submit_behavior: 'random',
     participant_mode: 'import',
+    game_type: 'smash_marry_kill',
   })
   const [participants, setParticipants] = useState<ParticipantInput[]>([])
   const [nameInput, setNameInput] = useState('')
@@ -177,7 +180,32 @@ export default function CreateGame() {
             />
           </Field>
 
-          <Field label="Game Style">
+          <Field label="Game Type">
+            <div className="grid gap-2">
+              {GAME_TYPE_OPTIONS.map((type) => {
+                const cfg = gameTypeConfig(type)
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setSettings({ ...settings, game_type: type })}
+                    className={`text-left rounded-2xl border p-4 transition-all ${
+                      settings.game_type === type
+                        ? 'border-[var(--primary)] bg-[var(--primary)]/10'
+                        : 'border-white/10 surface-inset hover:border-white/20'
+                    }`}
+                  >
+                    <p className="font-semibold text-white">
+                      {cfg.headerEmoji} {cfg.label}
+                    </p>
+                    <p className="text-faint text-xs mt-1">{cfg.tagline}</p>
+                  </button>
+                )
+              })}
+            </div>
+          </Field>
+
+          <Field label="Who Joins">
             <div className="grid gap-2">
               <button
                 type="button"

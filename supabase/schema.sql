@@ -12,13 +12,14 @@ create table if not exists games (
   auto_reveal boolean not null default true,
   auto_submit_behavior text not null default 'random',
   participant_mode text not null default 'import' check (participant_mode in ('import', 'joiners')),
+  game_type text not null default 'smash_marry_kill' check (game_type in ('smash_marry_kill', 'red_flag_green_flag')),
   status text not null default 'waiting',
   current_round_number integer not null default 0,
   created_at timestamptz not null default now()
 );
 
 -- If upgrading an existing database, run:
--- alter table games add column if not exists participant_mode text not null default 'import' check (participant_mode in ('import', 'joiners'));
+-- alter table games add column if not exists game_type text not null default 'smash_marry_kill' check (game_type in ('smash_marry_kill', 'red_flag_green_flag'));
 
 -- Participants (people being voted on)
 create table if not exists participants (

@@ -1,20 +1,24 @@
+import type { GameType } from '@/types'
 import {
   type VoteCategory,
   type RoundTally,
-  VOTE_CATEGORY_META,
+  getCategoryMeta,
+  getVoteCategories,
   winnerNames,
 } from '@/lib/vote-stats'
 
 export function RoundWinnersSummary({
+  gameType,
   tallies,
   nameById,
   voterCount,
 }: {
+  gameType?: GameType | string
   tallies: RoundTally[]
   nameById: Map<string, string>
   voterCount: number
 }) {
-  const categories: VoteCategory[] = ['kiss', 'marry', 'smash']
+  const categories = getVoteCategories(gameType)
 
   return (
     <div className="glass-card border border-white/12 p-4 space-y-3">
@@ -23,7 +27,7 @@ export function RoundWinnersSummary({
       </p>
       <div className="grid grid-cols-3 gap-2">
         {categories.map((category) => {
-          const meta = VOTE_CATEGORY_META[category]
+          const meta = getCategoryMeta(gameType, category)
           const winners = winnerNames(tallies, category, nameById)
           const max = Math.max(...tallies.map((t) => t[category]), 0)
           return (
@@ -84,11 +88,13 @@ export function VoteCountStat({
 }
 
 export function ParticipantRoundResults({
+  gameType,
   tallies,
   nameById,
   voterCount,
   renderCard,
 }: {
+  gameType?: GameType | string
   tallies: RoundTally[]
   nameById: Map<string, string>
   voterCount: number
@@ -107,7 +113,7 @@ export function ParticipantRoundResults({
 
   return (
     <div className="space-y-4">
-      <RoundWinnersSummary tallies={tallies} nameById={nameById} voterCount={voterCount} />
+      <RoundWinnersSummary gameType={gameType} tallies={tallies} nameById={nameById} voterCount={voterCount} />
       <div className="space-y-3">
         {tallies.map((tally) => {
           const name = nameById.get(tally.id) ?? ''

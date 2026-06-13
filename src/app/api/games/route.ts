@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generateGameCode, generateToken } from '@/lib/utils'
 import { normalizeGender, hasEnoughForRounds, type ParticipantInput } from '@/lib/participants'
+import { parseGameType } from '@/lib/game-types'
 import type { ParticipantMode } from '@/types'
 
 const supabase = createClient(
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
     auto_reveal,
     auto_submit_behavior,
     participant_mode: rawMode,
+    game_type: rawGameType,
     participants: rawParticipants,
   } = body
 
@@ -46,6 +48,7 @@ export async function POST(req: NextRequest) {
   }
 
   const participant_mode: ParticipantMode = rawMode === 'joiners' ? 'joiners' : 'import'
+  const game_type = parseGameType(rawGameType)
 
   let participants: ParticipantInput[] = []
   if (participant_mode === 'import') {
@@ -81,6 +84,7 @@ export async function POST(req: NextRequest) {
     auto_reveal: Boolean(auto_reveal),
     auto_submit_behavior: auto_submit_behavior === 'no_answer' ? 'no_answer' : 'random',
     participant_mode,
+    game_type,
     status: 'waiting',
     current_round_number: 0,
   })

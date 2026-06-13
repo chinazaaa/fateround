@@ -6,11 +6,12 @@ import { getPlayerSession, setPlayerSession, clearPlayerSession, getInitial, fil
 import { playRoundStartSound, unlockAudio } from '@/lib/sounds'
 import { roundGenderLabel, playerGenderLabel, playerIdentityLabel, genderLabel, getRoundParticipantGender, canPlayerVoteInRound, roundVoterLabel, spectatorMessage, activeVoteBanner, parsePlayerGenderFromDb, parseParticipantGenderFromDb, playerGenderFromJoin, joinGenderHint, playerVoteGenderForRound } from '@/lib/participants'
 import type { ParticipantGender, PlayerGender } from '@/types'
-import { tallyRoundVotes, VOTE_CATEGORY_META, ASSIGNMENT_ACTION_META, assignmentEmoji } from '@/lib/vote-stats'
+import { tallyRoundVotes, getCategoryMeta, getVoteCategories, assignmentEmojiFor, myActionBorderClass } from '@/lib/vote-stats'
+import { gameTypeConfig, slotMeta, voteSlots, emptyAssignment, isAssignmentComplete, assignedCount, parseGameType } from '@/lib/game-types'
 import { ParticipantRoundResults, VoteCountStat } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import { NameSearchPicker } from '@/components/NameSearchPicker'
-import type { Game, Participant, Player, Round, Vote, VoteAssignment, Confession } from '@/types'
+import type { Game, Participant, Player, Round, Vote, VoteAssignment, Confession, GameType } from '@/types'
 
 type View = 'loading' | 'not_found' | 'join' | 'waiting' | 'round' | 'round_results' | 'results'
 
@@ -27,7 +28,7 @@ export default function GamePage() {
   // Active round state
   const [currentRound, setCurrentRound] = useState<Round | null>(null)
   const [timeLeft, setTimeLeft] = useState(0)
-  const [assignment, setAssignment] = useState<VoteAssignment>({ kiss: null, marry: null, kill: null })
+  const [assignment, setAssignment] = useState<VoteAssignment>(emptyAssignment())
   const [submitted, setSubmitted] = useState(false)
   const [confessionText, setConfessionText] = useState('')
   const [confessionSent, setConfessionSent] = useState(false)
@@ -252,7 +253,7 @@ export default function GamePage() {
               setCurrentRound(activeRound)
               submittedRef.current = false
               setSubmitted(false)
-              setAssignment({ kiss: null, marry: null, kill: null })
+              setAssignment(emptyAssignment())
               setConfessionText('')
               setConfessionSent(false)
               setView('round')
@@ -277,7 +278,7 @@ export default function GamePage() {
             setCurrentRound(round)
             submittedRef.current = false
             setSubmitted(false)
-            setAssignment({ kiss: null, marry: null, kill: null })
+            setAssignment(emptyAssignment())
             setConfessionText('')
             setConfessionSent(false)
             setView('round')
@@ -295,7 +296,7 @@ export default function GamePage() {
             setCurrentRound(round)
             submittedRef.current = false
             setSubmitted(false)
-            setAssignment({ kiss: null, marry: null, kill: null })
+            setAssignment(emptyAssignment())
             setConfessionText('')
             setConfessionSent(false)
             setView('round')
@@ -424,7 +425,7 @@ export default function GamePage() {
           setCurrentRound(activeRound)
           submittedRef.current = false
           setSubmitted(false)
-          setAssignment({ kiss: null, marry: null, kill: null })
+          setAssignment(emptyAssignment())
           setView('round')
         }
       }
@@ -459,7 +460,7 @@ export default function GamePage() {
         if (view === 'round_results' || activeRound.id !== currentRoundRef.current?.id) {
           submittedRef.current = false
           setSubmitted(false)
-          setAssignment({ kiss: null, marry: null, kill: null })
+          setAssignment(emptyAssignment())
           setConfessionText('')
           setConfessionSent(false)
           setView('round')
@@ -723,7 +724,7 @@ export default function GamePage() {
     return (
       <CenteredCard>
         <div className="text-center space-y-1">
-          <div className="text-4xl">🔥💍💀</div>
+          <div className="text-4xl">{gameTypeConfig(game?.game_type).headerEmoji}</div>
           <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
           <p className="text-muted text-sm">{game?.rounds_count} rounds · {game?.timer_seconds}s each</p>
         </div>
@@ -873,7 +874,9 @@ export default function GamePage() {
       canPlayerVoteInRound(effectiveGender, roundParticipantGender)
     )
     const voteBanner = canVote ? activeVoteBanner(effectiveGender) : null
-    const allAssigned = !!(assignment.kiss && assignment.marry && assignment.kill)
+    const allAssigned = isAssignmentComplete(assignment)
+    const gameType = parseGameType(game?.game_type)
+    const typeConfig = gameTypeConfig(gameType)
 
     return (
       <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full">
@@ -921,6 +924,7 @@ export default function GamePage() {
             return (
               <ParticipantCard
                 key={p.id}
+                gameType={gameType}
                 participant={p}
                 action={action}
                 onAssign={(a) => canVote && !submitted && assign(a, p.id)}
@@ -941,7 +945,7 @@ export default function GamePage() {
           >
             {allAssigned
               ? 'Submit Vote ✓'
-              : `Assign all 3 (${[assignment.kiss, assignment.marry, assignment.kill].filter(Boolean).length}/3)`}
+              : `Assign all 3 (${assignedCount(assignment)}/3)`}
           </button>
         ) : (
           <div className="space-y-3">
@@ -992,6 +996,7 @@ export default function GamePage() {
     )
     const roundConfessions = allConfessions.filter((c) => c.round_id === lastFinishedRound.id)
     const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
+    const gameType = parseGameType(game?.game_type)
 
     return (
       <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
@@ -1015,17 +1020,17 @@ export default function GamePage() {
             <div className="flex gap-4 flex-wrap">
               {myVote.kiss_participant_id && (
                 <span className="text-pink-300 text-sm font-medium">
-                  {assignmentEmoji('kiss')} {participants.find((p) => p.id === myVote.kiss_participant_id)?.name}
+                  {assignmentEmojiFor(gameType, 'kiss')} {participants.find((p) => p.id === myVote.kiss_participant_id)?.name}
                 </span>
               )}
               {myVote.marry_participant_id && (
                 <span className="text-amber-300 text-sm font-medium">
-                  {assignmentEmoji('marry')} {participants.find((p) => p.id === myVote.marry_participant_id)?.name}
+                  {assignmentEmojiFor(gameType, 'marry')} {participants.find((p) => p.id === myVote.marry_participant_id)?.name}
                 </span>
               )}
               {myVote.kill_participant_id && (
                 <span className="text-red-300 text-sm font-medium">
-                  {assignmentEmoji('kill')} {participants.find((p) => p.id === myVote.kill_participant_id)?.name}
+                  {assignmentEmojiFor(gameType, 'kill')} {participants.find((p) => p.id === myVote.kill_participant_id)?.name}
                 </span>
               )}
             </div>
@@ -1043,6 +1048,7 @@ export default function GamePage() {
 
           return (
             <ParticipantRoundResults
+              gameType={gameType}
               tallies={tallies}
               nameById={nameById}
               voterCount={voterCount}
@@ -1052,10 +1058,7 @@ export default function GamePage() {
                   myVote?.marry_participant_id === tally.id ? 'marry' :
                   myVote?.kill_participant_id  === tally.id ? 'kill'  : null
 
-                const borderCls =
-                  myAction === 'kiss'  ? 'border-pink-500/40'  :
-                  myAction === 'marry' ? 'border-amber-500/40' :
-                  myAction === 'kill'  ? 'border-red-500/40'   : 'border-white/10'
+                const borderCls = myActionBorderClass(gameType, myAction)
 
                 return (
                   <div key={tally.id} className={`glass-card border-2 ${borderCls} rounded-2xl p-4`}>
@@ -1066,13 +1069,13 @@ export default function GamePage() {
                       <p className="text-white font-bold text-lg">{name}</p>
                       {myAction && (
                         <span className="ml-auto text-xs text-muted italic">
-                          you: {myAction ? assignmentEmoji(myAction) : ''}
+                          you: {myAction ? assignmentEmojiFor(gameType, myAction) : ''}
                         </span>
                       )}
                     </div>
                     <div className="grid grid-cols-3 gap-3">
-                      {(['kiss', 'marry', 'smash'] as const).map((category) => {
-                        const meta = VOTE_CATEGORY_META[category]
+                      {getVoteCategories(gameType).map((category) => {
+                        const meta = getCategoryMeta(gameType, category)
                         return (
                           <VoteCountStat
                             key={category}
@@ -1137,49 +1140,46 @@ export default function GamePage() {
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
-const ACTION_CONFIG = {
-  kiss:  { emoji: ASSIGNMENT_ACTION_META.kiss.emoji,  label: ASSIGNMENT_ACTION_META.kiss.label,  border: 'border-[var(--kiss)]/50 bg-[var(--kiss)]/10',  active: 'bg-[var(--kiss)]/20 text-orange-200 border-[var(--kiss)]'  },
-  marry: { emoji: ASSIGNMENT_ACTION_META.marry.emoji, label: ASSIGNMENT_ACTION_META.marry.label, border: 'border-[var(--marry)]/50 bg-[var(--marry)]/10', active: 'bg-[var(--marry)]/20 text-amber-100 border-[var(--marry)]' },
-  kill:  { emoji: ASSIGNMENT_ACTION_META.kill.emoji,  label: ASSIGNMENT_ACTION_META.kill.label,  border: 'border-[var(--kill)]/50 bg-[var(--kill)]/10',  active: 'bg-[var(--kill)]/20 text-red-200 border-[var(--kill)]'   },
-}
-
-function ParticipantCard({ participant, action, onAssign, disabled }: {
+function ParticipantCard({ gameType, participant, action, onAssign, disabled }: {
+  gameType: GameType
   participant: Participant
   action: 'kiss' | 'marry' | 'kill' | null
   onAssign: (a: 'kiss' | 'marry' | 'kill') => void
   disabled: boolean
 }) {
-  const cfg = action ? ACTION_CONFIG[action] : null
+  const cfg = action ? slotMeta(gameType, action) : null
   return (
-    <div className={`rounded-2xl border-2 p-4 transition-all backdrop-blur-sm ${cfg ? cfg.border : 'glass-card border-white/10'}`}>
+    <div className={`rounded-2xl border-2 p-4 transition-all backdrop-blur-sm ${cfg ? cfg.borderClass : 'glass-card border-white/10'}`}>
       <div className="flex items-center gap-3 mb-3">
         <div className="avatar w-10 h-10 text-lg shrink-0">
           {getInitial(participant.name)}
         </div>
         <div>
           <p className="text-white font-bold text-lg leading-tight">{participant.name}</p>
-          {action && (
-            <p className="text-sm font-medium" style={{ color: action === 'kiss' ? '#fdba74' : action === 'marry' ? '#fcd34d' : '#fca5a5' }}>
-              {ACTION_CONFIG[action].emoji} {ACTION_CONFIG[action].label}
+          {action && cfg && (
+            <p className="text-sm font-medium" style={{ color: cfg.textColor }}>
+              {cfg.emoji} {cfg.label}
             </p>
           )}
         </div>
       </div>
       <div className="flex gap-2">
-        {(['kiss', 'marry', 'kill'] as const).map((a) => (
+        {voteSlots().map((a) => {
+          const slot = slotMeta(gameType, a)
+          return (
           <button
             key={a}
             onClick={() => onAssign(a)}
             disabled={disabled}
             className={`flex-1 py-2.5 rounded-xl border text-sm font-bold transition-all active:scale-95 ${
               action === a
-                ? ACTION_CONFIG[a].active
+                ? slot.activeClass
                 : `surface-inset border-white/8 text-muted ${!disabled ? 'hover:border-zinc-500 hover:text-white/80' : ''}`
             } disabled:cursor-not-allowed`}
           >
-            {ACTION_CONFIG[a].emoji}
+            {slot.emoji}
           </button>
-        ))}
+        )})}
       </div>
     </div>
   )
@@ -1214,6 +1214,7 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
   myPlayerId: string | null
   myPlayerName: string | null
 }) {
+  const gameType = parseGameType(game.game_type)
   const playedParticipants = filterParticipantsInRounds(participants, rounds)
 
   return (
@@ -1226,13 +1227,14 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
       </div>
 
       <FinalGenderLeaderboards
+        gameType={gameType}
         participants={participants}
         rounds={rounds}
         votes={votes}
         TopCard={LeaderCard}
       />
 
-      <FinalGenderBreakdown participants={participants} rounds={rounds} votes={votes} />
+      <FinalGenderBreakdown gameType={gameType} participants={participants} rounds={rounds} votes={votes} />
 
       <div>
         <h2 className="text-muted text-xs uppercase tracking-wider mb-4">All round results</h2>
@@ -1252,9 +1254,9 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
             {myVote && (
               <div className="glass-card border border-[var(--primary)]/25 px-4 py-2.5 mb-3 flex gap-4 flex-wrap">
                 <span className="text-muted text-xs uppercase tracking-wider self-center">Your vote:</span>
-                {myVote.kiss_participant_id  && <span className="text-orange-300 text-sm">{assignmentEmoji('kiss')} {participants.find((p) => p.id === myVote.kiss_participant_id)?.name}</span>}
-                {myVote.marry_participant_id && <span className="text-amber-300 text-sm">{assignmentEmoji('marry')} {participants.find((p) => p.id === myVote.marry_participant_id)?.name}</span>}
-                {myVote.kill_participant_id  && <span className="text-red-300 text-sm">{assignmentEmoji('kill')} {participants.find((p) => p.id === myVote.kill_participant_id)?.name}</span>}
+                {myVote.kiss_participant_id  && <span className="text-orange-300 text-sm">{assignmentEmojiFor(gameType, 'kiss')} {participants.find((p) => p.id === myVote.kiss_participant_id)?.name}</span>}
+                {myVote.marry_participant_id && <span className="text-amber-300 text-sm">{assignmentEmojiFor(gameType, 'marry')} {participants.find((p) => p.id === myVote.marry_participant_id)?.name}</span>}
+                {myVote.kill_participant_id  && <span className="text-red-300 text-sm">{assignmentEmojiFor(gameType, 'kill')} {participants.find((p) => p.id === myVote.kill_participant_id)?.name}</span>}
               </div>
             )}
             <div className="space-y-4">
@@ -1266,6 +1268,7 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
                 const nameById = new Map(roundParts.map((p) => [p.id, p.name]))
                 return (
                   <ParticipantRoundResults
+                    gameType={gameType}
                     tallies={tallies}
                     nameById={nameById}
                     voterCount={roundVotes.length}
@@ -1278,8 +1281,8 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
                           <p className="text-white font-bold">{name}</p>
                         </div>
                         <div className="grid grid-cols-3 gap-2">
-                          {(['kiss', 'marry', 'smash'] as const).map((category) => {
-                            const meta = VOTE_CATEGORY_META[category]
+                          {getVoteCategories(gameType).map((category) => {
+                            const meta = getCategoryMeta(gameType, category)
                             return (
                               <VoteCountStat
                                 key={category}
@@ -1322,16 +1325,14 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
   )
 }
 
-function LeaderCard({ emoji, label, name, count, color }: {
-  emoji: string; label: string; name?: string; count?: number; color: string
+function LeaderCard({ emoji, label, name, count, accentColor }: {
+  emoji: string; label: string; name?: string; count?: number; accentColor: string
 }) {
-  const cls: Record<string, string> = {
-    amber: 'glass-card border-[var(--marry)]/30 bg-[var(--marry)]/8',
-    pink:  'glass-card border-[var(--kiss)]/30 bg-[var(--kiss)]/8',
-    red:   'glass-card border-[var(--kill)]/30 bg-[var(--kill)]/8',
-  }
   return (
-    <div className={`border rounded-2xl p-3 text-center ${cls[color]}`}>
+    <div
+      className="glass-card border rounded-2xl p-3 text-center"
+      style={{ borderColor: `${accentColor}55`, backgroundColor: `${accentColor}14` }}
+    >
       <p className="text-2xl">{emoji}</p>
       <p className="text-muted text-xs mt-1 leading-tight">{label}</p>
       <p className="text-white font-bold text-sm mt-1 truncate">{name ?? '—'}</p>

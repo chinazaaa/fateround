@@ -4,7 +4,8 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { roundGenderLabel } from '@/lib/participants'
-import { assignmentEmoji, tallyRoundVotes } from '@/lib/vote-stats'
+import { assignmentEmojiFor, tallyRoundVotes } from '@/lib/vote-stats'
+import { parseGameType, slotMeta } from '@/lib/game-types'
 import type { Confession, Game, Participant, Player, Round, Vote } from '@/types'
 
 type LoadState = 'loading' | 'not_found' | 'ready'
@@ -105,6 +106,10 @@ export default function GameHistoryPage() {
   }
 
   const playerNameById = new Map(players.map((p) => [p.id, p.name]))
+  const gameType = parseGameType(game.game_type)
+  const kissMeta = slotMeta(gameType, 'kiss')
+  const marryMeta = slotMeta(gameType, 'marry')
+  const killMeta = slotMeta(gameType, 'kill')
   const roundsWithVotes = rounds.filter((r) => votes.some((v) => v.round_id === r.id))
 
   return (
@@ -196,13 +201,13 @@ export default function GameHistoryPage() {
                               Voter
                             </th>
                             <th className="px-4 py-3 text-center text-xs font-medium w-24">
-                              {assignmentEmoji('kiss')} Smash
+                              {assignmentEmojiFor(gameType, 'kiss')} {kissMeta.label}
                             </th>
                             <th className="px-4 py-3 text-center text-xs font-medium w-24">
-                              {assignmentEmoji('marry')} Marry
+                              {assignmentEmojiFor(gameType, 'marry')} {marryMeta.label}
                             </th>
                             <th className="px-4 py-3 text-center text-xs font-medium w-24">
-                              {assignmentEmoji('kill')} Kill
+                              {assignmentEmojiFor(gameType, 'kill')} {killMeta.label}
                             </th>
                           </tr>
                         </thead>
@@ -236,9 +241,9 @@ export default function GameHistoryPage() {
                             <th className="px-4 py-3 text-faint text-xs uppercase tracking-wider font-medium">
                               Name
                             </th>
-                            <th className="px-4 py-3 text-center text-xs font-medium w-16">🔥</th>
-                            <th className="px-4 py-3 text-center text-xs font-medium w-16">💍</th>
-                            <th className="px-4 py-3 text-center text-xs font-medium w-16">💀</th>
+                            <th className="px-4 py-3 text-center text-xs font-medium w-16">{kissMeta.emoji}</th>
+                            <th className="px-4 py-3 text-center text-xs font-medium w-16">{marryMeta.emoji}</th>
+                            <th className="px-4 py-3 text-center text-xs font-medium w-16">{killMeta.emoji}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -269,9 +274,9 @@ export default function GameHistoryPage() {
                           <thead>
                             <tr className="border-b border-white/10">
                               <th className="px-4 py-2 text-left text-xs uppercase tracking-wider">Name</th>
-                              <th className="px-4 py-2 text-center w-16">🔥</th>
-                              <th className="px-4 py-2 text-center w-16">💍</th>
-                              <th className="px-4 py-2 text-center w-16">💀</th>
+                              <th className="px-4 py-2 text-center w-16">{kissMeta.emoji}</th>
+                              <th className="px-4 py-2 text-center w-16">{marryMeta.emoji}</th>
+                              <th className="px-4 py-2 text-center w-16">{killMeta.emoji}</th>
                             </tr>
                           </thead>
                           <tbody>

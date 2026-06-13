@@ -1,4 +1,13 @@
-export type VoteCategory = 'kiss' | 'marry' | 'smash'
+import type { GameType } from '@/types'
+import {
+  type VoteCategory,
+  categoryMeta,
+  categoryToSlot,
+  parseGameType,
+  voteCategories,
+} from '@/lib/game-types'
+
+export type { VoteCategory } from '@/lib/game-types'
 
 export interface RoundTally {
   id: string
@@ -30,7 +39,11 @@ export function maxInRound(tallies: RoundTally[]): Record<VoteCategory, number> 
   }
 }
 
-export function isCategoryWinner(tallies: RoundTally[], participantId: string, category: VoteCategory): boolean {
+export function isCategoryWinner(
+  tallies: RoundTally[],
+  participantId: string,
+  category: VoteCategory
+): boolean {
   const max = Math.max(...tallies.map((t) => t[category]))
   if (max === 0) return false
   const tally = tallies.find((t) => t.id === participantId)
@@ -50,21 +63,47 @@ export function winnerNames(
     .filter(Boolean)
 }
 
-export const VOTE_CATEGORY_META: Record<
-  VoteCategory,
-  { emoji: string; label: string; color: string; leaderboardLabel: string }
-> = {
+/** @deprecated Use categoryMeta(gameType, category) */
+export const VOTE_CATEGORY_META = {
   kiss: { emoji: '🔥', label: 'Smash', color: '#fb923c', leaderboardLabel: 'Most Smashed' },
   marry: { emoji: '💍', label: 'Marry', color: '#fbbf24', leaderboardLabel: 'Most Married' },
   smash: { emoji: '💀', label: 'Kill', color: '#f87171', leaderboardLabel: 'Most Killed' },
+} as const
+
+export function getCategoryMeta(gameType: GameType | string | undefined, category: VoteCategory) {
+  return categoryMeta(parseGameType(gameType), category)
 }
 
+export function getVoteCategories(_gameType?: GameType | string | undefined): VoteCategory[] {
+  return voteCategories()
+}
+
+/** @deprecated Use assignmentEmoji(gameType, slot) */
 export const ASSIGNMENT_ACTION_META = {
   kiss: VOTE_CATEGORY_META.kiss,
   marry: VOTE_CATEGORY_META.marry,
   kill: VOTE_CATEGORY_META.smash,
 } as const
 
+export function assignmentEmojiFor(
+  gameType: GameType | string | undefined,
+  slot: 'kiss' | 'marry' | 'kill'
+): string {
+  return getCategoryMeta(gameType, slot === 'kill' ? 'smash' : slot).emoji
+}
+
+/** @deprecated Use assignmentEmojiFor */
 export function assignmentEmoji(action: keyof typeof ASSIGNMENT_ACTION_META): string {
   return ASSIGNMENT_ACTION_META[action].emoji
+}
+
+export function myActionBorderClass(
+  gameType: GameType | string | undefined,
+  action: 'kiss' | 'marry' | 'kill' | null
+): string {
+  if (!action) return 'border-white/10'
+  const slot = categoryToSlot(action === 'kill' ? 'smash' : action)
+  if (action === 'kiss') return gameType === 'red_flag_green_flag' ? 'border-emerald-500/40' : 'border-pink-500/40'
+  if (action === 'marry') return gameType === 'red_flag_green_flag' ? 'border-white/25' : 'border-amber-500/40'
+  return gameType === 'red_flag_green_flag' ? 'border-red-500/40' : 'border-red-500/40'
 }

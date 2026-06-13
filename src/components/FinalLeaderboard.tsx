@@ -1,6 +1,6 @@
-import type { Participant, Round, Vote } from '@/types'
+import type { GameType, Participant, Round, Vote } from '@/types'
 import { participantsInGenderRounds, genderLabel } from '@/lib/participants'
-import { VOTE_CATEGORY_META } from '@/lib/vote-stats'
+import { getCategoryMeta } from '@/lib/vote-stats'
 import { VoteCountStat } from '@/components/VoteResults'
 import { getInitial } from '@/lib/utils'
 
@@ -28,15 +28,17 @@ function topBy(rows: TallyRow[], key: 'kissCount' | 'marryCount' | 'killCount') 
 }
 
 export function FinalGenderLeaderboards({
+  gameType,
   participants,
   rounds,
   votes,
   TopCard,
 }: {
+  gameType?: GameType | string
   participants: Participant[]
   rounds: Round[]
   votes: Vote[]
-  TopCard: (props: { emoji: string; label: string; name?: string; count?: number; color: string }) => React.ReactNode
+  TopCard: (props: { emoji: string; label: string; name?: string; count?: number; accentColor: string }) => React.ReactNode
 }) {
   const sections = ([
     { gender: 'male' as const, title: "Men's leaderboard" },
@@ -55,13 +57,16 @@ export function FinalGenderLeaderboards({
         const mostSmashed = topBy(tally, 'kissCount')
         const mostMarried = topBy(tally, 'marryCount')
         const mostKilled = topBy(tally, 'killCount')
+        const kissMeta = getCategoryMeta(gameType, 'kiss')
+        const marryMeta = getCategoryMeta(gameType, 'marry')
+        const smashMeta = getCategoryMeta(gameType, 'smash')
         return (
           <div key={gender}>
             <h2 className="text-muted text-xs uppercase tracking-wider mb-3">{title}</h2>
             <div className="grid grid-cols-3 gap-3">
-              <TopCard emoji={VOTE_CATEGORY_META.kiss.emoji} label={VOTE_CATEGORY_META.kiss.leaderboardLabel} name={mostSmashed?.name} count={mostSmashed?.kissCount} color="pink" />
-              <TopCard emoji={VOTE_CATEGORY_META.marry.emoji} label={VOTE_CATEGORY_META.marry.leaderboardLabel} name={mostMarried?.name} count={mostMarried?.marryCount} color="amber" />
-              <TopCard emoji={VOTE_CATEGORY_META.smash.emoji} label={VOTE_CATEGORY_META.smash.leaderboardLabel} name={mostKilled?.name} count={mostKilled?.killCount} color="red" />
+              <TopCard emoji={kissMeta.emoji} label={kissMeta.leaderboardLabel} name={mostSmashed?.name} count={mostSmashed?.kissCount} accentColor={kissMeta.color} />
+              <TopCard emoji={marryMeta.emoji} label={marryMeta.leaderboardLabel} name={mostMarried?.name} count={mostMarried?.marryCount} accentColor={marryMeta.color} />
+              <TopCard emoji={smashMeta.emoji} label={smashMeta.leaderboardLabel} name={mostKilled?.name} count={mostKilled?.killCount} accentColor={smashMeta.color} />
             </div>
           </div>
         )
@@ -71,10 +76,12 @@ export function FinalGenderLeaderboards({
 }
 
 export function FinalGenderBreakdown({
+  gameType,
   participants,
   rounds,
   votes,
 }: {
+  gameType?: GameType | string
   participants: Participant[]
   rounds: Round[]
   votes: Vote[]
@@ -96,6 +103,9 @@ export function FinalGenderBreakdown({
         const maxSmash = Math.max(1, ...tally.map((p) => p.kissCount))
         const maxMarry = Math.max(1, ...tally.map((p) => p.marryCount))
         const maxKill = Math.max(1, ...tally.map((p) => p.killCount))
+        const kissMeta = getCategoryMeta(gameType, 'kiss')
+        const marryMeta = getCategoryMeta(gameType, 'marry')
+        const smashMeta = getCategoryMeta(gameType, 'smash')
         return (
           <div key={gender}>
             <h2 className="text-muted text-xs uppercase tracking-wider mb-3">{title}</h2>
@@ -110,9 +120,9 @@ export function FinalGenderBreakdown({
                       <span className="ml-auto text-[10px] uppercase tracking-wider text-faint">{genderLabel(gender)}</span>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
-                      <VoteCountStat emoji={VOTE_CATEGORY_META.kiss.emoji} label={VOTE_CATEGORY_META.kiss.label} count={p.kissCount} max={maxSmash} color={VOTE_CATEGORY_META.kiss.color} isWinner={p.kissCount === maxSmash && maxSmash > 0} />
-                      <VoteCountStat emoji={VOTE_CATEGORY_META.marry.emoji} label={VOTE_CATEGORY_META.marry.label} count={p.marryCount} max={maxMarry} color={VOTE_CATEGORY_META.marry.color} isWinner={p.marryCount === maxMarry && maxMarry > 0} />
-                      <VoteCountStat emoji={VOTE_CATEGORY_META.smash.emoji} label={VOTE_CATEGORY_META.smash.label} count={p.killCount} max={maxKill} color={VOTE_CATEGORY_META.smash.color} isWinner={p.killCount === maxKill && maxKill > 0} />
+                      <VoteCountStat emoji={kissMeta.emoji} label={kissMeta.label} count={p.kissCount} max={maxSmash} color={kissMeta.color} isWinner={p.kissCount === maxSmash && maxSmash > 0} />
+                      <VoteCountStat emoji={marryMeta.emoji} label={marryMeta.label} count={p.marryCount} max={maxMarry} color={marryMeta.color} isWinner={p.marryCount === maxMarry && maxMarry > 0} />
+                      <VoteCountStat emoji={smashMeta.emoji} label={smashMeta.label} count={p.killCount} max={maxKill} color={smashMeta.color} isWinner={p.killCount === maxKill && maxKill > 0} />
                     </div>
                   </div>
                 ))}
