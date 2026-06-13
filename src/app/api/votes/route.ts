@@ -4,14 +4,12 @@ import { createVoteSchema } from '@/lib/validation'
 import { canPlayerVoteInRound, getRoundParticipantGender, playerVoteGenderForRound } from '@/lib/participants'
 import {
   isAssignmentComplete,
-  isPairAssignmentComplete,
   isPairGame,
   isThreeChoiceGame,
   isWouldYouRather,
   isMostLikelyTo,
   isWhoSaidThis,
   isLobbyGame,
-  isNameOnlyPlayerJoin,
   parseGameType,
   parsePairVoteMode,
   isPairAssignmentValid,

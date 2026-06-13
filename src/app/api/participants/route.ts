@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createParticipantSchema, updateParticipantSchema, deleteParticipantSchema } from '@/lib/validation'
 import { normalizeGender, type ParticipantInput } from '@/lib/participants'
-import { parseGameType, isMostLikelyTo } from '@/lib/game-types'
+import { isMostLikelyTo } from '@/lib/game-types'
 import { assertHostGame, deleteJoinerPair } from '@/lib/game-admin'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)

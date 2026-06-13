@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
-import { parseGameType, isLobbyGame, isNameOnlyPlayerJoin, isWhoSaidThis } from '@/lib/game-types'
+import { parseGameType, isNameOnlyPlayerJoin, isWhoSaidThis } from '@/lib/game-types'
 import {
   assertHostGame,
   deleteJoinerPair,
@@ -32,16 +32,6 @@ async function nameTaken(gameId: string, name: string, excludePlayerId?: string)
   let query = supabase.from('players').select('id').eq('game_id', gameId).ilike('name', name)
   if (excludePlayerId) query = query.neq('id', excludePlayerId)
   const { data } = await query.maybeSingle()
-  return !!data
-}
-
-async function assertNameOnImportList(gameId: string, name: string) {
-  const { data } = await supabase
-    .from('participants')
-    .select('id')
-    .eq('game_id', gameId)
-    .ilike('name', name)
-    .maybeSingle()
   return !!data
 }
 
@@ -316,8 +306,8 @@ export async function PATCH(req: NextRequest) {
     hostToken,
   } = parsedPatch.data
 
-  let game: { participant_mode: string } | null = null
-  let id = gameCode.toUpperCase()
+  let game: { participant_mode: string } | null
+  let id: string
 
   if (hostToken) {
     const auth = await assertHostGame(supabase, gameCode, hostToken)
@@ -570,8 +560,8 @@ export async function DELETE(req: NextRequest) {
 
   const { gameCode, playerId, hostToken } = parsedDel.data
 
-  let game: { participant_mode: string } | null = null
-  let id = gameCode.toUpperCase()
+  let game: { participant_mode: string } | null
+  let id: string
 
   if (hostToken) {
     const auth = await assertHostGame(supabase, gameCode, hostToken)
