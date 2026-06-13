@@ -126,7 +126,7 @@ export function winnerNames(
 export const VOTE_CATEGORY_META = {
   kiss: { emoji: '🔥', label: 'Smash', color: '#fb923c', leaderboardLabel: 'Most Smashed' },
   marry: { emoji: '💍', label: 'Marry', color: '#fbbf24', leaderboardLabel: 'Most Married' },
-  smash: { emoji: '💀', label: 'Kill', color: '#f87171', leaderboardLabel: 'Most Killed' },
+  smash: { emoji: '💀', label: 'Kill', color: '#991b1b', leaderboardLabel: 'Most Killed' },
 } as const
 
 export function getCategoryMeta(gameType: GameType | string | undefined, category: VoteCategory) {
@@ -163,10 +163,13 @@ export function myActionBorderClass(
   if (!action) return 'border-theme'
   const type = parseGameType(gameType)
   if (action === 'kiss') {
-    return type === 'red_flag_green_flag' ? 'border-emerald-500/40' : 'border-pink-500/40'
+    if (type === 'red_flag_green_flag') return 'border-emerald-500/40'
+    if (type === 'smash_marry_kill' || type === 'smash_or_pass') return 'border-orange-500/45'
+    return 'border-pink-500/40'
   }
   if (action === 'marry') return 'border-amber-500/40'
   if (type === 'red_flag_green_flag') return 'border-red-500/40'
   if (type === 'smash_or_pass') return 'border-slate-400/40'
+  if (type === 'smash_marry_kill') return 'border-red-900/50 dark:border-red-500/45'
   return 'border-red-500/40'
 }

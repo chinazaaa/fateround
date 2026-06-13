@@ -877,7 +877,7 @@ export default function HostPage() {
                 ))}
               </div>
               {roundsTooHigh && (
-                <p className="text-amber-200/90 text-xs">
+                <p className="callout-warning">
                   {game.rounds_count} rounds is too many for {roundParticipants.length} in the game — pick {maxRounds} or fewer
                 </p>
               )}
@@ -1068,15 +1068,15 @@ export default function HostPage() {
             </p>
           )}
           {isJoinersMode && !isWyr && !isMlt && participants.length > 0 && !hasEnoughForRounds(participantInputs, gameType) && (
-            <p className="text-amber-200/90 text-xs text-center">
+            <p className="callout-warning text-center">
               Need at least {minPool} people of the same gender to start
             </p>
           )}
           {!voterCheck.ok && players.length > 0 && roundParticipants.length >= minPool && (
-            <p className="text-amber-200/90 text-xs text-center">{voterCheck.message}</p>
+            <p className="callout-warning text-center">{voterCheck.message}</p>
           )}
           {!isJoinersMode && roundParticipants.length < minPool && players.length > 0 && (
-            <p className="text-amber-200/90 text-xs text-center">
+            <p className="callout-warning text-center">
               Need at least {minPool} people to join before starting ({roundParticipants.length}/{minPool} joined)
             </p>
           )}

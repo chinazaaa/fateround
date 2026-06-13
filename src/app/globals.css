@@ -23,9 +23,11 @@
   --bg-gradient: radial-gradient(ellipse 90% 60% at 50% -20%, rgba(244, 63, 94, 0.08) 0%, transparent 60%),
     radial-gradient(ellipse 60% 40% at 90% 80%, rgba(168, 85, 247, 0.05) 0%, transparent 50%);
 
-  --kiss: #f43f5e;
+  --kiss: #f97316;
   --marry: #d97706;
-  --kill: #dc2626;
+  --kill: #991b1b;
+  --slot-kiss-text: #c2410c;
+  --slot-kill-text: #7f1d1d;
   --primary: #f43f5e;
   --primary-strong: #e11d48;
   --primary-glow: rgba(244, 63, 94, 0.35);
@@ -72,7 +74,10 @@
     radial-gradient(ellipse 50% 35% at 85% 90%, rgba(168, 85, 247, 0.08) 0%, transparent 50%);
 
   --marry: #f59e0b;
+  --kiss: #fb923c;
   --kill: #ef4444;
+  --slot-kiss-text: #fdba74;
+  --slot-kill-text: #fca5a5;
   --primary-glow: rgba(244, 63, 94, 0.45);
 
   --chip-active-text: #ffaab8;
@@ -283,6 +288,15 @@ body {
 }
 
 .label-amber { color: #b45309; }
+.callout-warning {
+  color: #92400e;
+  background: rgba(251, 191, 36, 0.14);
+  border: 1px solid rgba(217, 119, 6, 0.3);
+  border-radius: 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  padding: 0.5rem 0.75rem;
+}
 .label-teal { color: #0f766e; }
 .label-violet { color: #6d28d9; }
 .label-sky { color: #0369a1; }
@@ -299,6 +313,11 @@ body {
 }
 
 [data-theme="dark"] .label-amber { color: rgba(253, 230, 138, 0.85); }
+[data-theme="dark"] .callout-warning {
+  color: rgba(253, 230, 138, 0.95);
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.35);
+}
 [data-theme="dark"] .label-teal { color: rgba(153, 246, 228, 0.85); }
 [data-theme="dark"] .label-violet { color: rgb(196, 181, 253); }
 [data-theme="dark"] .label-sky { color: rgb(125, 211, 252); }

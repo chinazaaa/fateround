@@ -42,6 +42,7 @@ import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
+import { SegmentedControl } from '@/components/ui/CreateWizard'
 import {
   FINAL_RESULTS_AUTO_REVEAL_SECONDS,
   roundResultsWaitMessage,
@@ -123,6 +124,7 @@ export default function GamePage() {
     : playerGenderFromJoin(joinIdentityGender, voteBothGenders)
 
   const setJoinIdentity = (gender: ParticipantGender) => {
+    joinGenderTouchedRef.current = true
     setJoinIdentityGender(gender)
     if (isJoinersMode && !voteBothGenders) setJoinPollGender(gender)
   }
@@ -152,10 +154,11 @@ export default function GamePage() {
   }, [isJoinersMode, participants, players, myPlayerId, joinNeedsGender])
 
   const handleSelectParticipant = (id: string, name: string) => {
+    const changed = id !== selectedParticipantId
     setSelectedParticipantId(id)
     setNameInput(name)
     const p = participants.find((x) => x.id === id)
-    if (p && !isJoinersMode) {
+    if (p && !isJoinersMode && changed && !joinGenderTouchedRef.current) {
       setJoinIdentityGender(p.gender)
       setVoteBothGenders(false)
       setJoinPollGender(p.gender)
@@ -175,6 +178,7 @@ export default function GamePage() {
     if (!stillAvailable) {
       setSelectedParticipantId(null)
       setNameInput('')
+      joinGenderTouchedRef.current = false
     }
   }, [namePickerOptions, selectedParticipantId, useFreeNameJoin, view])
   const submittedRef = useRef(false)
@@ -201,6 +205,7 @@ export default function GamePage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const announcedRoundIdRef = useRef<string | null>(null)
   const suppressRoundSoundRef = useRef(true)
+  const joinGenderTouchedRef = useRef(false)
 
   // ── Initial load ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1012,6 +1017,7 @@ export default function GamePage() {
     )
     setVoteBothGenders(voteBoth)
     setJoinPollGender(part?.gender ?? 'female')
+    joinGenderTouchedRef.current = true
     setEditingJoin(true)
     setView('join')
   }
@@ -1046,6 +1052,7 @@ export default function GamePage() {
         setJoinIdentityGender('female')
         setVoteBothGenders(false)
         setJoinPollGender('female')
+        joinGenderTouchedRef.current = false
         setEditingJoin(false)
         setView('join')
       } else {
@@ -1113,18 +1120,14 @@ export default function GamePage() {
           <>
           <div>
             <p className="text-faint text-xs mb-2 text-center">I am</p>
-            <div className="flex gap-2">
-              {(['female', 'male'] as const).map((gender) => (
-                <button
-                  key={gender}
-                  type="button"
-                  onClick={() => setJoinIdentity(gender)}
-                  className={`flex-1 chip ${joinIdentityGender === gender ? 'chip-active' : ''}`}
-                >
-                  {genderLabel(gender)}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              value={joinIdentityGender}
+              onChange={setJoinIdentity}
+              options={[
+                { value: 'female', label: 'Female' },
+                { value: 'male', label: 'Male' },
+              ]}
+            />
           </div>
           <label className="flex items-start gap-3 surface-inset border border-theme rounded-xl px-4 py-3 cursor-pointer">
             <input
@@ -1143,22 +1146,14 @@ export default function GamePage() {
           {isJoinersMode && voteBothGenders && (
             <div>
               <p className="text-faint text-xs mb-2 text-center">Your name appears in the</p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setJoinPollGender('female')}
-                  className={`flex-1 chip ${joinPollGender === 'female' ? 'chip-active' : ''}`}
-                >
-                  Women's poll
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setJoinPollGender('male')}
-                  className={`flex-1 chip ${joinPollGender === 'male' ? 'chip-active' : ''}`}
-                >
-                  Men's poll
-                </button>
-              </div>
+              <SegmentedControl
+                value={joinPollGender}
+                onChange={setJoinPollGender}
+                options={[
+                  { value: 'female', label: "Women's poll" },
+                  { value: 'male', label: "Men's poll" },
+                ]}
+              />
             </div>
           )}
           <p className="text-faint text-xs text-center">
