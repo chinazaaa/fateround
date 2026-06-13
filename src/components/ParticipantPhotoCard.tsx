@@ -14,11 +14,14 @@ function PlaceholderSilhouette({ name }: { name: string }) {
         stroke="currentColor"
         strokeWidth={1.2}
         className="w-16 h-16 text-[var(--border-strong)]"
+        aria-hidden="true"
       >
         <circle cx="12" cy="8" r="4" />
         <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
       </svg>
-      <span className="text-faint text-xs uppercase tracking-wider">{name}</span>
+      <span className="text-faint text-xs uppercase tracking-wider" role="img" aria-label={`No photo for ${name}`}>
+        {name}
+      </span>
     </div>
   )
 }

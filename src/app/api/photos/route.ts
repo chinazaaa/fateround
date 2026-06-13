@@ -41,8 +41,8 @@ export async function POST(req: NextRequest) {
     const participantId = formData.get('participantId') as string | null
     const playerId = formData.get('playerId') as string | null
 
-    if (!file || !gameId || !participantId) {
-      return NextResponse.json({ error: 'Missing file, gameId, or participantId' }, { status: 400 })
+    if (!file || !gameId || !participantId || !playerId) {
+      return NextResponse.json({ error: 'Missing file, gameId, participantId, or playerId' }, { status: 400 })
     }
 
     // Validate file type
@@ -73,16 +73,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Authorization: verify the uploader owns this participant
-    if (playerId) {
-      const { data: player } = await supabase
-        .from('players')
-        .select('id, participant_id')
-        .eq('id', playerId)
-        .eq('game_id', gameId)
-        .maybeSingle()
-      if (!player || player.participant_id !== participantId) {
-        return NextResponse.json({ error: 'You can only upload photos for your own profile' }, { status: 403 })
-      }
+    const { data: player } = await supabase
+      .from('players')
+      .select('id, participant_id')
+      .eq('id', playerId)
+      .eq('game_id', gameId)
+      .maybeSingle()
+    if (!player || player.participant_id !== participantId) {
+      return NextResponse.json({ error: 'You can only upload photos for your own profile' }, { status: 403 })
     }
 
     // Validate participant exists and belongs to this game
@@ -142,6 +140,7 @@ export async function POST(req: NextRequest) {
 const deleteSchema = z.object({
   gameId: z.string().min(1),
   participantId: z.string().min(1),
+  playerId: z.string().uuid(),
 })
 
 export async function DELETE(req: NextRequest) {
@@ -152,7 +151,18 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
     }
 
-    const { gameId, participantId } = parsed.data
+    const { gameId, participantId, playerId } = parsed.data
+
+    // Authorization: verify the requester owns this participant
+    const { data: player } = await supabase
+      .from('players')
+      .select('id, participant_id')
+      .eq('id', playerId)
+      .eq('game_id', gameId)
+      .maybeSingle()
+    if (!player || player.participant_id !== participantId) {
+      return NextResponse.json({ error: 'You can only delete your own photo' }, { status: 403 })
+    }
 
     // Find existing photo to determine storage path
     const { data: participant } = await supabase

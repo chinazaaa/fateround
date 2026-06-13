@@ -3,15 +3,20 @@
 import { useState } from 'react'
 import type { Participant } from '@/types'
 
-function PlaceholderSilhouette() {
+function PlaceholderSilhouette({ name }: { name: string }) {
   return (
-    <div className="w-full aspect-square rounded-xl bg-[var(--surface-inset-bg)] flex items-center justify-center">
+    <div
+      className="w-full aspect-square rounded-xl bg-[var(--surface-inset-bg)] flex items-center justify-center"
+      role="img"
+      aria-label={`No photo for ${name}`}
+    >
       <svg
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
         strokeWidth={1.2}
         className="w-10 h-10 text-[var(--border-strong)]"
+        aria-hidden="true"
       >
         <circle cx="12" cy="8" r="4" />
         <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
@@ -41,7 +46,7 @@ export function ParticipantGallery({ participants }: { participants: Participant
                   <img src={p.photo_url} alt={p.name} className="w-full h-full object-cover" />
                 </div>
               ) : (
-                <PlaceholderSilhouette />
+                <PlaceholderSilhouette name={p.name} />
               )}
               <p className="text-xs text-body-muted truncate">{p.name}</p>
             </div>
