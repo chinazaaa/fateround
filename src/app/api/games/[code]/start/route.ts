@@ -7,7 +7,14 @@ import {
   participantsWhoJoined,
   maxRecommendedRounds,
 } from '@/lib/participants'
-import { parseGameType, roundPoolSize, isWouldYouRather, isMostLikelyTo, isWhoSaidThis } from '@/lib/game-types'
+import {
+  parseGameType,
+  roundPoolSize,
+  isWouldYouRather,
+  isMostLikelyTo,
+  isWhoSaidThis,
+  isHotSeat,
+} from '@/lib/game-types'
 import { buildRoundsFromQuotePool, buildRoundsFromAnimePool, wstAutoRoundCount } from '@/lib/who-said-this'
 import { pickWyrQuestions } from '@/lib/would-you-rather-questions'
 import { pickMltQuestions } from '@/lib/most-likely-to-questions'
@@ -51,6 +58,41 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   const now = new Date().toISOString()
+
+  if (isHotSeat(gameType)) {
+    if (playersData.length < 3) {
+      return NextResponse.json({ error: 'Need at least 3 players for Hot Seat' }, { status: 400 })
+    }
+
+    const roundsCount = Math.min(game.rounds_count, playersData.length)
+    const shuffled = [...playersData].sort(() => Math.random() - 0.5)
+
+    const roundRows = shuffled.slice(0, roundsCount).map((hotSeatPlayer, index) => ({
+      game_id: code.toUpperCase(),
+      round_number: index + 1,
+      participant_ids: playersData.map((p) => p.id),
+      submitter_player_id: hotSeatPlayer.id,
+      status: index === 0 ? 'active' : ('pending' as const),
+      started_at: index === 0 ? now : null,
+      ended_at: null,
+    }))
+
+    const { error: roundError } = await supabase.from('rounds').insert(roundRows)
+    if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
+
+    const { error: gameError } = await supabase
+      .from('games')
+      .update({
+        status: 'active',
+        current_round_number: 1,
+        rounds_count: roundsCount,
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
+
+    return NextResponse.json({ success: true })
+  }
 
   if (isWhoSaidThis(gameType)) {
     const wstQuoteSource = (game.wst_quote_source ?? 'player') as string

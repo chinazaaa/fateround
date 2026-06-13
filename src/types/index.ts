@@ -13,6 +13,7 @@ export type GameType =
   | 'would_you_rather'
   | 'most_likely_to'
   | 'who_said_this'
+  | 'hot_seat'
 export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical'
 export type WyrChoice = 'a' | 'b'
 
