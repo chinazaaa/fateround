@@ -1,9 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,10 +51,7 @@ function levenshtein(a: string, b: string): number {
   for (let j = 0; j <= n; j++) dp[0][j] = j
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
-      dp[i][j] =
-        a[i - 1] === b[j - 1]
-          ? dp[i - 1][j - 1]
-          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
     }
   }
   return dp[m][n]
@@ -108,16 +102,12 @@ async function searchAnimeId(showName: string): Promise<number | null> {
   }
 
   await sleep(JIKAN_DELAY_MS)
-  const res = await fetch(
-    `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(showName)}&limit=1`,
-  )
+  const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(showName)}&limit=1`)
 
   if (!res.ok) {
     if (res.status === 429) {
       await sleep(2000)
-      const retry = await fetch(
-        `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(showName)}&limit=1`,
-      )
+      const retry = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(showName)}&limit=1`)
       if (!retry.ok) return null
       const retryJson = await retry.json()
       const retryAnime = retryJson.data?.[0]
@@ -175,10 +165,7 @@ async function searchAnimeId(showName: string): Promise<number | null> {
   return malId
 }
 
-async function fetchCharacters(
-  malId: number,
-  showName: string,
-): Promise<JikanCharacter[]> {
+async function fetchCharacters(malId: number, showName: string): Promise<JikanCharacter[]> {
   // Check cache first
   const { data: cached } = await supabase
     .from('jikan_anime_cache')
@@ -196,17 +183,13 @@ async function fetchCharacters(
   if (!res.ok) {
     if (res.status === 429) {
       await sleep(2000)
-      const retry = await fetch(
-        `https://api.jikan.moe/v4/anime/${malId}/characters`,
-      )
+      const retry = await fetch(`https://api.jikan.moe/v4/anime/${malId}/characters`)
       if (!retry.ok) return []
       const retryJson = await retry.json()
-      const chars = (retryJson.data ?? []).map(
-        (c: { character: { name: string }; role: string }) => ({
-          name: formatCharacterName(c.character.name),
-          role: c.role,
-        }),
-      )
+      const chars = (retryJson.data ?? []).map((c: { character: { name: string }; role: string }) => ({
+        name: formatCharacterName(c.character.name),
+        role: c.role,
+      }))
       await supabase.from('jikan_anime_cache').upsert({
         mal_id: malId,
         show_name: showName,
@@ -219,12 +202,10 @@ async function fetchCharacters(
   }
 
   const json = await res.json()
-  const chars = (json.data ?? []).map(
-    (c: { character: { name: string }; role: string }) => ({
-      name: formatCharacterName(c.character.name),
-      role: c.role,
-    }),
-  )
+  const chars = (json.data ?? []).map((c: { character: { name: string }; role: string }) => ({
+    name: formatCharacterName(c.character.name),
+    role: c.role,
+  }))
 
   await supabase.from('jikan_anime_cache').upsert({
     mal_id: malId,
@@ -243,8 +224,7 @@ function isValidQuote(q: YurippeQuote): boolean {
   if (q.character.toLowerCase() === q.show.toLowerCase()) return false
   if (NON_ANIME_SHOWS.has(q.show.toLowerCase())) return false
   if (q.character.length <= 2) return false
-  if (['narrator', 'unknown', 'n/a'].includes(q.character.toLowerCase()))
-    return false
+  if (['narrator', 'unknown', 'n/a'].includes(q.character.toLowerCase())) return false
   if (q.quote.length < 15) return false
   return true
 }
@@ -253,17 +233,9 @@ function isValidQuote(q: YurippeQuote): boolean {
 // Pick random decoys from the same anime
 // ---------------------------------------------------------------------------
 
-function pickDecoys(
-  correctCharacter: string,
-  allCharacters: JikanCharacter[],
-  count: number,
-): string[] {
-  const mainChars = allCharacters.filter(
-    (c) => c.role === 'Main' && c.name !== correctCharacter,
-  )
-  const supportChars = allCharacters.filter(
-    (c) => c.role === 'Supporting' && c.name !== correctCharacter,
-  )
+function pickDecoys(correctCharacter: string, allCharacters: JikanCharacter[], count: number): string[] {
+  const mainChars = allCharacters.filter((c) => c.role === 'Main' && c.name !== correctCharacter)
+  const supportChars = allCharacters.filter((c) => c.role === 'Supporting' && c.name !== correctCharacter)
 
   const pool = [...mainChars, ...supportChars]
   for (let i = pool.length - 1; i > 0; i--) {
@@ -286,13 +258,9 @@ function shuffleArray<T>(arr: T[]): T[] {
 // Main: fetch and prepare anime quotes
 // ---------------------------------------------------------------------------
 
-export async function fetchAnimeQuotes(
-  count: number,
-): Promise<PreparedAnimeQuote[]> {
+export async function fetchAnimeQuotes(count: number): Promise<PreparedAnimeQuote[]> {
   const fetchCount = Math.ceil(count * 1.4)
-  const res = await fetch(
-    `https://yurippe.vercel.app/api/quotes?random=${fetchCount}`,
-  )
+  const res = await fetch(`https://yurippe.vercel.app/api/quotes?random=${fetchCount}`)
   if (!res.ok) throw new Error(`Yurippe API error: ${res.status}`)
 
   const rawQuotes: YurippeQuote[] = await res.json()
@@ -311,9 +279,7 @@ export async function fetchAnimeQuotes(
     const characters = await fetchCharacters(malId, q.show)
     if (characters.length < 4) continue
 
-    const matchedCorrect = characters.find(
-      (c) => c.name.toLowerCase() === correctCharacter.toLowerCase(),
-    )
+    const matchedCorrect = characters.find((c) => c.name.toLowerCase() === correctCharacter.toLowerCase())
     const displayCorrect = matchedCorrect?.name ?? correctCharacter
 
     const decoys = pickDecoys(displayCorrect, characters, 3)

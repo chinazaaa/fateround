@@ -3,19 +3,13 @@ import { createClient } from '@supabase/supabase-js'
 import { fetchAnimeQuotes } from '@/lib/anime-quotes'
 import { fetchAnimeQuotesSchema } from '@/lib/validation'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
   const parsed = fetchAnimeQuotesSchema.safeParse(raw)
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? 'Invalid input' },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
   const { count, gameId, hostToken } = parsed.data
@@ -27,20 +21,11 @@ export async function POST(req: NextRequest) {
     .eq('id', gameCode)
     .maybeSingle()
 
-  if (!game)
-    return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken)
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (game.status !== 'waiting')
-    return NextResponse.json(
-      { error: 'Game already started' },
-      { status: 400 },
-    )
+  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
+  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  if (game.status !== 'waiting') return NextResponse.json({ error: 'Game already started' }, { status: 400 })
   if (game.game_type !== 'who_said_this')
-    return NextResponse.json(
-      { error: 'Game is not Who Said This' },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: 'Game is not Who Said This' }, { status: 400 })
 
   try {
     const quotes = await fetchAnimeQuotes(count)
@@ -55,8 +40,7 @@ export async function POST(req: NextRequest) {
       }))
 
       const { error } = await supabase.from('anime_quote_pool').insert(rows)
-      if (error)
-        return NextResponse.json({ error: error.message }, { status: 500 })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     const { data: pool } = await supabase
@@ -68,8 +52,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ quotes: pool ?? [] })
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : 'Failed to fetch anime quotes'
+    const message = err instanceof Error ? err.message : 'Failed to fetch anime quotes'
     return NextResponse.json({ error: message }, { status: 502 })
   }
 }

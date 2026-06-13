@@ -146,13 +146,7 @@ export interface AnimeRoundInput {
   now: string
 }
 
-export function buildRoundsFromAnimePool({
-  gameId,
-  participantIds,
-  animeQuotes,
-  startIndex,
-  now,
-}: AnimeRoundInput) {
+export function buildRoundsFromAnimePool({ gameId, participantIds, animeQuotes, startIndex, now }: AnimeRoundInput) {
   const shuffled = shuffleQuotePool(animeQuotes)
   return shuffled.map((entry, index) => {
     const roundNumber = startIndex + index + 1
@@ -247,11 +241,7 @@ export interface AnimeWstTally {
   correctCharacter: string
 }
 
-export function tallyAnimeWstVotes(
-  votes: Vote[],
-  choices: string[],
-  correctCharacter: string,
-): AnimeWstTally {
+export function tallyAnimeWstVotes(votes: Vote[], choices: string[], correctCharacter: string): AnimeWstTally {
   const counts = new Map<string, number>()
   for (const c of choices) counts.set(c, 0)
   let correctCount = 0
@@ -265,15 +255,10 @@ export function tallyAnimeWstVotes(
 
   const rows = choices
     .map((c) => ({ choice: c, count: counts.get(c) ?? 0 }))
-    .sort(
-      (a, b) =>
-        b.count - a.count || a.choice.localeCompare(b.choice),
-    )
+    .sort((a, b) => b.count - a.count || a.choice.localeCompare(b.choice))
 
   const maxCount = rows.length > 0 ? rows[0].count : 0
-  const topGuesses = rows
-    .filter((r) => r.count === maxCount && maxCount > 0)
-    .map((r) => r.choice)
+  const topGuesses = rows.filter((r) => r.count === maxCount && maxCount > 0).map((r) => r.choice)
 
   return {
     rows,
@@ -300,7 +285,7 @@ export function tallyWstPlayerScores(
     anime_metadata?: { correct_character: string } | null
   }[],
   votes: Vote[],
-  players: Player[],
+  players: Player[]
 ): WstPlayerScore[] {
   const scores = new Map<string, number>()
   for (const p of players) scores.set(p.id, 0)
@@ -312,10 +297,7 @@ export function tallyWstPlayerScores(
       const correctChar = round.anime_metadata.correct_character
       for (const vote of roundVotes) {
         if (vote.anime_choice === correctChar) {
-          scores.set(
-            vote.player_id,
-            (scores.get(vote.player_id) ?? 0) + 1,
-          )
+          scores.set(vote.player_id, (scores.get(vote.player_id) ?? 0) + 1)
         }
       }
     } else {
@@ -323,10 +305,7 @@ export function tallyWstPlayerScores(
       if (!correctId) continue
       for (const vote of roundVotes) {
         if (vote.target_participant_id === correctId) {
-          scores.set(
-            vote.player_id,
-            (scores.get(vote.player_id) ?? 0) + 1,
-          )
+          scores.set(vote.player_id, (scores.get(vote.player_id) ?? 0) + 1)
         }
       }
     }
@@ -339,8 +318,6 @@ export function tallyWstPlayerScores(
       correctGuesses,
     }))
     .sort(
-      (a, b) =>
-        b.correctGuesses - a.correctGuesses ||
-        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+      (a, b) => b.correctGuesses - a.correctGuesses || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
     )
 }

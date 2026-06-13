@@ -590,7 +590,8 @@ export function AnimeWstRoundResults({
 
         {topGuesses.length > 0 && maxCount > 0 && (
           <p className="text-faint text-xs text-center">
-            Top guess{topGuesses.length > 1 ? 'es' : ''}: {topGuesses.join(', ')} ({maxCount} vote{maxCount === 1 ? '' : 's'})
+            Top guess{topGuesses.length > 1 ? 'es' : ''}: {topGuesses.join(', ')} ({maxCount} vote
+            {maxCount === 1 ? '' : 's'})
           </p>
         )}
 
@@ -608,7 +609,8 @@ export function AnimeWstRoundResults({
               >
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                   <p className={`text-sm truncate ${isCorrect ? 'text-accent-correct' : 'text-body'}`}>
-                    {row.choice}{isCorrect ? ' ✓' : ''}
+                    {row.choice}
+                    {isCorrect ? ' ✓' : ''}
                   </p>
                   <span className="text-sm font-bold text-body shrink-0">{row.count}</span>
                 </div>
@@ -623,9 +625,7 @@ export function AnimeWstRoundResults({
           })}
         </div>
 
-        {myPickName && (
-          <p className="text-faint text-xs text-center">You guessed {myPickName}</p>
-        )}
+        {myPickName && <p className="text-faint text-xs text-center">You guessed {myPickName}</p>}
       </div>
     </div>
   )

@@ -1,7 +1,14 @@
 'use client'
 import { useState, useRef, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { ParticipantGender, ParticipantMode, GameType, PairVoteMode, QuestionSource, WstQuoteSource } from '@/types'
+import type {
+  ParticipantGender,
+  ParticipantMode,
+  GameType,
+  PairVoteMode,
+  QuestionSource,
+  WstQuoteSource,
+} from '@/types'
 import {
   type ParticipantInput,
   parseParticipantsForGame,
@@ -450,8 +457,16 @@ function CreateGameInner() {
                       value={wstQuoteSource}
                       onChange={(v) => setWstQuoteSource(v)}
                       options={[
-                        { value: 'player' as WstQuoteSource, label: 'Player Quotes', hint: 'Players submit quotes in the lobby' },
-                        { value: 'anime' as WstQuoteSource, label: 'Anime Quotes', hint: 'Quotes from anime characters' },
+                        {
+                          value: 'player' as WstQuoteSource,
+                          label: 'Player Quotes',
+                          hint: 'Players submit quotes in the lobby',
+                        },
+                        {
+                          value: 'anime' as WstQuoteSource,
+                          label: 'Anime Quotes',
+                          hint: 'Quotes from anime characters',
+                        },
                         { value: 'both' as WstQuoteSource, label: 'Both', hint: 'Mix player + anime quotes' },
                       ]}
                     />

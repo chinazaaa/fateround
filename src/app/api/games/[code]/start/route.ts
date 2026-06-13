@@ -69,36 +69,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (wstQuoteSource === 'player' || wstQuoteSource === 'both') {
       if (wstQuoteSource === 'player') {
         if (participantIds.length < 2) {
-          return NextResponse.json(
-            { error: 'Need at least 2 names on the list' },
-            { status: 400 },
-          )
+          return NextResponse.json({ error: 'Need at least 2 names on the list' }, { status: 400 })
         }
         const submitters = playersData.filter((p) => p.participant_id)
         if (submitters.length < 2) {
           return NextResponse.json(
             {
-              error:
-                'Need at least 2 players who claimed a name from the list',
+              error: 'Need at least 2 players who claimed a name from the list',
             },
-            { status: 400 },
+            { status: 400 }
           )
         }
       }
 
-      const { data: poolEntries } = await supabase
-        .from('wst_quote_pool')
-        .select('*')
-        .eq('game_id', code.toUpperCase())
+      const { data: poolEntries } = await supabase.from('wst_quote_pool').select('*').eq('game_id', code.toUpperCase())
 
       const quotes = poolEntries ?? []
       if (wstQuoteSource === 'player' && quotes.length < 2) {
         return NextResponse.json(
           {
-            error:
-              'Need at least 2 quotes in the pool before starting — players submit quotes in the lobby',
+            error: 'Need at least 2 quotes in the pool before starting — players submit quotes in the lobby',
           },
-          { status: 400 },
+          { status: 400 }
         )
       }
 
@@ -125,10 +117,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       if (wstQuoteSource === 'anime' && animeQuotes.length < 2) {
         return NextResponse.json(
           {
-            error:
-              'Need at least 2 anime quotes before starting — fetch quotes in the lobby',
+            error: 'Need at least 2 anime quotes before starting — fetch quotes in the lobby',
           },
-          { status: 400 },
+          { status: 400 }
         )
       }
 
@@ -150,10 +141,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const allRoundRows = [...playerRoundRows, ...animeRoundRows]
     if (allRoundRows.length < 2) {
-      return NextResponse.json(
-        { error: 'Need at least 2 total quotes to start' },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: 'Need at least 2 total quotes to start' }, { status: 400 })
     }
 
     // Shuffle all rounds together, then re-number
@@ -168,11 +156,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       r.quote_submitted_at = i === 0 ? now : null
     })
 
-    const { error: roundError } = await supabase
-      .from('rounds')
-      .insert(allRoundRows)
-    if (roundError)
-      return NextResponse.json({ error: roundError.message }, { status: 500 })
+    const { error: roundError } = await supabase.from('rounds').insert(allRoundRows)
+    if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
 
     const { error: gameError } = await supabase
       .from('games')
@@ -183,8 +168,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       })
       .eq('id', code.toUpperCase())
 
-    if (gameError)
-      return NextResponse.json({ error: gameError.message }, { status: 500 })
+    if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
 
     return NextResponse.json({ success: true })
   }

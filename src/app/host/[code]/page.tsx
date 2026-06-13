@@ -69,7 +69,17 @@ import {
   msUntilDeadline,
   ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
 } from '@/lib/round-timing'
-import type { Game, Participant, Player, Round, Vote, Confession, VoteAssignment, WstQuotePoolEntry, AnimeQuotePoolEntry } from '@/types'
+import type {
+  Game,
+  Participant,
+  Player,
+  Round,
+  Vote,
+  Confession,
+  VoteAssignment,
+  WstQuotePoolEntry,
+  AnimeQuotePoolEntry,
+} from '@/types'
 
 export default function HostPage() {
   const { code } = useParams<{ code: string }>()
@@ -789,10 +799,7 @@ export default function HostPage() {
 
   const removeAnimeQuote = async (quoteId: string) => {
     if (!game) return
-    const { error } = await supabase
-      .from('anime_quote_pool')
-      .update({ removed: true })
-      .eq('id', quoteId)
+    const { error } = await supabase.from('anime_quote_pool').update({ removed: true }).eq('id', quoteId)
     if (!error) {
       setAnimePool((prev) => prev.filter((q) => q.id !== quoteId))
     }
@@ -1212,10 +1219,7 @@ export default function HostPage() {
             </div>
 
             {animePool.length === 0 && !animeFetching && (
-              <button
-                onClick={() => fetchAnimeQuotes(10)}
-                className="btn-primary w-full"
-              >
+              <button onClick={() => fetchAnimeQuotes(10)} className="btn-primary w-full">
                 Fetch Anime Quotes
               </button>
             )}
@@ -1627,28 +1631,28 @@ export default function HostPage() {
                       : isWst && wstSource === 'player' && wstPool.length < 2
                         ? `Need 2+ quotes in the pool (${wstPool.length} submitted)`
                         : isMltImport && participants.length < 2
-                      ? `Need at least 2 names on the list (${participants.length}/2)`
-                      : isMltImport && players.length === 0
-                        ? 'Waiting for voters to join...'
-                        : isMlt && !isMltImport && players.length < 2
-                          ? `Need at least 2 players (${players.length}/2)`
-                          : isWyr && players.length === 0
-                            ? 'Waiting for players...'
-                            : isJoinersMode
-                              ? participants.length < minPool
-                                ? `Need ${minPool - participants.length} more to start`
-                                : roundsTooHigh
-                                  ? `Lower to ${maxRounds} rounds max`
-                                  : `Need ${minPool}+ of one gender to start`
-                              : players.length === 0
+                          ? `Need at least 2 names on the list (${participants.length}/2)`
+                          : isMltImport && players.length === 0
+                            ? 'Waiting for voters to join...'
+                            : isMlt && !isMltImport && players.length < 2
+                              ? `Need at least 2 players (${players.length}/2)`
+                              : isWyr && players.length === 0
                                 ? 'Waiting for players...'
-                                : roundParticipants.length < minPool
-                                  ? `Need ${minPool - roundParticipants.length} more to join (${roundParticipants.length}/${minPool})`
-                                  : roundsTooHigh
-                                    ? `Lower to ${maxRounds} rounds max`
-                                    : !voterCheck.ok
-                                      ? 'Need voters for each list'
-                                      : `Need ${minPool}+ joined of one gender`
+                                : isJoinersMode
+                                  ? participants.length < minPool
+                                    ? `Need ${minPool - participants.length} more to start`
+                                    : roundsTooHigh
+                                      ? `Lower to ${maxRounds} rounds max`
+                                      : `Need ${minPool}+ of one gender to start`
+                                  : players.length === 0
+                                    ? 'Waiting for players...'
+                                    : roundParticipants.length < minPool
+                                      ? `Need ${minPool - roundParticipants.length} more to join (${roundParticipants.length}/${minPool})`
+                                      : roundsTooHigh
+                                        ? `Lower to ${maxRounds} rounds max`
+                                        : !voterCheck.ok
+                                          ? 'Need voters for each list'
+                                          : `Need ${minPool}+ joined of one gender`
               : `Start Game (${players.length} players)`}
         </button>
       </div>
@@ -1990,7 +1994,11 @@ export default function HostPage() {
         {isWst ? (
           (() => {
             if (isAnimeRound(lastFinishedRound)) {
-              const meta = lastFinishedRound.anime_metadata as { anime_name: string; correct_character: string; choices: string[] }
+              const meta = lastFinishedRound.anime_metadata as {
+                anime_name: string
+                correct_character: string
+                choices: string[]
+              }
               const animeTally = tallyAnimeWstVotes(roundVotes, meta.choices, meta.correct_character)
               return (
                 <AnimeWstRoundResults
@@ -2202,7 +2210,11 @@ export default function HostPage() {
             {allRounds.map((round) => {
               const roundVotes = votes.filter((v) => v.round_id === round.id)
               if (isAnimeRound(round)) {
-                const meta = round.anime_metadata as { anime_name: string; correct_character: string; choices: string[] }
+                const meta = round.anime_metadata as {
+                  anime_name: string
+                  correct_character: string
+                  choices: string[]
+                }
                 const animeTally = tallyAnimeWstVotes(roundVotes, meta.choices, meta.correct_character)
                 return (
                   <div key={round.id}>

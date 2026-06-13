@@ -176,6 +176,10 @@ export default function GamePage() {
   >([])
   const [pqOpen, setPqOpen] = useState(false)
 
+  // Photo upload (people-based modes)
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+
   const roundResultsActive = view === 'round_results' && !!lastFinishedRound
   const roundResultsIsLast = roundResultsActive && (lastFinishedRound?.round_number ?? 0) >= (game?.rounds_count ?? 0)
   const nextRoundCountdown = useDeadlineCountdown(
@@ -1359,6 +1363,72 @@ export default function GamePage() {
     const me = myPlayerId ? players.find((p) => p.id === myPlayerId) : null
     const myPoolEntry = isWst && myPlayerId ? wstPool.find((e) => e.player_id === myPlayerId) : null
     const canSubmitPoolQuote = !!me?.participant_id
+    const isPeopleMode = !isWouldYouRather(game?.game_type) && !isMostLikelyTo(game?.game_type) && !isWst
+    const myParticipant = me?.participant_id ? participants.find((p) => p.id === me.participant_id) : null
+    const canUploadPhoto = isPeopleMode && !!me?.participant_id
+
+    const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (!file || !me?.participant_id || photoUploading) return
+      e.target.value = ''
+
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error('Photo must be under 2MB')
+        return
+      }
+
+      setPhotoUploading(true)
+      try {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('gameId', gameCode)
+        fd.append('participantId', me.participant_id)
+        fd.append('playerId', me.id)
+
+        const res = await fetch('/api/photos', { method: 'POST', body: fd })
+        const data = await res.json()
+        if (!res.ok) {
+          toast.error(data.error || 'Failed to upload photo')
+          return
+        }
+        const url = data.photoUrl + '?t=' + Date.now()
+        setParticipants((prev) =>
+          prev.map((p) => (p.id === me.participant_id ? { ...p, photo_url: url } : p))
+        )
+      } catch {
+        toast.error('Upload failed — try again')
+      } finally {
+        setPhotoUploading(false)
+      }
+    }
+
+    const handlePhotoDelete = async () => {
+      if (!me?.participant_id || photoUploading) return
+      setPhotoUploading(true)
+      try {
+        const res = await fetch('/api/photos', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gameId: gameCode,
+            participantId: me.participant_id,
+            playerId: me.id,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          toast.error(data.error || 'Failed to remove photo')
+          return
+        }
+        setParticipants((prev) =>
+          prev.map((p) => (p.id === me.participant_id ? { ...p, photo_url: null } : p))
+        )
+      } catch {
+        toast.error('Could not remove photo — try again')
+      } finally {
+        setPhotoUploading(false)
+      }
+    }
 
     return (
       <CenteredCard>
@@ -1370,8 +1440,8 @@ export default function GamePage() {
           <p className="text-muted">Waiting for the host to start...</p>
         </div>
 
-        {isWst && (
-          game?.wst_quote_source === 'anime' ? (
+        {isWst &&
+          (game?.wst_quote_source === 'anime' ? (
             <div className="glass-card px-4 py-8 text-center space-y-2">
               <p className="text-body text-lg font-semibold">Anime Quote Mode</p>
               <p className="text-muted text-sm">The host is loading anime quotes — sit tight!</p>
@@ -1441,30 +1511,81 @@ export default function GamePage() {
                 <p className="text-faint text-xs text-center">Claim your name when joining to submit a quote.</p>
               )}
             </div>
-          )
+          ))}
+
+        {canUploadPhoto && (
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={handlePhotoUpload}
+          />
         )}
 
         <div className="surface-inset border border-theme rounded-2xl p-4 space-y-2">
           <p className="text-muted text-xs uppercase tracking-wider">Players Joined ({players.length})</p>
           <div className="space-y-1.5 max-h-52 overflow-y-auto">
-            {players.map((p) => (
-              <div key={p.id} className="flex items-center gap-2">
-                <div
-                  className={`w-2 h-2 rounded-full shrink-0 ${p.name === myPlayerName ? 'bg-[var(--primary)]' : 'bg-[var(--border-strong)]'}`}
-                />
-                <span
-                  className={`text-sm flex-1 min-w-0 truncate ${p.name === myPlayerName ? 'text-[var(--primary)] font-semibold' : 'text-body-muted'}`}
-                >
-                  {p.name}
-                  {p.name === myPlayerName ? ' (you)' : ''}
-                </span>
-                {!joinNeedsGender ? null : (
-                  <span className="text-[10px] uppercase tracking-wider text-faint shrink-0">
-                    {playerIdentityLabel(p, participants, game?.game_type)}
+            {players.map((p) => {
+              const isMe = p.name === myPlayerName
+              const myPart = isMe ? myParticipant : null
+              const hasPhoto = isMe && !!myPart?.photo_url
+
+              return (
+                <div key={p.id} className="flex items-center gap-2">
+                  {isMe && canUploadPhoto ? (
+                    photoUploading ? (
+                      <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center">
+                        <div className="w-4 h-4 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    ) : hasPhoto ? (
+                      <div className="relative shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => photoInputRef.current?.click()}
+                          className="block"
+                        >
+                          <Avatar name={p.name} photoUrl={myPart!.photo_url} size="sm" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handlePhotoDelete}
+                          className="absolute -top-1 -right-1 w-4 h-4 min-w-[24px] min-h-[24px] flex items-center justify-center rounded-full bg-red-500/90 text-white text-[10px] leading-none hover:bg-red-400 transition-colors"
+                          style={{ padding: 0 }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => photoInputRef.current?.click()}
+                        className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center bg-[var(--surface-inset)] border border-dashed border-[var(--border-strong)] text-faint hover:text-[var(--primary)] hover:border-[var(--primary)] transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                          <path fillRule="evenodd" d="M1 8a2 2 0 0 1 2-2h.93a2 2 0 0 0 1.664-.89l.812-1.22A2 2 0 0 1 8.07 3h3.86a2 2 0 0 1 1.664.89l.812 1.22A2 2 0 0 0 16.07 6H17a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8Zm13.5 3a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM10 14a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    )
+                  ) : (
+                    <div
+                      className={`w-2 h-2 rounded-full shrink-0 ${isMe ? 'bg-[var(--primary)]' : 'bg-[var(--border-strong)]'}`}
+                    />
+                  )}
+                  <span
+                    className={`text-sm flex-1 min-w-0 truncate ${isMe ? 'text-[var(--primary)] font-semibold' : 'text-body-muted'}`}
+                  >
+                    {p.name}
+                    {isMe ? ' (you)' : ''}
                   </span>
-                )}
-              </div>
-            ))}
+                  {!joinNeedsGender ? null : (
+                    <span className="text-[10px] uppercase tracking-wider text-faint shrink-0">
+                      {playerIdentityLabel(p, participants, game?.game_type)}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
         {/* Player question submission for WYR / MLT */}
@@ -2070,14 +2191,18 @@ export default function GamePage() {
     if (isWhoSaidThis(gameType) && game) {
       const myVote = lastRoundVotes.find((v) => v.player_id === myPlayerId)
       const myPickName = lastFinishedRound.anime_metadata
-        ? myVote?.anime_choice ?? null
+        ? (myVote?.anime_choice ?? null)
         : myVote?.target_participant_id
-          ? participants.find((p) => p.id === myVote.target_participant_id)?.name ?? null
+          ? (participants.find((p) => p.id === myVote.target_participant_id)?.name ?? null)
           : null
       const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
 
       if (isAnimeRound(lastFinishedRound)) {
-        const meta = lastFinishedRound.anime_metadata as { anime_name: string; correct_character: string; choices: string[] }
+        const meta = lastFinishedRound.anime_metadata as {
+          anime_name: string
+          correct_character: string
+          choices: string[]
+        }
         const animeTally = tallyAnimeWstVotes(lastRoundVotes, meta.choices, meta.correct_character)
         return (
           <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
@@ -2536,7 +2661,11 @@ function FinalResultsView({
 
             if (isWst) {
               if (isAnimeRound(round)) {
-                const meta = round.anime_metadata as { anime_name: string; correct_character: string; choices: string[] }
+                const meta = round.anime_metadata as {
+                  anime_name: string
+                  correct_character: string
+                  choices: string[]
+                }
                 const animeTally = tallyAnimeWstVotes(roundVotes, meta.choices, meta.correct_character)
                 const myPickName = myVote?.anime_choice ?? null
                 return (
