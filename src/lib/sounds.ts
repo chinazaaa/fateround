@@ -205,3 +205,144 @@ export function playTickTockSound(secondsRemaining: number) {
     // Ignore if audio is blocked
   }
 }
+
+// ── Timer music — escalating background drone/pulse ──────────────────────────
+
+let timerOscillators: OscillatorNode[] = []
+let timerGains: GainNode[] = []
+let timerLfo: OscillatorNode | null = null
+let timerLfoGain: GainNode | null = null
+
+/** Continuous background drone that intensifies as time runs out. */
+export function playTimerMusic(secondsRemaining: number, totalSeconds: number) {
+  if (typeof window === 'undefined') return
+  if (isSoundMuted()) {
+    stopTimerMusic()
+    return
+  }
+  if (secondsRemaining <= 0) {
+    stopTimerMusic()
+    return
+  }
+
+  try {
+    unlockAudio()
+    if (!audioCtx) audioCtx = new AudioContext()
+    const ctx = audioCtx
+    const progress = 1 - secondsRemaining / totalSeconds
+
+    if (timerOscillators.length === 0) {
+      const osc1 = ctx.createOscillator()
+      const gain1 = ctx.createGain()
+      osc1.type = 'sine'
+      osc1.frequency.value = 80
+      gain1.gain.value = 0
+      osc1.connect(gain1)
+      gain1.connect(ctx.destination)
+      osc1.start()
+      timerOscillators.push(osc1)
+      timerGains.push(gain1)
+
+      const osc2 = ctx.createOscillator()
+      const gain2 = ctx.createGain()
+      osc2.type = 'sine'
+      osc2.frequency.value = 120
+      gain2.gain.value = 0
+      osc2.connect(gain2)
+      gain2.connect(ctx.destination)
+      osc2.start()
+      timerOscillators.push(osc2)
+      timerGains.push(gain2)
+
+      const lfo = ctx.createOscillator()
+      const lfoGain = ctx.createGain()
+      lfo.type = 'sine'
+      lfo.frequency.value = 2
+      lfoGain.gain.value = 0
+      lfo.connect(lfoGain)
+      lfoGain.connect(gain1.gain)
+      lfo.start()
+      timerLfo = lfo
+      timerLfoGain = lfoGain
+    }
+
+    const now = ctx.currentTime
+    timerGains[0].gain.setTargetAtTime(0.03 + progress * 0.03, now, 0.1)
+
+    if (progress > 0.5) {
+      const sp = (progress - 0.5) / 0.5
+      timerGains[1].gain.setTargetAtTime(sp * 0.04, now, 0.1)
+      timerOscillators[1].frequency.setTargetAtTime(120 + sp * 80, now, 0.2)
+    } else {
+      timerGains[1].gain.setTargetAtTime(0, now, 0.1)
+    }
+
+    if (secondsRemaining <= 10 && timerLfo && timerLfoGain) {
+      timerLfo.frequency.setTargetAtTime(secondsRemaining <= 5 ? 6 : 3, now, 0.1)
+      timerLfoGain.gain.setTargetAtTime(secondsRemaining <= 5 ? 0.04 : 0.02, now, 0.1)
+    } else if (timerLfoGain) {
+      timerLfoGain.gain.setTargetAtTime(0, now, 0.1)
+    }
+
+    if (secondsRemaining <= 5) {
+      timerOscillators[0].frequency.setTargetAtTime(80 + (1 - secondsRemaining / 5) * 40, now, 0.15)
+    } else {
+      timerOscillators[0].frequency.setTargetAtTime(80, now, 0.15)
+    }
+  } catch {
+    // Ignore audio errors
+  }
+}
+
+/** Fade out and stop all timer music oscillators. */
+export function stopTimerMusic() {
+  try {
+    if (!audioCtx) return
+    const now = audioCtx.currentTime
+    for (const g of timerGains) {
+      try {
+        g.gain.cancelScheduledValues(now)
+        g.gain.setTargetAtTime(0, now, 0.08)
+      } catch {}
+    }
+    if (timerLfoGain) {
+      try {
+        timerLfoGain.gain.cancelScheduledValues(now)
+        timerLfoGain.gain.setTargetAtTime(0, now, 0.05)
+      } catch {}
+    }
+    setTimeout(() => {
+      for (const osc of timerOscillators) {
+        try {
+          osc.stop()
+          osc.disconnect()
+        } catch {}
+      }
+      for (const g of timerGains) {
+        try {
+          g.disconnect()
+        } catch {}
+      }
+      if (timerLfo) {
+        try {
+          timerLfo.stop()
+          timerLfo.disconnect()
+        } catch {}
+      }
+      if (timerLfoGain) {
+        try {
+          timerLfoGain.disconnect()
+        } catch {}
+      }
+      timerOscillators = []
+      timerGains = []
+      timerLfo = null
+      timerLfoGain = null
+    }, 200)
+  } catch {
+    timerOscillators = []
+    timerGains = []
+    timerLfo = null
+    timerLfoGain = null
+  }
+}

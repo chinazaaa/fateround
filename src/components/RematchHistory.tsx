@@ -45,12 +45,18 @@ function tallyFromVotes(
 
 function DeltaBadge({ current, previous, label }: { current: number; previous: number; label: string }) {
   const diff = current - previous
-  if (diff === 0) return <span className="text-faint text-xs">{label}: {current}</span>
+  if (diff === 0)
+    return (
+      <span className="text-faint text-xs">
+        {label}: {current}
+      </span>
+    )
   const color = diff > 0 ? 'text-green-400' : 'text-red-400'
   const arrow = diff > 0 ? '↑' : '↓'
   return (
     <span className={`text-xs ${color}`}>
-      {label}: {current} {arrow}{Math.abs(diff)}
+      {label}: {current} {arrow}
+      {Math.abs(diff)}
     </span>
   )
 }
@@ -117,9 +123,7 @@ export function RematchHistory({
         aria-expanded={expanded}
         className="w-full flex items-center justify-between"
       >
-        <p className="text-muted text-xs uppercase tracking-wider">
-          Rematch History (Session {snapshots.length + 1})
-        </p>
+        <p className="text-muted text-xs uppercase tracking-wider">Rematch History (Session {snapshots.length + 1})</p>
         <span className="text-faint text-xs">{expanded ? '−' : '+'}</span>
       </button>
 

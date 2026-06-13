@@ -34,10 +34,8 @@ export const THEMES: ThemeConfig[] = [
       '--border': 'rgba(0, 255, 255, 0.1)',
       '--border-strong': 'rgba(0, 255, 255, 0.18)',
       '--card-shadow': '0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 229, 255, 0.08)',
-      '--card-shadow-strong':
-        '0 12px 48px rgba(0, 0, 0, 0.55), 0 0 24px rgba(0, 229, 255, 0.12)',
-      '--card-shadow-glow':
-        '0 0 0 1px rgba(0, 229, 255, 0.2), 0 8px 40px rgba(0, 229, 255, 0.15)',
+      '--card-shadow-strong': '0 12px 48px rgba(0, 0, 0, 0.55), 0 0 24px rgba(0, 229, 255, 0.12)',
+      '--card-shadow-glow': '0 0 0 1px rgba(0, 229, 255, 0.2), 0 8px 40px rgba(0, 229, 255, 0.15)',
       '--bg-gradient':
         'radial-gradient(ellipse 90% 55% at 50% -10%, rgba(0, 229, 255, 0.14) 0%, transparent 55%), radial-gradient(ellipse 50% 35% at 85% 90%, rgba(200, 0, 255, 0.1) 0%, transparent 50%)',
       '--primary': '#00e5ff',
@@ -78,10 +76,8 @@ export const THEMES: ThemeConfig[] = [
       '--border': 'rgba(180, 120, 60, 0.12)',
       '--border-strong': 'rgba(180, 120, 60, 0.2)',
       '--card-shadow': '0 1px 2px rgba(120, 80, 30, 0.06), 0 4px 16px rgba(120, 80, 30, 0.08)',
-      '--card-shadow-strong':
-        '0 8px 40px rgba(120, 80, 30, 0.12), 0 2px 8px rgba(120, 80, 30, 0.06)',
-      '--card-shadow-glow':
-        '0 0 0 1px rgba(217, 119, 6, 0.15), 0 8px 32px rgba(217, 119, 6, 0.1)',
+      '--card-shadow-strong': '0 8px 40px rgba(120, 80, 30, 0.12), 0 2px 8px rgba(120, 80, 30, 0.06)',
+      '--card-shadow-glow': '0 0 0 1px rgba(217, 119, 6, 0.15), 0 8px 32px rgba(217, 119, 6, 0.1)',
       '--bg-gradient':
         'radial-gradient(ellipse 90% 60% at 50% -20%, rgba(217, 119, 6, 0.08) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 90% 80%, rgba(180, 80, 20, 0.05) 0%, transparent 50%)',
       '--primary': '#d97706',
@@ -122,10 +118,8 @@ export const THEMES: ThemeConfig[] = [
       '--border': 'rgba(212, 168, 67, 0.1)',
       '--border-strong': 'rgba(212, 168, 67, 0.18)',
       '--card-shadow': '0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3)',
-      '--card-shadow-strong':
-        '0 12px 48px rgba(0, 0, 0, 0.55), 0 0 20px rgba(212, 168, 67, 0.06)',
-      '--card-shadow-glow':
-        '0 0 0 1px rgba(212, 168, 67, 0.2), 0 8px 40px rgba(212, 168, 67, 0.1)',
+      '--card-shadow-strong': '0 12px 48px rgba(0, 0, 0, 0.55), 0 0 20px rgba(212, 168, 67, 0.06)',
+      '--card-shadow-glow': '0 0 0 1px rgba(212, 168, 67, 0.2), 0 8px 40px rgba(212, 168, 67, 0.1)',
       '--bg-gradient':
         'radial-gradient(ellipse 90% 55% at 50% -10%, rgba(212, 168, 67, 0.1) 0%, transparent 55%), radial-gradient(ellipse 50% 35% at 85% 90%, rgba(180, 140, 50, 0.06) 0%, transparent 50%)',
       '--primary': '#d4a843',
@@ -166,10 +160,8 @@ export const THEMES: ThemeConfig[] = [
       '--border': 'rgba(0, 200, 180, 0.1)',
       '--border-strong': 'rgba(0, 200, 180, 0.18)',
       '--card-shadow': '0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3)',
-      '--card-shadow-strong':
-        '0 12px 48px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 107, 107, 0.08)',
-      '--card-shadow-glow':
-        '0 0 0 1px rgba(255, 107, 107, 0.2), 0 8px 40px rgba(255, 107, 107, 0.12)',
+      '--card-shadow-strong': '0 12px 48px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 107, 107, 0.08)',
+      '--card-shadow-glow': '0 0 0 1px rgba(255, 107, 107, 0.2), 0 8px 40px rgba(255, 107, 107, 0.12)',
       '--bg-gradient':
         'radial-gradient(ellipse 90% 55% at 50% -10%, rgba(255, 107, 107, 0.12) 0%, transparent 55%), radial-gradient(ellipse 50% 35% at 85% 90%, rgba(0, 200, 180, 0.1) 0%, transparent 50%)',
       '--primary': '#ff6b6b',
@@ -194,9 +186,10 @@ export const THEMES: ThemeConfig[] = [
   },
 ]
 
-export const THEME_MAP: Record<ThemeId, ThemeConfig> = Object.fromEntries(
-  THEMES.map((t) => [t.id, t])
-) as Record<ThemeId, ThemeConfig>
+export const THEME_MAP: Record<ThemeId, ThemeConfig> = Object.fromEntries(THEMES.map((t) => [t.id, t])) as Record<
+  ThemeId,
+  ThemeConfig
+>
 
 /** Parse a raw string into a valid ThemeId, defaulting to 'default'. */
 export function parseThemeId(raw: unknown): ThemeId {

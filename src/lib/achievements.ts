@@ -175,9 +175,7 @@ function trioAndPairAchievements(
 
   // Untouched — never got killed/red-flagged (only if they appeared in 2+ rounds)
   const untouchedCandidates = [...neverNegative].filter(
-    (pid) =>
-      (roundsAppeared.get(pid)?.length ?? 0) >= 2 &&
-      pid !== survivorCandidates.reduce((best, p) => best, '') // avoid duplicate with survivor
+    (pid) => (roundsAppeared.get(pid)?.length ?? 0) >= 2 && pid !== survivorCandidates.reduce((best, p) => best, '') // avoid duplicate with survivor
   )
   // Only show if different from survivor
   if (untouchedCandidates.length > 0 && untouchedCandidates.length <= 2) {
@@ -301,7 +299,13 @@ function wyrAchievements(rounds: Round[], votes: Vote[], players: Player[]): Ach
 
 // ── MLT achievements ──
 
-function mltAchievements(game: Game, participants: Participant[], rounds: Round[], votes: Vote[], players: Player[]): Achievement[] {
+function mltAchievements(
+  game: Game,
+  participants: Participant[],
+  rounds: Round[],
+  votes: Vote[],
+  players: Player[]
+): Achievement[] {
   const achievements: Achievement[] = []
   const finishedRounds = rounds.filter((r) => r.status === 'finished')
   if (finishedRounds.length < 2) return achievements
@@ -365,7 +369,12 @@ function mltAchievements(game: Game, participants: Participant[], rounds: Round[
 
 // ── WST achievements ──
 
-function wstAchievements(rounds: Round[], votes: Vote[], players: Player[], participants: Participant[]): Achievement[] {
+function wstAchievements(
+  rounds: Round[],
+  votes: Vote[],
+  players: Player[],
+  participants: Participant[]
+): Achievement[] {
   const achievements: Achievement[] = []
   const scores = tallyWstPlayerScores(rounds, votes, players)
   if (scores.length < 2) return achievements
