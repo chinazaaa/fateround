@@ -32,7 +32,12 @@ export function ParticipantGallery({ participants }: { participants: Participant
 
   return (
     <div className="surface-inset border border-theme rounded-2xl p-4 space-y-3">
-      <button type="button" onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        className="w-full flex items-center justify-between"
+      >
         <p className="text-muted text-xs uppercase tracking-wider">Meet the Players ({participants.length})</p>
         <span className="text-faint text-xs">{expanded ? '−' : '+'}</span>
       </button>
@@ -43,7 +48,13 @@ export function ParticipantGallery({ participants }: { participants: Participant
             <div key={p.id} className="text-center space-y-1">
               {p.photo_url ? (
                 <div className="w-full aspect-square rounded-xl overflow-hidden">
-                  <img src={p.photo_url} alt={p.name} className="w-full h-full object-cover" />
+                  <img
+                    src={p.photo_url}
+                    alt={p.name}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-full object-cover"
+                  />
                 </div>
               ) : (
                 <PlaceholderSilhouette name={p.name} />

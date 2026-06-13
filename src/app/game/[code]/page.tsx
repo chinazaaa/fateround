@@ -1958,7 +1958,9 @@ export default function GamePage() {
         )}
 
         {/* Participant photo cards — side-by-side grid */}
-        <div className={`flex-1 grid gap-3 mb-6 ${roundParts.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+        <div
+          className={`flex-1 grid gap-3 mb-6 ${roundParts.length === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}
+        >
           {roundParts.map((p) => {
             const action = isPair
               ? (pairAssignment[p.id] ?? null)

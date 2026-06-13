@@ -52,7 +52,13 @@ export function ParticipantPhotoCard({
       {/* Photo */}
       {participant.photo_url ? (
         <div className="w-full aspect-[3/4] overflow-hidden">
-          <img src={participant.photo_url} alt={participant.name} className="w-full h-full object-cover" />
+          <img
+            src={participant.photo_url}
+            alt={participant.name}
+            loading="lazy"
+            decoding="async"
+            className="w-full h-full object-cover"
+          />
         </div>
       ) : (
         <PlaceholderSilhouette name={participant.name} />
@@ -78,13 +84,17 @@ export function ParticipantPhotoCard({
               key={a}
               onClick={() => onAssign(a)}
               disabled={slotDisabled}
+              aria-label={`${slot.label} ${participant.name}`}
               className={`flex-1 py-2 rounded-xl border text-xs font-bold transition-all active:scale-95 ${
                 action === a
                   ? slot.activeClass
                   : `surface-inset border-theme text-muted ${!slotDisabled ? 'hover:border-theme-strong hover:text-body-muted' : ''}`
               } disabled:cursor-not-allowed disabled:opacity-40`}
             >
-              {slot.emoji} {slot.label}
+              <span className="sm:hidden">{slot.emoji}</span>
+              <span className="hidden sm:inline">
+                {slot.emoji} {slot.label}
+              </span>
             </button>
           )
         })}
