@@ -5,7 +5,7 @@ import type { GameType, ParticipantGender } from '@/types'
 import { ResultsPagination, usePagination, RESULTS_PAGE_SIZE } from '@/components/ui/ResultsPagination'
 import { isPairGame } from '@/lib/game-types'
 import { genderLabel, parseParticipantGenderFromDb } from '@/lib/participants'
-import { getInitial } from '@/lib/utils'
+import { Avatar } from '@/components/Avatar'
 import {
   type VoteCategory,
   type RoundTally,
@@ -47,7 +47,7 @@ function PairParticipantResultCard({
   return (
     <div className={`glass-card border-2 ${borderCls} rounded-2xl p-4`}>
       <div className="flex items-center gap-3 mb-4">
-        <div className="avatar w-10 h-10 text-lg shrink-0">{getInitial(name)}</div>
+        <Avatar name={name} />
         <div className="min-w-0 flex-1">
           <p className="text-body font-bold text-lg leading-tight truncate">{name}</p>
           {myFlag && (

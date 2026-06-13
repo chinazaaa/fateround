@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { parseGameType, isWhoSaidThis } from '@/lib/game-types'
+import { hostActionSchema } from '@/lib/validation'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,7 +10,13 @@ const supabase = createClient(
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
-  const { hostToken } = await req.json()
+  const raw = await req.json()
+  const parsed = hostActionSchema.safeParse(raw)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
+  }
+
+  const { hostToken } = parsed.data
 
   const { data: game } = await supabase.from('games').select('*').eq('id', code.toUpperCase()).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })

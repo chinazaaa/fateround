@@ -15,6 +15,7 @@ import {
   pickCustomMltQuestions,
   questionPoolCap,
 } from '@/lib/custom-questions'
+import { hostActionSchema } from '@/lib/validation'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,7 +24,13 @@ const supabase = createClient(
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
-  const { hostToken } = await req.json()
+  const raw = await req.json()
+  const parsed = hostActionSchema.safeParse(raw)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
+  }
+
+  const { hostToken } = parsed.data
 
   const { data: game } = await supabase.from('games').select('*').eq('id', code.toUpperCase()).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -119,19 +126,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return NextResponse.json({ error: 'Need at least 2 players to start' }, { status: 400 })
     }
 
-    const maxRounds = questionPoolCap(game)
-    if (game.rounds_count > maxRounds) {
+    // Fetch player-submitted MLT questions
+    const { data: playerMltRows } = await supabase
+      .from('player_questions')
+      .select('question_text')
+      .eq('game_id', code.toUpperCase())
+      .eq('question_type', 'mlt')
+    const playerMltQuestions = (playerMltRows ?? [])
+      .map((q) => q.question_text)
+      .filter((t): t is string => !!t?.trim())
+      .sort(() => Math.random() - 0.5)
+
+    const basePoolCap = questionPoolCap(game)
+    const totalAvailable = basePoolCap + playerMltQuestions.length
+    if (game.rounds_count > totalAvailable) {
       return NextResponse.json(
-        { error: `Too many rounds — lower to ${maxRounds} or fewer before starting` },
+        { error: `Too many rounds — lower to ${totalAvailable} or fewer before starting` },
         { status: 400 }
       )
     }
 
     const useCustom = parseQuestionSource(game.question_source, gameType) === 'custom'
     const customPool = useCustom ? parseStoredMltQuestions(game.custom_questions) : []
-    const questions = useCustom
-      ? pickCustomMltQuestions(customPool, game.rounds_count)
-      : pickMltQuestions(game.rounds_count, await fetchMltQuestionUsage(supabase))
+    const platformNeeded = Math.max(0, game.rounds_count - playerMltQuestions.length)
+    const platformQuestions = useCustom
+      ? pickCustomMltQuestions(customPool, platformNeeded)
+      : pickMltQuestions(platformNeeded, await fetchMltQuestionUsage(supabase))
+    // Player questions first, then fill from platform/custom pool
+    const questions = [...playerMltQuestions.slice(0, game.rounds_count), ...platformQuestions].slice(0, game.rounds_count)
     if (questions.length === 0) {
       return NextResponse.json(
         { error: useCustom ? 'No custom prompts available' : 'No prompts available' },
@@ -163,19 +185,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   if (isWouldYouRather(gameType)) {
-    const maxRounds = questionPoolCap(game)
-    if (game.rounds_count > maxRounds) {
+    // Fetch player-submitted WYR questions
+    const { data: playerWyrRows } = await supabase
+      .from('player_questions')
+      .select('option_a, option_b')
+      .eq('game_id', code.toUpperCase())
+      .eq('question_type', 'wyr')
+    const playerWyrQuestions = (playerWyrRows ?? [])
+      .filter((q) => q.option_a?.trim() && q.option_b?.trim())
+      .map((q) => ({ optionA: q.option_a!, optionB: q.option_b! }))
+      .sort(() => Math.random() - 0.5)
+
+    const basePoolCap = questionPoolCap(game)
+    const totalAvailable = basePoolCap + playerWyrQuestions.length
+    if (game.rounds_count > totalAvailable) {
       return NextResponse.json(
-        { error: `Too many rounds — lower to ${maxRounds} or fewer before starting` },
+        { error: `Too many rounds — lower to ${totalAvailable} or fewer before starting` },
         { status: 400 }
       )
     }
 
     const useCustom = parseQuestionSource(game.question_source, gameType) === 'custom'
     const customPool = useCustom ? parseStoredWyrQuestions(game.custom_questions) : []
-    const questions = useCustom
-      ? pickCustomWyrQuestions(customPool, game.rounds_count)
-      : pickWyrQuestions(game.rounds_count, await fetchWyrQuestionUsage(supabase))
+    const platformNeeded = Math.max(0, game.rounds_count - playerWyrQuestions.length)
+    const platformQuestions = useCustom
+      ? pickCustomWyrQuestions(customPool, platformNeeded)
+      : pickWyrQuestions(platformNeeded, await fetchWyrQuestionUsage(supabase))
+    // Player questions first, then fill from platform/custom pool
+    const questions = [...playerWyrQuestions.slice(0, game.rounds_count), ...platformQuestions].slice(0, game.rounds_count)
     if (questions.length === 0) {
       return NextResponse.json(
         { error: useCustom ? 'No custom questions available' : 'No questions available' },

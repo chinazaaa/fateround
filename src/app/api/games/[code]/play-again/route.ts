@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { hostActionSchema } from '@/lib/validation'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,12 +9,14 @@ const supabase = createClient(
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
-  const { hostToken } = await req.json()
-  const gameId = code.toUpperCase()
-
-  if (!hostToken) {
-    return NextResponse.json({ error: 'hostToken is required' }, { status: 400 })
+  const raw = await req.json()
+  const parsed = hostActionSchema.safeParse(raw)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
+
+  const { hostToken } = parsed.data
+  const gameId = code.toUpperCase()
 
   const { data: game } = await supabase.from('games').select('*').eq('id', gameId).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -33,6 +36,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { error: poolError } = await supabase.from('wst_quote_pool').delete().eq('game_id', gameId)
   if (poolError) return NextResponse.json({ error: poolError.message }, { status: 500 })
+
+  const { error: pqError } = await supabase.from('player_questions').delete().eq('game_id', gameId)
+  if (pqError) return NextResponse.json({ error: pqError.message }, { status: 500 })
 
   const { data: updated, error: gameError } = await supabase
     .from('games')

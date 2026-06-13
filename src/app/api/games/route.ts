@@ -13,6 +13,7 @@ import {
 } from '@/lib/custom-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import type { ParticipantMode, QuestionSource } from '@/types'
+import { createGameSchema, stripHtml } from '@/lib/validation'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,12 +27,12 @@ function parseParticipants(raw: unknown, gameType: ReturnType<typeof parseGameTy
   const needGender = participantsNeedGender(gameType)
   for (const item of raw) {
     if (typeof item === 'string') {
-      const name = item.trim()
+      const name = stripHtml(item.trim())
       if (name) parsed.push({ name, gender: 'female' })
       continue
     }
     if (item && typeof item === 'object' && typeof item.name === 'string') {
-      const name = item.name.trim()
+      const name = stripHtml(item.name.trim())
       const gender = normalizeGender(String(item.gender ?? ''))
       if (name && gender) parsed.push({ name, gender })
       else if (name && !needGender) parsed.push({ name, gender: 'female' })
@@ -73,6 +74,11 @@ function parseCustomQuestionsBody(
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
+  const parsed = createGameSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
+  }
+
   const {
     title,
     rounds_count,
@@ -86,22 +92,18 @@ export async function POST(req: NextRequest) {
     custom_questions: rawCustomQuestions,
     game_type: rawGameType,
     participants: rawParticipants,
-  } = body
-
-  if (!title?.trim()) {
-    return NextResponse.json({ error: 'Game name is required' }, { status: 400 })
-  }
+  } = parsed.data
 
   const game_type = parseGameType(rawGameType)
   const question_source = parseQuestionSource(rawQuestionSource, game_type)
   let custom_questions: unknown[] | null = null
 
   if (question_source === 'custom' && (isWouldYouRather(game_type) || isMostLikelyTo(game_type))) {
-    const parsed = parseCustomQuestionsBody(rawCustomQuestions, game_type)
-    if (!parsed) {
+    const cqParsed = parseCustomQuestionsBody(rawCustomQuestions, game_type)
+    if (!cqParsed) {
       return NextResponse.json({ error: 'Upload at least one custom question' }, { status: 400 })
     }
-    custom_questions = parsed
+    custom_questions = cqParsed
   }
 
   const participant_mode: ParticipantMode = isLobbyGame(game_type)
@@ -114,29 +116,29 @@ export async function POST(req: NextRequest) {
 
   let participants: ParticipantInput[] = []
   if (participant_mode === 'import') {
-    const parsed = parseParticipants(rawParticipants, game_type)
-    if (!parsed || parsed.length < roundPoolSize(game_type)) {
+    const participantsParsed = parseParticipants(rawParticipants, game_type)
+    if (!participantsParsed || participantsParsed.length < roundPoolSize(game_type)) {
       return NextResponse.json(
         { error: `At least ${roundPoolSize(game_type)} participants required` },
         { status: 400 }
       )
     }
     if (isMostLikelyTo(game_type)) {
-      if (parsed.length < 2) {
+      if (participantsParsed.length < 2) {
         return NextResponse.json({ error: 'Need at least 2 names on the list' }, { status: 400 })
       }
     } else if (isWhoSaidThis(game_type)) {
-      if (parsed.length < 2) {
+      if (participantsParsed.length < 2) {
         return NextResponse.json({ error: 'Need at least 2 names on the list' }, { status: 400 })
       }
-    } else if (!hasEnoughForRounds(parsed, game_type)) {
+    } else if (!hasEnoughForRounds(participantsParsed, game_type)) {
       const min = roundPoolSize(game_type)
       return NextResponse.json(
         { error: `Need at least ${min} people of the same gender (male or female) for rounds` },
         { status: 400 }
       )
     }
-    participants = parsed
+    participants = participantsParsed
   }
 
   const maxRounds = lobbyMaxRounds(game_type, question_source, custom_questions)
@@ -166,7 +168,7 @@ export async function POST(req: NextRequest) {
 
   const { error: gameError } = await supabase.from('games').insert({
     id: gameCode,
-    title: title.trim(),
+    title,
     host_token: hostToken,
     rounds_count: roundsCount,
     timer_seconds: [15, 30, 60].includes(Number(timer_seconds)) ? Number(timer_seconds) : 30,
