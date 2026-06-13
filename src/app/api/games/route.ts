@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generateGameCode, generateToken } from '@/lib/utils'
 import { normalizeGender, hasEnoughForRounds, participantsNeedGender, type ParticipantInput } from '@/lib/participants'
-import { parseGameType, roundPoolSize, isLobbyGame, isWouldYouRather, isMostLikelyTo, isAnonymousGame, isPairGame, parsePairVoteMode } from '@/lib/game-types'
+import { parseGameType, roundPoolSize, isLobbyGame, isWouldYouRather, isMostLikelyTo, isWhoSaidThis, isAnonymousGame, isPairGame, parsePairVoteMode } from '@/lib/game-types'
+import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import {
@@ -105,9 +106,11 @@ export async function POST(req: NextRequest) {
 
   const participant_mode: ParticipantMode = isLobbyGame(game_type)
     ? 'joiners'
-    : rawMode === 'joiners'
-      ? 'joiners'
-      : 'import'
+    : isWhoSaidThis(game_type)
+      ? 'import'
+      : rawMode === 'joiners'
+        ? 'joiners'
+        : 'import'
 
   let participants: ParticipantInput[] = []
   if (participant_mode === 'import') {
@@ -122,6 +125,10 @@ export async function POST(req: NextRequest) {
       if (parsed.length < 2) {
         return NextResponse.json({ error: 'Need at least 2 names on the list' }, { status: 400 })
       }
+    } else if (isWhoSaidThis(game_type)) {
+      if (parsed.length < 2) {
+        return NextResponse.json({ error: 'Need at least 2 names on the list' }, { status: 400 })
+      }
     } else if (!hasEnoughForRounds(parsed, game_type)) {
       const min = roundPoolSize(game_type)
       return NextResponse.json(
@@ -133,7 +140,9 @@ export async function POST(req: NextRequest) {
   }
 
   const maxRounds = lobbyMaxRounds(game_type, question_source, custom_questions)
-  const roundsCount = Math.min(Math.max(Number(rounds_count) || 3, 1), Math.min(maxRounds, 20))
+  const roundsCount = isWhoSaidThis(game_type)
+    ? wstAutoRoundCount(participants.length)
+    : Math.min(Math.max(Number(rounds_count) || 3, 1), Math.min(maxRounds, 20))
 
   if (question_source === 'custom' && custom_questions && roundsCount > custom_questions.length) {
     return NextResponse.json(

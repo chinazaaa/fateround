@@ -246,15 +246,58 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  who_said_this: {
+    id: 'who_said_this',
+    label: 'Who Said This',
+    tagline: 'Take turns writing quotes — everyone guesses who said it',
+    headerEmoji: '💬🕵️',
+    card: {
+      accent: '#14b8a6',
+      accentSoft: 'rgba(20, 184, 166, 0.15)',
+      emoji: '💬',
+      players: '3+ players',
+      vibe: 'Guess the author',
+    },
+    slots: {
+      kiss: {
+        emoji: '✓',
+        label: 'Correct',
+        color: '#2dd4bf',
+        leaderboardLabel: 'Best Guesses',
+        activeClass: 'bg-teal-500/20 text-teal-100 border-teal-400',
+        borderClass: 'border-teal-500/50 bg-teal-500/10',
+        textColor: '#5eead4',
+      },
+      marry: {
+        emoji: '💬',
+        label: 'Quote',
+        color: '#94a3b8',
+        leaderboardLabel: 'Quote',
+        activeClass: 'bg-white/10 text-white/80 border-white/30',
+        borderClass: 'border-white/25 bg-white/5',
+        textColor: '#cbd5e1',
+      },
+      kill: {
+        emoji: '👤',
+        label: 'Guess',
+        color: '#94a3b8',
+        leaderboardLabel: 'Guess',
+        activeClass: 'bg-white/10 text-white/80 border-white/30',
+        borderClass: 'border-white/25 bg-white/5',
+        textColor: '#cbd5e1',
+      },
+    },
+  },
 }
 
-export const GAME_TYPE_OPTIONS: GameType[] = ['smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'would_you_rather', 'most_likely_to']
+export const GAME_TYPE_OPTIONS: GameType[] = ['smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'would_you_rather', 'most_likely_to', 'who_said_this']
 
 export function parseGameType(raw: unknown): GameType {
   if (raw === 'red_flag_green_flag') return 'red_flag_green_flag'
   if (raw === 'smash_or_pass') return 'smash_or_pass'
   if (raw === 'would_you_rather') return 'would_you_rather'
   if (raw === 'most_likely_to') return 'most_likely_to'
+  if (raw === 'who_said_this') return 'who_said_this'
   return 'smash_marry_kill'
 }
 
@@ -378,6 +421,10 @@ export function isMostLikelyTo(gameType: GameType | string | undefined): boolean
   return parseGameType(gameType) === 'most_likely_to'
 }
 
+export function isWhoSaidThis(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'who_said_this'
+}
+
 /** Would You Rather only — forced joiners, no gender, always anonymous. */
 export function isLobbyGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'would_you_rather'
@@ -390,7 +437,7 @@ export function isNameOnlyPlayerJoin(gameType: GameType | string | undefined): b
 }
 
 export function isAnonymousGame(gameType: GameType | string | undefined): boolean {
-  return isNameOnlyPlayerJoin(gameType)
+  return isNameOnlyPlayerJoin(gameType) || isWhoSaidThis(gameType)
 }
 
 export function isThreeChoiceGame(gameType: GameType | string | undefined): boolean {
@@ -398,7 +445,7 @@ export function isThreeChoiceGame(gameType: GameType | string | undefined): bool
 }
 
 export function roundPoolSize(gameType: GameType | string | undefined): 2 | 3 {
-  if (isWouldYouRather(gameType) || isMostLikelyTo(gameType)) return 2
+  if (isWouldYouRather(gameType) || isMostLikelyTo(gameType) || isWhoSaidThis(gameType)) return 2
   return isPairGame(gameType) ? 2 : 3
 }
 

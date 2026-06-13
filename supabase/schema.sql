@@ -15,7 +15,7 @@ create table if not exists games (
   pair_vote_mode text not null default 'any' check (pair_vote_mode in ('any', 'one_each')),
   question_source text not null default 'platform' check (question_source in ('platform', 'custom')),
   custom_questions jsonb,
-  game_type text not null default 'smash_marry_kill' check (game_type in ('smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'would_you_rather', 'most_likely_to')),
+  game_type text not null default 'smash_marry_kill' check (game_type in ('smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'would_you_rather', 'most_likely_to', 'who_said_this')),
   status text not null default 'waiting',
   current_round_number integer not null default 0,
   created_at timestamptz not null default now()
@@ -77,6 +77,9 @@ create table if not exists rounds (
   wyr_option_a text,
   wyr_option_b text,
   mlt_question text,
+  submitter_player_id uuid references players(id),
+  quote_text text,
+  quote_submitted_at timestamptz,
   status text not null default 'pending',
   started_at timestamptz,
   ended_at timestamptz
@@ -111,7 +114,9 @@ create index if not exists idx_votes_round_id on votes(round_id);
 -- alter table rounds add column if not exists mlt_question text;
 -- alter table votes add column if not exists target_player_id uuid references players(id);
 -- alter table participants add column if not exists in_mlt_poll boolean not null default false;
--- alter table votes add column if not exists target_participant_id uuid references participants(id);
+-- alter table rounds add column if not exists submitter_player_id uuid references players(id);
+-- alter table rounds add column if not exists quote_text text;
+-- alter table rounds add column if not exists quote_submitted_at timestamptz;
 
 -- Confessions (anonymous post-round messages)
 create table if not exists confessions (

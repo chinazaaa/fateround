@@ -21,6 +21,7 @@ import {
   isLobbyGame,
   isMostLikelyTo,
   isWouldYouRather,
+  isWhoSaidThis,
   isAnonymousGame,
   parseGameType,
   isPairGame,
@@ -106,6 +107,7 @@ function CreateGameInner() {
         ...prev,
         game_type: type,
         ...(isLobbyGame(type) ? { participant_mode: 'joiners', anonymous: true } : {}),
+        ...(isWhoSaidThis(type) ? { participant_mode: 'import', anonymous: true } : {}),
       }))
     }
   }, [searchParams])
@@ -114,6 +116,7 @@ function CreateGameInner() {
   const isJoinersMode = settings.participant_mode === 'joiners'
   const isWyr = isWouldYouRather(settings.game_type)
   const isMlt = isMostLikelyTo(settings.game_type)
+  const isWst = isWhoSaidThis(settings.game_type)
   const isPair = isPairGame(settings.game_type)
   const needsGender = participantsNeedGender(settings.game_type)
   const minPool = roundPoolSize(settings.game_type)
@@ -131,7 +134,8 @@ function CreateGameInner() {
           : 10
   const mltRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= questionCap)
   const wyrRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= questionCap)
-  const roundOptions = isWyr ? wyrRoundOptions : isMlt ? mltRoundOptions : [2, 3, 4, 5, 6, 8, 10]
+  const wstRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= Math.max(participants.length, 2))
+  const roundOptions = isWyr ? wyrRoundOptions : isMlt ? mltRoundOptions : isWst ? wstRoundOptions : [2, 3, 4, 5, 6, 8, 10]
   const hasEnoughCustomQuestions =
     questionSource === 'platform' ||
     (isLobbyQuestions && customQuestionCount >= settings.rounds_count && customQuestionCount > 0)
@@ -156,6 +160,7 @@ function CreateGameInner() {
       ...settings,
       game_type: type,
       ...(isLobbyGame(type) ? { participant_mode: 'joiners', anonymous: true } : {}),
+      ...(isWhoSaidThis(type) ? { participant_mode: 'import', anonymous: true } : {}),
     })
   }
 
@@ -374,6 +379,7 @@ function CreateGameInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...settings,
+          rounds_count: isWst ? Math.max(participants.length, 2) : settings.rounds_count,
           question_source: isLobbyQuestions ? questionSource : 'platform',
           custom_questions:
             isLobbyQuestions && questionSource === 'custom'
@@ -436,6 +442,11 @@ function CreateGameInner() {
           {/* Rules */}
           <div className="glass-card p-5 space-y-5">
             <SettingsGroup title="Round settings">
+              {isWst ? (
+                <p className="text-faint text-sm leading-relaxed">
+                  Rounds are automatic — one turn per player who joins and claims their name. The count updates in the host lobby as people join.
+                </p>
+              ) : (
               <Field label="Rounds">
                 {isLobbyQuestions && questionSource === 'custom' && customQuestionCount === 0 && (
                   <p className="text-faint text-xs mb-2">Upload questions below to set how many rounds you can play.</p>
@@ -456,6 +467,7 @@ function CreateGameInner() {
                   ))}
                 </ChipGrid>
               </Field>
+              )}
 
               <Field label="Time per round">
                 <SegmentedControl
@@ -641,7 +653,16 @@ function CreateGameInner() {
               </SettingsGroup>
             )}
 
-            {!isWyr && (
+            {isWst && (
+              <SettingsGroup title="How it works">
+                <p className="text-faint text-sm leading-relaxed">
+                  Upload everyone&apos;s names on the next step. Players claim their name when joining.
+                  Each round one person writes a quote — everyone else guesses who said it.
+                </p>
+              </SettingsGroup>
+            )}
+
+            {!isWyr && !isWst && (
               <SettingsGroup title="Who's in the poll">
                 <SegmentedControl
                   value={settings.participant_mode}
@@ -679,7 +700,7 @@ function CreateGameInner() {
                 )}
                 {isAnonymousGame(settings.game_type) && (
                   <p className="text-faint text-xs px-1">
-                    Would You Rather and Most Likely To are always anonymous.
+                    Would You Rather, Most Likely To, and Who Said This are always anonymous.
                   </p>
                 )}
                 <Toggle

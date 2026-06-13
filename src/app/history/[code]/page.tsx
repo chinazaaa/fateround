@@ -5,9 +5,10 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { roundGenderLabel } from '@/lib/participants'
 import { assignmentEmojiFor, tallyRoundVotes, getVoteCategories, flagForParticipant, tallyWyrVotes, tallyMltVotes } from '@/lib/vote-stats'
-import { parseGameType, slotMeta, voteSlots, isPairGame, isWouldYouRather, isMostLikelyTo } from '@/lib/game-types'
+import { parseGameType, slotMeta, voteSlots, isPairGame, isWouldYouRather, isMostLikelyTo, isWhoSaidThis } from '@/lib/game-types'
 import { isMltImportGame, mltVoteTargets } from '@/lib/mlt'
-import { ParticipantRoundResults, WyrRoundResults, MltRoundResults } from '@/components/VoteResults'
+import { wstVoteTargets, wstCorrectName, tallyWstVotes } from '@/lib/who-said-this'
+import { ParticipantRoundResults, WyrRoundResults, MltRoundResults, WstRoundResults } from '@/components/VoteResults'
 import type { Confession, Game, Participant, Player, Round, Vote } from '@/types'
 
 type LoadState = 'loading' | 'not_found' | 'ready'
@@ -223,6 +224,24 @@ export default function GameHistoryPage() {
                         voterCount={mltTally.voterCount}
                         maxCount={mltTally.maxCount}
                         winnerNames={mltTally.winnerNames}
+                      />
+                    )
+                  })()
+                ) : isWhoSaidThis(gameType) ? (
+                  (() => {
+                    const targets = wstVoteTargets(participants)
+                    const correctName = wstCorrectName(round.submitter_player_id, players, participants)
+                    const correctId = players.find((p) => p.id === round.submitter_player_id)?.participant_id ?? null
+                    const wstTally = tallyWstVotes(roundVotes, targets, correctId)
+                    return (
+                      <WstRoundResults
+                        quote={round.quote_text ?? '(no quote submitted)'}
+                        rows={wstTally.rows}
+                        voterCount={wstTally.voterCount}
+                        maxCount={wstTally.maxCount}
+                        topGuesses={wstTally.topGuesses}
+                        correctName={correctName}
+                        correctCount={wstTally.correctCount}
                       />
                     )
                   })()

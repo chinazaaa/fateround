@@ -20,6 +20,7 @@ import {
   isPairGame,
   isWouldYouRather,
   isMostLikelyTo,
+  isWhoSaidThis,
   isNameOnlyPlayerJoin,
   isPairAssignmentComplete,
   pairAssignedCount,
@@ -30,11 +31,12 @@ import {
   pairDisabledSlots,
   completeRandomPairAssignment,
 } from '@/lib/game-types'
-import { ParticipantRoundResults, VoteCountStat, WyrRoundResults, MltRoundResults } from '@/components/VoteResults'
+import { ParticipantRoundResults, VoteCountStat, WyrRoundResults, MltRoundResults, WstRoundResults } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import { NameSearchPicker } from '@/components/NameSearchPicker'
 import { MltPlayerPicker } from '@/components/MltPlayerPicker'
 import { isMltImportGame, mltTargetIdFromVote, mltVoteTargets } from '@/lib/mlt'
+import { wstVoteTargets, wstCorrectName, wstSubmitterName, tallyWstVotes, tallyWstPlayerScores } from '@/lib/who-said-this'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import type { Game, Participant, Player, Round, Vote, VoteAssignment, Confession, GameType, PairAssignmentMap, WyrChoice } from '@/types'
 
@@ -57,6 +59,8 @@ export default function GamePage() {
   const [pairAssignment, setPairAssignment] = useState<PairAssignmentMap>({})
   const [wyrChoice, setWyrChoice] = useState<WyrChoice | null>(null)
   const [mltTargetPlayerId, setMltTargetPlayerId] = useState<string | null>(null)
+  const [quoteInput, setQuoteInput] = useState('')
+  const [quoteSubmitting, setQuoteSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [confessionText, setConfessionText] = useState('')
   const [confessionSent, setConfessionSent] = useState(false)
@@ -215,6 +219,8 @@ export default function GamePage() {
                   ? existingVote.target_participant_id
                   : existingVote.target_player_id
                 setMltTargetPlayerId(targetId)
+              } else if (isWhoSaidThis(gameType)) {
+                setMltTargetPlayerId(existingVote.target_participant_id)
               } else if (isPairGame(gameType)) {
                 setPairAssignment(pairAssignmentFromVote(existingVote, activeRound.participant_ids))
               } else {
@@ -300,6 +306,8 @@ export default function GamePage() {
     setPairAssignment({})
     setWyrChoice(null)
     setMltTargetPlayerId(null)
+    setQuoteInput('')
+    setQuoteSubmitting(false)
     setConfessionText('')
     setConfessionSent(false)
     announcedRoundIdRef.current = null
@@ -331,6 +339,8 @@ export default function GamePage() {
               setPairAssignment({})
               setWyrChoice(null)
               setMltTargetPlayerId(null)
+    setQuoteInput('')
+    setQuoteSubmitting(false)
               setConfessionText('')
               setConfessionSent(false)
               setView('round')
@@ -363,6 +373,8 @@ export default function GamePage() {
             setPairAssignment({})
               setWyrChoice(null)
               setMltTargetPlayerId(null)
+    setQuoteInput('')
+    setQuoteSubmitting(false)
               setConfessionText('')
             setConfessionSent(false)
             setView('round')
@@ -376,17 +388,31 @@ export default function GamePage() {
           const round = payload.new as Round
 
           if (round.status === 'active') {
-            // New round starting — only leave results once the host starts the next round
-            setCurrentRound(round)
-            submittedRef.current = false
-            setSubmitted(false)
-            setAssignment(emptyAssignment())
-            setPairAssignment({})
+            setCurrentRound((prev) => {
+              if (prev?.id === round.id && round.quote_text && prev.quote_text !== round.quote_text) {
+                return {
+                  ...prev,
+                  quote_text: round.quote_text,
+                  quote_submitted_at: round.quote_submitted_at,
+                }
+              }
+              return round
+            })
+
+            if (announcedRoundIdRef.current !== round.id) {
+              announcedRoundIdRef.current = round.id
+              submittedRef.current = false
+              setSubmitted(false)
+              setAssignment(emptyAssignment())
+              setPairAssignment({})
               setWyrChoice(null)
               setMltTargetPlayerId(null)
+              setQuoteInput('')
+              setQuoteSubmitting(false)
               setConfessionText('')
-            setConfessionSent(false)
-            setView('round')
+              setConfessionSent(false)
+              setView('round')
+            }
           }
 
           if (round.status === 'finished') {
@@ -534,6 +560,8 @@ export default function GamePage() {
           setPairAssignment({})
           setWyrChoice(null)
           setMltTargetPlayerId(null)
+    setQuoteInput('')
+    setQuoteSubmitting(false)
           setView('round')
         }
       }
@@ -577,6 +605,8 @@ export default function GamePage() {
           setPairAssignment({})
               setWyrChoice(null)
               setMltTargetPlayerId(null)
+    setQuoteInput('')
+    setQuoteSubmitting(false)
               setConfessionText('')
           setConfessionSent(false)
           setView('round')
@@ -631,7 +661,12 @@ export default function GamePage() {
       )
       const gameType = parseGameType(gameRef.current?.game_type)
       const playerGender = myPlayerGenderRef.current ?? getPlayerSession(gameCode)?.playerGender ?? null
-      const canVote = isNameOnlyPlayerJoin(gameType)
+      const r = currentRoundRef.current
+      const isWstRound = isWhoSaidThis(gameType)
+      const isSubmitter = isWstRound && r?.submitter_player_id === myPlayerIdRef.current
+      const canVote = isWstRound
+        ? !!myPlayerIdRef.current && !isSubmitter && !!r?.quote_text
+        : isNameOnlyPlayerJoin(gameType)
         ? !!myPlayerIdRef.current
         : !!roundGender &&
           !!playerGender &&
@@ -678,6 +713,11 @@ export default function GamePage() {
         if (targets.length > 0) {
           mltTarget = targets[Math.floor(Math.random() * targets.length)].id
         }
+      } else if (isWhoSaidThis(gameType)) {
+        const targets = wstVoteTargets(parts)
+        if (targets.length > 0) {
+          mltTarget = targets[Math.floor(Math.random() * targets.length)].id
+        }
       } else if (isPairGame(gameType)) {
         const pairMode = parsePairVoteMode(g.pair_vote_mode)
         if (pairMode === 'one_each' && roundIds.length === 2) {
@@ -708,6 +748,11 @@ export default function GamePage() {
       voteBody = isMltImportGame(g)
         ? { targetParticipantId: mltTarget }
         : { targetPlayerId: mltTarget }
+    } else if (isWhoSaidThis(gameType)) {
+      if (r.submitter_player_id === pid) return
+      if (!r.quote_text) return
+      if (!mltTarget) return
+      voteBody = { targetParticipantId: mltTarget }
     } else if (isPairGame(gameType)) {
       const pairMode = parsePairVoteMode(g.pair_vote_mode)
       if (!isPairAssignmentValid(pa, roundIds, pairMode)) return
@@ -768,6 +813,39 @@ export default function GamePage() {
     })
   }
 
+  const handleSubmitQuote = async () => {
+    if (!currentRound || !myPlayerId || quoteSubmitting) return
+    const text = quoteInput.trim()
+    if (!text) return
+    setQuoteSubmitting(true)
+    try {
+      const res = await fetch('/api/quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: myPlayerId,
+          roundId: currentRound.id,
+          gameId: gameCode,
+          quoteText: text,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        alert(data.error || 'Failed to submit quote')
+        return
+      }
+      const data = await res.json()
+      setCurrentRound({
+        ...currentRound,
+        quote_text: data.quoteText ?? text,
+        quote_submitted_at: new Date().toISOString(),
+      })
+      setQuoteInput('')
+    } finally {
+      setQuoteSubmitting(false)
+    }
+  }
+
   const handleSubmit = async () => {
     if (submittedRef.current || !currentRound || !myPlayerId || !game) return
     const submitGameType = parseGameType(game.game_type)
@@ -786,6 +864,8 @@ export default function GamePage() {
       ? isMltImportGame(game!)
         ? { targetParticipantId: mltTargetPlayerId }
         : { targetPlayerId: mltTargetPlayerId }
+      : isWhoSaidThis(submitGameType)
+      ? { targetParticipantId: mltTargetPlayerId }
       : isPairGame(submitGameType)
       ? {
           pairAssignments: Object.fromEntries(
@@ -1091,6 +1171,99 @@ export default function GamePage() {
         </div>
         <p className="text-faint text-xs text-center">Keep this tab open</p>
       </CenteredCard>
+    )
+  }
+
+  // ROUND — Who Said This
+  if (view === 'round' && currentRound && isWhoSaidThis(game?.game_type)) {
+    const gameType = parseGameType(game?.game_type)
+    const submitterId = currentRound.submitter_player_id
+    const isSubmitter = myPlayerId === submitterId
+    const submitterName = wstSubmitterName(submitterId, players)
+    const quote = currentRound.quote_text ?? ''
+    const targets = wstVoteTargets(participants)
+    const canVote = !!myPlayerId && !isSubmitter && !!quote
+
+    return (
+      <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full">
+        <PlayerNameBar name={myPlayerName} />
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <p className="text-muted text-xs uppercase tracking-wider">{game?.title}</p>
+            <GameTypeBadge gameType={gameType} className="mt-1 mb-1" />
+            <p className="text-white font-black text-2xl">
+              Round {currentRound.round_number}
+              <span className="text-faint font-normal text-base"> / {game?.rounds_count}</span>
+            </p>
+            <p className="text-teal-300/90 text-sm font-medium mt-1">
+              {isSubmitter ? 'Your turn to write' : `${submitterName ?? 'Someone'}&apos;s turn`}
+            </p>
+          </div>
+          <TimerDisplay seconds={timeLeft} total={game?.timer_seconds ?? 30} />
+        </div>
+
+        {isSubmitter ? (
+          quote ? (
+            <div className="glass-card border border-teal-500/30 px-4 py-5 mb-6 text-center space-y-2">
+              <p className="text-faint text-xs uppercase tracking-wider">Your quote</p>
+              <p className="text-white text-lg font-medium italic">&ldquo;{quote}&rdquo;</p>
+              <p className="text-muted text-sm">Everyone else is guessing who said it…</p>
+            </div>
+          ) : (
+            <div className="glass-card p-5 mb-6 space-y-3">
+              <p className="text-white font-semibold text-center">Write something someone in the group might say</p>
+              <textarea
+                value={quoteInput}
+                onChange={(e) => setQuoteInput(e.target.value)}
+                placeholder="e.g. Mark is ugly"
+                maxLength={500}
+                rows={3}
+                className="input-field resize-none"
+                disabled={quoteSubmitting}
+              />
+              <button
+                onClick={handleSubmitQuote}
+                disabled={!quoteInput.trim() || quoteSubmitting}
+                className={quoteInput.trim() ? 'btn-primary w-full' : 'btn-secondary w-full opacity-60 cursor-not-allowed'}
+              >
+                {quoteSubmitting ? 'Submitting…' : 'Submit Quote →'}
+              </button>
+            </div>
+          )
+        ) : quote ? (
+          <div className="glass-card border border-teal-500/30 px-4 py-5 mb-6 text-center">
+            <p className="text-faint text-xs uppercase tracking-wider mb-2">Who said this?</p>
+            <p className="text-white text-xl font-medium italic leading-snug">&ldquo;{quote}&rdquo;</p>
+          </div>
+        ) : (
+          <div className="glass-card px-4 py-8 mb-6 text-center">
+            <p className="text-muted text-sm">Waiting for {submitterName ?? 'the writer'} to submit a quote…</p>
+          </div>
+        )}
+
+        {canVote && !submitted ? (
+          <>
+            <NameSearchPicker
+              options={targets.map((p) => ({ id: p.id, name: p.name }))}
+              valueId={mltTargetPlayerId}
+              onChange={(id) => setMltTargetPlayerId(id)}
+              searchPlaceholder="Search names…"
+              emptyMessage="No names match"
+            />
+            <button
+              onClick={handleSubmit}
+              disabled={!mltTargetPlayerId}
+              className={`mt-6 ${mltTargetPlayerId ? 'btn-primary' : 'btn-secondary opacity-60 cursor-not-allowed'}`}
+            >
+              {mltTargetPlayerId ? 'Submit Guess ✓' : 'Pick who said it'}
+            </button>
+          </>
+        ) : canVote && submitted ? (
+          <div className="glass-card border border-emerald-500/30 px-4 py-4 text-center mt-4">
+            <p className="text-green-400 font-semibold">✓ Guess submitted!</p>
+          </div>
+        ) : !isSubmitter && quote ? null : null}
+      </div>
     )
   }
 
@@ -1415,6 +1588,50 @@ export default function GamePage() {
       )
     }
 
+    if (isWhoSaidThis(gameType) && game) {
+      const myVote = lastRoundVotes.find((v) => v.player_id === myPlayerId)
+      const targets = wstVoteTargets(participants)
+      const correctName = wstCorrectName(lastFinishedRound.submitter_player_id, players, participants)
+      const correctId = players.find((p) => p.id === lastFinishedRound.submitter_player_id)?.participant_id ?? null
+      const { rows, voterCount, maxCount, topGuesses, correctCount } = tallyWstVotes(
+        lastRoundVotes,
+        targets,
+        correctId
+      )
+      const myPickName = myVote?.target_participant_id
+        ? participants.find((p) => p.id === myVote.target_participant_id)?.name ?? null
+        : null
+      const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
+
+      return (
+        <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
+          <PlayerNameBar name={myPlayerName} />
+          <div className="text-center">
+            <p className="text-muted text-xs uppercase tracking-wider">
+              Round {lastFinishedRound.round_number} of {game?.rounds_count}
+            </p>
+            <GameTypeBadge gameType={gameType} className="mt-2" />
+            <h2 className="text-2xl font-black tracking-tight mt-2">Results are in! 🕵️</h2>
+          </div>
+          <WstRoundResults
+            quote={lastFinishedRound.quote_text ?? '(no quote submitted)'}
+            rows={rows}
+            voterCount={voterCount}
+            maxCount={maxCount}
+            topGuesses={topGuesses}
+            correctName={correctName}
+            correctCount={correctCount}
+            myPickName={myPickName}
+          />
+          <p className="text-faint text-sm text-center">
+            {isLastRound
+              ? (game?.auto_reveal ? '⏳ Final results in a few seconds...' : '⏳ Waiting for final results...')
+              : '⏳ Waiting for next round...'}
+          </p>
+        </div>
+      )
+    }
+
     if (isMostLikelyTo(gameType) && game) {
       const myVote = lastRoundVotes.find((v) => v.player_id === myPlayerId)
       const mltKind = isMltImportGame(game) ? 'participant' : 'player'
@@ -1709,7 +1926,9 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
   const playedParticipants = filterParticipantsInRounds(participants, rounds)
   const isWyr = isWouldYouRather(gameType)
   const isMlt = isMostLikelyTo(gameType)
+  const isWst = isWhoSaidThis(gameType)
   const isMltImport = isMltImportGame(game)
+  const wstScores = isWst ? tallyWstPlayerScores(rounds, votes, players) : []
 
   return (
     <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-8">
@@ -1722,13 +1941,31 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
           {players.length} players · {rounds.length} rounds
           {isMltImport
             ? ` · ${mltVoteTargets(game, participants, players).length} in poll`
+            : isWst
+              ? ` · ${participants.length} names`
             : !isWyr && !isMlt
               ? ` · ${playedParticipants.length} in game`
               : ''}
         </p>
       </div>
 
-      {!isWyr && !isMlt && (
+      {isWst && wstScores.length > 0 && (
+        <div className="glass-card p-5 space-y-3">
+          <p className="text-muted text-xs uppercase tracking-wider">Best guessers</p>
+          <div className="space-y-2">
+            {wstScores.slice(0, 5).map((row, i) => (
+              <div key={row.playerId} className="flex items-center justify-between text-sm">
+                <span className={row.playerId === myPlayerId ? 'text-teal-300 font-semibold' : 'text-white/85'}>
+                  {i + 1}. {row.name}{row.playerId === myPlayerId ? ' (you)' : ''}
+                </span>
+                <span className="text-muted">{row.correctGuesses} correct</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!isWyr && !isMlt && !isWst && (
         <>
           <FinalGenderLeaderboards
             gameType={gameType}
@@ -1762,6 +1999,37 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
                 countB={countB}
                 voterCount={voterCount}
                 myChoice={myVote?.wyr_choice ?? null}
+              />
+            </div>
+          )
+        }
+
+        if (isWst) {
+          const targets = wstVoteTargets(participants)
+          const correctName = wstCorrectName(round.submitter_player_id, players, participants)
+          const correctId = players.find((p) => p.id === round.submitter_player_id)?.participant_id ?? null
+          const { rows, voterCount, maxCount, topGuesses, correctCount } = tallyWstVotes(
+            roundVotes,
+            targets,
+            correctId
+          )
+          const myPickName = myVote?.target_participant_id
+            ? participants.find((p) => p.id === myVote.target_participant_id)?.name ?? null
+            : null
+          return (
+            <div key={round.id}>
+              <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
+                Round {round.round_number}
+              </h2>
+              <WstRoundResults
+                quote={round.quote_text ?? '(no quote submitted)'}
+                rows={rows}
+                voterCount={voterCount}
+                maxCount={maxCount}
+                topGuesses={topGuesses}
+                correctName={correctName}
+                correctCount={correctCount}
+                myPickName={myPickName}
               />
             </div>
           )

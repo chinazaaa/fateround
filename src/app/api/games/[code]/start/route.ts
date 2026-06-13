@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generateRoundsByGender } from '@/lib/utils'
 import { hasVotersForPolls, parseParticipantGenderFromDb, participantsWhoJoined, maxRecommendedRounds } from '@/lib/participants'
-import { parseGameType, roundPoolSize, isWouldYouRather, isMostLikelyTo } from '@/lib/game-types'
+import { parseGameType, roundPoolSize, isWouldYouRather, isMostLikelyTo, isWhoSaidThis } from '@/lib/game-types'
+import { buildSubmitterSequence, wstAutoRoundCount } from '@/lib/who-said-this'
 import { pickWyrQuestions } from '@/lib/would-you-rather-questions'
 import { pickMltQuestions } from '@/lib/most-likely-to-questions'
 import { fetchMltQuestionUsage, fetchWyrQuestionUsage } from '@/lib/question-usage'
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { data: playersData } = await supabase
     .from('players')
-    .select('gender, identity_gender, participant_id, name')
+    .select('id, gender, identity_gender, participant_id, name')
     .eq('game_id', code.toUpperCase())
 
   if (!playersData?.length) {
@@ -41,6 +42,54 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   const now = new Date().toISOString()
+
+  if (isWhoSaidThis(gameType)) {
+    const { data: participantsData } = await supabase
+      .from('participants')
+      .select('id')
+      .eq('game_id', code.toUpperCase())
+      .order('display_order')
+
+    if ((participantsData ?? []).length < 2) {
+      return NextResponse.json({ error: 'Need at least 2 names on the list' }, { status: 400 })
+    }
+
+    const submitters = playersData.filter((p) => p.participant_id)
+    if (submitters.length < 2) {
+      return NextResponse.json(
+        { error: 'Need at least 2 players who claimed a name from the list' },
+        { status: 400 }
+      )
+    }
+
+    const roundsCount = wstAutoRoundCount(submitters.length)
+    const participantIds = (participantsData ?? []).map((p) => p.id)
+    const sequence = buildSubmitterSequence(playersData as Parameters<typeof buildSubmitterSequence>[0], roundsCount)
+
+    const roundRows = sequence.map((submitter, index) => ({
+      game_id: code.toUpperCase(),
+      round_number: index + 1,
+      participant_ids: participantIds,
+      submitter_player_id: submitter.id,
+      quote_text: null,
+      quote_submitted_at: null,
+      status: index === 0 ? 'active' : 'pending',
+      started_at: index === 0 ? now : null,
+      ended_at: null,
+    }))
+
+    const { error: roundError } = await supabase.from('rounds').insert(roundRows)
+    if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
+
+    const { error: gameError } = await supabase
+      .from('games')
+      .update({ status: 'active', current_round_number: 1, rounds_count: roundsCount })
+      .eq('id', code.toUpperCase())
+
+    if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
+
+    return NextResponse.json({ success: true })
+  }
 
   if (isMostLikelyTo(gameType)) {
     const isImport = (game.participant_mode ?? 'import') === 'import'

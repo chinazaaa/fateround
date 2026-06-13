@@ -6,7 +6,7 @@ export type ParticipantMode = 'import' | 'joiners'
 export type PairVoteMode = 'any' | 'one_each'
 /** WYR / MLT: built-in pool vs host-uploaded CSV questions. */
 export type QuestionSource = 'platform' | 'custom'
-export type GameType = 'smash_marry_kill' | 'red_flag_green_flag' | 'smash_or_pass' | 'would_you_rather' | 'most_likely_to'
+export type GameType = 'smash_marry_kill' | 'red_flag_green_flag' | 'smash_or_pass' | 'would_you_rather' | 'most_likely_to' | 'who_said_this'
 export type WyrChoice = 'a' | 'b'
 
 export type ParticipantGender = 'male' | 'female'
@@ -65,6 +65,9 @@ export interface Round {
   wyr_option_a: string | null
   wyr_option_b: string | null
   mlt_question: string | null
+  submitter_player_id: string | null
+  quote_text: string | null
+  quote_submitted_at: string | null
   status: RoundStatus
   started_at: string | null
   ended_at: string | null

@@ -6,12 +6,13 @@ import { getInitial, filterParticipantsInRounds } from '@/lib/utils'
 import { roundGenderLabel, genderLabel, resolvePlayerIdentity, getRoundParticipantGender, eligibleVotersForRound, roundVoterLabel, hasEnoughForRounds, countByGender, hasVotersForPolls, participantsWhoJoined, maxRecommendedRounds, roundLimitHint } from '@/lib/participants'
 import type { ParticipantGender } from '@/types'
 import { tallyRoundVotes, getCategoryMeta, getVoteCategories, tallyWyrVotes, tallyMltVotes } from '@/lib/vote-stats'
-import { parseGameType, roundPoolSize, isPairGame, isWouldYouRather, isMostLikelyTo, isNameOnlyPlayerJoin } from '@/lib/game-types'
+import { parseGameType, roundPoolSize, isPairGame, isWouldYouRather, isMostLikelyTo, isWhoSaidThis, isNameOnlyPlayerJoin } from '@/lib/game-types'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import { isMltImportGame, mltTargetIdFromVote, mltVoteTargets } from '@/lib/mlt'
 import { questionPoolCap, parseQuestionSource, customQuestionCount } from '@/lib/custom-questions'
-import { ParticipantRoundResults, VoteCountStat, WyrRoundResults, MltRoundResults } from '@/components/VoteResults'
+import { wstVoteTargets, wstCorrectName, wstSubmitterName, wstEligibleSubmitters, wstAutoRoundCount, tallyWstVotes, tallyWstPlayerScores } from '@/lib/who-said-this'
+import { ParticipantRoundResults, VoteCountStat, WyrRoundResults, MltRoundResults, WstRoundResults } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import type { Game, Participant, Player, Round, Vote, Confession, VoteAssignment } from '@/types'
 
@@ -337,6 +338,8 @@ export default function HostPage() {
       const remaining = Math.max(0, Math.ceil((endMs - Date.now()) / 1000))
       setTimeLeft(remaining)
       if (remaining === 0) {
+        const gameType = parseGameType(game?.game_type)
+        if (isWhoSaidThis(gameType) && !currentRound?.quote_text) return
         handleEndRound()
       }
     }
@@ -349,6 +352,22 @@ export default function HostPage() {
   useEffect(() => {
     if (!currentRound || !game || game.status !== 'active' || players.length === 0) return
 
+    const gameType = parseGameType(game.game_type)
+
+    if (isWhoSaidThis(gameType)) {
+      if (!currentRound.quote_text) return
+      const submitterId = currentRound.submitter_player_id
+      const voters = players.filter((p) => p.id !== submitterId)
+      if (voters.length === 0) return
+      const roundVotes = votes.filter(
+        (v) => v.round_id === currentRound.id && v.player_id !== submitterId
+      )
+      if (roundVotes.length >= voters.length) {
+        handleEndRound()
+      }
+      return
+    }
+
     const roundGender = getRoundParticipantGender(currentRound.participant_ids, participants)
     const eligible = eligibleVotersForRound(roundGender, players, game?.game_type)
     if (eligible.length === 0) return
@@ -359,7 +378,7 @@ export default function HostPage() {
       handleEndRound()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentRound?.id, votes, players, participants, game?.status])
+  }, [currentRound?.id, currentRound?.quote_text, votes, players, participants, game?.status])
 
   const handleStart = async () => {
     if (starting) return
@@ -515,6 +534,18 @@ export default function HostPage() {
     }
   }
 
+  useEffect(() => {
+    if (!game || game.status !== 'waiting') return
+    if (!isWhoSaidThis(parseGameType(game.game_type))) return
+    const count = wstEligibleSubmitters(players).length
+    if (count === 0) return
+    const autoRounds = wstAutoRoundCount(count)
+    if (game.rounds_count !== autoRounds) {
+      hostUpdateRounds(autoRounds)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game?.status, game?.rounds_count, game?.game_type, players])
+
   async function hostAddParticipant() {
     const name = addName.trim()
     if (!name || adding) return
@@ -650,7 +681,9 @@ export default function HostPage() {
     const gameType = parseGameType(game.game_type)
     const isWyr = isWouldYouRather(gameType)
     const isMlt = isMostLikelyTo(gameType)
+    const isWst = isWhoSaidThis(gameType)
     const isMltImport = isMltImportGame(game)
+    const wstSubmitters = wstEligibleSubmitters(players)
     const minPool = roundPoolSize(gameType)
     const isJoinersMode = (game.participant_mode ?? 'import') === 'joiners'
     const roundParticipants = isJoinersMode
@@ -660,10 +693,16 @@ export default function HostPage() {
       : participantsWhoJoined(participants, players)
     const participantInputs = roundParticipants.map((p) => ({ name: p.name, gender: p.gender }))
     const genderCounts = countByGender(participantInputs)
-    const lobbyQuestionMax = isWyr || isMlt ? questionPoolCap(game) : maxRecommendedRounds(participantInputs, gameType)
-    const maxRounds = isWyr || isMlt ? lobbyQuestionMax : maxRecommendedRounds(participantInputs, gameType)
+    const lobbyQuestionMax = isWyr || isMlt ? questionPoolCap(game) : isWst ? wstAutoRoundCount(wstSubmitters.length) : maxRecommendedRounds(participantInputs, gameType)
+    const maxRounds = isWyr || isMlt ? lobbyQuestionMax : isWst ? lobbyQuestionMax : maxRecommendedRounds(participantInputs, gameType)
     const roundsHint =
-      isWyr || isMlt
+      isWst
+        ? wstSubmitters.length >= 2
+          ? `${wstSubmitters.length} players ready — one turn each`
+          : wstSubmitters.length === 1
+            ? '1 player claimed a name — need at least 2 to start'
+            : 'Rounds set automatically when players claim their names'
+        : isWyr || isMlt
         ? parseQuestionSource(game.question_source, gameType) === 'custom' && customQuestionCount(game) > 0
           ? `${customQuestionCount(game)} custom questions → up to ${lobbyQuestionMax} rounds`
           : isWyr
@@ -675,9 +714,13 @@ export default function HostPage() {
       ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
       : isMlt
       ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
+      : isWst
+      ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
       : [1, 2, 3, 4, 5, 6, 8, 10].filter((n) => n <= Math.max(maxRounds, 1))
     const voterCheck = hasVotersForPolls(roundParticipants, players)
-    const canStart = isMltImport
+    const canStart = isWst
+      ? participants.length >= 2 && wstSubmitters.length >= 2
+      : isMltImport
       ? participants.length >= 2 && players.length > 0 && !roundsTooHigh
       : isMlt
       ? players.length >= 2 && !roundsTooHigh
@@ -710,6 +753,8 @@ export default function HostPage() {
                 ? 'Most Likely To — everyone on the list is in the poll; players join to vote'
                 : isMlt
                 ? 'Most Likely To — players join and vote for a friend each round'
+                : isWst
+                ? 'Who Said This — import names, players claim theirs, take turns writing quotes'
                 : isWyr
                 ? 'Would You Rather — players join and pick A or B each round'
                 : isJoinersMode
@@ -728,7 +773,12 @@ export default function HostPage() {
             <p className="text-muted text-xs uppercase tracking-wider">Rounds</p>
             <span className="text-faint text-xs">{game.timer_seconds}s each</span>
           </div>
-          {isWyr || isMlt || (roundParticipants.length >= minPool && hasEnoughForRounds(participantInputs, gameType)) ? (
+          {isWst ? (
+            <>
+              <p className="text-white font-bold text-2xl">{game.rounds_count}</p>
+              <p className="text-faint text-xs">{roundsHint}</p>
+            </>
+          ) : isWyr || isMlt || (roundParticipants.length >= minPool && hasEnoughForRounds(participantInputs, gameType)) ? (
             <>
               {roundsHint && (
                 <p className="text-faint text-xs">{roundsHint}</p>
@@ -1088,7 +1138,11 @@ export default function HostPage() {
           {starting
             ? 'Starting...'
             : !canStart
-              ? isMltImport && participants.length < 2
+              ? isWst && participants.length < 2
+                ? `Need at least 2 names on the list (${participants.length}/2)`
+              : isWst && wstSubmitters.length < 2
+                ? `Need 2+ players who claimed a name (${wstSubmitters.length} ready)`
+              : isMltImport && participants.length < 2
                 ? `Need at least 2 names on the list (${participants.length}/2)`
               : isMltImport && players.length === 0
                 ? 'Waiting for voters to join...'
@@ -1122,6 +1176,7 @@ export default function HostPage() {
     const gameType = parseGameType(game.game_type)
     const isNameOnly = isNameOnlyPlayerJoin(gameType)
     const isMlt = isMostLikelyTo(gameType)
+    const isWst = isWhoSaidThis(gameType)
     const isWyr = isWouldYouRather(gameType)
     const roundVotes = votes.filter((v) => v.round_id === currentRound.id)
     const roundParts = participants.filter((p) => currentRound.participant_ids.includes(p.id))
@@ -1135,6 +1190,69 @@ export default function HostPage() {
       : roundVotes.filter((v) => eligibleIds.has(v.player_id))
     const voteDenominator = isNameOnly ? players.length : eligible.length
     const allVoted = eligibleVotes.length >= voteDenominator && voteDenominator > 0
+
+    if (isWst) {
+      const submitterName = wstSubmitterName(currentRound.submitter_player_id, players)
+      const quote = currentRound.quote_text
+      const voterTotal = Math.max(players.length - 1, 0)
+      const voterVotes = quote
+        ? roundVotes.filter((v) => v.player_id !== currentRound.submitter_player_id)
+        : []
+      const allVotedWst = voterVotes.length >= voterTotal && voterTotal > 0
+
+      return (
+        <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-muted text-xs uppercase tracking-wider">Round</p>
+              <p className="text-white font-black text-3xl">
+                {currentRound.round_number}
+                <span className="text-faint font-normal text-lg"> / {game.rounds_count}</span>
+              </p>
+              <p className="text-teal-300/90 text-sm mt-1">{submitterName ?? 'Player'}&apos;s turn to write</p>
+            </div>
+            <TimerDisplay seconds={timeLeft} total={game.timer_seconds} />
+          </div>
+
+          <div className="glass-card p-5 space-y-3">
+            {quote ? (
+              <>
+                <p className="text-muted text-xs uppercase tracking-wider text-center">Current quote</p>
+                <p className="text-white/90 text-base leading-snug text-center font-medium italic">&ldquo;{quote}&rdquo;</p>
+              </>
+            ) : (
+              <p className="text-muted text-sm text-center">Waiting for {submitterName ?? 'writer'} to submit a quote…</p>
+            )}
+          </div>
+
+          <div className="glass-card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-muted text-xs uppercase tracking-wider">Guesses In</p>
+              <span className={`text-sm font-bold ${allVotedWst ? 'text-green-400' : 'text-white/80'}`}>
+                {quote ? `${voterVotes.length} / ${voterTotal}` : '—'}
+                {allVotedWst && ' · ending round...'}
+              </span>
+            </div>
+            {quote && (
+              <div className="h-2 bg-white/8 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${allVotedWst ? 'bg-emerald-500' : 'bg-[var(--primary-strong)]'}`}
+                  style={{ width: voterTotal > 0 ? `${(voterVotes.length / voterTotal) * 100}%` : '0%' }}
+                />
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={handleEndRound}
+            disabled={ending || !quote || voterVotes.length === 0}
+            className="btn-secondary"
+          >
+            {ending ? 'Ending...' : 'End Round Early'}
+          </button>
+        </div>
+      )
+    }
 
     if (isMlt) {
       return (
@@ -1354,6 +1472,7 @@ export default function HostPage() {
     const gameType = parseGameType(game.game_type)
     const isWyr = isWouldYouRather(gameType)
     const isMlt = isMostLikelyTo(gameType)
+    const isWst = isWhoSaidThis(gameType)
     const isMltImport = isMltImportGame(game)
     const roundVotes = votes.filter((v) => v.round_id === lastFinishedRound.id)
     const roundParts = participants.filter((p) => lastFinishedRound.participant_ids.includes(p.id))
@@ -1376,7 +1495,25 @@ export default function HostPage() {
           <p className="text-muted text-sm mt-1">Players can see these results on their screens</p>
         </div>
 
-        {isMlt ? (
+        {isWst ? (
+          (() => {
+            const targets = wstVoteTargets(participants)
+            const correctName = wstCorrectName(lastFinishedRound.submitter_player_id, players, participants)
+            const correctId = players.find((p) => p.id === lastFinishedRound.submitter_player_id)?.participant_id ?? null
+            const wstTally = tallyWstVotes(roundVotes, targets, correctId)
+            return (
+              <WstRoundResults
+                quote={lastFinishedRound.quote_text ?? '(no quote submitted)'}
+                rows={wstTally.rows}
+                voterCount={wstTally.voterCount}
+                maxCount={wstTally.maxCount}
+                topGuesses={wstTally.topGuesses}
+                correctName={correctName}
+                correctCount={wstTally.correctCount}
+              />
+            )
+          })()
+        ) : isMlt ? (
           <MltRoundResults
             question={lastFinishedRound.mlt_question ?? ''}
             rows={mltTally.rows}
@@ -1486,9 +1623,11 @@ export default function HostPage() {
     const gameType = parseGameType(game.game_type)
     const isWyr = isWouldYouRather(gameType)
     const isMlt = isMostLikelyTo(gameType)
+    const isWst = isWhoSaidThis(gameType)
     const isMltImport = isMltImportGame(game)
     const playedParticipants = filterParticipantsInRounds(participants, allRounds)
     const pollCount = mltVoteTargets(game, participants, players).length
+    const wstScores = isWst ? tallyWstPlayerScores(allRounds, votes, players) : []
 
     return (
       <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-8">
@@ -1499,11 +1638,27 @@ export default function HostPage() {
             {players.length} players · {allRounds.length} rounds
             {isMltImport
               ? ` · ${pollCount} in poll`
+              : isWst
+                ? ` · ${participants.length} names`
               : !isWyr && !isMlt
                 ? ` · ${playedParticipants.length} in game`
                 : ''}
           </p>
         </div>
+
+        {isWst && wstScores.length > 0 && (
+          <div className="glass-card p-5 space-y-3">
+            <p className="text-muted text-xs uppercase tracking-wider">Best guessers</p>
+            <div className="space-y-2">
+              {wstScores.slice(0, 5).map((row, i) => (
+                <div key={row.playerId} className="flex items-center justify-between text-sm">
+                  <span className="text-white/85">{i + 1}. {row.name}</span>
+                  <span className="text-muted">{row.correctGuesses} correct</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {isWyr ? (
           <div className="space-y-8">
@@ -1521,6 +1676,36 @@ export default function HostPage() {
                     countA={countA}
                     countB={countB}
                     voterCount={voterCount}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        ) : isWst ? (
+          <div className="space-y-8">
+            {allRounds.map((round) => {
+              const roundVotes = votes.filter((v) => v.round_id === round.id)
+              const targets = wstVoteTargets(participants)
+              const correctName = wstCorrectName(round.submitter_player_id, players, participants)
+              const correctId = players.find((p) => p.id === round.submitter_player_id)?.participant_id ?? null
+              const { rows, voterCount, maxCount, topGuesses, correctCount } = tallyWstVotes(
+                roundVotes,
+                targets,
+                correctId
+              )
+              return (
+                <div key={round.id}>
+                  <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
+                    Round {round.round_number}
+                  </h2>
+                  <WstRoundResults
+                    quote={round.quote_text ?? '(no quote submitted)'}
+                    rows={rows}
+                    voterCount={voterCount}
+                    maxCount={maxCount}
+                    topGuesses={topGuesses}
+                    correctName={correctName}
+                    correctCount={correctCount}
                   />
                 </div>
               )

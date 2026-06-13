@@ -420,3 +420,86 @@ export function MltRoundResults({
     </div>
   )
 }
+
+export function WstRoundResults({
+  quote,
+  rows,
+  voterCount,
+  maxCount,
+  topGuesses,
+  correctName,
+  correctCount,
+  myPickName,
+}: {
+  quote: string
+  rows: Array<{ participantId: string; name: string; count: number }>
+  voterCount: number
+  maxCount: number
+  topGuesses: string[]
+  correctName: string | null
+  correctCount: number
+  myPickName?: string | null
+}) {
+  const barMax = Math.max(maxCount, 1)
+
+  return (
+    <div className="space-y-4">
+      <p className="text-muted text-xs uppercase tracking-wider text-center">
+        Round results · {voterCount} {voterCount === 1 ? 'vote' : 'votes'}
+      </p>
+      <div className="glass-card border-2 border-teal-500/30 rounded-2xl p-5 space-y-4">
+        <div className="text-center space-y-1">
+          <p className="text-[10px] uppercase tracking-wider text-teal-200/80">The quote</p>
+          <p className="text-white/90 text-base leading-snug font-medium italic">&ldquo;{quote}&rdquo;</p>
+        </div>
+
+        {correctName && (
+          <div className="surface-inset rounded-xl px-4 py-4 text-center ring-1 ring-teal-400/20">
+            <p className="text-[10px] uppercase tracking-wider text-teal-200/80 mb-1">Actually said by</p>
+            <p className="text-2xl font-black text-white">{correctName}</p>
+            <p className="text-faint text-xs mt-1">
+              {correctCount} of {voterCount} guessed right
+            </p>
+          </div>
+        )}
+
+        {topGuesses.length > 0 && maxCount > 0 && (
+          <p className="text-faint text-xs text-center">
+            Top guess{topGuesses.length > 1 ? 'es' : ''}: {topGuesses.join(', ')} ({maxCount} vote{maxCount === 1 ? '' : 's'})
+          </p>
+        )}
+
+        <div className="space-y-2">
+          {rows.map((row) => {
+            const isTop = maxCount > 0 && row.count === maxCount
+            const isCorrect = correctName && row.name === correctName
+            const pct = Math.min((row.count / barMax) * 100, 100)
+            return (
+              <div
+                key={row.participantId}
+                className={`rounded-xl px-3 py-2.5 ${isCorrect ? 'bg-teal-500/10 ring-1 ring-teal-400/30' : isTop ? 'bg-white/8 ring-1 ring-white/10' : 'surface-inset'}`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <p className={`text-sm truncate ${isCorrect ? 'text-teal-100 font-semibold' : 'text-white/85'}`}>
+                    {row.name}{isCorrect ? ' ✓' : ''}
+                  </p>
+                  <span className="text-sm font-bold text-white shrink-0">{row.count}</span>
+                </div>
+                <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${pct}%`, backgroundColor: isCorrect ? '#2dd4bf' : '#64748b' }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {myPickName && (
+          <p className="text-faint text-xs text-center">You guessed {myPickName}</p>
+        )}
+      </div>
+    </div>
+  )
+}

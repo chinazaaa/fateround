@@ -8,6 +8,7 @@ import {
   isThreeChoiceGame,
   isWouldYouRather,
   isMostLikelyTo,
+  isWhoSaidThis,
   isLobbyGame,
   isNameOnlyPlayerJoin,
   parseGameType,
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
 
   const [{ data: player }, { data: round }, { data: game }] = await Promise.all([
     supabase.from('players').select('id, gender, identity_gender, name').eq('id', playerId).maybeSingle(),
-    supabase.from('rounds').select('participant_ids').eq('id', roundId).maybeSingle(),
+    supabase.from('rounds').select('participant_ids, submitter_player_id, quote_text').eq('id', roundId).maybeSingle(),
     supabase.from('games').select('game_type, participant_mode, pair_vote_mode').eq('id', gameId.toUpperCase()).maybeSingle(),
   ])
 
@@ -73,7 +74,33 @@ export async function POST(req: NextRequest) {
     target_participant_id: string | null
   }
 
-  if (isMostLikelyTo(gameType)) {
+  if (isWhoSaidThis(gameType)) {
+    if (round.submitter_player_id === playerId) {
+      return NextResponse.json({ error: 'The writer does not vote on their own quote' }, { status: 400 })
+    }
+    if (!round.quote_text) {
+      return NextResponse.json({ error: 'Waiting for the quote before voting' }, { status: 400 })
+    }
+
+    const targetParticipantId =
+      typeof rawTargetParticipantId === 'string' ? rawTargetParticipantId : null
+    if (!targetParticipantId) {
+      return NextResponse.json({ error: 'Pick who said it' }, { status: 400 })
+    }
+    if (!roundIdSet.has(targetParticipantId)) {
+      return NextResponse.json({ error: 'Invalid pick — name not on the list' }, { status: 400 })
+    }
+
+    row = {
+      kiss_participant_id: null,
+      marry_participant_id: null,
+      kill_participant_id: null,
+      pair_assignments: null,
+      wyr_choice: null,
+      target_player_id: null,
+      target_participant_id: targetParticipantId,
+    }
+  } else if (isMostLikelyTo(gameType)) {
     const isImport = game.participant_mode === 'import'
 
     if (isImport) {
@@ -202,7 +229,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (!isLobbyGame(gameType) && !isMostLikelyTo(gameType)) {
+  if (!isLobbyGame(gameType) && !isMostLikelyTo(gameType) && !isWhoSaidThis(gameType)) {
     const { data: participants } = await supabase
       .from('participants')
       .select('id, gender')

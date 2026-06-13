@@ -42,7 +42,7 @@ export default function Home() {
             </h1>
 
             <p className="text-muted text-sm leading-relaxed max-w-xs mx-auto">
-              Five game modes, one link. Create a room, share the code, and let the chaos begin.
+              Six game modes, one link. Create a room, share the code, and let the chaos begin.
             </p>
           </div>
 
