@@ -46,6 +46,8 @@ import {
   wstQuotePoolStatus,
   dedupeWstPool,
   mergeWstPoolEntry,
+  isAnimeRound,
+  tallyAnimeWstVotes,
 } from '@/lib/who-said-this'
 import {
   ParticipantRoundResults,
@@ -53,6 +55,7 @@ import {
   WyrRoundResults,
   MltRoundResults,
   WstRoundResults,
+  AnimeWstRoundResults,
 } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
@@ -66,7 +69,7 @@ import {
   msUntilDeadline,
   ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
 } from '@/lib/round-timing'
-import type { Game, Participant, Player, Round, Vote, Confession, VoteAssignment, WstQuotePoolEntry } from '@/types'
+import type { Game, Participant, Player, Round, Vote, Confession, VoteAssignment, WstQuotePoolEntry, AnimeQuotePoolEntry } from '@/types'
 
 export default function HostPage() {
   const { code } = useParams<{ code: string }>()
@@ -103,6 +106,9 @@ export default function HostPage() {
   const [listSearch, setListSearch] = useState('')
   const [playersSearch, setPlayersSearch] = useState('')
   const [wstPool, setWstPool] = useState<WstQuotePoolEntry[]>([])
+  const [animePool, setAnimePool] = useState<AnimeQuotePoolEntry[]>([])
+  const [animeFetching, setAnimeFetching] = useState(false)
+  const [animeError, setAnimeError] = useState<string | null>(null)
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const advancingRef = useRef(false)
@@ -178,6 +184,15 @@ export default function HostPage() {
           .eq('game_id', gameCode)
           .order('created_at')
         setWstPool(dedupeWstPool(pool || []))
+
+        // Also fetch anime quote pool
+        const { data: aPool } = await supabase
+          .from('anime_quote_pool')
+          .select('*')
+          .eq('game_id', gameCode)
+          .eq('removed', false)
+          .order('created_at')
+        setAnimePool(aPool ?? [])
       }
 
       if (gameData.status === 'active') {
@@ -730,6 +745,59 @@ export default function HostPage() {
     if (pool) setWstPool(dedupeWstPool(pool))
   }
 
+  const fetchAnimeQuotes = async (count: number) => {
+    if (!game || animeFetching) return
+    setAnimeFetching(true)
+    setAnimeError(null)
+    try {
+      const res = await fetch('/api/anime-quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count, gameId: game.id, hostToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setAnimeError(data.error || 'Failed to fetch quotes')
+        return
+      }
+      setAnimePool(data.quotes)
+    } catch {
+      setAnimeError('Network error — try again')
+    } finally {
+      setAnimeFetching(false)
+    }
+  }
+
+  const rerollAnimeQuote = async (quoteId: string) => {
+    if (!game) return
+    try {
+      const res = await fetch('/api/anime-quotes/reroll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: game.id, quoteId, hostToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to reroll')
+        return
+      }
+      setAnimePool(data.quotes)
+    } catch {
+      toast.error('Network error — try again')
+    }
+  }
+
+  const removeAnimeQuote = async (quoteId: string) => {
+    if (!game) return
+    const { error } = await supabase
+      .from('anime_quote_pool')
+      .update({ removed: true })
+      .eq('id', quoteId)
+    if (!error) {
+      setAnimePool((prev) => prev.filter((q) => q.id !== quoteId))
+    }
+  }
+
   async function hostUpdateRounds(roundsCount: number) {
     if (updatingRounds || game?.rounds_count === roundsCount) return
     setUpdatingRounds(true)
@@ -956,8 +1024,16 @@ export default function HostPage() {
           ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
           : [1, 2, 3, 4, 5, 6, 8, 10].filter((n) => n <= Math.max(maxRounds, 1))
     const voterCheck = hasVotersForPolls(roundParticipants, players)
+    const wstSource = game?.wst_quote_source ?? 'player'
+    const animeQuoteCount = animePool.length
+    const playerQuoteCount = wstPool.length
+    const totalQuotes = (wstSource === 'player' ? 0 : animeQuoteCount) + (wstSource === 'anime' ? 0 : playerQuoteCount)
     const canStart = isWst
-      ? participants.length >= 2 && wstSubmitters.length >= 2 && wstPool.length >= 2
+      ? wstSource === 'anime'
+        ? animeQuoteCount >= 2
+        : wstSource === 'both'
+          ? totalQuotes >= 2
+          : participants.length >= 2 && wstSubmitters.length >= 2 && wstPool.length >= 2
       : isMltImport
         ? participants.length >= 2 && players.length > 0 && !roundsTooHigh
         : isMlt
@@ -1056,7 +1132,7 @@ export default function HostPage() {
           )}
         </div>
 
-        {isWst && wstPoolStatus && (
+        {isWst && wstPoolStatus && (game?.wst_quote_source ?? 'player') !== 'anime' && (
           <div className="glass-card p-4 space-y-4">
             <div className="flex items-center justify-between gap-2">
               <p className="text-muted text-xs uppercase tracking-wider">Quote pool</p>
@@ -1128,6 +1204,79 @@ export default function HostPage() {
           </div>
         )}
 
+        {isWst && (game?.wst_quote_source === 'anime' || game?.wst_quote_source === 'both') && (
+          <div className="glass-card p-4 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-muted text-xs uppercase tracking-wider">Anime quotes</p>
+              <span className="text-sm font-bold text-body">{animePool.length} loaded</span>
+            </div>
+
+            {animePool.length === 0 && !animeFetching && (
+              <button
+                onClick={() => fetchAnimeQuotes(10)}
+                className="btn-primary w-full"
+              >
+                Fetch Anime Quotes
+              </button>
+            )}
+
+            {animeFetching && (
+              <div className="text-center py-6 space-y-2">
+                <div className="animate-spin h-6 w-6 border-2 border-teal-400 border-t-transparent rounded-full mx-auto" />
+                <p className="text-muted text-sm">Fetching quotes & characters...</p>
+                <p className="text-faint text-xs">This can take 15-20 seconds</p>
+              </div>
+            )}
+
+            {animeError && (
+              <div className="text-red-400 text-sm text-center py-2">
+                {animeError}
+                <button onClick={() => fetchAnimeQuotes(10)} className="block mx-auto mt-2 text-xs underline">
+                  Try again
+                </button>
+              </div>
+            )}
+
+            {animePool.length > 0 && (
+              <div className="space-y-2">
+                {animePool.map((q) => (
+                  <div key={q.id} className="surface-inset rounded-xl px-3 py-2.5 space-y-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-body text-sm italic truncate">&ldquo;{q.quote_text}&rdquo;</p>
+                        <p className="text-faint text-xs mt-0.5">{q.anime_name}</p>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <button
+                          onClick={() => rerollAnimeQuote(q.id)}
+                          className="text-xs text-muted hover:text-body px-1.5 py-0.5 rounded-lg hover:bg-white/5"
+                          title="Replace with a different quote"
+                        >
+                          ↻
+                        </button>
+                        <button
+                          onClick={() => removeAnimeQuote(q.id)}
+                          className="text-xs text-muted hover:text-red-400 px-1.5 py-0.5 rounded-lg hover:bg-white/5"
+                          title="Remove this quote"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={() => fetchAnimeQuotes(5)}
+                  disabled={animeFetching}
+                  className="w-full text-center text-sm font-semibold text-[var(--primary)] hover:opacity-80 transition-opacity pt-1"
+                >
+                  {animeFetching ? 'Fetching...' : 'Fetch more quotes'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Share link */}
         <div className="glass-card p-4 space-y-2">
           <p className="text-muted text-xs uppercase tracking-wider">Player Link</p>
@@ -1147,8 +1296,9 @@ export default function HostPage() {
           </div>
           {!isJoinersMode && (
             <p className="text-faint text-xs">
-              {roundParticipants.length} of {participants.length} on the list have joined — only joined names appear in
-              rounds
+              {isMltImport
+                ? `${players.length} of ${participants.length} voters joined — all names appear in rounds`
+                : `${roundParticipants.length} of ${participants.length} on the list have joined — only joined names appear in rounds`}
             </p>
           )}
           {!isJoinersMode && (
@@ -1466,13 +1616,17 @@ export default function HostPage() {
           {starting
             ? 'Starting...'
             : !canStart
-              ? isWst && participants.length < 2
-                ? `Need at least 2 names on the list (${participants.length}/2)`
-                : isWst && wstSubmitters.length < 2
-                  ? `Need 2+ players who claimed a name (${wstSubmitters.length} ready)`
-                  : isWst && wstPool.length < 2
-                    ? `Need 2+ quotes in the pool (${wstPool.length} submitted)`
-                    : isMltImport && participants.length < 2
+              ? isWst && wstSource === 'anime' && animeQuoteCount < 2
+                ? `Need 2+ anime quotes (${animeQuoteCount} loaded)`
+                : isWst && wstSource === 'both' && totalQuotes < 2
+                  ? `Need 2+ total quotes (${totalQuotes} ready)`
+                  : isWst && wstSource === 'player' && participants.length < 2
+                    ? `Need at least 2 names on the list (${participants.length}/2)`
+                    : isWst && wstSource === 'player' && wstSubmitters.length < 2
+                      ? `Need 2+ players who claimed a name (${wstSubmitters.length} ready)`
+                      : isWst && wstSource === 'player' && wstPool.length < 2
+                        ? `Need 2+ quotes in the pool (${wstPool.length} submitted)`
+                        : isMltImport && participants.length < 2
                       ? `Need at least 2 names on the list (${participants.length}/2)`
                       : isMltImport && players.length === 0
                         ? 'Waiting for voters to join...'
@@ -1835,6 +1989,22 @@ export default function HostPage() {
 
         {isWst ? (
           (() => {
+            if (isAnimeRound(lastFinishedRound)) {
+              const meta = lastFinishedRound.anime_metadata as { anime_name: string; correct_character: string; choices: string[] }
+              const animeTally = tallyAnimeWstVotes(roundVotes, meta.choices, meta.correct_character)
+              return (
+                <AnimeWstRoundResults
+                  quote={lastFinishedRound.quote_text ?? '(no quote)'}
+                  animeName={meta.anime_name}
+                  rows={animeTally.rows}
+                  voterCount={animeTally.voterCount}
+                  maxCount={animeTally.maxCount}
+                  topGuesses={animeTally.topGuesses}
+                  correctCharacter={meta.correct_character}
+                  correctCount={animeTally.correctCount}
+                />
+              )
+            }
             const targets = wstVoteTargets(participants)
             const correctName = wstCorrectNameFromRound(lastFinishedRound, players, participants)
             const correctId = wstCorrectParticipantIdFromRound(lastFinishedRound, players)
@@ -2031,6 +2201,25 @@ export default function HostPage() {
           <div className="space-y-8">
             {allRounds.map((round) => {
               const roundVotes = votes.filter((v) => v.round_id === round.id)
+              if (isAnimeRound(round)) {
+                const meta = round.anime_metadata as { anime_name: string; correct_character: string; choices: string[] }
+                const animeTally = tallyAnimeWstVotes(roundVotes, meta.choices, meta.correct_character)
+                return (
+                  <div key={round.id}>
+                    <h2 className="text-muted text-xs uppercase tracking-wider mb-3">Round {round.round_number}</h2>
+                    <AnimeWstRoundResults
+                      quote={round.quote_text ?? '(no quote)'}
+                      animeName={meta.anime_name}
+                      rows={animeTally.rows}
+                      voterCount={animeTally.voterCount}
+                      maxCount={animeTally.maxCount}
+                      topGuesses={animeTally.topGuesses}
+                      correctCharacter={meta.correct_character}
+                      correctCount={animeTally.correctCount}
+                    />
+                  </div>
+                )
+              }
               const targets = wstVoteTargets(participants)
               const correctName = wstCorrectNameFromRound(round, players, participants)
               const correctId = wstCorrectParticipantIdFromRound(round, players)

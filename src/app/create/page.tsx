@@ -1,7 +1,7 @@
 'use client'
 import { useState, useRef, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { ParticipantGender, ParticipantMode, GameType, PairVoteMode, QuestionSource } from '@/types'
+import type { ParticipantGender, ParticipantMode, GameType, PairVoteMode, QuestionSource, WstQuoteSource } from '@/types'
 import {
   type ParticipantInput,
   parseParticipantsForGame,
@@ -102,6 +102,7 @@ function CreateGameInner() {
   const [wyrOptionB, setWyrOptionB] = useState('')
   const [mltQuestionInput, setMltQuestionInput] = useState('')
   const [questionsBulkPaste, setQuestionsBulkPaste] = useState('')
+  const [wstQuoteSource, setWstQuoteSource] = useState<WstQuoteSource>('player')
 
   useEffect(() => {
     const typeParam = searchParams.get('type')
@@ -162,6 +163,7 @@ function CreateGameInner() {
   }, [customQuestionCount, questionSource, settings.rounds_count])
 
   const selectGameType = (type: GameType) => {
+    setWstQuoteSource('player')
     setQuestionSource('platform')
     setCustomWyrQuestions([])
     setCustomMltQuestions([])
@@ -393,6 +395,7 @@ function CreateGameInner() {
           custom_questions:
             isLobbyQuestions && questionSource === 'custom' ? (isWyr ? customWyrQuestions : customMltQuestions) : null,
           participants: isJoinersMode ? [] : participants,
+          wst_quote_source: isWst ? wstQuoteSource : undefined,
         }),
       })
       const data = await res.json()
@@ -441,10 +444,26 @@ function CreateGameInner() {
           <div className="glass-card p-5 space-y-5">
             <SettingsGroup title="Round settings">
               {isWst ? (
-                <p className="text-faint text-sm leading-relaxed">
-                  Rounds are automatic — one turn per player who joins and claims their name. The count updates in the
-                  host lobby as people join.
-                </p>
+                <div className="space-y-4">
+                  <Field label="Quote source">
+                    <SegmentedControl
+                      value={wstQuoteSource}
+                      onChange={(v) => setWstQuoteSource(v)}
+                      options={[
+                        { value: 'player' as WstQuoteSource, label: 'Player Quotes', hint: 'Players submit quotes in the lobby' },
+                        { value: 'anime' as WstQuoteSource, label: 'Anime Quotes', hint: 'Quotes from anime characters' },
+                        { value: 'both' as WstQuoteSource, label: 'Both', hint: 'Mix player + anime quotes' },
+                      ]}
+                    />
+                  </Field>
+                  <p className="text-faint text-sm leading-relaxed">
+                    {wstQuoteSource === 'anime'
+                      ? 'Anime quotes are fetched in the lobby — no player submissions needed.'
+                      : wstQuoteSource === 'both'
+                        ? 'Players submit quotes and anime quotes are fetched — both are shuffled together.'
+                        : 'Rounds are automatic — one turn per player who joins and claims their name. The count updates in the host lobby as people join.'}
+                  </p>
+                </div>
               ) : (
                 <Field label="Rounds">
                   {isLobbyQuestions && questionSource === 'custom' && customQuestionCount === 0 && (

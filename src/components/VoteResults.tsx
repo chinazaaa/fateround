@@ -544,3 +544,89 @@ export function WstRoundResults({
     </div>
   )
 }
+
+export function AnimeWstRoundResults({
+  quote,
+  animeName,
+  rows,
+  voterCount,
+  maxCount,
+  topGuesses,
+  correctCharacter,
+  correctCount,
+  myPickName,
+}: {
+  quote: string
+  animeName: string
+  rows: Array<{ choice: string; count: number }>
+  voterCount: number
+  maxCount: number
+  topGuesses: string[]
+  correctCharacter: string
+  correctCount: number
+  myPickName?: string | null
+}) {
+  const barMax = Math.max(maxCount, 1)
+
+  return (
+    <div className="space-y-4">
+      <p className="text-muted text-xs uppercase tracking-wider text-center">
+        Round results · {voterCount} {voterCount === 1 ? 'vote' : 'votes'}
+      </p>
+      <div className="glass-card border-2 border-teal-500/30 rounded-2xl p-5 space-y-4">
+        <div className="text-center space-y-1">
+          <p className="text-[10px] uppercase tracking-wider label-teal">The quote</p>
+          <p className="text-body text-base leading-snug font-medium italic">&ldquo;{quote}&rdquo;</p>
+          <p className="text-teal-400 text-xs font-semibold mt-1">{animeName}</p>
+        </div>
+
+        <div className="surface-inset rounded-xl px-4 py-4 text-center ring-1 ring-teal-400/20">
+          <p className="text-[10px] uppercase tracking-wider label-teal mb-1">Said by</p>
+          <p className="text-2xl font-black text-body">{correctCharacter}</p>
+          <p className="text-faint text-xs mt-1">
+            {correctCount} of {voterCount} guessed right
+          </p>
+        </div>
+
+        {topGuesses.length > 0 && maxCount > 0 && (
+          <p className="text-faint text-xs text-center">
+            Top guess{topGuesses.length > 1 ? 'es' : ''}: {topGuesses.join(', ')} ({maxCount} vote{maxCount === 1 ? '' : 's'})
+          </p>
+        )}
+
+        <div className="space-y-2">
+          {rows.map((row) => {
+            const isTop = maxCount > 0 && row.count === maxCount
+            const isCorrect = row.choice === correctCharacter
+            const pct = Math.min((row.count / barMax) * 100, 100)
+            return (
+              <div
+                key={row.choice}
+                className={`rounded-xl px-3 py-2.5 ${
+                  isCorrect ? 'result-row-winner-teal' : isTop ? 'result-row-winner' : 'result-row'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <p className={`text-sm truncate ${isCorrect ? 'text-accent-correct' : 'text-body'}`}>
+                    {row.choice}{isCorrect ? ' ✓' : ''}
+                  </p>
+                  <span className="text-sm font-bold text-body shrink-0">{row.count}</span>
+                </div>
+                <div className="bar-track-xs">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${pct}%`, backgroundColor: isCorrect ? '#2dd4bf' : '#64748b' }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {myPickName && (
+          <p className="text-faint text-xs text-center">You guessed {myPickName}</p>
+        )}
+      </div>
+    </div>
+  )
+}

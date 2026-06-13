@@ -63,6 +63,7 @@ import {
   WyrRoundResults,
   MltRoundResults,
   WstRoundResults,
+  AnimeWstRoundResults,
 } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import { NameSearchPicker } from '@/components/NameSearchPicker'
@@ -78,6 +79,8 @@ import {
   mergeActiveRound,
   dedupeWstPool,
   mergeWstPoolEntry,
+  isAnimeRound,
+  tallyAnimeWstVotes,
 } from '@/lib/who-said-this'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
@@ -126,6 +129,7 @@ export default function GamePage() {
   const [pairAssignment, setPairAssignment] = useState<PairAssignmentMap>({})
   const [wyrChoice, setWyrChoice] = useState<WyrChoice | null>(null)
   const [mltTargetPlayerId, setMltTargetPlayerId] = useState<string | null>(null)
+  const [animeChoice, setAnimeChoice] = useState<string | null>(null)
   const [quoteInput, setQuoteInput] = useState('')
   const [quoteAuthorParticipantId, setQuoteAuthorParticipantId] = useState<string | null>(null)
   const [quoteSubmitting, setQuoteSubmitting] = useState(false)
@@ -251,6 +255,8 @@ export default function GamePage() {
   wyrChoiceRef.current = wyrChoice
   const mltTargetPlayerIdRef = useRef(mltTargetPlayerId)
   mltTargetPlayerIdRef.current = mltTargetPlayerId
+  const animeChoiceRef = useRef(animeChoice)
+  animeChoiceRef.current = animeChoice
   const playersRef = useRef(players)
   playersRef.current = players
   const currentRoundRef = useRef(currentRound)
@@ -421,6 +427,7 @@ export default function GamePage() {
     setPairAssignment({})
     setWyrChoice(null)
     setMltTargetPlayerId(null)
+    setAnimeChoice(null)
     setQuoteInput('')
     setQuoteAuthorParticipantId(null)
     setQuoteSubmitting(false)
@@ -1060,7 +1067,9 @@ export default function GamePage() {
           ? { targetParticipantId: mltTargetPlayerId }
           : { targetPlayerId: mltTargetPlayerId }
         : isWhoSaidThis(submitGameType)
-          ? { targetParticipantId: mltTargetPlayerId }
+          ? currentRound?.anime_metadata
+            ? { animeChoice: animeChoiceRef.current }
+            : { targetParticipantId: mltTargetPlayerId }
           : isPairGame(submitGameType)
             ? {
                 pairAssignments: Object.fromEntries(
@@ -1362,70 +1371,77 @@ export default function GamePage() {
         </div>
 
         {isWst && (
-          <div className="space-y-4">
-            <div className="surface-inset border border-theme rounded-2xl p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-muted text-xs uppercase tracking-wider">Quote pool</p>
-                <span className="text-sm font-bold text-body">{wstPool.length} submitted</span>
-              </div>
-              <p className="text-faint text-xs">
-                Submit your quote and the correct answer now. Only people in the pool get a round — if 5 of 10 submit,
-                that&apos;s 5 rounds.
-              </p>
+          game?.wst_quote_source === 'anime' ? (
+            <div className="glass-card px-4 py-8 text-center space-y-2">
+              <p className="text-body text-lg font-semibold">Anime Quote Mode</p>
+              <p className="text-muted text-sm">The host is loading anime quotes — sit tight!</p>
             </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="surface-inset border border-theme rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-muted text-xs uppercase tracking-wider">Quote pool</p>
+                  <span className="text-sm font-bold text-body">{wstPool.length} submitted</span>
+                </div>
+                <p className="text-faint text-xs">
+                  Submit your quote and the correct answer now. Only people in the pool get a round — if 5 of 10 submit,
+                  that&apos;s 5 rounds.
+                </p>
+              </div>
 
-            {canSubmitPoolQuote ? (
-              <div className="glass-card p-5 space-y-4">
-                {myPoolEntry && poolQuoteSaved ? (
-                  <div className="text-center space-y-1">
-                    <p className="text-green-400 text-sm font-semibold">✓ Your quote is in the pool</p>
-                    <p className="text-faint text-xs">You can edit it below until the host starts.</p>
-                  </div>
-                ) : (
-                  <p className="font-semibold text-body text-center">Add your quote to the pool</p>
-                )}
-                <textarea
-                  value={quoteInput}
-                  onChange={(e) => {
-                    setQuoteInput(e.target.value)
-                    setPoolQuoteSaved(false)
-                  }}
-                  placeholder="e.g. Roses are red"
-                  maxLength={500}
-                  rows={3}
-                  className="input-field resize-none"
-                  disabled={quoteSubmitting}
-                />
-                <div className="space-y-2">
-                  <p className="text-faint text-xs uppercase tracking-wider text-center">Who said this?</p>
-                  <NameSearchPicker
-                    options={wstTargets.map((p) => ({ id: p.id, name: p.name }))}
-                    valueId={quoteAuthorParticipantId}
-                    onChange={(id) => {
-                      setQuoteAuthorParticipantId(id)
+              {canSubmitPoolQuote ? (
+                <div className="glass-card p-5 space-y-4">
+                  {myPoolEntry && poolQuoteSaved ? (
+                    <div className="text-center space-y-1">
+                      <p className="text-green-400 text-sm font-semibold">✓ Your quote is in the pool</p>
+                      <p className="text-faint text-xs">You can edit it below until the host starts.</p>
+                    </div>
+                  ) : (
+                    <p className="font-semibold text-body text-center">Add your quote to the pool</p>
+                  )}
+                  <textarea
+                    value={quoteInput}
+                    onChange={(e) => {
+                      setQuoteInput(e.target.value)
                       setPoolQuoteSaved(false)
                     }}
-                    searchPlaceholder="Search names…"
-                    emptyMessage="No names match"
+                    placeholder="e.g. Roses are red"
+                    maxLength={500}
+                    rows={3}
+                    className="input-field resize-none"
                     disabled={quoteSubmitting}
                   />
+                  <div className="space-y-2">
+                    <p className="text-faint text-xs uppercase tracking-wider text-center">Who said this?</p>
+                    <NameSearchPicker
+                      options={wstTargets.map((p) => ({ id: p.id, name: p.name }))}
+                      valueId={quoteAuthorParticipantId}
+                      onChange={(id) => {
+                        setQuoteAuthorParticipantId(id)
+                        setPoolQuoteSaved(false)
+                      }}
+                      searchPlaceholder="Search names…"
+                      emptyMessage="No names match"
+                      disabled={quoteSubmitting}
+                    />
+                  </div>
+                  <button
+                    onClick={handleSubmitPoolQuote}
+                    disabled={!quoteInput.trim() || !quoteAuthorParticipantId || quoteSubmitting}
+                    className={
+                      quoteInput.trim() && quoteAuthorParticipantId
+                        ? 'btn-primary w-full'
+                        : 'btn-secondary w-full opacity-60 cursor-not-allowed'
+                    }
+                  >
+                    {quoteSubmitting ? 'Saving…' : myPoolEntry ? 'Update Quote' : 'Add to Pool →'}
+                  </button>
                 </div>
-                <button
-                  onClick={handleSubmitPoolQuote}
-                  disabled={!quoteInput.trim() || !quoteAuthorParticipantId || quoteSubmitting}
-                  className={
-                    quoteInput.trim() && quoteAuthorParticipantId
-                      ? 'btn-primary w-full'
-                      : 'btn-secondary w-full opacity-60 cursor-not-allowed'
-                  }
-                >
-                  {quoteSubmitting ? 'Saving…' : myPoolEntry ? 'Update Quote' : 'Add to Pool →'}
-                </button>
-              </div>
-            ) : (
-              <p className="text-faint text-xs text-center">Claim your name when joining to submit a quote.</p>
-            )}
-          </div>
+              ) : (
+                <p className="text-faint text-xs text-center">Claim your name when joining to submit a quote.</p>
+              )}
+            </div>
+          )
         )}
 
         <div className="surface-inset border border-theme rounded-2xl p-4 space-y-2">
@@ -1674,6 +1690,11 @@ export default function GamePage() {
         ) : quote ? (
           <div className="glass-card border border-teal-500/30 px-4 py-5 mb-6 text-center">
             <p className="text-faint text-xs uppercase tracking-wider mb-2">Who said this?</p>
+            {currentRound.anime_metadata && (
+              <p className="text-teal-400 text-xs font-semibold mb-1">
+                {(currentRound.anime_metadata as { anime_name: string }).anime_name}
+              </p>
+            )}
             <p className="text-body text-xl font-medium italic leading-snug">&ldquo;{quote}&rdquo;</p>
           </div>
         ) : (
@@ -1684,22 +1705,49 @@ export default function GamePage() {
         )}
 
         {canVote && !submitted ? (
-          <>
-            <NameSearchPicker
-              options={targets.map((p) => ({ id: p.id, name: p.name }))}
-              valueId={mltTargetPlayerId}
-              onChange={(id) => setMltTargetPlayerId(id)}
-              searchPlaceholder="Search names…"
-              emptyMessage="No names match"
-            />
-            <button
-              onClick={handleSubmit}
-              disabled={!mltTargetPlayerId}
-              className={`mt-6 ${mltTargetPlayerId ? 'btn-primary' : 'btn-secondary opacity-60 cursor-not-allowed'}`}
-            >
-              {mltTargetPlayerId ? 'Submit Guess ✓' : 'Pick who said it'}
-            </button>
-          </>
+          currentRound.anime_metadata ? (
+            <>
+              <div className="grid grid-cols-1 gap-2 mt-4">
+                {(currentRound.anime_metadata as { choices: string[] }).choices.map((choice) => (
+                  <button
+                    key={choice}
+                    onClick={() => setAnimeChoice(choice)}
+                    className={`text-left px-4 py-3 rounded-xl border transition-all ${
+                      animeChoice === choice
+                        ? 'border-teal-400 bg-teal-500/15 text-body'
+                        : 'border-white/10 bg-white/5 text-muted hover:border-white/20 hover:bg-white/8'
+                    }`}
+                  >
+                    {choice}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={handleSubmit}
+                disabled={!animeChoice}
+                className={`mt-6 ${animeChoice ? 'btn-primary' : 'btn-secondary opacity-60 cursor-not-allowed'}`}
+              >
+                {animeChoice ? 'Submit Guess ✓' : 'Pick a character'}
+              </button>
+            </>
+          ) : (
+            <>
+              <NameSearchPicker
+                options={targets.map((p) => ({ id: p.id, name: p.name }))}
+                valueId={mltTargetPlayerId}
+                onChange={(id) => setMltTargetPlayerId(id)}
+                searchPlaceholder="Search names…"
+                emptyMessage="No names match"
+              />
+              <button
+                onClick={handleSubmit}
+                disabled={!mltTargetPlayerId}
+                className={`mt-6 ${mltTargetPlayerId ? 'btn-primary' : 'btn-secondary opacity-60 cursor-not-allowed'}`}
+              >
+                {mltTargetPlayerId ? 'Submit Guess ✓' : 'Pick who said it'}
+              </button>
+            </>
+          )
         ) : canVote && submitted ? (
           <div className="glass-card border border-emerald-500/30 px-4 py-4 text-center mt-4">
             <p className="text-green-400 font-semibold">✓ Guess submitted!</p>
@@ -2021,14 +2069,53 @@ export default function GamePage() {
 
     if (isWhoSaidThis(gameType) && game) {
       const myVote = lastRoundVotes.find((v) => v.player_id === myPlayerId)
+      const myPickName = lastFinishedRound.anime_metadata
+        ? myVote?.anime_choice ?? null
+        : myVote?.target_participant_id
+          ? participants.find((p) => p.id === myVote.target_participant_id)?.name ?? null
+          : null
+      const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
+
+      if (isAnimeRound(lastFinishedRound)) {
+        const meta = lastFinishedRound.anime_metadata as { anime_name: string; correct_character: string; choices: string[] }
+        const animeTally = tallyAnimeWstVotes(lastRoundVotes, meta.choices, meta.correct_character)
+        return (
+          <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
+            <PlayerNameBar name={myPlayerName} />
+            <div className="text-center">
+              <p className="text-muted text-xs uppercase tracking-wider">
+                Round {lastFinishedRound.round_number} of {game?.rounds_count}
+              </p>
+              <GameTypeBadge gameType={gameType} className="mt-2" />
+              <h2 className="text-2xl font-black tracking-tight mt-2">Results are in! 🕵️</h2>
+            </div>
+            <AnimeWstRoundResults
+              quote={lastFinishedRound.quote_text ?? '(no quote)'}
+              animeName={meta.anime_name}
+              rows={animeTally.rows}
+              voterCount={animeTally.voterCount}
+              maxCount={animeTally.maxCount}
+              topGuesses={animeTally.topGuesses}
+              correctCharacter={meta.correct_character}
+              correctCount={animeTally.correctCount}
+              myPickName={myPickName}
+            />
+            <p className="text-faint text-sm text-center">
+              {roundResultsWaitMessage({
+                isLastRound,
+                autoReveal: !!game?.auto_reveal,
+                nextRoundSecondsLeft: nextRoundCountdown,
+                finalRevealSecondsLeft: finalRevealCountdown,
+              })}
+            </p>
+          </div>
+        )
+      }
+
       const targets = wstVoteTargets(participants)
       const correctName = wstCorrectNameFromRound(lastFinishedRound, players, participants)
       const correctId = wstCorrectParticipantIdFromRound(lastFinishedRound, players)
       const { rows, voterCount, maxCount, topGuesses, correctCount } = tallyWstVotes(lastRoundVotes, targets, correctId)
-      const myPickName = myVote?.target_participant_id
-        ? (participants.find((p) => p.id === myVote.target_participant_id)?.name ?? null)
-        : null
-      const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
 
       return (
         <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
@@ -2448,6 +2535,27 @@ function FinalResultsView({
             }
 
             if (isWst) {
+              if (isAnimeRound(round)) {
+                const meta = round.anime_metadata as { anime_name: string; correct_character: string; choices: string[] }
+                const animeTally = tallyAnimeWstVotes(roundVotes, meta.choices, meta.correct_character)
+                const myPickName = myVote?.anime_choice ?? null
+                return (
+                  <div key={round.id}>
+                    <h2 className="text-muted text-xs uppercase tracking-wider mb-3">Round {round.round_number}</h2>
+                    <AnimeWstRoundResults
+                      quote={round.quote_text ?? '(no quote)'}
+                      animeName={meta.anime_name}
+                      rows={animeTally.rows}
+                      voterCount={animeTally.voterCount}
+                      maxCount={animeTally.maxCount}
+                      topGuesses={animeTally.topGuesses}
+                      correctCharacter={meta.correct_character}
+                      correctCount={animeTally.correctCount}
+                      myPickName={myPickName}
+                    />
+                  </div>
+                )
+              }
               const targets = wstVoteTargets(participants)
               const correctName = wstCorrectNameFromRound(round, players, participants)
               const correctId = wstCorrectParticipantIdFromRound(round, players)
