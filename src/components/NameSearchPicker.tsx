@@ -32,11 +32,7 @@ export function NameSearchPicker({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return options
-    return options.filter(
-      (o) =>
-        o.name.toLowerCase().includes(q) ||
-        (o.subtitle?.toLowerCase().includes(q) ?? false)
-    )
+    return options.filter((o) => o.name.toLowerCase().includes(q) || (o.subtitle?.toLowerCase().includes(q) ?? false))
   }, [options, query])
 
   const selected = options.find((o) => o.id === valueId)
@@ -68,7 +64,9 @@ export function NameSearchPicker({
       </div>
 
       <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-faint px-0.5">
-        <span>{filtered.length === options.length ? `${options.length} names` : `${filtered.length} of ${options.length}`}</span>
+        <span>
+          {filtered.length === options.length ? `${options.length} names` : `${filtered.length} of ${options.length}`}
+        </span>
         {selected && (
           <span className="text-[var(--primary)] normal-case tracking-normal text-xs font-medium">
             Selected: {selected.name}

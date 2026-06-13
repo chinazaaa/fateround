@@ -8,9 +8,7 @@ export function useDeadlineCountdown(
   delaySeconds: number,
   active: boolean
 ): number {
-  const [secondsLeft, setSecondsLeft] = useState(() =>
-    active ? secondsUntilDeadline(anchorTime, delaySeconds) : 0
-  )
+  const [secondsLeft, setSecondsLeft] = useState(() => (active ? secondsUntilDeadline(anchorTime, delaySeconds) : 0))
 
   useEffect(() => {
     if (!active) {

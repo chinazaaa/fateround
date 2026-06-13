@@ -14,9 +14,7 @@ const sanitizedString = (min: number, max: number) =>
   z
     .string()
     .transform((s) => stripHtml(s.trim()))
-    .pipe(
-      z.string().min(min, `Must be at least ${min} character(s)`).max(max, `Must be at most ${max} characters`)
-    )
+    .pipe(z.string().min(min, `Must be at least ${min} character(s)`).max(max, `Must be at most ${max} characters`))
 
 /** Zod transform: trim + strip HTML + uppercase (for game codes). */
 const gameCodeString = () =>
@@ -33,8 +31,7 @@ const gameCodeString = () =>
 
 const hostTokenString = () => z.string().min(1, 'hostToken is required')
 
-const uuidString = (label: string = 'ID') =>
-  z.string().uuid(`${label} must be a valid UUID`)
+const uuidString = (label: string = 'ID') => z.string().uuid(`${label} must be a valid UUID`)
 
 // ---------------------------------------------------------------------------
 // Enums

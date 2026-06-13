@@ -5,10 +5,7 @@ import { normalizeGender, type ParticipantInput } from '@/lib/participants'
 import { parseGameType, isMostLikelyTo } from '@/lib/game-types'
 import { assertHostGame, deleteJoinerPair } from '@/lib/game-admin'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 function parseIncomingParticipants(
   rawName: unknown,
@@ -47,10 +44,7 @@ export async function POST(req: NextRequest) {
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   if ((auth.game!.participant_mode ?? 'import') !== 'import') {
-    return NextResponse.json(
-      { error: 'Names are added when players join in this game mode' },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: 'Names are added when players join in this game mode' }, { status: 400 })
   }
 
   const incoming = parseIncomingParticipants(name, gender, rawList)
@@ -58,10 +52,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: incoming.error }, { status: 400 })
   }
 
-  const { data: existing } = await supabase
-    .from('participants')
-    .select('name')
-    .eq('game_id', auth.id)
+  const { data: existing } = await supabase.from('participants').select('name').eq('game_id', auth.id)
 
   const existingNames = new Set((existing ?? []).map((p) => p.name.toLowerCase()))
   for (const p of incoming) {
@@ -150,7 +141,10 @@ export async function PATCH(req: NextRequest) {
 
   if (rawInMltPoll !== undefined) {
     if (!isMostLikelyTo(auth.game!.game_type) || auth.game!.participant_mode !== 'import') {
-      return NextResponse.json({ error: 'Poll placement only applies to imported Most Likely To lists' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Poll placement only applies to imported Most Likely To lists' },
+        { status: 400 }
+      )
     }
     updates.in_mlt_poll = Boolean(rawInMltPoll)
   }

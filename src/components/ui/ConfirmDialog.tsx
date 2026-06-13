@@ -24,8 +24,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const [pending, setPending] = useState<PendingConfirm | null>(null)
 
   const confirm = useCallback((options: ConfirmOptions | string) => {
-    const opts: ConfirmOptions =
-      typeof options === 'string' ? { title: options } : options
+    const opts: ConfirmOptions = typeof options === 'string' ? { title: options } : options
 
     return new Promise<boolean>((resolve) => {
       setPending({ ...opts, resolve })
@@ -56,10 +55,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
     <ConfirmContext.Provider value={api}>
       {children}
       {pending && (
-        <div
-          className="fixed inset-0 z-[300] flex items-center justify-center p-4"
-          role="presentation"
-        >
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4" role="presentation">
           <button
             type="button"
             className="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
@@ -84,11 +80,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
               )}
             </div>
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => close(false)}
-                className="btn-secondary flex-1 py-2.5"
-              >
+              <button type="button" onClick={() => close(false)} className="btn-secondary flex-1 py-2.5">
                 {pending.cancelLabel ?? 'Cancel'}
               </button>
               <button

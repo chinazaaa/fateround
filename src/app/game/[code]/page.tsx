@@ -5,9 +5,34 @@ import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, clearPlayerSession, filterParticipantsInRounds } from '@/lib/utils'
 import { Avatar } from '@/components/Avatar'
 import { playRoundStartSound, unlockAudio } from '@/lib/sounds'
-import { roundGenderLabel, playerGenderLabel, playerIdentityLabel, genderLabel, getRoundParticipantGender, canPlayerVoteInRound, roundVoterLabel, spectatorMessage, activeVoteBanner, parsePlayerGenderFromDb, parseParticipantGenderFromDb, playerGenderFromJoin, joinGenderHint, playerVoteGenderForRound, playerJoinNeedsGender } from '@/lib/participants'
+import {
+  roundGenderLabel,
+  playerGenderLabel,
+  playerIdentityLabel,
+  genderLabel,
+  getRoundParticipantGender,
+  canPlayerVoteInRound,
+  roundVoterLabel,
+  spectatorMessage,
+  activeVoteBanner,
+  parsePlayerGenderFromDb,
+  parseParticipantGenderFromDb,
+  playerGenderFromJoin,
+  joinGenderHint,
+  playerVoteGenderForRound,
+  playerJoinNeedsGender,
+} from '@/lib/participants'
 import type { ParticipantGender, PlayerGender } from '@/types'
-import { tallyRoundVotes, tallyWyrVotes, tallyMltVotes, getCategoryMeta, getVoteCategories, assignmentEmojiFor, myActionBorderClass, flagForParticipant } from '@/lib/vote-stats'
+import {
+  tallyRoundVotes,
+  tallyWyrVotes,
+  tallyMltVotes,
+  getCategoryMeta,
+  getVoteCategories,
+  assignmentEmojiFor,
+  myActionBorderClass,
+  flagForParticipant,
+} from '@/lib/vote-stats'
 import {
   gameTypeConfig,
   slotMeta,
@@ -32,12 +57,28 @@ import {
   pairDisabledSlots,
   completeRandomPairAssignment,
 } from '@/lib/game-types'
-import { ParticipantRoundResults, VoteCountStat, WyrRoundResults, MltRoundResults, WstRoundResults } from '@/components/VoteResults'
+import {
+  ParticipantRoundResults,
+  VoteCountStat,
+  WyrRoundResults,
+  MltRoundResults,
+  WstRoundResults,
+} from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import { NameSearchPicker } from '@/components/NameSearchPicker'
 import { MltPlayerPicker } from '@/components/MltPlayerPicker'
 import { isMltImportGame, mltTargetIdFromVote, mltVoteTargets } from '@/lib/mlt'
-import { wstVoteTargets, wstCorrectNameFromRound, wstCorrectParticipantIdFromRound, wstSubmitterName, tallyWstVotes, tallyWstPlayerScores, mergeActiveRound, dedupeWstPool, mergeWstPoolEntry } from '@/lib/who-said-this'
+import {
+  wstVoteTargets,
+  wstCorrectNameFromRound,
+  wstCorrectParticipantIdFromRound,
+  wstSubmitterName,
+  tallyWstVotes,
+  tallyWstPlayerScores,
+  mergeActiveRound,
+  dedupeWstPool,
+  mergeWstPoolEntry,
+} from '@/lib/who-said-this'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { useToast } from '@/components/ui/Toast'
@@ -50,7 +91,19 @@ import {
   roundResultsWaitMessage,
   ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
 } from '@/lib/round-timing'
-import type { Game, Participant, Player, Round, Vote, VoteAssignment, Confession, GameType, PairAssignmentMap, WyrChoice, WstQuotePoolEntry } from '@/types'
+import type {
+  Game,
+  Participant,
+  Player,
+  Round,
+  Vote,
+  VoteAssignment,
+  Confession,
+  GameType,
+  PairAssignmentMap,
+  WyrChoice,
+  WstQuotePoolEntry,
+} from '@/types'
 
 type View = 'loading' | 'not_found' | 'join' | 'waiting' | 'round' | 'round_results' | 'results'
 
@@ -107,13 +160,20 @@ export default function GamePage() {
   const [pqWyrB, setPqWyrB] = useState('')
   const [pqMltText, setPqMltText] = useState('')
   const [pqSubmitting, setPqSubmitting] = useState(false)
-  const [pqList, setPqList] = useState<{ id: string; player_id: string; question_type: string; option_a?: string; option_b?: string; question_text?: string }[]>([])
+  const [pqList, setPqList] = useState<
+    {
+      id: string
+      player_id: string
+      question_type: string
+      option_a?: string
+      option_b?: string
+      question_text?: string
+    }[]
+  >([])
   const [pqOpen, setPqOpen] = useState(false)
 
   const roundResultsActive = view === 'round_results' && !!lastFinishedRound
-  const roundResultsIsLast =
-    roundResultsActive &&
-    (lastFinishedRound?.round_number ?? 0) >= (game?.rounds_count ?? 0)
+  const roundResultsIsLast = roundResultsActive && (lastFinishedRound?.round_number ?? 0) >= (game?.rounds_count ?? 0)
   const nextRoundCountdown = useDeadlineCountdown(
     lastFinishedRound?.ended_at,
     ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
@@ -131,9 +191,8 @@ export default function GamePage() {
   const isWstGame = isWhoSaidThis(game?.game_type)
   const isWyrGame = isWouldYouRather(game?.game_type)
   const isMltImport = game ? isMltImportGame(game) : false
-  const joinPlayerGender: PlayerGender = isNameOnlyJoin || !joinNeedsGender
-    ? 'both'
-    : playerGenderFromJoin(joinIdentityGender, voteBothGenders)
+  const joinPlayerGender: PlayerGender =
+    isNameOnlyJoin || !joinNeedsGender ? 'both' : playerGenderFromJoin(joinIdentityGender, voteBothGenders)
 
   const setJoinIdentity = (gender: ParticipantGender) => {
     joinGenderTouchedRef.current = true
@@ -144,19 +203,11 @@ export default function GamePage() {
   const namePickerOptions = useMemo(() => {
     if (isJoinersMode) return []
     const claimedParticipantIds = new Set(
-      players
-        .filter((p) => p.id !== myPlayerId && p.participant_id)
-        .map((p) => p.participant_id as string)
+      players.filter((p) => p.id !== myPlayerId && p.participant_id).map((p) => p.participant_id as string)
     )
-    const takenNames = new Set(
-      players.filter((p) => p.id !== myPlayerId).map((p) => p.name.toLowerCase())
-    )
+    const takenNames = new Set(players.filter((p) => p.id !== myPlayerId).map((p) => p.name.toLowerCase()))
     return participants
-      .filter(
-        (p) =>
-          !claimedParticipantIds.has(p.id) &&
-          !takenNames.has(p.name.toLowerCase())
-      )
+      .filter((p) => !claimedParticipantIds.has(p.id) && !takenNames.has(p.name.toLowerCase()))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
       .map((p) => ({
         id: p.id,
@@ -179,9 +230,7 @@ export default function GamePage() {
 
   const useFreeNameJoin = isJoinersMode || isMltImport
 
-  const canSubmitJoin = useFreeNameJoin
-    ? nameInput.trim().length > 0
-    : selectedParticipantId !== null
+  const canSubmitJoin = useFreeNameJoin ? nameInput.trim().length > 0 : selectedParticipantId !== null
 
   // If someone else claims this name while you're still on the join screen, clear your pick
   useEffect(() => {
@@ -225,106 +274,120 @@ export default function GamePage() {
   useEffect(() => {
     async function load() {
       try {
-      const { data: gameData } = await supabase
-        .from('games').select('*').eq('id', gameCode).maybeSingle()
-      if (!gameData) { setView('not_found'); return }
-      setGame(gameData)
+        const { data: gameData } = await supabase.from('games').select('*').eq('id', gameCode).maybeSingle()
+        if (!gameData) {
+          setView('not_found')
+          return
+        }
+        setGame(gameData)
 
-      const [{ data: parts }, { data: plrs }] = await Promise.all([
-        supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
-        supabase.from('players').select('*').eq('game_id', gameCode).order('joined_at'),
-      ])
-      setParticipants(parts || [])
-      setPlayers(plrs || [])
+        const [{ data: parts }, { data: plrs }] = await Promise.all([
+          supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
+          supabase.from('players').select('*').eq('game_id', gameCode).order('joined_at'),
+        ])
+        setParticipants(parts || [])
+        setPlayers(plrs || [])
 
-      const session = getPlayerSession(gameCode)
-      if (session) {
-        setMyPlayerId(session.playerId)
-        setMyPlayerName(session.playerName)
-        const me = (plrs || []).find((p) => p.id === session.playerId)
-        const voteGender = me ? playerVoteGenderForRound(me, parts || []) : session.playerGender
-        setMyPlayerGender(voteGender)
-        if (me && voteGender) setPlayerSession(gameCode, me.id, me.name, voteGender)
-      }
+        const session = getPlayerSession(gameCode)
+        if (session) {
+          setMyPlayerId(session.playerId)
+          setMyPlayerName(session.playerName)
+          const me = (plrs || []).find((p) => p.id === session.playerId)
+          const voteGender = me ? playerVoteGenderForRound(me, parts || []) : session.playerGender
+          setMyPlayerGender(voteGender)
+          if (me && voteGender) setPlayerSession(gameCode, me.id, me.name, voteGender)
+        }
 
-      if (gameData.status === 'active') {
-        const { data: activeRound } = await supabase
-          .from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle()
+        if (gameData.status === 'active') {
+          const { data: activeRound } = await supabase
+            .from('rounds')
+            .select('*')
+            .eq('game_id', gameCode)
+            .eq('status', 'active')
+            .maybeSingle()
 
-        if (activeRound) {
-          roundFormIdRef.current = activeRound.id
-          setCurrentRound(activeRound)
-          announcedRoundIdRef.current = activeRound.id
-          if (session) {
-            const { data: existingVote } = await supabase
-              .from('votes').select('*')
-              .eq('player_id', session.playerId).eq('round_id', activeRound.id).maybeSingle()
-            if (existingVote) {
-              const gameType = parseGameType(gameData.game_type)
-              if (isWouldYouRather(gameType)) {
-                setWyrChoice(existingVote.wyr_choice)
-              } else if (isMostLikelyTo(gameType)) {
-                const targetId = isMltImportGame(gameData)
-                  ? existingVote.target_participant_id
-                  : existingVote.target_player_id
-                setMltTargetPlayerId(targetId)
-              } else if (isWhoSaidThis(gameType)) {
-                setMltTargetPlayerId(existingVote.target_participant_id)
-              } else if (isPairGame(gameType)) {
-                setPairAssignment(pairAssignmentFromVote(existingVote, activeRound.participant_ids))
-              } else {
-                setAssignment({
-                  kiss: existingVote.kiss_participant_id,
-                  marry: existingVote.marry_participant_id,
-                  kill: existingVote.kill_participant_id,
+          if (activeRound) {
+            roundFormIdRef.current = activeRound.id
+            setCurrentRound(activeRound)
+            announcedRoundIdRef.current = activeRound.id
+            if (session) {
+              const { data: existingVote } = await supabase
+                .from('votes')
+                .select('*')
+                .eq('player_id', session.playerId)
+                .eq('round_id', activeRound.id)
+                .maybeSingle()
+              if (existingVote) {
+                const gameType = parseGameType(gameData.game_type)
+                if (isWouldYouRather(gameType)) {
+                  setWyrChoice(existingVote.wyr_choice)
+                } else if (isMostLikelyTo(gameType)) {
+                  const targetId = isMltImportGame(gameData)
+                    ? existingVote.target_participant_id
+                    : existingVote.target_player_id
+                  setMltTargetPlayerId(targetId)
+                } else if (isWhoSaidThis(gameType)) {
+                  setMltTargetPlayerId(existingVote.target_participant_id)
+                } else if (isPairGame(gameType)) {
+                  setPairAssignment(pairAssignmentFromVote(existingVote, activeRound.participant_ids))
+                } else {
+                  setAssignment({
+                    kiss: existingVote.kiss_participant_id,
+                    marry: existingVote.marry_participant_id,
+                    kill: existingVote.kill_participant_id,
+                  })
+                }
+                submittedRef.current = true
+                setSubmitted(true)
+              }
+            }
+            setView(session ? 'round' : 'join')
+          } else {
+            const { data: finishedRound } = await supabase
+              .from('rounds')
+              .select('*')
+              .eq('game_id', gameCode)
+              .eq('status', 'finished')
+              .order('round_number', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+
+            if (finishedRound && session) {
+              const [{ data: rv }, { data: rc }] = await Promise.all([
+                supabase.from('votes').select('*').eq('round_id', finishedRound.id),
+                supabase.from('confessions').select('*').eq('round_id', finishedRound.id).order('created_at'),
+              ])
+              setLastFinishedRound(finishedRound)
+              setLastRoundVotes(rv || [])
+              if (rc?.length) {
+                setAllConfessions((prev) => {
+                  const ids = new Set(prev.map((c) => c.id))
+                  return [...prev, ...rc.filter((c) => !ids.has(c.id))]
                 })
               }
-              submittedRef.current = true
-              setSubmitted(true)
+              setView('round_results')
+            } else {
+              setView(session ? 'waiting' : 'join')
             }
           }
-          setView(session ? 'round' : 'join')
-        } else {
-          const { data: finishedRound } = await supabase
-            .from('rounds').select('*').eq('game_id', gameCode).eq('status', 'finished')
-            .order('round_number', { ascending: false }).limit(1).maybeSingle()
-
-          if (finishedRound && session) {
-            const [{ data: rv }, { data: rc }] = await Promise.all([
-              supabase.from('votes').select('*').eq('round_id', finishedRound.id),
-              supabase.from('confessions').select('*').eq('round_id', finishedRound.id).order('created_at'),
-            ])
-            setLastFinishedRound(finishedRound)
-            setLastRoundVotes(rv || [])
-            if (rc?.length) {
-              setAllConfessions((prev) => {
-                const ids = new Set(prev.map((c) => c.id))
-                return [...prev, ...rc.filter((c) => !ids.has(c.id))]
-              })
-            }
-            setView('round_results')
-          } else {
-            setView(session ? 'waiting' : 'join')
-          }
+          return
         }
-        return
-      }
 
-      if (gameData.status === 'finished') {
-        await loadAllResults()
-        setView('results')
-        return
-      }
+        if (gameData.status === 'finished') {
+          await loadAllResults()
+          setView('results')
+          return
+        }
 
-      setView(session ? 'waiting' : 'join')
-      if (gameData.status === 'waiting' && isWhoSaidThis(parseGameType(gameData.game_type))) {
-        const { data: pool } = await supabase
-          .from('wst_quote_pool')
-          .select('*')
-          .eq('game_id', gameCode)
-          .order('created_at')
-        setWstPool(dedupeWstPool(pool ?? []))
-      }
+        setView(session ? 'waiting' : 'join')
+        if (gameData.status === 'waiting' && isWhoSaidThis(parseGameType(gameData.game_type))) {
+          const { data: pool } = await supabase
+            .from('wst_quote_pool')
+            .select('*')
+            .eq('game_id', gameCode)
+            .order('created_at')
+          setWstPool(dedupeWstPool(pool ?? []))
+        }
       } finally {
         suppressRoundSoundRef.current = false
       }
@@ -408,7 +471,9 @@ export default function GamePage() {
       .channel(`game-player-${gameCode}`)
 
       // Game status changes
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         async (payload) => {
           const newGame = payload.new as Game
           setGame(newGame)
@@ -436,12 +501,17 @@ export default function GamePage() {
       )
 
       // First round is inserted (not updated) when the host starts the game
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
         async (payload) => {
           const round = payload.new as Round
           if (round.status === 'active' && myPlayerIdRef.current) {
             const { data: parts } = await supabase
-              .from('participants').select('*').eq('game_id', gameCode).order('display_order')
+              .from('participants')
+              .select('*')
+              .eq('game_id', gameCode)
+              .order('display_order')
             if (parts) setParticipants(parts)
             applyActiveRound(round)
           }
@@ -449,7 +519,9 @@ export default function GamePage() {
       )
 
       // Round status changes — this drives the whole flow
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
         async (payload) => {
           const round = payload.new as Round
 
@@ -478,9 +550,7 @@ export default function GamePage() {
             })
             setAllRounds((prev) => {
               const ids = new Set(prev.map((r) => r.id))
-              return ids.has(round.id)
-                ? prev.map((r) => r.id === round.id ? round : r)
-                : [...prev, round]
+              return ids.has(round.id) ? prev.map((r) => (r.id === round.id ? round : r)) : [...prev, round]
             })
             setView('round_results')
           }
@@ -488,16 +558,20 @@ export default function GamePage() {
       )
 
       // New player joined
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const p = payload.new as Player
-          setPlayers((prev) => prev.some((x) => x.id === p.id) ? prev : [...prev, p])
+          setPlayers((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p]))
         }
       )
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const p = payload.new as Player
-          setPlayers((prev) => prev.map((x) => x.id === p.id ? p : x))
+          setPlayers((prev) => prev.map((x) => (x.id === p.id ? p : x)))
           if (p.id === myPlayerIdRef.current) {
             setMyPlayerName(p.name)
             const voteGender = playerVoteGenderForRound(p, participantsRef.current)
@@ -508,7 +582,9 @@ export default function GamePage() {
           }
         }
       )
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const p = payload.old as Player
           setPlayers((prev) => prev.filter((x) => x.id !== p.id))
@@ -522,42 +598,52 @@ export default function GamePage() {
           }
         }
       )
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const p = payload.new as Participant
           setParticipants((prev) =>
-            prev.some((x) => x.id === p.id)
-              ? prev
-              : [...prev, p].sort((a, b) => a.display_order - b.display_order)
+            prev.some((x) => x.id === p.id) ? prev : [...prev, p].sort((a, b) => a.display_order - b.display_order)
           )
         }
       )
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const p = payload.new as Participant
-          setParticipants((prev) => prev.map((x) => x.id === p.id ? p : x))
+          setParticipants((prev) => prev.map((x) => (x.id === p.id ? p : x)))
         }
       )
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const p = payload.old as Participant
           setParticipants((prev) => prev.filter((x) => x.id !== p.id))
         }
       )
 
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const entry = payload.new as WstQuotePoolEntry
           setWstPool((prev) => mergeWstPoolEntry(prev, entry))
         }
       )
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const entry = payload.new as WstQuotePoolEntry
           setWstPool((prev) => mergeWstPoolEntry(prev, entry))
         }
       )
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const entry = payload.old as WstQuotePoolEntry
           setWstPool((prev) => prev.filter((x) => x.id !== entry.id && x.player_id !== entry.player_id))
@@ -565,10 +651,12 @@ export default function GamePage() {
       )
 
       // New confession (live hot takes)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confessions', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'confessions', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const c = payload.new as Confession
-          setAllConfessions((prev) => prev.some((x) => x.id === c.id) ? prev : [...prev, c])
+          setAllConfessions((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c]))
           // If it belongs to the currently-displayed finished round, add it live
           setLastRoundVotes((prev) => prev) // trigger no-op to let view re-render
         }
@@ -576,7 +664,9 @@ export default function GamePage() {
 
       .subscribe()
 
-    return () => { supabase.removeChannel(ch) }
+    return () => {
+      supabase.removeChannel(ch)
+    }
   }, [gameCode])
 
   // Poll during final results — return to lobby when host resets
@@ -594,7 +684,7 @@ export default function GamePage() {
     pollForLobby()
     const id = setInterval(pollForLobby, 2000)
     return () => clearInterval(id)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, gameCode])
 
   // Poll lobby / join — keep claimed names in sync if realtime is slow
@@ -616,7 +706,11 @@ export default function GamePage() {
 
       if (view === 'waiting' && gameData?.status === 'active' && myPlayerIdRef.current) {
         const { data: activeRound } = await supabase
-          .from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle()
+          .from('rounds')
+          .select('*')
+          .eq('game_id', gameCode)
+          .eq('status', 'active')
+          .maybeSingle()
         if (activeRound) {
           applyActiveRound(activeRound)
         }
@@ -632,11 +726,7 @@ export default function GamePage() {
   useEffect(() => {
     if (view !== 'waiting' || (!isWyrGame && !isMostLikelyTo(game?.game_type))) return
     async function fetchPQ() {
-      const { data } = await supabase
-        .from('player_questions')
-        .select('*')
-        .eq('game_id', gameCode)
-        .order('created_at')
+      const { data } = await supabase.from('player_questions').select('*').eq('game_id', gameCode).order('created_at')
       if (data) setPqList(data)
     }
     fetchPQ()
@@ -652,7 +742,14 @@ export default function GamePage() {
       const [{ data: gameData }, { data: activeRound }, { data: finishedRound }] = await Promise.all([
         supabase.from('games').select('*').eq('id', gameCode).maybeSingle(),
         supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
-        supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'finished').order('round_number', { ascending: false }).limit(1).maybeSingle(),
+        supabase
+          .from('rounds')
+          .select('*')
+          .eq('game_id', gameCode)
+          .eq('status', 'finished')
+          .order('round_number', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ])
 
       if (gameData) setGame(gameData)
@@ -695,7 +792,7 @@ export default function GamePage() {
     refreshRoundState()
     const id = setInterval(refreshRoundState, 2000)
     return () => clearInterval(id)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, gameCode, currentRound?.id])
 
   useEffect(() => {
@@ -742,10 +839,7 @@ export default function GamePage() {
       const remaining = Math.max(0, Math.ceil((endMs - Date.now()) / 1000))
       setTimeLeft(remaining)
 
-      const roundGender = getRoundParticipantGender(
-        currentRound.participant_ids,
-        participantsRef.current
-      )
+      const roundGender = getRoundParticipantGender(currentRound.participant_ids, participantsRef.current)
       const gameType = parseGameType(gameRef.current?.game_type)
       const playerGender = myPlayerGenderRef.current ?? getPlayerSession(gameCode)?.playerGender ?? null
       const r = currentRoundRef.current
@@ -754,10 +848,8 @@ export default function GamePage() {
       const canVote = isWstRound
         ? !!myPlayerIdRef.current && !isSubmitter && !!r?.quote_text
         : isNameOnlyPlayerJoin(gameType)
-        ? !!myPlayerIdRef.current
-        : !!roundGender &&
-          !!playerGender &&
-          canPlayerVoteInRound(playerGender, roundGender)
+          ? !!myPlayerIdRef.current
+          : !!roundGender && !!playerGender && canPlayerVoteInRound(playerGender, roundGender)
 
       if (remaining === 0 && !submittedRef.current && canVote) {
         submittedRef.current = true
@@ -768,8 +860,10 @@ export default function GamePage() {
 
     tick()
     timerRef.current = setInterval(tick, 500)
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     view,
     currentRound?.id,
@@ -824,9 +918,7 @@ export default function GamePage() {
         }
       } else {
         const unassigned = voteSlots(gameType).filter((slot) => !a[slot])
-        const available = shuffleCopy(
-          roundParts.filter((p) => !Object.values(a).includes(p.id))
-        )
+        const available = shuffleCopy(roundParts.filter((p) => !Object.values(a).includes(p.id)))
         unassigned.forEach((slot, i) => {
           if (available[i]) a[slot] = available[i].id
         })
@@ -840,9 +932,7 @@ export default function GamePage() {
       voteBody = { wyrChoice: wyr }
     } else if (isMostLikelyTo(gameType)) {
       if (!mltTarget) return
-      voteBody = isMltImportGame(g)
-        ? { targetParticipantId: mltTarget }
-        : { targetPlayerId: mltTarget }
+      voteBody = isMltImportGame(g) ? { targetParticipantId: mltTarget } : { targetPlayerId: mltTarget }
     } else if (isWhoSaidThis(gameType)) {
       if (r.submitter_player_id === pid) return
       if (!r.quote_text) return
@@ -909,11 +999,7 @@ export default function GamePage() {
   }
 
   async function fetchWstPool() {
-    const { data } = await supabase
-      .from('wst_quote_pool')
-      .select('*')
-      .eq('game_id', gameCode)
-      .order('created_at')
+    const { data } = await supabase.from('wst_quote_pool').select('*').eq('game_id', gameCode).order('created_at')
     const pool = dedupeWstPool(data ?? [])
     setWstPool(pool)
     return pool
@@ -1023,24 +1109,24 @@ export default function GamePage() {
     const voteBody = isWouldYouRather(submitGameType)
       ? { wyrChoice }
       : isMostLikelyTo(submitGameType)
-      ? isMltImportGame(game!)
-        ? { targetParticipantId: mltTargetPlayerId }
-        : { targetPlayerId: mltTargetPlayerId }
-      : isWhoSaidThis(submitGameType)
-      ? { targetParticipantId: mltTargetPlayerId }
-      : isPairGame(submitGameType)
-      ? {
-          pairAssignments: Object.fromEntries(
-            roundIds
-              .map((id) => [id, pairAssignment[id]] as const)
-              .filter((entry): entry is [string, 'kiss' | 'kill'] => entry[1] === 'kiss' || entry[1] === 'kill')
-          ),
-        }
-      : {
-          kiss: assignment.kiss,
-          marry: isThreeChoiceGame(submitGameType) ? assignment.marry : null,
-          kill: assignment.kill,
-        }
+        ? isMltImportGame(game!)
+          ? { targetParticipantId: mltTargetPlayerId }
+          : { targetPlayerId: mltTargetPlayerId }
+        : isWhoSaidThis(submitGameType)
+          ? { targetParticipantId: mltTargetPlayerId }
+          : isPairGame(submitGameType)
+            ? {
+                pairAssignments: Object.fromEntries(
+                  roundIds
+                    .map((id) => [id, pairAssignment[id]] as const)
+                    .filter((entry): entry is [string, 'kiss' | 'kill'] => entry[1] === 'kiss' || entry[1] === 'kill')
+                ),
+              }
+            : {
+                kiss: assignment.kiss,
+                marry: isThreeChoiceGame(submitGameType) ? assignment.marry : null,
+                kill: assignment.kill,
+              }
     try {
       const res = await fetch('/api/votes', {
         method: 'POST',
@@ -1073,28 +1159,24 @@ export default function GamePage() {
       const body = isNameOnlyJoin
         ? { gameCode, playerName: nameInput.trim() }
         : !joinNeedsGender
-        ? {
-            gameCode,
-            playerName: nameInput.trim(),
-            participantId: selectedParticipantId,
-          }
-        : {
-        gameCode,
-        playerName: nameInput.trim(),
-        gender: joinPlayerGender,
-        identityGender: joinIdentityGender,
-        ...(!isJoinersMode && selectedParticipantId ? { participantId: selectedParticipantId } : {}),
-        ...(isJoinersMode && voteBothGenders ? { pollGender: joinPollGender } : {}),
-      }
+          ? {
+              gameCode,
+              playerName: nameInput.trim(),
+              participantId: selectedParticipantId,
+            }
+          : {
+              gameCode,
+              playerName: nameInput.trim(),
+              gender: joinPlayerGender,
+              identityGender: joinIdentityGender,
+              ...(!isJoinersMode && selectedParticipantId ? { participantId: selectedParticipantId } : {}),
+              ...(isJoinersMode && voteBothGenders ? { pollGender: joinPollGender } : {}),
+            }
 
       const res = await fetch('/api/players', {
         method: editingJoin && myPlayerId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          editingJoin && myPlayerId
-            ? { ...body, playerId: myPlayerId }
-            : body
-        ),
+        body: JSON.stringify(editingJoin && myPlayerId ? { ...body, playerId: myPlayerId } : body),
       })
       const data = await res.json()
       if (data.playerId) {
@@ -1105,9 +1187,7 @@ export default function GamePage() {
         setPlayers(plrs || [])
         setParticipants(parts || [])
         const me = plrs?.find((p) => p.id === data.playerId)
-        const voteGender = me
-          ? playerVoteGenderForRound(me, parts || [])
-          : parsePlayerGenderFromDb(data.playerGender)
+        const voteGender = me ? playerVoteGenderForRound(me, parts || []) : parsePlayerGenderFromDb(data.playerGender)
         if (voteGender) {
           setPlayerSession(gameCode, data.playerId, data.playerName, voteGender)
           setMyPlayerGender(voteGender)
@@ -1127,17 +1207,16 @@ export default function GamePage() {
 
   const openEditJoin = () => {
     const me = players.find((p) => p.id === myPlayerId)
-    const votePref = me ? parsePlayerGenderFromDb(me.gender) : parsePlayerGenderFromDb(getPlayerSession(gameCode)?.playerGender ?? '')
+    const votePref = me
+      ? parsePlayerGenderFromDb(me.gender)
+      : parsePlayerGenderFromDb(getPlayerSession(gameCode)?.playerGender ?? '')
     const voteBoth = votePref === 'both'
     setNameInput(myPlayerName ?? '')
     const part =
-      participants.find((p) => p.id === me?.participant_id) ??
-      participants.find((p) => p.name === myPlayerName)
+      participants.find((p) => p.id === me?.participant_id) ?? participants.find((p) => p.name === myPlayerName)
     setSelectedParticipantId(part?.id ?? null)
     setJoinIdentityGender(
-      me?.identity_gender
-        ? (parseParticipantGenderFromDb(me.identity_gender) ?? 'female')
-        : (part?.gender ?? 'female')
+      me?.identity_gender ? (parseParticipantGenderFromDb(me.identity_gender) ?? 'female') : (part?.gender ?? 'female')
     )
     setVoteBothGenders(voteBoth)
     setJoinPollGender(part?.gender ?? 'female')
@@ -1153,12 +1232,15 @@ export default function GamePage() {
 
   const leaveGame = async () => {
     if (!myPlayerId || joining) return
-    if (!(await confirm({
-      title: 'Leave this game?',
-      message: 'You can rejoin with a new name or gender.',
-      confirmLabel: 'Leave',
-      destructive: true,
-    }))) return
+    if (
+      !(await confirm({
+        title: 'Leave this game?',
+        message: 'You can rejoin with a new name or gender.',
+        confirmLabel: 'Leave',
+        destructive: true,
+      }))
+    )
+      return
     setJoining(true)
     try {
       const res = await fetch('/api/players', {
@@ -1210,17 +1292,21 @@ export default function GamePage() {
           <div className="text-4xl">{gameTypeConfig(game?.game_type).headerEmoji}</div>
           <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
           <GameTypeBadge gameType={game?.game_type} />
-          <p className="text-muted text-sm">{game?.rounds_count} rounds · {game?.timer_seconds}s each</p>
+          <p className="text-muted text-sm">
+            {game?.rounds_count} rounds · {game?.timer_seconds}s each
+          </p>
         </div>
         <div className="space-y-4">
           <p className="text-muted font-medium text-center">
             {editingJoin
-              ? isNameOnlyJoin || !joinNeedsGender ? 'Update your name' : 'Update your name or vote preference'
+              ? isNameOnlyJoin || !joinNeedsGender
+                ? 'Update your name'
+                : 'Update your name or vote preference'
               : isNameOnlyJoin
                 ? 'Enter your name to join'
-              : isJoinersMode
-                ? 'Join the game — your name goes in the poll'
-                : 'Select your name from the list'}
+                : isJoinersMode
+                  ? 'Join the game — your name goes in the poll'
+                  : 'Select your name from the list'}
           </p>
           {useFreeNameJoin ? (
             <input
@@ -1237,69 +1323,71 @@ export default function GamePage() {
               valueId={selectedParticipantId}
               onChange={handleSelectParticipant}
               searchPlaceholder="Search your name…"
-              emptyMessage={namePickerOptions.length === 0 ? 'All names have been claimed' : 'No names match your search'}
+              emptyMessage={
+                namePickerOptions.length === 0 ? 'All names have been claimed' : 'No names match your search'
+              }
             />
           )}
           {!joinNeedsGender ? null : (
-          <>
-          <div>
-            <p className="text-faint text-xs mb-2 text-center">I am</p>
-            <SegmentedControl
-              value={joinIdentityGender}
-              onChange={setJoinIdentity}
-              options={[
-                { value: 'female', label: 'Female' },
-                { value: 'male', label: 'Male' },
-              ]}
-            />
-          </div>
-          <label className="flex items-start gap-3 surface-inset border border-theme rounded-xl px-4 py-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={voteBothGenders}
-              onChange={(e) => setVoteBothGenders(e.target.checked)}
-              className="mt-0.5 accent-[var(--primary)]"
-            />
-            <span className="text-sm text-body leading-snug">
-              Vote on both genders
-              <span className="block text-faint text-xs mt-0.5">
-                You'll vote on men's and women's rounds
-              </span>
-            </span>
-          </label>
-          {isJoinersMode && voteBothGenders && (
-            <div>
-              <p className="text-faint text-xs mb-2 text-center">Your name appears in the</p>
-              <SegmentedControl
-                value={joinPollGender}
-                onChange={setJoinPollGender}
-                options={[
-                  { value: 'female', label: "Women's poll" },
-                  { value: 'male', label: "Men's poll" },
-                ]}
-              />
-            </div>
-          )}
-          <p className="text-faint text-xs text-center">
-            {isNameOnlyJoin
-              ? isMltImport
-                ? 'Enter any name to join — you\'ll vote on people from the imported list'
-                : isMostLikelyTo(game?.game_type)
-                ? 'Vote for who fits each prompt — your choice stays anonymous'
-                : 'Pick between two options each round — your choice stays anonymous'
-              : isWstGame
-                ? 'Claim your name, then submit a quote and who said it while you wait'
-              : joinGenderHint(joinIdentityGender, voteBothGenders, !!isJoinersMode, joinPollGender)}
-          </p>
-          </>
+            <>
+              <div>
+                <p className="text-faint text-xs mb-2 text-center">I am</p>
+                <SegmentedControl
+                  value={joinIdentityGender}
+                  onChange={setJoinIdentity}
+                  options={[
+                    { value: 'female', label: 'Female' },
+                    { value: 'male', label: 'Male' },
+                  ]}
+                />
+              </div>
+              <label className="flex items-start gap-3 surface-inset border border-theme rounded-xl px-4 py-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={voteBothGenders}
+                  onChange={(e) => setVoteBothGenders(e.target.checked)}
+                  className="mt-0.5 accent-[var(--primary)]"
+                />
+                <span className="text-sm text-body leading-snug">
+                  Vote on both genders
+                  <span className="block text-faint text-xs mt-0.5">You'll vote on men's and women's rounds</span>
+                </span>
+              </label>
+              {isJoinersMode && voteBothGenders && (
+                <div>
+                  <p className="text-faint text-xs mb-2 text-center">Your name appears in the</p>
+                  <SegmentedControl
+                    value={joinPollGender}
+                    onChange={setJoinPollGender}
+                    options={[
+                      { value: 'female', label: "Women's poll" },
+                      { value: 'male', label: "Men's poll" },
+                    ]}
+                  />
+                </div>
+              )}
+              <p className="text-faint text-xs text-center">
+                {isNameOnlyJoin
+                  ? isMltImport
+                    ? "Enter any name to join — you'll vote on people from the imported list"
+                    : isMostLikelyTo(game?.game_type)
+                      ? 'Vote for who fits each prompt — your choice stays anonymous'
+                      : 'Pick between two options each round — your choice stays anonymous'
+                  : isWstGame
+                    ? 'Claim your name, then submit a quote and who said it while you wait'
+                    : joinGenderHint(joinIdentityGender, voteBothGenders, !!isJoinersMode, joinPollGender)}
+              </p>
+            </>
           )}
           <button onClick={joinGame} disabled={!canSubmitJoin || joining} className={primaryBtnCls}>
-            {joining
-              ? editingJoin ? 'Saving...' : 'Joining...'
-              : editingJoin ? 'Save changes' : 'Join Game'}
+            {joining ? (editingJoin ? 'Saving...' : 'Joining...') : editingJoin ? 'Save changes' : 'Join Game'}
           </button>
           {editingJoin ? (
-            <button type="button" onClick={cancelEditJoin} className="w-full text-faint text-sm hover:text-body transition-colors">
+            <button
+              type="button"
+              onClick={cancelEditJoin}
+              className="w-full text-faint text-sm hover:text-body transition-colors"
+            >
               Cancel
             </button>
           ) : null}
@@ -1314,7 +1402,7 @@ export default function GamePage() {
     const wstTargets = isWst ? wstVoteTargets(participants) : []
     const me = myPlayerId ? players.find((p) => p.id === myPlayerId) : null
     const myPoolEntry = isWst && myPlayerId ? wstPool.find((e) => e.player_id === myPlayerId) : null
-    const canSubmitPoolQuote = !!(me?.participant_id)
+    const canSubmitPoolQuote = !!me?.participant_id
 
     return (
       <CenteredCard>
@@ -1334,7 +1422,8 @@ export default function GamePage() {
                 <span className="text-sm font-bold text-body">{wstPool.length} submitted</span>
               </div>
               <p className="text-faint text-xs">
-                Submit your quote and the correct answer now. Only people in the pool get a round — if 5 of 10 submit, that&apos;s 5 rounds.
+                Submit your quote and the correct answer now. Only people in the pool get a round — if 5 of 10 submit,
+                that&apos;s 5 rounds.
               </p>
             </div>
 
@@ -1397,9 +1486,14 @@ export default function GamePage() {
           <div className="space-y-1.5 max-h-52 overflow-y-auto">
             {players.map((p) => (
               <div key={p.id} className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full shrink-0 ${p.name === myPlayerName ? 'bg-[var(--primary)]' : 'bg-[var(--border-strong)]'}`} />
-                <span className={`text-sm flex-1 min-w-0 truncate ${p.name === myPlayerName ? 'text-[var(--primary)] font-semibold' : 'text-body-muted'}`}>
-                  {p.name}{p.name === myPlayerName ? ' (you)' : ''}
+                <div
+                  className={`w-2 h-2 rounded-full shrink-0 ${p.name === myPlayerName ? 'bg-[var(--primary)]' : 'bg-[var(--border-strong)]'}`}
+                />
+                <span
+                  className={`text-sm flex-1 min-w-0 truncate ${p.name === myPlayerName ? 'text-[var(--primary)] font-semibold' : 'text-body-muted'}`}
+                >
+                  {p.name}
+                  {p.name === myPlayerName ? ' (you)' : ''}
                 </span>
                 {!joinNeedsGender ? null : (
                   <span className="text-[10px] uppercase tracking-wider text-faint shrink-0">
@@ -1454,7 +1548,13 @@ export default function GamePage() {
                           const res = await fetch('/api/player-questions', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, questionType: 'wyr', optionA: pqWyrA.trim(), optionB: pqWyrB.trim() }),
+                            body: JSON.stringify({
+                              gameId: gameCode,
+                              playerId: myPlayerId,
+                              questionType: 'wyr',
+                              optionA: pqWyrA.trim(),
+                              optionB: pqWyrB.trim(),
+                            }),
                           })
                           if (res.ok) {
                             const { question } = await res.json()
@@ -1465,9 +1565,15 @@ export default function GamePage() {
                             const { error } = await res.json()
                             toast.error(error || 'Failed to submit')
                           }
-                        } finally { setPqSubmitting(false) }
+                        } finally {
+                          setPqSubmitting(false)
+                        }
                       }}
-                      className={pqWyrA.trim() && pqWyrB.trim() ? 'btn-primary text-sm w-full' : 'btn-secondary text-sm w-full opacity-60 cursor-not-allowed'}
+                      className={
+                        pqWyrA.trim() && pqWyrB.trim()
+                          ? 'btn-primary text-sm w-full'
+                          : 'btn-secondary text-sm w-full opacity-60 cursor-not-allowed'
+                      }
                     >
                       {pqSubmitting ? 'Submitting...' : 'Add Question'}
                     </button>
@@ -1492,7 +1598,12 @@ export default function GamePage() {
                           const res = await fetch('/api/player-questions', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, questionType: 'mlt', questionText: pqMltText.trim() }),
+                            body: JSON.stringify({
+                              gameId: gameCode,
+                              playerId: myPlayerId,
+                              questionType: 'mlt',
+                              questionText: pqMltText.trim(),
+                            }),
                           })
                           if (res.ok) {
                             const { question } = await res.json()
@@ -1502,9 +1613,15 @@ export default function GamePage() {
                             const { error } = await res.json()
                             toast.error(error || 'Failed to submit')
                           }
-                        } finally { setPqSubmitting(false) }
+                        } finally {
+                          setPqSubmitting(false)
+                        }
                       }}
-                      className={pqMltText.trim() ? 'btn-primary text-sm w-full' : 'btn-secondary text-sm w-full opacity-60 cursor-not-allowed'}
+                      className={
+                        pqMltText.trim()
+                          ? 'btn-primary text-sm w-full'
+                          : 'btn-secondary text-sm w-full opacity-60 cursor-not-allowed'
+                      }
                     >
                       {pqSubmitting ? 'Submitting...' : 'Add Question'}
                     </button>
@@ -1513,27 +1630,29 @@ export default function GamePage() {
                 {pqList.filter((q) => q.player_id === myPlayerId).length > 0 && (
                   <div className="space-y-1.5 pt-2 border-t border-theme">
                     <p className="text-faint text-[10px] uppercase tracking-wider">Your questions</p>
-                    {pqList.filter((q) => q.player_id === myPlayerId).map((q) => (
-                      <div key={q.id} className="flex items-start gap-2 text-sm">
-                        <span className="flex-1 min-w-0 text-body-muted">
-                          {q.question_type === 'wyr' ? `${q.option_a} vs ${q.option_b}` : q.question_text}
-                        </span>
-                        <button
-                          type="button"
-                          className="text-faint hover:text-red-400 text-xs shrink-0"
-                          onClick={async () => {
-                            await fetch('/api/player-questions', {
-                              method: 'DELETE',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ questionId: q.id, playerId: myPlayerId }),
-                            })
-                            setPqList((prev) => prev.filter((x) => x.id !== q.id))
-                          }}
-                        >
-                          x
-                        </button>
-                      </div>
-                    ))}
+                    {pqList
+                      .filter((q) => q.player_id === myPlayerId)
+                      .map((q) => (
+                        <div key={q.id} className="flex items-start gap-2 text-sm">
+                          <span className="flex-1 min-w-0 text-body-muted">
+                            {q.question_type === 'wyr' ? `${q.option_a} vs ${q.option_b}` : q.question_text}
+                          </span>
+                          <button
+                            type="button"
+                            className="text-faint hover:text-red-400 text-xs shrink-0"
+                            onClick={async () => {
+                              await fetch('/api/player-questions', {
+                                method: 'DELETE',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ questionId: q.id, playerId: myPlayerId }),
+                              })
+                              setPqList((prev) => prev.filter((x) => x.id !== q.id))
+                            }}
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
                   </div>
                 )}
                 {pqList.length > 0 && (
@@ -1550,7 +1669,12 @@ export default function GamePage() {
           <button type="button" onClick={openEditJoin} className="btn-secondary text-sm py-2.5">
             {isNameOnlyJoin || !joinNeedsGender ? 'Change name' : 'Change name or gender'}
           </button>
-          <button type="button" onClick={leaveGame} disabled={joining} className="text-faint text-xs hover:text-red-300 transition-colors">
+          <button
+            type="button"
+            onClick={leaveGame}
+            disabled={joining}
+            className="text-faint text-xs hover:text-red-300 transition-colors"
+          >
             Leave game
           </button>
         </div>
@@ -1581,9 +1705,7 @@ export default function GamePage() {
               <span className="text-faint font-normal text-base"> / {game?.rounds_count}</span>
             </p>
             <p className="label-teal text-sm font-medium mt-1">
-              {isSubmitter
-                ? 'Your quote this round'
-                : 'Guess who said it'}
+              {isSubmitter ? 'Your quote this round' : 'Guess who said it'}
             </p>
           </div>
           <TimerDisplay seconds={timeLeft} total={game?.timer_seconds ?? 30} />
@@ -1605,9 +1727,7 @@ export default function GamePage() {
         ) : (
           <div className="glass-card px-4 py-8 mb-6 text-center space-y-2">
             <p className="text-muted text-sm">Waiting for {submitterName ?? 'the writer'} to submit a quote…</p>
-            {timeLeft === 0 && (
-              <p className="text-muted text-xs">Time&apos;s up — this round will end shortly.</p>
-            )}
+            {timeLeft === 0 && <p className="text-muted text-xs">Time&apos;s up — this round will end shortly.</p>}
           </div>
         )}
 
@@ -1645,11 +1765,7 @@ export default function GamePage() {
     const mltTargets = game ? mltVoteTargets(game, participants, players) : []
     const mltTargetKind = isMltImport ? 'participant' : 'player'
     const mltSelfId = isMltImport
-      ? participants.find(
-          (p) =>
-            myPlayerName &&
-            p.name.toLowerCase() === myPlayerName.toLowerCase()
-        )?.id ?? null
+      ? (participants.find((p) => myPlayerName && p.name.toLowerCase() === myPlayerName.toLowerCase())?.id ?? null)
       : myPlayerId
     const borderCls = mltTargetPlayerId ? 'border-amber-500/40' : 'border-theme'
 
@@ -1665,9 +1781,7 @@ export default function GamePage() {
               <span className="text-faint font-normal text-base"> / {game?.rounds_count}</span>
             </p>
           </div>
-          {canVote ? (
-            <TimerDisplay seconds={timeLeft} total={game?.timer_seconds ?? 30} />
-          ) : null}
+          {canVote ? <TimerDisplay seconds={timeLeft} total={game?.timer_seconds ?? 30} /> : null}
         </div>
 
         <div className={`glass-card border-2 ${borderCls} rounded-2xl p-5 mb-6 flex-1`}>
@@ -1721,9 +1835,7 @@ export default function GamePage() {
               <span className="text-faint font-normal text-base"> / {game?.rounds_count}</span>
             </p>
           </div>
-          {canVote ? (
-            <TimerDisplay seconds={timeLeft} total={game?.timer_seconds ?? 30} />
-          ) : null}
+          {canVote ? <TimerDisplay seconds={timeLeft} total={game?.timer_seconds ?? 30} /> : null}
         </div>
 
         <div className={`glass-card border-2 ${borderCls} rounded-2xl p-5 mb-6 flex-1`}>
@@ -1814,15 +1926,9 @@ export default function GamePage() {
               Round {currentRound.round_number}
               <span className="text-faint font-normal text-base"> / {game?.rounds_count}</span>
             </p>
-            {roundGender && (
-              <p className="text-[var(--primary)] text-sm font-medium mt-0.5">{roundGender}</p>
-            )}
-            {voterHint && (
-              <p className="text-muted text-xs mt-0.5">{voterHint}</p>
-            )}
-            {voteBanner && (
-              <p className="text-green-400/90 text-xs font-medium mt-1">{voteBanner}</p>
-            )}
+            {roundGender && <p className="text-[var(--primary)] text-sm font-medium mt-0.5">{roundGender}</p>}
+            {voterHint && <p className="text-muted text-xs mt-0.5">{voterHint}</p>}
+            {voteBanner && <p className="text-green-400/90 text-xs font-medium mt-1">{voteBanner}</p>}
             {isPair && isPairOneEachMode(game!) && (
               <p className="text-faint text-xs mt-1">
                 {gameType === 'smash_or_pass' ? 'Pick one Smash and one Pass' : 'Pick one Green and one Red'}
@@ -1849,9 +1955,13 @@ export default function GamePage() {
           {roundParts.map((p) => {
             const action = isPair
               ? (pairAssignment[p.id] ?? null)
-              : assignment.kiss === p.id ? 'kiss' :
-              assignment.marry === p.id ? 'marry' :
-              assignment.kill === p.id ? 'kill' : null
+              : assignment.kiss === p.id
+                ? 'kiss'
+                : assignment.marry === p.id
+                  ? 'marry'
+                  : assignment.kill === p.id
+                    ? 'kill'
+                    : null
             return (
               <ParticipantCard
                 key={p.id}
@@ -1860,11 +1970,7 @@ export default function GamePage() {
                 action={action}
                 onAssign={(a) => canVote && !submitted && assign(a, p.id)}
                 disabled={submitted || !canVote}
-                disabledSlots={
-                  isPair && game
-                    ? pairDisabledSlots(pairAssignment, p.id, roundPartIds, pairMode)
-                    : []
-                }
+                disabledSlots={isPair && game ? pairDisabledSlots(pairAssignment, p.id, roundPartIds, pairMode) : []}
               />
             )
           })}
@@ -1966,13 +2072,9 @@ export default function GamePage() {
       const targets = wstVoteTargets(participants)
       const correctName = wstCorrectNameFromRound(lastFinishedRound, players, participants)
       const correctId = wstCorrectParticipantIdFromRound(lastFinishedRound, players)
-      const { rows, voterCount, maxCount, topGuesses, correctCount } = tallyWstVotes(
-        lastRoundVotes,
-        targets,
-        correctId
-      )
+      const { rows, voterCount, maxCount, topGuesses, correctCount } = tallyWstVotes(lastRoundVotes, targets, correctId)
       const myPickName = myVote?.target_participant_id
-        ? participants.find((p) => p.id === myVote.target_participant_id)?.name ?? null
+        ? (participants.find((p) => p.id === myVote.target_participant_id)?.name ?? null)
         : null
       const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
 
@@ -2014,9 +2116,7 @@ export default function GamePage() {
       const mltTargets = mltVoteTargets(game, participants, players)
       const { rows, voterCount, maxCount, winnerNames } = tallyMltVotes(lastRoundVotes, mltTargets, mltKind)
       const pickedId = myVote ? mltTargetIdFromVote(myVote, mltKind) : null
-      const myPickName = pickedId
-        ? mltTargets.find((t) => t.id === pickedId)?.name ?? null
-        : null
+      const myPickName = pickedId ? (mltTargets.find((t) => t.id === pickedId)?.name ?? null) : null
       const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
 
       return (
@@ -2095,9 +2195,12 @@ export default function GamePage() {
                     )
                   })
                 : voteSlots(gameType).map((slot) => {
-                    const participantId = slot === 'kiss' ? myVote.kiss_participant_id
-                      : slot === 'marry' ? myVote.marry_participant_id
-                      : myVote.kill_participant_id
+                    const participantId =
+                      slot === 'kiss'
+                        ? myVote.kiss_participant_id
+                        : slot === 'marry'
+                          ? myVote.marry_participant_id
+                          : myVote.kill_participant_id
                     if (!participantId) return null
                     const meta = slotMeta(gameType, slot)
                     return (
@@ -2127,54 +2230,54 @@ export default function GamePage() {
               voterCount={voterCount}
               participantDetails={roundParts.map((p) => ({ id: p.id, name: p.name, gender: p.gender }))}
               myFlagsByParticipantId={
-                myVote
-                  ? Object.fromEntries(
-                      roundParts.map((p) => [p.id, flagForParticipant(myVote, p.id)])
-                    )
-                  : undefined
+                myVote ? Object.fromEntries(roundParts.map((p) => [p.id, flagForParticipant(myVote, p.id)])) : undefined
               }
               renderCard={
                 isPairGame(gameType)
                   ? undefined
                   : ({ tally, name, maxes, isWinner }) => {
-                const myAction =
-                  myVote?.kiss_participant_id === tally.id ? 'kiss'
-                  : myVote?.marry_participant_id === tally.id ? 'marry'
-                  : myVote?.kill_participant_id === tally.id ? 'kill'
-                  : null
+                      const myAction =
+                        myVote?.kiss_participant_id === tally.id
+                          ? 'kiss'
+                          : myVote?.marry_participant_id === tally.id
+                            ? 'marry'
+                            : myVote?.kill_participant_id === tally.id
+                              ? 'kill'
+                              : null
 
-                const borderCls = myActionBorderClass(gameType, myAction)
+                      const borderCls = myActionBorderClass(gameType, myAction)
 
-                return (
-                  <div key={tally.id} className={`glass-card border-2 ${borderCls} rounded-2xl p-4`}>
-                    <div className="flex items-center gap-3 mb-3">
-                      <Avatar name={name} />
-                      <p className="font-bold text-body text-lg">{name}</p>
-                      {myAction && (
-                        <span className="ml-auto text-xs text-muted italic">
-                          you: {assignmentEmojiFor(gameType, myAction)}
-                        </span>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-3 gap-3">
-                      {getVoteCategories(gameType).map((category) => {
-                        const meta = getCategoryMeta(gameType, category)
-                        return (
-                          <VoteCountStat
-                            key={category}
-                            emoji={meta.emoji}
-                            label={meta.label}
-                            count={tally[category]}
-                            max={maxes[category]}
-                            color={meta.color}
-                            isWinner={isWinner(category)}
-                          />
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              }}
+                      return (
+                        <div key={tally.id} className={`glass-card border-2 ${borderCls} rounded-2xl p-4`}>
+                          <div className="flex items-center gap-3 mb-3">
+                            <Avatar name={name} />
+                            <p className="font-bold text-body text-lg">{name}</p>
+                            {myAction && (
+                              <span className="ml-auto text-xs text-muted italic">
+                                you: {assignmentEmojiFor(gameType, myAction)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-3 gap-3">
+                            {getVoteCategories(gameType).map((category) => {
+                              const meta = getCategoryMeta(gameType, category)
+                              return (
+                                <VoteCountStat
+                                  key={category}
+                                  emoji={meta.emoji}
+                                  label={meta.label}
+                                  count={tally[category]}
+                                  max={maxes[category]}
+                                  color={meta.color}
+                                  isWinner={isWinner(category)}
+                                />
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    }
+              }
             />
           )
         })()}
@@ -2227,7 +2330,14 @@ export default function GamePage() {
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
-function ParticipantCard({ gameType, participant, action, onAssign, disabled, disabledSlots = [] }: {
+function ParticipantCard({
+  gameType,
+  participant,
+  action,
+  onAssign,
+  disabled,
+  disabledSlots = [],
+}: {
   gameType: GameType
   participant: Participant
   action: 'kiss' | 'marry' | 'kill' | null
@@ -2237,7 +2347,9 @@ function ParticipantCard({ gameType, participant, action, onAssign, disabled, di
 }) {
   const cfg = action ? slotMeta(gameType, action) : null
   return (
-    <div className={`rounded-2xl border-2 p-4 transition-all backdrop-blur-sm ${cfg ? cfg.borderClass : 'glass-card border-theme'}`}>
+    <div
+      className={`rounded-2xl border-2 p-4 transition-all backdrop-blur-sm ${cfg ? cfg.borderClass : 'glass-card border-theme'}`}
+    >
       <div className="flex items-center gap-3 mb-3">
         <Avatar name={participant.name} photoUrl={participant.photo_url} />
         <div>
@@ -2254,19 +2366,20 @@ function ParticipantCard({ gameType, participant, action, onAssign, disabled, di
           const slot = slotMeta(gameType, a)
           const slotDisabled = disabled || disabledSlots.includes(a)
           return (
-          <button
-            key={a}
-            onClick={() => onAssign(a)}
-            disabled={slotDisabled}
-            className={`flex-1 py-2.5 rounded-xl border text-sm font-bold transition-all active:scale-95 ${
-              action === a
-                ? slot.activeClass
-                : `surface-inset border-theme text-muted ${!slotDisabled ? 'hover:border-theme-strong hover:text-body-muted' : ''}`
-            } disabled:cursor-not-allowed disabled:opacity-40`}
-          >
-            {slot.emoji}
-          </button>
-        )})}
+            <button
+              key={a}
+              onClick={() => onAssign(a)}
+              disabled={slotDisabled}
+              className={`flex-1 py-2.5 rounded-xl border text-sm font-bold transition-all active:scale-95 ${
+                action === a
+                  ? slot.activeClass
+                  : `surface-inset border-theme text-muted ${!slotDisabled ? 'hover:border-theme-strong hover:text-body-muted' : ''}`
+              } disabled:cursor-not-allowed disabled:opacity-40`}
+            >
+              {slot.emoji}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -2278,20 +2391,24 @@ function TimerDisplay({ seconds, total }: { seconds: number; total: number }) {
   const barColor = seconds <= 5 ? 'bg-red-500' : seconds <= 10 ? 'bg-amber-500' : 'bg-green-500'
   return (
     <div className="text-right">
-      <p className={`text-4xl font-black tabular-nums ${color} ${seconds <= 5 ? 'animate-pulse' : ''}`}>
-        {seconds}
-      </p>
+      <p className={`text-4xl font-black tabular-nums ${color} ${seconds <= 5 ? 'animate-pulse' : ''}`}>{seconds}</p>
       <div className="w-20 h-1.5 progress-track mt-1 overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${barColor}`}
-          style={{ width: `${pct}%` }}
-        />
+        <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   )
 }
 
-function FinalResultsView({ game, participants, rounds, votes, confessions, players, myPlayerId, myPlayerName }: {
+function FinalResultsView({
+  game,
+  participants,
+  rounds,
+  votes,
+  confessions,
+  players,
+  myPlayerId,
+  myPlayerName,
+}: {
   game: Game
   participants: Participant[]
   rounds: Round[]
@@ -2322,9 +2439,9 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
             ? ` · ${mltVoteTargets(game, participants, players).length} in poll`
             : isWst
               ? ` · ${participants.length} names`
-            : !isWyr && !isMlt
-              ? ` · ${playedParticipants.length} in game`
-              : ''}
+              : !isWyr && !isMlt
+                ? ` · ${playedParticipants.length} in game`
+                : ''}
         </p>
       </div>
 
@@ -2357,169 +2474,166 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
       <div>
         <h2 className="text-muted text-xs uppercase tracking-wider mb-4">All round results</h2>
         <div className="space-y-8">
-      {rounds.map((round) => {
-        const roundVotes = votes.filter((v) => v.round_id === round.id)
-        const myVote = roundVotes.find((v) => v.player_id === myPlayerId)
+          {rounds.map((round) => {
+            const roundVotes = votes.filter((v) => v.round_id === round.id)
+            const myVote = roundVotes.find((v) => v.player_id === myPlayerId)
 
-        if (isWyr) {
-          const { countA, countB, voterCount } = tallyWyrVotes(roundVotes)
-          return (
-            <div key={round.id}>
-              <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
-                Round {round.round_number}
-              </h2>
-              <WyrRoundResults
-                optionA={round.wyr_option_a ?? ''}
-                optionB={round.wyr_option_b ?? ''}
-                countA={countA}
-                countB={countB}
-                voterCount={voterCount}
-                myChoice={myVote?.wyr_choice ?? null}
-              />
-            </div>
-          )
-        }
-
-        if (isWst) {
-          const targets = wstVoteTargets(participants)
-          const correctName = wstCorrectNameFromRound(round, players, participants)
-          const correctId = wstCorrectParticipantIdFromRound(round, players)
-          const { rows, voterCount, maxCount, topGuesses, correctCount } = tallyWstVotes(
-            roundVotes,
-            targets,
-            correctId
-          )
-          const myPickName = myVote?.target_participant_id
-            ? participants.find((p) => p.id === myVote.target_participant_id)?.name ?? null
-            : null
-          return (
-            <div key={round.id}>
-              <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
-                Round {round.round_number}
-              </h2>
-              <WstRoundResults
-                quote={round.quote_text ?? '(no quote submitted)'}
-                rows={rows}
-                voterCount={voterCount}
-                maxCount={maxCount}
-                topGuesses={topGuesses}
-                correctName={correctName}
-                correctCount={correctCount}
-                myPickName={myPickName}
-              />
-            </div>
-          )
-        }
-
-        if (isMlt) {
-          const mltKind = isMltImport ? 'participant' : 'player'
-          const mltTargets = mltVoteTargets(game, participants, players)
-          const { rows, voterCount, maxCount, winnerNames } = tallyMltVotes(roundVotes, mltTargets, mltKind)
-          const pickedId = myVote ? mltTargetIdFromVote(myVote, mltKind) : null
-          const myPickName = pickedId
-            ? mltTargets.find((t) => t.id === pickedId)?.name ?? null
-            : null
-          return (
-            <div key={round.id}>
-              <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
-                Round {round.round_number}
-              </h2>
-              <MltRoundResults
-                question={round.mlt_question ?? ''}
-                rows={rows}
-                voterCount={voterCount}
-                maxCount={maxCount}
-                winnerNames={winnerNames}
-                myPickName={myPickName}
-              />
-            </div>
-          )
-        }
-
-        const roundParts = participants.filter((p) => round.participant_ids.includes(p.id))
-        const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
-
-        return (
-          <div key={round.id}>
-            <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
-              Round {round.round_number}{roundGender ? ` · ${roundGender}` : ''}
-            </h2>
-            {myVote && (
-              <div className="glass-card border border-[var(--primary)]/25 px-4 py-2.5 mb-3 flex gap-4 flex-wrap">
-                <span className="text-muted text-xs uppercase tracking-wider self-center">Your vote:</span>
-                {isPairGame(gameType)
-                  ? roundParts.map((p) => {
-                      const flag = flagForParticipant(myVote, p.id)
-                      if (!flag) return null
-                      const meta = slotMeta(gameType, flag)
-                      return (
-                        <span key={p.id} className="text-sm" style={{ color: meta.textColor }}>
-                          {p.name}: {meta.emoji}
-                        </span>
-                      )
-                    })
-                  : voteSlots(gameType).map((slot) => {
-                      const participantId = slot === 'kiss' ? myVote.kiss_participant_id
-                        : slot === 'marry' ? myVote.marry_participant_id
-                        : myVote.kill_participant_id
-                      if (!participantId) return null
-                      const meta = slotMeta(gameType, slot)
-                      return (
-                        <span key={slot} className="text-sm" style={{ color: meta.textColor }}>
-                          {meta.emoji} {participants.find((p) => p.id === participantId)?.name}
-                        </span>
-                      )
-                    })}
-              </div>
-            )}
-            <div className="space-y-4">
-              {(() => {
-                const tallies = tallyRoundVotes(
-                  roundParts.map((p) => p.id),
-                  roundVotes
-                )
-                const nameById = new Map(roundParts.map((p) => [p.id, p.name]))
-                return (
-                  <ParticipantRoundResults
-                    gameType={gameType}
-                    tallies={tallies}
-                    nameById={nameById}
-                    voterCount={roundVotes.length}
-                    participantDetails={roundParts.map((p) => ({ id: p.id, name: p.name, gender: p.gender }))}
-                    renderCard={
-                      isPairGame(gameType)
-                        ? undefined
-                        : ({ tally, name, maxes, isWinner }) => (
-                      <div key={tally.id} className="glass-card p-4">
-                        <div className="flex items-center gap-3 mb-2">
-                          <Avatar name={name} size="sm" />
-                          <p className="font-bold text-body">{name}</p>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          {getVoteCategories(gameType).map((category) => {
-                            const meta = getCategoryMeta(gameType, category)
-                            return (
-                              <VoteCountStat
-                                key={category}
-                                emoji={meta.emoji}
-                                label={meta.label}
-                                count={tally[category]}
-                                max={maxes[category]}
-                                color={meta.color}
-                                isWinner={isWinner(category)}
-                              />
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
+            if (isWyr) {
+              const { countA, countB, voterCount } = tallyWyrVotes(roundVotes)
+              return (
+                <div key={round.id}>
+                  <h2 className="text-muted text-xs uppercase tracking-wider mb-3">Round {round.round_number}</h2>
+                  <WyrRoundResults
+                    optionA={round.wyr_option_a ?? ''}
+                    optionB={round.wyr_option_b ?? ''}
+                    countA={countA}
+                    countB={countB}
+                    voterCount={voterCount}
+                    myChoice={myVote?.wyr_choice ?? null}
                   />
-                )
-              })()}
-            </div>
-          </div>
-        )
-      })}
+                </div>
+              )
+            }
+
+            if (isWst) {
+              const targets = wstVoteTargets(participants)
+              const correctName = wstCorrectNameFromRound(round, players, participants)
+              const correctId = wstCorrectParticipantIdFromRound(round, players)
+              const { rows, voterCount, maxCount, topGuesses, correctCount } = tallyWstVotes(
+                roundVotes,
+                targets,
+                correctId
+              )
+              const myPickName = myVote?.target_participant_id
+                ? (participants.find((p) => p.id === myVote.target_participant_id)?.name ?? null)
+                : null
+              return (
+                <div key={round.id}>
+                  <h2 className="text-muted text-xs uppercase tracking-wider mb-3">Round {round.round_number}</h2>
+                  <WstRoundResults
+                    quote={round.quote_text ?? '(no quote submitted)'}
+                    rows={rows}
+                    voterCount={voterCount}
+                    maxCount={maxCount}
+                    topGuesses={topGuesses}
+                    correctName={correctName}
+                    correctCount={correctCount}
+                    myPickName={myPickName}
+                  />
+                </div>
+              )
+            }
+
+            if (isMlt) {
+              const mltKind = isMltImport ? 'participant' : 'player'
+              const mltTargets = mltVoteTargets(game, participants, players)
+              const { rows, voterCount, maxCount, winnerNames } = tallyMltVotes(roundVotes, mltTargets, mltKind)
+              const pickedId = myVote ? mltTargetIdFromVote(myVote, mltKind) : null
+              const myPickName = pickedId ? (mltTargets.find((t) => t.id === pickedId)?.name ?? null) : null
+              return (
+                <div key={round.id}>
+                  <h2 className="text-muted text-xs uppercase tracking-wider mb-3">Round {round.round_number}</h2>
+                  <MltRoundResults
+                    question={round.mlt_question ?? ''}
+                    rows={rows}
+                    voterCount={voterCount}
+                    maxCount={maxCount}
+                    winnerNames={winnerNames}
+                    myPickName={myPickName}
+                  />
+                </div>
+              )
+            }
+
+            const roundParts = participants.filter((p) => round.participant_ids.includes(p.id))
+            const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
+
+            return (
+              <div key={round.id}>
+                <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
+                  Round {round.round_number}
+                  {roundGender ? ` · ${roundGender}` : ''}
+                </h2>
+                {myVote && (
+                  <div className="glass-card border border-[var(--primary)]/25 px-4 py-2.5 mb-3 flex gap-4 flex-wrap">
+                    <span className="text-muted text-xs uppercase tracking-wider self-center">Your vote:</span>
+                    {isPairGame(gameType)
+                      ? roundParts.map((p) => {
+                          const flag = flagForParticipant(myVote, p.id)
+                          if (!flag) return null
+                          const meta = slotMeta(gameType, flag)
+                          return (
+                            <span key={p.id} className="text-sm" style={{ color: meta.textColor }}>
+                              {p.name}: {meta.emoji}
+                            </span>
+                          )
+                        })
+                      : voteSlots(gameType).map((slot) => {
+                          const participantId =
+                            slot === 'kiss'
+                              ? myVote.kiss_participant_id
+                              : slot === 'marry'
+                                ? myVote.marry_participant_id
+                                : myVote.kill_participant_id
+                          if (!participantId) return null
+                          const meta = slotMeta(gameType, slot)
+                          return (
+                            <span key={slot} className="text-sm" style={{ color: meta.textColor }}>
+                              {meta.emoji} {participants.find((p) => p.id === participantId)?.name}
+                            </span>
+                          )
+                        })}
+                  </div>
+                )}
+                <div className="space-y-4">
+                  {(() => {
+                    const tallies = tallyRoundVotes(
+                      roundParts.map((p) => p.id),
+                      roundVotes
+                    )
+                    const nameById = new Map(roundParts.map((p) => [p.id, p.name]))
+                    return (
+                      <ParticipantRoundResults
+                        gameType={gameType}
+                        tallies={tallies}
+                        nameById={nameById}
+                        voterCount={roundVotes.length}
+                        participantDetails={roundParts.map((p) => ({ id: p.id, name: p.name, gender: p.gender }))}
+                        renderCard={
+                          isPairGame(gameType)
+                            ? undefined
+                            : ({ tally, name, maxes, isWinner }) => (
+                                <div key={tally.id} className="glass-card p-4">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <Avatar name={name} size="sm" />
+                                    <p className="font-bold text-body">{name}</p>
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {getVoteCategories(gameType).map((category) => {
+                                      const meta = getCategoryMeta(gameType, category)
+                                      return (
+                                        <VoteCountStat
+                                          key={category}
+                                          emoji={meta.emoji}
+                                          label={meta.label}
+                                          count={tally[category]}
+                                          max={maxes[category]}
+                                          color={meta.color}
+                                          isWinner={isWinner(category)}
+                                        />
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )
+                        }
+                      />
+                    )
+                  })()}
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
@@ -2544,8 +2658,18 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
   )
 }
 
-function LeaderCard({ emoji, label, name, count, accentColor }: {
-  emoji: string; label: string; name?: string; count?: number; accentColor: string
+function LeaderCard({
+  emoji,
+  label,
+  name,
+  count,
+  accentColor,
+}: {
+  emoji: string
+  label: string
+  name?: string
+  count?: number
+  accentColor: string
 }) {
   return (
     <div
@@ -2596,7 +2720,9 @@ function NotFound({ onHome }: { onHome: () => void }) {
         <p className="text-6xl">🤷</p>
         <h1 className="text-2xl font-black gradient-title-subtle">Game not found</h1>
         <p className="text-muted">Check the code and try again</p>
-        <button onClick={onHome} className={primaryBtnCls + ' max-w-xs mx-auto'}>Back Home</button>
+        <button onClick={onHome} className={primaryBtnCls + ' max-w-xs mx-auto'}>
+          Back Home
+        </button>
       </div>
     </div>
   )

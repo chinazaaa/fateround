@@ -4,10 +4,30 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { roundGenderLabel } from '@/lib/participants'
-import { assignmentEmojiFor, tallyRoundVotes, getVoteCategories, flagForParticipant, tallyWyrVotes, tallyMltVotes } from '@/lib/vote-stats'
-import { parseGameType, slotMeta, voteSlots, isPairGame, isWouldYouRather, isMostLikelyTo, isWhoSaidThis } from '@/lib/game-types'
+import {
+  assignmentEmojiFor,
+  tallyRoundVotes,
+  getVoteCategories,
+  flagForParticipant,
+  tallyWyrVotes,
+  tallyMltVotes,
+} from '@/lib/vote-stats'
+import {
+  parseGameType,
+  slotMeta,
+  voteSlots,
+  isPairGame,
+  isWouldYouRather,
+  isMostLikelyTo,
+  isWhoSaidThis,
+} from '@/lib/game-types'
 import { isMltImportGame, mltVoteTargets } from '@/lib/mlt'
-import { wstVoteTargets, wstCorrectNameFromRound, wstCorrectParticipantIdFromRound, tallyWstVotes } from '@/lib/who-said-this'
+import {
+  wstVoteTargets,
+  wstCorrectNameFromRound,
+  wstCorrectParticipantIdFromRound,
+  tallyWstVotes,
+} from '@/lib/who-said-this'
 import { ParticipantRoundResults, WyrRoundResults, MltRoundResults, WstRoundResults } from '@/components/VoteResults'
 import type { Confession, Game, Participant, Player, Round, Vote } from '@/types'
 
@@ -53,25 +73,20 @@ export default function GameHistoryPage() {
 
     async function load() {
       setLoadState('loading')
-      const { data: gameData } = await supabase
-        .from('games')
-        .select('*')
-        .eq('id', gameCode)
-        .maybeSingle()
+      const { data: gameData } = await supabase.from('games').select('*').eq('id', gameCode).maybeSingle()
 
       if (!gameData) {
         setLoadState('not_found')
         return
       }
 
-      const [{ data: parts }, { data: plrs }, { data: rds }, { data: vts }, { data: confs }] =
-        await Promise.all([
-          supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
-          supabase.from('players').select('*').eq('game_id', gameCode).order('joined_at'),
-          supabase.from('rounds').select('*').eq('game_id', gameCode).order('round_number'),
-          supabase.from('votes').select('*').eq('game_id', gameCode),
-          supabase.from('confessions').select('*').eq('game_id', gameCode).order('created_at'),
-        ])
+      const [{ data: parts }, { data: plrs }, { data: rds }, { data: vts }, { data: confs }] = await Promise.all([
+        supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
+        supabase.from('players').select('*').eq('game_id', gameCode).order('joined_at'),
+        supabase.from('rounds').select('*').eq('game_id', gameCode).order('round_number'),
+        supabase.from('votes').select('*').eq('game_id', gameCode),
+        supabase.from('confessions').select('*').eq('game_id', gameCode).order('created_at'),
+      ])
 
       setGame(gameData)
       setParticipants(parts ?? [])
@@ -99,7 +114,9 @@ export default function GameHistoryPage() {
         <div className="text-center space-y-4 max-w-sm">
           <p className="text-5xl">🤷</p>
           <h1 className="text-2xl font-black gradient-title-subtle">Game not found</h1>
-          <p className="text-muted text-sm">No game with ID <span className="font-mono">{gameCode}</span></p>
+          <p className="text-muted text-sm">
+            No game with ID <span className="font-mono">{gameCode}</span>
+          </p>
           <button onClick={() => router.push('/history')} className="btn-secondary px-6 py-3">
             Search again
           </button>
@@ -113,9 +130,12 @@ export default function GameHistoryPage() {
   const voteColumns = voteSlots(gameType).map((slot) => ({
     slot,
     meta: slotMeta(gameType, slot),
-    field: slot === 'kiss' ? 'kiss_participant_id' as const
-      : slot === 'marry' ? 'marry_participant_id' as const
-      : 'kill_participant_id' as const,
+    field:
+      slot === 'kiss'
+        ? ('kiss_participant_id' as const)
+        : slot === 'marry'
+          ? ('marry_participant_id' as const)
+          : ('kill_participant_id' as const),
   }))
   const tallyCategories = getVoteCategories(gameType)
   const roundsWithVotes = rounds.filter((r) => votes.some((v) => v.round_id === r.id))
@@ -166,9 +186,7 @@ export default function GameHistoryPage() {
       )}
 
       {rounds.length === 0 ? (
-        <div className="glass-card p-8 text-center text-muted">
-          No rounds yet — the host hasn't started this game.
-        </div>
+        <div className="glass-card p-8 text-center text-muted">No rounds yet — the host hasn't started this game.</div>
       ) : roundsWithVotes.length === 0 ? (
         <div className="glass-card p-8 text-center text-muted">
           {rounds.length} round{rounds.length === 1 ? '' : 's'} set up, but no votes recorded yet.
@@ -181,10 +199,7 @@ export default function GameHistoryPage() {
 
             const roundParts = participants.filter((p) => round.participant_ids.includes(p.id))
             const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
-            const tallies = tallyRoundVotes(
-              round.participant_ids,
-              roundVotes
-            )
+            const tallies = tallyRoundVotes(round.participant_ids, roundVotes)
 
             return (
               <section key={round.id} className="space-y-3">
@@ -203,13 +218,13 @@ export default function GameHistoryPage() {
                   (() => {
                     const wyrTally = tallyWyrVotes(roundVotes)
                     return (
-                  <WyrRoundResults
-                    optionA={round.wyr_option_a ?? ''}
-                    optionB={round.wyr_option_b ?? ''}
-                    countA={wyrTally.countA}
-                    countB={wyrTally.countB}
-                    voterCount={wyrTally.voterCount}
-                  />
+                      <WyrRoundResults
+                        optionA={round.wyr_option_a ?? ''}
+                        optionB={round.wyr_option_b ?? ''}
+                        countA={wyrTally.countA}
+                        countB={wyrTally.countB}
+                        voterCount={wyrTally.voterCount}
+                      />
                     )
                   })()
                 ) : isMostLikelyTo(gameType) ? (
@@ -256,9 +271,7 @@ export default function GameHistoryPage() {
                     />
                     {!game.anonymous && (
                       <details className="text-faint text-xs">
-                        <summary className="cursor-pointer hover:text-muted transition-colors">
-                          Who voted what
-                        </summary>
+                        <summary className="cursor-pointer hover:text-muted transition-colors">Who voted what</summary>
                         <div className="mt-2 glass-card overflow-hidden">
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm min-w-[24rem]">
@@ -307,12 +320,12 @@ export default function GameHistoryPage() {
                 ) : !game.anonymous ? (
                   <div className="glass-card overflow-hidden">
                     <div className="overflow-x-auto">
-                      <table className={`w-full text-sm ${voteColumns.length === 2 ? 'min-w-[24rem]' : 'min-w-[32rem]'}`}>
+                      <table
+                        className={`w-full text-sm ${voteColumns.length === 2 ? 'min-w-[24rem]' : 'min-w-[32rem]'}`}
+                      >
                         <thead>
                           <tr className="border-b border-theme text-left">
-                            <th className="px-4 py-3 text-faint text-xs uppercase tracking-wider font-medium">
-                              Voter
-                            </th>
+                            <th className="px-4 py-3 text-faint text-xs uppercase tracking-wider font-medium">Voter</th>
                             {voteColumns.map(({ slot, meta }) => (
                               <th key={slot} className="px-4 py-3 text-center text-xs font-medium w-24">
                                 {assignmentEmojiFor(gameType, slot)} {meta.label}
@@ -340,12 +353,12 @@ export default function GameHistoryPage() {
                 ) : (
                   <div className="glass-card overflow-hidden">
                     <div className="overflow-x-auto">
-                      <table className={`w-full text-sm ${tallyCategories.length === 2 ? 'min-w-[16rem]' : 'min-w-[20rem]'}`}>
+                      <table
+                        className={`w-full text-sm ${tallyCategories.length === 2 ? 'min-w-[16rem]' : 'min-w-[20rem]'}`}
+                      >
                         <thead>
                           <tr className="border-b border-theme text-left">
-                            <th className="px-4 py-3 text-faint text-xs uppercase tracking-wider font-medium">
-                              Name
-                            </th>
+                            <th className="px-4 py-3 text-faint text-xs uppercase tracking-wider font-medium">Name</th>
                             {tallyCategories.map((category) => (
                               <th key={category} className="px-4 py-3 text-center text-xs font-medium w-16">
                                 {slotMeta(gameType, category === 'smash' ? 'kill' : category).emoji}
@@ -356,9 +369,7 @@ export default function GameHistoryPage() {
                         <tbody>
                           {tallies.map((t) => (
                             <tr key={t.id} className="border-b border-[var(--border)] last:border-0">
-                              <td className="px-4 py-3 font-medium text-body">
-                                {participantName(participants, t.id)}
-                              </td>
+                              <td className="px-4 py-3 font-medium text-body">{participantName(participants, t.id)}</td>
                               {tallyCategories.map((category) => (
                                 <td key={category} className="px-4 py-3 text-center text-body-muted">
                                   {t[category]}
@@ -374,12 +385,12 @@ export default function GameHistoryPage() {
 
                 {!game.anonymous && !isPairGame(gameType) && (
                   <details className="text-faint text-xs">
-                    <summary className="cursor-pointer hover:text-muted transition-colors">
-                      Round totals
-                    </summary>
+                    <summary className="cursor-pointer hover:text-muted transition-colors">Round totals</summary>
                     <div className="mt-2 glass-card overflow-hidden">
                       <div className="overflow-x-auto">
-                        <table className={`w-full text-sm ${tallyCategories.length === 2 ? 'min-w-[16rem]' : 'min-w-[20rem]'}`}>
+                        <table
+                          className={`w-full text-sm ${tallyCategories.length === 2 ? 'min-w-[16rem]' : 'min-w-[20rem]'}`}
+                        >
                           <thead>
                             <tr className="border-b border-theme">
                               <th className="px-4 py-2 text-left text-xs uppercase tracking-wider">Name</th>
@@ -422,9 +433,7 @@ export default function GameHistoryPage() {
               return (
                 <div key={c.id} className="glass-card px-4 py-3">
                   <p className="text-body-muted text-sm italic">&ldquo;{c.text}&rdquo;</p>
-                  {round && (
-                    <p className="text-faint text-xs mt-1">Round {round.round_number}</p>
-                  )}
+                  {round && <p className="text-faint text-xs mt-1">Round {round.round_number}</p>}
                 </div>
               )
             })}

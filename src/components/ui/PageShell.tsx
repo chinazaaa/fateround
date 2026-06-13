@@ -11,9 +11,7 @@ export function PageShell({ children, narrow, centered }: PageShellProps) {
         centered ? 'justify-center min-h-screen py-16' : 'justify-start'
       }`}
     >
-      <div className={`w-full space-y-6 ${narrow ? 'max-w-md' : 'max-w-lg'}`}>
-        {children}
-      </div>
+      <div className={`w-full space-y-6 ${narrow ? 'max-w-md' : 'max-w-lg'}`}>{children}</div>
     </div>
   )
 }

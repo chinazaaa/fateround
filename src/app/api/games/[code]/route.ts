@@ -4,10 +4,7 @@ import { assertHostGame } from '@/lib/game-admin'
 import { questionPoolCap } from '@/lib/custom-questions'
 import { updateGameSchema } from '@/lib/validation'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -26,10 +23,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   const rounds_count = Math.min(Math.max(rawRoundsCount, 1), cap)
 
   if (rawRoundsCount > cap) {
-    return NextResponse.json(
-      { error: `Too many rounds — pick ${cap} or fewer` },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: `Too many rounds — pick ${cap} or fewer` }, { status: 400 })
   }
 
   const { data: game, error } = await supabase

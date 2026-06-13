@@ -42,7 +42,7 @@ export function PaginatedLeaderboard({
         {pageRows.map((row, i) => (
           <div key={row.id} className="flex items-center justify-between text-sm">
             <span className={row.id === highlightId ? 'label-teal font-semibold' : 'text-body'}>
-              {(row.rank ?? start + i + 1)}. {row.name}
+              {row.rank ?? start + i + 1}. {row.name}
               {row.id === highlightId ? ' (you)' : ''}
             </span>
             <span className="text-muted">{scoreLabel(row.score)}</span>

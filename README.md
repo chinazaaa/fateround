@@ -56,3 +56,7 @@ pnpm dev
 - `pnpm dev` -- Start development server
 - `pnpm build` -- Production build
 - `pnpm start` -- Start production server
+- `pnpm lint` -- Run ESLint
+- `pnpm format:check` -- Check Prettier formatting
+- `pnpm format` -- Auto-format with Prettier
+- `pnpm typecheck` -- Run TypeScript type checking

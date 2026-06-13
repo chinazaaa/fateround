@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { hostActionSchema } from '@/lib/validation'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -36,10 +33,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const now = new Date().toISOString()
 
-  await supabase
-    .from('rounds')
-    .update({ status: 'finished', ended_at: now })
-    .eq('id', activeRound.id)
+  await supabase.from('rounds').update({ status: 'finished', ended_at: now }).eq('id', activeRound.id)
 
   const isLastRound = activeRound.round_number >= game.rounds_count
   return NextResponse.json({

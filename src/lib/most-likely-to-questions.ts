@@ -25,15 +25,15 @@ export const MLT_QUESTIONS: string[] = [
   'Who is most likely to have a secret folder of thirst traps?',
   'Who is most likely to slide into DMs at 2am?',
   'Who is most likely to double-text after getting left on read?',
-  'Who is most likely to stalk an ex\'s new partner on Instagram?',
-  'Who is most likely to still have their ex\'s nudes saved?',
-  'Who is most likely to hook up with a friend\'s ex?',
+  "Who is most likely to stalk an ex's new partner on Instagram?",
+  "Who is most likely to still have their ex's nudes saved?",
+  "Who is most likely to hook up with a friend's ex?",
   'Who is most likely to lie about their body count?',
   'Who is most likely to have a situationship that never ends?',
   'Who is most likely to catch feelings for a sneaky link?',
   'Who is most likely to have someone saved in their phone under a fake name?',
   'Who is most likely to use a dating app while in a relationship?',
-  'Who is most likely to match with someone they know and pretend it\'s an accident?',
+  "Who is most likely to match with someone they know and pretend it's an accident?",
   'Who is most likely to hook up with someone they met the same night?',
   'Who is most likely to make the first move at the club?',
   'Who is most likely to go home with the bartender?',
@@ -57,14 +57,14 @@ export const MLT_QUESTIONS: string[] = [
   'Who is most likely to cry after sex?',
   'Who is most likely to laugh during sex?',
   'Who is most likely to think about someone else during sex?',
-  'Who is most likely to have a celebrity they\'d actually leave their partner for?',
+  "Who is most likely to have a celebrity they'd actually leave their partner for?",
   'Who is most likely to have a hall pass list?',
   'Who is most likely to be the first one skinny dipping?',
   'Who is most likely to make out with a stranger in an Uber?',
   'Who is most likely to get a hickey before an important event?',
   'Who is most likely to show up to brunch with a hickey and no explanation?',
   'Who is most likely to hook up with their neighbor?',
-  'Who is most likely to have a crush on a friend\'s partner?',
+  "Who is most likely to have a crush on a friend's partner?",
   'Who is most likely to spill who they hooked up with after two drinks?',
   'Who is most likely to keep a hookup secret forever?',
   'Who is most likely to accidentally confess feelings while drunk?',
@@ -76,7 +76,7 @@ export const MLT_QUESTIONS: string[] = [
   'Who is most likely to read smut in public without shame?',
   'Who is most likely to own more lube than moisturizer?',
   'Who is most likely to google "how to be better in bed" before a date?',
-  'Who is most likely to hook up in their parents\' house while they\'re home?',
+  "Who is most likely to hook up in their parents' house while they're home?",
   'Who is most likely to get walked in on and keep going?',
   'Who is most likely to have the messiest drunk hookup story?',
   'Who is most likely to flirt with someone taken just for sport?',
@@ -91,9 +91,6 @@ export const MLT_QUESTIONS: string[] = [
 
 export const MLT_QUESTION_COUNT = MLT_QUESTIONS.length
 
-export function pickMltQuestions(
-  count: number,
-  usageCounts: Map<string, number> = new Map()
-): string[] {
+export function pickMltQuestions(count: number, usageCounts: Map<string, number> = new Map()): string[] {
   return pickLeastUsed(MLT_QUESTIONS, (question) => question, usageCounts, count)
 }

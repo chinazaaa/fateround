@@ -139,7 +139,13 @@ function CreateGameInner() {
   const mltRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= questionCap)
   const wyrRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= questionCap)
   const wstRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= Math.max(participants.length, 2))
-  const roundOptions = isWyr ? wyrRoundOptions : isMlt ? mltRoundOptions : isWst ? wstRoundOptions : [2, 3, 4, 5, 6, 8, 10]
+  const roundOptions = isWyr
+    ? wyrRoundOptions
+    : isMlt
+      ? mltRoundOptions
+      : isWst
+        ? wstRoundOptions
+        : [2, 3, 4, 5, 6, 8, 10]
   const hasEnoughCustomQuestions =
     questionSource === 'platform' ||
     (isLobbyQuestions && customQuestionCount >= settings.rounds_count && customQuestionCount > 0)
@@ -187,11 +193,7 @@ function CreateGameInner() {
     setUploadError(null)
     const rows = parseParticipantsForGame(bulkPaste, settings.game_type)
     if (rows.length === 0) {
-      setUploadError(
-        needsGender
-          ? 'Use two columns: name and gender (e.g. Sarah,female)'
-          : 'Add one name per line'
-      )
+      setUploadError(needsGender ? 'Use two columns: name and gender (e.g. Sarah,female)' : 'Add one name per line')
       return
     }
     addParticipantsFromRows(rows)
@@ -207,7 +209,10 @@ function CreateGameInner() {
       addParticipantsFromRows(rows)
       setNameInput('')
     } else if (needsGender) {
-      const names = text.split(/[\n\r\t,;]+/).map((s) => s.trim()).filter(Boolean)
+      const names = text
+        .split(/[\n\r\t,;]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
       addParticipantsFromRows(names.map((name) => ({ name, gender: defaultGender })))
       setNameInput('')
     }
@@ -386,11 +391,7 @@ function CreateGameInner() {
           rounds_count: isWst ? Math.max(participants.length, 2) : settings.rounds_count,
           question_source: isLobbyQuestions ? questionSource : 'platform',
           custom_questions:
-            isLobbyQuestions && questionSource === 'custom'
-              ? isWyr
-                ? customWyrQuestions
-                : customMltQuestions
-              : null,
+            isLobbyQuestions && questionSource === 'custom' ? (isWyr ? customWyrQuestions : customMltQuestions) : null,
           participants: isJoinersMode ? [] : participants,
         }),
       })
@@ -412,9 +413,7 @@ function CreateGameInner() {
         <PageShell>
           <BackBtn onClick={() => router.push('/')} label="Home" />
 
-          {needsParticipantStep && (
-            <StepIndicator steps={wizardSteps} current={stepIndex} />
-          )}
+          {needsParticipantStep && <StepIndicator steps={wizardSteps} current={stepIndex} />}
 
           <div>
             <p className="label-caps mb-1">New game</p>
@@ -434,12 +433,7 @@ function CreateGameInner() {
             </Field>
 
             <Field label="Game mode">
-              <GameTypeCard
-                type={settings.game_type}
-                compact
-                selected
-                onClick={() => setShowGameTypes(true)}
-              />
+              <GameTypeCard type={settings.game_type} compact selected onClick={() => setShowGameTypes(true)} />
             </Field>
           </div>
 
@@ -448,29 +442,34 @@ function CreateGameInner() {
             <SettingsGroup title="Round settings">
               {isWst ? (
                 <p className="text-faint text-sm leading-relaxed">
-                  Rounds are automatic — one turn per player who joins and claims their name. The count updates in the host lobby as people join.
+                  Rounds are automatic — one turn per player who joins and claims their name. The count updates in the
+                  host lobby as people join.
                 </p>
               ) : (
-              <Field label="Rounds">
-                {isLobbyQuestions && questionSource === 'custom' && customQuestionCount === 0 && (
-                  <p className="text-faint text-xs mb-2">Upload questions below to set how many rounds you can play.</p>
-                )}
-                {isLobbyQuestions && questionSource === 'custom' && customQuestionCount > 0 && (
-                  <p className="text-faint text-xs mb-2">{customQuestionCount} custom questions loaded — up to {customQuestionCount} rounds.</p>
-                )}
-                <ChipGrid>
-                  {roundOptions.map((n) => (
-                    <Chip
-                      key={n}
-                      active={settings.rounds_count === n}
-                      onClick={() => setSettings({ ...settings, rounds_count: n })}
-                      className="!px-0 w-full"
-                    >
-                      {n}
-                    </Chip>
-                  ))}
-                </ChipGrid>
-              </Field>
+                <Field label="Rounds">
+                  {isLobbyQuestions && questionSource === 'custom' && customQuestionCount === 0 && (
+                    <p className="text-faint text-xs mb-2">
+                      Upload questions below to set how many rounds you can play.
+                    </p>
+                  )}
+                  {isLobbyQuestions && questionSource === 'custom' && customQuestionCount > 0 && (
+                    <p className="text-faint text-xs mb-2">
+                      {customQuestionCount} custom questions loaded — up to {customQuestionCount} rounds.
+                    </p>
+                  )}
+                  <ChipGrid>
+                    {roundOptions.map((n) => (
+                      <Chip
+                        key={n}
+                        active={settings.rounds_count === n}
+                        onClick={() => setSettings({ ...settings, rounds_count: n })}
+                        className="!px-0 w-full"
+                      >
+                        {n}
+                      </Chip>
+                    ))}
+                  </ChipGrid>
+                </Field>
               )}
 
               <Field label="Time per round">
@@ -525,9 +524,7 @@ function CreateGameInner() {
                         {
                           value: 'manual',
                           label: 'Add manually',
-                          hint: isWyr
-                            ? 'Type or paste option pairs.'
-                            : 'Type or paste one question per line.',
+                          hint: isWyr ? 'Type or paste option pairs.' : 'Type or paste one question per line.',
                         },
                       ]}
                     />
@@ -586,7 +583,11 @@ function CreateGameInner() {
                             className="input-field py-2.5 text-sm"
                           />
                         )}
-                        <button type="button" onClick={addManualQuestion} className="btn-secondary w-full text-sm py-2.5">
+                        <button
+                          type="button"
+                          onClick={addManualQuestion}
+                          className="btn-secondary w-full text-sm py-2.5"
+                        >
                           Add question
                         </button>
                         <textarea
@@ -601,7 +602,11 @@ function CreateGameInner() {
                           className="input-field resize-none font-medium text-sm"
                         />
                         {questionsBulkPaste.trim() && (
-                          <button type="button" onClick={addBulkQuestions} className="btn-secondary w-full text-sm py-2.5">
+                          <button
+                            type="button"
+                            onClick={addBulkQuestions}
+                            className="btn-secondary w-full text-sm py-2.5"
+                          >
                             Import pasted list
                           </button>
                         )}
@@ -612,9 +617,7 @@ function CreateGameInner() {
 
                     {customQuestionCount > 0 && (
                       <div className="surface-inset border border-theme rounded-xl p-3 space-y-2 max-h-48 overflow-y-auto">
-                        <p className="text-muted text-xs uppercase tracking-wider">
-                          Loaded ({customQuestionCount})
-                        </p>
+                        <p className="text-muted text-xs uppercase tracking-wider">Loaded ({customQuestionCount})</p>
                         {isWyr
                           ? customWyrQuestions.map((q, i) => (
                               <div key={i} className="flex items-start gap-2 text-sm">
@@ -647,11 +650,13 @@ function CreateGameInner() {
                       </div>
                     )}
 
-                    {questionSource === 'custom' && customQuestionCount > 0 && customQuestionCount < settings.rounds_count && (
-                      <p className="text-amber-200/90 text-xs">
-                        Need at least {settings.rounds_count} questions for {settings.rounds_count} rounds.
-                      </p>
-                    )}
+                    {questionSource === 'custom' &&
+                      customQuestionCount > 0 &&
+                      customQuestionCount < settings.rounds_count && (
+                        <p className="text-amber-200/90 text-xs">
+                          Need at least {settings.rounds_count} questions for {settings.rounds_count} rounds.
+                        </p>
+                      )}
                   </div>
                 )}
               </SettingsGroup>
@@ -673,12 +678,7 @@ function CreateGameInner() {
               </SettingsGroup>
             )}
 
-            <SettingsGroup
-              title="Advanced"
-              description="Timer behavior & privacy"
-              collapsible
-              defaultOpen={false}
-            >
+            <SettingsGroup title="Advanced" description="Timer behavior & privacy" collapsible defaultOpen={false}>
               <Field label="When timer runs out">
                 <SegmentedControl
                   value={settings.auto_submit_behavior}
@@ -751,9 +751,7 @@ function CreateGameInner() {
         <div>
           <p className="label-caps mb-1">Step 2</p>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight gradient-title-subtle">Add People</h1>
-          <p className="text-muted text-sm mt-1.5">
-            {participantImportStepHint(settings.game_type)}
-          </p>
+          <p className="text-muted text-sm mt-1.5">{participantImportStepHint(settings.game_type)}</p>
         </div>
 
         <div className="glass-card p-5 space-y-4">
@@ -781,11 +779,7 @@ function CreateGameInner() {
           {participantTab === 'upload' ? (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="btn-secondary !py-3"
-                >
+                <button type="button" onClick={() => fileRef.current?.click()} className="btn-secondary !py-3">
                   Choose file
                 </button>
                 <a
@@ -841,9 +835,7 @@ function CreateGameInner() {
                 value={bulkPaste}
                 onChange={(e) => setBulkPaste(e.target.value)}
                 placeholder={
-                  needsGender
-                    ? 'Paste from Excel:\nSarah,female\nJames,male'
-                    : 'Paste names:\nSarah\nJames\nAlex'
+                  needsGender ? 'Paste from Excel:\nSarah,female\nJames,male' : 'Paste names:\nSarah\nJames\nAlex'
                 }
                 rows={3}
                 className="input-field resize-none font-medium"
@@ -872,7 +864,10 @@ function CreateGameInner() {
               </div>
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {participants.map((p, i) => (
-                  <div key={`${p.name}-${p.gender}-${i}`} className="surface-inset flex items-center justify-between px-3 py-2.5">
+                  <div
+                    key={`${p.name}-${p.gender}-${i}`}
+                    className="surface-inset flex items-center justify-between px-3 py-2.5"
+                  >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <Avatar name={p.name} />
                       <span className="font-medium text-sm truncate">{p.name}</span>
@@ -900,11 +895,14 @@ function CreateGameInner() {
               Add {minPool - participants.length} more name{minPool - participants.length === 1 ? '' : 's'} to continue
             </p>
           )}
-          {needsGender && !isMlt && !hasEnoughForRounds(participants, settings.game_type) && participants.length > 0 && (
-            <p className="text-amber-500 text-xs text-center">
-              Need at least {minPool} people of the same gender to run rounds
-            </p>
-          )}
+          {needsGender &&
+            !isMlt &&
+            !hasEnoughForRounds(participants, settings.game_type) &&
+            participants.length > 0 && (
+              <p className="text-amber-500 text-xs text-center">
+                Need at least {minPool} people of the same gender to run rounds
+              </p>
+            )}
         </div>
 
         <StickyActionBar>
@@ -958,11 +956,13 @@ function CreateGameInner() {
 
 export default function CreateGame() {
   return (
-    <Suspense fallback={
-      <PageShell centered>
-        <div className="text-center text-muted">Loading...</div>
-      </PageShell>
-    }>
+    <Suspense
+      fallback={
+        <PageShell centered>
+          <div className="text-center text-muted">Loading...</div>
+        </PageShell>
+      }
+    >
       <CreateGameInner />
     </Suspense>
   )
@@ -983,11 +983,7 @@ function GenderBadge({ gender }: { gender: ParticipantGender }) {
 }
 
 function Avatar({ name }: { name: string }) {
-  return (
-    <div className="avatar w-7 h-7 text-xs shrink-0">
-      {name.charAt(0).toUpperCase()}
-    </div>
-  )
+  return <div className="avatar w-7 h-7 text-xs shrink-0">{name.charAt(0).toUpperCase()}</div>
 }
 
 function CopyCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
@@ -995,10 +991,7 @@ function CopyCard({ label, value, accent }: { label: string; value: string; acce
     <div className={`glass-card p-4 space-y-2 ${accent ? 'border-[var(--primary)]/35' : ''}`}>
       <p className={`label-caps ${accent ? 'text-[var(--primary)]' : ''}`}>{label}</p>
       <p className="font-mono text-xs break-all text-muted">{value}</p>
-      <CopyLinkButton
-        value={value}
-        successMessage={accent ? 'Host link copied' : 'Player link copied'}
-      />
+      <CopyLinkButton value={value} successMessage={accent ? 'Host link copied' : 'Player link copied'} />
     </div>
   )
 }

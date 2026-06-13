@@ -18,21 +18,10 @@ export function GameTypeModal({ open, onClose, selected, onSelect }: GameTypeMod
   }
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Choose a game"
-      subtitle="Pick the vibe for your party"
-      size="lg"
-    >
+    <Modal open={open} onClose={onClose} title="Choose a game" subtitle="Pick the vibe for your party" size="lg">
       <div className="grid gap-3 sm:grid-cols-2 animate-stagger">
         {GAME_TYPE_OPTIONS.map((type) => (
-          <GameTypeCard
-            key={type}
-            type={type}
-            selected={selected === type}
-            onClick={() => handleSelect(type)}
-          />
+          <GameTypeCard key={type} type={type} selected={selected === type} onClick={() => handleSelect(type)} />
         ))}
       </div>
     </Modal>

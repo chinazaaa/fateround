@@ -43,9 +43,7 @@ export function pickLeastUsed<T>(
       if (uses < minCount) minCount = uses
     }
 
-    const tier = shuffleInPlace(
-      remaining.filter((item) => (usageCounts.get(keyFn(item)) ?? 0) === minCount)
-    )
+    const tier = shuffleInPlace(remaining.filter((item) => (usageCounts.get(keyFn(item)) ?? 0) === minCount))
 
     for (const item of tier) {
       if (picked.length >= target) break

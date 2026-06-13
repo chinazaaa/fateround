@@ -31,8 +31,7 @@ export function MltPlayerPicker({
     [players]
   )
 
-  const displayName = (p: MltPlayerOption) =>
-    selfId && p.id === selfId ? `${p.name} (you)` : p.name
+  const displayName = (p: MltPlayerOption) => (selfId && p.id === selfId ? `${p.name} (you)` : p.name)
 
   if (sorted.length === 0) {
     return <p className="text-faint text-sm text-center py-4">No players in the game yet</p>
@@ -58,9 +57,7 @@ export function MltPlayerPicker({
   const scrollable = sorted.length > 4
 
   return (
-    <div
-      className={`grid gap-2 ${scrollable ? 'max-h-64 overflow-y-auto overscroll-contain pr-1 -mr-1' : ''}`}
-    >
+    <div className={`grid gap-2 ${scrollable ? 'max-h-64 overflow-y-auto overscroll-contain pr-1 -mr-1' : ''}`}>
       {sorted.map((p) => {
         const active = selectedId === p.id
         return (

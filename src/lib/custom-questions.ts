@@ -16,10 +16,7 @@ function isWyrHeader(cols: string[]): boolean {
   if (cols.length < 2) return false
   const a = cols[0].trim().toLowerCase().replace(/\s+/g, '_')
   const b = cols[1].trim().toLowerCase().replace(/\s+/g, '_')
-  return (
-    (a === 'option_a' || a === 'optiona' || a === 'a') &&
-    (b === 'option_b' || b === 'optionb' || b === 'b')
-  )
+  return (a === 'option_a' || a === 'optiona' || a === 'a') && (b === 'option_b' || b === 'optionb' || b === 'b')
 }
 
 function isMltHeader(cols: string[]): boolean {
@@ -38,7 +35,10 @@ export function isLobbyQuestionGame(gameType?: GameType | string): boolean {
 }
 
 export function parseWyrQuestionRows(text: string): WyrQuestion[] {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
   const rows: WyrQuestion[] = []
 
   for (const line of lines) {
@@ -56,7 +56,10 @@ export function parseWyrQuestionRows(text: string): WyrQuestion[] {
 }
 
 export function parseMltQuestionRows(text: string): string[] {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
   const rows: string[] = []
 
   for (const line of lines) {
@@ -78,7 +81,12 @@ async function sheetBufferToText(buffer: ArrayBuffer): Promise<string> {
 
   const grid = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '' }) as string[][]
   return grid
-    .map((row) => row.map((cell) => String(cell ?? '').trim()).filter(Boolean).join('\t'))
+    .map((row) =>
+      row
+        .map((cell) => String(cell ?? '').trim())
+        .filter(Boolean)
+        .join('\t')
+    )
     .filter(Boolean)
     .join('\n')
 }

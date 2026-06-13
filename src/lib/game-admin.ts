@@ -1,11 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 
-export async function assertHostGame(
-  supabase: SupabaseClient,
-  gameCode: string,
-  hostToken: string
-) {
+export async function assertHostGame(supabase: SupabaseClient, gameCode: string, hostToken: string) {
   const id = gameCode.toUpperCase()
   const { data: game } = await supabase.from('games').select('*').eq('id', id).maybeSingle()
   if (!game) return { error: 'Game not found', status: 404 as const, game: null, id }
@@ -16,11 +12,7 @@ export async function assertHostGame(
   return { error: null, status: 200 as const, game, id }
 }
 
-export async function findJoinerParticipant(
-  supabase: SupabaseClient,
-  gameId: string,
-  playerName: string
-) {
+export async function findJoinerParticipant(supabase: SupabaseClient, gameId: string, playerName: string) {
   const { data } = await supabase
     .from('participants')
     .select('*')
@@ -30,11 +22,7 @@ export async function findJoinerParticipant(
   return data
 }
 
-export async function deleteJoinerPair(
-  supabase: SupabaseClient,
-  gameId: string,
-  player: { id: string; name: string }
-) {
+export async function deleteJoinerPair(supabase: SupabaseClient, gameId: string, player: { id: string; name: string }) {
   await supabase.from('participants').delete().eq('game_id', gameId).eq('name', player.name)
   await supabase.from('players').delete().eq('id', player.id)
 }
@@ -69,9 +57,5 @@ export async function syncImportParticipantBallot(
   rawPollGender?: string
 ) {
   const gender = importBallotGender(voteGender, identityGender, rawPollGender)
-  await supabase
-    .from('participants')
-    .update({ gender })
-    .eq('id', participantId)
-    .eq('game_id', gameId)
+  await supabase.from('participants').update({ gender }).eq('id', participantId).eq('game_id', gameId)
 }

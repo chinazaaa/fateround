@@ -29,7 +29,6 @@ export default function Home() {
     <>
       <div className="page-wrap h-dvh max-h-dvh overflow-hidden flex flex-col items-center justify-center px-4 pt-12 pb-6">
         <div className="relative z-10 w-full max-w-sm flex flex-col gap-6">
-
           {/* Hero */}
           <div className="text-center space-y-3 shrink-0">
             <div className="premium-badge mx-auto">
@@ -38,7 +37,11 @@ export default function Home() {
             </div>
 
             <h1 className="text-[2.75rem] sm:text-5xl font-black tracking-tighter leading-[0.95] gradient-title">
-              Vote.<br />Laugh.<br />Reveal.
+              Vote.
+              <br />
+              Laugh.
+              <br />
+              Reveal.
             </h1>
 
             <p className="text-muted text-sm leading-relaxed max-w-xs mx-auto">
@@ -90,9 +93,7 @@ export default function Home() {
 
             <div className="flex items-center gap-3">
               <div className="divider-soft" />
-              <span className="text-faint text-xs font-medium tracking-widest uppercase shrink-0">
-                or join
-              </span>
+              <span className="text-faint text-xs font-medium tracking-widest uppercase shrink-0">or join</span>
               <div className="divider-soft" />
             </div>
 

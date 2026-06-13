@@ -30,9 +30,5 @@ export function Avatar({ name, photoUrl, size = 'md', className = '' }: AvatarPr
     )
   }
 
-  return (
-    <div className={`avatar ${s.container} shrink-0 ${className}`}>
-      {getInitial(name)}
-    </div>
-  )
+  return <div className={`avatar ${s.container} shrink-0 ${className}`}>{getInitial(name)}</div>
 }

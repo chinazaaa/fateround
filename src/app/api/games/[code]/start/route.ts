@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generateRoundsByGender } from '@/lib/utils'
-import { hasVotersForPolls, parseParticipantGenderFromDb, participantsWhoJoined, maxRecommendedRounds } from '@/lib/participants'
+import {
+  hasVotersForPolls,
+  parseParticipantGenderFromDb,
+  participantsWhoJoined,
+  maxRecommendedRounds,
+} from '@/lib/participants'
 import { parseGameType, roundPoolSize, isWouldYouRather, isMostLikelyTo, isWhoSaidThis } from '@/lib/game-types'
 import { buildRoundsFromQuotePool, wstAutoRoundCount } from '@/lib/who-said-this'
 import { pickWyrQuestions } from '@/lib/would-you-rather-questions'
@@ -17,10 +22,7 @@ import {
 } from '@/lib/custom-questions'
 import { hostActionSchema } from '@/lib/validation'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -63,16 +65,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const submitters = playersData.filter((p) => p.participant_id)
     if (submitters.length < 2) {
-      return NextResponse.json(
-        { error: 'Need at least 2 players who claimed a name from the list' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Need at least 2 players who claimed a name from the list' }, { status: 400 })
     }
 
-    const { data: poolEntries } = await supabase
-      .from('wst_quote_pool')
-      .select('*')
-      .eq('game_id', code.toUpperCase())
+    const { data: poolEntries } = await supabase.from('wst_quote_pool').select('*').eq('game_id', code.toUpperCase())
 
     const quotes = poolEntries ?? []
     if (quotes.length < 2) {
@@ -153,7 +149,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       ? pickCustomMltQuestions(customPool, platformNeeded)
       : pickMltQuestions(platformNeeded, await fetchMltQuestionUsage(supabase))
     // Player questions first, then fill from platform/custom pool
-    const questions = [...playerMltQuestions.slice(0, game.rounds_count), ...platformQuestions].slice(0, game.rounds_count)
+    const questions = [...playerMltQuestions.slice(0, game.rounds_count), ...platformQuestions].slice(
+      0,
+      game.rounds_count
+    )
     if (questions.length === 0) {
       return NextResponse.json(
         { error: useCustom ? 'No custom prompts available' : 'No prompts available' },
@@ -212,7 +211,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       ? pickCustomWyrQuestions(customPool, platformNeeded)
       : pickWyrQuestions(platformNeeded, await fetchWyrQuestionUsage(supabase))
     // Player questions first, then fill from platform/custom pool
-    const questions = [...playerWyrQuestions.slice(0, game.rounds_count), ...platformQuestions].slice(0, game.rounds_count)
+    const questions = [...playerWyrQuestions.slice(0, game.rounds_count), ...platformQuestions].slice(
+      0,
+      game.rounds_count
+    )
     if (questions.length === 0) {
       return NextResponse.json(
         { error: useCustom ? 'No custom questions available' : 'No questions available' },
@@ -258,9 +260,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   const isImportMode = (game.participant_mode ?? 'import') === 'import'
-  const roundPool = isImportMode
-    ? participantsWhoJoined(participantsData, playersData)
-    : participantsData
+  const roundPool = isImportMode ? participantsWhoJoined(participantsData, playersData) : participantsData
 
   if (roundPool.length < minPool) {
     return NextResponse.json(
