@@ -6,6 +6,10 @@ import { getPlayerSession, setPlayerSession, clearPlayerSession, filterParticipa
 import { Avatar } from '@/components/Avatar'
 import { ParticipantPhotoCard } from '@/components/ParticipantPhotoCard'
 import { ParticipantGallery } from '@/components/ParticipantGallery'
+import { useQueryClient as __useQueryClient } from '@tanstack/react-query'
+import { usePlayerQuestions } from '@/hooks/queries/usePlayerQuestions'
+import { useHotSeatSubmissions } from '@/hooks/queries/useHotSeatSubmissions'
+import { gameKeys } from '@/lib/query-keys'
 import {
   playRoundStartSound,
   playVoteSubmittedSound,
@@ -128,6 +132,7 @@ export default function GamePage() {
   const router = useRouter()
   const toast = useToast()
   const { confirm } = useConfirm()
+  const queryClient = __useQueryClient()
   const gameCode = (Array.isArray(code) ? code[0] : code).toUpperCase()
 
   const [view, setView] = useState<View>('loading')
@@ -156,9 +161,6 @@ export default function GamePage() {
   const [hotSeatText, setHotSeatText] = useState('')
   const [hotSeatType, setHotSeatType] = useState<'compliment' | 'roast' | 'observation'>('observation')
   const [hotSeatSubmitted, setHotSeatSubmitted] = useState(false)
-  const [hotSeatSubmissions, setHotSeatSubmissions] = useState<{ id: string; text: string; submission_type: string }[]>(
-    []
-  )
 
   // Between-rounds results
   const [lastFinishedRound, setLastFinishedRound] = useState<Round | null>(null)
@@ -185,16 +187,6 @@ export default function GamePage() {
   const [pqWyrB, setPqWyrB] = useState('')
   const [pqMltText, setPqMltText] = useState('')
   const [pqSubmitting, setPqSubmitting] = useState(false)
-  const [pqList, setPqList] = useState<
-    {
-      id: string
-      player_id: string
-      question_type: string
-      option_a?: string
-      option_b?: string
-      question_text?: string
-    }[]
-  >([])
   const [pqOpen, setPqOpen] = useState(false)
 
   // Photo upload (people-based modes)
@@ -446,18 +438,13 @@ export default function GamePage() {
     prevViewRef.current = view
   }, [view])
 
-  // Fetch Hot Seat submissions when entering round results
-  useEffect(() => {
-    if (view !== 'round_results' || !isHotSeat(game?.game_type) || !lastFinishedRound) return
-    async function fetchHotSeatResults() {
-      const res = await fetch(`/api/hot-seat?roundId=${lastFinishedRound!.id}&gameId=${gameCode}`)
-      if (res.ok) {
-        const { submissions } = await res.json()
-        setHotSeatSubmissions(submissions ?? [])
-      }
-    }
-    fetchHotSeatResults()
-  }, [view, game?.game_type, lastFinishedRound, gameCode])
+  // Hot Seat submissions — React Query (replaces one-shot fetch)
+  const { data: hotSeatData } = useHotSeatSubmissions(
+    gameCode,
+    lastFinishedRound?.id ?? null,
+    view === 'round_results' && isHotSeat(game?.game_type)
+  )
+  const hotSeatSubmissions = hotSeatData ?? []
 
   async function loadAllResults() {
     const [{ data: rounds }, { data: votes }, { data: confs }] = await Promise.all([
@@ -486,7 +473,6 @@ export default function GamePage() {
     setHotSeatText('')
     setHotSeatType('observation')
     setHotSeatSubmitted(false)
-    setHotSeatSubmissions([])
   }
 
   function applyActiveRound(round: Round, options?: { switchView?: boolean }) {
@@ -775,17 +761,12 @@ export default function GamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- polling interval, deps intentionally limited
   }, [view, gameCode])
 
-  // Poll player-submitted questions in lobby (WYR/MLT only)
-  useEffect(() => {
-    if (view !== 'waiting' || (!isWyrGame && !isMostLikelyTo(game?.game_type))) return
-    async function fetchPQ() {
-      const { data } = await supabase.from('player_questions').select('*').eq('game_id', gameCode).order('created_at')
-      if (data) setPqList(data)
-    }
-    fetchPQ()
-    const id = setInterval(fetchPQ, 4000)
-    return () => clearInterval(id)
-  }, [view, gameCode, isWyrGame, game?.game_type])
+  // Player-submitted questions — React Query with auto-refetch (replaces 4s polling)
+  const { data: pqData } = usePlayerQuestions(
+    gameCode,
+    view === 'waiting' && (isWyrGame || isMostLikelyTo(game?.game_type))
+  )
+  const pqList = pqData ?? []
 
   // Poll during round / results — fallback when realtime misses round transitions
   useEffect(() => {
@@ -1710,7 +1691,7 @@ export default function GamePage() {
                           })
                           if (res.ok) {
                             const { question } = await res.json()
-                            setPqList((prev) => [...prev, question])
+                            queryClient.invalidateQueries({ queryKey: gameKeys.playerQuestions(gameCode) })
                             setPqWyrA('')
                             setPqWyrB('')
                           } else {
@@ -1759,7 +1740,7 @@ export default function GamePage() {
                           })
                           if (res.ok) {
                             const { question } = await res.json()
-                            setPqList((prev) => [...prev, question])
+                            queryClient.invalidateQueries({ queryKey: gameKeys.playerQuestions(gameCode) })
                             setPqMltText('')
                           } else {
                             const { error } = await res.json()
@@ -1798,7 +1779,7 @@ export default function GamePage() {
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ questionId: q.id, playerId: myPlayerId }),
                               })
-                              setPqList((prev) => prev.filter((x) => x.id !== q.id))
+                              queryClient.invalidateQueries({ queryKey: gameKeys.playerQuestions(gameCode) })
                             }}
                           >
                             x
