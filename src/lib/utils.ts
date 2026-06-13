@@ -101,21 +101,36 @@ export function filterParticipantsInRounds<T extends { id: string }>(
   return participants.filter((p) => playedIds.has(p.id))
 }
 
-export function getPlayerSession(gameCode: string): { playerId: string; playerName: string } | null {
+import type { ParticipantGender } from '@/types'
+
+export function getPlayerSession(gameCode: string): {
+  playerId: string
+  playerName: string
+  playerGender: ParticipantGender
+} | null {
   if (typeof window === 'undefined') return null
   try {
     const raw = localStorage.getItem(`kmk_player_${gameCode.toUpperCase()}`)
-    return raw ? JSON.parse(raw) : null
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed?.playerId || !parsed?.playerName) return null
+    const gender = parsed.playerGender === 'male' ? 'male' : 'female'
+    return { playerId: parsed.playerId, playerName: parsed.playerName, playerGender: gender }
   } catch {
     return null
   }
 }
 
-export function setPlayerSession(gameCode: string, playerId: string, playerName: string): void {
+export function setPlayerSession(
+  gameCode: string,
+  playerId: string,
+  playerName: string,
+  playerGender: ParticipantGender
+): void {
   if (typeof window === 'undefined') return
   localStorage.setItem(
     `kmk_player_${gameCode.toUpperCase()}`,
-    JSON.stringify({ playerId, playerName })
+    JSON.stringify({ playerId, playerName, playerGender })
   )
 }
 

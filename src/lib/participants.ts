@@ -91,6 +91,66 @@ export function roundGenderLabel(genders: ParticipantGender[]): string | null {
   return unique[0] === 'male' ? "Men's round" : "Women's round"
 }
 
+export function getRoundParticipantGender(
+  participantIds: string[],
+  participants: { id: string; gender: ParticipantGender }[]
+): ParticipantGender | null {
+  const genders = participantIds
+    .map((id) => participants.find((p) => p.id === id)?.gender)
+    .filter((g): g is ParticipantGender => g === 'male' || g === 'female')
+  const unique = [...new Set(genders)]
+  if (unique.length !== 1) return null
+  return unique[0]
+}
+
+/** Men's poll → women vote; women's poll → men vote. */
+export function canPlayerVoteInRound(
+  playerGender: ParticipantGender,
+  roundGender: ParticipantGender
+): boolean {
+  return playerGender !== roundGender
+}
+
+export function voterGenderForRound(roundGender: ParticipantGender): ParticipantGender {
+  return roundGender === 'male' ? 'female' : 'male'
+}
+
+export function eligibleVotersForRound<T extends { id: string; gender: ParticipantGender }>(
+  roundGender: ParticipantGender | null,
+  players: T[]
+): T[] {
+  if (!roundGender) return players
+  const voterGender = voterGenderForRound(roundGender)
+  return players.filter((p) => p.gender === voterGender)
+}
+
+export function roundVoterLabel(roundGender: ParticipantGender | null): string | null {
+  if (roundGender === 'male') return 'Women vote on the men'
+  if (roundGender === 'female') return 'Men vote on the women'
+  return null
+}
+
+export function spectatorMessage(roundGender: ParticipantGender | null): string {
+  if (roundGender === 'male') return "This is the men's poll — only women vote. You're watching this round."
+  if (roundGender === 'female') return "This is the women's poll — only men vote. You're watching this round."
+  return "You're spectating this round."
+}
+
+export function participantsInGenderRounds<T extends { id: string; gender: ParticipantGender }>(
+  participants: T[],
+  rounds: { participant_ids: string[] }[],
+  gender: ParticipantGender
+): T[] {
+  const ids = new Set<string>()
+  for (const round of rounds) {
+    const roundGender = getRoundParticipantGender(round.participant_ids, participants)
+    if (roundGender === gender) {
+      round.participant_ids.forEach((id) => ids.add(id))
+    }
+  }
+  return participants.filter((p) => ids.has(p.id))
+}
+
 /** Parse first sheet of an Excel workbook (ArrayBuffer). */
 export async function parseExcelParticipants(buffer: ArrayBuffer): Promise<ParticipantInput[]> {
   const XLSX = await import('xlsx')

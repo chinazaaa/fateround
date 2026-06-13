@@ -3,9 +3,11 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, getInitial, filterParticipantsInRounds } from '@/lib/utils'
-import { roundGenderLabel } from '@/lib/participants'
+import { roundGenderLabel, genderLabel, getRoundParticipantGender, canPlayerVoteInRound, eligibleVotersForRound, roundVoterLabel, spectatorMessage } from '@/lib/participants'
+import type { ParticipantGender } from '@/types'
 import { tallyRoundVotes, VOTE_CATEGORY_META, ASSIGNMENT_ACTION_META, assignmentEmoji } from '@/lib/vote-stats'
 import { ParticipantRoundResults, VoteCountStat } from '@/components/VoteResults'
+import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import type { Game, Participant, Player, Round, Vote, VoteAssignment, Confession } from '@/types'
 
 type View = 'loading' | 'not_found' | 'join' | 'waiting' | 'round' | 'round_results' | 'results'
@@ -39,7 +41,9 @@ export default function GamePage() {
 
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [myPlayerName, setMyPlayerName] = useState<string | null>(null)
+  const [myPlayerGender, setMyPlayerGender] = useState<ParticipantGender | null>(null)
   const [nameInput, setNameInput] = useState('')
+  const [joinGender, setJoinGender] = useState<ParticipantGender>('female')
   const [joining, setJoining] = useState(false)
 
   // ── Refs that are always up-to-date (avoid stale closures in timer/auto-submit) ──
@@ -54,6 +58,8 @@ export default function GamePage() {
   participantsRef.current = participants
   const myPlayerIdRef = useRef(myPlayerId)
   myPlayerIdRef.current = myPlayerId
+  const myPlayerGenderRef = useRef(myPlayerGender)
+  myPlayerGenderRef.current = myPlayerGender
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // ── Initial load ──────────────────────────────────────────────────────────
@@ -75,6 +81,7 @@ export default function GamePage() {
       if (session) {
         setMyPlayerId(session.playerId)
         setMyPlayerName(session.playerName)
+        setMyPlayerGender(session.playerGender)
       }
 
       if (gameData.status === 'active') {
@@ -347,6 +354,12 @@ export default function GamePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, gameCode, currentRound?.id])
 
+  useEffect(() => {
+    if (!myPlayerId) return
+    const me = players.find((p) => p.id === myPlayerId)
+    if (me?.gender) setMyPlayerGender(me.gender)
+  }, [myPlayerId, players])
+
   // ── Timer — NO `submitted` in deps so it keeps running after submit ───────
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current)
@@ -358,7 +371,17 @@ export default function GamePage() {
       const remaining = Math.max(0, Math.ceil((endMs - Date.now()) / 1000))
       setTimeLeft(remaining)
 
-      if (remaining === 0 && !submittedRef.current) {
+      const roundGender = getRoundParticipantGender(
+        currentRound.participant_ids,
+        participantsRef.current
+      )
+      const playerGender = myPlayerGenderRef.current
+      const canVote =
+        !!roundGender &&
+        !!playerGender &&
+        canPlayerVoteInRound(playerGender, roundGender)
+
+      if (remaining === 0 && !submittedRef.current && canVote) {
         submittedRef.current = true
         setSubmitted(true)
         autoSubmitFromRefs()
@@ -442,13 +465,14 @@ export default function GamePage() {
       const res = await fetch('/api/players', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: nameInput.trim() }),
+        body: JSON.stringify({ gameCode, playerName: nameInput.trim(), gender: joinGender }),
       })
       const data = await res.json()
       if (data.playerId) {
-        setPlayerSession(gameCode, data.playerId, data.playerName)
+        setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender)
         setMyPlayerId(data.playerId)
         setMyPlayerName(data.playerName)
+        setMyPlayerGender(data.playerGender)
         const { data: plrs } = await supabase
           .from('players').select('*').eq('game_id', gameCode).order('joined_at')
         setPlayers(plrs || [])
@@ -484,8 +508,8 @@ export default function GamePage() {
           <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
           <p className="text-muted text-sm">{game?.rounds_count} rounds · {game?.timer_seconds}s each</p>
         </div>
-        <div className="space-y-3">
-          <p className="text-muted font-medium text-center">Enter your name to join</p>
+        <div className="space-y-4">
+          <p className="text-muted font-medium text-center">Enter your name and gender to join</p>
           <input
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
@@ -494,6 +518,28 @@ export default function GamePage() {
             autoFocus
             className={inputCls}
           />
+          <div>
+            <p className="text-faint text-xs mb-2 text-center">I am</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setJoinGender('female')}
+                className={`flex-1 chip ${joinGender === 'female' ? 'chip-active' : ''}`}
+              >
+                Female
+              </button>
+              <button
+                type="button"
+                onClick={() => setJoinGender('male')}
+                className={`flex-1 chip ${joinGender === 'male' ? 'chip-active' : ''}`}
+              >
+                Male
+              </button>
+            </div>
+          </div>
+          <p className="text-faint text-xs text-center">
+            You&apos;ll vote on the {joinGender === 'male' ? "women's" : "men's"} polls only
+          </p>
           <button onClick={joinGame} disabled={!nameInput.trim() || joining} className={primaryBtnCls}>
             {joining ? 'Joining...' : 'Join Game'}
           </button>
@@ -517,8 +563,11 @@ export default function GamePage() {
             {players.map((p) => (
               <div key={p.id} className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full shrink-0 ${p.name === myPlayerName ? 'bg-[var(--primary)]' : 'bg-white/20'}`} />
-                <span className={`text-sm ${p.name === myPlayerName ? 'text-[var(--primary)] font-semibold' : 'text-white/80'}`}>
+                <span className={`text-sm flex-1 min-w-0 truncate ${p.name === myPlayerName ? 'text-[var(--primary)] font-semibold' : 'text-white/80'}`}>
                   {p.name}{p.name === myPlayerName ? ' (you)' : ''}
+                </span>
+                <span className="text-[10px] uppercase tracking-wider text-faint shrink-0">
+                  {genderLabel(p.gender)}
                 </span>
               </div>
             ))}
@@ -532,8 +581,14 @@ export default function GamePage() {
   // ROUND — voting
   if (view === 'round' && currentRound) {
     const roundParts = participants.filter((p) => currentRound.participant_ids.includes(p.id))
+    const roundParticipantGender = getRoundParticipantGender(currentRound.participant_ids, participants)
     const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
-    const roundVoteCount = lastRoundVotes.length // approximate; not perfect but fine
+    const voterHint = roundVoterLabel(roundParticipantGender)
+    const canVote = !!(
+      myPlayerGender &&
+      roundParticipantGender &&
+      canPlayerVoteInRound(myPlayerGender, roundParticipantGender)
+    )
     const allAssigned = !!(assignment.kiss && assignment.marry && assignment.kill)
 
     return (
@@ -549,9 +604,24 @@ export default function GamePage() {
             {roundGender && (
               <p className="text-[var(--primary)] text-sm font-medium mt-0.5">{roundGender}</p>
             )}
+            {voterHint && (
+              <p className="text-muted text-xs mt-0.5">{voterHint}</p>
+            )}
           </div>
-          <TimerDisplay seconds={timeLeft} total={game?.timer_seconds ?? 30} />
+          {canVote ? (
+            <TimerDisplay seconds={timeLeft} total={game?.timer_seconds ?? 30} />
+          ) : (
+            <div className="glass-card px-3 py-2 text-center">
+              <p className="text-faint text-[10px] uppercase tracking-wider">Spectating</p>
+            </div>
+          )}
         </div>
+
+        {!canVote && (
+          <div className="glass-card border border-white/12 px-4 py-3 mb-4 text-center">
+            <p className="text-white/90 text-sm">{spectatorMessage(roundParticipantGender)}</p>
+          </div>
+        )}
 
         {/* Participant cards */}
         <div className="flex-1 flex flex-col gap-4 mb-6">
@@ -565,15 +635,17 @@ export default function GamePage() {
                 key={p.id}
                 participant={p}
                 action={action}
-                onAssign={(a) => !submitted && assign(a, p.id)}
-                disabled={submitted}
+                onAssign={(a) => canVote && !submitted && assign(a, p.id)}
+                disabled={submitted || !canVote}
               />
             )
           })}
         </div>
 
-        {/* Submit / submitted */}
-        {!submitted ? (
+        {/* Submit / submitted / spectating */}
+        {!canVote ? (
+          <p className="text-faint text-sm text-center">Results will appear when voting ends</p>
+        ) : !submitted ? (
           <button
             onClick={handleSubmit}
             disabled={!allAssigned}
@@ -621,7 +693,15 @@ export default function GamePage() {
   // ROUND RESULTS — shown after round ends, before next round starts
   if (view === 'round_results' && lastFinishedRound) {
     const roundParts = participants.filter((p) => lastFinishedRound.participant_ids.includes(p.id))
+    const roundParticipantGender = getRoundParticipantGender(lastFinishedRound.participant_ids, participants)
+    const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
     const myVote = lastRoundVotes.find((v) => v.player_id === myPlayerId)
+    const watchedRound = !!(
+      !myVote &&
+      myPlayerGender &&
+      roundParticipantGender &&
+      !canPlayerVoteInRound(myPlayerGender, roundParticipantGender)
+    )
     const roundConfessions = allConfessions.filter((c) => c.round_id === lastFinishedRound.id)
     const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
 
@@ -631,8 +711,12 @@ export default function GamePage() {
         <div className="text-center">
           <p className="text-muted text-xs uppercase tracking-wider">
             Round {lastFinishedRound.round_number} of {game?.rounds_count}
+            {roundGender ? ` · ${roundGender}` : ''}
           </p>
           <h2 className="text-2xl font-black tracking-tight mt-1">Results are in! 🗳️</h2>
+          {watchedRound && (
+            <p className="text-muted text-sm mt-2">You watched this round — everyone sees the same results</p>
+          )}
         </div>
 
         {/* My vote recap */}
@@ -840,16 +924,6 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
   myPlayerId: string | null
 }) {
   const playedParticipants = filterParticipantsInRounds(participants, rounds)
-  const tally = playedParticipants.map((p) => ({
-    ...p,
-    kissCount:  votes.filter((v) => v.kiss_participant_id  === p.id).length,
-    marryCount: votes.filter((v) => v.marry_participant_id === p.id).length,
-    killCount:  votes.filter((v) => v.kill_participant_id  === p.id).length,
-  }))
-
-  const mostMarried = [...tally].sort((a, b) => b.marryCount - a.marryCount)[0]
-  const mostSmashed = [...tally].sort((a, b) => b.kissCount - a.kissCount)[0]
-  const mostKilled  = [...tally].sort((a, b) => b.killCount  - a.killCount)[0]
 
   return (
     <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-8">
@@ -859,25 +933,30 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
         <p className="text-muted">{players.length} players · {rounds.length} rounds · {playedParticipants.length} in game</p>
       </div>
 
-      {/* Leaderboard */}
-      <div>
-        <h2 className="text-muted text-xs uppercase tracking-wider mb-3">Leaderboard</h2>
-        <div className="grid grid-cols-3 gap-3">
-          <LeaderCard emoji={VOTE_CATEGORY_META.kiss.emoji} label={VOTE_CATEGORY_META.kiss.leaderboardLabel} name={mostSmashed?.name} count={mostSmashed?.kissCount} color="pink" />
-          <LeaderCard emoji={VOTE_CATEGORY_META.marry.emoji} label={VOTE_CATEGORY_META.marry.leaderboardLabel} name={mostMarried?.name} count={mostMarried?.marryCount} color="amber" />
-          <LeaderCard emoji={VOTE_CATEGORY_META.smash.emoji} label={VOTE_CATEGORY_META.smash.leaderboardLabel} name={mostKilled?.name} count={mostKilled?.killCount} color="red" />
-        </div>
-      </div>
+      <FinalGenderLeaderboards
+        participants={participants}
+        rounds={rounds}
+        votes={votes}
+        TopCard={LeaderCard}
+      />
 
-      {/* Round-by-round breakdown */}
+      <FinalGenderBreakdown participants={participants} rounds={rounds} votes={votes} />
+
+      <div>
+        <h2 className="text-muted text-xs uppercase tracking-wider mb-4">All round results</h2>
+        <div className="space-y-8">
+      {/* Round-by-round breakdown — all rounds visible to everyone */}
       {rounds.map((round) => {
         const roundParts = participants.filter((p) => round.participant_ids.includes(p.id))
         const roundVotes = votes.filter((v) => v.round_id === round.id)
         const myVote = roundVotes.find((v) => v.player_id === myPlayerId)
+        const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
 
         return (
           <div key={round.id}>
-            <h2 className="text-muted text-xs uppercase tracking-wider mb-3">Round {round.round_number}</h2>
+            <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
+              Round {round.round_number}{roundGender ? ` · ${roundGender}` : ''}
+            </h2>
             {myVote && (
               <div className="glass-card border border-[var(--primary)]/25 px-4 py-2.5 mb-3 flex gap-4 flex-wrap">
                 <span className="text-muted text-xs uppercase tracking-wider self-center">Your vote:</span>
@@ -931,6 +1010,8 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
           </div>
         )
       })}
+        </div>
+      </div>
 
       {/* All hot takes */}
       {confessions.length > 0 && (

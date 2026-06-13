@@ -32,6 +32,7 @@ export interface Player {
   id: string
   game_id: string
   name: string
+  gender: ParticipantGender
   joined_at: string
 }
 

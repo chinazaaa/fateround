@@ -37,9 +37,13 @@ create table if not exists players (
   id uuid primary key default gen_random_uuid(),
   game_id text not null references games(id) on delete cascade,
   name text not null,
+  gender text not null default 'female' check (gender in ('male', 'female')),
   joined_at timestamptz not null default now()
 );
 create index if not exists idx_players_game_id on players(game_id);
+
+-- If upgrading an existing database, run:
+-- alter table players add column if not exists gender text not null default 'female' check (gender in ('male', 'female'));
 
 -- Rounds
 create table if not exists rounds (

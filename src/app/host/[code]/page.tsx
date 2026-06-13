@@ -3,9 +3,10 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getInitial, filterParticipantsInRounds } from '@/lib/utils'
-import { roundGenderLabel } from '@/lib/participants'
+import { roundGenderLabel, genderLabel, getRoundParticipantGender, eligibleVotersForRound, roundVoterLabel } from '@/lib/participants'
 import { tallyRoundVotes, VOTE_CATEGORY_META } from '@/lib/vote-stats'
 import { ParticipantRoundResults, VoteCountStat } from '@/components/VoteResults'
+import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import type { Game, Participant, Player, Round, Vote, Confession, VoteAssignment } from '@/types'
 
 export default function HostPage() {
@@ -257,16 +258,21 @@ export default function HostPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [currentRound?.id, currentRound?.started_at, game?.timer_seconds, game?.status])
 
-  // Auto-end round as soon as every player has voted; timer is the fallback
+  // Auto-end round as soon as every eligible voter has voted; timer is the fallback
   useEffect(() => {
     if (!currentRound || !game || game.status !== 'active' || players.length === 0) return
 
-    const roundVotes = votes.filter((v) => v.round_id === currentRound.id)
-    if (roundVotes.length >= players.length) {
+    const roundGender = getRoundParticipantGender(currentRound.participant_ids, participants)
+    const eligible = eligibleVotersForRound(roundGender, players)
+    if (eligible.length === 0) return
+
+    const eligibleIds = new Set(eligible.map((p) => p.id))
+    const roundVotes = votes.filter((v) => v.round_id === currentRound.id && eligibleIds.has(v.player_id))
+    if (roundVotes.length >= eligible.length) {
       handleEndRound()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentRound?.id, votes, players.length, game?.status])
+  }, [currentRound?.id, votes, players, participants, game?.status])
 
   const handleStart = async () => {
     if (starting) return
@@ -427,11 +433,12 @@ export default function HostPage() {
           ) : (
             <div className="grid grid-cols-2 gap-2">
               {players.map((p) => (
-                <div key={p.id} className="flex items-center gap-2">
+                <div key={p.id} className="flex items-center gap-2 min-w-0">
                   <div className="avatar w-6 h-6 text-xs shrink-0">
                     {getInitial(p.name)}
                   </div>
-                  <span className="text-white/80 text-sm truncate">{p.name}</span>
+                  <span className="text-white/80 text-sm truncate flex-1">{p.name}</span>
+                  <span className="text-[9px] uppercase text-faint shrink-0">{genderLabel(p.gender)}</span>
                 </div>
               ))}
             </div>
@@ -465,8 +472,13 @@ export default function HostPage() {
   if (game?.status === 'active' && currentRound) {
     const roundVotes = votes.filter((v) => v.round_id === currentRound.id)
     const roundParts = participants.filter((p) => currentRound.participant_ids.includes(p.id))
+    const roundParticipantGender = getRoundParticipantGender(currentRound.participant_ids, participants)
     const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
-    const allVoted = roundVotes.length >= players.length && players.length > 0
+    const voterHint = roundVoterLabel(roundParticipantGender)
+    const eligible = eligibleVotersForRound(roundParticipantGender, players)
+    const eligibleIds = new Set(eligible.map((p) => p.id))
+    const eligibleVotes = roundVotes.filter((v) => eligibleIds.has(v.player_id))
+    const allVoted = eligibleVotes.length >= eligible.length && eligible.length > 0
 
     return (
       <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
@@ -484,6 +496,9 @@ export default function HostPage() {
           <p className="text-muted text-xs uppercase tracking-wider mb-2">
             This Round{roundGender ? ` · ${roundGender}` : ''}
           </p>
+          {voterHint && (
+            <p className="text-[var(--primary)] text-xs mb-2">{voterHint}</p>
+          )}
           <div className="flex gap-2">
             {roundParts.map((p) => (
               <div key={p.id} className="flex-1 glass-card p-3 text-center">
@@ -501,23 +516,30 @@ export default function HostPage() {
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs uppercase tracking-wider">Votes In</p>
             <span className={`text-sm font-bold ${allVoted ? 'text-green-400' : 'text-white/80'}`}>
-              {roundVotes.length} / {players.length}
+              {eligibleVotes.length} / {eligible.length || 0}
               {allVoted && ' · ending round...'}
             </span>
           </div>
           <div className="h-2 bg-white/8 rounded-full overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-500 ${allVoted ? 'bg-emerald-500' : 'bg-[var(--primary-strong)]'}`}
-              style={{ width: players.length > 0 ? `${(roundVotes.length / players.length) * 100}%` : '0%' }}
+              style={{ width: eligible.length > 0 ? `${(eligibleVotes.length / eligible.length) * 100}%` : '0%' }}
             />
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {!game.anonymous && players.map((pl) => {
+              const canVote = eligibleIds.has(pl.id)
               const voted = roundVotes.some((v) => v.player_id === pl.id)
               return (
-                <div key={pl.id} className={`flex items-center gap-1.5 text-xs ${voted ? 'text-green-400' : 'text-faint'}`}>
-                  <span>{voted ? '✓' : '○'}</span>
+                <div
+                  key={pl.id}
+                  className={`flex items-center gap-1.5 text-xs ${
+                    !canVote ? 'text-faint' : voted ? 'text-green-400' : 'text-white/50'
+                  }`}
+                >
+                  <span>{!canVote ? '—' : voted ? '✓' : '○'}</span>
                   <span className="truncate">{pl.name}</span>
+                  {!canVote && <span className="text-[10px] shrink-0">watch</span>}
                 </div>
               )
             })}
@@ -556,8 +578,8 @@ export default function HostPage() {
         >
           {ending ? 'Ending round...' :
            currentRound.round_number >= game.rounds_count
-             ? (allVoted ? '🏁 End Round & Show Results' : `End Round (${roundVotes.length}/${players.length} voted)`)
-             : (allVoted ? '✓ End Round & Show Results' : `End Round (${roundVotes.length}/${players.length} voted)`)}
+             ? (allVoted ? '🏁 End Round & Show Results' : `End Round (${eligibleVotes.length}/${eligible.length} voted)`)
+             : (allVoted ? '✓ End Round & Show Results' : `End Round (${eligibleVotes.length}/${eligible.length} voted)`)}
         </button>
       </div>
     )
@@ -667,18 +689,6 @@ export default function HostPage() {
   // ── FINISHED ──────────────────────────────────────────────────────────────
   if (game?.status === 'finished') {
     const playedParticipants = filterParticipantsInRounds(participants, allRounds)
-    const tally = playedParticipants.map((p) => ({
-      ...p,
-      kissCount:  votes.filter((v) => v.kiss_participant_id  === p.id).length,
-      marryCount: votes.filter((v) => v.marry_participant_id === p.id).length,
-      killCount:  votes.filter((v) => v.kill_participant_id  === p.id).length,
-    }))
-    const mostMarried = [...tally].sort((a, b) => b.marryCount - a.marryCount)[0]
-    const mostSmashed = [...tally].sort((a, b) => b.kissCount - a.kissCount)[0]
-    const mostKilled  = [...tally].sort((a, b) => b.killCount  - a.killCount)[0]
-    const maxSmash = Math.max(1, ...tally.map((p) => p.kissCount))
-    const maxMarry = Math.max(1, ...tally.map((p) => p.marryCount))
-    const maxKill = Math.max(1, ...tally.map((p) => p.killCount))
 
     return (
       <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-8">
@@ -688,31 +698,14 @@ export default function HostPage() {
           <p className="text-muted">{players.length} players · {allRounds.length} rounds · {playedParticipants.length} in game</p>
         </div>
 
-        {/* Top 3 */}
-        <div className="grid grid-cols-3 gap-3">
-          <StatCard emoji={VOTE_CATEGORY_META.kiss.emoji} label={VOTE_CATEGORY_META.kiss.leaderboardLabel} name={mostSmashed?.name} count={mostSmashed?.kissCount} color="pink" />
-          <StatCard emoji={VOTE_CATEGORY_META.marry.emoji} label={VOTE_CATEGORY_META.marry.leaderboardLabel} name={mostMarried?.name} count={mostMarried?.marryCount} color="amber" />
-          <StatCard emoji={VOTE_CATEGORY_META.smash.emoji} label={VOTE_CATEGORY_META.smash.leaderboardLabel} name={mostKilled?.name} count={mostKilled?.killCount} color="red" />
-        </div>
+        <FinalGenderLeaderboards
+          participants={participants}
+          rounds={allRounds}
+          votes={votes}
+          TopCard={StatCard}
+        />
 
-        {/* Full breakdown */}
-        <div className="space-y-3">
-          {tally.sort((a, b) => (b.kissCount + b.marryCount) - (a.kissCount + a.marryCount)).map((p) => (
-            <div key={p.id} className="glass-card p-4">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="avatar w-9 h-9 shrink-0">
-                  {getInitial(p.name)}
-                </div>
-                <p className="text-white font-bold text-lg">{p.name}</p>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <VoteCountStat emoji={VOTE_CATEGORY_META.kiss.emoji} label={VOTE_CATEGORY_META.kiss.label} count={p.kissCount} max={maxSmash} color={VOTE_CATEGORY_META.kiss.color} isWinner={p.kissCount === maxSmash && maxSmash > 0} />
-                <VoteCountStat emoji={VOTE_CATEGORY_META.marry.emoji} label={VOTE_CATEGORY_META.marry.label} count={p.marryCount} max={maxMarry} color={VOTE_CATEGORY_META.marry.color} isWinner={p.marryCount === maxMarry && maxMarry > 0} />
-                <VoteCountStat emoji={VOTE_CATEGORY_META.smash.emoji} label={VOTE_CATEGORY_META.smash.label} count={p.killCount} max={maxKill} color={VOTE_CATEGORY_META.smash.color} isWinner={p.killCount === maxKill && maxKill > 0} />
-              </div>
-            </div>
-          ))}
-        </div>
+        <FinalGenderBreakdown participants={participants} rounds={allRounds} votes={votes} />
 
         {/* Confessions / hot takes */}
         {confessions.length > 0 && (
