@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { ToastProvider } from '@/components/ui/Toast'
+import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
 import { AppBackground } from '@/components/AppBackground'
 import './globals.css'
 
@@ -33,9 +34,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full flex flex-col" style={{ color: 'var(--foreground)' }}>
         <ThemeProvider>
           <ToastProvider>
+            <ConfirmProvider>
             <AppBackground />
             <ThemeToggle />
             {children}
+            </ConfirmProvider>
           </ToastProvider>
         </ThemeProvider>
       </body>

@@ -40,6 +40,13 @@ import { wstVoteTargets, wstCorrectNameFromRound, wstCorrectParticipantIdFromRou
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { useToast } from '@/components/ui/Toast'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
+import {
+  FINAL_RESULTS_AUTO_REVEAL_SECONDS,
+  roundResultsWaitMessage,
+  ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
+} from '@/lib/round-timing'
 import type { Game, Participant, Player, Round, Vote, VoteAssignment, Confession, GameType, PairAssignmentMap, WyrChoice } from '@/types'
 
 type View = 'loading' | 'not_found' | 'join' | 'waiting' | 'round' | 'round_results' | 'results'
@@ -48,6 +55,7 @@ export default function GamePage() {
   const { code } = useParams<{ code: string }>()
   const router = useRouter()
   const toast = useToast()
+  const { confirm } = useConfirm()
   const gameCode = (Array.isArray(code) ? code[0] : code).toUpperCase()
 
   const [view, setView] = useState<View>('loading')
@@ -88,6 +96,21 @@ export default function GamePage() {
   const [joinPollGender, setJoinPollGender] = useState<ParticipantGender>('female')
   const [joining, setJoining] = useState(false)
   const [editingJoin, setEditingJoin] = useState(false)
+
+  const roundResultsActive = view === 'round_results' && !!lastFinishedRound
+  const roundResultsIsLast =
+    roundResultsActive &&
+    (lastFinishedRound?.round_number ?? 0) >= (game?.rounds_count ?? 0)
+  const nextRoundCountdown = useDeadlineCountdown(
+    lastFinishedRound?.ended_at,
+    ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
+    roundResultsActive && !roundResultsIsLast
+  )
+  const finalRevealCountdown = useDeadlineCountdown(
+    lastFinishedRound?.ended_at,
+    FINAL_RESULTS_AUTO_REVEAL_SECONDS,
+    roundResultsActive && roundResultsIsLast && !!game?.auto_reveal
+  )
 
   const isJoinersMode = game?.participant_mode === 'joiners'
   const isNameOnlyJoin = isNameOnlyPlayerJoin(game?.game_type)
@@ -662,24 +685,6 @@ export default function GamePage() {
     if (parsed) setMyPlayerGender(parsed)
   }, [myPlayerId, players, participants])
 
-  useEffect(() => {
-    if (view !== 'round' || !currentRound || !isWhoSaidThis(game?.game_type)) return
-    if (currentRound.quote_text) return
-    if (myPlayerId !== currentRound.submitter_player_id) return
-    if (quoteAuthorParticipantId) return
-    const me = players.find((p) => p.id === myPlayerId)
-    if (me?.participant_id) setQuoteAuthorParticipantId(me.participant_id)
-  }, [
-    view,
-    currentRound?.id,
-    currentRound?.quote_text,
-    currentRound?.submitter_player_id,
-    myPlayerId,
-    players,
-    game?.game_type,
-    quoteAuthorParticipantId,
-  ])
-
   // ── Timer — NO `submitted` in deps so it keeps running after submit ───────
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current)
@@ -1018,7 +1023,12 @@ export default function GamePage() {
 
   const leaveGame = async () => {
     if (!myPlayerId || joining) return
-    if (!confirm('Leave this game? You can rejoin with a new name or gender.')) return
+    if (!(await confirm({
+      title: 'Leave this game?',
+      message: 'You can rejoin with a new name or gender.',
+      confirmLabel: 'Leave',
+      destructive: true,
+    }))) return
     setJoining(true)
     try {
       const res = await fetch('/api/players', {
@@ -1126,7 +1136,7 @@ export default function GamePage() {
             <span className="text-sm text-body leading-snug">
               Vote on both genders
               <span className="block text-faint text-xs mt-0.5">
-                You&apos;ll vote on men&apos;s and women&apos;s rounds
+                You'll vote on men's and women's rounds
               </span>
             </span>
           </label>
@@ -1139,14 +1149,14 @@ export default function GamePage() {
                   onClick={() => setJoinPollGender('female')}
                   className={`flex-1 chip ${joinPollGender === 'female' ? 'chip-active' : ''}`}
                 >
-                  Women&apos;s poll
+                  Women's poll
                 </button>
                 <button
                   type="button"
                   onClick={() => setJoinPollGender('male')}
                   className={`flex-1 chip ${joinPollGender === 'male' ? 'chip-active' : ''}`}
                 >
-                  Men&apos;s poll
+                  Men's poll
                 </button>
               </div>
             </div>
@@ -1243,7 +1253,7 @@ export default function GamePage() {
               <span className="text-faint font-normal text-base"> / {game?.rounds_count}</span>
             </p>
             <p className="label-teal text-sm font-medium mt-1">
-              {isSubmitter ? 'Your turn to write' : `${submitterName ?? 'Someone'}&apos;s turn`}
+              {isSubmitter ? 'Your turn to write' : `${submitterName ?? 'Someone'}'s turn`}
             </p>
           </div>
           <TimerDisplay seconds={timeLeft} total={game?.timer_seconds ?? 30} />
@@ -1263,7 +1273,7 @@ export default function GamePage() {
                 <textarea
                   value={quoteInput}
                   onChange={(e) => setQuoteInput(e.target.value)}
-                  placeholder="e.g. Mark is ugly"
+                  placeholder="e.g. Roses are red"
                   maxLength={500}
                   rows={3}
                   className="input-field resize-none"
@@ -1644,9 +1654,12 @@ export default function GamePage() {
             myChoice={myVote?.wyr_choice ?? null}
           />
           <p className="text-faint text-sm text-center">
-            {isLastRound
-              ? (game?.auto_reveal ? '⏳ Final results in a few seconds...' : '⏳ Waiting for final results...')
-              : '⏳ Waiting for next round...'}
+            {roundResultsWaitMessage({
+              isLastRound,
+              autoReveal: !!game?.auto_reveal,
+              nextRoundSecondsLeft: nextRoundCountdown,
+              finalRevealSecondsLeft: finalRevealCountdown,
+            })}
           </p>
         </div>
       )
@@ -1688,9 +1701,12 @@ export default function GamePage() {
             myPickName={myPickName}
           />
           <p className="text-faint text-sm text-center">
-            {isLastRound
-              ? (game?.auto_reveal ? '⏳ Final results in a few seconds...' : '⏳ Waiting for final results...')
-              : '⏳ Waiting for next round...'}
+            {roundResultsWaitMessage({
+              isLastRound,
+              autoReveal: !!game?.auto_reveal,
+              nextRoundSecondsLeft: nextRoundCountdown,
+              finalRevealSecondsLeft: finalRevealCountdown,
+            })}
           </p>
         </div>
       )
@@ -1726,9 +1742,12 @@ export default function GamePage() {
             myPickName={myPickName}
           />
           <p className="text-faint text-sm text-center">
-            {isLastRound
-              ? (game?.auto_reveal ? '⏳ Final results in a few seconds...' : '⏳ Waiting for final results...')
-              : '⏳ Waiting for next round...'}
+            {roundResultsWaitMessage({
+              isLastRound,
+              autoReveal: !!game?.auto_reveal,
+              nextRoundSecondsLeft: nextRoundCountdown,
+              finalRevealSecondsLeft: finalRevealCountdown,
+            })}
           </p>
         </div>
       )
@@ -1881,9 +1900,13 @@ export default function GamePage() {
         )}
 
         <p className={`text-sm text-center animate-pulse ${isLastRound ? 'text-[var(--primary)]' : 'text-faint'}`}>
-          {isLastRound
-            ? (game?.auto_reveal ? '⏳ Final leaderboard in a few seconds...' : '⏳ Waiting for final leaderboard...')
-            : '⏳ Waiting for next round...'}
+          {roundResultsWaitMessage({
+            isLastRound,
+            autoReveal: !!game?.auto_reveal,
+            nextRoundSecondsLeft: nextRoundCountdown,
+            finalRevealSecondsLeft: finalRevealCountdown,
+            finalLabel: 'leaderboard',
+          })}
         </p>
       </div>
     )
@@ -2225,7 +2248,7 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
       )}
 
       <p className="text-faint text-xs text-center">
-        You&apos;ll return to the lobby automatically when the host starts another game.
+        You'll return to the lobby automatically when the host starts another game.
       </p>
     </div>
   )

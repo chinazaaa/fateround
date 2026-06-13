@@ -659,7 +659,7 @@ function CreateGameInner() {
             {isWst && (
               <SettingsGroup title="How it works">
                 <p className="text-faint text-sm leading-relaxed">
-                  Upload everyone&apos;s names on the next step. Players claim their name when joining.
+                  Upload everyone's names on the next step. Players claim their name when joining.
                   Each round one person writes a quote and picks who said it — everyone else guesses.
                 </p>
               </SettingsGroup>
@@ -931,7 +931,7 @@ function CreateGameInner() {
         >
           🎉
         </div>
-        <h1 className="text-3xl font-black tracking-tight gradient-title-subtle">You&apos;re live!</h1>
+        <h1 className="text-3xl font-black tracking-tight gradient-title-subtle">You're live!</h1>
         <p className="text-muted text-sm">Share the code with players — save your host link.</p>
       </div>
 
@@ -953,7 +953,7 @@ function CreateGameInner() {
         Open Host Panel →
       </PrimaryBtn>
 
-      <p className="text-faint text-xs text-center">The host link won&apos;t be shown again</p>
+      <p className="text-faint text-xs text-center">The host link won't be shown again</p>
     </PageShell>
   )
 }

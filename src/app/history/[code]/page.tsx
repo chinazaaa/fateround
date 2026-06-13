@@ -167,7 +167,7 @@ export default function GameHistoryPage() {
 
       {rounds.length === 0 ? (
         <div className="glass-card p-8 text-center text-muted">
-          No rounds yet — the host hasn&apos;t started this game.
+          No rounds yet — the host hasn't started this game.
         </div>
       ) : roundsWithVotes.length === 0 ? (
         <div className="glass-card p-8 text-center text-muted">

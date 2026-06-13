@@ -17,6 +17,13 @@ import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/Fina
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { useToast } from '@/components/ui/Toast'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
+import {
+  FINAL_RESULTS_AUTO_REVEAL_SECONDS,
+  msUntilDeadline,
+  ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
+} from '@/lib/round-timing'
 import type { Game, Participant, Player, Round, Vote, Confession, VoteAssignment } from '@/types'
 
 export default function HostPage() {
@@ -24,6 +31,7 @@ export default function HostPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const toast = useToast()
+  const { confirm } = useConfirm()
   const gameCode = (Array.isArray(code) ? code[0] : code).toUpperCase()
   const hostToken = searchParams.get('token') ?? ''
 
@@ -56,6 +64,22 @@ export default function HostPage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const advancingRef = useRef(false)
   const autoFinishTriggeredRef = useRef(false)
+
+  const betweenRounds =
+    game?.status === 'active' && !currentRound && !!lastFinishedRound
+  const isBetweenLastRound =
+    betweenRounds &&
+    (lastFinishedRound?.round_number ?? 0) >= (game?.rounds_count ?? 0)
+  const nextRoundCountdown = useDeadlineCountdown(
+    lastFinishedRound?.ended_at,
+    ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
+    betweenRounds && !isBetweenLastRound
+  )
+  const finalRevealCountdown = useDeadlineCountdown(
+    lastFinishedRound?.ended_at,
+    FINAL_RESULTS_AUTO_REVEAL_SECONDS,
+    betweenRounds && isBetweenLastRound && !!game?.auto_reveal
+  )
 
   const filteredListParticipants = useMemo(() => {
     const q = listSearch.trim().toLowerCase()
@@ -317,9 +341,10 @@ export default function HostPage() {
     if (!game.auto_reveal || autoFinishTriggeredRef.current) return
 
     autoFinishTriggeredRef.current = true
+    const delay = msUntilDeadline(lastFinishedRound.ended_at, FINAL_RESULTS_AUTO_REVEAL_SECONDS)
     const timer = setTimeout(() => {
       handleFinishGame()
-    }, 8000)
+    }, delay)
 
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -330,6 +355,28 @@ export default function HostPage() {
       autoFinishTriggeredRef.current = false
     }
   }, [lastFinishedRound?.id, game?.rounds_count])
+
+  // Auto-advance: start the next round if the host doesn't within 30s
+  useEffect(() => {
+    if (game?.status !== 'active' || currentRound || !lastFinishedRound || advancing) return
+    const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
+    if (isLastRound) return
+
+    const delay = msUntilDeadline(lastFinishedRound.ended_at, ROUND_RESULTS_AUTO_ADVANCE_SECONDS)
+    const timer = setTimeout(() => {
+      handleNextRound()
+    }, delay)
+
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    game?.status,
+    game?.rounds_count,
+    currentRound?.id,
+    lastFinishedRound?.id,
+    lastFinishedRound?.ended_at,
+    advancing,
+  ])
 
   // ── Timer (host) ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -591,7 +638,11 @@ export default function HostPage() {
   }
 
   async function hostRemoveParticipant(participantId: string, name: string) {
-    if (!confirm(`Remove ${name} from the list?`)) return
+    if (!(await confirm({
+      title: `Remove ${name} from the list?`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    }))) return
     setAdminBusy(participantId)
     try {
       const res = await fetch('/api/participants', {
@@ -635,7 +686,11 @@ export default function HostPage() {
   }
 
   async function hostRemovePlayer(playerId: string, name: string) {
-    if (!confirm(`Remove ${name}?`)) return
+    if (!(await confirm({
+      title: `Remove ${name}?`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    }))) return
     setAdminBusy(playerId)
     try {
       const res = await fetch('/api/players', {
@@ -1211,7 +1266,7 @@ export default function HostPage() {
                 {currentRound.round_number}
                 <span className="text-faint font-normal text-lg"> / {game.rounds_count}</span>
               </p>
-              <p className="label-teal text-sm mt-1">{submitterName ?? 'Player'}&apos;s turn to write</p>
+              <p className="label-teal text-sm mt-1">{submitterName ?? 'Player'}'s turn to write</p>
             </div>
             <TimerDisplay seconds={timeLeft} total={game.timer_seconds} />
           </div>
@@ -1596,7 +1651,9 @@ export default function HostPage() {
         {isLastRound ? (
           game.auto_reveal ? (
             <p className="text-[var(--primary)] text-sm text-center animate-pulse">
-              Final leaderboard in a few seconds...
+              {finalRevealCountdown > 0
+                ? `Final leaderboard in ${finalRevealCountdown}s…`
+                : 'Final leaderboard in a few seconds...'}
             </p>
           ) : (
             <button
@@ -1608,13 +1665,20 @@ export default function HostPage() {
             </button>
           )
         ) : (
-          <button
-            onClick={handleNextRound}
-            disabled={advancing}
-            className="btn-primary"
-          >
-            {advancing ? 'Starting...' : `→ Start Round ${lastFinishedRound.round_number + 1}`}
-          </button>
+          <>
+            <button
+              onClick={handleNextRound}
+              disabled={advancing}
+              className="btn-primary"
+            >
+              {advancing ? 'Starting...' : `→ Start Round ${lastFinishedRound.round_number + 1}`}
+            </button>
+            {!advancing && nextRoundCountdown > 0 && (
+              <p className="text-faint text-sm text-center">
+                Auto-starting in {nextRoundCountdown}s unless you tap above
+              </p>
+            )}
+          </>
         )}
       </div>
     )
