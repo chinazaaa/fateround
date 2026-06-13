@@ -6,7 +6,7 @@ import { getPlayerSession, setPlayerSession, clearPlayerSession, getInitial, fil
 import { playRoundStartSound, unlockAudio } from '@/lib/sounds'
 import { roundGenderLabel, playerGenderLabel, playerIdentityLabel, genderLabel, getRoundParticipantGender, canPlayerVoteInRound, roundVoterLabel, spectatorMessage, activeVoteBanner, parsePlayerGenderFromDb, parseParticipantGenderFromDb, playerGenderFromJoin, joinGenderHint, playerVoteGenderForRound } from '@/lib/participants'
 import type { ParticipantGender, PlayerGender } from '@/types'
-import { tallyRoundVotes, tallyWyrVotes, getCategoryMeta, getVoteCategories, assignmentEmojiFor, myActionBorderClass, flagForParticipant } from '@/lib/vote-stats'
+import { tallyRoundVotes, tallyWyrVotes, tallyMltVotes, getCategoryMeta, getVoteCategories, assignmentEmojiFor, myActionBorderClass, flagForParticipant } from '@/lib/vote-stats'
 import {
   gameTypeConfig,
   slotMeta,
@@ -19,11 +19,13 @@ import {
   isThreeChoiceGame,
   isPairGame,
   isWouldYouRather,
+  isMostLikelyTo,
+  isLobbyGame,
   isPairAssignmentComplete,
   pairAssignedCount,
   pairAssignmentFromVote,
 } from '@/lib/game-types'
-import { ParticipantRoundResults, VoteCountStat, WyrRoundResults } from '@/components/VoteResults'
+import { ParticipantRoundResults, VoteCountStat, WyrRoundResults, MltRoundResults } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import { NameSearchPicker } from '@/components/NameSearchPicker'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
@@ -47,6 +49,7 @@ export default function GamePage() {
   const [assignment, setAssignment] = useState<VoteAssignment>(emptyAssignment())
   const [pairAssignment, setPairAssignment] = useState<PairAssignmentMap>({})
   const [wyrChoice, setWyrChoice] = useState<WyrChoice | null>(null)
+  const [mltTargetPlayerId, setMltTargetPlayerId] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const [confessionText, setConfessionText] = useState('')
   const [confessionSent, setConfessionSent] = useState(false)
@@ -72,8 +75,8 @@ export default function GamePage() {
   const [editingJoin, setEditingJoin] = useState(false)
 
   const isJoinersMode = game?.participant_mode === 'joiners'
-  const isWyrGame = isWouldYouRather(game?.game_type)
-  const joinPlayerGender: PlayerGender = isWyrGame
+  const isLobby = isLobbyGame(game?.game_type)
+  const joinPlayerGender: PlayerGender = isLobby
     ? 'both'
     : playerGenderFromJoin(joinIdentityGender, voteBothGenders)
 
@@ -137,6 +140,10 @@ export default function GamePage() {
   pairAssignmentRef.current = pairAssignment
   const wyrChoiceRef = useRef(wyrChoice)
   wyrChoiceRef.current = wyrChoice
+  const mltTargetPlayerIdRef = useRef(mltTargetPlayerId)
+  mltTargetPlayerIdRef.current = mltTargetPlayerId
+  const playersRef = useRef(players)
+  playersRef.current = players
   const currentRoundRef = useRef(currentRound)
   currentRoundRef.current = currentRound
   const gameRef = useRef(game)
@@ -192,6 +199,8 @@ export default function GamePage() {
               const gameType = parseGameType(gameData.game_type)
               if (isWouldYouRather(gameType)) {
                 setWyrChoice(existingVote.wyr_choice)
+              } else if (isMostLikelyTo(gameType)) {
+                setMltTargetPlayerId(existingVote.target_player_id)
               } else if (isPairGame(gameType)) {
                 setPairAssignment(pairAssignmentFromVote(existingVote, activeRound.participant_ids))
               } else {
@@ -288,6 +297,7 @@ export default function GamePage() {
               setAssignment(emptyAssignment())
               setPairAssignment({})
               setWyrChoice(null)
+              setMltTargetPlayerId(null)
               setConfessionText('')
               setConfessionSent(false)
               setView('round')
@@ -314,8 +324,9 @@ export default function GamePage() {
             setSubmitted(false)
             setAssignment(emptyAssignment())
             setPairAssignment({})
-            setWyrChoice(null)
-            setConfessionText('')
+              setWyrChoice(null)
+              setMltTargetPlayerId(null)
+              setConfessionText('')
             setConfessionSent(false)
             setView('round')
           }
@@ -334,8 +345,9 @@ export default function GamePage() {
             setSubmitted(false)
             setAssignment(emptyAssignment())
             setPairAssignment({})
-            setWyrChoice(null)
-            setConfessionText('')
+              setWyrChoice(null)
+              setMltTargetPlayerId(null)
+              setConfessionText('')
             setConfessionSent(false)
             setView('round')
           }
@@ -466,6 +478,7 @@ export default function GamePage() {
           setAssignment(emptyAssignment())
           setPairAssignment({})
           setWyrChoice(null)
+          setMltTargetPlayerId(null)
           setView('round')
         }
       }
@@ -502,8 +515,9 @@ export default function GamePage() {
           setSubmitted(false)
           setAssignment(emptyAssignment())
           setPairAssignment({})
-          setWyrChoice(null)
-          setConfessionText('')
+              setWyrChoice(null)
+              setMltTargetPlayerId(null)
+              setConfessionText('')
           setConfessionSent(false)
           setView('round')
         }
@@ -557,7 +571,7 @@ export default function GamePage() {
       )
       const gameType = parseGameType(gameRef.current?.game_type)
       const playerGender = myPlayerGenderRef.current ?? getPlayerSession(gameCode)?.playerGender ?? null
-      const canVote = isWouldYouRather(gameType)
+      const canVote = isLobbyGame(gameType)
         ? !!myPlayerIdRef.current
         : !!roundGender &&
           !!playerGender &&
@@ -582,6 +596,8 @@ export default function GamePage() {
     const a = { ...assignmentRef.current }
     const pa = { ...pairAssignmentRef.current }
     let wyr = wyrChoiceRef.current
+    let mltTarget = mltTargetPlayerIdRef.current
+    const plrs = playersRef.current
     const r = currentRoundRef.current
     const g = gameRef.current
     const parts = participantsRef.current
@@ -596,6 +612,13 @@ export default function GamePage() {
     if (g?.auto_submit_behavior === 'random') {
       if (isWouldYouRather(gameType)) {
         wyr = Math.random() < 0.5 ? 'a' : 'b'
+      } else if (isMostLikelyTo(gameType)) {
+        const others = plrs.filter((p) => p.id !== pid)
+        if (others.length > 0) {
+          mltTarget = others[Math.floor(Math.random() * others.length)].id
+        } else if (plrs.length > 0) {
+          mltTarget = plrs[0].id
+        }
       } else if (isPairGame(gameType)) {
         for (const p of roundParts) {
           pa[p.id] = Math.random() < 0.5 ? 'kiss' : 'kill'
@@ -610,6 +633,8 @@ export default function GamePage() {
 
     const voteBody = isWouldYouRather(gameType)
       ? { wyrChoice: wyr ?? (Math.random() < 0.5 ? 'a' : 'b') }
+      : isMostLikelyTo(gameType)
+      ? { targetPlayerId: mltTarget ?? plrs.find((p) => p.id !== pid)?.id ?? plrs[0]?.id }
       : isPairGame(gameType)
       ? {
           pairAssignments: Object.fromEntries(
@@ -662,6 +687,8 @@ export default function GamePage() {
     const roundIds = currentRound.participant_ids
     const voteBody = isWouldYouRather(submitGameType)
       ? { wyrChoice }
+      : isMostLikelyTo(submitGameType)
+      ? { targetPlayerId: mltTargetPlayerId }
       : isPairGame(submitGameType)
       ? {
           pairAssignments: Object.fromEntries(
@@ -693,7 +720,7 @@ export default function GamePage() {
     unlockAudio()
     setJoining(true)
     try {
-      const body = isWyrGame
+      const body = isLobby
         ? { gameCode, playerName: nameInput.trim() }
         : {
         gameCode,
@@ -825,8 +852,8 @@ export default function GamePage() {
         <div className="space-y-4">
           <p className="text-muted font-medium text-center">
             {editingJoin
-              ? isWyrGame ? 'Update your name' : 'Update your name or vote preference'
-              : isWyrGame
+              ? isLobby ? 'Update your name' : 'Update your name or vote preference'
+              : isLobby
                 ? 'Enter your name to join'
               : isJoinersMode
                 ? 'Join the game — your name goes in the poll'
@@ -850,7 +877,7 @@ export default function GamePage() {
               emptyMessage={namePickerOptions.length === 0 ? 'All names have been claimed' : 'No names match your search'}
             />
           )}
-          {!isWyrGame && (
+          {!isLobby && (
           <>
           <div>
             <p className="text-faint text-xs mb-2 text-center">I am</p>
@@ -903,8 +930,10 @@ export default function GamePage() {
             </div>
           )}
           <p className="text-faint text-xs text-center">
-            {isWyrGame
-              ? 'Pick between two options each round — your choice stays anonymous'
+            {isLobby
+              ? isMostLikelyTo(game?.game_type)
+                ? 'Vote for who fits each prompt — your choice stays anonymous'
+                : 'Pick between two options each round — your choice stays anonymous'
               : joinGenderHint(joinIdentityGender, voteBothGenders, !!isJoinersMode, joinPollGender)}
           </p>
           </>
@@ -944,7 +973,7 @@ export default function GamePage() {
                 <span className={`text-sm flex-1 min-w-0 truncate ${p.name === myPlayerName ? 'text-[var(--primary)] font-semibold' : 'text-white/80'}`}>
                   {p.name}{p.name === myPlayerName ? ' (you)' : ''}
                 </span>
-                {!isWyrGame && (
+                {!isLobby && (
                   <span className="text-[10px] uppercase tracking-wider text-faint shrink-0">
                     {playerIdentityLabel(p, participants, game?.game_type)}
                   </span>
@@ -955,7 +984,7 @@ export default function GamePage() {
         </div>
         <div className="flex flex-col gap-2">
           <button type="button" onClick={openEditJoin} className="btn-secondary text-sm py-2.5">
-            {isWyrGame ? 'Change name' : 'Change name or gender'}
+            {isLobby ? 'Change name' : 'Change name or gender'}
           </button>
           <button type="button" onClick={leaveGame} disabled={joining} className="text-faint text-xs hover:text-red-300 transition-colors">
             Leave game
@@ -963,6 +992,72 @@ export default function GamePage() {
         </div>
         <p className="text-faint text-xs text-center">Keep this tab open</p>
       </CenteredCard>
+    )
+  }
+
+  // ROUND — Most Likely To
+  if (view === 'round' && currentRound && isMostLikelyTo(game?.game_type)) {
+    const gameType = parseGameType(game?.game_type)
+    const question = currentRound.mlt_question ?? ''
+    const canVote = !!myPlayerId
+    const voteTargets = players.filter((p) => p.id !== myPlayerId)
+    const borderCls = mltTargetPlayerId ? 'border-amber-500/40' : 'border-white/10'
+
+    return (
+      <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full">
+        <PlayerNameBar name={myPlayerName} />
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <p className="text-muted text-xs uppercase tracking-wider">{game?.title}</p>
+            <GameTypeBadge gameType={gameType} className="mt-1 mb-1" />
+            <p className="text-white font-black text-2xl">
+              Round {currentRound.round_number}
+              <span className="text-faint font-normal text-base"> / {game?.rounds_count}</span>
+            </p>
+          </div>
+          {canVote ? (
+            <TimerDisplay seconds={timeLeft} total={game?.timer_seconds ?? 30} />
+          ) : null}
+        </div>
+
+        <div className={`glass-card border-2 ${borderCls} rounded-2xl p-5 mb-6 flex-1`}>
+          <p className="text-muted text-xs uppercase tracking-wider text-center mb-3">Most likely to…</p>
+          <p className="text-white/90 text-base text-center leading-snug font-medium mb-4">{question}</p>
+          <div className="grid gap-2">
+            {voteTargets.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                disabled={submitted || !canVote}
+                onClick={() => canVote && !submitted && setMltTargetPlayerId(p.id)}
+                className={`w-full text-left rounded-2xl border px-4 py-3 transition-all active:scale-[0.99] flex items-center gap-3 ${
+                  mltTargetPlayerId === p.id
+                    ? 'border-amber-400 bg-amber-500/15 text-amber-100'
+                    : 'border-white/10 surface-inset text-white/85 hover:border-white/25'
+                } disabled:cursor-not-allowed`}
+              >
+                <div className="avatar w-8 h-8 text-sm shrink-0">{getInitial(p.name)}</div>
+                <span className="font-medium truncate">{p.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {!submitted ? (
+          <button
+            onClick={handleSubmit}
+            disabled={!mltTargetPlayerId}
+            className={mltTargetPlayerId ? 'btn-primary' : 'btn-secondary opacity-60 cursor-not-allowed'}
+          >
+            {mltTargetPlayerId ? 'Submit Vote ✓' : 'Pick someone'}
+          </button>
+        ) : (
+          <div className="w-full py-4 rounded-2xl glass-card border border-emerald-500/30 text-center">
+            <p className="text-green-400 font-semibold">✓ Vote submitted!</p>
+            <p className="text-muted text-sm mt-0.5">Results will show when the round ends</p>
+          </div>
+        )}
+      </div>
     )
   }
 
@@ -1203,6 +1298,41 @@ export default function GamePage() {
             countB={countB}
             voterCount={voterCount}
             myChoice={myVote?.wyr_choice ?? null}
+          />
+          <p className="text-faint text-sm text-center">
+            {isLastRound
+              ? (game?.auto_reveal ? '⏳ Final results in a few seconds...' : '⏳ Waiting for final results...')
+              : '⏳ Waiting for next round...'}
+          </p>
+        </div>
+      )
+    }
+
+    if (isMostLikelyTo(gameType)) {
+      const myVote = lastRoundVotes.find((v) => v.player_id === myPlayerId)
+      const { rows, voterCount, maxCount, winnerNames } = tallyMltVotes(lastRoundVotes, players)
+      const myPickName = myVote?.target_player_id
+        ? players.find((p) => p.id === myVote.target_player_id)?.name ?? null
+        : null
+      const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
+
+      return (
+        <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
+          <PlayerNameBar name={myPlayerName} />
+          <div className="text-center">
+            <p className="text-muted text-xs uppercase tracking-wider">
+              Round {lastFinishedRound.round_number} of {game?.rounds_count}
+            </p>
+            <GameTypeBadge gameType={gameType} className="mt-2" />
+            <h2 className="text-2xl font-black tracking-tight mt-2">Results are in! 🗳️</h2>
+          </div>
+          <MltRoundResults
+            question={lastFinishedRound.mlt_question ?? ''}
+            rows={rows}
+            voterCount={voterCount}
+            maxCount={maxCount}
+            winnerNames={winnerNames}
+            myPickName={myPickName}
           />
           <p className="text-faint text-sm text-center">
             {isLastRound
@@ -1465,6 +1595,8 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
 }) {
   const gameType = parseGameType(game.game_type)
   const playedParticipants = filterParticipantsInRounds(participants, rounds)
+  const isLobby = isLobbyGame(gameType)
+  const isMlt = isMostLikelyTo(gameType)
   const isWyr = isWouldYouRather(gameType)
 
   return (
@@ -1476,11 +1608,11 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
         <GameTypeBadge gameType={gameType} className="mt-2" />
         <p className="text-muted mt-2">
           {players.length} players · {rounds.length} rounds
-          {!isWyr ? ` · ${playedParticipants.length} in game` : ''}
+          {!isLobby ? ` · ${playedParticipants.length} in game` : ''}
         </p>
       </div>
 
-      {!isWyr && (
+      {!isLobby && (
         <>
           <FinalGenderLeaderboards
             gameType={gameType}
@@ -1514,6 +1646,28 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
                 countB={countB}
                 voterCount={voterCount}
                 myChoice={myVote?.wyr_choice ?? null}
+              />
+            </div>
+          )
+        }
+
+        if (isMlt) {
+          const { rows, voterCount, maxCount, winnerNames } = tallyMltVotes(roundVotes, players)
+          const myPickName = myVote?.target_player_id
+            ? players.find((p) => p.id === myVote.target_player_id)?.name ?? null
+            : null
+          return (
+            <div key={round.id}>
+              <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
+                Round {round.round_number}
+              </h2>
+              <MltRoundResults
+                question={round.mlt_question ?? ''}
+                rows={rows}
+                voterCount={voterCount}
+                maxCount={maxCount}
+                winnerNames={winnerNames}
+                myPickName={myPickName}
               />
             </div>
           )

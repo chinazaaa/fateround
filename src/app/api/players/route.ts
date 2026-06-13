@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
-import { parseGameType, isWouldYouRather } from '@/lib/game-types'
+import { parseGameType, isLobbyGame } from '@/lib/game-types'
 import { assertHostGame, deleteJoinerPair, findJoinerParticipant, pollGenderForPlayer, syncImportParticipantBallot } from '@/lib/game-admin'
 
 const supabase = createClient(
@@ -81,18 +81,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'gameCode is required' }, { status: 400 })
   }
 
-  const gender = normalizePlayerGender(String(rawGender ?? ''))
-  if (!gender) {
-    return NextResponse.json({ error: 'Please select male, female, or both' }, { status: 400 })
-  }
-
   const name = playerName?.trim() ?? ''
   const waiting = await assertWaitingGame(gameCode)
   if (waiting.error) return NextResponse.json({ error: waiting.error }, { status: waiting.status })
   const { game, id } = waiting
   const gameType = parseGameType(game!.game_type)
 
-  if (isWouldYouRather(gameType)) {
+  if (isLobbyGame(gameType)) {
     if (!name) {
       return NextResponse.json({ error: 'playerName is required' }, { status: 400 })
     }
@@ -120,6 +115,11 @@ export async function POST(req: NextRequest) {
       playerGender: player.gender,
       playerIdentityGender: player.identity_gender,
     })
+  }
+
+  const gender = normalizePlayerGender(String(rawGender ?? ''))
+  if (!gender) {
+    return NextResponse.json({ error: 'Please select male, female, or both' }, { status: 400 })
   }
 
   if (game!.participant_mode === 'import') {
@@ -304,7 +304,7 @@ export async function PATCH(req: NextRequest) {
 
   const gameType = parseGameType((game as { game_type?: string }).game_type)
 
-  if (isWouldYouRather(gameType)) {
+  if (isLobbyGame(gameType)) {
     if (rawName === undefined) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
     }

@@ -1,5 +1,6 @@
-import { roundPoolSize, isWouldYouRather } from '@/lib/game-types'
+import { roundPoolSize, isWouldYouRather, isMostLikelyTo, isLobbyGame } from '@/lib/game-types'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
+import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import type { GameType } from '@/types'
 
 export type ParticipantGender = 'male' | 'female'
@@ -85,7 +86,7 @@ export function hasEnoughForRounds(
   participants: ParticipantInput[],
   gameType?: GameType | string
 ): boolean {
-  if (isWouldYouRather(gameType)) return true
+  if (isLobbyGame(gameType)) return true
   const min = roundPoolSize(gameType)
   const counts = countByGender(participants)
   return counts.male >= min || counts.female >= min
@@ -97,6 +98,7 @@ export function maxRecommendedRounds(
   gameType?: GameType | string
 ): number {
   if (isWouldYouRather(gameType)) return Math.min(20, WYR_QUESTION_COUNT)
+  if (isMostLikelyTo(gameType)) return Math.min(20, MLT_QUESTION_COUNT)
   const perRound = roundPoolSize(gameType)
   const counts = countByGender(participants)
   const maleRounds = Math.floor(counts.male / perRound)
@@ -115,6 +117,9 @@ export function roundLimitHint(
 ): string | null {
   if (isWouldYouRather(gameType)) {
     return `${WYR_QUESTION_COUNT} questions available → up to ${Math.min(20, WYR_QUESTION_COUNT)} rounds`
+  }
+  if (isMostLikelyTo(gameType)) {
+    return `${MLT_QUESTION_COUNT} prompts available → up to ${Math.min(20, MLT_QUESTION_COUNT)} rounds`
   }
   const min = roundPoolSize(gameType)
   const counts = countByGender(participants)
@@ -221,7 +226,7 @@ export function playerIdentityLabel(
   participants?: { name: string; gender: ParticipantGender }[],
   gameType?: GameType | string
 ): string {
-  if (isWouldYouRather(gameType)) return ''
+  if (isLobbyGame(gameType)) return ''
   return genderLabel(resolvePlayerIdentity(player, participants))
 }
 
@@ -322,7 +327,7 @@ export function eligibleVotersForRound<
     name: string
   }
 >(roundGender: ParticipantGender | null, players: T[], gameType?: GameType | string): T[] {
-  if (isWouldYouRather(gameType)) return players
+  if (isLobbyGame(gameType)) return players
   if (!roundGender) return []
   return players.filter((p) => {
     const g = playerVoteGenderForRound(p)

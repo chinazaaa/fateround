@@ -344,3 +344,72 @@ export function WyrRoundResults({
     </div>
   )
 }
+
+export function MltRoundResults({
+  question,
+  rows,
+  voterCount,
+  maxCount,
+  winnerNames,
+  myPickName,
+}: {
+  question: string
+  rows: Array<{ playerId: string; name: string; count: number }>
+  voterCount: number
+  maxCount: number
+  winnerNames: string[]
+  myPickName?: string | null
+}) {
+  const barMax = Math.max(maxCount, 1)
+
+  return (
+    <div className="space-y-4">
+      <p className="text-muted text-xs uppercase tracking-wider text-center">
+        Round results · {voterCount} {voterCount === 1 ? 'vote' : 'votes'}
+      </p>
+      <div className="glass-card border-2 border-amber-500/30 rounded-2xl p-5 space-y-4">
+        <p className="text-white/90 text-base text-center leading-snug font-medium">{question}</p>
+
+        {winnerNames.length > 0 && (
+          <div className="surface-inset rounded-xl px-4 py-4 text-center ring-1 ring-amber-400/20">
+            <p className="text-[10px] uppercase tracking-wider text-amber-200/80 mb-1">Most likely</p>
+            <p className="text-2xl font-black text-white">{winnerNames.join(' & ')}</p>
+            <p className="text-faint text-xs mt-1">
+              {maxCount} {maxCount === 1 ? 'vote' : 'votes'}
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {rows.map((row) => {
+            const isWinner = maxCount > 0 && row.count === maxCount
+            const pct = Math.min((row.count / barMax) * 100, 100)
+            return (
+              <div
+                key={row.playerId}
+                className={`rounded-xl px-3 py-2.5 ${isWinner ? 'bg-white/8 ring-1 ring-amber-400/20' : 'surface-inset'}`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <p className={`text-sm truncate ${isWinner ? 'text-white font-semibold' : 'text-white/85'}`}>
+                    {row.name}
+                  </p>
+                  <span className="text-sm font-bold text-white shrink-0">{row.count}</span>
+                </div>
+                <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${pct}%`, backgroundColor: isWinner ? '#fbbf24' : '#64748b' }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {myPickName && (
+          <p className="text-faint text-xs text-center">You picked {myPickName}</p>
+        )}
+      </div>
+    </div>
+  )
+}

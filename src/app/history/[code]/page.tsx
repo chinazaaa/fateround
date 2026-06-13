@@ -4,10 +4,9 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { roundGenderLabel } from '@/lib/participants'
-import { assignmentEmojiFor, tallyRoundVotes, getVoteCategories, flagForParticipant } from '@/lib/vote-stats'
-import { parseGameType, slotMeta, voteSlots, isPairGame, isWouldYouRather } from '@/lib/game-types'
-import { ParticipantRoundResults, WyrRoundResults } from '@/components/VoteResults'
-import { tallyWyrVotes } from '@/lib/vote-stats'
+import { assignmentEmojiFor, tallyRoundVotes, getVoteCategories, flagForParticipant, tallyWyrVotes, tallyMltVotes } from '@/lib/vote-stats'
+import { parseGameType, slotMeta, voteSlots, isPairGame, isWouldYouRather, isMostLikelyTo } from '@/lib/game-types'
+import { ParticipantRoundResults, WyrRoundResults, MltRoundResults } from '@/components/VoteResults'
 import type { Confession, Game, Participant, Player, Round, Vote } from '@/types'
 
 type LoadState = 'loading' | 'not_found' | 'ready'
@@ -209,6 +208,19 @@ export default function GameHistoryPage() {
                     countB={wyrTally.countB}
                     voterCount={wyrTally.voterCount}
                   />
+                    )
+                  })()
+                ) : isMostLikelyTo(gameType) ? (
+                  (() => {
+                    const mltTally = tallyMltVotes(roundVotes, players)
+                    return (
+                      <MltRoundResults
+                        question={round.mlt_question ?? ''}
+                        rows={mltTally.rows}
+                        voterCount={mltTally.voterCount}
+                        maxCount={mltTally.maxCount}
+                        winnerNames={mltTally.winnerNames}
+                      />
                     )
                   })()
                 ) : isPairGame(gameType) ? (

@@ -51,6 +51,39 @@ export function tallyWyrVotes(votes: { wyr_choice?: WyrChoice | string | null }[
   return { countA, countB, voterCount: votes.length }
 }
 
+export interface MltTallyRow {
+  playerId: string
+  name: string
+  count: number
+}
+
+export interface MltTally {
+  rows: MltTallyRow[]
+  voterCount: number
+  maxCount: number
+  winnerNames: string[]
+}
+
+export function tallyMltVotes(
+  votes: { target_player_id?: string | null }[],
+  players: { id: string; name: string }[]
+): MltTally {
+  const rows = players.map((p) => ({
+    playerId: p.id,
+    name: p.name,
+    count: votes.filter((v) => v.target_player_id === p.id).length,
+  }))
+  const maxCount = Math.max(0, ...rows.map((r) => r.count))
+  const winnerNames =
+    maxCount > 0 ? rows.filter((r) => r.count === maxCount).map((r) => r.name) : []
+  return {
+    rows: rows.sort((a, b) => b.count - a.count),
+    voterCount: votes.length,
+    maxCount,
+    winnerNames,
+  }
+}
+
 export function maxInRound(tallies: RoundTally[]): Record<VoteCategory, number> {
   return {
     kiss: Math.max(1, ...tallies.map((t) => t.kiss)),

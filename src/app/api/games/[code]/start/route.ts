@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generateRoundsByGender } from '@/lib/utils'
 import { hasVotersForPolls, parseParticipantGenderFromDb, participantsWhoJoined, maxRecommendedRounds } from '@/lib/participants'
-import { parseGameType, roundPoolSize, isWouldYouRather } from '@/lib/game-types'
+import { parseGameType, roundPoolSize, isWouldYouRather, isMostLikelyTo } from '@/lib/game-types'
 import { pickWyrQuestions } from '@/lib/would-you-rather-questions'
+import { pickMltQuestions } from '@/lib/most-likely-to-questions'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,6 +32,47 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   const now = new Date().toISOString()
+
+  if (isMostLikelyTo(gameType)) {
+    if (playersData.length < 2) {
+      return NextResponse.json({ error: 'Need at least 2 players to start' }, { status: 400 })
+    }
+
+    const maxRounds = maxRecommendedRounds([], gameType)
+    if (game.rounds_count > maxRounds) {
+      return NextResponse.json(
+        { error: `Too many rounds — lower to ${maxRounds} or fewer before starting` },
+        { status: 400 }
+      )
+    }
+
+    const questions = pickMltQuestions(game.rounds_count)
+    if (questions.length === 0) {
+      return NextResponse.json({ error: 'No prompts available' }, { status: 400 })
+    }
+
+    const roundRows = questions.map((question, index) => ({
+      game_id: code.toUpperCase(),
+      round_number: index + 1,
+      participant_ids: [],
+      mlt_question: question,
+      status: index === 0 ? 'active' : 'pending',
+      started_at: index === 0 ? now : null,
+      ended_at: null,
+    }))
+
+    const { error: roundError } = await supabase.from('rounds').insert(roundRows)
+    if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
+
+    const { error: gameError } = await supabase
+      .from('games')
+      .update({ status: 'active', current_round_number: 1 })
+      .eq('id', code.toUpperCase())
+
+    if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
+
+    return NextResponse.json({ success: true })
+  }
 
   if (isWouldYouRather(gameType)) {
     const maxRounds = maxRecommendedRounds([], gameType)

@@ -5,11 +5,11 @@ import { supabase } from '@/lib/supabase'
 import { getInitial, filterParticipantsInRounds } from '@/lib/utils'
 import { roundGenderLabel, genderLabel, resolvePlayerIdentity, getRoundParticipantGender, eligibleVotersForRound, roundVoterLabel, hasEnoughForRounds, countByGender, hasVotersForPolls, participantsWhoJoined, maxRecommendedRounds, roundLimitHint } from '@/lib/participants'
 import type { ParticipantGender } from '@/types'
-import { tallyRoundVotes, getCategoryMeta, getVoteCategories } from '@/lib/vote-stats'
-import { parseGameType, roundPoolSize, isPairGame, isWouldYouRather } from '@/lib/game-types'
+import { tallyRoundVotes, getCategoryMeta, getVoteCategories, tallyWyrVotes, tallyMltVotes } from '@/lib/vote-stats'
+import { parseGameType, roundPoolSize, isPairGame, isWouldYouRather, isMostLikelyTo, isLobbyGame } from '@/lib/game-types'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
-import { ParticipantRoundResults, VoteCountStat, WyrRoundResults } from '@/components/VoteResults'
-import { tallyWyrVotes } from '@/lib/vote-stats'
+import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
+import { ParticipantRoundResults, VoteCountStat, WyrRoundResults, MltRoundResults } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import type { Game, Participant, Player, Round, Vote, Confession, VoteAssignment } from '@/types'
 
@@ -605,6 +605,8 @@ export default function HostPage() {
   // ── WAITING ───────────────────────────────────────────────────────────────
   if (game?.status === 'waiting') {
     const gameType = parseGameType(game.game_type)
+    const isLobby = isLobbyGame(gameType)
+    const isMlt = isMostLikelyTo(gameType)
     const isWyr = isWouldYouRather(gameType)
     const minPool = roundPoolSize(gameType)
     const isJoinersMode = (game.participant_mode ?? 'import') === 'joiners'
@@ -616,11 +618,14 @@ export default function HostPage() {
     const maxRounds = maxRecommendedRounds(participantInputs, gameType)
     const roundsHint = roundLimitHint(participantInputs, gameType)
     const roundsTooHigh = maxRounds > 0 && game.rounds_count > maxRounds
-    const roundOptions = isWyr
-      ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= WYR_QUESTION_COUNT)
+    const lobbyQuestionCount = isMlt ? MLT_QUESTION_COUNT : WYR_QUESTION_COUNT
+    const roundOptions = isLobby
+      ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionCount)
       : [1, 2, 3, 4, 5, 6, 8, 10].filter((n) => n <= Math.max(maxRounds, 1))
     const voterCheck = hasVotersForPolls(roundParticipants, players)
-    const canStart = isWyr
+    const canStart = isMlt
+      ? players.length >= 2 && !roundsTooHigh
+      : isLobby
       ? players.length > 0 && !roundsTooHigh
       : isJoinersMode
       ? players.length > 0 &&
@@ -642,10 +647,10 @@ export default function HostPage() {
             <h1 className="text-2xl font-black text-white mt-1">{game.title}</h1>
             <p className="text-muted text-sm">{game.rounds_count} rounds · {game.timer_seconds}s each</p>
             <p className="text-[var(--primary)] text-xs mt-1 font-medium">
-              {isWyr
-                ? 'Would You Rather — players join and pick A or B each round'
+              {isMlt
+                ? 'Most Likely To — players join and vote for a friend each round'
                 : isWyr
-                ? `Start Game (${players.length} player${players.length === 1 ? '' : 's'})`
+                ? 'Would You Rather — players join and pick A or B each round'
                 : isJoinersMode
                   ? 'Join & play — joiners are the names in the poll'
                   : 'Import list — voters join separately'}
@@ -662,7 +667,7 @@ export default function HostPage() {
             <p className="text-muted text-xs uppercase tracking-wider">Rounds</p>
             <span className="text-faint text-xs">{game.timer_seconds}s each</span>
           </div>
-          {isWyr || (roundParticipants.length >= minPool && hasEnoughForRounds(participantInputs, gameType)) ? (
+          {isLobby || (roundParticipants.length >= minPool && hasEnoughForRounds(participantInputs, gameType)) ? (
             <>
               {roundsHint && (
                 <p className="text-faint text-xs">{roundsHint}</p>
@@ -690,7 +695,7 @@ export default function HostPage() {
             </>
           ) : (
             <p className="text-faint text-xs">
-              {isWyr ? 'Set how many questions to play' : `Need at least ${minPool} joined people of one gender before you can set rounds`}
+              {isLobby ? 'Set how many questions to play' : `Need at least ${minPool} joined people of one gender before you can set rounds`}
             </p>
           )}
         </div>
@@ -753,7 +758,7 @@ export default function HostPage() {
               )}
             </div>
           )}
-          {isWyr ? (
+          {isLobby ? (
             filteredPlayers.length === 0 ? (
               <p className="text-faint text-sm">Waiting for people to join...</p>
             ) : (
@@ -868,12 +873,12 @@ export default function HostPage() {
               )})}
             </div>
           )}
-          {isJoinersMode && !isWyr && participants.length > 0 && (
+          {isJoinersMode && !isLobby && participants.length > 0 && (
             <p className="text-faint text-xs text-center">
               {genderCounts.female} female · {genderCounts.male} male
             </p>
           )}
-          {isJoinersMode && !isWyr && participants.length > 0 && !hasEnoughForRounds(participantInputs, gameType) && (
+          {isJoinersMode && !isLobby && participants.length > 0 && !hasEnoughForRounds(participantInputs, gameType) && (
             <p className="text-amber-200/90 text-xs text-center">
               Need at least {minPool} people of the same gender to start
             </p>
@@ -1009,7 +1014,11 @@ export default function HostPage() {
           {starting
             ? 'Starting...'
             : !canStart
-              ? isJoinersMode
+              ? isMlt && players.length < 2
+                ? `Need at least 2 players (${players.length}/2)`
+              : isLobby && players.length === 0
+                ? 'Waiting for players...'
+              : isJoinersMode
                 ? participants.length < minPool
                   ? `Need ${minPool - participants.length} more to start`
                   : roundsTooHigh
@@ -1033,6 +1042,8 @@ export default function HostPage() {
   // ── ACTIVE ────────────────────────────────────────────────────────────────
   if (game?.status === 'active' && currentRound) {
     const gameType = parseGameType(game.game_type)
+    const isLobby = isLobbyGame(gameType)
+    const isMlt = isMostLikelyTo(gameType)
     const isWyr = isWouldYouRather(gameType)
     const roundVotes = votes.filter((v) => v.round_id === currentRound.id)
     const roundParts = participants.filter((p) => currentRound.participant_ids.includes(p.id))
@@ -1041,10 +1052,60 @@ export default function HostPage() {
     const voterHint = roundVoterLabel(roundParticipantGender)
     const eligible = eligibleVotersForRound(roundParticipantGender, players, gameType)
     const eligibleIds = new Set(eligible.map((p) => p.id))
-    const eligibleVotes = isWyr
+    const eligibleVotes = isLobby
       ? roundVotes
       : roundVotes.filter((v) => eligibleIds.has(v.player_id))
-    const allVoted = eligibleVotes.length >= eligible.length && eligible.length > 0
+    const voteDenominator = isLobby ? players.length : eligible.length
+    const allVoted = eligibleVotes.length >= voteDenominator && voteDenominator > 0
+
+    if (isMlt) {
+      return (
+        <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-muted text-xs uppercase tracking-wider">Round</p>
+              <p className="text-white font-black text-3xl">
+                {currentRound.round_number}
+                <span className="text-faint font-normal text-lg"> / {game.rounds_count}</span>
+              </p>
+            </div>
+            <TimerDisplay seconds={timeLeft} total={game.timer_seconds} />
+          </div>
+
+          <div className="glass-card p-5 space-y-3">
+            <p className="text-muted text-xs uppercase tracking-wider text-center">Most likely to…</p>
+            <p className="text-white/90 text-base leading-snug text-center font-medium">
+              {currentRound.mlt_question}
+            </p>
+          </div>
+
+          <div className="glass-card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-muted text-xs uppercase tracking-wider">Votes In</p>
+              <span className={`text-sm font-bold ${allVoted ? 'text-green-400' : 'text-white/80'}`}>
+                {eligibleVotes.length} / {players.length}
+                {allVoted && ' · ending round...'}
+              </span>
+            </div>
+            <div className="h-2 bg-white/8 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${allVoted ? 'bg-emerald-500' : 'bg-[var(--primary-strong)]'}`}
+                style={{ width: players.length > 0 ? `${(eligibleVotes.length / players.length) * 100}%` : '0%' }}
+              />
+            </div>
+            <p className="text-faint text-xs text-center">Votes are anonymous — winner is shown after the round</p>
+          </div>
+
+          <button
+            onClick={handleEndRound}
+            disabled={ending || eligibleVotes.length === 0}
+            className="btn-secondary"
+          >
+            {ending ? 'Ending...' : 'End Round Early'}
+          </button>
+        </div>
+      )
+    }
 
     if (isWyr) {
       return (
@@ -1213,6 +1274,8 @@ export default function HostPage() {
   // ── BETWEEN ROUNDS (results) ──────────────────────────────────────────────
   if (game?.status === 'active' && !currentRound && lastFinishedRound) {
     const gameType = parseGameType(game.game_type)
+    const isLobby = isLobbyGame(gameType)
+    const isMlt = isMostLikelyTo(gameType)
     const isWyr = isWouldYouRather(gameType)
     const roundVotes = votes.filter((v) => v.round_id === lastFinishedRound.id)
     const roundParts = participants.filter((p) => lastFinishedRound.participant_ids.includes(p.id))
@@ -1220,19 +1283,28 @@ export default function HostPage() {
     const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
     const isLastRound = lastFinishedRound.round_number >= game.rounds_count
     const { countA, countB, voterCount } = tallyWyrVotes(roundVotes)
+    const mltTally = tallyMltVotes(roundVotes, players)
 
     return (
       <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
         <div className="text-center">
           <p className="text-muted text-xs uppercase tracking-wider">
             Round {lastFinishedRound.round_number} of {game.rounds_count}
-            {!isWyr && roundGender ? ` · ${roundGender}` : ''}
+            {!isLobby && roundGender ? ` · ${roundGender}` : ''}
           </p>
           <h1 className="text-3xl font-black tracking-tight mt-1">Results are in! 🗳️</h1>
           <p className="text-muted text-sm mt-1">Players can see these results on their screens</p>
         </div>
 
-        {isWyr ? (
+        {isMlt ? (
+          <MltRoundResults
+            question={lastFinishedRound.mlt_question ?? ''}
+            rows={mltTally.rows}
+            voterCount={mltTally.voterCount}
+            maxCount={mltTally.maxCount}
+            winnerNames={mltTally.winnerNames}
+          />
+        ) : isWyr ? (
           <WyrRoundResults
             optionA={lastFinishedRound.wyr_option_a ?? ''}
             optionB={lastFinishedRound.wyr_option_b ?? ''}
@@ -1332,6 +1404,8 @@ export default function HostPage() {
   // ── FINISHED ──────────────────────────────────────────────────────────────
   if (game?.status === 'finished') {
     const gameType = parseGameType(game.game_type)
+    const isLobby = isLobbyGame(gameType)
+    const isMlt = isMostLikelyTo(gameType)
     const isWyr = isWouldYouRather(gameType)
     const playedParticipants = filterParticipantsInRounds(participants, allRounds)
 
@@ -1342,7 +1416,7 @@ export default function HostPage() {
           <h1 className="text-3xl font-black text-white">{game.title}</h1>
           <p className="text-muted">
             {players.length} players · {allRounds.length} rounds
-            {!isWyr ? ` · ${playedParticipants.length} in game` : ''}
+            {!isLobby ? ` · ${playedParticipants.length} in game` : ''}
           </p>
         </div>
 
@@ -1362,6 +1436,27 @@ export default function HostPage() {
                     countA={countA}
                     countB={countB}
                     voterCount={voterCount}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        ) : isMlt ? (
+          <div className="space-y-8">
+            {allRounds.map((round) => {
+              const roundVotes = votes.filter((v) => v.round_id === round.id)
+              const { rows, voterCount, maxCount, winnerNames } = tallyMltVotes(roundVotes, players)
+              return (
+                <div key={round.id}>
+                  <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
+                    Round {round.round_number}
+                  </h2>
+                  <MltRoundResults
+                    question={round.mlt_question ?? ''}
+                    rows={rows}
+                    voterCount={voterCount}
+                    maxCount={maxCount}
+                    winnerNames={winnerNames}
                   />
                 </div>
               )

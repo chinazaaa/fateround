@@ -7,6 +7,8 @@ import {
   isPairGame,
   isThreeChoiceGame,
   isWouldYouRather,
+  isMostLikelyTo,
+  isLobbyGame,
   parseGameType,
   voteSlots,
 } from '@/lib/game-types'
@@ -27,8 +29,17 @@ function parsePairAssignments(raw: unknown): Record<string, PairFlag> | null {
 }
 
 export async function POST(req: NextRequest) {
-  const { playerId, roundId, gameId, kiss, marry, kill, pairAssignments: rawPairAssignments, wyrChoice: rawWyrChoice } =
-    await req.json()
+  const {
+    playerId,
+    roundId,
+    gameId,
+    kiss,
+    marry,
+    kill,
+    pairAssignments: rawPairAssignments,
+    wyrChoice: rawWyrChoice,
+    targetPlayerId: rawTargetPlayerId,
+  } = await req.json()
 
   if (!playerId || !roundId || !gameId) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -54,9 +65,35 @@ export async function POST(req: NextRequest) {
     kill_participant_id: string | null
     pair_assignments: Record<string, PairFlag> | null
     wyr_choice: WyrChoice | null
+    target_player_id: string | null
   }
 
-  if (isWouldYouRather(gameType)) {
+  if (isMostLikelyTo(gameType)) {
+    const targetPlayerId = typeof rawTargetPlayerId === 'string' ? rawTargetPlayerId : null
+    if (!targetPlayerId) {
+      return NextResponse.json({ error: 'Pick someone from the group' }, { status: 400 })
+    }
+
+    const { data: targetPlayer } = await supabase
+      .from('players')
+      .select('id')
+      .eq('id', targetPlayerId)
+      .eq('game_id', gameId.toUpperCase())
+      .maybeSingle()
+
+    if (!targetPlayer) {
+      return NextResponse.json({ error: 'Invalid pick — player not in this game' }, { status: 400 })
+    }
+
+    row = {
+      kiss_participant_id: null,
+      marry_participant_id: null,
+      kill_participant_id: null,
+      pair_assignments: null,
+      wyr_choice: null,
+      target_player_id: targetPlayerId,
+    }
+  } else if (isWouldYouRather(gameType)) {
     const wyrChoice = rawWyrChoice === 'a' || rawWyrChoice === 'b' ? rawWyrChoice : null
     if (!wyrChoice) {
       return NextResponse.json({ error: 'Pick option A or B' }, { status: 400 })
@@ -67,6 +104,7 @@ export async function POST(req: NextRequest) {
       kill_participant_id: null,
       pair_assignments: null,
       wyr_choice: wyrChoice,
+      target_player_id: null,
     }
   } else if (isPairGame(gameType)) {
     const pairAssignments = parsePairAssignments(rawPairAssignments)
@@ -85,6 +123,7 @@ export async function POST(req: NextRequest) {
       kill_participant_id: null,
       pair_assignments: pairAssignments,
       wyr_choice: null,
+      target_player_id: null,
     }
   } else {
     const assignment = { kiss: kiss || null, marry: marry || null, kill: kill || null }
@@ -111,34 +150,35 @@ export async function POST(req: NextRequest) {
       kill_participant_id: assignment.kill,
       pair_assignments: null,
       wyr_choice: null,
+      target_player_id: null,
     }
   }
 
-  if (!isWouldYouRather(gameType)) {
-  const { data: participants } = await supabase
-    .from('participants')
-    .select('id, gender')
-    .in('id', round.participant_ids)
+  if (!isLobbyGame(gameType)) {
+    const { data: participants } = await supabase
+      .from('participants')
+      .select('id, gender')
+      .in('id', round.participant_ids)
 
-  const roundGender = getRoundParticipantGender(
-    round.participant_ids,
-    (participants ?? []).map((p) => ({
-      id: p.id,
-      gender: p.gender,
-    }))
-  )
-
-  const playerGender = playerVoteGenderForRound(player)
-  if (!playerGender) {
-    return NextResponse.json({ error: 'Invalid player gender' }, { status: 400 })
-  }
-
-  if (roundGender && !canPlayerVoteInRound(playerGender, roundGender)) {
-    return NextResponse.json(
-      { error: 'You cannot vote in this round — only the opposite gender votes' },
-      { status: 403 }
+    const roundGender = getRoundParticipantGender(
+      round.participant_ids,
+      (participants ?? []).map((p) => ({
+        id: p.id,
+        gender: p.gender,
+      }))
     )
-  }
+
+    const playerGender = playerVoteGenderForRound(player)
+    if (!playerGender) {
+      return NextResponse.json({ error: 'Invalid player gender' }, { status: 400 })
+    }
+
+    if (roundGender && !canPlayerVoteInRound(playerGender, roundGender)) {
+      return NextResponse.json(
+        { error: 'You cannot vote in this round — only the opposite gender votes' },
+        { status: 403 }
+      )
+    }
   }
 
   const { error } = await supabase.from('votes').upsert(

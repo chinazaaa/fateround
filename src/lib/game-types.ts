@@ -163,14 +163,50 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  most_likely_to: {
+    id: 'most_likely_to',
+    label: 'Most Likely To',
+    tagline: 'Vote for the friend who fits each prompt — anonymous',
+    headerEmoji: '🎯👥',
+    slots: {
+      kiss: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Most Votes',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      marry: {
+        emoji: '👤',
+        label: 'Pick',
+        color: '#94a3b8',
+        leaderboardLabel: 'Pick',
+        activeClass: 'bg-white/10 text-white/80 border-white/30',
+        borderClass: 'border-white/25 bg-white/5',
+        textColor: '#cbd5e1',
+      },
+      kill: {
+        emoji: '👤',
+        label: 'Pick',
+        color: '#94a3b8',
+        leaderboardLabel: 'Pick',
+        activeClass: 'bg-white/10 text-white/80 border-white/30',
+        borderClass: 'border-white/25 bg-white/5',
+        textColor: '#cbd5e1',
+      },
+    },
+  },
 }
 
-export const GAME_TYPE_OPTIONS: GameType[] = ['smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'would_you_rather']
+export const GAME_TYPE_OPTIONS: GameType[] = ['smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'would_you_rather', 'most_likely_to']
 
 export function parseGameType(raw: unknown): GameType {
   if (raw === 'red_flag_green_flag') return 'red_flag_green_flag'
   if (raw === 'smash_or_pass') return 'smash_or_pass'
   if (raw === 'would_you_rather') return 'would_you_rather'
+  if (raw === 'most_likely_to') return 'most_likely_to'
   return 'smash_marry_kill'
 }
 
@@ -188,12 +224,22 @@ export function isWouldYouRather(gameType: GameType | string | undefined): boole
   return parseGameType(gameType) === 'would_you_rather'
 }
 
+export function isMostLikelyTo(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'most_likely_to'
+}
+
+/** Join-with-name games — no import list, always anonymous, no gender rules. */
+export function isLobbyGame(gameType: GameType | string | undefined): boolean {
+  const type = parseGameType(gameType)
+  return type === 'would_you_rather' || type === 'most_likely_to'
+}
+
 export function isThreeChoiceGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'smash_marry_kill'
 }
 
 export function roundPoolSize(gameType: GameType | string | undefined): 2 | 3 {
-  if (isWouldYouRather(gameType)) return 2
+  if (isLobbyGame(gameType)) return 2
   return isPairGame(gameType) ? 2 : 3
 }
 

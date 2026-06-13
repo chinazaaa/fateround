@@ -11,8 +11,9 @@ import {
   hasEnoughForRounds,
   genderLabel,
 } from '@/lib/participants'
-import { GAME_TYPE_OPTIONS, gameTypeConfig, roundPoolSize, isWouldYouRather } from '@/lib/game-types'
+import { GAME_TYPE_OPTIONS, gameTypeConfig, roundPoolSize, isLobbyGame, isMostLikelyTo } from '@/lib/game-types'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
+import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 
 interface Settings {
   title: string
@@ -52,13 +53,14 @@ export default function CreateGame() {
 
   const genderCounts = countByGender(participants)
   const isJoinersMode = settings.participant_mode === 'joiners'
-  const isWyr = isWouldYouRather(settings.game_type)
+  const isLobby = isLobbyGame(settings.game_type)
   const minPool = roundPoolSize(settings.game_type)
   const canCreateImport = participants.length >= minPool && hasEnoughForRounds(participants, settings.game_type)
   const canCreateJoiners = !!settings.title.trim()
-  const canCreateWyr = !!settings.title.trim()
-  const wyrRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= WYR_QUESTION_COUNT)
-  const roundOptions = isWyr ? wyrRoundOptions : [2, 3, 4, 5, 6, 8, 10]
+  const canCreateLobby = !!settings.title.trim()
+  const lobbyQuestionCount = isMostLikelyTo(settings.game_type) ? MLT_QUESTION_COUNT : WYR_QUESTION_COUNT
+  const lobbyRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionCount)
+  const roundOptions = isLobby ? lobbyRoundOptions : [2, 3, 4, 5, 6, 8, 10]
 
   const addParticipantsFromRows = (rows: ParticipantInput[]) => {
     if (rows.length === 0) return 0
@@ -198,7 +200,7 @@ export default function CreateGame() {
                       setSettings({
                         ...settings,
                         game_type: type,
-                        ...(isWouldYouRather(type)
+                        ...(isLobbyGame(type)
                           ? { participant_mode: 'joiners', anonymous: true }
                           : {}),
                       })
@@ -219,7 +221,7 @@ export default function CreateGame() {
             </div>
           </Field>
 
-          {!isWyr && (
+          {!isLobby && (
           <Field label="Who Joins">
             <div className="grid gap-2">
               <button
@@ -303,7 +305,7 @@ export default function CreateGame() {
           </Field>
 
           <div className="space-y-2 pt-1">
-            {!isWyr && (
+            {!isLobby && (
             <Toggle
               label="Anonymous Responses"
               description="Hide who voted for what"
@@ -311,8 +313,8 @@ export default function CreateGame() {
               onChange={(v) => setSettings({ ...settings, anonymous: v })}
             />
             )}
-            {isWyr && (
-              <p className="text-faint text-xs px-1">Would You Rather games are always anonymous — only totals are shown.</p>
+            {isLobby && (
+              <p className="text-faint text-xs px-1">Lobby games are always anonymous — only totals are shown.</p>
             )}
             <Toggle
               label="Auto-Reveal Results"
@@ -323,8 +325,8 @@ export default function CreateGame() {
           </div>
         </div>
 
-        {isWyr ? (
-          <PrimaryBtn onClick={createGame} disabled={!canCreateWyr || loading}>
+        {isLobby ? (
+          <PrimaryBtn onClick={createGame} disabled={!canCreateLobby || loading}>
             {loading ? 'Creating...' : 'Create Game'}
           </PrimaryBtn>
         ) : isJoinersMode ? (
