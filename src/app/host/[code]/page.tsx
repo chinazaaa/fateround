@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getInitial, filterParticipantsInRounds } from '@/lib/utils'
@@ -40,10 +40,35 @@ export default function HostPage() {
   const [addError, setAddError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [updatingRounds, setUpdatingRounds] = useState(false)
+  const [listSearch, setListSearch] = useState('')
+  const [playersSearch, setPlayersSearch] = useState('')
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const advancingRef = useRef(false)
   const autoFinishTriggeredRef = useRef(false)
+
+  const filteredListParticipants = useMemo(() => {
+    const q = listSearch.trim().toLowerCase()
+    if (!q) return participants
+    return participants.filter((p) => p.name.toLowerCase().includes(q))
+  }, [participants, listSearch])
+
+  const joinerParticipantsWithPlayers = useMemo(
+    () => participants.filter((part) => players.some((p) => p.name === part.name)),
+    [participants, players]
+  )
+
+  const filteredPlayers = useMemo(() => {
+    const q = playersSearch.trim().toLowerCase()
+    if (!q) return players
+    return players.filter((p) => p.name.toLowerCase().includes(q))
+  }, [players, playersSearch])
+
+  const filteredJoinerParticipants = useMemo(() => {
+    const q = playersSearch.trim().toLowerCase()
+    if (!q) return joinerParticipantsWithPlayers
+    return joinerParticipantsWithPlayers.filter((p) => p.name.toLowerCase().includes(q))
+  }, [joinerParticipantsWithPlayers, playersSearch])
 
   // ── Initial load ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -683,12 +708,46 @@ export default function HostPage() {
           {isJoinersMode && participants.length > 0 && (
             <p className="text-faint text-xs">Tap to fix poll placement or gender · Remove to kick out</p>
           )}
+          {(isJoinersMode ? joinerParticipantsWithPlayers.length : players.length) > 8 && (
+            <div className="space-y-1">
+              <div className="relative">
+                <input
+                  type="search"
+                  value={playersSearch}
+                  onChange={(e) => setPlayersSearch(e.target.value)}
+                  placeholder={isJoinersMode ? 'Search in the game…' : 'Search players…'}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="input-field py-2 text-sm pr-9"
+                />
+                {playersSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setPlayersSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-white text-sm"
+                    aria-label="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              {playersSearch.trim() && (
+                <p className="text-faint text-[10px] uppercase tracking-wider px-0.5">
+                  {(isJoinersMode ? filteredJoinerParticipants.length : filteredPlayers.length)} of{' '}
+                  {isJoinersMode ? joinerParticipantsWithPlayers.length : players.length} shown
+                </p>
+              )}
+            </div>
+          )}
           {isJoinersMode ? (
             participants.length === 0 ? (
               <p className="text-faint text-sm">Waiting for people to join...</p>
+            ) : filteredJoinerParticipants.length === 0 ? (
+              <p className="text-faint text-sm text-center py-4">No names match your search</p>
             ) : (
               <div className="space-y-2 max-h-80 overflow-y-auto">
-                {participants.map((part) => {
+                {filteredJoinerParticipants.map((part) => {
                   const player = players.find((p) => p.name === part.name)
                   if (!player) return null
                   const busy = adminBusy === part.id || adminBusy === player.id
@@ -746,9 +805,11 @@ export default function HostPage() {
             )
           ) : players.length === 0 ? (
             <p className="text-faint text-sm">Waiting for players to join...</p>
+          ) : filteredPlayers.length === 0 ? (
+            <p className="text-faint text-sm text-center py-4">No names match your search</p>
           ) : (
             <div className="space-y-2 max-h-52 overflow-y-auto">
-              {players.map((p) => {
+              {filteredPlayers.map((p) => {
                 const identity = resolvePlayerIdentity(p, participants)
                 return (
                 <div key={p.id} className="flex items-center gap-2 min-w-0 surface-inset border border-white/8 rounded-xl px-3 py-2">
@@ -844,8 +905,44 @@ export default function HostPage() {
             {addError && <p className="text-red-300/90 text-xs">{addError}</p>}
           </div>
           <p className="text-faint text-xs">Tap gender to correct · Remove if someone shouldn&apos;t be in the poll</p>
+          {participants.length > 8 && (
+            <div className="space-y-1">
+              <div className="relative">
+                <input
+                  type="search"
+                  value={listSearch}
+                  onChange={(e) => setListSearch(e.target.value)}
+                  placeholder="Search the list…"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="input-field py-2 text-sm pr-9"
+                />
+                {listSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setListSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-white text-sm"
+                    aria-label="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              {listSearch.trim() && (
+                <p className="text-faint text-[10px] uppercase tracking-wider px-0.5">
+                  {filteredListParticipants.length} of {participants.length} shown
+                </p>
+              )}
+            </div>
+          )}
           <div className="space-y-2 max-h-64 overflow-y-auto">
-            {participants.map((p) => (
+            {filteredListParticipants.length === 0 ? (
+              <p className="text-faint text-sm text-center py-6">
+                {listSearch.trim() ? 'No names match your search' : 'No one on the list yet'}
+              </p>
+            ) : (
+            filteredListParticipants.map((p) => (
               <div key={p.id} className="flex items-center gap-2 min-w-0 surface-inset border border-white/8 rounded-xl px-3 py-2">
                 <span className="text-white/80 text-sm truncate flex-1">{p.name}</span>
                 <div className="flex gap-1 shrink-0">
@@ -872,7 +969,8 @@ export default function HostPage() {
                   Remove
                 </button>
               </div>
-            ))}
+            ))
+            )}
           </div>
         </div>
         )}

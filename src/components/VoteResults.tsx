@@ -1,4 +1,5 @@
 import type { GameType } from '@/types'
+import { isPairGame } from '@/lib/game-types'
 import {
   type VoteCategory,
   type RoundTally,
@@ -6,6 +7,64 @@ import {
   getVoteCategories,
   winnerNames,
 } from '@/lib/vote-stats'
+
+function PairRoundResultsSummary({
+  gameType,
+  tallies,
+  nameById,
+  voterCount,
+}: {
+  gameType?: GameType | string
+  tallies: RoundTally[]
+  nameById: Map<string, string>
+  voterCount: number
+}) {
+  const greenMeta = getCategoryMeta(gameType, 'kiss')
+  const redMeta = getCategoryMeta(gameType, 'smash')
+
+  return (
+    <div className="glass-card border border-white/12 p-4 space-y-3">
+      <p className="text-muted text-xs uppercase tracking-wider text-center">
+        Round breakdown · {voterCount} {voterCount === 1 ? 'vote' : 'votes'}
+      </p>
+      <div className="space-y-2">
+        {tallies.map((tally) => {
+          const name = nameById.get(tally.id) ?? ''
+          const maxGreen = Math.max(...tallies.map((t) => t.kiss))
+          const maxRed = Math.max(...tallies.map((t) => t.smash))
+          const greenLead = maxGreen > 0 && tally.kiss === maxGreen
+          const redLead = maxRed > 0 && tally.smash === maxRed
+          return (
+            <div
+              key={tally.id}
+              className="surface-inset rounded-xl px-3 py-3 flex items-center justify-between gap-3"
+            >
+              <p className="text-white font-semibold truncate">{name}</p>
+              <div className="flex gap-3 shrink-0 text-sm">
+                <span
+                  className={greenLead ? 'font-bold' : 'text-white/70'}
+                  style={greenLead ? { color: greenMeta.color } : undefined}
+                >
+                  {greenMeta.emoji} {tally.kiss}
+                </span>
+                <span
+                  className={redLead ? 'font-bold' : 'text-white/70'}
+                  style={redLead ? { color: redMeta.color } : undefined}
+                >
+                  {redMeta.emoji} {tally.smash}
+                </span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <p className="text-faint text-[10px] text-center leading-snug">
+        Each voter picks one {greenMeta.label.toLowerCase()} and one {redMeta.label.toLowerCase()} — so one person&apos;s{' '}
+        {greenMeta.label.toLowerCase()} count matches the other&apos;s {redMeta.label.toLowerCase()} count.
+      </p>
+    </div>
+  )
+}
 
 export function RoundWinnersSummary({
   gameType,
@@ -18,6 +77,17 @@ export function RoundWinnersSummary({
   nameById: Map<string, string>
   voterCount: number
 }) {
+  if (isPairGame(gameType) && tallies.length === 2) {
+    return (
+      <PairRoundResultsSummary
+        gameType={gameType}
+        tallies={tallies}
+        nameById={nameById}
+        voterCount={voterCount}
+      />
+    )
+  }
+
   const categories = getVoteCategories(gameType)
 
   return (

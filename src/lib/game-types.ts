@@ -93,12 +93,48 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  smash_or_pass: {
+    id: 'smash_or_pass',
+    label: 'Smash or Pass',
+    tagline: 'Two names — smash one, pass on the other',
+    headerEmoji: '🔥👎',
+    slots: {
+      kiss: {
+        emoji: '🔥',
+        label: 'Smash',
+        color: '#fb923c',
+        leaderboardLabel: 'Most Smashed',
+        activeClass: 'bg-[var(--kiss)]/20 text-orange-200 border-[var(--kiss)]',
+        borderClass: 'border-[var(--kiss)]/50 bg-[var(--kiss)]/10',
+        textColor: '#fdba74',
+      },
+      marry: {
+        emoji: '👎',
+        label: 'Pass',
+        color: '#94a3b8',
+        leaderboardLabel: 'Most Passed',
+        activeClass: 'bg-white/10 text-white/80 border-white/30',
+        borderClass: 'border-white/25 bg-white/5',
+        textColor: '#cbd5e1',
+      },
+      kill: {
+        emoji: '👎',
+        label: 'Pass',
+        color: '#94a3b8',
+        leaderboardLabel: 'Most Passed',
+        activeClass: 'bg-white/10 text-white/80 border-white/30',
+        borderClass: 'border-white/25 bg-white/5',
+        textColor: '#cbd5e1',
+      },
+    },
+  },
 }
 
-export const GAME_TYPE_OPTIONS: GameType[] = ['smash_marry_kill', 'red_flag_green_flag']
+export const GAME_TYPE_OPTIONS: GameType[] = ['smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass']
 
 export function parseGameType(raw: unknown): GameType {
   if (raw === 'red_flag_green_flag') return 'red_flag_green_flag'
+  if (raw === 'smash_or_pass') return 'smash_or_pass'
   return 'smash_marry_kill'
 }
 
@@ -106,18 +142,26 @@ export function gameTypeConfig(gameType: GameType | string | undefined): GameTyp
   return GAME_TYPE_CONFIG[parseGameType(gameType)]
 }
 
+/** Two names per round, two vote buttons (no middle slot). */
+export function isPairGame(gameType: GameType | string | undefined): boolean {
+  const type = parseGameType(gameType)
+  return type === 'red_flag_green_flag' || type === 'smash_or_pass'
+}
+
+export function isThreeChoiceGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'smash_marry_kill'
+}
+
 export function roundPoolSize(gameType: GameType | string | undefined): 2 | 3 {
-  return parseGameType(gameType) === 'red_flag_green_flag' ? 2 : 3
+  return isPairGame(gameType) ? 2 : 3
 }
 
 export function voteSlots(gameType?: GameType | string): VoteSlot[] {
-  if (parseGameType(gameType) === 'red_flag_green_flag') return ['kiss', 'kill']
-  return ['kiss', 'marry', 'kill']
+  return isPairGame(gameType) ? ['kiss', 'kill'] : ['kiss', 'marry', 'kill']
 }
 
 export function voteCategories(gameType?: GameType | string): VoteCategory[] {
-  if (parseGameType(gameType) === 'red_flag_green_flag') return ['kiss', 'smash']
-  return ['kiss', 'marry', 'smash']
+  return isPairGame(gameType) ? ['kiss', 'smash'] : ['kiss', 'marry', 'smash']
 }
 
 export function assignmentTargetCount(gameType?: GameType | string): number {

@@ -2,7 +2,7 @@ export type GameStatus = 'waiting' | 'active' | 'finished'
 export type RoundStatus = 'pending' | 'active' | 'finished'
 export type AutoSubmitBehavior = 'random' | 'no_answer'
 export type ParticipantMode = 'import' | 'joiners'
-export type GameType = 'smash_marry_kill' | 'red_flag_green_flag'
+export type GameType = 'smash_marry_kill' | 'red_flag_green_flag' | 'smash_or_pass'
 
 export type ParticipantGender = 'male' | 'female'
 /** Gender selected when joining — `both` means vote on every round. */

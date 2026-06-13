@@ -2,7 +2,6 @@ import type { GameType } from '@/types'
 import {
   type VoteCategory,
   categoryMeta,
-  categoryToSlot,
   parseGameType,
   voteCategories,
 } from '@/lib/game-types'
@@ -102,8 +101,12 @@ export function myActionBorderClass(
   action: 'kiss' | 'marry' | 'kill' | null
 ): string {
   if (!action) return 'border-white/10'
-  const slot = categoryToSlot(action === 'kill' ? 'smash' : action)
-  if (action === 'kiss') return gameType === 'red_flag_green_flag' ? 'border-emerald-500/40' : 'border-pink-500/40'
-  if (action === 'marry') return gameType === 'red_flag_green_flag' ? 'border-white/25' : 'border-amber-500/40'
-  return gameType === 'red_flag_green_flag' ? 'border-red-500/40' : 'border-red-500/40'
+  const type = parseGameType(gameType)
+  if (action === 'kiss') {
+    return type === 'red_flag_green_flag' ? 'border-emerald-500/40' : 'border-pink-500/40'
+  }
+  if (action === 'marry') return 'border-amber-500/40'
+  if (type === 'red_flag_green_flag') return 'border-red-500/40'
+  if (type === 'smash_or_pass') return 'border-white/25'
+  return 'border-red-500/40'
 }

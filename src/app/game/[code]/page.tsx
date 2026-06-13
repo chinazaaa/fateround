@@ -7,10 +7,11 @@ import { playRoundStartSound, unlockAudio } from '@/lib/sounds'
 import { roundGenderLabel, playerGenderLabel, playerIdentityLabel, genderLabel, getRoundParticipantGender, canPlayerVoteInRound, roundVoterLabel, spectatorMessage, activeVoteBanner, parsePlayerGenderFromDb, parseParticipantGenderFromDb, playerGenderFromJoin, joinGenderHint, playerVoteGenderForRound } from '@/lib/participants'
 import type { ParticipantGender, PlayerGender } from '@/types'
 import { tallyRoundVotes, getCategoryMeta, getVoteCategories, assignmentEmojiFor, myActionBorderClass } from '@/lib/vote-stats'
-import { gameTypeConfig, slotMeta, voteSlots, emptyAssignment, isAssignmentComplete, assignedCount, parseGameType, assignmentTargetCount } from '@/lib/game-types'
+import { gameTypeConfig, slotMeta, voteSlots, emptyAssignment, isAssignmentComplete, assignedCount, parseGameType, assignmentTargetCount, isThreeChoiceGame } from '@/lib/game-types'
 import { ParticipantRoundResults, VoteCountStat } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import { NameSearchPicker } from '@/components/NameSearchPicker'
+import { GameTypeBadge } from '@/components/GameTypeBadge'
 import type { Game, Participant, Player, Round, Vote, VoteAssignment, Confession, GameType } from '@/types'
 
 type View = 'loading' | 'not_found' | 'join' | 'waiting' | 'round' | 'round_results' | 'results'
@@ -561,7 +562,7 @@ export default function GamePage() {
         roundId: r.id,
         gameId: gameCode,
         kiss: a.kiss,
-        marry: gameType === 'red_flag_green_flag' ? null : a.marry,
+        marry: isThreeChoiceGame(gameType) ? a.marry : null,
         kill: a.kill,
       }),
     })
@@ -593,7 +594,7 @@ export default function GamePage() {
         roundId: currentRound.id,
         gameId: gameCode,
         kiss: assignment.kiss,
-        marry: submitGameType === 'red_flag_green_flag' ? null : assignment.marry,
+        marry: isThreeChoiceGame(submitGameType) ? assignment.marry : null,
         kill: assignment.kill,
       }),
     })
@@ -729,6 +730,7 @@ export default function GamePage() {
         <div className="text-center space-y-1">
           <div className="text-4xl">{gameTypeConfig(game?.game_type).headerEmoji}</div>
           <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
+          <GameTypeBadge gameType={game?.game_type} />
           <p className="text-muted text-sm">{game?.rounds_count} rounds · {game?.timer_seconds}s each</p>
         </div>
         <div className="space-y-4">
@@ -833,6 +835,7 @@ export default function GamePage() {
         <div className="text-center space-y-1">
           <div className="text-4xl">⏳</div>
           <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
+          <GameTypeBadge gameType={game?.game_type} />
           <p className="text-muted">Waiting for the host to start...</p>
         </div>
         <div className="surface-inset border border-white/10 rounded-2xl p-4 space-y-2">
@@ -889,6 +892,7 @@ export default function GamePage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <p className="text-muted text-xs uppercase tracking-wider">{game?.title}</p>
+            <GameTypeBadge gameType={gameType} className="mt-1 mb-1" />
             <p className="text-white font-black text-2xl">
               Round {currentRound.round_number}
               <span className="text-faint font-normal text-base"> / {game?.rounds_count}</span>
@@ -1011,7 +1015,8 @@ export default function GamePage() {
             Round {lastFinishedRound.round_number} of {game?.rounds_count}
             {roundGender ? ` · ${roundGender}` : ''}
           </p>
-          <h2 className="text-2xl font-black tracking-tight mt-1">Results are in! 🗳️</h2>
+          <GameTypeBadge gameType={gameType} className="mt-2" />
+          <h2 className="text-2xl font-black tracking-tight mt-2">Results are in! 🗳️</h2>
           {watchedRound && (
             <p className="text-muted text-sm mt-2">You watched this round — everyone sees the same results</p>
           )}
@@ -1224,7 +1229,8 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
       <div className="text-center">
         <div className="text-4xl mb-2">🎊</div>
         <h1 className="text-3xl font-black text-white">{game.title}</h1>
-        <p className="text-muted">{players.length} players · {rounds.length} rounds · {playedParticipants.length} in game</p>
+        <GameTypeBadge gameType={gameType} className="mt-2" />
+        <p className="text-muted mt-2">{players.length} players · {rounds.length} rounds · {playedParticipants.length} in game</p>
       </div>
 
       <FinalGenderLeaderboards

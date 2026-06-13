@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { canPlayerVoteInRound, getRoundParticipantGender, playerVoteGenderForRound } from '@/lib/participants'
-import { isAssignmentComplete, parseGameType, voteSlots } from '@/lib/game-types'
+import { isAssignmentComplete, isThreeChoiceGame, parseGameType, voteSlots } from '@/lib/game-types'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
       round_id: roundId,
       game_id: gameId,
       kiss_participant_id: assignment.kiss,
-      marry_participant_id: gameType === 'red_flag_green_flag' ? null : assignment.marry,
+      marry_participant_id: isThreeChoiceGame(gameType) ? assignment.marry : null,
       kill_participant_id: assignment.kill,
     },
     { onConflict: 'player_id,round_id' }
