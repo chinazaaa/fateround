@@ -2,7 +2,17 @@ import type { Player } from '@/types'
 import { participantsWhoJoined } from '@/lib/participants'
 
 export const HOT_SEAT_MIN_PLAYERS = 3
-export const HOT_SEAT_MAX_ROUNDS_CAP = 20
+/** Hard ceiling — actual max in lobby is min(this, joined player count). */
+export const HOT_SEAT_MAX_ROUNDS_CAP = 100
+
+export function hotSeatMaxCapUpperBound(joinedCount: number, listSize?: number): number {
+  const candidate = Math.max(
+    joinedCount >= HOT_SEAT_MIN_PLAYERS ? joinedCount : 0,
+    (listSize ?? 0) >= HOT_SEAT_MIN_PLAYERS ? listSize ?? 0 : 0,
+    HOT_SEAT_MIN_PLAYERS
+  )
+  return Math.min(HOT_SEAT_MAX_ROUNDS_CAP, candidate)
+}
 
 export type HotSeatPlayerRow = {
   id: string
@@ -102,10 +112,11 @@ export function buildHotSeatSequence(players: Player[], roundCount: number): Pla
 }
 
 /** Clamp admin max-rounds cap to a valid integer in range. */
-export function clampHotSeatMaxCap(raw: unknown): number {
+export function clampHotSeatMaxCap(raw: unknown, upperBound?: number): number {
   const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw ?? ''), 10)
+  const upper = upperBound ?? HOT_SEAT_MAX_ROUNDS_CAP
   if (!Number.isFinite(n)) return HOT_SEAT_MIN_PLAYERS
-  return Math.min(HOT_SEAT_MAX_ROUNDS_CAP, Math.max(HOT_SEAT_MIN_PLAYERS, Math.floor(n)))
+  return Math.min(upper, Math.max(HOT_SEAT_MIN_PLAYERS, Math.floor(n)))
 }
 
 /** Playable rounds = one turn per joined player, capped by admin max. */

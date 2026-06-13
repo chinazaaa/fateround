@@ -74,7 +74,7 @@ const participantItemSchema = z.union([
 
 export const createGameSchema = z.object({
   title: sanitizedString(1, 100),
-  rounds_count: z.coerce.number().int().min(1).max(20).optional(),
+  rounds_count: z.coerce.number().int().min(1).max(100).optional(),
   timer_seconds: z.coerce.number().optional(),
   anonymous: z.boolean().optional(),
   auto_reveal: z.boolean().optional(),

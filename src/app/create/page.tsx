@@ -58,7 +58,7 @@ import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn } from '@/component
 import { StepIndicator, SettingsGroup, StickyActionBar, SegmentedControl, ChipGrid } from '@/components/ui/CreateWizard'
 import {
   clampHotSeatMaxCap,
-  HOT_SEAT_MAX_ROUNDS_CAP,
+  hotSeatMaxCapUpperBound,
   HOT_SEAT_MIN_PLAYERS,
 } from '@/lib/hot-seat'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
@@ -136,7 +136,7 @@ function CreateGameInner() {
               participant_mode: 'import' as const,
               anonymous: true,
               participant_filter: 'joined' as const,
-              ...(isHotSeat(type) ? { rounds_count: HOT_SEAT_MAX_ROUNDS_CAP } : {}),
+              ...(isHotSeat(type) ? { rounds_count: HOT_SEAT_MIN_PLAYERS } : {}),
             }
           : {}),
       }))
@@ -149,6 +149,7 @@ function CreateGameInner() {
   const isMlt = isMostLikelyTo(settings.game_type)
   const isWst = isWhoSaidThis(settings.game_type)
   const isHotSeatGame = isHotSeat(settings.game_type)
+  const hotSeatCreateCapUpper = isHotSeatGame ? hotSeatMaxCapUpperBound(0, participants.length) : 20
   const isPair = isPairGame(settings.game_type)
   const needsGender = participantsNeedGender(settings.game_type)
   const minPool = roundPoolSize(settings.game_type)
@@ -204,7 +205,7 @@ function CreateGameInner() {
             participant_mode: 'import' as const,
             anonymous: true,
             participant_filter: 'joined' as const,
-            ...(isHotSeat(type) ? { rounds_count: HOT_SEAT_MAX_ROUNDS_CAP } : {}),
+            ...(isHotSeat(type) ? { rounds_count: HOT_SEAT_MIN_PLAYERS } : {}),
           }
         : {}),
     })
@@ -525,12 +526,12 @@ function CreateGameInner() {
                 <Field label="Max rounds">
                   <p className="text-faint text-xs mb-2">
                     One hot seat turn per player who joins and claims a name. The actual round count is set
-                    automatically in the lobby — enter the max cap ({HOT_SEAT_MIN_PLAYERS}–{HOT_SEAT_MAX_ROUNDS_CAP}).
+                    automatically in the lobby — enter the max cap ({HOT_SEAT_MIN_PLAYERS}–{hotSeatCreateCapUpper}).
                   </p>
                   <input
                     type="number"
                     min={HOT_SEAT_MIN_PLAYERS}
-                    max={HOT_SEAT_MAX_ROUNDS_CAP}
+                    max={hotSeatCreateCapUpper}
                     step={1}
                     value={settings.rounds_count}
                     onChange={(e) => {
@@ -542,7 +543,7 @@ function CreateGameInner() {
                     onBlur={(e) => {
                       setSettings((prev) => ({
                         ...prev,
-                        rounds_count: clampHotSeatMaxCap(e.target.value),
+                        rounds_count: clampHotSeatMaxCap(e.target.value, hotSeatCreateCapUpper),
                       }))
                     }}
                     className="input-field w-28"

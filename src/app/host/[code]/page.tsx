@@ -68,6 +68,7 @@ import {
   hotSeatEffectiveRounds,
   hotSeatLobbyRoundsHint,
   clampHotSeatMaxCap,
+  hotSeatMaxCapUpperBound,
   HOT_SEAT_MIN_PLAYERS,
   HOT_SEAT_MAX_ROUNDS_CAP,
   hotSeatJoinedPlayers,
@@ -1104,13 +1105,17 @@ export default function HostPage() {
       ? players.map((p) => ({ name: p.name, gender: 'female' as ParticipantGender }))
       : roundParticipants.map((p) => ({ name: p.name, gender: p.gender }))
     const genderCounts = countByGender(participantInputs)
+    const hotSeatJoinedCount = hotSeatLegacyJoiners ? players.length : roundParticipants.length
+    const hotSeatCapUpper = hotSeatLobby
+      ? hotSeatMaxCapUpperBound(hotSeatJoinedCount, participants.length)
+      : HOT_SEAT_MAX_ROUNDS_CAP
     const lobbyQuestionMax =
       isWyr || isMlt
         ? questionPoolCap(game)
         : isWst
           ? wstAutoRoundCount(wstPool.length || wstSubmitters.length)
           : isHotSeatGame
-            ? Math.min(20, Math.max(roundParticipants.length, hotSeatLegacyJoiners ? players.length : 3))
+            ? hotSeatCapUpper
             : maxRecommendedRounds(participantInputs, gameType)
     const maxRounds =
       isWyr || isMlt
@@ -1118,7 +1123,7 @@ export default function HostPage() {
         : isWst
           ? lobbyQuestionMax
           : isHotSeatGame
-            ? Math.min(20, Math.max(roundParticipants.length, hotSeatLegacyJoiners ? players.length : 1))
+            ? hotSeatCapUpper
             : maxRecommendedRounds(participantInputs, gameType)
     const roundsHint = isWst
       ? wstPool.length >= 2
@@ -1135,7 +1140,6 @@ export default function HostPage() {
             ? `Platform pool → up to ${lobbyQuestionMax} rounds`
             : `Platform prompts → up to ${lobbyQuestionMax} rounds`
         : roundLimitHint(participantInputs, gameType)
-    const hotSeatJoinedCount = hotSeatLegacyJoiners ? players.length : roundParticipants.length
     const hotSeatEffective = hotSeatLobby ? hotSeatEffectiveRounds(hotSeatJoinedCount, game.rounds_count) : 0
     const roundsTooHigh = hotSeatLobby ? false : maxRounds > 0 && game.rounds_count > maxRounds
     const roundOptions = isWyr
@@ -1230,13 +1234,13 @@ export default function HostPage() {
                 <input
                   type="number"
                   min={HOT_SEAT_MIN_PLAYERS}
-                  max={HOT_SEAT_MAX_ROUNDS_CAP}
+                  max={hotSeatCapUpper}
                   step={1}
                   defaultValue={game.rounds_count}
-                  key={game.rounds_count}
+                  key={`${game.rounds_count}-${hotSeatCapUpper}`}
                   disabled={updatingRounds}
                   onBlur={(e) => {
-                    const n = clampHotSeatMaxCap(e.target.value)
+                    const n = clampHotSeatMaxCap(e.target.value, hotSeatCapUpper)
                     e.target.value = String(n)
                     if (n !== game.rounds_count) hostUpdateRounds(n)
                   }}

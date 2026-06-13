@@ -232,7 +232,7 @@ export function kmkRoundPickerOptions(maxRounds: number): number[] {
 /** Max rounds before the same names repeat heavily. */
 export function maxRecommendedRounds(participants: ParticipantInput[], gameType?: GameType | string): number {
   if (isWouldYouRather(gameType)) return Math.min(20, WYR_QUESTION_COUNT)
-  if (isHotSeat(gameType)) return participants.length >= HOT_SEAT_MIN_PLAYERS ? HOT_SEAT_MAX_ROUNDS_CAP : 0
+  if (isHotSeat(gameType)) return participants.length >= HOT_SEAT_MIN_PLAYERS ? participants.length : 0
   if (isMostLikelyTo(gameType)) return Math.min(20, MLT_QUESTION_COUNT)
   if (isWhoSaidThis(gameType)) return Math.min(20, Math.max(participants.length, 2))
   const perRound = roundPoolSize(gameType)
