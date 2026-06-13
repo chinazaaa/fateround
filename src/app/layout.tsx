@@ -4,6 +4,7 @@ import { ThemeProvider } from '@/components/ThemeProvider'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { ToastProvider } from '@/components/ui/Toast'
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
+import { QueryProvider } from '@/components/QueryProvider'
 import { AppBackground } from '@/components/AppBackground'
 import './globals.css'
 
@@ -35,9 +36,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <ToastProvider>
             <ConfirmProvider>
-              <AppBackground />
-              <ThemeToggle />
-              {children}
+              <QueryProvider>
+                <AppBackground />
+                <ThemeToggle />
+                {children}
+              </QueryProvider>
             </ConfirmProvider>
           </ToastProvider>
         </ThemeProvider>
