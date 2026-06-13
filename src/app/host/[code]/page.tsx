@@ -918,6 +918,7 @@ export default function HostPage() {
                 placeholder="Name"
                 className="input-field flex-1 py-2 text-sm"
               />
+              {!isMltImport && (
               <div className="flex gap-1 shrink-0">
                 {(['female', 'male'] as const).map((g) => (
                   <button
@@ -932,6 +933,7 @@ export default function HostPage() {
                   </button>
                 ))}
               </div>
+              )}
               <button
                 type="button"
                 onClick={hostAddParticipant}

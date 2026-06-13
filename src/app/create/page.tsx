@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import type { ParticipantGender, ParticipantMode, GameType } from '@/types'
 import {
   type ParticipantInput,
-  parseParticipantRows,
+  parseParticipantsForGame,
   parseExcelParticipants,
   mergeParticipants,
   countByGender,
@@ -12,6 +12,9 @@ import {
   genderLabel,
   participantModeOptions,
   participantImportStepHint,
+  participantUploadHint,
+  participantsNeedGender,
+  participantSampleFile,
 } from '@/lib/participants'
 import {
   roundPoolSize,
@@ -84,6 +87,7 @@ function CreateGameInner() {
   const isJoinersMode = settings.participant_mode === 'joiners'
   const isWyr = isWouldYouRather(settings.game_type)
   const isMlt = isMostLikelyTo(settings.game_type)
+  const needsGender = participantsNeedGender(settings.game_type)
   const minPool = roundPoolSize(settings.game_type)
   const canCreateImport = participants.length >= minPool && hasEnoughForRounds(participants, settings.game_type)
   const canCreateJoiners = !!settings.title.trim()
@@ -121,9 +125,13 @@ function CreateGameInner() {
   const addBulkParticipants = () => {
     if (!bulkPaste.trim()) return
     setUploadError(null)
-    const rows = parseParticipantRows(bulkPaste)
+    const rows = parseParticipantsForGame(bulkPaste, settings.game_type)
     if (rows.length === 0) {
-      setUploadError('Use two columns: name and gender (e.g. Sarah,female)')
+      setUploadError(
+        needsGender
+          ? 'Use two columns: name and gender (e.g. Sarah,female)'
+          : 'Add one name per line'
+      )
       return
     }
     addParticipantsFromRows(rows)
@@ -134,11 +142,11 @@ function CreateGameInner() {
     const text = e.clipboardData.getData('text')
     if (!/[\n\r\t,;]/.test(text)) return
     e.preventDefault()
-    const rows = parseParticipantRows(text)
+    const rows = parseParticipantsForGame(text, settings.game_type)
     if (rows.length > 0) {
       addParticipantsFromRows(rows)
       setNameInput('')
-    } else {
+    } else if (needsGender) {
       const names = text.split(/[\n\r\t,;]+/).map((s) => s.trim()).filter(Boolean)
       addParticipantsFromRows(names.map((name) => ({ name, gender: defaultGender })))
       setNameInput('')
@@ -156,9 +164,13 @@ function CreateGameInner() {
     try {
       if (ext === 'csv') {
         const text = await file.text()
-        const rows = parseParticipantRows(text)
+        const rows = parseParticipantsForGame(text, settings.game_type)
         if (rows.length === 0) {
-          setUploadError('No valid rows found. First column: name. Second column: gender (male/female).')
+          setUploadError(
+            needsGender
+              ? 'No valid rows found. First column: name. Second column: gender (male/female).'
+              : 'No valid rows found. Add one name per line.'
+          )
           return
         }
         addParticipantsFromRows(rows)
@@ -167,9 +179,13 @@ function CreateGameInner() {
 
       if (ext === 'xlsx' || ext === 'xls') {
         const buffer = await file.arrayBuffer()
-        const rows = await parseExcelParticipants(buffer)
+        const rows = await parseExcelParticipants(buffer, settings.game_type)
         if (rows.length === 0) {
-          setUploadError('No valid rows found. First column: name. Second column: gender (male/female).')
+          setUploadError(
+            needsGender
+              ? 'No valid rows found. First column: name. Second column: gender (male/female).'
+              : 'No valid rows found. Add one name per line.'
+          )
           return
         }
         addParticipantsFromRows(rows)
@@ -178,7 +194,11 @@ function CreateGameInner() {
 
       setUploadError('Please upload a .csv or .xlsx file')
     } catch {
-      setUploadError('Could not read that file. Try the sample CSV format.')
+      setUploadError(
+        needsGender
+          ? 'Could not read that file. Try the sample CSV (name + gender).'
+          : 'Could not read that file. Try the sample CSV (names only).'
+      )
     }
   }
 
@@ -356,6 +376,7 @@ function CreateGameInner() {
   }
 
   if (step === 'participants') {
+    const sampleFile = participantSampleFile(settings.game_type)
     return (
       <PageShell>
         <BackBtn onClick={() => setStep('settings')} />
@@ -374,8 +395,20 @@ function CreateGameInner() {
             value={participantTab}
             onChange={setParticipantTab}
             options={[
-              { value: 'upload', label: 'Upload file', hint: 'CSV or Excel with name and gender columns.' },
-              { value: 'manual', label: 'Add manually', hint: 'Type names one at a time or paste a list.' },
+              {
+                value: 'upload',
+                label: 'Upload file',
+                hint: needsGender
+                  ? 'CSV or Excel with name and gender columns.'
+                  : 'CSV or Excel with one name per row.',
+              },
+              {
+                value: 'manual',
+                label: 'Add manually',
+                hint: needsGender
+                  ? 'Type names one at a time or paste a list with genders.'
+                  : 'Type names one at a time or paste a list.',
+              },
             ]}
           />
 
@@ -390,8 +423,8 @@ function CreateGameInner() {
                   Choose file
                 </button>
                 <a
-                  href="/participants-sample.csv"
-                  download="participants-sample.csv"
+                  href={sampleFile.href}
+                  download={sampleFile.download}
                   className="btn-secondary !py-3 text-center no-underline flex items-center justify-center"
                 >
                   Sample CSV
@@ -404,21 +437,23 @@ function CreateGameInner() {
                 className="hidden"
                 onChange={handleFileUpload}
               />
-              <p className="text-faint text-xs text-center">.csv or .xlsx — name + gender columns</p>
+              <p className="text-faint text-xs text-center">{participantUploadHint(settings.game_type)}</p>
               {uploadError && <p className="text-red-400 text-sm">{uploadError}</p>}
             </div>
           ) : (
             <div className="space-y-3">
-              <Field label="Default gender">
-                <SegmentedControl
-                  value={defaultGender}
-                  onChange={setDefaultGender}
-                  options={[
-                    { value: 'female', label: 'Female' },
-                    { value: 'male', label: 'Male' },
-                  ]}
-                />
-              </Field>
+              {needsGender && (
+                <Field label="Default gender">
+                  <SegmentedControl
+                    value={defaultGender}
+                    onChange={setDefaultGender}
+                    options={[
+                      { value: 'female', label: 'Female' },
+                      { value: 'male', label: 'Male' },
+                    ]}
+                  />
+                </Field>
+              )}
 
               <div className="flex gap-2">
                 <input
@@ -439,7 +474,11 @@ function CreateGameInner() {
               <textarea
                 value={bulkPaste}
                 onChange={(e) => setBulkPaste(e.target.value)}
-                placeholder={'Paste from Excel:\nSarah,female\nJames,male'}
+                placeholder={
+                  needsGender
+                    ? 'Paste from Excel:\nSarah,female\nJames,male'
+                    : 'Paste names:\nSarah\nJames\nAlex'
+                }
                 rows={3}
                 className="input-field resize-none font-medium"
               />
@@ -459,9 +498,11 @@ function CreateGameInner() {
             <div className="space-y-2 pt-2 border-t border-[var(--border)]">
               <div className="flex items-center justify-between">
                 <p className="label-caps !text-[10px]">{participants.length} added</p>
-                <p className="text-faint text-xs">
-                  {genderCounts.female}F · {genderCounts.male}M
-                </p>
+                {needsGender && (
+                  <p className="text-faint text-xs">
+                    {genderCounts.female}F · {genderCounts.male}M
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {participants.map((p, i) => (
@@ -469,7 +510,7 @@ function CreateGameInner() {
                     <div className="flex items-center gap-2.5 min-w-0">
                       <Avatar name={p.name} />
                       <span className="font-medium text-sm truncate">{p.name}</span>
-                      <GenderBadge gender={p.gender} />
+                      {needsGender && <GenderBadge gender={p.gender} />}
                     </div>
                     <button
                       type="button"
@@ -488,7 +529,12 @@ function CreateGameInner() {
             </div>
           )}
 
-          {!isMlt && !hasEnoughForRounds(participants, settings.game_type) && participants.length > 0 && (
+          {!needsGender && participants.length < minPool && participants.length > 0 && (
+            <p className="text-faint text-sm text-center">
+              Add {minPool - participants.length} more name{minPool - participants.length === 1 ? '' : 's'} to continue
+            </p>
+          )}
+          {needsGender && !isMlt && !hasEnoughForRounds(participants, settings.game_type) && participants.length > 0 && (
             <p className="text-amber-500 text-xs text-center">
               Need at least {minPool} people of the same gender to run rounds
             </p>

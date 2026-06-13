@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generateGameCode, generateToken } from '@/lib/utils'
-import { normalizeGender, hasEnoughForRounds, type ParticipantInput } from '@/lib/participants'
+import { normalizeGender, hasEnoughForRounds, participantsNeedGender, type ParticipantInput } from '@/lib/participants'
 import { parseGameType, roundPoolSize, isLobbyGame, isWouldYouRather, isMostLikelyTo, isAnonymousGame } from '@/lib/game-types'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
@@ -12,10 +12,11 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-function parseParticipants(raw: unknown): ParticipantInput[] | null {
+function parseParticipants(raw: unknown, gameType: ReturnType<typeof parseGameType>): ParticipantInput[] | null {
   if (!Array.isArray(raw)) return null
 
   const parsed: ParticipantInput[] = []
+  const needGender = participantsNeedGender(gameType)
   for (const item of raw) {
     if (typeof item === 'string') {
       const name = item.trim()
@@ -26,6 +27,7 @@ function parseParticipants(raw: unknown): ParticipantInput[] | null {
       const name = item.name.trim()
       const gender = normalizeGender(String(item.gender ?? ''))
       if (name && gender) parsed.push({ name, gender })
+      else if (name && !needGender) parsed.push({ name, gender: 'female' })
     }
   }
   return parsed
@@ -64,7 +66,7 @@ export async function POST(req: NextRequest) {
 
   let participants: ParticipantInput[] = []
   if (participant_mode === 'import') {
-    const parsed = parseParticipants(rawParticipants)
+    const parsed = parseParticipants(rawParticipants, game_type)
     if (!parsed || parsed.length < roundPoolSize(game_type)) {
       return NextResponse.json(
         { error: `At least ${roundPoolSize(game_type)} participants required` },

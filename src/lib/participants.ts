@@ -1,4 +1,4 @@
-import { roundPoolSize, isWouldYouRather, isMostLikelyTo, isLobbyGame, isNameOnlyPlayerJoin } from '@/lib/game-types'
+import { roundPoolSize, isWouldYouRather, isMostLikelyTo, isLobbyGame, isNameOnlyPlayerJoin, parseGameType } from '@/lib/game-types'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import type { GameType, ParticipantMode } from '@/types'
@@ -54,6 +54,53 @@ export function parseParticipantRows(text: string): ParticipantInput[] {
   }
 
   return rows
+}
+
+/** Smash / Red Flag / Smash or Pass need gender for same-gender rounds. WYR & MLT do not. */
+export function participantsNeedGender(gameType?: GameType | string): boolean {
+  const type = parseGameType(gameType)
+  return !isWouldYouRather(type) && !isMostLikelyTo(type)
+}
+
+/** Parse name-only rows (one name per line or single CSV column). Gender defaults for DB storage. */
+export function parseNameOnlyRows(text: string): ParticipantInput[] {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const rows: ParticipantInput[] = []
+
+  for (const line of lines) {
+    const cols = splitRow(line)
+    const name = cols[0]?.trim()
+    if (!name) continue
+    if (rows.length === 0 && (name.toLowerCase() === 'name' || name.toLowerCase() === 'names')) continue
+    const gender = cols.length >= 2 ? normalizeGender(cols[1]) : null
+    rows.push({ name, gender: gender ?? 'female' })
+  }
+
+  return rows
+}
+
+/** Parse upload/paste text — gender required or optional depending on game type. */
+export function parseParticipantsForGame(text: string, gameType?: GameType | string): ParticipantInput[] {
+  if (participantsNeedGender(gameType)) {
+    return parseParticipantRows(text)
+  }
+  const withGender = parseParticipantRows(text)
+  if (withGender.length > 0) return withGender
+  return parseNameOnlyRows(text)
+}
+
+export function participantUploadHint(gameType?: GameType | string): string {
+  if (participantsNeedGender(gameType)) {
+    return '.csv or .xlsx — name + gender columns'
+  }
+  return '.csv or .xlsx — names only (one per row)'
+}
+
+export function participantSampleFile(gameType?: GameType | string): { href: string; download: string } {
+  if (participantsNeedGender(gameType)) {
+    return { href: '/participants-sample.csv', download: 'participants-sample.csv' }
+  }
+  return { href: '/participants-sample-names.csv', download: 'participants-sample-names.csv' }
 }
 
 export function mergeParticipants(
@@ -469,7 +516,10 @@ export function participantsInGenderRounds<T extends { id: string; gender: Parti
 }
 
 /** Parse first sheet of an Excel workbook (ArrayBuffer). */
-export async function parseExcelParticipants(buffer: ArrayBuffer): Promise<ParticipantInput[]> {
+export async function parseExcelParticipants(
+  buffer: ArrayBuffer,
+  gameType?: GameType | string
+): Promise<ParticipantInput[]> {
   const XLSX = await import('xlsx')
   const workbook = XLSX.read(buffer, { type: 'array' })
   const sheet = workbook.Sheets[workbook.SheetNames[0]]
@@ -481,5 +531,5 @@ export async function parseExcelParticipants(buffer: ArrayBuffer): Promise<Parti
     .filter(Boolean)
     .join('\n')
 
-  return parseParticipantRows(lines)
+  return parseParticipantsForGame(lines, gameType)
 }
