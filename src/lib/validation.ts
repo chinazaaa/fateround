@@ -1,0 +1,265 @@
+import { z } from 'zod'
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Strip HTML tags to prevent stored XSS. */
+function stripHtml(s: string): string {
+  return s.replace(/<[^>]*>/g, '')
+}
+
+/** Zod transform: trim + strip HTML. */
+const sanitizedString = (min: number, max: number) =>
+  z
+    .string()
+    .transform((s) => stripHtml(s.trim()))
+    .pipe(
+      z.string().min(min, `Must be at least ${min} character(s)`).max(max, `Must be at most ${max} characters`)
+    )
+
+/** Zod transform: trim + strip HTML + uppercase (for game codes). */
+const gameCodeString = () =>
+  z
+    .string()
+    .transform((s) => stripHtml(s.trim()).toUpperCase())
+    .pipe(
+      z
+        .string()
+        .min(4, 'Game code must be 4-8 characters')
+        .max(8, 'Game code must be 4-8 characters')
+        .regex(/^[A-Z0-9]+$/, 'Game code must be alphanumeric')
+    )
+
+const hostTokenString = () => z.string().min(1, 'hostToken is required')
+
+const uuidString = (label: string = 'ID') =>
+  z.string().uuid(`${label} must be a valid UUID`)
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+const gameTypeEnum = z.enum([
+  'smash_marry_kill',
+  'red_flag_green_flag',
+  'smash_or_pass',
+  'would_you_rather',
+  'most_likely_to',
+  'who_said_this',
+])
+
+const participantModeEnum = z.enum(['import', 'joiners'])
+const autoSubmitBehaviorEnum = z.enum(['random', 'no_answer'])
+const pairVoteModeEnum = z.enum(['any', 'one_each'])
+const questionSourceEnum = z.enum(['platform', 'custom'])
+const wyrChoiceEnum = z.enum(['a', 'b'])
+const participantGenderEnum = z.enum(['male', 'female'])
+const playerGenderEnum = z.enum(['male', 'female', 'both'])
+const pairFlagEnum = z.enum(['kiss', 'kill'])
+const timerSecondsEnum = z.union([z.literal(15), z.literal(30), z.literal(60)])
+
+// ---------------------------------------------------------------------------
+// Game creation (POST /api/games)
+// ---------------------------------------------------------------------------
+
+const participantItemSchema = z.union([
+  sanitizedString(1, 80),
+  z.object({
+    name: sanitizedString(1, 80),
+    gender: z.string().optional(),
+  }),
+])
+
+export const createGameSchema = z.object({
+  title: sanitizedString(1, 100),
+  rounds_count: z.coerce.number().int().min(1).max(20).optional(),
+  timer_seconds: z.coerce.number().optional(),
+  anonymous: z.boolean().optional(),
+  auto_reveal: z.boolean().optional(),
+  auto_submit_behavior: autoSubmitBehaviorEnum.optional(),
+  participant_mode: participantModeEnum.optional(),
+  pair_vote_mode: pairVoteModeEnum.optional(),
+  question_source: questionSourceEnum.optional(),
+  custom_questions: z.array(z.unknown()).optional().nullable(),
+  game_type: z.string().optional(),
+  participants: z.array(participantItemSchema).optional(),
+})
+
+export type CreateGameInput = z.infer<typeof createGameSchema>
+
+// ---------------------------------------------------------------------------
+// Update rounds count (PATCH /api/games/[code])
+// ---------------------------------------------------------------------------
+
+export const updateGameSchema = z.object({
+  hostToken: hostTokenString(),
+  rounds_count: z.coerce.number().int().min(1, 'rounds_count is required'),
+})
+
+export type UpdateGameInput = z.infer<typeof updateGameSchema>
+
+// ---------------------------------------------------------------------------
+// Host-only actions (start / next-round / end-round / finish-game / play-again)
+// ---------------------------------------------------------------------------
+
+export const hostActionSchema = z.object({
+  hostToken: hostTokenString(),
+})
+
+export type HostActionInput = z.infer<typeof hostActionSchema>
+
+// ---------------------------------------------------------------------------
+// Participants (POST /api/participants)
+// ---------------------------------------------------------------------------
+
+export const createParticipantSchema = z.object({
+  gameCode: gameCodeString(),
+  hostToken: hostTokenString(),
+  name: sanitizedString(1, 80).optional(),
+  gender: z.string().optional(),
+  participants: z
+    .array(
+      z.object({
+        name: sanitizedString(1, 80),
+        gender: z.string().optional(),
+      })
+    )
+    .optional(),
+})
+
+export type CreateParticipantInput = z.infer<typeof createParticipantSchema>
+
+// ---------------------------------------------------------------------------
+// Participants (PATCH /api/participants)
+// ---------------------------------------------------------------------------
+
+export const updateParticipantSchema = z.object({
+  gameCode: gameCodeString(),
+  hostToken: hostTokenString(),
+  participantId: uuidString('participantId'),
+  name: sanitizedString(1, 80).optional(),
+  gender: z.string().optional(),
+  inMltPoll: z.boolean().optional(),
+})
+
+export type UpdateParticipantInput = z.infer<typeof updateParticipantSchema>
+
+// ---------------------------------------------------------------------------
+// Participants (DELETE /api/participants)
+// ---------------------------------------------------------------------------
+
+export const deleteParticipantSchema = z.object({
+  gameCode: gameCodeString(),
+  hostToken: hostTokenString(),
+  participantId: uuidString('participantId'),
+})
+
+export type DeleteParticipantInput = z.infer<typeof deleteParticipantSchema>
+
+// ---------------------------------------------------------------------------
+// Players (POST /api/players)
+// ---------------------------------------------------------------------------
+
+export const createPlayerSchema = z.object({
+  gameCode: gameCodeString(),
+  playerName: sanitizedString(1, 50).optional(),
+  gender: z.string().optional(),
+  pollGender: z.string().optional(),
+  identityGender: z.string().optional(),
+  participantId: z.string().optional(),
+})
+
+export type CreatePlayerInput = z.infer<typeof createPlayerSchema>
+
+// ---------------------------------------------------------------------------
+// Players (PATCH /api/players)
+// ---------------------------------------------------------------------------
+
+export const updatePlayerSchema = z.object({
+  gameCode: gameCodeString(),
+  playerId: uuidString('playerId'),
+  playerName: sanitizedString(1, 50).optional(),
+  gender: z.string().optional(),
+  pollGender: z.string().optional(),
+  identityGender: z.string().optional(),
+  participantId: z.string().optional(),
+  hostToken: z.string().optional(),
+})
+
+export type UpdatePlayerInput = z.infer<typeof updatePlayerSchema>
+
+// ---------------------------------------------------------------------------
+// Players (DELETE /api/players)
+// ---------------------------------------------------------------------------
+
+export const deletePlayerSchema = z.object({
+  gameCode: gameCodeString(),
+  playerId: uuidString('playerId'),
+  hostToken: z.string().optional(),
+})
+
+export type DeletePlayerInput = z.infer<typeof deletePlayerSchema>
+
+// ---------------------------------------------------------------------------
+// Votes (POST /api/votes)
+// ---------------------------------------------------------------------------
+
+export const createVoteSchema = z.object({
+  playerId: uuidString('playerId'),
+  roundId: uuidString('roundId'),
+  gameId: gameCodeString(),
+  kiss: z.string().optional().nullable(),
+  marry: z.string().optional().nullable(),
+  kill: z.string().optional().nullable(),
+  pairAssignments: z.record(z.string(), pairFlagEnum).optional().nullable(),
+  wyrChoice: wyrChoiceEnum.optional().nullable(),
+  targetPlayerId: z.string().optional().nullable(),
+  targetParticipantId: z.string().optional().nullable(),
+})
+
+export type CreateVoteInput = z.infer<typeof createVoteSchema>
+
+// ---------------------------------------------------------------------------
+// Confessions (POST /api/confessions)
+// ---------------------------------------------------------------------------
+
+export const createConfessionSchema = z.object({
+  gameId: gameCodeString(),
+  roundId: uuidString('roundId').optional().nullable(),
+  text: sanitizedString(1, 500),
+})
+
+export type CreateConfessionInput = z.infer<typeof createConfessionSchema>
+
+// ---------------------------------------------------------------------------
+// Quote (POST /api/quote)
+// ---------------------------------------------------------------------------
+
+export const createQuoteSchema = z.object({
+  playerId: uuidString('playerId'),
+  roundId: uuidString('roundId'),
+  gameId: gameCodeString(),
+  quoteText: sanitizedString(1, 500),
+  authorParticipantId: uuidString('authorParticipantId'),
+})
+
+export type CreateQuoteInput = z.infer<typeof createQuoteSchema>
+
+// ---------------------------------------------------------------------------
+// Re-exports for convenience
+// ---------------------------------------------------------------------------
+
+export {
+  gameTypeEnum,
+  participantModeEnum,
+  autoSubmitBehaviorEnum,
+  pairVoteModeEnum,
+  questionSourceEnum,
+  wyrChoiceEnum,
+  participantGenderEnum,
+  playerGenderEnum,
+  pairFlagEnum,
+  timerSecondsEnum,
+  stripHtml,
+}

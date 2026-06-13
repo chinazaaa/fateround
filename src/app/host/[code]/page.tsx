@@ -2,7 +2,8 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { getInitial, filterParticipantsInRounds } from '@/lib/utils'
+import { filterParticipantsInRounds } from '@/lib/utils'
+import { Avatar } from '@/components/Avatar'
 import { roundGenderLabel, genderLabel, resolvePlayerIdentity, getRoundParticipantGender, eligibleVotersForRound, roundVoterLabel, hasEnoughForRounds, countByGender, hasVotersForPolls, participantsWhoJoined, maxRecommendedRounds, roundLimitHint } from '@/lib/participants'
 import type { ParticipantGender } from '@/types'
 import { tallyRoundVotes, getCategoryMeta, getVoteCategories, tallyWyrVotes, tallyMltVotes } from '@/lib/vote-stats'
@@ -1084,7 +1085,7 @@ export default function HostPage() {
               <div className="space-y-2 max-h-80 overflow-y-auto">
                 {filteredPlayers.map((player) => (
                   <div key={player.id} className="surface-inset border border-theme rounded-xl px-3 py-2 flex items-center gap-2">
-                    <div className="avatar w-6 h-6 text-xs shrink-0">{getInitial(player.name)}</div>
+                    <Avatar name={player.name} size="sm" />
                     <span className="text-body text-sm font-medium truncate flex-1">{player.name}</span>
                   </div>
                 ))}
@@ -1105,7 +1106,7 @@ export default function HostPage() {
                   return (
                     <div key={part.id} className="surface-inset border border-theme rounded-xl p-3 space-y-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className="avatar w-6 h-6 text-xs shrink-0">{getInitial(part.name)}</div>
+                        <Avatar name={part.name} photoUrl={part.photo_url} size="sm" />
                         <span className="text-body text-sm font-medium truncate flex-1">{part.name}</span>
                         <button
                           type="button"
@@ -1163,7 +1164,7 @@ export default function HostPage() {
                 const identity = resolvePlayerIdentity(p, participants)
                 return (
                 <div key={p.id} className="flex items-center gap-2 min-w-0 surface-inset border border-theme rounded-xl px-3 py-2">
-                  <div className="avatar w-6 h-6 text-xs shrink-0">{getInitial(p.name)}</div>
+                  <Avatar name={p.name} size="sm" />
                   <span className="text-body-muted text-sm truncate flex-1">{p.name}</span>
                   <div className="flex gap-1 shrink-0">
                     {(['female', 'male'] as const).map((g) => (
@@ -1591,9 +1592,7 @@ export default function HostPage() {
           <div className="flex gap-2">
             {roundParts.map((p) => (
               <div key={p.id} className="flex-1 glass-card p-3 text-center">
-                <div className="avatar w-10 h-10 mx-auto mb-1">
-                  {getInitial(p.name)}
-                </div>
+                <Avatar name={p.name} photoUrl={p.photo_url} className="mx-auto mb-1" />
                 <p className="text-body text-sm font-semibold truncate">{p.name}</p>
               </div>
             ))}
@@ -1765,9 +1764,7 @@ export default function HostPage() {
                   : ({ tally, name, maxes, isWinner }) => (
                 <div key={tally.id} className="glass-card p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="avatar w-9 h-9 shrink-0">
-                      {getInitial(name)}
-                    </div>
+                    <Avatar name={name} size="sm" />
                     <p className="font-bold text-body text-lg">{name}</p>
                   </div>
                   <div className="grid grid-cols-3 gap-2">

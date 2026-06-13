@@ -165,9 +165,26 @@ create policy "public_rounds"       on rounds       for all to anon using (true)
 create policy "public_votes"        on votes        for all to anon using (true) with check (true);
 create policy "public_confessions"  on confessions  for all to anon using (true) with check (true);
 
+-- Player-submitted questions (lobby phase, WYR/MLT only)
+create table if not exists player_questions (
+  id uuid primary key default gen_random_uuid(),
+  game_id text not null references games(id) on delete cascade,
+  player_id uuid not null references players(id) on delete cascade,
+  question_type text not null check (question_type in ('wyr', 'mlt')),
+  option_a text,
+  option_b text,
+  question_text text,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_player_questions_game_id on player_questions(game_id);
+
+alter table player_questions enable row level security;
+create policy "public_player_questions" on player_questions for all to anon using (true) with check (true);
+
 -- Enable Realtime
 alter publication supabase_realtime add table games;
 alter publication supabase_realtime add table players;
 alter publication supabase_realtime add table rounds;
 alter publication supabase_realtime add table votes;
 alter publication supabase_realtime add table wst_quote_pool;
+alter publication supabase_realtime add table player_questions;

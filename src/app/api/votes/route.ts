@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createVoteSchema } from '@/lib/validation'
 import { canPlayerVoteInRound, getRoundParticipantGender, playerVoteGenderForRound } from '@/lib/participants'
 import {
   isAssignmentComplete,
@@ -33,6 +34,12 @@ function parsePairAssignments(raw: unknown): Record<string, PairFlag> | null {
 }
 
 export async function POST(req: NextRequest) {
+  const raw = await req.json()
+  const parsed = createVoteSchema.safeParse(raw)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
+  }
+
   const {
     playerId,
     roundId,
@@ -44,11 +51,7 @@ export async function POST(req: NextRequest) {
     wyrChoice: rawWyrChoice,
     targetPlayerId: rawTargetPlayerId,
     targetParticipantId: rawTargetParticipantId,
-  } = await req.json()
-
-  if (!playerId || !roundId || !gameId) {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
-  }
+  } = parsed.data
 
   const [{ data: player }, { data: round }, { data: game }] = await Promise.all([
     supabase.from('players').select('id, gender, identity_gender, name').eq('id', playerId).maybeSingle(),

@@ -2,7 +2,8 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { getPlayerSession, setPlayerSession, clearPlayerSession, getInitial, filterParticipantsInRounds } from '@/lib/utils'
+import { getPlayerSession, setPlayerSession, clearPlayerSession, filterParticipantsInRounds } from '@/lib/utils'
+import { Avatar } from '@/components/Avatar'
 import { playRoundStartSound, unlockAudio } from '@/lib/sounds'
 import { roundGenderLabel, playerGenderLabel, playerIdentityLabel, genderLabel, getRoundParticipantGender, canPlayerVoteInRound, roundVoterLabel, spectatorMessage, activeVoteBanner, parsePlayerGenderFromDb, parseParticipantGenderFromDb, playerGenderFromJoin, joinGenderHint, playerVoteGenderForRound, playerJoinNeedsGender } from '@/lib/participants'
 import type { ParticipantGender, PlayerGender } from '@/types'
@@ -100,6 +101,14 @@ export default function GamePage() {
   const [joinPollGender, setJoinPollGender] = useState<ParticipantGender>('female')
   const [joining, setJoining] = useState(false)
   const [editingJoin, setEditingJoin] = useState(false)
+
+  // Player question submission (WYR/MLT lobby)
+  const [pqWyrA, setPqWyrA] = useState('')
+  const [pqWyrB, setPqWyrB] = useState('')
+  const [pqMltText, setPqMltText] = useState('')
+  const [pqSubmitting, setPqSubmitting] = useState(false)
+  const [pqList, setPqList] = useState<{ id: string; player_id: string; question_type: string; option_a?: string; option_b?: string; question_text?: string }[]>([])
+  const [pqOpen, setPqOpen] = useState(false)
 
   const roundResultsActive = view === 'round_results' && !!lastFinishedRound
   const roundResultsIsLast =
@@ -618,6 +627,22 @@ export default function GamePage() {
     const id = setInterval(refreshLobby, 3000)
     return () => clearInterval(id)
   }, [view, gameCode])
+
+  // Poll player-submitted questions in lobby (WYR/MLT only)
+  useEffect(() => {
+    if (view !== 'waiting' || (!isWyrGame && !isMostLikelyTo(game?.game_type))) return
+    async function fetchPQ() {
+      const { data } = await supabase
+        .from('player_questions')
+        .select('*')
+        .eq('game_id', gameCode)
+        .order('created_at')
+      if (data) setPqList(data)
+    }
+    fetchPQ()
+    const id = setInterval(fetchPQ, 4000)
+    return () => clearInterval(id)
+  }, [view, gameCode, isWyrGame, game?.game_type])
 
   // Poll during round / results — fallback when realtime misses round transitions
   useEffect(() => {
@@ -1385,6 +1410,142 @@ export default function GamePage() {
             ))}
           </div>
         </div>
+        {/* Player question submission for WYR / MLT */}
+        {(isWyrGame || isMostLikelyTo(game?.game_type)) && myPlayerId && (
+          <div className="surface-inset border border-theme rounded-2xl p-4 space-y-3">
+            <button
+              type="button"
+              onClick={() => setPqOpen(!pqOpen)}
+              className="w-full flex items-center justify-between"
+            >
+              <p className="text-muted text-xs uppercase tracking-wider">
+                Submit a Question {pqList.length > 0 ? `(${pqList.length})` : ''}
+              </p>
+              <span className="text-faint text-xs">{pqOpen ? '−' : '+'}</span>
+            </button>
+            {pqOpen && (
+              <div className="space-y-3">
+                {isWyrGame ? (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Option A"
+                      value={pqWyrA}
+                      onChange={(e) => setPqWyrA(e.target.value)}
+                      maxLength={200}
+                      className="input-field text-sm"
+                      disabled={pqSubmitting}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Option B"
+                      value={pqWyrB}
+                      onChange={(e) => setPqWyrB(e.target.value)}
+                      maxLength={200}
+                      className="input-field text-sm"
+                      disabled={pqSubmitting}
+                    />
+                    <button
+                      type="button"
+                      disabled={!pqWyrA.trim() || !pqWyrB.trim() || pqSubmitting}
+                      onClick={async () => {
+                        setPqSubmitting(true)
+                        try {
+                          const res = await fetch('/api/player-questions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, questionType: 'wyr', optionA: pqWyrA.trim(), optionB: pqWyrB.trim() }),
+                          })
+                          if (res.ok) {
+                            const { question } = await res.json()
+                            setPqList((prev) => [...prev, question])
+                            setPqWyrA('')
+                            setPqWyrB('')
+                          } else {
+                            const { error } = await res.json()
+                            toast.error(error || 'Failed to submit')
+                          }
+                        } finally { setPqSubmitting(false) }
+                      }}
+                      className={pqWyrA.trim() && pqWyrB.trim() ? 'btn-primary text-sm w-full' : 'btn-secondary text-sm w-full opacity-60 cursor-not-allowed'}
+                    >
+                      {pqSubmitting ? 'Submitting...' : 'Add Question'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Most likely to..."
+                      value={pqMltText}
+                      onChange={(e) => setPqMltText(e.target.value)}
+                      maxLength={200}
+                      className="input-field text-sm"
+                      disabled={pqSubmitting}
+                    />
+                    <button
+                      type="button"
+                      disabled={!pqMltText.trim() || pqSubmitting}
+                      onClick={async () => {
+                        setPqSubmitting(true)
+                        try {
+                          const res = await fetch('/api/player-questions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, questionType: 'mlt', questionText: pqMltText.trim() }),
+                          })
+                          if (res.ok) {
+                            const { question } = await res.json()
+                            setPqList((prev) => [...prev, question])
+                            setPqMltText('')
+                          } else {
+                            const { error } = await res.json()
+                            toast.error(error || 'Failed to submit')
+                          }
+                        } finally { setPqSubmitting(false) }
+                      }}
+                      className={pqMltText.trim() ? 'btn-primary text-sm w-full' : 'btn-secondary text-sm w-full opacity-60 cursor-not-allowed'}
+                    >
+                      {pqSubmitting ? 'Submitting...' : 'Add Question'}
+                    </button>
+                  </div>
+                )}
+                {pqList.filter((q) => q.player_id === myPlayerId).length > 0 && (
+                  <div className="space-y-1.5 pt-2 border-t border-theme">
+                    <p className="text-faint text-[10px] uppercase tracking-wider">Your questions</p>
+                    {pqList.filter((q) => q.player_id === myPlayerId).map((q) => (
+                      <div key={q.id} className="flex items-start gap-2 text-sm">
+                        <span className="flex-1 min-w-0 text-body-muted">
+                          {q.question_type === 'wyr' ? `${q.option_a} vs ${q.option_b}` : q.question_text}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-faint hover:text-red-400 text-xs shrink-0"
+                          onClick={async () => {
+                            await fetch('/api/player-questions', {
+                              method: 'DELETE',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ questionId: q.id, playerId: myPlayerId }),
+                            })
+                            setPqList((prev) => prev.filter((x) => x.id !== q.id))
+                          }}
+                        >
+                          x
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {pqList.length > 0 && (
+                  <p className="text-faint text-[10px] text-center">
+                    {pqList.length} question{pqList.length === 1 ? '' : 's'} submitted by all players
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-col gap-2">
           <button type="button" onClick={openEditJoin} className="btn-secondary text-sm py-2.5">
             {isNameOnlyJoin || !joinNeedsGender ? 'Change name' : 'Change name or gender'}
@@ -1987,9 +2148,7 @@ export default function GamePage() {
                 return (
                   <div key={tally.id} className={`glass-card border-2 ${borderCls} rounded-2xl p-4`}>
                     <div className="flex items-center gap-3 mb-3">
-                      <div className="avatar w-10 h-10 text-lg shrink-0">
-                        {getInitial(name)}
-                      </div>
+                      <Avatar name={name} />
                       <p className="font-bold text-body text-lg">{name}</p>
                       {myAction && (
                         <span className="ml-auto text-xs text-muted italic">
@@ -2080,9 +2239,7 @@ function ParticipantCard({ gameType, participant, action, onAssign, disabled, di
   return (
     <div className={`rounded-2xl border-2 p-4 transition-all backdrop-blur-sm ${cfg ? cfg.borderClass : 'glass-card border-theme'}`}>
       <div className="flex items-center gap-3 mb-3">
-        <div className="avatar w-10 h-10 text-lg shrink-0">
-          {getInitial(participant.name)}
-        </div>
+        <Avatar name={participant.name} photoUrl={participant.photo_url} />
         <div>
           <p className="font-bold text-body text-lg leading-tight">{participant.name}</p>
           {action && cfg && (
@@ -2335,9 +2492,7 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
                         : ({ tally, name, maxes, isWinner }) => (
                       <div key={tally.id} className="glass-card p-4">
                         <div className="flex items-center gap-3 mb-2">
-                          <div className="avatar w-8 h-8 shrink-0">
-                            {getInitial(name)}
-                          </div>
+                          <Avatar name={name} size="sm" />
                           <p className="font-bold text-body">{name}</p>
                         </div>
                         <div className="grid grid-cols-3 gap-2">
@@ -2417,7 +2572,7 @@ function PlayerNameBar({ name }: { name: string | null | undefined }) {
   if (!name) return null
   return (
     <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl border border-[var(--primary)]/25 bg-[var(--primary)]/8 mb-4">
-      <div className="avatar w-7 h-7 text-xs shrink-0">{getInitial(name)}</div>
+      <Avatar name={name} size="sm" />
       <div className="min-w-0">
         <p className="text-[10px] uppercase tracking-wider text-faint leading-none">Playing as</p>
         <p className="text-sm font-semibold truncate">{name}</p>

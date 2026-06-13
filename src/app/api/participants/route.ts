@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createParticipantSchema, updateParticipantSchema, deleteParticipantSchema } from '@/lib/validation'
 import { normalizeGender, type ParticipantInput } from '@/lib/participants'
 import { parseGameType, isMostLikelyTo } from '@/lib/game-types'
 import { assertHostGame, deleteJoinerPair } from '@/lib/game-admin'
@@ -34,11 +35,13 @@ function parseIncomingParticipants(
 }
 
 export async function POST(req: NextRequest) {
-  const { gameCode, hostToken, name, gender, participants: rawList } = await req.json()
-
-  if (!gameCode || !hostToken) {
-    return NextResponse.json({ error: 'gameCode and hostToken are required' }, { status: 400 })
+  const rawBody = await req.json()
+  const parsed = createParticipantSchema.safeParse(rawBody)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
+
+  const { gameCode, hostToken, name, gender, participants: rawList } = parsed.data
 
   const auth = await assertHostGame(supabase, gameCode, hostToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -92,6 +95,12 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const rawPatch = await req.json()
+  const parsedPatch = updateParticipantSchema.safeParse(rawPatch)
+  if (!parsedPatch.success) {
+    return NextResponse.json({ error: parsedPatch.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
+  }
+
   const {
     gameCode,
     hostToken,
@@ -99,11 +108,7 @@ export async function PATCH(req: NextRequest) {
     name: rawName,
     gender: rawGender,
     inMltPoll: rawInMltPoll,
-  } = await req.json()
-
-  if (!gameCode || !hostToken || !participantId) {
-    return NextResponse.json({ error: 'gameCode, hostToken, and participantId are required' }, { status: 400 })
-  }
+  } = parsedPatch.data
 
   const auth = await assertHostGame(supabase, gameCode, hostToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -185,11 +190,13 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { gameCode, hostToken, participantId } = await req.json()
-
-  if (!gameCode || !hostToken || !participantId) {
-    return NextResponse.json({ error: 'gameCode, hostToken, and participantId are required' }, { status: 400 })
+  const rawDel = await req.json()
+  const parsedDel = deleteParticipantSchema.safeParse(rawDel)
+  if (!parsedDel.success) {
+    return NextResponse.json({ error: parsedDel.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
+
+  const { gameCode, hostToken, participantId } = parsedDel.data
 
   const auth = await assertHostGame(supabase, gameCode, hostToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })

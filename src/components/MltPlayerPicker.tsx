@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { getInitial } from '@/lib/utils'
+import { Avatar } from '@/components/Avatar'
 import { NameSearchPicker } from '@/components/NameSearchPicker'
 
 export const MLT_PICKER_SEARCH_THRESHOLD = 6
@@ -75,7 +75,7 @@ export function MltPlayerPicker({
                 : 'border-[var(--border-strong)] bg-[var(--card-strong)] text-[var(--foreground)] hover:border-[var(--border-strong)] hover:bg-[var(--card-hover)]'
             } disabled:cursor-not-allowed disabled:opacity-60`}
           >
-            <div className="avatar w-8 h-8 text-sm shrink-0">{getInitial(p.name)}</div>
+            <Avatar name={p.name} size="sm" />
             <span className="font-medium truncate">{displayName(p)}</span>
           </button>
         )

@@ -1,36 +1,58 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Party Games (Kiss Marry Kill & More)
+
+A real-time multiplayer party game app with 6 game modes. Create a room, share the code, and play with friends.
+
+## Game Modes
+
+- **Smash Marry Kill** -- Pick one to smash, marry, or kill from 3 people
+- **Red Flag / Green Flag** -- Rate each person green or red
+- **Smash or Pass** -- Quick binary choice on each person
+- **Would You Rather** -- Pick between two options (anonymous)
+- **Most Likely To** -- Vote for the friend who fits each prompt
+- **Who Said This** -- Guess who wrote the anonymous quote
+
+## Features
+
+- Real-time game updates via Supabase Realtime
+- 6 distinct game modes with unique voting mechanics
+- Player photo uploads for avatars
+- Player-submitted questions in lobby
+- Anonymous confessions during gameplay
+- Timed rounds with auto-submit
+- Game history and leaderboards
+- Dark/light theme support
+- CSV/Excel import for participant lists and custom questions
+- Mobile-friendly responsive design
+
+## Tech Stack
+
+- Next.js 16 (App Router)
+- React 19
+- Supabase (Postgres + Realtime)
+- Tailwind CSS 4
+- TypeScript
+- Zod (input validation)
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env.local  # Add your Supabase credentials
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment Variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `NEXT_PUBLIC_SUPABASE_URL` -- Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` -- Supabase anon/public key
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Database Setup
 
-## Learn More
+- Run the SQL in `supabase/schema.sql` in your Supabase SQL editor
+- Create a storage bucket named "avatars" with public access (for player photos)
 
-To learn more about Next.js, take a look at the following resources:
+## Scripts
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `pnpm dev` -- Start development server
+- `pnpm build` -- Production build
+- `pnpm start` -- Start production server

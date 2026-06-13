@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { parseGameType, isLobbyGame, isNameOnlyPlayerJoin, isWhoSaidThis } from '@/lib/game-types'
 import { assertHostGame, deleteJoinerPair, findJoinerParticipant, pollGenderForPlayer, syncImportParticipantBallot } from '@/lib/game-admin'
@@ -68,6 +69,12 @@ function resolveIdentityGender(
 }
 
 export async function POST(req: NextRequest) {
+  const raw = await req.json()
+  const parsed = createPlayerSchema.safeParse(raw)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
+  }
+
   const {
     gameCode,
     playerName,
@@ -75,11 +82,7 @@ export async function POST(req: NextRequest) {
     pollGender: rawPollGender,
     identityGender: rawIdentityGender,
     participantId: rawParticipantId,
-  } = await req.json()
-
-  if (!gameCode) {
-    return NextResponse.json({ error: 'gameCode is required' }, { status: 400 })
-  }
+  } = parsed.data
 
   const name = playerName?.trim() ?? ''
   const waiting = await assertWaitingGame(gameCode)
@@ -316,6 +319,12 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const rawBody = await req.json()
+  const parsedPatch = updatePlayerSchema.safeParse(rawBody)
+  if (!parsedPatch.success) {
+    return NextResponse.json({ error: parsedPatch.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
+  }
+
   const {
     gameCode,
     playerId,
@@ -325,11 +334,7 @@ export async function PATCH(req: NextRequest) {
     identityGender: rawIdentityGender,
     participantId: rawParticipantId,
     hostToken,
-  } = await req.json()
-
-  if (!gameCode || !playerId) {
-    return NextResponse.json({ error: 'gameCode and playerId are required' }, { status: 400 })
-  }
+  } = parsedPatch.data
 
   let game: { participant_mode: string } | null = null
   let id = gameCode.toUpperCase()
@@ -588,11 +593,13 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { gameCode, playerId, hostToken } = await req.json()
-
-  if (!gameCode || !playerId) {
-    return NextResponse.json({ error: 'gameCode and playerId are required' }, { status: 400 })
+  const rawDel = await req.json()
+  const parsedDel = deletePlayerSchema.safeParse(rawDel)
+  if (!parsedDel.success) {
+    return NextResponse.json({ error: parsedDel.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
+
+  const { gameCode, playerId, hostToken } = parsedDel.data
 
   let game: { participant_mode: string } | null = null
   let id = gameCode.toUpperCase()

@@ -3,11 +3,12 @@ import { participantsInGenderRounds, genderLabel } from '@/lib/participants'
 import { isPairGame } from '@/lib/game-types'
 import { flagForParticipant, getCategoryMeta, getVoteCategories } from '@/lib/vote-stats'
 import { VoteCountStat } from '@/components/VoteResults'
-import { getInitial } from '@/lib/utils'
+import { Avatar } from '@/components/Avatar'
 
 type TallyRow = {
   id: string
   name: string
+  photo_url: string | null
   kissCount: number
   marryCount: number
   killCount: number
@@ -18,6 +19,7 @@ function buildTally(participants: Participant[], votes: Vote[], gameType?: GameT
   return participants.map((p) => ({
     id: p.id,
     name: p.name,
+    photo_url: p.photo_url ?? null,
     kissCount: pairGame
       ? votes.filter((v) => flagForParticipant(v, p.id) === 'kiss').length
       : votes.filter((v) => v.kiss_participant_id === p.id).length,
@@ -131,7 +133,7 @@ export function FinalGenderBreakdown({
                 .map((p) => (
                   <div key={p.id} className="glass-card p-4">
                     <div className="flex items-center gap-3 mb-3">
-                      <div className="avatar w-9 h-9 shrink-0">{getInitial(p.name)}</div>
+                      <Avatar name={p.name} photoUrl={p.photo_url} size="sm" />
                       <p className="font-bold text-body text-lg">{p.name}</p>
                       <span className="ml-auto text-[10px] uppercase tracking-wider text-faint">{genderLabel(gender)}</span>
                     </div>
