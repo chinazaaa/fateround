@@ -26,6 +26,7 @@ export default function HostPage() {
   const [starting, setStarting] = useState(false)
   const [advancing, setAdvancing] = useState(false)
   const [ending, setEnding] = useState(false)
+  const [finishing, setFinishing] = useState(false)
   const [timeLeft, setTimeLeft] = useState(0)
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -316,6 +317,28 @@ export default function HostPage() {
     }
   }
 
+  const handleFinishGame = async () => {
+    if (finishing) return
+    setFinishing(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode}/finish-game`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        alert(d.error || 'Failed to show final results')
+        setFinishing(false)
+        return
+      }
+      await syncGameState()
+      setFinishing(false)
+    } catch {
+      setFinishing(false)
+    }
+  }
+
   const copyPlayerLink = () => {
     const url = `${window.location.origin}/game/${gameCode}`
     navigator.clipboard.writeText(url).catch(() => null)
@@ -570,7 +593,15 @@ export default function HostPage() {
           </div>
         )}
 
-        {!isLastRound && (
+        {isLastRound ? (
+          <button
+            onClick={handleFinishGame}
+            disabled={finishing}
+            className="w-full py-4 bg-gradient-to-r from-pink-500 via-purple-500 to-rose-500 text-white text-xl font-bold rounded-2xl hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 shadow-lg shadow-purple-500/20"
+          >
+            {finishing ? 'Loading...' : '🏆 Show Final Leaderboard'}
+          </button>
+        ) : (
           <button
             onClick={handleNextRound}
             disabled={advancing}

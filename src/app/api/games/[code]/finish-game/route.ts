@@ -18,26 +18,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { data: activeRound } = await supabase
     .from('rounds')
-    .select('*')
+    .select('id')
     .eq('game_id', gameId)
     .eq('status', 'active')
     .maybeSingle()
 
-  if (!activeRound) {
-    return NextResponse.json({ error: 'No active round to end' }, { status: 400 })
+  if (activeRound) {
+    return NextResponse.json({ error: 'Current round must be ended first' }, { status: 400 })
   }
 
-  const now = new Date().toISOString()
+  if (game.current_round_number < game.rounds_count) {
+    return NextResponse.json({ error: 'Not all rounds have been played' }, { status: 400 })
+  }
 
-  await supabase
+  const { data: lastRound } = await supabase
     .from('rounds')
-    .update({ status: 'finished', ended_at: now })
-    .eq('id', activeRound.id)
+    .select('status')
+    .eq('game_id', gameId)
+    .eq('round_number', game.rounds_count)
+    .maybeSingle()
 
-  const isLastRound = activeRound.round_number >= game.rounds_count
-  return NextResponse.json({
-    finished: true,
-    isLastRound,
-    roundNumber: activeRound.round_number,
-  })
+  if (!lastRound || lastRound.status !== 'finished') {
+    return NextResponse.json({ error: 'Final round results are not ready yet' }, { status: 400 })
+  }
+
+  const { error } = await supabase.from('games').update({ status: 'finished' }).eq('id', gameId)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ success: true })
 }

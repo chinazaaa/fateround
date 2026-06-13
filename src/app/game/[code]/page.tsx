@@ -713,7 +713,7 @@ export default function GamePage() {
         )}
 
         <p className={`text-sm text-center animate-pulse ${isLastRound ? 'text-purple-400' : 'text-zinc-600'}`}>
-          {isLastRound ? '⏳ Loading final results...' : '⏳ Waiting for next round...'}
+          {isLastRound ? '⏳ Waiting for final leaderboard...' : '⏳ Waiting for next round...'}
         </p>
       </div>
     )
