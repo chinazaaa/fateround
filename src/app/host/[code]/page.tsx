@@ -15,6 +15,7 @@ import { wstVoteTargets, wstCorrectNameFromRound, wstCorrectParticipantIdFromRou
 import { ParticipantRoundResults, VoteCountStat, WyrRoundResults, MltRoundResults, WstRoundResults } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, Participant, Player, Round, Vote, Confession, VoteAssignment } from '@/types'
 
@@ -1647,18 +1648,30 @@ export default function HostPage() {
           </p>
         </div>
 
+        <div className="glass-card p-5 space-y-3 text-center">
+          <p className="font-semibold text-body">Same room, fresh game</p>
+          <p className="text-faint text-sm">
+            Send everyone back to the lobby with the same link and settings. Players stay joined — you start when ready.
+          </p>
+          <button
+            onClick={handlePlayAgain}
+            disabled={playingAgain}
+            className="btn-primary w-full"
+          >
+            {playingAgain ? 'Resetting…' : '↻ Play Again'}
+          </button>
+        </div>
+
         {isWst && wstScores.length > 0 && (
-          <div className="glass-card p-5 space-y-3">
-            <p className="text-muted text-xs uppercase tracking-wider">Best guessers</p>
-            <div className="space-y-2">
-              {wstScores.slice(0, 5).map((row, i) => (
-                <div key={row.playerId} className="flex items-center justify-between text-sm">
-                  <span className="text-body">{i + 1}. {row.name}</span>
-                  <span className="text-muted">{row.correctGuesses} correct</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <PaginatedLeaderboard
+            title="Best guessers"
+            rows={wstScores.map((row, i) => ({
+              id: row.playerId,
+              name: row.name,
+              score: row.correctGuesses,
+              rank: i + 1,
+            }))}
+          />
         )}
 
         {isWyr ? (
@@ -1766,19 +1779,6 @@ export default function HostPage() {
           </div>
         )}
 
-        <div className="glass-card p-5 space-y-3 text-center">
-          <p className="font-semibold text-body">Same room, fresh game</p>
-          <p className="text-faint text-sm">
-            Send everyone back to the lobby with the same link and settings. Players stay joined — you start when ready.
-          </p>
-          <button
-            onClick={handlePlayAgain}
-            disabled={playingAgain}
-            className="btn-primary w-full"
-          >
-            {playingAgain ? 'Resetting…' : '↻ Play Again'}
-          </button>
-        </div>
       </div>
     )
   }

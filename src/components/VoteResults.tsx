@@ -1,4 +1,8 @@
+'use client'
+
+import { useEffect, useState } from 'react'
 import type { GameType, ParticipantGender } from '@/types'
+import { ResultsPagination, usePagination, RESULTS_PAGE_SIZE } from '@/components/ui/ResultsPagination'
 import { isPairGame } from '@/lib/game-types'
 import { genderLabel, parseParticipantGenderFromDb } from '@/lib/participants'
 import { getInitial } from '@/lib/utils'
@@ -361,6 +365,18 @@ export function MltRoundResults({
   myPickName?: string | null
 }) {
   const barMax = Math.max(maxCount, 1)
+  const [showAll, setShowAll] = useState(false)
+  const votedRows = rows.filter((r) => r.count > 0)
+  const compactRows = votedRows.length > 0 ? votedRows : rows.slice(0, RESULTS_PAGE_SIZE)
+  const listRows = showAll ? rows : compactRows
+  const { page, totalPages, start, end, setPage, reset } = usePagination(listRows.length, RESULTS_PAGE_SIZE)
+
+  useEffect(() => {
+    reset()
+  }, [showAll, rows.length, reset])
+
+  const pageRows = listRows.slice(start, end)
+  const hiddenCount = rows.length - compactRows.length
 
   return (
     <div className="space-y-4">
@@ -381,13 +397,18 @@ export function MltRoundResults({
         )}
 
         <div className="space-y-2">
-          {rows.length > 8 && (
-            <p className="text-faint text-[10px] uppercase tracking-wider text-center">
-              {rows.length} players · scroll for full breakdown
+          {!showAll && hiddenCount > 0 && (
+            <p className="text-faint text-xs text-center">
+              Showing {compactRows.length} with votes · {hiddenCount} others hidden
             </p>
           )}
-          <div className={`space-y-2 ${rows.length > 8 ? 'max-h-80 overflow-y-auto overscroll-contain pr-1 -mr-1' : ''}`}>
-          {rows.map((row) => {
+          {showAll && rows.length > RESULTS_PAGE_SIZE && (
+            <p className="text-faint text-[10px] uppercase tracking-wider text-center">
+              All {rows.length} names
+            </p>
+          )}
+          <div className="space-y-2">
+          {pageRows.map((row) => {
             const isWinner = maxCount > 0 && row.count === maxCount
             const pct = Math.min((row.count / barMax) * 100, 100)
             return (
@@ -411,6 +432,22 @@ export function MltRoundResults({
             )
           })}
           </div>
+          <ResultsPagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            totalItems={listRows.length}
+            noun="names"
+          />
+          {rows.length > compactRows.length && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="w-full text-center text-sm font-semibold text-[var(--primary)] hover:opacity-80 transition-opacity pt-1"
+            >
+              {showAll ? 'Show votes only' : `Show all ${rows.length} names`}
+            </button>
+          )}
         </div>
 
         {myPickName && (
@@ -441,6 +478,29 @@ export function WstRoundResults({
   myPickName?: string | null
 }) {
   const barMax = Math.max(maxCount, 1)
+  const [showAll, setShowAll] = useState(false)
+  const votedRows = rows.filter((r) => r.count > 0)
+  const correctRow = correctName ? rows.find((r) => r.name === correctName) : undefined
+  const compactRows = (() => {
+    if (votedRows.length > 0) {
+      const ids = new Set(votedRows.map((r) => r.participantId))
+      if (correctRow && !ids.has(correctRow.participantId)) {
+        return [...votedRows, correctRow]
+      }
+      return votedRows
+    }
+    if (correctRow) return [correctRow]
+    return rows.slice(0, RESULTS_PAGE_SIZE)
+  })()
+  const listRows = showAll ? rows : compactRows
+  const { page, totalPages, start, end, setPage, reset } = usePagination(listRows.length, RESULTS_PAGE_SIZE)
+
+  useEffect(() => {
+    reset()
+  }, [showAll, rows.length, reset])
+
+  const pageRows = listRows.slice(start, end)
+  const hiddenCount = rows.length - compactRows.length
 
   return (
     <div className="space-y-4">
@@ -470,7 +530,18 @@ export function WstRoundResults({
         )}
 
         <div className="space-y-2">
-          {rows.map((row) => {
+          {!showAll && hiddenCount > 0 && (
+            <p className="text-faint text-xs text-center">
+              Showing {compactRows.length} with activity · {hiddenCount} others hidden
+            </p>
+          )}
+          {showAll && rows.length > RESULTS_PAGE_SIZE && (
+            <p className="text-faint text-[10px] uppercase tracking-wider text-center">
+              All {rows.length} names
+            </p>
+          )}
+          <div className="space-y-2">
+          {pageRows.map((row) => {
             const isTop = maxCount > 0 && row.count === maxCount
             const isCorrect = correctName && row.name === correctName
             const pct = Math.min((row.count / barMax) * 100, 100)
@@ -496,6 +567,23 @@ export function WstRoundResults({
               </div>
             )
           })}
+          </div>
+          <ResultsPagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            totalItems={listRows.length}
+            noun="names"
+          />
+          {rows.length > compactRows.length && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="w-full text-center text-sm font-semibold text-[var(--primary)] hover:opacity-80 transition-opacity pt-1"
+            >
+              {showAll ? 'Show guesses only' : `Show all ${rows.length} names`}
+            </button>
+          )}
         </div>
 
         {myPickName && (

@@ -37,6 +37,7 @@ import { NameSearchPicker } from '@/components/NameSearchPicker'
 import { MltPlayerPicker } from '@/components/MltPlayerPicker'
 import { isMltImportGame, mltTargetIdFromVote, mltVoteTargets } from '@/lib/mlt'
 import { wstVoteTargets, wstCorrectNameFromRound, wstCorrectParticipantIdFromRound, wstSubmitterName, tallyWstVotes, tallyWstPlayerScores } from '@/lib/who-said-this'
+import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, Participant, Player, Round, Vote, VoteAssignment, Confession, GameType, PairAssignmentMap, WyrChoice } from '@/types'
@@ -2013,19 +2014,16 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
       </div>
 
       {isWst && wstScores.length > 0 && (
-        <div className="glass-card p-5 space-y-3">
-          <p className="text-muted text-xs uppercase tracking-wider">Best guessers</p>
-          <div className="space-y-2">
-            {wstScores.slice(0, 5).map((row, i) => (
-              <div key={row.playerId} className="flex items-center justify-between text-sm">
-                <span className={row.playerId === myPlayerId ? 'label-teal font-semibold' : 'text-body'}>
-                  {i + 1}. {row.name}{row.playerId === myPlayerId ? ' (you)' : ''}
-                </span>
-                <span className="text-muted">{row.correctGuesses} correct</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <PaginatedLeaderboard
+          title="Best guessers"
+          rows={wstScores.map((row, i) => ({
+            id: row.playerId,
+            name: row.name,
+            score: row.correctGuesses,
+            rank: i + 1,
+          }))}
+          highlightId={myPlayerId}
+        />
       )}
 
       {!isWyr && !isMlt && !isWst && (
