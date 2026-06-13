@@ -60,17 +60,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const now = new Date().toISOString()
 
   if (isHotSeat(gameType)) {
-    if (playersData.length < 3) {
-      return NextResponse.json({ error: 'Need at least 3 players for Hot Seat' }, { status: 400 })
+    const claimed = playersData.filter((p) => p.participant_id)
+    if (claimed.length < 3) {
+      return NextResponse.json(
+        { error: 'Need at least 3 players who claimed a name from the list' },
+        { status: 400 }
+      )
     }
 
-    const roundsCount = Math.min(game.rounds_count, playersData.length)
-    const shuffled = [...playersData].sort(() => Math.random() - 0.5)
+    const roundsCount = Math.min(game.rounds_count, claimed.length)
+    const shuffled = [...claimed].sort(() => Math.random() - 0.5)
 
     const roundRows = shuffled.slice(0, roundsCount).map((hotSeatPlayer, index) => ({
       game_id: code.toUpperCase(),
       round_number: index + 1,
-      participant_ids: playersData.map((p) => p.id),
+      participant_ids: claimed.map((p) => p.participant_id as string),
       submitter_player_id: hotSeatPlayer.id,
       status: index === 0 ? 'active' : ('pending' as const),
       started_at: index === 0 ? now : null,

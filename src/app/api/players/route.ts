@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
-import { parseGameType, isNameOnlyPlayerJoin, isWhoSaidThis } from '@/lib/game-types'
+import { parseGameType, isNameOnlyPlayerJoin, isWhoSaidThis, isImportNameClaimGame } from '@/lib/game-types'
 import {
   assertHostGame,
   deleteJoinerPair,
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  if (isWhoSaidThis(gameType) && game!.participant_mode === 'import') {
+  if (isImportNameClaimGame(gameType) && game!.participant_mode === 'import') {
     const participantId = String(rawParticipantId ?? '').trim()
     if (!participantId) {
       return NextResponse.json({ error: 'Select your name from the game list' }, { status: 400 })
@@ -353,7 +353,7 @@ export async function PATCH(req: NextRequest) {
     })
   }
 
-  if (isWhoSaidThis(gameType) && game!.participant_mode === 'import') {
+  if (isImportNameClaimGame(gameType) && game!.participant_mode === 'import') {
     if (rawParticipantId === undefined) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
     }

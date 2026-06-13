@@ -29,6 +29,8 @@ import {
   isMostLikelyTo,
   isWhoSaidThis,
   isHotSeat,
+  isHotSeatLobbyGame,
+  isPlayerOnlyJoinLobby,
   isNameOnlyPlayerJoin,
 } from '@/lib/game-types'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
@@ -1012,18 +1014,24 @@ export default function HostPage() {
     const isWst = isWhoSaidThis(gameType)
     const isHotSeatGame = isHotSeat(gameType)
     const isMltImport = isMltImportGame(game)
-    const wstSubmitters = wstEligibleSubmitters(players)
-    const wstPoolStatus = isWst ? wstQuotePoolStatus(players, wstPool) : null
+    const lobbyOpts = { participantMode: game.participant_mode, participantCount: participants.length }
+    const playerOnlyLobby = isPlayerOnlyJoinLobby(gameType, lobbyOpts)
+    const hotSeatLobby = isHotSeatLobbyGame(gameType, lobbyOpts)
     const minPool = roundPoolSize(gameType)
     const isJoinersMode = (game.participant_mode ?? 'import') === 'joiners'
-    const roundParticipants = isJoinersMode
-      ? participants
-      : isMltImport
+    const hotSeatLegacyJoiners = isHotSeatGame && isJoinersMode && participants.length === 0
+    const wstSubmitters = wstEligibleSubmitters(players)
+    const wstPoolStatus = isWst ? wstQuotePoolStatus(players, wstPool) : null
+    const roundParticipants = isHotSeatGame && !hotSeatLegacyJoiners
+      ? participantsWhoJoined(participants, players)
+      : isJoinersMode
         ? participants
-        : game.participant_filter === 'all'
+        : isMltImport
           ? participants
-          : participantsWhoJoined(participants, players)
-    const participantInputs = isHotSeatGame
+          : game.participant_filter === 'all'
+            ? participants
+            : participantsWhoJoined(participants, players)
+    const participantInputs = hotSeatLegacyJoiners
       ? players.map((p) => ({ name: p.name, gender: 'female' as ParticipantGender }))
       : roundParticipants.map((p) => ({ name: p.name, gender: p.gender }))
     const genderCounts = countByGender(participantInputs)
@@ -1033,7 +1041,7 @@ export default function HostPage() {
         : isWst
           ? wstAutoRoundCount(wstPool.length || wstSubmitters.length)
           : isHotSeatGame
-            ? Math.min(20, Math.max(players.length, 3))
+            ? Math.min(20, Math.max(roundParticipants.length, hotSeatLegacyJoiners ? players.length : 3))
             : maxRecommendedRounds(participantInputs, gameType)
     const maxRounds =
       isWyr || isMlt
@@ -1041,7 +1049,7 @@ export default function HostPage() {
         : isWst
           ? lobbyQuestionMax
           : isHotSeatGame
-            ? Math.min(20, Math.max(players.length, 1))
+            ? Math.min(20, Math.max(roundParticipants.length, hotSeatLegacyJoiners ? players.length : 1))
             : maxRecommendedRounds(participantInputs, gameType)
     const roundsHint = isWst
       ? wstPool.length >= 2
@@ -1065,8 +1073,10 @@ export default function HostPage() {
         ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
         : isWst
           ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
-          : isHotSeatGame
-            ? [2, 3, 4, 5, 6, 8, 10].filter((n) => n <= Math.max(players.length, 3))
+          : hotSeatLobby
+            ? [2, 3, 4, 5, 6, 8, 10].filter(
+                (n) => n <= Math.max(roundParticipants.length, hotSeatLegacyJoiners ? players.length : 3)
+              )
             : kmkRoundPickerOptions(maxRounds)
     const voterCheck = hasVotersForPolls(roundParticipants, players)
     const wstSource = game?.wst_quote_source ?? 'player'
@@ -1079,8 +1089,10 @@ export default function HostPage() {
         : wstSource === 'both'
           ? totalQuotes >= 2
           : participants.length >= 2 && wstSubmitters.length >= 2 && wstPool.length >= 2
-      : isHotSeatGame
-        ? players.length >= 3 && !roundsTooHigh
+      : hotSeatLobby
+        ? hotSeatLegacyJoiners
+          ? players.length >= 3 && !roundsTooHigh
+          : participants.length >= 3 && roundParticipants.length >= 3 && !roundsTooHigh
       : isMltImport
         ? participants.length >= 2 && players.length > 0 && !roundsTooHigh
         : isMlt
@@ -1122,8 +1134,8 @@ export default function HostPage() {
                     ? 'Who Said This — players submit quotes in the lobby, then guess who said each one'
                     : isWyr
                       ? 'Would You Rather — players join and pick A or B each round'
-                      : isHotSeatGame
-                        ? 'Hot Seat — one player in the spotlight each round, everyone else submits anonymously'
+                      : hotSeatLobby
+                        ? 'Hot Seat — upload names, players claim theirs, then take turns in the spotlight'
                       : isJoinersMode
                         ? 'Join & play — joiners are the names in the poll'
                         : 'Import list — voters join separately'}
@@ -1145,7 +1157,7 @@ export default function HostPage() {
               <p className="font-bold text-body text-2xl">{game.rounds_count}</p>
               <p className="text-faint text-xs">{roundsHint}</p>
             </>
-          ) : isWyr || isMlt || isHotSeatGame ||
+          ) : isWyr || isMlt || (hotSeatLobby && participants.length >= 3) ||
             (roundParticipants.length >= minPool && hasEnoughForRounds(participantInputs, gameType)) ? (
             <>
               {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
@@ -1167,7 +1179,12 @@ export default function HostPage() {
               {roundsTooHigh && (
                 <p className="callout-warning">
                   {game.rounds_count} rounds is too many for{' '}
-                  {isHotSeatGame ? players.length : roundParticipants.length} in the game — pick {maxRounds} or fewer
+                  {hotSeatLobby
+                    ? hotSeatLegacyJoiners
+                      ? players.length
+                      : roundParticipants.length
+                    : roundParticipants.length}{' '}
+                  in the game — pick {maxRounds} or fewer
                 </p>
               )}
             </>
@@ -1175,8 +1192,12 @@ export default function HostPage() {
             <p className="text-faint text-xs">
               {isWyr || isMlt
                 ? 'Set how many questions to play'
-                : isHotSeatGame
-                  ? 'Need at least 3 players before you can set rounds'
+                : hotSeatLobby
+                  ? hotSeatLegacyJoiners
+                    ? 'Need at least 3 players before you can set rounds'
+                    : participants.length >= 3
+                      ? 'Need at least 3 players to claim a name before you can set rounds'
+                      : 'Need at least 3 names on the list before you can set rounds'
                   : `Need at least ${minPool} joined people of one gender before you can set rounds`}
             </p>
           )}
@@ -1372,10 +1393,10 @@ export default function HostPage() {
           {!isJoinersMode && (
             <p className="text-faint text-xs">Tap Male/Female to fix identity · Remove to kick someone out</p>
           )}
-          {isJoinersMode && participants.length > 0 && !isHotSeatGame && (
+          {isJoinersMode && participants.length > 0 && !hotSeatLobby && (
             <p className="text-faint text-xs">Tap to fix poll placement or gender · Remove to kick out</p>
           )}
-          {(isJoinersMode ? joinerParticipantsWithPlayers.length : players.length) > 8 && (
+          {(playerOnlyLobby || hotSeatLegacyJoiners || !isJoinersMode ? players.length : joinerParticipantsWithPlayers.length) > 8 && (
             <div className="space-y-1">
               <div className="relative">
                 <input
@@ -1401,13 +1422,19 @@ export default function HostPage() {
               </div>
               {playersSearch.trim() && (
                 <p className="text-faint text-[10px] uppercase tracking-wider px-0.5">
-                  {isJoinersMode ? filteredJoinerParticipants.length : filteredPlayers.length} of{' '}
-                  {isJoinersMode ? joinerParticipantsWithPlayers.length : players.length} shown
+                  {playerOnlyLobby || hotSeatLegacyJoiners || !isJoinersMode
+                    ? filteredPlayers.length
+                    : filteredJoinerParticipants.length}{' '}
+                  of{' '}
+                  {playerOnlyLobby || hotSeatLegacyJoiners || !isJoinersMode
+                    ? players.length
+                    : joinerParticipantsWithPlayers.length}{' '}
+                  shown
                 </p>
               )}
             </div>
           )}
-          {isWyr || (isMlt && isJoinersMode) || isHotSeatGame ? (
+          {playerOnlyLobby || hotSeatLegacyJoiners ? (
             filteredPlayers.length === 0 ? (
               <p className="text-faint text-sm">Waiting for people to join...</p>
             ) : (
@@ -1529,7 +1556,7 @@ export default function HostPage() {
               })}
             </div>
           )}
-          {isJoinersMode && !isWyr && !isMlt && !isHotSeatGame && participants.length > 0 && (
+          {isJoinersMode && !isWyr && !isMlt && !hotSeatLobby && participants.length > 0 && (
             <p className="text-faint text-xs text-center">
               {genderCounts.female} female · {genderCounts.male} male
             </p>
@@ -1537,12 +1564,12 @@ export default function HostPage() {
           {isJoinersMode &&
             !isWyr &&
             !isMlt &&
-            !isHotSeatGame &&
+            !hotSeatLobby &&
             participants.length > 0 &&
             !hasEnoughForRounds(participantInputs, gameType) && (
               <p className="callout-warning text-center">Need at least {minPool} people of the same gender to start</p>
             )}
-          {!isHotSeatGame && !voterCheck.ok && players.length > 0 && roundParticipants.length >= minPool && (
+          {!hotSeatLobby && !voterCheck.ok && players.length > 0 && roundParticipants.length >= minPool && (
             <p className="callout-warning text-center">{voterCheck.message}</p>
           )}
           {!isJoinersMode && roundParticipants.length < minPool && players.length > 0 && (
@@ -1701,9 +1728,13 @@ export default function HostPage() {
                             ? 'Waiting for voters to join...'
                             : isMlt && !isMltImport && players.length < 2
                               ? `Need at least 2 players (${players.length}/2)`
-                              : isHotSeatGame && players.length < 3
+                              : hotSeatLobby && hotSeatLegacyJoiners && players.length < 3
                                 ? `Need at least 3 players (${players.length}/3)`
-                                : isWyr && players.length === 0
+                                : hotSeatLobby && !hotSeatLegacyJoiners && roundParticipants.length < 3
+                                  ? `Need 3+ players who claimed a name (${roundParticipants.length}/3)`
+                                  : hotSeatLobby && !hotSeatLegacyJoiners && participants.length < 3
+                                    ? `Need at least 3 names on the list (${participants.length}/3)`
+                                    : isWyr && players.length === 0
                                   ? 'Waiting for players...'
                                   : isJoinersMode
                                   ? participants.length < minPool

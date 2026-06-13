@@ -68,10 +68,10 @@ export function parseParticipantRows(text: string): ParticipantInput[] {
   return rows
 }
 
-/** Smash / pair / KMK need gender for same-gender rounds. Name-only lobby games & WST do not. */
+/** Smash / pair / KMK need gender for same-gender rounds. Name-only lobby games, WST & Hot Seat do not. */
 export function participantsNeedGender(gameType?: GameType | string): boolean {
   const type = parseGameType(gameType)
-  return !isNameOnlyPlayerJoin(type) && !isWhoSaidThis(type)
+  return !isNameOnlyPlayerJoin(type) && !isWhoSaidThis(type) && !isHotSeat(type)
 }
 
 /** Whether the join screen should ask for gender / vote preference. */
@@ -144,12 +144,14 @@ export interface ParticipantModeOption {
 
 /** Copy for create-game "Who's in the poll" — differs by game type. */
 export function participantModeOptions(gameType?: GameType | string): ParticipantModeOption[] {
-  if (isWhoSaidThis(gameType)) {
+  if (isWhoSaidThis(gameType) || isHotSeat(gameType)) {
     return [
       {
         value: 'import',
         label: 'Import list',
-        hint: 'Upload names — players claim their name when joining, then take turns writing quotes.',
+        hint: isHotSeat(gameType)
+          ? 'Upload names — each player claims their name when joining.'
+          : 'Upload names — players claim their name when joining, then take turns writing quotes.',
       },
     ]
   }
@@ -186,6 +188,9 @@ export function participantModeOptions(gameType?: GameType | string): Participan
 export function participantImportStepHint(gameType?: GameType | string): string {
   if (isWhoSaidThis(gameType)) {
     return 'Add everyone in the group — each player claims their name when joining, then takes turns writing quotes.'
+  }
+  if (isHotSeat(gameType)) {
+    return 'Add everyone in the group — each player claims their name from this list when joining.'
   }
   if (isMostLikelyTo(gameType)) {
     return 'Add everyone who can be voted for — players join separately to vote.'
@@ -357,7 +362,8 @@ export function playerIdentityLabel(
   participants?: { name: string; gender: ParticipantGender }[],
   gameType?: GameType | string
 ): string {
-  if (isLobbyGame(gameType) || isNameOnlyPlayerJoin(gameType) || isWhoSaidThis(gameType)) return ''
+  if (isLobbyGame(gameType) || isNameOnlyPlayerJoin(gameType) || isWhoSaidThis(gameType) || isHotSeat(gameType))
+    return ''
   return genderLabel(resolvePlayerIdentity(player, participants))
 }
 

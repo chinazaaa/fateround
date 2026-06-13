@@ -31,6 +31,7 @@ import {
   isMostLikelyTo,
   isWouldYouRather,
   isWhoSaidThis,
+  isHotSeat,
   isAnonymousGame,
   parseGameType,
   isPairGame,
@@ -125,7 +126,9 @@ function CreateGameInner() {
         ...prev,
         game_type: type,
         ...(isLobbyGame(type) ? { participant_mode: 'joiners', anonymous: true } : {}),
-        ...(isWhoSaidThis(type) ? { participant_mode: 'import', anonymous: true } : {}),
+        ...(isWhoSaidThis(type) || isHotSeat(type)
+          ? { participant_mode: 'import' as const, anonymous: true, participant_filter: 'joined' as const }
+          : {}),
       }))
     }
   }, [searchParams])
@@ -135,6 +138,7 @@ function CreateGameInner() {
   const isWyr = isWouldYouRather(settings.game_type)
   const isMlt = isMostLikelyTo(settings.game_type)
   const isWst = isWhoSaidThis(settings.game_type)
+  const isHotSeatGame = isHotSeat(settings.game_type)
   const isPair = isPairGame(settings.game_type)
   const needsGender = participantsNeedGender(settings.game_type)
   const minPool = roundPoolSize(settings.game_type)
@@ -153,13 +157,16 @@ function CreateGameInner() {
   const mltRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= questionCap)
   const wyrRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= questionCap)
   const wstRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= Math.max(participants.length, 2))
+  const hotSeatRoundOptions = [2, 3, 4, 5, 6, 8, 10].filter((n) => n <= Math.max(participants.length, 3))
   const roundOptions = isWyr
     ? wyrRoundOptions
     : isMlt
       ? mltRoundOptions
       : isWst
         ? wstRoundOptions
-        : [2, 3, 4, 5, 6, 8, 10]
+        : isHotSeatGame
+          ? hotSeatRoundOptions
+          : [2, 3, 4, 5, 6, 8, 10]
   const hasEnoughCustomQuestions =
     questionSource === 'platform' ||
     (isLobbyQuestions && customQuestionCount >= settings.rounds_count && customQuestionCount > 0)
@@ -185,7 +192,9 @@ function CreateGameInner() {
       ...settings,
       game_type: type,
       ...(isLobbyGame(type) ? { participant_mode: 'joiners', anonymous: true } : {}),
-      ...(isWhoSaidThis(type) ? { participant_mode: 'import', anonymous: true } : {}),
+      ...(isWhoSaidThis(type) || isHotSeat(type)
+        ? { participant_mode: 'import' as const, anonymous: true, participant_filter: 'joined' as const }
+        : {}),
     })
   }
 
@@ -723,7 +732,7 @@ function CreateGameInner() {
               </p>
             </SettingsGroup>
 
-            {!isWyr && !isWst && (
+            {!isWyr && !isWst && !isHotSeatGame && (
               <SettingsGroup title="Who's in the poll">
                 <SegmentedControl
                   value={settings.participant_mode}
@@ -733,7 +742,7 @@ function CreateGameInner() {
               </SettingsGroup>
             )}
 
-            {settings.participant_mode === 'import' && !isWyr && !isWst && (
+            {settings.participant_mode === 'import' && !isWyr && !isWst && !isHotSeatGame && (
               <SettingsGroup title="Who appears in rounds">
                 <SegmentedControl
                   value={settings.participant_filter}

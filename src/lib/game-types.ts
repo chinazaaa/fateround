@@ -371,7 +371,7 @@ export function gameHowItWorks(
     case 'would_you_rather':
       return 'Players join with any name — no list to set up. Each round shows two options and everyone picks A or B. Votes stay anonymous.'
     case 'hot_seat':
-      return 'Players join with any name — no list to set up. Each round one person is in the hot seat; everyone else anonymously submits one thing about them.'
+      return "Upload everyone's names on the next step. Players claim their name when joining — each round one person is in the hot seat and everyone else anonymously submits one thing about them."
     case 'most_likely_to':
       return joiners
         ? 'Players add their name to the poll when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
@@ -513,16 +513,39 @@ export function isHotSeat(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'hot_seat'
 }
 
-/** Would You Rather / Hot Seat — forced joiners, no gender, always anonymous. */
-export function isLobbyGame(gameType: GameType | string | undefined): boolean {
-  const type = parseGameType(gameType)
-  return type === 'would_you_rather' || type === 'hot_seat'
-}
+type LobbyCounts = { participantMode?: string; participantCount: number }
 
-/** WYR + MLT + Hot Seat player join: name only, no gender picker. */
+/** WYR + MLT player join: free name entry, no list. Hot Seat uses import + name claim (see isImportNameClaimGame). */
 export function isNameOnlyPlayerJoin(gameType: GameType | string | undefined): boolean {
   const type = parseGameType(gameType)
-  return type === 'would_you_rather' || type === 'most_likely_to' || type === 'hot_seat'
+  return type === 'would_you_rather' || type === 'most_likely_to'
+}
+
+/** Import list + claim your name when joining (no gender) — Who Said This & Hot Seat. */
+export function isImportNameClaimGame(gameType: GameType | string | undefined): boolean {
+  return isWhoSaidThis(gameType) || isHotSeat(gameType)
+}
+
+/**
+ * Hot Seat host lobby — import list + claim flow, or legacy joiners games created before import mode.
+ */
+export function isHotSeatLobbyGame(gameType: GameType | string | undefined, opts: LobbyCounts): boolean {
+  if (!isHotSeat(gameType)) return false
+  if ((opts.participantMode ?? 'import') === 'import') return true
+  const joiners = opts.participantMode === 'joiners'
+  return joiners && opts.participantCount === 0
+}
+
+/** Host lobby where players join by name only — no participant rows (WYR, MLT joiners). */
+export function isPlayerOnlyJoinLobby(gameType: GameType | string | undefined, opts: LobbyCounts): boolean {
+  if (isHotSeat(gameType)) return false
+  if (isNameOnlyPlayerJoin(gameType)) return true
+  return false
+}
+
+/** Would You Rather — forced joiners, no gender, always anonymous. */
+export function isLobbyGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'would_you_rather'
 }
 
 export function isAnonymousGame(gameType: GameType | string | undefined): boolean {

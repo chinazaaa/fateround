@@ -9,6 +9,7 @@ import {
   isWouldYouRather,
   isMostLikelyTo,
   isWhoSaidThis,
+  isHotSeat,
   isAnonymousGame,
   isPairGame,
   parsePairVoteMode,
@@ -115,7 +116,7 @@ export async function POST(req: NextRequest) {
 
   const participant_mode: ParticipantMode = isLobbyGame(game_type)
     ? 'joiners'
-    : isWhoSaidThis(game_type)
+    : isWhoSaidThis(game_type) || isHotSeat(game_type)
       ? 'import'
       : rawMode === 'joiners'
         ? 'joiners'
@@ -134,6 +135,10 @@ export async function POST(req: NextRequest) {
     } else if (isWhoSaidThis(game_type)) {
       if (participantsParsed.length < 2) {
         return NextResponse.json({ error: 'Need at least 2 names on the list' }, { status: 400 })
+      }
+    } else if (isHotSeat(game_type)) {
+      if (participantsParsed.length < 3) {
+        return NextResponse.json({ error: 'Need at least 3 names on the list for Hot Seat' }, { status: 400 })
       }
     } else if (!hasEnoughForRounds(participantsParsed, game_type)) {
       const min = roundPoolSize(game_type)
@@ -180,7 +185,8 @@ export async function POST(req: NextRequest) {
     auto_reveal: auto_reveal !== false,
     auto_submit_behavior: auto_submit_behavior === 'random' ? 'random' : 'no_answer',
     participant_mode,
-    participant_filter: participant_filter === 'joined' ? 'joined' : 'all',
+    participant_filter:
+      isHotSeat(game_type) ? 'joined' : participant_filter === 'joined' ? 'joined' : 'all',
     pair_vote_mode: isPairGame(game_type) ? parsePairVoteMode(rawPairVoteMode) : 'any',
     question_source: isWouldYouRather(game_type) || isMostLikelyTo(game_type) ? question_source : 'platform',
     custom_questions,
