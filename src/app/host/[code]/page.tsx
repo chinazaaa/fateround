@@ -6,7 +6,7 @@ import { getInitial, filterParticipantsInRounds } from '@/lib/utils'
 import { roundGenderLabel, genderLabel, resolvePlayerIdentity, getRoundParticipantGender, eligibleVotersForRound, roundVoterLabel, hasEnoughForRounds, countByGender, hasVotersForPolls, participantsWhoJoined, maxRecommendedRounds, roundLimitHint } from '@/lib/participants'
 import type { ParticipantGender } from '@/types'
 import { tallyRoundVotes, getCategoryMeta, getVoteCategories } from '@/lib/vote-stats'
-import { parseGameType, roundPoolSize } from '@/lib/game-types'
+import { parseGameType, roundPoolSize, isPairGame } from '@/lib/game-types'
 import { ParticipantRoundResults, VoteCountStat } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import type { Game, Participant, Player, Round, Vote, Confession, VoteAssignment } from '@/types'
@@ -1163,7 +1163,11 @@ export default function HostPage() {
               tallies={tallies}
               nameById={nameById}
               voterCount={roundVotes.length}
-              renderCard={({ tally, name, maxes, isWinner }) => (
+              participantDetails={roundParts.map((p) => ({ id: p.id, name: p.name, gender: p.gender }))}
+              renderCard={
+                isPairGame(gameType)
+                  ? undefined
+                  : ({ tally, name, maxes, isWinner }) => (
                 <div key={tally.id} className="glass-card p-4">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="avatar w-9 h-9 shrink-0">
@@ -1171,7 +1175,7 @@ export default function HostPage() {
                     </div>
                     <p className="text-white font-bold text-lg">{name}</p>
                   </div>
-                  <div className={`grid gap-2 ${getVoteCategories(gameType).length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                  <div className="grid grid-cols-3 gap-2">
                     {getVoteCategories(gameType).map((category) => {
                       const meta = getCategoryMeta(gameType, category)
                       return (

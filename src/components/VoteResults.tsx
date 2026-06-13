@@ -1,66 +1,81 @@
-import type { GameType } from '@/types'
+import type { GameType, ParticipantGender } from '@/types'
 import { isPairGame } from '@/lib/game-types'
+import { genderLabel, parseParticipantGenderFromDb } from '@/lib/participants'
+import { getInitial } from '@/lib/utils'
 import {
   type VoteCategory,
   type RoundTally,
   getCategoryMeta,
   getVoteCategories,
   winnerNames,
+  myActionBorderClass,
+  assignmentEmojiFor,
 } from '@/lib/vote-stats'
 
-function PairRoundResultsSummary({
+function PairParticipantResultCard({
   gameType,
-  tallies,
-  nameById,
-  voterCount,
+  name,
+  gender,
+  greenCount,
+  redCount,
+  maxGreen,
+  maxRed,
+  isGreenWinner,
+  isRedWinner,
+  myFlag,
 }: {
   gameType?: GameType | string
-  tallies: RoundTally[]
-  nameById: Map<string, string>
-  voterCount: number
+  name: string
+  gender?: ParticipantGender | string | null
+  greenCount: number
+  redCount: number
+  maxGreen: number
+  maxRed: number
+  isGreenWinner: boolean
+  isRedWinner: boolean
+  myFlag?: 'kiss' | 'kill' | null
 }) {
   const greenMeta = getCategoryMeta(gameType, 'kiss')
   const redMeta = getCategoryMeta(gameType, 'smash')
+  const parsedGender = gender ? parseParticipantGenderFromDb(gender) : null
+  const borderCls = myActionBorderClass(gameType, myFlag ?? null)
 
   return (
-    <div className="glass-card border border-white/12 p-4 space-y-3">
-      <p className="text-muted text-xs uppercase tracking-wider text-center">
-        Round breakdown · {voterCount} {voterCount === 1 ? 'vote' : 'votes'}
-      </p>
-      <div className="space-y-2">
-        {tallies.map((tally) => {
-          const name = nameById.get(tally.id) ?? ''
-          const maxGreen = Math.max(...tallies.map((t) => t.kiss))
-          const maxRed = Math.max(...tallies.map((t) => t.smash))
-          const greenLead = maxGreen > 0 && tally.kiss === maxGreen
-          const redLead = maxRed > 0 && tally.smash === maxRed
-          return (
-            <div
-              key={tally.id}
-              className="surface-inset rounded-xl px-3 py-3 flex items-center justify-between gap-3"
-            >
-              <p className="text-white font-semibold truncate">{name}</p>
-              <div className="flex gap-3 shrink-0 text-sm">
-                <span
-                  className={greenLead ? 'font-bold' : 'text-white/70'}
-                  style={greenLead ? { color: greenMeta.color } : undefined}
-                >
-                  {greenMeta.emoji} {tally.kiss}
-                </span>
-                <span
-                  className={redLead ? 'font-bold' : 'text-white/70'}
-                  style={redLead ? { color: redMeta.color } : undefined}
-                >
-                  {redMeta.emoji} {tally.smash}
-                </span>
-              </div>
-            </div>
-          )
-        })}
+    <div className={`glass-card border-2 ${borderCls} rounded-2xl p-4`}>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="avatar w-10 h-10 text-lg shrink-0">{getInitial(name)}</div>
+        <div className="min-w-0 flex-1">
+          <p className="text-white font-bold text-lg leading-tight truncate">{name}</p>
+          {myFlag && (
+            <p className="text-faint text-xs mt-0.5">
+              You: {assignmentEmojiFor(gameType, myFlag)}
+            </p>
+          )}
+        </div>
+        {parsedGender && (
+          <span className="text-[10px] uppercase tracking-wider text-faint shrink-0">
+            {genderLabel(parsedGender)}
+          </span>
+        )}
       </div>
-      <p className="text-faint text-[10px] text-center leading-snug">
-        Each person is rated separately — both can get the same flag.
-      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <VoteCountStat
+          emoji={greenMeta.emoji}
+          label={greenMeta.label}
+          count={greenCount}
+          max={maxGreen}
+          color={greenMeta.color}
+          isWinner={isGreenWinner}
+        />
+        <VoteCountStat
+          emoji={redMeta.emoji}
+          label={redMeta.label}
+          count={redCount}
+          max={maxRed}
+          color={redMeta.color}
+          isWinner={isRedWinner}
+        />
+      </div>
     </div>
   )
 }
@@ -76,17 +91,6 @@ export function RoundWinnersSummary({
   nameById: Map<string, string>
   voterCount: number
 }) {
-  if (isPairGame(gameType) && tallies.length === 2) {
-    return (
-      <PairRoundResultsSummary
-        gameType={gameType}
-        tallies={tallies}
-        nameById={nameById}
-        voterCount={voterCount}
-      />
-    )
-  }
-
   const categories = getVoteCategories(gameType)
 
   return (
@@ -134,19 +138,19 @@ export function VoteCountStat({
 
   return (
     <div
-      className={`text-center rounded-xl px-1 py-2 transition-colors ${
-        isWinner ? 'bg-white/8 ring-1 ring-white/15' : ''
+      className={`text-center rounded-xl px-2 py-3 transition-colors ${
+        isWinner ? 'bg-white/8 ring-1 ring-white/15' : 'surface-inset'
       }`}
     >
       {isWinner && (
-        <p className="text-[9px] uppercase tracking-wider font-bold text-white/70 mb-0.5">Winner</p>
+        <p className="text-[9px] uppercase tracking-wider font-bold text-white/70 mb-1">Winner</p>
       )}
       <p className="text-base leading-none">
         {emoji}{' '}
         <span className={`font-black ${isWinner ? 'text-white' : 'text-white/90'}`}>{count}</span>
       </p>
-      <p className="text-faint text-xs mt-1">{label}</p>
-      <div className="h-2 bg-white/8 rounded-full mt-2 overflow-hidden">
+      <p className="text-faint text-xs mt-1.5">{label}</p>
+      <div className="h-2 bg-white/8 rounded-full mt-2.5 overflow-hidden">
         <div
           className="h-full rounded-full transition-all"
           style={{ width: `${pct}%`, backgroundColor: color }}
@@ -161,13 +165,17 @@ export function ParticipantRoundResults({
   tallies,
   nameById,
   voterCount,
+  participantDetails,
+  myFlagsByParticipantId,
   renderCard,
 }: {
   gameType?: GameType | string
   tallies: RoundTally[]
   nameById: Map<string, string>
   voterCount: number
-  renderCard: (args: {
+  participantDetails?: Array<{ id: string; name: string; gender?: ParticipantGender | string | null }>
+  myFlagsByParticipantId?: Record<string, 'kiss' | 'kill' | null>
+  renderCard?: (args: {
     tally: RoundTally
     name: string
     maxes: Record<VoteCategory, number>
@@ -180,6 +188,43 @@ export function ParticipantRoundResults({
     smash: Math.max(1, ...tallies.map((t) => t.smash)),
   }
 
+  if (isPairGame(gameType)) {
+    const details =
+      participantDetails ??
+      tallies.map((t) => ({ id: t.id, name: nameById.get(t.id) ?? '', gender: null }))
+
+    return (
+      <div className="space-y-4">
+        <p className="text-muted text-xs uppercase tracking-wider text-center">
+          Round results · {voterCount} {voterCount === 1 ? 'vote' : 'votes'}
+        </p>
+        <div className="space-y-3">
+          {tallies.map((tally) => {
+            const detail = details.find((d) => d.id === tally.id)
+            const name = detail?.name ?? nameById.get(tally.id) ?? ''
+            const greenWins = tally.kiss > tally.smash
+            const redWins = tally.smash > tally.kiss
+            return (
+              <PairParticipantResultCard
+                key={tally.id}
+                gameType={gameType}
+                name={name}
+                gender={detail?.gender}
+                greenCount={tally.kiss}
+                redCount={tally.smash}
+                maxGreen={maxes.kiss}
+                maxRed={maxes.smash}
+                isGreenWinner={greenWins}
+                isRedWinner={redWins}
+                myFlag={myFlagsByParticipantId?.[tally.id] ?? null}
+              />
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       <RoundWinnersSummary gameType={gameType} tallies={tallies} nameById={nameById} voterCount={voterCount} />
@@ -190,7 +235,7 @@ export function ParticipantRoundResults({
             const max = Math.max(...tallies.map((t) => t[category]))
             return max > 0 && tally[category] === max
           }
-          return renderCard({ tally, name, maxes, isWinner })
+          return renderCard?.({ tally, name, maxes, isWinner })
         })}
       </div>
     </div>

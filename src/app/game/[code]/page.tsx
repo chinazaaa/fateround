@@ -1143,14 +1143,22 @@ export default function GamePage() {
               tallies={tallies}
               nameById={nameById}
               voterCount={voterCount}
-              renderCard={({ tally, name, maxes, isWinner }) => {
-                const myAction = myVote
-                  ? isPairGame(gameType)
-                    ? flagForParticipant(myVote, tally.id)
-                    : myVote.kiss_participant_id === tally.id ? 'kiss'
-                    : myVote.marry_participant_id === tally.id ? 'marry'
-                    : myVote.kill_participant_id === tally.id ? 'kill'
-                    : null
+              participantDetails={roundParts.map((p) => ({ id: p.id, name: p.name, gender: p.gender }))}
+              myFlagsByParticipantId={
+                myVote
+                  ? Object.fromEntries(
+                      roundParts.map((p) => [p.id, flagForParticipant(myVote, p.id)])
+                    )
+                  : undefined
+              }
+              renderCard={
+                isPairGame(gameType)
+                  ? undefined
+                  : ({ tally, name, maxes, isWinner }) => {
+                const myAction =
+                  myVote?.kiss_participant_id === tally.id ? 'kiss'
+                  : myVote?.marry_participant_id === tally.id ? 'marry'
+                  : myVote?.kill_participant_id === tally.id ? 'kill'
                   : null
 
                 const borderCls = myActionBorderClass(gameType, myAction)
@@ -1164,11 +1172,11 @@ export default function GamePage() {
                       <p className="text-white font-bold text-lg">{name}</p>
                       {myAction && (
                         <span className="ml-auto text-xs text-muted italic">
-                          you: {myAction ? assignmentEmojiFor(gameType, myAction) : ''}
+                          you: {assignmentEmojiFor(gameType, myAction)}
                         </span>
                       )}
                     </div>
-                    <div className={`grid gap-3 ${getVoteCategories(gameType).length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                    <div className="grid grid-cols-3 gap-3">
                       {getVoteCategories(gameType).map((category) => {
                         const meta = getCategoryMeta(gameType, category)
                         return (
@@ -1388,7 +1396,11 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
                     tallies={tallies}
                     nameById={nameById}
                     voterCount={roundVotes.length}
-                    renderCard={({ tally, name, maxes, isWinner }) => (
+                    participantDetails={roundParts.map((p) => ({ id: p.id, name: p.name, gender: p.gender }))}
+                    renderCard={
+                      isPairGame(gameType)
+                        ? undefined
+                        : ({ tally, name, maxes, isWinner }) => (
                       <div key={tally.id} className="glass-card p-4">
                         <div className="flex items-center gap-3 mb-2">
                           <div className="avatar w-8 h-8 shrink-0">
@@ -1396,7 +1408,7 @@ function FinalResultsView({ game, participants, rounds, votes, confessions, play
                           </div>
                           <p className="text-white font-bold">{name}</p>
                         </div>
-                        <div className={`grid gap-2 ${getVoteCategories(gameType).length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                        <div className="grid grid-cols-3 gap-2">
                           {getVoteCategories(gameType).map((category) => {
                             const meta = getCategoryMeta(gameType, category)
                             return (
