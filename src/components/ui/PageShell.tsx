@@ -40,17 +40,19 @@ export function Chip({
   onClick,
   children,
   wide,
+  className = '',
 }: {
   active: boolean
   onClick: () => void
   children: React.ReactNode
   wide?: boolean
+  className?: string
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`${wide ? 'flex-1' : 'px-4'} chip active:scale-95 ${active ? 'chip-active' : ''}`}
+      className={`${wide ? 'flex-1' : 'px-4'} chip active:scale-95 ${active ? 'chip-active' : ''} ${className}`}
     >
       {children}
     </button>

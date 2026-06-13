@@ -1,7 +1,7 @@
 import { roundPoolSize, isWouldYouRather, isMostLikelyTo, isLobbyGame, isNameOnlyPlayerJoin } from '@/lib/game-types'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
-import type { GameType } from '@/types'
+import type { GameType, ParticipantMode } from '@/types'
 
 export type ParticipantGender = 'male' | 'female'
 export type PlayerGender = 'male' | 'female' | 'both'
@@ -70,6 +70,50 @@ export function mergeParticipants(
     }
   }
   return merged
+}
+
+export interface ParticipantModeOption {
+  value: ParticipantMode
+  label: string
+  hint: string
+}
+
+/** Copy for create-game "Who's in the poll" — differs by game type. */
+export function participantModeOptions(gameType?: GameType | string): ParticipantModeOption[] {
+  if (isMostLikelyTo(gameType)) {
+    return [
+      {
+        value: 'joiners',
+        label: 'Join & vote',
+        hint: 'Players join and pick a friend for each prompt — no list to upload.',
+      },
+      {
+        value: 'import',
+        label: 'Import list',
+        hint: 'Upload names for the poll — players join separately to vote.',
+      },
+    ]
+  }
+
+  return [
+    {
+      value: 'joiners',
+      label: 'Join & play',
+      hint: 'Everyone who joins is in the poll — no list to upload.',
+    },
+    {
+      value: 'import',
+      label: 'Pre-set roster',
+      hint: 'Upload names first — players claim their name from the list when they join.',
+    },
+  ]
+}
+
+export function participantImportStepHint(gameType?: GameType | string): string {
+  if (isMostLikelyTo(gameType)) {
+    return 'Add everyone who can be voted for — players join separately to vote.'
+  }
+  return 'Add names and genders — each player picks their name from this list when joining.'
 }
 
 export function countByGender(participants: ParticipantInput[]): Record<ParticipantGender, number> {

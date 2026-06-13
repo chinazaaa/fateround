@@ -10,6 +10,8 @@ import {
   countByGender,
   hasEnoughForRounds,
   genderLabel,
+  participantModeOptions,
+  participantImportStepHint,
 } from '@/lib/participants'
 import {
   roundPoolSize,
@@ -24,6 +26,7 @@ import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import { GameTypeModal } from '@/components/GameTypeModal'
 import { GameTypeCard } from '@/components/GameTypeCard'
 import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
+import { StepIndicator, SettingsGroup, StickyActionBar, SegmentedControl, ChipGrid } from '@/components/ui/CreateWizard'
 
 interface Settings {
   title: string
@@ -37,12 +40,14 @@ interface Settings {
 }
 
 type Step = 'settings' | 'participants' | 'done'
+type ParticipantTab = 'upload' | 'manual'
 
 function CreateGameInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [step, setStep] = useState<Step>('settings')
   const [showGameTypes, setShowGameTypes] = useState(false)
+  const [participantTab, setParticipantTab] = useState<ParticipantTab>('upload')
   const [settings, setSettings] = useState<Settings>({
     title: '',
     rounds_count: 3,
@@ -83,6 +88,10 @@ function CreateGameInner() {
   const canCreateImport = participants.length >= minPool && hasEnoughForRounds(participants, settings.game_type)
   const canCreateJoiners = !!settings.title.trim()
   const canCreateQuickLobby = !!settings.title.trim()
+  const needsParticipantStep = !isWyr && !(isMlt && isJoinersMode) && !isJoinersMode
+  const wizardSteps = needsParticipantStep ? ['Setup', 'People'] : ['Setup']
+  const stepIndex = step === 'participants' ? 2 : 1
+
   const mltRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= MLT_QUESTION_COUNT)
   const wyrRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= WYR_QUESTION_COUNT)
   const roundOptions = isWyr ? wyrRoundOptions : isMlt ? mltRoundOptions : [2, 3, 4, 5, 6, 8, 10]
@@ -200,164 +209,140 @@ function CreateGameInner() {
     }
   }
 
-  const modeCardClass = (active: boolean) =>
-    `text-left rounded-2xl border p-4 transition-all w-full ${
-      active
-        ? 'border-[var(--primary)] bg-[var(--chip-active-bg)]'
-        : 'border-[var(--border)] surface-inset hover:border-[var(--border-strong)]'
-    }`
-
   if (step === 'settings') {
     return (
       <>
         <PageShell>
           <BackBtn onClick={() => router.push('/')} label="Home" />
+
+          {needsParticipantStep && (
+            <StepIndicator steps={wizardSteps} current={stepIndex} />
+          )}
+
           <div>
-            <p className="label-caps mb-2">New game</p>
-            <h1 className="text-3xl sm:text-4xl font-black tracking-tight gradient-title-subtle">Create Game</h1>
+            <p className="label-caps mb-1">New game</p>
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight gradient-title-subtle">Create Game</h1>
           </div>
 
-          <div className="glass-card p-5 space-y-5">
-            <Field label="Game Name">
+          {/* Essentials */}
+          <div className="glass-card-strong p-5 space-y-4">
+            <Field label="Game name">
               <input
                 value={settings.title}
                 onChange={(e) => setSettings({ ...settings, title: e.target.value })}
-                onKeyDown={(e) => e.key === 'Enter' && settings.title.trim() && setStep('participants')}
                 placeholder="Friday Night KMS"
                 autoFocus
                 className="input-field"
               />
             </Field>
 
-            <Field label="Game Type">
-              <div className="space-y-2">
-                <GameTypeCard
-                  type={settings.game_type}
-                  compact
-                  selected
-                  onClick={() => setShowGameTypes(true)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowGameTypes(true)}
-                  className="w-full text-center text-faint text-xs hover:text-[var(--foreground)] transition-colors py-1"
-                >
-                  Change game mode
-                </button>
-              </div>
-            </Field>
-
-            {!isWyr && (
-              <Field label="Who Joins">
-                <div className="grid gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSettings({ ...settings, participant_mode: 'joiners' })}
-                    className={modeCardClass(settings.participant_mode === 'joiners')}
-                  >
-                    <p className="font-semibold">Join &amp; play</p>
-                    <p className="text-faint text-xs mt-1">
-                      Everyone who joins is in the poll — no list to upload first
-                    </p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSettings({ ...settings, participant_mode: 'import' })}
-                    className={modeCardClass(settings.participant_mode === 'import')}
-                  >
-                    <p className="font-semibold">Import list</p>
-                    <p className="text-faint text-xs mt-1">
-                      Upload names before the game — joiners only vote, they are not on the list
-                    </p>
-                  </button>
-                </div>
-              </Field>
-            )}
-
-            <Field label="Number of Rounds">
-              <div className="flex gap-2 flex-wrap">
-                {roundOptions.map((n) => (
-                  <Chip
-                    key={n}
-                    active={settings.rounds_count === n}
-                    onClick={() => setSettings({ ...settings, rounds_count: n })}
-                  >
-                    {n}
-                  </Chip>
-                ))}
-              </div>
-            </Field>
-
-            <Field label="Time Per Round">
-              <div className="flex gap-2">
-                {[15, 30, 60].map((t) => (
-                  <Chip
-                    key={t}
-                    active={settings.timer_seconds === t}
-                    onClick={() => setSettings({ ...settings, timer_seconds: t })}
-                    wide
-                  >
-                    {t}s
-                  </Chip>
-                ))}
-              </div>
-            </Field>
-
-            <Field label="When Timer Runs Out (incomplete votes)">
-              <div className="flex gap-2">
-                <Chip
-                  active={settings.auto_submit_behavior === 'random'}
-                  onClick={() => setSettings({ ...settings, auto_submit_behavior: 'random' })}
-                  wide
-                >
-                  Random Fill
-                </Chip>
-                <Chip
-                  active={settings.auto_submit_behavior === 'no_answer'}
-                  onClick={() => setSettings({ ...settings, auto_submit_behavior: 'no_answer' })}
-                  wide
-                >
-                  No Answer
-                </Chip>
-              </div>
-            </Field>
-
-            <div className="space-y-2 pt-1">
-              {!isAnonymousGame(settings.game_type) && (
-                <Toggle
-                  label="Anonymous Responses"
-                  description="Hide who voted for what"
-                  value={settings.anonymous}
-                  onChange={(v) => setSettings({ ...settings, anonymous: v })}
-                />
-              )}
-              {isAnonymousGame(settings.game_type) && (
-                <p className="text-faint text-xs px-1">
-                  Would You Rather and Most Likely To are always anonymous — only totals are shown.
-                </p>
-              )}
-              <Toggle
-                label="Auto-Reveal Results"
-                description="Show results after the last round automatically"
-                value={settings.auto_reveal}
-                onChange={(v) => setSettings({ ...settings, auto_reveal: v })}
+            <Field label="Game mode">
+              <GameTypeCard
+                type={settings.game_type}
+                compact
+                selected
+                onClick={() => setShowGameTypes(true)}
               />
-            </div>
+            </Field>
           </div>
 
-          {isWyr || (isMlt && isJoinersMode) ? (
-            <PrimaryBtn onClick={createGame} disabled={!canCreateQuickLobby || loading}>
-              {loading ? 'Creating...' : 'Create Game'}
-            </PrimaryBtn>
-          ) : isJoinersMode ? (
-            <PrimaryBtn onClick={createGame} disabled={!canCreateJoiners || loading}>
-              {loading ? 'Creating...' : 'Create Game'}
-            </PrimaryBtn>
-          ) : (
-            <PrimaryBtn onClick={() => setStep('participants')} disabled={!settings.title.trim()}>
-              Next: Add Participants →
-            </PrimaryBtn>
-          )}
+          {/* Rules */}
+          <div className="glass-card p-5 space-y-5">
+            <SettingsGroup title="Round settings">
+              <Field label="Rounds">
+                <ChipGrid>
+                  {roundOptions.map((n) => (
+                    <Chip
+                      key={n}
+                      active={settings.rounds_count === n}
+                      onClick={() => setSettings({ ...settings, rounds_count: n })}
+                      className="!px-0 w-full"
+                    >
+                      {n}
+                    </Chip>
+                  ))}
+                </ChipGrid>
+              </Field>
+
+              <Field label="Time per round">
+                <SegmentedControl
+                  value={String(settings.timer_seconds) as '15' | '30' | '60'}
+                  onChange={(v) => setSettings({ ...settings, timer_seconds: Number(v) })}
+                  options={[
+                    { value: '15', label: '15s' },
+                    { value: '30', label: '30s' },
+                    { value: '60', label: '60s' },
+                  ]}
+                />
+              </Field>
+            </SettingsGroup>
+
+            {!isWyr && (
+              <SettingsGroup title="Who's in the poll">
+                <SegmentedControl
+                  value={settings.participant_mode}
+                  onChange={(mode) => setSettings({ ...settings, participant_mode: mode })}
+                  options={participantModeOptions(settings.game_type)}
+                />
+              </SettingsGroup>
+            )}
+
+            <SettingsGroup
+              title="Advanced"
+              description="Timer behavior & privacy"
+              collapsible
+              defaultOpen={false}
+            >
+              <Field label="When timer runs out">
+                <SegmentedControl
+                  value={settings.auto_submit_behavior}
+                  onChange={(v) => setSettings({ ...settings, auto_submit_behavior: v })}
+                  options={[
+                    { value: 'random', label: 'Random fill', hint: 'Incomplete votes get random choices.' },
+                    { value: 'no_answer', label: 'No answer', hint: 'Incomplete votes count as no vote.' },
+                  ]}
+                />
+              </Field>
+
+              <div className="space-y-2">
+                {!isAnonymousGame(settings.game_type) && (
+                  <Toggle
+                    label="Anonymous responses"
+                    description="Hide who voted for what"
+                    value={settings.anonymous}
+                    onChange={(v) => setSettings({ ...settings, anonymous: v })}
+                  />
+                )}
+                {isAnonymousGame(settings.game_type) && (
+                  <p className="text-faint text-xs px-1">
+                    Would You Rather and Most Likely To are always anonymous.
+                  </p>
+                )}
+                <Toggle
+                  label="Auto-reveal results"
+                  description="Show results after the last round automatically"
+                  value={settings.auto_reveal}
+                  onChange={(v) => setSettings({ ...settings, auto_reveal: v })}
+                />
+              </div>
+            </SettingsGroup>
+          </div>
+
+          <StickyActionBar>
+            {isWyr || (isMlt && isJoinersMode) ? (
+              <PrimaryBtn onClick={createGame} disabled={!canCreateQuickLobby || loading}>
+                {loading ? 'Creating...' : 'Create Game'}
+              </PrimaryBtn>
+            ) : isJoinersMode ? (
+              <PrimaryBtn onClick={createGame} disabled={!canCreateJoiners || loading}>
+                {loading ? 'Creating...' : 'Create Game'}
+              </PrimaryBtn>
+            ) : (
+              <PrimaryBtn onClick={() => setStep('participants')} disabled={!settings.title.trim()}>
+                Next: Add People →
+              </PrimaryBtn>
+            )}
+          </StickyActionBar>
         </PageShell>
 
         <GameTypeModal
@@ -374,135 +359,144 @@ function CreateGameInner() {
     return (
       <PageShell>
         <BackBtn onClick={() => setStep('settings')} />
+        <StepIndicator steps={wizardSteps} current={stepIndex} />
+
         <div>
-          <p className="label-caps mb-2">Almost there</p>
-          <h1 className="text-3xl sm:text-4xl font-black tracking-tight gradient-title-subtle">Add Participants</h1>
-          <p className="text-muted text-sm mt-2">
-            {isMlt
-              ? 'Upload names for the poll — everyone on the list can be voted for; players join separately to vote'
-              : 'Each round picks 3 people of the same gender — upload a sheet with name + gender, or add manually.'}
+          <p className="label-caps mb-1">Step 2</p>
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight gradient-title-subtle">Add People</h1>
+          <p className="text-muted text-sm mt-1.5">
+            {participantImportStepHint(settings.game_type)}
           </p>
         </div>
 
         <div className="glass-card p-5 space-y-4">
-          <Field label="Upload CSV or Excel">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <button type="button" onClick={() => fileRef.current?.click()} className="btn-secondary flex-1">
-                Choose file (.csv / .xlsx)
+          <SegmentedControl
+            value={participantTab}
+            onChange={setParticipantTab}
+            options={[
+              { value: 'upload', label: 'Upload file', hint: 'CSV or Excel with name and gender columns.' },
+              { value: 'manual', label: 'Add manually', hint: 'Type names one at a time or paste a list.' },
+            ]}
+          />
+
+          {participantTab === 'upload' ? (
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="btn-secondary w-full !py-4 border-dashed"
+              >
+                Choose .csv or .xlsx
               </button>
-              <a href="/participants-sample.csv" download="participants-sample.csv" className="btn-secondary flex-1 text-center no-underline">
-                Download sample
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+              <a
+                href="/participants-sample.csv"
+                download="participants-sample.csv"
+                className="block text-center text-faint text-xs hover:text-[var(--foreground)] transition-colors"
+              >
+                Download sample CSV →
               </a>
-            </div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              className="hidden"
-              onChange={handleFileUpload}
-            />
-            <p className="text-faint text-xs mt-2">
-              Column 1: name · Column 2: gender (male or female)
-            </p>
-          </Field>
-
-          {uploadError && <p className="text-red-400 text-sm">{uploadError}</p>}
-
-          <div className="flex items-center gap-3">
-            <div className="divider-soft" />
-            <span className="text-faint text-xs shrink-0">or add manually</span>
-            <div className="divider-soft" />
-          </div>
-
-          <Field label="Gender for single names">
-            <div className="flex gap-2">
-              <Chip active={defaultGender === 'female'} onClick={() => setDefaultGender('female')} wide>
-                Female
-              </Chip>
-              <Chip active={defaultGender === 'male'} onClick={() => setDefaultGender('male')} wide>
-                Male
-              </Chip>
-            </div>
-          </Field>
-
-          <div className="flex gap-2">
-            <input
-              ref={inputRef}
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addParticipant()}
-              onPaste={handleNamePaste}
-              placeholder="Enter name..."
-              autoFocus
-              className="input-field"
-            />
-            <button type="button" onClick={addParticipant} className="btn-secondary shrink-0 px-5 whitespace-nowrap">
-              Add
-            </button>
-          </div>
-
-          <div className="space-y-2">
-            <textarea
-              value={bulkPaste}
-              onChange={(e) => setBulkPaste(e.target.value)}
-              placeholder={'name,gender\nSarah,female\nJames,male\n…or paste from Excel'}
-              rows={4}
-              className="input-field resize-y min-h-[96px] font-medium"
-            />
-            <button
-              type="button"
-              onClick={addBulkParticipants}
-              disabled={!bulkPaste.trim()}
-              className="btn-secondary w-full disabled:opacity-40"
-            >
-              Add all from paste
-            </button>
-          </div>
-
-          {participants.length > 0 ? (
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {participants.map((p, i) => (
-                <div key={`${p.name}-${p.gender}-${i}`} className="surface-inset flex items-center justify-between px-4 py-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Avatar name={p.name} />
-                    <span className="font-medium truncate">{p.name}</span>
-                    <GenderBadge gender={p.gender} />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeParticipant(i)}
-                    className="text-faint hover:text-[var(--kill)] text-2xl leading-none transition-colors shrink-0 ml-2"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
+              {uploadError && <p className="text-red-400 text-sm">{uploadError}</p>}
             </div>
           ) : (
-            <div className="text-center py-8 text-faint">No participants yet</div>
+            <div className="space-y-3">
+              <Field label="Default gender">
+                <div className="flex gap-2">
+                  <Chip active={defaultGender === 'female'} onClick={() => setDefaultGender('female')} wide>
+                    Female
+                  </Chip>
+                  <Chip active={defaultGender === 'male'} onClick={() => setDefaultGender('male')} wide>
+                    Male
+                  </Chip>
+                </div>
+              </Field>
+
+              <div className="flex gap-2">
+                <input
+                  ref={inputRef}
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addParticipant()}
+                  onPaste={handleNamePaste}
+                  placeholder="Enter name..."
+                  autoFocus
+                  className="input-field"
+                />
+                <button type="button" onClick={addParticipant} className="btn-secondary shrink-0 px-5">
+                  Add
+                </button>
+              </div>
+
+              <textarea
+                value={bulkPaste}
+                onChange={(e) => setBulkPaste(e.target.value)}
+                placeholder={'Paste from Excel:\nSarah,female\nJames,male'}
+                rows={3}
+                className="input-field resize-none font-medium"
+              />
+              <button
+                type="button"
+                onClick={addBulkParticipants}
+                disabled={!bulkPaste.trim()}
+                className="btn-secondary w-full disabled:opacity-40"
+              >
+                Add all from paste
+              </button>
+            </div>
           )}
 
-          {participants.length > 0 && (
-            <p className="text-faint text-sm text-center">
-              {genderCounts.female} female · {genderCounts.male} male
-            </p>
+          {/* Participant list */}
+          {participants.length > 0 ? (
+            <div className="space-y-2 pt-2 border-t border-[var(--border)]">
+              <div className="flex items-center justify-between">
+                <p className="label-caps !text-[10px]">{participants.length} added</p>
+                <p className="text-faint text-xs">
+                  {genderCounts.female}F · {genderCounts.male}M
+                </p>
+              </div>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {participants.map((p, i) => (
+                  <div key={`${p.name}-${p.gender}-${i}`} className="surface-inset flex items-center justify-between px-3 py-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Avatar name={p.name} />
+                      <span className="font-medium text-sm truncate">{p.name}</span>
+                      <GenderBadge gender={p.gender} />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeParticipant(i)}
+                      className="text-faint hover:text-[var(--kill)] text-xl leading-none transition-colors shrink-0 ml-2"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-6 text-faint text-sm border-t border-[var(--border)]">
+              No people added yet
+            </div>
           )}
 
           {!isMlt && !hasEnoughForRounds(participants, settings.game_type) && participants.length > 0 && (
-            <p className="text-amber-500 text-sm text-center">
+            <p className="text-amber-500 text-xs text-center">
               Need at least {minPool} people of the same gender to run rounds
-            </p>
-          )}
-          {participants.length < minPool && participants.length > 0 && (
-            <p className="text-faint text-sm text-center">
-              Add {minPool - participants.length} more name{minPool - participants.length === 1 ? '' : 's'} to continue
             </p>
           )}
         </div>
 
-        <PrimaryBtn onClick={createGame} disabled={!canCreateImport || loading}>
-          {loading ? 'Creating...' : `Create Game (${participants.length} participants)`}
-        </PrimaryBtn>
+        <StickyActionBar>
+          <PrimaryBtn onClick={createGame} disabled={!canCreateImport || loading}>
+            {loading ? 'Creating...' : `Create Game · ${participants.length} people`}
+          </PrimaryBtn>
+        </StickyActionBar>
       </PageShell>
     )
   }
@@ -512,27 +506,38 @@ function CreateGameInner() {
   const hostUrl = `${origin}/host/${result?.gameCode}?token=${result?.hostToken}`
 
   return (
-    <PageShell>
+    <PageShell centered>
       <div className="text-center space-y-2">
-        <div className="text-6xl">🎉</div>
-        <h1 className="text-3xl sm:text-4xl font-black tracking-tight gradient-title-subtle">Game Created!</h1>
-        <p className="text-muted">Share the link or code below</p>
+        <div
+          className="inline-flex h-20 w-20 items-center justify-center rounded-3xl text-4xl mx-auto"
+          style={{ background: 'var(--chip-active-bg)' }}
+        >
+          🎉
+        </div>
+        <h1 className="text-3xl font-black tracking-tight gradient-title-subtle">You&apos;re live!</h1>
+        <p className="text-muted text-sm">Share the code with players — save your host link.</p>
       </div>
 
-      <CopyCard label="Share this with players" value={gameUrl}>
-        <div className="mt-3 text-center glass-card px-4 py-3">
-          <span className="label-caps">Game Code</span>
-          <p className="font-mono text-4xl font-black tracking-[0.28em] mt-1">{result?.gameCode}</p>
-        </div>
-      </CopyCard>
+      <div className="glass-card-strong p-6 text-center space-y-2">
+        <span className="label-caps">Game code</span>
+        <p className="font-mono text-5xl font-black tracking-[0.2em]">{result?.gameCode}</p>
+        <button
+          type="button"
+          onClick={() => navigator.clipboard.writeText(result?.gameCode ?? '').catch(() => null)}
+          className="text-sm font-semibold text-[var(--primary)] hover:opacity-80 transition-opacity"
+        >
+          Copy code
+        </button>
+      </div>
 
-      <CopyCard label="Your host link (save this!)" value={hostUrl} accent />
+      <CopyCard label="Player link" value={gameUrl} />
+      <CopyCard label="Host link — save this" value={hostUrl} accent />
 
       <PrimaryBtn onClick={() => router.push(`/host/${result?.gameCode}?token=${result?.hostToken}`)}>
         Open Host Panel →
       </PrimaryBtn>
 
-      <p className="text-faint text-xs text-center">The host link won&apos;t be shown again — save it now</p>
+      <p className="text-faint text-xs text-center">The host link won&apos;t be shown again</p>
     </PageShell>
   )
 }
@@ -565,25 +570,24 @@ function GenderBadge({ gender }: { gender: ParticipantGender }) {
 
 function Avatar({ name }: { name: string }) {
   return (
-    <div className="avatar w-8 h-8 text-sm shrink-0">
+    <div className="avatar w-7 h-7 text-xs shrink-0">
       {name.charAt(0).toUpperCase()}
     </div>
   )
 }
 
-function CopyCard({ label, value, children, accent }: { label: string; value: string; children?: React.ReactNode; accent?: boolean }) {
+function CopyCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   const copy = () => navigator.clipboard.writeText(value).catch(() => null)
   return (
-    <div className={`glass-card p-5 space-y-3 ${accent ? 'border-[var(--primary)]/35' : ''}`}>
+    <div className={`glass-card p-4 space-y-2 ${accent ? 'border-[var(--primary)]/35' : ''}`}>
       <p className={`label-caps ${accent ? 'text-[var(--primary)]' : ''}`}>{label}</p>
-      <p className="font-mono text-sm break-all text-muted">{value}</p>
-      {children}
+      <p className="font-mono text-xs break-all text-muted">{value}</p>
       <button
         type="button"
         onClick={copy}
         className={`text-sm font-semibold transition-colors ${accent ? 'text-[var(--primary)] hover:opacity-80' : 'text-muted hover:text-[var(--foreground)]'}`}
       >
-        Copy →
+        Copy link →
       </button>
     </div>
   )
