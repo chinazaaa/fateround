@@ -4,15 +4,11 @@ import { parsePlayerGenderFromDb } from '@/lib/participants'
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
 export function generateGameCode(): string {
-  return Array.from({ length: 6 }, () =>
-    CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]
-  ).join('')
+  return Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('')
 }
 
 export function generateToken(): string {
-  return Array.from({ length: 40 }, () =>
-    Math.floor(Math.random() * 16).toString(16)
-  ).join('')
+  return Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join('')
 }
 
 function shuffleInPlace<T>(arr: T[]): T[] {
@@ -273,10 +269,7 @@ export function setPlayerSession(
   playerGender: PlayerGender
 ): void {
   if (typeof window === 'undefined') return
-  localStorage.setItem(
-    `kmk_player_${gameCode.toUpperCase()}`,
-    JSON.stringify({ playerId, playerName, playerGender })
-  )
+  localStorage.setItem(`kmk_player_${gameCode.toUpperCase()}`, JSON.stringify({ playerId, playerName, playerGender }))
 }
 
 export function clearPlayerSession(gameCode: string): void {

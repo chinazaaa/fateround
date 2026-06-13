@@ -4,16 +4,56 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { filterParticipantsInRounds } from '@/lib/utils'
 import { Avatar } from '@/components/Avatar'
-import { roundGenderLabel, genderLabel, resolvePlayerIdentity, getRoundParticipantGender, eligibleVotersForRound, roundVoterLabel, hasEnoughForRounds, countByGender, hasVotersForPolls, participantsWhoJoined, maxRecommendedRounds, roundLimitHint } from '@/lib/participants'
+import {
+  roundGenderLabel,
+  genderLabel,
+  resolvePlayerIdentity,
+  getRoundParticipantGender,
+  eligibleVotersForRound,
+  roundVoterLabel,
+  hasEnoughForRounds,
+  countByGender,
+  hasVotersForPolls,
+  participantsWhoJoined,
+  maxRecommendedRounds,
+  roundLimitHint,
+} from '@/lib/participants'
 import type { ParticipantGender } from '@/types'
 import { tallyRoundVotes, getCategoryMeta, getVoteCategories, tallyWyrVotes, tallyMltVotes } from '@/lib/vote-stats'
-import { parseGameType, roundPoolSize, isPairGame, isWouldYouRather, isMostLikelyTo, isWhoSaidThis, isNameOnlyPlayerJoin } from '@/lib/game-types'
+import {
+  parseGameType,
+  roundPoolSize,
+  isPairGame,
+  isWouldYouRather,
+  isMostLikelyTo,
+  isWhoSaidThis,
+  isNameOnlyPlayerJoin,
+} from '@/lib/game-types'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import { isMltImportGame, mltTargetIdFromVote, mltVoteTargets } from '@/lib/mlt'
 import { questionPoolCap, parseQuestionSource, customQuestionCount } from '@/lib/custom-questions'
-import { wstVoteTargets, wstCorrectNameFromRound, wstCorrectParticipantIdFromRound, wstSubmitterName, wstEligibleSubmitters, wstAutoRoundCount, tallyWstVotes, tallyWstPlayerScores, mergeActiveRound, wstQuotePoolStatus, dedupeWstPool, mergeWstPoolEntry } from '@/lib/who-said-this'
-import { ParticipantRoundResults, VoteCountStat, WyrRoundResults, MltRoundResults, WstRoundResults } from '@/components/VoteResults'
+import {
+  wstVoteTargets,
+  wstCorrectNameFromRound,
+  wstCorrectParticipantIdFromRound,
+  wstSubmitterName,
+  wstEligibleSubmitters,
+  wstAutoRoundCount,
+  tallyWstVotes,
+  tallyWstPlayerScores,
+  mergeActiveRound,
+  wstQuotePoolStatus,
+  dedupeWstPool,
+  mergeWstPoolEntry,
+} from '@/lib/who-said-this'
+import {
+  ParticipantRoundResults,
+  VoteCountStat,
+  WyrRoundResults,
+  MltRoundResults,
+  WstRoundResults,
+} from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
@@ -69,11 +109,8 @@ export default function HostPage() {
   const autoFinishTriggeredRef = useRef(false)
   const autoAdvanceScheduledRef = useRef<string | null>(null)
 
-  const betweenRounds =
-    game?.status === 'active' && !currentRound && !!lastFinishedRound
-  const isBetweenLastRound =
-    betweenRounds &&
-    (lastFinishedRound?.round_number ?? 0) >= (game?.rounds_count ?? 0)
+  const betweenRounds = game?.status === 'active' && !currentRound && !!lastFinishedRound
+  const isBetweenLastRound = betweenRounds && (lastFinishedRound?.round_number ?? 0) >= (game?.rounds_count ?? 0)
   const nextRoundCountdown = useDeadlineCountdown(
     lastFinishedRound?.ended_at,
     ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
@@ -114,8 +151,16 @@ export default function HostPage() {
   useEffect(() => {
     async function load() {
       const { data: gameData } = await supabase.from('games').select('*').eq('id', gameCode).maybeSingle()
-      if (!gameData) { setAuthError(true); setLoading(false); return }
-      if (gameData.host_token !== hostToken) { setAuthError(true); setLoading(false); return }
+      if (!gameData) {
+        setAuthError(true)
+        setLoading(false)
+        return
+      }
+      if (gameData.host_token !== hostToken) {
+        setAuthError(true)
+        setLoading(false)
+        return
+      }
 
       setGame(gameData)
 
@@ -138,7 +183,14 @@ export default function HostPage() {
       if (gameData.status === 'active') {
         const [{ data: roundData }, { data: finishedRound }, { data: votesData }, { data: confs }] = await Promise.all([
           supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
-          supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'finished').order('round_number', { ascending: false }).limit(1).maybeSingle(),
+          supabase
+            .from('rounds')
+            .select('*')
+            .eq('game_id', gameCode)
+            .eq('status', 'finished')
+            .order('round_number', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
           supabase.from('votes').select('*').eq('game_id', gameCode),
           supabase.from('confessions').select('*').eq('game_id', gameCode).order('created_at'),
         ])
@@ -187,7 +239,9 @@ export default function HostPage() {
   }
 
   function mergeVote(prev: Vote[], vote: Vote) {
-    const idx = prev.findIndex((v) => v.id === vote.id || (v.player_id === vote.player_id && v.round_id === vote.round_id))
+    const idx = prev.findIndex(
+      (v) => v.id === vote.id || (v.player_id === vote.player_id && v.round_id === vote.round_id)
+    )
     if (idx >= 0) {
       const next = [...prev]
       next[idx] = vote
@@ -197,13 +251,21 @@ export default function HostPage() {
   }
 
   async function syncGameState() {
-    const [{ data: gameData }, { data: activeRound }, { data: finishedRound }, { data: vs }, { data: confs }] = await Promise.all([
-      supabase.from('games').select('*').eq('id', gameCode).maybeSingle(),
-      supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
-      supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'finished').order('round_number', { ascending: false }).limit(1).maybeSingle(),
-      supabase.from('votes').select('*').eq('game_id', gameCode),
-      supabase.from('confessions').select('*').eq('game_id', gameCode).order('created_at'),
-    ])
+    const [{ data: gameData }, { data: activeRound }, { data: finishedRound }, { data: vs }, { data: confs }] =
+      await Promise.all([
+        supabase.from('games').select('*').eq('id', gameCode).maybeSingle(),
+        supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
+        supabase
+          .from('rounds')
+          .select('*')
+          .eq('game_id', gameCode)
+          .eq('status', 'finished')
+          .order('round_number', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase.from('votes').select('*').eq('game_id', gameCode),
+        supabase.from('confessions').select('*').eq('game_id', gameCode).order('created_at'),
+      ])
 
     if (gameData) setGame(gameData)
     if (vs) setVotes(vs)
@@ -236,13 +298,19 @@ export default function HostPage() {
   useEffect(() => {
     const ch = supabase
       .channel(`host-${gameCode}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         async (payload) => {
           const g = payload.new as Game
           setGame(g)
           if (g.status === 'active') {
             const { data: roundData } = await supabase
-              .from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle()
+              .from('rounds')
+              .select('*')
+              .eq('game_id', gameCode)
+              .eq('status', 'active')
+              .maybeSingle()
             if (roundData) {
               setCurrentRound((prev) => mergeActiveRound(prev, roundData))
               advancingRef.current = false
@@ -256,49 +324,67 @@ export default function HostPage() {
           }
         }
       )
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const p = payload.new as Player
-          setPlayers((prev) => prev.some((x) => x.id === p.id) ? prev : [...prev, p])
+          setPlayers((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p]))
         }
       )
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const p = payload.new as Player
-          setPlayers((prev) => prev.map((x) => x.id === p.id ? p : x))
+          setPlayers((prev) => prev.map((x) => (x.id === p.id ? p : x)))
         }
       )
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const p = payload.old as Player
           setPlayers((prev) => prev.filter((x) => x.id !== p.id))
         }
       )
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const p = payload.new as Participant
-          setParticipants((prev) => prev.some((x) => x.id === p.id) ? prev : [...prev, p])
+          setParticipants((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p]))
         }
       )
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const p = payload.new as Participant
-          setParticipants((prev) => prev.map((x) => x.id === p.id ? p : x))
+          setParticipants((prev) => prev.map((x) => (x.id === p.id ? p : x)))
         }
       )
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const p = payload.old as Participant
           setParticipants((prev) => prev.filter((x) => x.id !== p.id))
         }
       )
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'votes', filter: `game_id=eq.${gameCode}` },
         (payload) => setVotes((prev) => mergeVote(prev, payload.new as Vote))
       )
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'votes', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'votes', filter: `game_id=eq.${gameCode}` },
         (payload) => setVotes((prev) => mergeVote(prev, payload.new as Vote))
       )
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const r = payload.new as Round
           if (r.status === 'active') {
@@ -315,33 +401,43 @@ export default function HostPage() {
           }
         }
       )
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const entry = payload.new as WstQuotePoolEntry
           setWstPool((prev) => mergeWstPoolEntry(prev, entry))
         }
       )
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const entry = payload.new as WstQuotePoolEntry
           setWstPool((prev) => mergeWstPoolEntry(prev, entry))
         }
       )
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const entry = payload.old as WstQuotePoolEntry
           setWstPool((prev) => prev.filter((x) => x.id !== entry.id && x.player_id !== entry.player_id))
         }
       )
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confessions', filter: `game_id=eq.${gameCode}` },
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'confessions', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const c = payload.new as Confession
-          setConfessions((prev) => prev.some((x) => x.id === c.id) ? prev : [...prev, c])
+          setConfessions((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c]))
         }
       )
       .subscribe()
 
-    return () => { supabase.removeChannel(ch) }
+    return () => {
+      supabase.removeChannel(ch)
+    }
   }, [gameCode])
 
   // Poll lobby while waiting for players — fallback if realtime is slow or unavailable
@@ -373,7 +469,7 @@ export default function HostPage() {
     syncGameState()
     const id = setInterval(syncGameState, 2000)
     return () => clearInterval(id)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game?.status, gameCode, currentRound?.id, lastFinishedRound?.id])
 
   // Auto-reveal: after the final round results, show the leaderboard automatically
@@ -389,7 +485,7 @@ export default function HostPage() {
     }, delay)
 
     return () => clearTimeout(timer)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game?.status, game?.auto_reveal, game?.rounds_count, currentRound?.id, lastFinishedRound?.id])
 
   useEffect(() => {
@@ -418,14 +514,8 @@ export default function HostPage() {
     }, delay)
 
     return () => clearTimeout(timer)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    game?.status,
-    game?.rounds_count,
-    currentRound?.id,
-    lastFinishedRound?.id,
-    lastFinishedRound?.ended_at,
-  ])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game?.status, game?.rounds_count, currentRound?.id, lastFinishedRound?.id, lastFinishedRound?.ended_at])
 
   // ── Timer (host) ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -449,7 +539,9 @@ export default function HostPage() {
     }
     tick()
     timerRef.current = setInterval(tick, 500)
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
   }, [
     currentRound?.id,
     currentRound?.started_at,
@@ -471,9 +563,7 @@ export default function HostPage() {
       const submitterId = currentRound.submitter_player_id
       const voters = players.filter((p) => p.id !== submitterId)
       if (voters.length === 0) return
-      const roundVotes = votes.filter(
-        (v) => v.round_id === currentRound.id && v.player_id !== submitterId
-      )
+      const roundVotes = votes.filter((v) => v.round_id === currentRound.id && v.player_id !== submitterId)
       if (roundVotes.length >= voters.length) {
         handleEndRound()
       }
@@ -489,7 +579,7 @@ export default function HostPage() {
     if (roundVotes.length >= eligible.length) {
       handleEndRound()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentRound?.id, currentRound?.quote_text, votes, players, participants, game?.status])
 
   const handleStart = async () => {
@@ -669,7 +759,7 @@ export default function HostPage() {
     if (game.rounds_count !== autoRounds) {
       hostUpdateRounds(autoRounds)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game?.status, game?.rounds_count, game?.game_type, wstPool.length])
 
   async function hostAddParticipant() {
@@ -715,11 +805,14 @@ export default function HostPage() {
   }
 
   async function hostRemoveParticipant(participantId: string, name: string) {
-    if (!(await confirm({
-      title: `Remove ${name} from the list?`,
-      confirmLabel: 'Remove',
-      destructive: true,
-    }))) return
+    if (
+      !(await confirm({
+        title: `Remove ${name} from the list?`,
+        confirmLabel: 'Remove',
+        destructive: true,
+      }))
+    )
+      return
     setAdminBusy(participantId)
     try {
       const res = await fetch('/api/participants', {
@@ -763,11 +856,14 @@ export default function HostPage() {
   }
 
   async function hostRemovePlayer(playerId: string, name: string) {
-    if (!(await confirm({
-      title: `Remove ${name}?`,
-      confirmLabel: 'Remove',
-      destructive: true,
-    }))) return
+    if (
+      !(await confirm({
+        title: `Remove ${name}?`,
+        confirmLabel: 'Remove',
+        destructive: true,
+      }))
+    )
+      return
     setAdminBusy(playerId)
     try {
       const res = await fetch('/api/players', {
@@ -824,22 +920,27 @@ export default function HostPage() {
     const roundParticipants = isJoinersMode
       ? participants
       : isMltImport
-      ? participants
-      : participantsWhoJoined(participants, players)
+        ? participants
+        : participantsWhoJoined(participants, players)
     const participantInputs = roundParticipants.map((p) => ({ name: p.name, gender: p.gender }))
     const genderCounts = countByGender(participantInputs)
-    const lobbyQuestionMax = isWyr || isMlt ? questionPoolCap(game) : isWst ? wstAutoRoundCount(wstPool.length || wstSubmitters.length) : maxRecommendedRounds(participantInputs, gameType)
-    const maxRounds = isWyr || isMlt ? lobbyQuestionMax : isWst ? lobbyQuestionMax : maxRecommendedRounds(participantInputs, gameType)
-    const roundsHint =
-      isWst
-        ? wstPool.length >= 2
-          ? `${wstPool.length} quotes in the pool → ${wstAutoRoundCount(wstPool.length)} rounds`
-          : wstPool.length === 1
-            ? '1 quote in the pool — need at least 2 to start'
-            : wstSubmitters.length >= 1
-              ? `${wstSubmitters.length} players joined — waiting for quotes in the lobby`
-              : 'Players claim a name and submit a quote before start'
-        : isWyr || isMlt
+    const lobbyQuestionMax =
+      isWyr || isMlt
+        ? questionPoolCap(game)
+        : isWst
+          ? wstAutoRoundCount(wstPool.length || wstSubmitters.length)
+          : maxRecommendedRounds(participantInputs, gameType)
+    const maxRounds =
+      isWyr || isMlt ? lobbyQuestionMax : isWst ? lobbyQuestionMax : maxRecommendedRounds(participantInputs, gameType)
+    const roundsHint = isWst
+      ? wstPool.length >= 2
+        ? `${wstPool.length} quotes in the pool → ${wstAutoRoundCount(wstPool.length)} rounds`
+        : wstPool.length === 1
+          ? '1 quote in the pool — need at least 2 to start'
+          : wstSubmitters.length >= 1
+            ? `${wstSubmitters.length} players joined — waiting for quotes in the lobby`
+            : 'Players claim a name and submit a quote before start'
+      : isWyr || isMlt
         ? parseQuestionSource(game.question_source, gameType) === 'custom' && customQuestionCount(game) > 0
           ? `${customQuestionCount(game)} custom questions → up to ${lobbyQuestionMax} rounds`
           : isWyr
@@ -850,30 +951,30 @@ export default function HostPage() {
     const roundOptions = isWyr
       ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
       : isMlt
-      ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
-      : isWst
-      ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
-      : [1, 2, 3, 4, 5, 6, 8, 10].filter((n) => n <= Math.max(maxRounds, 1))
+        ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
+        : isWst
+          ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
+          : [1, 2, 3, 4, 5, 6, 8, 10].filter((n) => n <= Math.max(maxRounds, 1))
     const voterCheck = hasVotersForPolls(roundParticipants, players)
     const canStart = isWst
       ? participants.length >= 2 && wstSubmitters.length >= 2 && wstPool.length >= 2
       : isMltImport
-      ? participants.length >= 2 && players.length > 0 && !roundsTooHigh
-      : isMlt
-      ? players.length >= 2 && !roundsTooHigh
-      : isWyr
-      ? players.length > 0 && !roundsTooHigh
-      : isJoinersMode
-      ? players.length > 0 &&
-        participants.length >= minPool &&
-        hasEnoughForRounds(participantInputs, gameType) &&
-        !roundsTooHigh &&
-        voterCheck.ok
-      : players.length > 0 &&
-        roundParticipants.length >= minPool &&
-        hasEnoughForRounds(participantInputs, gameType) &&
-        !roundsTooHigh &&
-        voterCheck.ok
+        ? participants.length >= 2 && players.length > 0 && !roundsTooHigh
+        : isMlt
+          ? players.length >= 2 && !roundsTooHigh
+          : isWyr
+            ? players.length > 0 && !roundsTooHigh
+            : isJoinersMode
+              ? players.length > 0 &&
+                participants.length >= minPool &&
+                hasEnoughForRounds(participantInputs, gameType) &&
+                !roundsTooHigh &&
+                voterCheck.ok
+              : players.length > 0 &&
+                roundParticipants.length >= minPool &&
+                hasEnoughForRounds(participantInputs, gameType) &&
+                !roundsTooHigh &&
+                voterCheck.ok
 
     return (
       <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
@@ -881,22 +982,26 @@ export default function HostPage() {
           <div>
             <p className="text-muted text-xs uppercase tracking-wider">Host Panel</p>
             <h1 className="text-2xl font-black text-body mt-1">{game.title}</h1>
-            <p className="text-muted text-sm">{game.rounds_count} rounds · {game.timer_seconds}s each</p>
-            {(isWyr || isMlt) && parseQuestionSource(game.question_source, gameType) === 'custom' && customQuestionCount(game) > 0 && (
-              <p className="text-faint text-xs mt-1">{customQuestionCount(game)} custom questions loaded</p>
-            )}
+            <p className="text-muted text-sm">
+              {game.rounds_count} rounds · {game.timer_seconds}s each
+            </p>
+            {(isWyr || isMlt) &&
+              parseQuestionSource(game.question_source, gameType) === 'custom' &&
+              customQuestionCount(game) > 0 && (
+                <p className="text-faint text-xs mt-1">{customQuestionCount(game)} custom questions loaded</p>
+              )}
             <p className="text-[var(--primary)] text-xs mt-1 font-medium">
               {isMltImport
                 ? 'Most Likely To — everyone on the list is in the poll; players join to vote'
                 : isMlt
-                ? 'Most Likely To — players join and vote for a friend each round'
-                : isWst
-                ? 'Who Said This — players submit quotes in the lobby, then guess who said each one'
-                : isWyr
-                ? 'Would You Rather — players join and pick A or B each round'
-                : isJoinersMode
-                  ? 'Join & play — joiners are the names in the poll'
-                  : 'Import list — voters join separately'}
+                  ? 'Most Likely To — players join and vote for a friend each round'
+                  : isWst
+                    ? 'Who Said This — players submit quotes in the lobby, then guess who said each one'
+                    : isWyr
+                      ? 'Would You Rather — players join and pick A or B each round'
+                      : isJoinersMode
+                        ? 'Join & play — joiners are the names in the poll'
+                        : 'Import list — voters join separately'}
             </p>
           </div>
           <div className="text-right">
@@ -915,11 +1020,11 @@ export default function HostPage() {
               <p className="font-bold text-body text-2xl">{game.rounds_count}</p>
               <p className="text-faint text-xs">{roundsHint}</p>
             </>
-          ) : isWyr || isMlt || (roundParticipants.length >= minPool && hasEnoughForRounds(participantInputs, gameType)) ? (
+          ) : isWyr ||
+            isMlt ||
+            (roundParticipants.length >= minPool && hasEnoughForRounds(participantInputs, gameType)) ? (
             <>
-              {roundsHint && (
-                <p className="text-faint text-xs">{roundsHint}</p>
-              )}
+              {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
               <div className="flex gap-2 flex-wrap">
                 {(roundOptions.length > 0 ? roundOptions : [1, 2, 3]).map((n) => (
                   <button
@@ -937,13 +1042,16 @@ export default function HostPage() {
               </div>
               {roundsTooHigh && (
                 <p className="callout-warning">
-                  {game.rounds_count} rounds is too many for {roundParticipants.length} in the game — pick {maxRounds} or fewer
+                  {game.rounds_count} rounds is too many for {roundParticipants.length} in the game — pick {maxRounds}{' '}
+                  or fewer
                 </p>
               )}
             </>
           ) : (
             <p className="text-faint text-xs">
-              {isWyr || isMlt ? 'Set how many questions to play' : `Need at least ${minPool} joined people of one gender before you can set rounds`}
+              {isWyr || isMlt
+                ? 'Set how many questions to play'
+                : `Need at least ${minPool} joined people of one gender before you can set rounds`}
             </p>
           )}
         </div>
@@ -956,9 +1064,7 @@ export default function HostPage() {
                 {wstPoolStatus.submitted.length} / {wstPoolStatus.eligible.length} ready
               </span>
             </div>
-            <p className="text-faint text-xs">
-              Remind anyone still waiting — only submitted quotes become rounds.
-            </p>
+            <p className="text-faint text-xs">Remind anyone still waiting — only submitted quotes become rounds.</p>
 
             {wstPoolStatus.submitted.length > 0 && (
               <div className="space-y-2">
@@ -1015,7 +1121,9 @@ export default function HostPage() {
             {wstPoolStatus.eligible.length > 0 &&
               wstPoolStatus.awaitingQuote.length === 0 &&
               wstPoolStatus.submitted.length >= 2 && (
-                <p className="text-green-400 text-sm text-center">Everyone who claimed a name has submitted — ready to start</p>
+                <p className="text-green-400 text-sm text-center">
+                  Everyone who claimed a name has submitted — ready to start
+                </p>
               )}
           </div>
         )}
@@ -1033,11 +1141,14 @@ export default function HostPage() {
             <p className="text-muted text-xs uppercase tracking-wider">
               {isMltImport ? 'Voters joined' : isJoinersMode ? 'In the game' : 'Players joined'}
             </p>
-            <span className="bg-[var(--primary-strong)] text-white text-xs font-bold px-2 py-0.5 rounded-full">{players.length}</span>
+            <span className="bg-[var(--primary-strong)] text-white text-xs font-bold px-2 py-0.5 rounded-full">
+              {players.length}
+            </span>
           </div>
           {!isJoinersMode && (
             <p className="text-faint text-xs">
-              {roundParticipants.length} of {participants.length} on the list have joined — only joined names appear in rounds
+              {roundParticipants.length} of {participants.length} on the list have joined — only joined names appear in
+              rounds
             </p>
           )}
           {!isJoinersMode && (
@@ -1072,7 +1183,7 @@ export default function HostPage() {
               </div>
               {playersSearch.trim() && (
                 <p className="text-faint text-[10px] uppercase tracking-wider px-0.5">
-                  {(isJoinersMode ? filteredJoinerParticipants.length : filteredPlayers.length)} of{' '}
+                  {isJoinersMode ? filteredJoinerParticipants.length : filteredPlayers.length} of{' '}
                   {isJoinersMode ? joinerParticipantsWithPlayers.length : players.length} shown
                 </p>
               )}
@@ -1084,7 +1195,10 @@ export default function HostPage() {
             ) : (
               <div className="space-y-2 max-h-80 overflow-y-auto">
                 {filteredPlayers.map((player) => (
-                  <div key={player.id} className="surface-inset border border-theme rounded-xl px-3 py-2 flex items-center gap-2">
+                  <div
+                    key={player.id}
+                    className="surface-inset border border-theme rounded-xl px-3 py-2 flex items-center gap-2"
+                  >
                     <Avatar name={player.name} size="sm" />
                     <span className="text-body text-sm font-medium truncate flex-1">{player.name}</span>
                   </div>
@@ -1163,34 +1277,38 @@ export default function HostPage() {
               {filteredPlayers.map((p) => {
                 const identity = resolvePlayerIdentity(p, participants)
                 return (
-                <div key={p.id} className="flex items-center gap-2 min-w-0 surface-inset border border-theme rounded-xl px-3 py-2">
-                  <Avatar name={p.name} size="sm" />
-                  <span className="text-body-muted text-sm truncate flex-1">{p.name}</span>
-                  <div className="flex gap-1 shrink-0">
-                    {(['female', 'male'] as const).map((g) => (
-                      <button
-                        key={g}
-                        type="button"
-                        disabled={adminBusy === p.id}
-                        onClick={() => hostUpdatePlayerIdentity(p.id, g)}
-                        className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
-                          identity === g ? 'chip-active' : 'chip'
-                        }`}
-                      >
-                        {g === 'male' ? 'M' : 'F'}
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    disabled={adminBusy === p.id}
-                    onClick={() => hostRemovePlayer(p.id, p.name)}
-                    className="text-red-400/80 text-xs shrink-0 hover:text-red-300 disabled:opacity-40"
+                  <div
+                    key={p.id}
+                    className="flex items-center gap-2 min-w-0 surface-inset border border-theme rounded-xl px-3 py-2"
                   >
-                    Remove
-                  </button>
-                </div>
-              )})}
+                    <Avatar name={p.name} size="sm" />
+                    <span className="text-body-muted text-sm truncate flex-1">{p.name}</span>
+                    <div className="flex gap-1 shrink-0">
+                      {(['female', 'male'] as const).map((g) => (
+                        <button
+                          key={g}
+                          type="button"
+                          disabled={adminBusy === p.id}
+                          onClick={() => hostUpdatePlayerIdentity(p.id, g)}
+                          className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                            identity === g ? 'chip-active' : 'chip'
+                          }`}
+                        >
+                          {g === 'male' ? 'M' : 'F'}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={adminBusy === p.id}
+                      onClick={() => hostRemovePlayer(p.id, p.name)}
+                      className="text-red-400/80 text-xs shrink-0 hover:text-red-300 disabled:opacity-40"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
           {isJoinersMode && !isWyr && !isMlt && participants.length > 0 && (
@@ -1198,11 +1316,13 @@ export default function HostPage() {
               {genderCounts.female} female · {genderCounts.male} male
             </p>
           )}
-          {isJoinersMode && !isWyr && !isMlt && participants.length > 0 && !hasEnoughForRounds(participantInputs, gameType) && (
-            <p className="callout-warning text-center">
-              Need at least {minPool} people of the same gender to start
-            </p>
-          )}
+          {isJoinersMode &&
+            !isWyr &&
+            !isMlt &&
+            participants.length > 0 &&
+            !hasEnoughForRounds(participantInputs, gameType) && (
+              <p className="callout-warning text-center">Need at least {minPool} people of the same gender to start</p>
+            )}
           {!voterCheck.ok && players.length > 0 && roundParticipants.length >= minPool && (
             <p className="callout-warning text-center">{voterCheck.message}</p>
           )}
@@ -1215,167 +1335,166 @@ export default function HostPage() {
 
         {/* Participants preview (import mode only) */}
         {!isJoinersMode && (
-        <div className="glass-card p-4 space-y-3">
-          <p className="text-muted text-xs uppercase tracking-wider">On the list ({participants.length})</p>
-          <div className="surface-inset border border-theme rounded-xl p-3 space-y-2">
-            <p className="text-faint text-xs">Add someone to the list</p>
-            <div className="flex gap-2">
-              <input
-                value={addName}
-                onChange={(e) => {
-                  setAddName(e.target.value)
-                  if (addError) setAddError(null)
-                }}
-                onKeyDown={(e) => e.key === 'Enter' && hostAddParticipant()}
-                placeholder="Name"
-                className="input-field flex-1 py-2 text-sm"
-              />
-              {!isMltImport && (
-              <div className="flex gap-1 shrink-0">
-                {(['female', 'male'] as const).map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setAddGender(g)}
-                    className={`text-[10px] px-2.5 py-2 rounded-lg border transition-colors ${
-                      addGender === g ? 'chip-active' : 'chip'
-                    }`}
-                  >
-                    {g === 'male' ? 'M' : 'F'}
-                  </button>
-                ))}
-              </div>
-              )}
-              <button
-                type="button"
-                onClick={hostAddParticipant}
-                disabled={!addName.trim() || adding}
-                className="btn-secondary text-sm px-4 py-2 shrink-0 disabled:opacity-40"
-              >
-                {adding ? '…' : 'Add'}
-              </button>
-            </div>
-            {addError && <p className="text-red-300/90 text-xs">{addError}</p>}
-          </div>
-          <p className="text-faint text-xs">
-            {isMltImport
-              ? 'Everyone on the list can be voted for — players join separately to vote'
-              : 'Tap gender to correct · Remove if someone shouldn\'t be in the poll'}
-          </p>
-          {isMltImport && (
-            <p className="text-faint text-xs text-center">
-              {participants.length} on the list · {players.length} voter{players.length === 1 ? '' : 's'} joined
-            </p>
-          )}
-          {participants.length > 8 && (
-            <div className="space-y-1">
-              <div className="relative">
+          <div className="glass-card p-4 space-y-3">
+            <p className="text-muted text-xs uppercase tracking-wider">On the list ({participants.length})</p>
+            <div className="surface-inset border border-theme rounded-xl p-3 space-y-2">
+              <p className="text-faint text-xs">Add someone to the list</p>
+              <div className="flex gap-2">
                 <input
-                  type="search"
-                  value={listSearch}
-                  onChange={(e) => setListSearch(e.target.value)}
-                  placeholder="Search the list…"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  className="input-field py-2 text-sm pr-9"
+                  value={addName}
+                  onChange={(e) => {
+                    setAddName(e.target.value)
+                    if (addError) setAddError(null)
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && hostAddParticipant()}
+                  placeholder="Name"
+                  className="input-field flex-1 py-2 text-sm"
                 />
-                {listSearch && (
-                  <button
-                    type="button"
-                    onClick={() => setListSearch('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-body text-sm"
-                    aria-label="Clear search"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-              {listSearch.trim() && (
-                <p className="text-faint text-[10px] uppercase tracking-wider px-0.5">
-                  {filteredListParticipants.length} of {participants.length} shown
-                </p>
-              )}
-            </div>
-          )}
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {filteredListParticipants.length === 0 ? (
-              <p className="text-faint text-sm text-center py-6">
-                {listSearch.trim() ? 'No names match your search' : 'No one on the list yet'}
-              </p>
-            ) : (
-            filteredListParticipants.map((p) => (
-              <div key={p.id} className="flex items-center gap-2 min-w-0 surface-inset border border-theme rounded-xl px-3 py-2">
-                <span className="text-body-muted text-sm truncate flex-1">{p.name}</span>
                 {!isMltImport && (
-                <div className="flex gap-1 shrink-0">
-                  {(['female', 'male'] as const).map((g) => (
-                    <button
-                      key={g}
-                      type="button"
-                      disabled={adminBusy === p.id}
-                      onClick={() => hostUpdateParticipant(p.id, g)}
-                      className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
-                        p.gender === g ? 'chip-active' : 'chip'
-                      }`}
-                    >
-                      {g === 'male' ? 'M' : 'F'}
-                    </button>
-                  ))}
-                </div>
+                  <div className="flex gap-1 shrink-0">
+                    {(['female', 'male'] as const).map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => setAddGender(g)}
+                        className={`text-[10px] px-2.5 py-2 rounded-lg border transition-colors ${
+                          addGender === g ? 'chip-active' : 'chip'
+                        }`}
+                      >
+                        {g === 'male' ? 'M' : 'F'}
+                      </button>
+                    ))}
+                  </div>
                 )}
                 <button
                   type="button"
-                  disabled={adminBusy === p.id}
-                  onClick={() => hostRemoveParticipant(p.id, p.name)}
-                  className="text-red-400/80 text-xs shrink-0 hover:text-red-300 disabled:opacity-40"
+                  onClick={hostAddParticipant}
+                  disabled={!addName.trim() || adding}
+                  className="btn-secondary text-sm px-4 py-2 shrink-0 disabled:opacity-40"
                 >
-                  Remove
+                  {adding ? '…' : 'Add'}
                 </button>
               </div>
-            ))
+              {addError && <p className="text-red-300/90 text-xs">{addError}</p>}
+            </div>
+            <p className="text-faint text-xs">
+              {isMltImport
+                ? 'Everyone on the list can be voted for — players join separately to vote'
+                : "Tap gender to correct · Remove if someone shouldn't be in the poll"}
+            </p>
+            {isMltImport && (
+              <p className="text-faint text-xs text-center">
+                {participants.length} on the list · {players.length} voter{players.length === 1 ? '' : 's'} joined
+              </p>
             )}
+            {participants.length > 8 && (
+              <div className="space-y-1">
+                <div className="relative">
+                  <input
+                    type="search"
+                    value={listSearch}
+                    onChange={(e) => setListSearch(e.target.value)}
+                    placeholder="Search the list…"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="input-field py-2 text-sm pr-9"
+                  />
+                  {listSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setListSearch('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-body text-sm"
+                      aria-label="Clear search"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                {listSearch.trim() && (
+                  <p className="text-faint text-[10px] uppercase tracking-wider px-0.5">
+                    {filteredListParticipants.length} of {participants.length} shown
+                  </p>
+                )}
+              </div>
+            )}
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {filteredListParticipants.length === 0 ? (
+                <p className="text-faint text-sm text-center py-6">
+                  {listSearch.trim() ? 'No names match your search' : 'No one on the list yet'}
+                </p>
+              ) : (
+                filteredListParticipants.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center gap-2 min-w-0 surface-inset border border-theme rounded-xl px-3 py-2"
+                  >
+                    <span className="text-body-muted text-sm truncate flex-1">{p.name}</span>
+                    {!isMltImport && (
+                      <div className="flex gap-1 shrink-0">
+                        {(['female', 'male'] as const).map((g) => (
+                          <button
+                            key={g}
+                            type="button"
+                            disabled={adminBusy === p.id}
+                            onClick={() => hostUpdateParticipant(p.id, g)}
+                            className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                              p.gender === g ? 'chip-active' : 'chip'
+                            }`}
+                          >
+                            {g === 'male' ? 'M' : 'F'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      disabled={adminBusy === p.id}
+                      onClick={() => hostRemoveParticipant(p.id, p.name)}
+                      className="text-red-400/80 text-xs shrink-0 hover:text-red-300 disabled:opacity-40"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
-        </div>
         )}
 
-        <button
-          onClick={handleStart}
-          disabled={!canStart || starting}
-          className="btn-primary"
-        >
+        <button onClick={handleStart} disabled={!canStart || starting} className="btn-primary">
           {starting
             ? 'Starting...'
             : !canStart
               ? isWst && participants.length < 2
                 ? `Need at least 2 names on the list (${participants.length}/2)`
-              : isWst && wstSubmitters.length < 2
-                ? `Need 2+ players who claimed a name (${wstSubmitters.length} ready)`
-              : isWst && wstPool.length < 2
-                ? `Need 2+ quotes in the pool (${wstPool.length} submitted)`
-              : isMltImport && participants.length < 2
-                ? `Need at least 2 names on the list (${participants.length}/2)`
-              : isMltImport && players.length === 0
-                ? 'Waiting for voters to join...'
-              : isMlt && !isMltImport && players.length < 2
-                ? `Need at least 2 players (${players.length}/2)`
-              : isWyr && players.length === 0
-                ? 'Waiting for players...'
-              : isJoinersMode
-                ? participants.length < minPool
-                  ? `Need ${minPool - participants.length} more to start`
-                  : roundsTooHigh
-                    ? `Lower to ${maxRounds} rounds max`
-                  : `Need ${minPool}+ of one gender to start`
-                : players.length === 0
-                  ? 'Waiting for players...'
-                  : roundParticipants.length < minPool
-                    ? `Need ${minPool - roundParticipants.length} more to join (${roundParticipants.length}/${minPool})`
-                  : roundsTooHigh
-                    ? `Lower to ${maxRounds} rounds max`
-                  : !voterCheck.ok
-                    ? 'Need voters for each list'
-                  : `Need ${minPool}+ joined of one gender`
+                : isWst && wstSubmitters.length < 2
+                  ? `Need 2+ players who claimed a name (${wstSubmitters.length} ready)`
+                  : isWst && wstPool.length < 2
+                    ? `Need 2+ quotes in the pool (${wstPool.length} submitted)`
+                    : isMltImport && participants.length < 2
+                      ? `Need at least 2 names on the list (${participants.length}/2)`
+                      : isMltImport && players.length === 0
+                        ? 'Waiting for voters to join...'
+                        : isMlt && !isMltImport && players.length < 2
+                          ? `Need at least 2 players (${players.length}/2)`
+                          : isWyr && players.length === 0
+                            ? 'Waiting for players...'
+                            : isJoinersMode
+                              ? participants.length < minPool
+                                ? `Need ${minPool - participants.length} more to start`
+                                : roundsTooHigh
+                                  ? `Lower to ${maxRounds} rounds max`
+                                  : `Need ${minPool}+ of one gender to start`
+                              : players.length === 0
+                                ? 'Waiting for players...'
+                                : roundParticipants.length < minPool
+                                  ? `Need ${minPool - roundParticipants.length} more to join (${roundParticipants.length}/${minPool})`
+                                  : roundsTooHigh
+                                    ? `Lower to ${maxRounds} rounds max`
+                                    : !voterCheck.ok
+                                      ? 'Need voters for each list'
+                                      : `Need ${minPool}+ joined of one gender`
               : `Start Game (${players.length} players)`}
         </button>
       </div>
@@ -1396,9 +1515,7 @@ export default function HostPage() {
     const voterHint = roundVoterLabel(roundParticipantGender)
     const eligible = eligibleVotersForRound(roundParticipantGender, players, gameType)
     const eligibleIds = new Set(eligible.map((p) => p.id))
-    const eligibleVotes = isNameOnly
-      ? roundVotes
-      : roundVotes.filter((v) => eligibleIds.has(v.player_id))
+    const eligibleVotes = isNameOnly ? roundVotes : roundVotes.filter((v) => eligibleIds.has(v.player_id))
     const voteDenominator = isNameOnly ? players.length : eligible.length
     const allVoted = eligibleVotes.length >= voteDenominator && voteDenominator > 0
 
@@ -1406,9 +1523,7 @@ export default function HostPage() {
       const submitterName = wstSubmitterName(currentRound.submitter_player_id, players)
       const quote = currentRound.quote_text
       const voterTotal = Math.max(players.length - 1, 0)
-      const voterVotes = quote
-        ? roundVotes.filter((v) => v.player_id !== currentRound.submitter_player_id)
-        : []
+      const voterVotes = quote ? roundVotes.filter((v) => v.player_id !== currentRound.submitter_player_id) : []
       const allVotedWst = voterVotes.length >= voterTotal && voterTotal > 0
 
       return (
@@ -1432,7 +1547,9 @@ export default function HostPage() {
                 <p className="text-body text-base leading-snug text-center font-medium italic">&ldquo;{quote}&rdquo;</p>
               </>
             ) : (
-              <p className="text-muted text-sm text-center">Waiting for {submitterName ?? 'writer'} to submit a quote…</p>
+              <p className="text-muted text-sm text-center">
+                Waiting for {submitterName ?? 'writer'} to submit a quote…
+              </p>
             )}
             {!quote && timeLeft === 0 && (
               <p className="callout-warning text-sm text-center">
@@ -1464,7 +1581,13 @@ export default function HostPage() {
             disabled={ending || (quote ? voterVotes.length === 0 : timeLeft > 0)}
             className="btn-secondary"
           >
-            {ending ? 'Ending...' : quote ? 'End Round Early' : timeLeft === 0 ? 'Skip Round (no quote)' : 'End Round Early'}
+            {ending
+              ? 'Ending...'
+              : quote
+                ? 'End Round Early'
+                : timeLeft === 0
+                  ? 'Skip Round (no quote)'
+                  : 'End Round Early'}
           </button>
         </div>
       )
@@ -1486,9 +1609,7 @@ export default function HostPage() {
 
           <div className="glass-card p-5 space-y-3">
             <p className="text-muted text-xs uppercase tracking-wider text-center">Most likely to…</p>
-            <p className="text-body text-base leading-snug text-center font-medium">
-              {currentRound.mlt_question}
-            </p>
+            <p className="text-body text-base leading-snug text-center font-medium">{currentRound.mlt_question}</p>
           </div>
 
           <div className="glass-card p-4 space-y-3">
@@ -1508,11 +1629,7 @@ export default function HostPage() {
             <p className="text-faint text-xs text-center">Votes are anonymous — winner is shown after the round</p>
           </div>
 
-          <button
-            onClick={handleEndRound}
-            disabled={ending || eligibleVotes.length === 0}
-            className="btn-secondary"
-          >
+          <button onClick={handleEndRound} disabled={ending || eligibleVotes.length === 0} className="btn-secondary">
             {ending ? 'Ending...' : 'End Round Early'}
           </button>
         </div>
@@ -1536,8 +1653,7 @@ export default function HostPage() {
           <div className="glass-card p-5 space-y-3">
             <p className="text-muted text-xs uppercase tracking-wider text-center">Would you rather…</p>
             <p className="text-body text-sm leading-relaxed text-center">
-              <span className="label-violet font-medium">{currentRound.wyr_option_a}</span>
-              {' '}or{' '}
+              <span className="label-violet font-medium">{currentRound.wyr_option_a}</span> or{' '}
               <span className="label-sky font-medium">{currentRound.wyr_option_b}</span>?
             </p>
           </div>
@@ -1556,14 +1672,12 @@ export default function HostPage() {
                 style={{ width: players.length > 0 ? `${(eligibleVotes.length / players.length) * 100}%` : '0%' }}
               />
             </div>
-            <p className="text-faint text-xs text-center">Votes are anonymous — only totals are shown after the round</p>
+            <p className="text-faint text-xs text-center">
+              Votes are anonymous — only totals are shown after the round
+            </p>
           </div>
 
-          <button
-            onClick={handleEndRound}
-            disabled={ending || eligibleVotes.length === 0}
-            className="btn-secondary"
-          >
+          <button onClick={handleEndRound} disabled={ending || eligibleVotes.length === 0} className="btn-secondary">
             {ending ? 'Ending...' : 'End Round Early'}
           </button>
         </div>
@@ -1576,7 +1690,10 @@ export default function HostPage() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-muted text-xs uppercase tracking-wider">Round</p>
-            <p className="font-black text-body text-3xl">{currentRound.round_number}<span className="text-faint font-normal text-lg"> / {game.rounds_count}</span></p>
+            <p className="font-black text-body text-3xl">
+              {currentRound.round_number}
+              <span className="text-faint font-normal text-lg"> / {game.rounds_count}</span>
+            </p>
           </div>
           <TimerDisplay seconds={timeLeft} total={game.timer_seconds} />
         </div>
@@ -1586,9 +1703,7 @@ export default function HostPage() {
           <p className="text-muted text-xs uppercase tracking-wider mb-2">
             This Round{roundGender ? ` · ${roundGender}` : ''}
           </p>
-          {voterHint && (
-            <p className="text-[var(--primary)] text-xs mb-2">{voterHint}</p>
-          )}
+          {voterHint && <p className="text-[var(--primary)] text-xs mb-2">{voterHint}</p>}
           <div className="flex gap-2">
             {roundParts.map((p) => (
               <div key={p.id} className="flex-1 glass-card p-3 text-center">
@@ -1615,22 +1730,23 @@ export default function HostPage() {
             />
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {!game.anonymous && players.map((pl) => {
-              const canVote = eligibleIds.has(pl.id)
-              const voted = roundVotes.some((v) => v.player_id === pl.id)
-              return (
-                <div
-                  key={pl.id}
-                  className={`flex items-center gap-1.5 text-xs ${
-                    !canVote ? 'text-faint' : voted ? 'text-green-400' : 'text-faint'
-                  }`}
-                >
-                  <span>{!canVote ? '—' : voted ? '✓' : '○'}</span>
-                  <span className="truncate">{pl.name}</span>
-                  {!canVote && <span className="text-[10px] shrink-0">watch</span>}
-                </div>
-              )
-            })}
+            {!game.anonymous &&
+              players.map((pl) => {
+                const canVote = eligibleIds.has(pl.id)
+                const voted = roundVotes.some((v) => v.player_id === pl.id)
+                return (
+                  <div
+                    key={pl.id}
+                    className={`flex items-center gap-1.5 text-xs ${
+                      !canVote ? 'text-faint' : voted ? 'text-green-400' : 'text-faint'
+                    }`}
+                  >
+                    <span>{!canVote ? '—' : voted ? '✓' : '○'}</span>
+                    <span className="truncate">{pl.name}</span>
+                    {!canVote && <span className="text-[10px] shrink-0">watch</span>}
+                  </div>
+                )
+              })}
           </div>
         </div>
 
@@ -1641,9 +1757,12 @@ export default function HostPage() {
             <div className="space-y-2">
               {roundParts.map((p) => {
                 const counts = getVoteCategories(gameType).map((category) => {
-                  const field = category === 'kiss' ? 'kiss_participant_id'
-                    : category === 'marry' ? 'marry_participant_id'
-                    : 'kill_participant_id'
+                  const field =
+                    category === 'kiss'
+                      ? 'kiss_participant_id'
+                      : category === 'marry'
+                        ? 'marry_participant_id'
+                        : 'kill_participant_id'
                   return {
                     meta: getCategoryMeta(gameType, category),
                     count: roundVotes.filter((v) => v[field] === p.id).length,
@@ -1672,10 +1791,15 @@ export default function HostPage() {
           disabled={ending}
           className={allVoted || timeLeft === 0 ? 'btn-primary animate-pulse' : 'btn-secondary text-muted'}
         >
-          {ending ? 'Ending round...' :
-           currentRound.round_number >= game.rounds_count
-             ? (allVoted ? '🏁 End Round & Show Results' : `End Round (${eligibleVotes.length}/${eligible.length} voted)`)
-             : (allVoted ? '✓ End Round & Show Results' : `End Round (${eligibleVotes.length}/${eligible.length} voted)`)}
+          {ending
+            ? 'Ending round...'
+            : currentRound.round_number >= game.rounds_count
+              ? allVoted
+                ? '🏁 End Round & Show Results'
+                : `End Round (${eligibleVotes.length}/${eligible.length} voted)`
+              : allVoted
+                ? '✓ End Round & Show Results'
+                : `End Round (${eligibleVotes.length}/${eligible.length} voted)`}
         </button>
       </div>
     )
@@ -1744,55 +1868,58 @@ export default function HostPage() {
             voterCount={voterCount}
           />
         ) : (
-        (() => {
-          const tallies = tallyRoundVotes(
-            roundParts.map((p) => p.id),
-            roundVotes
-          )
-          const nameById = new Map(roundParts.map((p) => [p.id, p.name]))
+          (() => {
+            const tallies = tallyRoundVotes(
+              roundParts.map((p) => p.id),
+              roundVotes
+            )
+            const nameById = new Map(roundParts.map((p) => [p.id, p.name]))
 
-          return (
-            <ParticipantRoundResults
-              gameType={gameType}
-              tallies={tallies}
-              nameById={nameById}
-              voterCount={roundVotes.length}
-              participantDetails={roundParts.map((p) => ({ id: p.id, name: p.name, gender: p.gender }))}
-              renderCard={
-                isPairGame(gameType)
-                  ? undefined
-                  : ({ tally, name, maxes, isWinner }) => (
-                <div key={tally.id} className="glass-card p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Avatar name={name} size="sm" />
-                    <p className="font-bold text-body text-lg">{name}</p>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {getVoteCategories(gameType).map((category) => {
-                      const meta = getCategoryMeta(gameType, category)
-                      return (
-                        <VoteCountStat
-                          key={category}
-                          emoji={meta.emoji}
-                          label={meta.label}
-                          count={tally[category]}
-                          max={maxes[category]}
-                          color={meta.color}
-                          isWinner={isWinner(category)}
-                        />
+            return (
+              <ParticipantRoundResults
+                gameType={gameType}
+                tallies={tallies}
+                nameById={nameById}
+                voterCount={roundVotes.length}
+                participantDetails={roundParts.map((p) => ({ id: p.id, name: p.name, gender: p.gender }))}
+                renderCard={
+                  isPairGame(gameType)
+                    ? undefined
+                    : ({ tally, name, maxes, isWinner }) => (
+                        <div key={tally.id} className="glass-card p-4">
+                          <div className="flex items-center gap-3 mb-3">
+                            <Avatar name={name} size="sm" />
+                            <p className="font-bold text-body text-lg">{name}</p>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            {getVoteCategories(gameType).map((category) => {
+                              const meta = getCategoryMeta(gameType, category)
+                              return (
+                                <VoteCountStat
+                                  key={category}
+                                  emoji={meta.emoji}
+                                  label={meta.label}
+                                  count={tally[category]}
+                                  max={maxes[category]}
+                                  color={meta.color}
+                                  isWinner={isWinner(category)}
+                                />
+                              )
+                            })}
+                          </div>
+                        </div>
                       )
-                    })}
-                  </div>
-                </div>
-              )}
-            />
-          )
-        })()
+                }
+              />
+            )
+          })()
         )}
 
         {roundConfessions.length > 0 && (
           <div>
-            <h2 className="text-muted text-xs uppercase tracking-wider mb-3">🔥 Hot Takes ({roundConfessions.length})</h2>
+            <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
+              🔥 Hot Takes ({roundConfessions.length})
+            </h2>
             <div className="space-y-2">
               {roundConfessions.map((c) => (
                 <div key={c.id} className="glass-card px-4 py-3">
@@ -1811,21 +1938,13 @@ export default function HostPage() {
                 : 'Final leaderboard in a few seconds...'}
             </p>
           ) : (
-            <button
-              onClick={handleFinishGame}
-              disabled={finishing}
-              className="btn-primary"
-            >
+            <button onClick={handleFinishGame} disabled={finishing} className="btn-primary">
               {finishing ? 'Loading...' : '🏆 Show Final Leaderboard'}
             </button>
           )
         ) : (
           <>
-            <button
-              onClick={handleNextRound}
-              disabled={advancing}
-              className="btn-primary"
-            >
+            <button onClick={handleNextRound} disabled={advancing} className="btn-primary">
               {advancing ? 'Starting...' : `→ Start Round ${lastFinishedRound.round_number + 1}`}
             </button>
             {!advancing && nextRoundCountdown > 0 && (
@@ -1861,9 +1980,9 @@ export default function HostPage() {
               ? ` · ${pollCount} in poll`
               : isWst
                 ? ` · ${participants.length} names`
-              : !isWyr && !isMlt
-                ? ` · ${playedParticipants.length} in game`
-                : ''}
+                : !isWyr && !isMlt
+                  ? ` · ${playedParticipants.length} in game`
+                  : ''}
           </p>
         </div>
 
@@ -1872,11 +1991,7 @@ export default function HostPage() {
           <p className="text-faint text-sm">
             Send everyone back to the lobby with the same link and settings. Players stay joined — you start when ready.
           </p>
-          <button
-            onClick={handlePlayAgain}
-            disabled={playingAgain}
-            className="btn-primary w-full"
-          >
+          <button onClick={handlePlayAgain} disabled={playingAgain} className="btn-primary w-full">
             {playingAgain ? 'Resetting…' : '↻ Play Again'}
           </button>
         </div>
@@ -1900,9 +2015,7 @@ export default function HostPage() {
               const { countA, countB, voterCount } = tallyWyrVotes(roundVotes)
               return (
                 <div key={round.id}>
-                  <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
-                    Round {round.round_number}
-                  </h2>
+                  <h2 className="text-muted text-xs uppercase tracking-wider mb-3">Round {round.round_number}</h2>
                   <WyrRoundResults
                     optionA={round.wyr_option_a ?? ''}
                     optionB={round.wyr_option_b ?? ''}
@@ -1928,9 +2041,7 @@ export default function HostPage() {
               )
               return (
                 <div key={round.id}>
-                  <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
-                    Round {round.round_number}
-                  </h2>
+                  <h2 className="text-muted text-xs uppercase tracking-wider mb-3">Round {round.round_number}</h2>
                   <WstRoundResults
                     quote={round.quote_text ?? '(no quote submitted)'}
                     rows={rows}
@@ -1950,16 +2061,10 @@ export default function HostPage() {
               const roundVotes = votes.filter((v) => v.round_id === round.id)
               const mltKind = isMltImport ? 'participant' : 'player'
               const mltTargets = mltVoteTargets(game, participants, players)
-              const { rows, voterCount, maxCount, winnerNames } = tallyMltVotes(
-                roundVotes,
-                mltTargets,
-                mltKind
-              )
+              const { rows, voterCount, maxCount, winnerNames } = tallyMltVotes(roundVotes, mltTargets, mltKind)
               return (
                 <div key={round.id}>
-                  <h2 className="text-muted text-xs uppercase tracking-wider mb-3">
-                    Round {round.round_number}
-                  </h2>
+                  <h2 className="text-muted text-xs uppercase tracking-wider mb-3">Round {round.round_number}</h2>
                   <MltRoundResults
                     question={round.mlt_question ?? ''}
                     rows={rows}
@@ -1997,7 +2102,6 @@ export default function HostPage() {
             </div>
           </div>
         )}
-
       </div>
     )
   }
@@ -2022,7 +2126,19 @@ function TimerDisplay({ seconds, total }: { seconds: number; total: number }) {
   )
 }
 
-function StatCard({ emoji, label, name, count, accentColor }: { emoji: string; label: string; name?: string; count?: number; accentColor: string }) {
+function StatCard({
+  emoji,
+  label,
+  name,
+  count,
+  accentColor,
+}: {
+  emoji: string
+  label: string
+  name?: string
+  count?: number
+  accentColor: string
+}) {
   return (
     <div
       className="glass-card border rounded-2xl p-3 text-center"

@@ -7,7 +7,9 @@ export interface WstVoteTarget {
 
 export function wstVoteTargets(participants: Participant[]): WstVoteTarget[] {
   return [...participants]
-    .sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+    .sort(
+      (a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    )
     .map((p) => ({ id: p.id, name: p.name }))
 }
 
@@ -18,8 +20,7 @@ export function mergeActiveRound(prev: Round | null, incoming: Round): Round {
     ...prev,
     ...incoming,
     quote_text: incoming.quote_text ?? prev.quote_text,
-    quote_author_participant_id:
-      incoming.quote_author_participant_id ?? prev.quote_author_participant_id,
+    quote_author_participant_id: incoming.quote_author_participant_id ?? prev.quote_author_participant_id,
     quote_submitted_at: incoming.quote_submitted_at ?? prev.quote_submitted_at,
   }
 }
@@ -28,7 +29,10 @@ export function wstEligibleSubmitters(players: Player[]): Player[] {
   return players.filter((p) => p.participant_id)
 }
 
-export function wstCorrectParticipantId(submitterPlayerId: string | null | undefined, players: Player[]): string | null {
+export function wstCorrectParticipantId(
+  submitterPlayerId: string | null | undefined,
+  players: Player[]
+): string | null {
   if (!submitterPlayerId) return null
   return players.find((p) => p.id === submitterPlayerId)?.participant_id ?? null
 }
@@ -108,12 +112,7 @@ export interface WstRoundFromPoolInput {
 }
 
 /** Build one round row per pool entry, quotes pre-filled for the guess phase. */
-export function buildRoundsFromQuotePool({
-  gameId,
-  participantIds,
-  poolEntries,
-  now,
-}: WstRoundFromPoolInput) {
+export function buildRoundsFromQuotePool({ gameId, participantIds, poolEntries, now }: WstRoundFromPoolInput) {
   const shuffled = shuffleQuotePool(poolEntries)
   return shuffled.map((entry, index) => ({
     game_id: gameId,
@@ -137,9 +136,7 @@ export function dedupeWstPool(entries: WstQuotePoolEntry[]): WstQuotePoolEntry[]
       byPlayer.set(entry.player_id, entry)
     }
   }
-  return [...byPlayer.values()].sort(
-    (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
-  )
+  return [...byPlayer.values()].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
 }
 
 export function mergeWstPoolEntry(prev: WstQuotePoolEntry[], entry: WstQuotePoolEntry): WstQuotePoolEntry[] {
@@ -162,11 +159,7 @@ export function wstQuotePoolStatus(players: Player[], pool: WstQuotePoolEntry[])
   return { submitted, awaitingQuote, notClaimed, eligible }
 }
 
-export function tallyWstVotes(
-  votes: Vote[],
-  targets: WstVoteTarget[],
-  correctParticipantId: string | null
-) {
+export function tallyWstVotes(votes: Vote[], targets: WstVoteTarget[], correctParticipantId: string | null) {
   const counts = new Map<string, number>()
   for (const t of targets) counts.set(t.id, 0)
   let correctCount = 0
@@ -227,5 +220,7 @@ export function tallyWstPlayerScores(
       name: players.find((p) => p.id === playerId)?.name ?? 'Unknown',
       correctGuesses,
     }))
-    .sort((a, b) => b.correctGuesses - a.correctGuesses || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+    .sort(
+      (a, b) => b.correctGuesses - a.correctGuesses || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    )
 }

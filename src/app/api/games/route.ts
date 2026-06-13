@@ -2,23 +2,26 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generateGameCode, generateToken } from '@/lib/utils'
 import { normalizeGender, hasEnoughForRounds, participantsNeedGender, type ParticipantInput } from '@/lib/participants'
-import { parseGameType, roundPoolSize, isLobbyGame, isWouldYouRather, isMostLikelyTo, isWhoSaidThis, isAnonymousGame, isPairGame, parsePairVoteMode } from '@/lib/game-types'
+import {
+  parseGameType,
+  roundPoolSize,
+  isLobbyGame,
+  isWouldYouRather,
+  isMostLikelyTo,
+  isWhoSaidThis,
+  isAnonymousGame,
+  isPairGame,
+  parsePairVoteMode,
+} from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
-import {
-  parseQuestionSource,
-  parseStoredWyrQuestions,
-  parseStoredMltQuestions,
-} from '@/lib/custom-questions'
+import { parseQuestionSource, parseStoredWyrQuestions, parseStoredMltQuestions } from '@/lib/custom-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import type { ParticipantMode, QuestionSource } from '@/types'
 import { createGameSchema, stripHtml } from '@/lib/validation'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 function parseParticipants(raw: unknown, gameType: ReturnType<typeof parseGameType>): ParticipantInput[] | null {
   if (!Array.isArray(raw)) return null
@@ -118,10 +121,7 @@ export async function POST(req: NextRequest) {
   if (participant_mode === 'import') {
     const participantsParsed = parseParticipants(rawParticipants, game_type)
     if (!participantsParsed || participantsParsed.length < roundPoolSize(game_type)) {
-      return NextResponse.json(
-        { error: `At least ${roundPoolSize(game_type)} participants required` },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: `At least ${roundPoolSize(game_type)} participants required` }, { status: 400 })
     }
     if (isMostLikelyTo(game_type)) {
       if (participantsParsed.length < 2) {

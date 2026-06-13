@@ -17,7 +17,9 @@ export function Modal({ open, onClose, title, subtitle, children, size = 'md' }:
     if (!open) return
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = prev }
+    return () => {
+      document.body.style.overflow = prev
+    }
   }, [open])
 
   useEffect(() => {
@@ -52,9 +54,7 @@ export function Modal({ open, onClose, title, subtitle, children, size = 'md' }:
                   {title}
                 </h2>
               )}
-              {subtitle && (
-                <p className="text-muted text-sm mt-0.5">{subtitle}</p>
-              )}
+              {subtitle && <p className="text-muted text-sm mt-0.5">{subtitle}</p>}
             </div>
             <button
               type="button"

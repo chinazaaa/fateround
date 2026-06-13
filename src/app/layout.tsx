@@ -35,9 +35,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <ToastProvider>
             <ConfirmProvider>
-            <AppBackground />
-            <ThemeToggle />
-            {children}
+              <AppBackground />
+              <ThemeToggle />
+              {children}
             </ConfirmProvider>
           </ToastProvider>
         </ThemeProvider>

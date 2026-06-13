@@ -50,16 +50,10 @@ function PairParticipantResultCard({
         <Avatar name={name} />
         <div className="min-w-0 flex-1">
           <p className="text-body font-bold text-lg leading-tight truncate">{name}</p>
-          {myFlag && (
-            <p className="text-faint text-xs mt-0.5">
-              You: {assignmentEmojiFor(gameType, myFlag)}
-            </p>
-          )}
+          {myFlag && <p className="text-faint text-xs mt-0.5">You: {assignmentEmojiFor(gameType, myFlag)}</p>}
         </div>
         {parsedGender && (
-          <span className="text-[10px] uppercase tracking-wider text-faint shrink-0">
-            {genderLabel(parsedGender)}
-          </span>
+          <span className="text-[10px] uppercase tracking-wider text-faint shrink-0">{genderLabel(parsedGender)}</span>
         )}
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -146,19 +140,13 @@ export function VoteCountStat({
         isWinner ? 'result-row-winner' : 'surface-inset'
       }`}
     >
-      {isWinner && (
-        <p className="text-[9px] uppercase tracking-wider font-bold text-muted mb-1">Winner</p>
-      )}
+      {isWinner && <p className="text-[9px] uppercase tracking-wider font-bold text-muted mb-1">Winner</p>}
       <p className="text-base leading-none">
-        {emoji}{' '}
-        <span className={`font-black ${isWinner ? 'text-body' : 'text-body'}`}>{count}</span>
+        {emoji} <span className={`font-black ${isWinner ? 'text-body' : 'text-body'}`}>{count}</span>
       </p>
       <p className="text-faint text-xs mt-1.5">{label}</p>
       <div className="bar-track-sm mt-2.5">
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${pct}%`, backgroundColor: color }}
-        />
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
       </div>
     </div>
   )
@@ -194,8 +182,7 @@ export function ParticipantRoundResults({
 
   if (isPairGame(gameType)) {
     const details =
-      participantDetails ??
-      tallies.map((t) => ({ id: t.id, name: nameById.get(t.id) ?? '', gender: null }))
+      participantDetails ?? tallies.map((t) => ({ id: t.id, name: nameById.get(t.id) ?? '', gender: null }))
 
     return (
       <div className="space-y-4">
@@ -264,14 +251,8 @@ function WyrOptionStat({
   const pct = max > 0 ? Math.min((count / max) * 100, 100) : 0
 
   return (
-    <div
-      className={`rounded-xl px-3 py-3 transition-colors ${
-        isWinner ? 'result-row-winner' : 'surface-inset'
-      }`}
-    >
-      {isWinner && (
-        <p className="text-[9px] uppercase tracking-wider font-bold text-muted mb-1 text-center">Winner</p>
-      )}
+    <div className={`rounded-xl px-3 py-3 transition-colors ${isWinner ? 'result-row-winner' : 'surface-inset'}`}>
+      {isWinner && <p className="text-[9px] uppercase tracking-wider font-bold text-muted mb-1 text-center">Winner</p>}
       <p className="text-[10px] uppercase tracking-wider text-faint text-center">{label}</p>
       <p className="text-body text-xs mt-2 leading-snug line-clamp-4 min-h-[3rem]">{text}</p>
       <p className="text-center mt-3">
@@ -279,10 +260,7 @@ function WyrOptionStat({
         <span className="text-faint text-xs ml-1">votes</span>
       </p>
       <div className="bar-track-sm mt-2">
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${pct}%`, backgroundColor: color }}
-        />
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
       </div>
     </div>
   )
@@ -306,8 +284,7 @@ export function WyrRoundResults({
   const max = Math.max(countA, countB, 1)
   const aWins = countA > countB
   const bWins = countB > countA
-  const borderCls =
-    myChoice === 'a' ? 'border-violet-500/40' : myChoice === 'b' ? 'border-sky-500/40' : 'border-theme'
+  const borderCls = myChoice === 'a' ? 'border-violet-500/40' : myChoice === 'b' ? 'border-sky-500/40' : 'border-theme'
 
   return (
     <div className="space-y-4">
@@ -316,34 +293,14 @@ export function WyrRoundResults({
       </p>
       <div className={`glass-card border-2 ${borderCls} rounded-2xl p-4 space-y-4`}>
         <p className="text-body-muted text-sm text-center leading-relaxed">
-          Would you rather{' '}
-          <span className="label-violet font-medium">{optionA}</span>
-          {' '}or{' '}
+          Would you rather <span className="label-violet font-medium">{optionA}</span> or{' '}
           <span className="label-sky font-medium">{optionB}</span>?
         </p>
         <div className="grid grid-cols-2 gap-3">
-          <WyrOptionStat
-            label="Option A"
-            text={optionA}
-            count={countA}
-            max={max}
-            color="#a78bfa"
-            isWinner={aWins}
-          />
-          <WyrOptionStat
-            label="Option B"
-            text={optionB}
-            count={countB}
-            max={max}
-            color="#38bdf8"
-            isWinner={bWins}
-          />
+          <WyrOptionStat label="Option A" text={optionA} count={countA} max={max} color="#a78bfa" isWinner={aWins} />
+          <WyrOptionStat label="Option B" text={optionB} count={countB} max={max} color="#38bdf8" isWinner={bWins} />
         </div>
-        {myChoice && (
-          <p className="text-faint text-xs text-center">
-            You picked Option {myChoice.toUpperCase()}
-          </p>
-        )}
+        {myChoice && <p className="text-faint text-xs text-center">You picked Option {myChoice.toUpperCase()}</p>}
       </div>
     </div>
   )
@@ -403,34 +360,32 @@ export function MltRoundResults({
             </p>
           )}
           {showAll && rows.length > RESULTS_PAGE_SIZE && (
-            <p className="text-faint text-[10px] uppercase tracking-wider text-center">
-              All {rows.length} names
-            </p>
+            <p className="text-faint text-[10px] uppercase tracking-wider text-center">All {rows.length} names</p>
           )}
           <div className="space-y-2">
-          {pageRows.map((row) => {
-            const isWinner = maxCount > 0 && row.count === maxCount
-            const pct = Math.min((row.count / barMax) * 100, 100)
-            return (
-              <div
-                key={row.playerId}
-                className={`rounded-xl px-3 py-2.5 ${isWinner ? 'result-row-winner-amber' : 'result-row'}`}
-              >
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <p className={`text-sm truncate ${isWinner ? 'text-body font-semibold' : 'text-body'}`}>
-                    {row.name}
-                  </p>
-                  <span className="text-sm font-bold text-body shrink-0">{row.count}</span>
+            {pageRows.map((row) => {
+              const isWinner = maxCount > 0 && row.count === maxCount
+              const pct = Math.min((row.count / barMax) * 100, 100)
+              return (
+                <div
+                  key={row.playerId}
+                  className={`rounded-xl px-3 py-2.5 ${isWinner ? 'result-row-winner-amber' : 'result-row'}`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <p className={`text-sm truncate ${isWinner ? 'text-body font-semibold' : 'text-body'}`}>
+                      {row.name}
+                    </p>
+                    <span className="text-sm font-bold text-body shrink-0">{row.count}</span>
+                  </div>
+                  <div className="bar-track-xs">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${pct}%`, backgroundColor: isWinner ? '#fbbf24' : '#64748b' }}
+                    />
+                  </div>
                 </div>
-                <div className="bar-track-xs">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{ width: `${pct}%`, backgroundColor: isWinner ? '#fbbf24' : '#64748b' }}
-                  />
-                </div>
-              </div>
-            )
-          })}
+              )
+            })}
           </div>
           <ResultsPagination
             page={page}
@@ -450,9 +405,7 @@ export function MltRoundResults({
           )}
         </div>
 
-        {myPickName && (
-          <p className="text-faint text-xs text-center">You picked {myPickName}</p>
-        )}
+        {myPickName && <p className="text-faint text-xs text-center">You picked {myPickName}</p>}
       </div>
     </div>
   )
@@ -525,7 +478,8 @@ export function WstRoundResults({
 
         {topGuesses.length > 0 && maxCount > 0 && (
           <p className="text-faint text-xs text-center">
-            Top guess{topGuesses.length > 1 ? 'es' : ''}: {topGuesses.join(', ')} ({maxCount} vote{maxCount === 1 ? '' : 's'})
+            Top guess{topGuesses.length > 1 ? 'es' : ''}: {topGuesses.join(', ')} ({maxCount} vote
+            {maxCount === 1 ? '' : 's'})
           </p>
         )}
 
@@ -536,37 +490,36 @@ export function WstRoundResults({
             </p>
           )}
           {showAll && rows.length > RESULTS_PAGE_SIZE && (
-            <p className="text-faint text-[10px] uppercase tracking-wider text-center">
-              All {rows.length} names
-            </p>
+            <p className="text-faint text-[10px] uppercase tracking-wider text-center">All {rows.length} names</p>
           )}
           <div className="space-y-2">
-          {pageRows.map((row) => {
-            const isTop = maxCount > 0 && row.count === maxCount
-            const isCorrect = correctName && row.name === correctName
-            const pct = Math.min((row.count / barMax) * 100, 100)
-            return (
-              <div
-                key={row.participantId}
-                className={`rounded-xl px-3 py-2.5 ${
-                  isCorrect ? 'result-row-winner-teal' : isTop ? 'result-row-winner' : 'result-row'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <p className={`text-sm truncate ${isCorrect ? 'text-accent-correct' : 'text-body'}`}>
-                    {row.name}{isCorrect ? ' ✓' : ''}
-                  </p>
-                  <span className="text-sm font-bold text-body shrink-0">{row.count}</span>
+            {pageRows.map((row) => {
+              const isTop = maxCount > 0 && row.count === maxCount
+              const isCorrect = correctName && row.name === correctName
+              const pct = Math.min((row.count / barMax) * 100, 100)
+              return (
+                <div
+                  key={row.participantId}
+                  className={`rounded-xl px-3 py-2.5 ${
+                    isCorrect ? 'result-row-winner-teal' : isTop ? 'result-row-winner' : 'result-row'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <p className={`text-sm truncate ${isCorrect ? 'text-accent-correct' : 'text-body'}`}>
+                      {row.name}
+                      {isCorrect ? ' ✓' : ''}
+                    </p>
+                    <span className="text-sm font-bold text-body shrink-0">{row.count}</span>
+                  </div>
+                  <div className="bar-track-xs">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${pct}%`, backgroundColor: isCorrect ? '#2dd4bf' : '#64748b' }}
+                    />
+                  </div>
                 </div>
-                <div className="bar-track-xs">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{ width: `${pct}%`, backgroundColor: isCorrect ? '#2dd4bf' : '#64748b' }}
-                  />
-                </div>
-              </div>
-            )
-          })}
+              )
+            })}
           </div>
           <ResultsPagination
             page={page}
@@ -586,9 +539,7 @@ export function WstRoundResults({
           )}
         </div>
 
-        {myPickName && (
-          <p className="text-faint text-xs text-center">You guessed {myPickName}</p>
-        )}
+        {myPickName && <p className="text-faint text-xs text-center">You guessed {myPickName}</p>}
       </div>
     </div>
   )

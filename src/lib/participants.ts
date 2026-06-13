@@ -1,4 +1,12 @@
-import { roundPoolSize, isWouldYouRather, isMostLikelyTo, isWhoSaidThis, isLobbyGame, isNameOnlyPlayerJoin, parseGameType } from '@/lib/game-types'
+import {
+  roundPoolSize,
+  isWouldYouRather,
+  isMostLikelyTo,
+  isWhoSaidThis,
+  isLobbyGame,
+  isNameOnlyPlayerJoin,
+  parseGameType,
+} from '@/lib/game-types'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import type { GameType, ParticipantMode } from '@/types'
@@ -39,7 +47,10 @@ function splitRow(line: string): string[] {
 
 /** Parse pasted text or CSV file content (name + gender columns). */
 export function parseParticipantRows(text: string): ParticipantInput[] {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
   const rows: ParticipantInput[] = []
 
   for (const line of lines) {
@@ -69,7 +80,10 @@ export function playerJoinNeedsGender(gameType?: GameType | string): boolean {
 
 /** Parse name-only rows (one name per line or single CSV column). Gender defaults for DB storage. */
 export function parseNameOnlyRows(text: string): ParticipantInput[] {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
   const rows: ParticipantInput[] = []
 
   for (const line of lines) {
@@ -108,10 +122,7 @@ export function participantSampleFile(gameType?: GameType | string): { href: str
   return { href: '/participants-sample-names.csv', download: 'participants-sample-names.csv' }
 }
 
-export function mergeParticipants(
-  existing: ParticipantInput[],
-  incoming: ParticipantInput[]
-): ParticipantInput[] {
+export function mergeParticipants(existing: ParticipantInput[], incoming: ParticipantInput[]): ParticipantInput[] {
   const seen = new Set(existing.map((p) => `${p.name.toLowerCase()}|${p.gender}`))
   const merged = [...existing]
   for (const p of incoming) {
@@ -191,10 +202,7 @@ export function countByGender(participants: ParticipantInput[]): Record<Particip
   )
 }
 
-export function hasEnoughForRounds(
-  participants: ParticipantInput[],
-  gameType?: GameType | string
-): boolean {
+export function hasEnoughForRounds(participants: ParticipantInput[], gameType?: GameType | string): boolean {
   if (isWouldYouRather(gameType)) return true
   if (isMostLikelyTo(gameType)) return participants.length >= roundPoolSize(gameType)
   if (isWhoSaidThis(gameType)) return participants.length >= 2
@@ -204,10 +212,7 @@ export function hasEnoughForRounds(
 }
 
 /** Max rounds before the same names repeat heavily. */
-export function maxRecommendedRounds(
-  participants: ParticipantInput[],
-  gameType?: GameType | string
-): number {
+export function maxRecommendedRounds(participants: ParticipantInput[], gameType?: GameType | string): number {
   if (isWouldYouRather(gameType)) return Math.min(20, WYR_QUESTION_COUNT)
   if (isMostLikelyTo(gameType)) return Math.min(20, MLT_QUESTION_COUNT)
   if (isWhoSaidThis(gameType)) return Math.min(20, Math.max(participants.length, 2))
@@ -223,10 +228,7 @@ export function maxRecommendedRounds(
   return 0
 }
 
-export function roundLimitHint(
-  participants: ParticipantInput[],
-  gameType?: GameType | string
-): string | null {
+export function roundLimitHint(participants: ParticipantInput[], gameType?: GameType | string): string | null {
   if (isWouldYouRather(gameType)) {
     return `${WYR_QUESTION_COUNT} questions available → up to ${Math.min(20, WYR_QUESTION_COUNT)} rounds`
   }
@@ -288,7 +290,7 @@ export function voteTargetHint(target: VoteTarget, isJoinersMode: boolean, pollG
   if (target === 'both') {
     return isJoinersMode
       ? `You vote on every list — your name appears in the ${pollGender === 'male' ? "men's" : "women's"} poll`
-      : 'You vote on both the men\'s and women\'s lists each round'
+      : "You vote on both the men's and women's lists each round"
   }
   const voteList = voteTargetLabel(target)
   if (!isJoinersMode) return `You'll vote on the ${voteList.toLowerCase()} each round`
@@ -419,10 +421,7 @@ export function playerVoteGenderForRound(
 }
 
 /** Opposite gender votes; `both` votes on every round. */
-export function canPlayerVoteInRound(
-  playerGender: PlayerGender,
-  roundGender: ParticipantGender
-): boolean {
+export function canPlayerVoteInRound(playerGender: PlayerGender, roundGender: ParticipantGender): boolean {
   if (playerGender === 'both') return true
   return playerGender !== roundGender
 }
@@ -437,7 +436,7 @@ export function eligibleVotersForRound<
     gender: PlayerGender | string
     identity_gender?: ParticipantGender | string | null
     name: string
-  }
+  },
 >(roundGender: ParticipantGender | null, players: T[], gameType?: GameType | string): T[] {
   if (isLobbyGame(gameType) || isMostLikelyTo(gameType)) return players
   if (!roundGender) return []
@@ -482,9 +481,7 @@ export function participantsWhoJoined<T extends { id: string; name: string }>(
     if (player.name) claimedNames.add(player.name.toLowerCase())
   }
 
-  return participants.filter(
-    (p) => claimedIds.has(p.id) || claimedNames.has(p.name.toLowerCase())
-  )
+  return participants.filter((p) => claimedIds.has(p.id) || claimedNames.has(p.name.toLowerCase()))
 }
 
 /** Every poll gender needs at least one eligible voter before the game starts. */
@@ -547,7 +544,12 @@ export async function parseExcelParticipants(
 
   const grid = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '' }) as string[][]
   const lines = grid
-    .map((row) => row.map((cell) => String(cell ?? '').trim()).filter(Boolean).join('\t'))
+    .map((row) =>
+      row
+        .map((cell) => String(cell ?? '').trim())
+        .filter(Boolean)
+        .join('\t')
+    )
     .filter(Boolean)
     .join('\n')
 

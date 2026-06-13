@@ -3,12 +3,15 @@ import { createClient } from '@supabase/supabase-js'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { parseGameType, isLobbyGame, isNameOnlyPlayerJoin, isWhoSaidThis } from '@/lib/game-types'
-import { assertHostGame, deleteJoinerPair, findJoinerParticipant, pollGenderForPlayer, syncImportParticipantBallot } from '@/lib/game-admin'
+import {
+  assertHostGame,
+  deleteJoinerPair,
+  findJoinerParticipant,
+  pollGenderForPlayer,
+  syncImportParticipantBallot,
+} from '@/lib/game-admin'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 async function assertWaitingGame(gameCode: string) {
   const id = gameCode.toUpperCase()
@@ -42,16 +45,8 @@ async function assertNameOnImportList(gameId: string, name: string) {
   return !!data
 }
 
-async function participantClaimed(
-  gameId: string,
-  participantId: string,
-  excludePlayerId?: string
-) {
-  let query = supabase
-    .from('players')
-    .select('id')
-    .eq('game_id', gameId)
-    .eq('participant_id', participantId)
+async function participantClaimed(gameId: string, participantId: string, excludePlayerId?: string) {
+  let query = supabase.from('players').select('id').eq('game_id', gameId).eq('participant_id', participantId)
   if (excludePlayerId) query = query.neq('id', excludePlayerId)
   const { data } = await query.maybeSingle()
   return !!data
@@ -126,10 +121,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Select your name from the game list' }, { status: 400 })
     }
 
-    const { data: existingPlayers } = await supabase
-      .from('players')
-      .select('id, name')
-      .eq('game_id', id)
+    const { data: existingPlayers } = await supabase.from('players').select('id, name').eq('game_id', id)
 
     const { data: participant } = await supabase
       .from('participants')
@@ -184,10 +176,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Select your name from the game list' }, { status: 400 })
     }
 
-    const { data: existingPlayers } = await supabase
-      .from('players')
-      .select('id, name')
-      .eq('game_id', id)
+    const { data: existingPlayers } = await supabase.from('players').select('id, name').eq('game_id', id)
 
     const { data: participant } = await supabase
       .from('participants')
@@ -232,14 +221,7 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    await syncImportParticipantBallot(
-      supabase,
-      id,
-      participantId,
-      gender,
-      identityGender,
-      rawPollGender
-    )
+    await syncImportParticipantBallot(supabase, id, participantId, gender, identityGender, rawPollGender)
 
     return NextResponse.json({
       playerId: player.id,
@@ -253,21 +235,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'playerName is required' }, { status: 400 })
   }
 
-  const { data: existingPlayers } = await supabase
-    .from('players')
-    .select('id, name')
-    .eq('game_id', id)
+  const { data: existingPlayers } = await supabase.from('players').select('id, name').eq('game_id', id)
 
   if (existingPlayers?.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
     return NextResponse.json({ error: 'That name is already taken in this game' }, { status: 400 })
   }
 
   if (game!.participant_mode === 'joiners') {
-    const pollGender =
-      gender === 'both' ? normalizeGender(String(rawPollGender ?? '')) : gender
+    const pollGender = gender === 'both' ? normalizeGender(String(rawPollGender ?? '')) : gender
     if (!pollGender) {
       return NextResponse.json(
-        { error: gender === 'both' ? 'Pick which poll you appear in (male or female)' : 'Please select male or female' },
+        {
+          error: gender === 'both' ? 'Pick which poll you appear in (male or female)' : 'Please select male or female',
+        },
         { status: 400 }
       )
     }
@@ -351,12 +331,7 @@ export async function PATCH(req: NextRequest) {
     id = waiting.id
   }
 
-  const { data: player } = await supabase
-    .from('players')
-    .select('*')
-    .eq('id', playerId)
-    .eq('game_id', id)
-    .maybeSingle()
+  const { data: player } = await supabase.from('players').select('*').eq('id', playerId).eq('game_id', id).maybeSingle()
 
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
 
@@ -489,14 +464,13 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (rawIdentityGender !== undefined) {
-    const fallbackParticipantGender =
-      updates.participant_id
-        ? (await supabase.from('participants').select('gender').eq('id', updates.participant_id).maybeSingle()).data
+    const fallbackParticipantGender = updates.participant_id
+      ? (await supabase.from('participants').select('gender').eq('id', updates.participant_id).maybeSingle()).data
+          ?.gender
+      : player.participant_id
+        ? (await supabase.from('participants').select('gender').eq('id', player.participant_id).maybeSingle()).data
             ?.gender
-        : player.participant_id
-          ? (await supabase.from('participants').select('gender').eq('id', player.participant_id).maybeSingle()).data
-              ?.gender
-          : null
+        : null
     const identityGender = resolveIdentityGender(
       rawIdentityGender,
       voteGender,
@@ -507,14 +481,13 @@ export async function PATCH(req: NextRequest) {
     }
     updates.identity_gender = identityGender
   } else if (updates.gender !== undefined) {
-    const fallbackParticipantGender =
-      updates.participant_id
-        ? (await supabase.from('participants').select('gender').eq('id', updates.participant_id).maybeSingle()).data
+    const fallbackParticipantGender = updates.participant_id
+      ? (await supabase.from('participants').select('gender').eq('id', updates.participant_id).maybeSingle()).data
+          ?.gender
+      : player.participant_id
+        ? (await supabase.from('participants').select('gender').eq('id', player.participant_id).maybeSingle()).data
             ?.gender
-        : player.participant_id
-          ? (await supabase.from('participants').select('gender').eq('id', player.participant_id).maybeSingle()).data
-              ?.gender
-          : null
+        : null
     const identityGender = resolveIdentityGender(
       player.identity_gender,
       voteGender,
@@ -529,16 +502,12 @@ export async function PATCH(req: NextRequest) {
     voteGender = updates.identity_gender
   }
 
-  if (
-    Object.keys(updates).length === 0 &&
-    rawPollGender === undefined
-  ) {
+  if (Object.keys(updates).length === 0 && rawPollGender === undefined) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
 
-  const participant = game!.participant_mode === 'joiners'
-    ? await findJoinerParticipant(supabase, id, player.name)
-    : null
+  const participant =
+    game!.participant_mode === 'joiners' ? await findJoinerParticipant(supabase, id, player.name) : null
 
   const pollGender = pollGenderForPlayer(
     voteGender,

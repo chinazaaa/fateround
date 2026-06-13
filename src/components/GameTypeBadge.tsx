@@ -1,13 +1,7 @@
 import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import type { GameType } from '@/types'
 
-export function GameTypeBadge({
-  gameType,
-  className = '',
-}: {
-  gameType?: GameType | string
-  className?: string
-}) {
+export function GameTypeBadge({ gameType, className = '' }: { gameType?: GameType | string; className?: string }) {
   const cfg = gameTypeConfig(parseGameType(gameType))
   const { card } = cfg
 

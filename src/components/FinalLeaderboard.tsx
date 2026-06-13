@@ -46,16 +46,24 @@ export function FinalGenderLeaderboards({
   participants: Participant[]
   rounds: Round[]
   votes: Vote[]
-  TopCard: (props: { emoji: string; label: string; name?: string; count?: number; accentColor: string }) => React.ReactNode
+  TopCard: (props: {
+    emoji: string
+    label: string
+    name?: string
+    count?: number
+    accentColor: string
+  }) => React.ReactNode
 }) {
-  const sections = ([
+  const sections = [
     { gender: 'male' as const, title: "Men's leaderboard" },
     { gender: 'female' as const, title: "Women's leaderboard" },
-  ]).map(({ gender, title }) => {
-    const group = participantsInGenderRounds(participants, rounds, gender)
-    const tally = buildTally(group, votes, gameType)
-    return { gender, title, tally, group }
-  }).filter((s) => s.group.length > 0)
+  ]
+    .map(({ gender, title }) => {
+      const group = participantsInGenderRounds(participants, rounds, gender)
+      const tally = buildTally(group, votes, gameType)
+      return { gender, title, tally, group }
+    })
+    .filter((s) => s.group.length > 0)
 
   if (sections.length === 0) return null
 
@@ -103,14 +111,16 @@ export function FinalGenderBreakdown({
   rounds: Round[]
   votes: Vote[]
 }) {
-  const sections = ([
+  const sections = [
     { gender: 'male' as const, title: 'Men' },
     { gender: 'female' as const, title: 'Women' },
-  ]).map(({ gender, title }) => {
-    const group = participantsInGenderRounds(participants, rounds, gender)
-    const tally = buildTally(group, votes, gameType)
-    return { gender, title, tally }
-  }).filter((s) => s.tally.length > 0)
+  ]
+    .map(({ gender, title }) => {
+      const group = participantsInGenderRounds(participants, rounds, gender)
+      const tally = buildTally(group, votes, gameType)
+      return { gender, title, tally }
+    })
+    .filter((s) => s.tally.length > 0)
 
   if (sections.length === 0) return null
 
@@ -129,18 +139,21 @@ export function FinalGenderBreakdown({
             <h2 className="text-muted text-xs uppercase tracking-wider mb-3">{title}</h2>
             <div className="space-y-3">
               {tally
-                .sort((a, b) => (b.kissCount + b.marryCount + b.killCount) - (a.kissCount + a.marryCount + a.killCount))
+                .sort((a, b) => b.kissCount + b.marryCount + b.killCount - (a.kissCount + a.marryCount + a.killCount))
                 .map((p) => (
                   <div key={p.id} className="glass-card p-4">
                     <div className="flex items-center gap-3 mb-3">
                       <Avatar name={p.name} photoUrl={p.photo_url} size="sm" />
                       <p className="font-bold text-body text-lg">{p.name}</p>
-                      <span className="ml-auto text-[10px] uppercase tracking-wider text-faint">{genderLabel(gender)}</span>
+                      <span className="ml-auto text-[10px] uppercase tracking-wider text-faint">
+                        {genderLabel(gender)}
+                      </span>
                     </div>
                     <div className={`grid gap-2 ${categories.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
                       {categories.map((category, index) => {
                         const meta = getCategoryMeta(gameType, category)
-                        const key = category === 'kiss' ? 'kissCount' : category === 'marry' ? 'marryCount' : 'killCount'
+                        const key =
+                          category === 'kiss' ? 'kissCount' : category === 'marry' ? 'marryCount' : 'killCount'
                         const count = p[key]
                         const max = maxByCategory[index]
                         const isWinner = pairGame

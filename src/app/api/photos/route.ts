@@ -7,17 +7,22 @@ const MAX_SIZE = 2 * 1024 * 1024 // 2MB
 
 function extFromMime(mime: string): string {
   switch (mime) {
-    case 'image/jpeg': return 'jpg'
-    case 'image/png': return 'png'
-    case 'image/webp': return 'webp'
-    case 'image/gif': return 'gif'
-    default: return 'jpg'
+    case 'image/jpeg':
+      return 'jpg'
+    case 'image/png':
+      return 'png'
+    case 'image/webp':
+      return 'webp'
+    case 'image/gif':
+      return 'gif'
+    default:
+      return 'jpg'
   }
 }
 
 const MAGIC_BYTES: Record<string, number[]> = {
-  'image/jpeg': [0xFF, 0xD8, 0xFF],
-  'image/png': [0x89, 0x50, 0x4E, 0x47],
+  'image/jpeg': [0xff, 0xd8, 0xff],
+  'image/png': [0x89, 0x50, 0x4e, 0x47],
   'image/webp': [0x52, 0x49, 0x46, 0x46],
   'image/gif': [0x47, 0x49, 0x46],
 }
@@ -58,11 +63,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate game exists and is in waiting status
-    const { data: game } = await supabase
-      .from('games')
-      .select('id, status')
-      .eq('id', gameId)
-      .maybeSingle()
+    const { data: game } = await supabase.from('games').select('id, status').eq('id', gameId).maybeSingle()
 
     if (!game) {
       return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -105,12 +106,10 @@ export async function POST(req: NextRequest) {
     if (oldPaths.length > 0) await supabase.storage.from('avatars').remove(oldPaths)
 
     // Upload (upsert) to Supabase Storage
-    const { error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(storagePath, buffer, {
-        contentType: file.type,
-        upsert: true,
-      })
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(storagePath, buffer, {
+      contentType: file.type,
+      upsert: true,
+    })
 
     if (uploadError) {
       console.error('Storage upload error:', uploadError)
@@ -118,9 +117,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Get public URL
-    const { data: publicUrlData } = supabase.storage
-      .from('avatars')
-      .getPublicUrl(storagePath)
+    const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(storagePath)
 
     const publicUrl = publicUrlData.publicUrl
 

@@ -3,10 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { parseGameType, isWhoSaidThis } from '@/lib/game-types'
 import { hostActionSchema } from '@/lib/validation'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -54,24 +51,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     status: 'active',
     started_at: now,
   }
-  if (
-    isWhoSaidThis(gameType) &&
-    pendingRound?.quote_text &&
-    !pendingRound.quote_submitted_at
-  ) {
+  if (isWhoSaidThis(gameType) && pendingRound?.quote_text && !pendingRound.quote_submitted_at) {
     activateUpdate.quote_submitted_at = now
   }
 
-  await supabase
-    .from('rounds')
-    .update(activateUpdate)
-    .eq('game_id', gameId)
-    .eq('round_number', nextRoundNumber)
+  await supabase.from('rounds').update(activateUpdate).eq('game_id', gameId).eq('round_number', nextRoundNumber)
 
-  await supabase
-    .from('games')
-    .update({ current_round_number: nextRoundNumber })
-    .eq('id', gameId)
+  await supabase.from('games').update({ current_round_number: nextRoundNumber }).eq('id', gameId)
 
   return NextResponse.json({ success: true, nextRound: nextRoundNumber })
 }

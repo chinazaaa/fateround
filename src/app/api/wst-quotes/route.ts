@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { parseGameType, isWhoSaidThis } from '@/lib/game-types'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export async function POST(req: NextRequest) {
   const { playerId, gameId, quoteText, authorParticipantId } = await req.json()
@@ -62,11 +59,7 @@ export async function POST(req: NextRequest) {
   const now = new Date().toISOString()
 
   // Remove any existing rows for this player (handles duplicate rows if unique index is missing).
-  await supabase
-    .from('wst_quote_pool')
-    .delete()
-    .eq('game_id', gameIdUpper)
-    .eq('player_id', playerId)
+  await supabase.from('wst_quote_pool').delete().eq('game_id', gameIdUpper).eq('player_id', playerId)
 
   const { data, error } = await supabase
     .from('wst_quote_pool')
@@ -100,22 +93,14 @@ export async function DELETE(req: NextRequest) {
 
   const gameIdUpper = gameId.toUpperCase()
 
-  const { data: game } = await supabase
-    .from('games')
-    .select('status, game_type')
-    .eq('id', gameIdUpper)
-    .maybeSingle()
+  const { data: game } = await supabase.from('games').select('status, game_type').eq('id', gameIdUpper).maybeSingle()
 
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.status !== 'waiting') {
     return NextResponse.json({ error: 'Quote pool is closed' }, { status: 400 })
   }
 
-  const { error } = await supabase
-    .from('wst_quote_pool')
-    .delete()
-    .eq('game_id', gameIdUpper)
-    .eq('player_id', playerId)
+  const { error } = await supabase.from('wst_quote_pool').delete().eq('game_id', gameIdUpper).eq('player_id', playerId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

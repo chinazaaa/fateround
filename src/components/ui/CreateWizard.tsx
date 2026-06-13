@@ -18,8 +18,8 @@ export function StepIndicator({ steps, current }: StepIndicatorProps) {
                   active
                     ? 'bg-[var(--primary)] text-white'
                     : done
-                    ? 'bg-[var(--chip-active-bg)] text-[var(--chip-active-text)] border border-[var(--chip-active-border)]'
-                    : 'bg-[var(--surface-inset-bg)] text-faint border border-[var(--border)]'
+                      ? 'bg-[var(--chip-active-bg)] text-[var(--chip-active-text)] border border-[var(--chip-active-border)]'
+                      : 'bg-[var(--surface-inset-bg)] text-faint border border-[var(--border)]'
                 }`}
               >
                 {done ? '✓' : stepNum}
@@ -33,11 +33,7 @@ export function StepIndicator({ steps, current }: StepIndicatorProps) {
               </span>
             </div>
             {i < steps.length - 1 && (
-              <div
-                className={`h-px flex-1 min-w-3 ${
-                  done ? 'bg-[var(--primary)]/40' : 'bg-[var(--border)]'
-                }`}
-              />
+              <div className={`h-px flex-1 min-w-3 ${done ? 'bg-[var(--primary)]/40' : 'bg-[var(--border)]'}`} />
             )}
           </div>
         )

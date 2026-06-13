@@ -32,5 +32,5 @@ export function mltTargetIdFromVote(
   vote: { target_player_id?: string | null; target_participant_id?: string | null },
   kind: MltTargetKind
 ): string | null {
-  return kind === 'participant' ? vote.target_participant_id ?? null : vote.target_player_id ?? null
+  return kind === 'participant' ? (vote.target_participant_id ?? null) : (vote.target_player_id ?? null)
 }

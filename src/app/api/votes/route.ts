@@ -19,10 +19,7 @@ import {
 } from '@/lib/game-types'
 import type { PairFlag, WyrChoice } from '@/types'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 function parsePairAssignments(raw: unknown): Record<string, PairFlag> | null {
   if (!raw || typeof raw !== 'object') return null
@@ -56,7 +53,11 @@ export async function POST(req: NextRequest) {
   const [{ data: player }, { data: round }, { data: game }] = await Promise.all([
     supabase.from('players').select('id, gender, identity_gender, name').eq('id', playerId).maybeSingle(),
     supabase.from('rounds').select('participant_ids, submitter_player_id, quote_text').eq('id', roundId).maybeSingle(),
-    supabase.from('games').select('game_type, participant_mode, pair_vote_mode').eq('id', gameId.toUpperCase()).maybeSingle(),
+    supabase
+      .from('games')
+      .select('game_type, participant_mode, pair_vote_mode')
+      .eq('id', gameId.toUpperCase())
+      .maybeSingle(),
   ])
 
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
@@ -85,8 +86,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Waiting for the quote before voting' }, { status: 400 })
     }
 
-    const targetParticipantId =
-      typeof rawTargetParticipantId === 'string' ? rawTargetParticipantId : null
+    const targetParticipantId = typeof rawTargetParticipantId === 'string' ? rawTargetParticipantId : null
     if (!targetParticipantId) {
       return NextResponse.json({ error: 'Pick who said it' }, { status: 400 })
     }
@@ -107,8 +107,7 @@ export async function POST(req: NextRequest) {
     const isImport = game.participant_mode === 'import'
 
     if (isImport) {
-      const targetParticipantId =
-        typeof rawTargetParticipantId === 'string' ? rawTargetParticipantId : null
+      const targetParticipantId = typeof rawTargetParticipantId === 'string' ? rawTargetParticipantId : null
       if (!targetParticipantId) {
         return NextResponse.json({ error: 'Pick someone from the group' }, { status: 400 })
       }
@@ -180,9 +179,8 @@ export async function POST(req: NextRequest) {
     if (!pairAssignments || !isPairAssignmentValid(pairAssignments, roundIds, pairMode)) {
       return NextResponse.json(
         {
-          error: pairMode === 'one_each'
-            ? 'Pick one of each option — not both the same'
-            : 'Pick an option for each person',
+          error:
+            pairMode === 'one_each' ? 'Pick one of each option — not both the same' : 'Pick an option for each person',
         },
         { status: 400 }
       )

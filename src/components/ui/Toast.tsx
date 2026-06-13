@@ -44,11 +44,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id))
   }, [])
 
-  const toast = useCallback((message: string, kind: ToastKind = 'info') => {
-    const id = Date.now() + Math.floor(Math.random() * 1000)
-    setToasts((prev) => [...prev.slice(-2), { id, message, kind }])
-    window.setTimeout(() => dismiss(id), 3200)
-  }, [dismiss])
+  const toast = useCallback(
+    (message: string, kind: ToastKind = 'info') => {
+      const id = Date.now() + Math.floor(Math.random() * 1000)
+      setToasts((prev) => [...prev.slice(-2), { id, message, kind }])
+      window.setTimeout(() => dismiss(id), 3200)
+    },
+    [dismiss]
+  )
 
   const api = useMemo<ToastApi>(
     () => ({

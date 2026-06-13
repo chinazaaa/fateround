@@ -1,11 +1,6 @@
 import type { GameType, PairFlag, WyrChoice } from '@/types'
 import type { MltTargetKind } from '@/lib/mlt'
-import {
-  type VoteCategory,
-  categoryMeta,
-  parseGameType,
-  voteCategories,
-} from '@/lib/game-types'
+import { type VoteCategory, categoryMeta, parseGameType, voteCategories } from '@/lib/game-types'
 
 export type { VoteCategory } from '@/lib/game-types'
 
@@ -74,14 +69,11 @@ export function tallyMltVotes(
     playerId: t.id,
     name: t.name,
     count: votes.filter((v) =>
-      targetKind === 'participant'
-        ? v.target_participant_id === t.id
-        : v.target_player_id === t.id
+      targetKind === 'participant' ? v.target_participant_id === t.id : v.target_player_id === t.id
     ).length,
   }))
   const maxCount = Math.max(0, ...rows.map((r) => r.count))
-  const winnerNames =
-    maxCount > 0 ? rows.filter((r) => r.count === maxCount).map((r) => r.name) : []
+  const winnerNames = maxCount > 0 ? rows.filter((r) => r.count === maxCount).map((r) => r.name) : []
   return {
     rows: rows.sort((a, b) => b.count - a.count),
     voterCount: votes.length,
@@ -98,22 +90,14 @@ export function maxInRound(tallies: RoundTally[]): Record<VoteCategory, number> 
   }
 }
 
-export function isCategoryWinner(
-  tallies: RoundTally[],
-  participantId: string,
-  category: VoteCategory
-): boolean {
+export function isCategoryWinner(tallies: RoundTally[], participantId: string, category: VoteCategory): boolean {
   const max = Math.max(...tallies.map((t) => t[category]))
   if (max === 0) return false
   const tally = tallies.find((t) => t.id === participantId)
   return tally?.[category] === max
 }
 
-export function winnerNames(
-  tallies: RoundTally[],
-  category: VoteCategory,
-  nameById: Map<string, string>
-): string[] {
+export function winnerNames(tallies: RoundTally[], category: VoteCategory, nameById: Map<string, string>): string[] {
   const max = Math.max(...tallies.map((t) => t[category]))
   if (max === 0) return []
   return tallies
@@ -144,10 +128,7 @@ export const ASSIGNMENT_ACTION_META = {
   kill: VOTE_CATEGORY_META.smash,
 } as const
 
-export function assignmentEmojiFor(
-  gameType: GameType | string | undefined,
-  slot: 'kiss' | 'marry' | 'kill'
-): string {
+export function assignmentEmojiFor(gameType: GameType | string | undefined, slot: 'kiss' | 'marry' | 'kill'): string {
   return getCategoryMeta(gameType, slot === 'kill' ? 'smash' : slot).emoji
 }
 

@@ -70,7 +70,8 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
         label: 'Kill',
         color: '#991b1b',
         leaderboardLabel: 'Most Killed',
-        activeClass: 'bg-red-950/15 text-red-900 border-red-900 dark:bg-red-900/30 dark:text-red-200 dark:border-red-500',
+        activeClass:
+          'bg-red-950/15 text-red-900 border-red-900 dark:bg-red-900/30 dark:text-red-200 dark:border-red-500',
         borderClass: 'border-red-900/50 bg-red-950/10 dark:border-red-500/45 dark:bg-red-900/15',
         textColor: 'var(--slot-kill-text)',
       },
@@ -290,7 +291,14 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
 }
 
-export const GAME_TYPE_OPTIONS: GameType[] = ['smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'would_you_rather', 'most_likely_to', 'who_said_this']
+export const GAME_TYPE_OPTIONS: GameType[] = [
+  'smash_marry_kill',
+  'red_flag_green_flag',
+  'smash_or_pass',
+  'would_you_rather',
+  'most_likely_to',
+  'who_said_this',
+]
 
 export function parseGameType(raw: unknown): GameType {
   if (raw === 'red_flag_green_flag') return 'red_flag_green_flag'
@@ -321,7 +329,7 @@ export function gameHowItWorks(
     case 'most_likely_to':
       return joiners
         ? 'Players add their name to the poll when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
-        : "Upload everyone's names on the next step. Players claim their name when joining. Each round shows a \"most likely to…\" prompt — vote for who fits best. Votes stay anonymous."
+        : 'Upload everyone\'s names on the next step. Players claim their name when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
     case 'red_flag_green_flag':
       return joiners
         ? 'Players add their name to the poll when joining. Each round, two names appear — everyone rates each person green flag or red flag.'
@@ -385,7 +393,7 @@ export function isPairAssignmentValid(
   if (!isPairAssignmentComplete(pairAssignment, participantIds)) return false
   if (mode !== 'one_each' || participantIds.length !== 2) return true
   const [a, b] = participantIds.map((id) => pairAssignment[id])
-  return a === 'kiss' && b === 'kill' || a === 'kill' && b === 'kiss'
+  return (a === 'kiss' && b === 'kill') || (a === 'kill' && b === 'kiss')
 }
 
 export function pairDisabledSlots(
@@ -402,10 +410,7 @@ export function pairDisabledSlots(
   return []
 }
 
-export function fillRandomPairAssignment(
-  participantIds: string[],
-  mode: PairVoteMode
-): PairAssignmentMap {
+export function fillRandomPairAssignment(participantIds: string[], mode: PairVoteMode): PairAssignmentMap {
   const result = emptyPairAssignment(participantIds)
   if (participantIds.length === 0) return result
   if (mode === 'one_each' && participantIds.length === 2) {
@@ -499,22 +504,12 @@ export function emptyPairAssignment(participantIds: string[]): PairAssignmentMap
   return Object.fromEntries(participantIds.map((id) => [id, null]))
 }
 
-export function isPairAssignmentComplete(
-  pairAssignment: PairAssignmentMap,
-  participantIds: string[]
-): boolean {
-  return participantIds.every(
-    (id) => pairAssignment[id] === 'kiss' || pairAssignment[id] === 'kill'
-  )
+export function isPairAssignmentComplete(pairAssignment: PairAssignmentMap, participantIds: string[]): boolean {
+  return participantIds.every((id) => pairAssignment[id] === 'kiss' || pairAssignment[id] === 'kill')
 }
 
-export function pairAssignedCount(
-  pairAssignment: PairAssignmentMap,
-  participantIds: string[]
-): number {
-  return participantIds.filter(
-    (id) => pairAssignment[id] === 'kiss' || pairAssignment[id] === 'kill'
-  ).length
+export function pairAssignedCount(pairAssignment: PairAssignmentMap, participantIds: string[]): number {
+  return participantIds.filter((id) => pairAssignment[id] === 'kiss' || pairAssignment[id] === 'kill').length
 }
 
 export function pairAssignmentFromVote(
@@ -557,10 +552,7 @@ export function categoryMeta(gameType: GameType | string | undefined, category: 
   }
 }
 
-export function assignmentEmoji(
-  gameType: GameType | string | undefined,
-  slot: VoteSlot
-): string {
+export function assignmentEmoji(gameType: GameType | string | undefined, slot: VoteSlot): string {
   return slotMeta(gameType, slot).emoji
 }
 
@@ -568,10 +560,7 @@ export function emptyAssignment(): VoteAssignment {
   return { kiss: null, marry: null, kill: null }
 }
 
-export function isAssignmentComplete(
-  assignment: VoteAssignment,
-  gameType?: GameType | string
-): boolean {
+export function isAssignmentComplete(assignment: VoteAssignment, gameType?: GameType | string): boolean {
   return voteSlots(gameType).every((slot) => assignment[slot])
 }
 
