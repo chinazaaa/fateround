@@ -331,6 +331,24 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  custom: {
+    id: 'custom',
+    label: 'Custom Game',
+    tagline: 'Create your own voting categories',
+    headerEmoji: '✏️',
+    card: {
+      accent: '#a855f7',
+      accentSoft: 'rgba(168,85,247,0.15)',
+      emoji: '✏️',
+      players: '2+ players',
+      vibe: 'Your rules',
+    },
+    slots: {
+      kiss: { emoji: '✏️', label: 'Slot 1', color: '#a855f7', leaderboardLabel: 'Most Slot 1', activeClass: 'border-purple-400 bg-purple-500/20 text-purple-100', borderClass: 'border-purple-500/40', textColor: '#a855f7' },
+      marry: { emoji: '✏️', label: 'Slot 2', color: '#64748b', leaderboardLabel: 'Most Slot 2', activeClass: 'border-slate-400 bg-slate-500/20 text-slate-100', borderClass: 'border-slate-500/40', textColor: '#64748b' },
+      kill: { emoji: '✏️', label: 'Slot 3', color: '#ef4444', leaderboardLabel: 'Most Slot 3', activeClass: 'border-red-400 bg-red-500/20 text-red-100', borderClass: 'border-red-500/40', textColor: '#ef4444' },
+    },
+  },
 }
 
 export const GAME_TYPE_OPTIONS: GameType[] = [
@@ -341,6 +359,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'most_likely_to',
   'who_said_this',
   'hot_seat',
+  'custom',
 ]
 
 export function parseGameType(raw: unknown): GameType {
@@ -350,6 +369,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'most_likely_to') return 'most_likely_to'
   if (raw === 'who_said_this') return 'who_said_this'
   if (raw === 'hot_seat') return 'hot_seat'
+  if (raw === 'custom') return 'custom'
   return 'smash_marry_kill'
 }
 
@@ -384,6 +404,9 @@ export function gameHowItWorks(
         : "Add everyone's names on the next step. Players claim their name when joining. Each round, two names appear — everyone picks smash or pass for each."
     case 'smash_marry_kill':
     default:
+      if (isCustomGame(gameType)) {
+        return 'Add everyone\'s names on the next step. Each round shows a group of names — everyone assigns one person to each custom category.'
+      }
       return joiners
         ? 'Players add their name to the poll when joining. Each round, three names appear — everyone picks one to smash, one to marry, and one to kill.'
         : "Add everyone's names on the next step. Players claim their name when joining. Each round, three names appear — everyone picks one to smash, one to marry, and one to kill."
@@ -529,6 +552,10 @@ export function isAnonymousGame(gameType: GameType | string | undefined): boolea
 
 export function isThreeChoiceGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'smash_marry_kill'
+}
+
+export function isCustomGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'custom'
 }
 
 export function roundPoolSize(gameType: GameType | string | undefined): 2 | 3 {
