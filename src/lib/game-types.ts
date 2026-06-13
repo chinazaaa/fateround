@@ -1,4 +1,4 @@
-import type { GameType, VoteAssignment, PairFlag, PairAssignmentMap } from '@/types'
+import type { GameType, VoteAssignment, PairFlag, PairAssignmentMap, PairVoteMode } from '@/types'
 
 export type VoteSlot = 'kiss' | 'marry' | 'kill'
 /** Tally keys — `smash` counts the kill slot (Red Flag / Kill). */
@@ -266,6 +266,108 @@ export function gameTypeConfig(gameType: GameType | string | undefined): GameTyp
 export function isPairGame(gameType: GameType | string | undefined): boolean {
   const type = parseGameType(gameType)
   return type === 'red_flag_green_flag' || type === 'smash_or_pass'
+}
+
+export function parsePairVoteMode(raw: unknown): PairVoteMode {
+  return raw === 'one_each' ? 'one_each' : 'any'
+}
+
+export function isPairOneEachMode(game: {
+  game_type?: GameType | string
+  pair_vote_mode?: PairVoteMode | string | null
+}): boolean {
+  return isPairGame(game.game_type) && parsePairVoteMode(game.pair_vote_mode) === 'one_each'
+}
+
+export function pairVoteModeOptions(gameType: GameType | string): {
+  value: PairVoteMode
+  label: string
+  hint: string
+}[] {
+  const type = parseGameType(gameType)
+  const positive = type === 'smash_or_pass' ? 'Smash' : 'Green'
+  const negative = type === 'smash_or_pass' ? 'Pass' : 'Red'
+  return [
+    {
+      value: 'any',
+      label: 'Any combo',
+      hint: `Players can pick 2 ${positive}, 2 ${negative}, or 1 of each.`,
+    },
+    {
+      value: 'one_each',
+      label: 'One each',
+      hint: `Must pick one ${positive} and one ${negative} every round.`,
+    },
+  ]
+}
+
+export function isPairAssignmentValid(
+  pairAssignment: PairAssignmentMap,
+  participantIds: string[],
+  mode: PairVoteMode
+): boolean {
+  if (!isPairAssignmentComplete(pairAssignment, participantIds)) return false
+  if (mode !== 'one_each' || participantIds.length !== 2) return true
+  const [a, b] = participantIds.map((id) => pairAssignment[id])
+  return a === 'kiss' && b === 'kill' || a === 'kill' && b === 'kiss'
+}
+
+export function pairDisabledSlots(
+  pairAssignment: PairAssignmentMap,
+  participantId: string,
+  participantIds: string[],
+  mode: PairVoteMode
+): VoteSlot[] {
+  if (mode !== 'one_each' || participantIds.length !== 2) return []
+  const otherId = participantIds.find((id) => id !== participantId)
+  if (!otherId) return []
+  const other = pairAssignment[otherId]
+  if (other === 'kiss' || other === 'kill') return [other]
+  return []
+}
+
+export function fillRandomPairAssignment(
+  participantIds: string[],
+  mode: PairVoteMode
+): PairAssignmentMap {
+  const result = emptyPairAssignment(participantIds)
+  if (participantIds.length === 0) return result
+  if (mode === 'one_each' && participantIds.length === 2) {
+    const first = Math.random() < 0.5 ? 'kiss' : 'kill'
+    result[participantIds[0]] = first
+    result[participantIds[1]] = first === 'kiss' ? 'kill' : 'kiss'
+    return result
+  }
+  for (const id of participantIds) {
+    result[id] = Math.random() < 0.5 ? 'kiss' : 'kill'
+  }
+  return result
+}
+
+/** Fill missing pair picks; respects one-each when mode requires it. */
+export function completeRandomPairAssignment(
+  pairAssignment: PairAssignmentMap,
+  participantIds: string[],
+  mode: PairVoteMode
+): PairAssignmentMap {
+  const result = { ...pairAssignment }
+  if (mode === 'one_each' && participantIds.length === 2) {
+    const [a, b] = participantIds
+    const va = result[a]
+    const vb = result[b]
+    if (va && !vb) {
+      result[b] = va === 'kiss' ? 'kill' : 'kiss'
+    } else if (vb && !va) {
+      result[a] = vb === 'kiss' ? 'kill' : 'kiss'
+    } else if (!va && !vb) {
+      return fillRandomPairAssignment(participantIds, mode)
+    }
+    return result
+  }
+  for (const id of participantIds) {
+    if (!result[id]) result[id] = Math.random() < 0.5 ? 'kiss' : 'kill'
+  }
+  return result
 }
 
 export function isWouldYouRather(gameType: GameType | string | undefined): boolean {

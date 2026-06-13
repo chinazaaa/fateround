@@ -24,6 +24,11 @@ import {
   isPairAssignmentComplete,
   pairAssignedCount,
   pairAssignmentFromVote,
+  parsePairVoteMode,
+  isPairOneEachMode,
+  isPairAssignmentValid,
+  pairDisabledSlots,
+  completeRandomPairAssignment,
 } from '@/lib/game-types'
 import { ParticipantRoundResults, VoteCountStat, WyrRoundResults, MltRoundResults } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
@@ -628,8 +633,13 @@ export default function GamePage() {
           mltTarget = targets[Math.floor(Math.random() * targets.length)].id
         }
       } else if (isPairGame(gameType)) {
-        for (const p of roundParts) {
-          if (!pa[p.id]) pa[p.id] = Math.random() < 0.5 ? 'kiss' : 'kill'
+        const pairMode = parsePairVoteMode(g.pair_vote_mode)
+        if (pairMode === 'one_each' && roundIds.length === 2) {
+          Object.assign(pa, completeRandomPairAssignment(pa, roundIds, pairMode))
+        } else {
+          for (const p of roundParts) {
+            if (!pa[p.id]) pa[p.id] = Math.random() < 0.5 ? 'kiss' : 'kill'
+          }
         }
       } else {
         const unassigned = voteSlots(gameType).filter((slot) => !a[slot])
@@ -653,7 +663,8 @@ export default function GamePage() {
         ? { targetParticipantId: mltTarget }
         : { targetPlayerId: mltTarget }
     } else if (isPairGame(gameType)) {
-      if (!isPairAssignmentComplete(pa, roundIds)) return
+      const pairMode = parsePairVoteMode(g.pair_vote_mode)
+      if (!isPairAssignmentValid(pa, roundIds, pairMode)) return
       voteBody = {
         pairAssignments: Object.fromEntries(
           roundIds
@@ -686,7 +697,18 @@ export default function GamePage() {
   const assign = (action: keyof VoteAssignment, participantId: string) => {
     const gameType = parseGameType(game?.game_type)
     if (isPairGame(gameType) && (action === 'kiss' || action === 'kill')) {
-      setPairAssignment((prev) => ({ ...prev, [participantId]: action }))
+      setPairAssignment((prev) => {
+        const next = { ...prev, [participantId]: action }
+        if (!game || !currentRound) return next
+        const roundIds = currentRound.participant_ids
+        if (isPairOneEachMode(game) && roundIds.length === 2) {
+          const otherId = roundIds.find((id) => id !== participantId)
+          if (otherId && next[otherId] === action) {
+            delete next[otherId]
+          }
+        }
+        return next
+      })
       return
     }
     setAssignment((prev) => {
@@ -701,11 +723,17 @@ export default function GamePage() {
   }
 
   const handleSubmit = async () => {
-    if (submittedRef.current || !currentRound || !myPlayerId) return
+    if (submittedRef.current || !currentRound || !myPlayerId || !game) return
+    const submitGameType = parseGameType(game.game_type)
+    const roundIds = currentRound.participant_ids
+    if (
+      isPairGame(submitGameType) &&
+      !isPairAssignmentValid(pairAssignment, roundIds, parsePairVoteMode(game.pair_vote_mode))
+    ) {
+      return
+    }
     submittedRef.current = true
     setSubmitted(true)
-    const submitGameType = parseGameType(game?.game_type)
-    const roundIds = currentRound.participant_ids
     const voteBody = isWouldYouRather(submitGameType)
       ? { wyrChoice }
       : isMostLikelyTo(submitGameType)
@@ -1175,8 +1203,9 @@ export default function GamePage() {
     const gameType = parseGameType(game?.game_type)
     const isPair = isPairGame(gameType)
     const roundPartIds = roundParts.map((p) => p.id)
+    const pairMode = parsePairVoteMode(game?.pair_vote_mode)
     const allAssigned = isPair
-      ? isPairAssignmentComplete(pairAssignment, roundPartIds)
+      ? isPairAssignmentValid(pairAssignment, roundPartIds, pairMode)
       : isAssignmentComplete(assignment, gameType)
     const assignTarget = assignmentTargetCount(gameType, roundParts.length)
     const assignProgress = isPair
@@ -1204,6 +1233,11 @@ export default function GamePage() {
             )}
             {voteBanner && (
               <p className="text-green-400/90 text-xs font-medium mt-1">{voteBanner}</p>
+            )}
+            {isPair && isPairOneEachMode(game!) && (
+              <p className="text-faint text-xs mt-1">
+                {gameType === 'smash_or_pass' ? 'Pick one Smash and one Pass' : 'Pick one Green and one Red'}
+              </p>
             )}
           </div>
           {canVote ? (
@@ -1237,6 +1271,11 @@ export default function GamePage() {
                 action={action}
                 onAssign={(a) => canVote && !submitted && assign(a, p.id)}
                 disabled={submitted || !canVote}
+                disabledSlots={
+                  isPair && game
+                    ? pairDisabledSlots(pairAssignment, p.id, roundPartIds, pairMode)
+                    : []
+                }
               />
             )
           })}
@@ -1544,12 +1583,13 @@ export default function GamePage() {
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
-function ParticipantCard({ gameType, participant, action, onAssign, disabled }: {
+function ParticipantCard({ gameType, participant, action, onAssign, disabled, disabledSlots = [] }: {
   gameType: GameType
   participant: Participant
   action: 'kiss' | 'marry' | 'kill' | null
   onAssign: (a: 'kiss' | 'marry' | 'kill') => void
   disabled: boolean
+  disabledSlots?: ('kiss' | 'marry' | 'kill')[]
 }) {
   const cfg = action ? slotMeta(gameType, action) : null
   return (
@@ -1570,16 +1610,17 @@ function ParticipantCard({ gameType, participant, action, onAssign, disabled }: 
       <div className="flex gap-2">
         {voteSlots(gameType).map((a) => {
           const slot = slotMeta(gameType, a)
+          const slotDisabled = disabled || disabledSlots.includes(a)
           return (
           <button
             key={a}
             onClick={() => onAssign(a)}
-            disabled={disabled}
+            disabled={slotDisabled}
             className={`flex-1 py-2.5 rounded-xl border text-sm font-bold transition-all active:scale-95 ${
               action === a
                 ? slot.activeClass
-                : `surface-inset border-white/8 text-muted ${!disabled ? 'hover:border-zinc-500 hover:text-white/80' : ''}`
-            } disabled:cursor-not-allowed`}
+                : `surface-inset border-white/8 text-muted ${!slotDisabled ? 'hover:border-zinc-500 hover:text-white/80' : ''}`
+            } disabled:cursor-not-allowed disabled:opacity-40`}
           >
             {slot.emoji}
           </button>

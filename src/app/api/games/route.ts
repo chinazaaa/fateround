@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generateGameCode, generateToken } from '@/lib/utils'
 import { normalizeGender, hasEnoughForRounds, participantsNeedGender, type ParticipantInput } from '@/lib/participants'
-import { parseGameType, roundPoolSize, isLobbyGame, isWouldYouRather, isMostLikelyTo, isAnonymousGame } from '@/lib/game-types'
+import { parseGameType, roundPoolSize, isLobbyGame, isWouldYouRather, isMostLikelyTo, isAnonymousGame, isPairGame, parsePairVoteMode } from '@/lib/game-types'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import type { ParticipantMode } from '@/types'
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
     auto_reveal,
     auto_submit_behavior,
     participant_mode: rawMode,
+    pair_vote_mode: rawPairVoteMode,
     game_type: rawGameType,
     participants: rawParticipants,
   } = body
@@ -108,6 +109,7 @@ export async function POST(req: NextRequest) {
     auto_reveal: Boolean(auto_reveal),
     auto_submit_behavior: auto_submit_behavior === 'no_answer' ? 'no_answer' : 'random',
     participant_mode,
+    pair_vote_mode: isPairGame(game_type) ? parsePairVoteMode(rawPairVoteMode) : 'any',
     game_type,
     status: 'waiting',
     current_round_number: 0,

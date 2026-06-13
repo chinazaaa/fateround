@@ -1,7 +1,7 @@
 'use client'
 import { useState, useRef, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { ParticipantGender, ParticipantMode, GameType } from '@/types'
+import type { ParticipantGender, ParticipantMode, GameType, PairVoteMode } from '@/types'
 import {
   type ParticipantInput,
   parseParticipantsForGame,
@@ -23,6 +23,8 @@ import {
   isWouldYouRather,
   isAnonymousGame,
   parseGameType,
+  isPairGame,
+  pairVoteModeOptions,
 } from '@/lib/game-types'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
@@ -39,6 +41,7 @@ interface Settings {
   auto_reveal: boolean
   auto_submit_behavior: 'random' | 'no_answer'
   participant_mode: ParticipantMode
+  pair_vote_mode: PairVoteMode
   game_type: GameType
 }
 
@@ -59,6 +62,7 @@ function CreateGameInner() {
     auto_reveal: true,
     auto_submit_behavior: 'random',
     participant_mode: 'import',
+    pair_vote_mode: 'any',
     game_type: 'smash_marry_kill',
   })
   const [participants, setParticipants] = useState<ParticipantInput[]>([])
@@ -87,6 +91,7 @@ function CreateGameInner() {
   const isJoinersMode = settings.participant_mode === 'joiners'
   const isWyr = isWouldYouRather(settings.game_type)
   const isMlt = isMostLikelyTo(settings.game_type)
+  const isPair = isPairGame(settings.game_type)
   const needsGender = participantsNeedGender(settings.game_type)
   const minPool = roundPoolSize(settings.game_type)
   const canCreateImport = participants.length >= minPool && hasEnoughForRounds(participants, settings.game_type)
@@ -295,6 +300,16 @@ function CreateGameInner() {
                   ]}
                 />
               </Field>
+
+              {isPair && (
+                <Field label="Pair voting">
+                  <SegmentedControl
+                    value={settings.pair_vote_mode}
+                    onChange={(v) => setSettings({ ...settings, pair_vote_mode: v })}
+                    options={pairVoteModeOptions(settings.game_type)}
+                  />
+                </Field>
+              )}
             </SettingsGroup>
 
             {!isWyr && (
