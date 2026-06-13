@@ -18,12 +18,14 @@ export default function HostPage() {
   const [participants, setParticipants] = useState<Participant[]>([])
   const [players, setPlayers] = useState<Player[]>([])
   const [currentRound, setCurrentRound] = useState<Round | null>(null)
+  const [lastFinishedRound, setLastFinishedRound] = useState<Round | null>(null)
   const [allRounds, setAllRounds] = useState<Round[]>([])
   const [votes, setVotes] = useState<Vote[]>([])
   const [confessions, setConfessions] = useState<Confession[]>([])
 
   const [starting, setStarting] = useState(false)
   const [advancing, setAdvancing] = useState(false)
+  const [ending, setEnding] = useState(false)
   const [timeLeft, setTimeLeft] = useState(0)
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -46,12 +48,19 @@ export default function HostPage() {
       setPlayers(plrs || [])
 
       if (gameData.status === 'active') {
-        const [{ data: roundData }, { data: votesData }] = await Promise.all([
+        const [{ data: roundData }, { data: finishedRound }, { data: votesData }, { data: confs }] = await Promise.all([
           supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
+          supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'finished').order('round_number', { ascending: false }).limit(1).maybeSingle(),
           supabase.from('votes').select('*').eq('game_id', gameCode),
+          supabase.from('confessions').select('*').eq('game_id', gameCode).order('created_at'),
         ])
-        if (roundData) setCurrentRound(roundData)
+        if (roundData) {
+          setCurrentRound(roundData)
+        } else if (finishedRound) {
+          setLastFinishedRound(finishedRound)
+        }
         setVotes(votesData || [])
+        setConfessions(confs || [])
       }
 
       if (gameData.status === 'finished') {
@@ -74,6 +83,52 @@ export default function HostPage() {
     setConfessions(confs || [])
   }
 
+  function mergeVote(prev: Vote[], vote: Vote) {
+    const idx = prev.findIndex((v) => v.id === vote.id || (v.player_id === vote.player_id && v.round_id === vote.round_id))
+    if (idx >= 0) {
+      const next = [...prev]
+      next[idx] = vote
+      return next
+    }
+    return [...prev, vote]
+  }
+
+  async function syncGameState() {
+    const [{ data: gameData }, { data: activeRound }, { data: finishedRound }, { data: vs }, { data: confs }] = await Promise.all([
+      supabase.from('games').select('*').eq('id', gameCode).maybeSingle(),
+      supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
+      supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'finished').order('round_number', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('votes').select('*').eq('game_id', gameCode),
+      supabase.from('confessions').select('*').eq('game_id', gameCode).order('created_at'),
+    ])
+
+    if (gameData) setGame(gameData)
+    if (vs) setVotes(vs)
+    if (confs) setConfessions(confs)
+
+    if (gameData?.status === 'finished') {
+      await loadResults()
+      advancingRef.current = false
+      setEnding(false)
+      setAdvancing(false)
+      return
+    }
+
+    if (activeRound) {
+      setCurrentRound(activeRound)
+      setLastFinishedRound(null)
+      return
+    }
+
+    if (finishedRound) {
+      setCurrentRound(null)
+      setLastFinishedRound(finishedRound)
+      advancingRef.current = false
+      setEnding(false)
+      setAdvancing(false)
+    }
+  }
+
   // ── Realtime ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const ch = supabase
@@ -93,21 +148,69 @@ export default function HostPage() {
         }
       )
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        (payload) => setPlayers((prev) => [...prev, payload.new as Player])
+        (payload) => {
+          const p = payload.new as Player
+          setPlayers((prev) => prev.some((x) => x.id === p.id) ? prev : [...prev, p])
+        }
       )
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes', filter: `game_id=eq.${gameCode}` },
-        (payload) => setVotes((prev) => [...prev, payload.new as Vote])
+        (payload) => setVotes((prev) => mergeVote(prev, payload.new as Vote))
+      )
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'votes', filter: `game_id=eq.${gameCode}` },
+        (payload) => setVotes((prev) => mergeVote(prev, payload.new as Vote))
       )
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const r = payload.new as Round
-          if (r.status === 'active') { setCurrentRound(r); advancingRef.current = false }
+          if (r.status === 'active') {
+            setCurrentRound(r)
+            setLastFinishedRound(null)
+            advancingRef.current = false
+            setAdvancing(false)
+          }
+          if (r.status === 'finished') {
+            setCurrentRound(null)
+            setLastFinishedRound(r)
+            advancingRef.current = false
+            setEnding(false)
+          }
+        }
+      )
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confessions', filter: `game_id=eq.${gameCode}` },
+        (payload) => {
+          const c = payload.new as Confession
+          setConfessions((prev) => prev.some((x) => x.id === c.id) ? prev : [...prev, c])
         }
       )
       .subscribe()
 
     return () => { supabase.removeChannel(ch) }
   }, [gameCode])
+
+  // Poll lobby while waiting for players — fallback if realtime is slow or unavailable
+  useEffect(() => {
+    if (game?.status !== 'waiting') return
+
+    async function refreshPlayers() {
+      const { data: plrs } = await supabase
+        .from('players').select('*').eq('game_id', gameCode).order('joined_at')
+      if (plrs) setPlayers(plrs)
+    }
+
+    refreshPlayers()
+    const id = setInterval(refreshPlayers, 3000)
+    return () => clearInterval(id)
+  }, [game?.status, gameCode])
+
+  // Poll during active game — fallback when realtime misses votes or round transitions
+  useEffect(() => {
+    if (game?.status !== 'active') return
+
+    syncGameState()
+    const id = setInterval(syncGameState, 2000)
+    return () => clearInterval(id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game?.status, gameCode, currentRound?.id, lastFinishedRound?.id])
 
   // ── Timer (host) ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -119,9 +222,8 @@ export default function HostPage() {
     const tick = () => {
       const remaining = Math.max(0, Math.ceil((endMs - Date.now()) / 1000))
       setTimeLeft(remaining)
-      if (remaining === 0 && !advancingRef.current) {
-        advancingRef.current = true
-        handleNextRound()
+      if (remaining === 0) {
+        handleEndRound()
       }
     }
     tick()
@@ -129,34 +231,89 @@ export default function HostPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [currentRound?.id, currentRound?.started_at, game?.timer_seconds, game?.status])
 
+  // Auto-end round as soon as every player has voted; timer is the fallback
+  useEffect(() => {
+    if (!currentRound || !game || game.status !== 'active' || players.length === 0) return
+
+    const roundVotes = votes.filter((v) => v.round_id === currentRound.id)
+    if (roundVotes.length >= players.length) {
+      handleEndRound()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRound?.id, votes, players.length, game?.status])
+
   const handleStart = async () => {
     if (starting) return
     setStarting(true)
-    const res = await fetch(`/api/games/${gameCode}/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hostToken }),
-    })
-    if (!res.ok) {
-      const d = await res.json()
-      alert(d.error || 'Failed to start')
+    try {
+      const res = await fetch(`/api/games/${gameCode}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        alert(d.error || 'Failed to start')
+        return
+      }
+
+      const [{ data: gameData }, { data: roundData }] = await Promise.all([
+        supabase.from('games').select('*').eq('id', gameCode).maybeSingle(),
+        supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
+      ])
+      if (gameData) setGame(gameData)
+      if (roundData) setCurrentRound(roundData)
+    } finally {
       setStarting(false)
+    }
+  }
+
+  const handleEndRound = async () => {
+    if (advancingRef.current || ending) return
+    advancingRef.current = true
+    setEnding(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode}/end-round`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        alert(d.error || 'Failed to end round')
+        advancingRef.current = false
+        setEnding(false)
+        return
+      }
+      await syncGameState()
+      advancingRef.current = false
+      setEnding(false)
+    } catch {
+      advancingRef.current = false
+      setEnding(false)
     }
   }
 
   const handleNextRound = async () => {
     if (advancing) return
     setAdvancing(true)
-    const res = await fetch(`/api/games/${gameCode}/next-round`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hostToken }),
-    })
-    if (!res.ok) {
-      const d = await res.json()
-      alert(d.error || 'Failed to advance round')
+    try {
+      const res = await fetch(`/api/games/${gameCode}/next-round`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        alert(d.error || 'Failed to start next round')
+        setAdvancing(false)
+        return
+      }
+      await syncGameState()
+      setAdvancing(false)
+    } catch {
+      setAdvancing(false)
     }
-    setAdvancing(false)
   }
 
   const copyPlayerLink = () => {
@@ -294,6 +451,7 @@ export default function HostPage() {
             <p className="text-zinc-500 text-xs uppercase tracking-wider">Votes In</p>
             <span className={`text-sm font-bold ${allVoted ? 'text-green-400' : 'text-zinc-300'}`}>
               {roundVotes.length} / {players.length}
+              {allVoted && ' · ending round...'}
             </span>
           </div>
           <div className="h-2 bg-[#2a2a2a] rounded-full overflow-hidden">
@@ -339,21 +497,88 @@ export default function HostPage() {
           </div>
         )}
 
-        {/* Next round button */}
+        {/* End round button */}
         <button
-          onClick={handleNextRound}
-          disabled={advancing}
+          onClick={handleEndRound}
+          disabled={ending}
           className={`w-full py-4 rounded-2xl font-bold text-lg transition-all active:scale-95 ${
             allVoted || timeLeft === 0
               ? 'bg-gradient-to-r from-pink-500 via-purple-500 to-rose-500 text-white animate-pulse hover:opacity-90 shadow-lg shadow-purple-500/20'
               : 'bg-[#161616] border border-[#262626] text-zinc-400 hover:border-purple-500'
           }`}
         >
-          {advancing ? 'Advancing...' :
+          {ending ? 'Ending round...' :
            currentRound.round_number >= game.rounds_count
-             ? (allVoted ? '🏁 End Game' : `End Game (${roundVotes.length}/${players.length} voted)`)
-             : (allVoted ? `→ Next Round ${currentRound.round_number + 1}` : `Skip to Round ${currentRound.round_number + 1} (${roundVotes.length}/${players.length})`)}
+             ? (allVoted ? '🏁 End Round & Show Results' : `End Round (${roundVotes.length}/${players.length} voted)`)
+             : (allVoted ? '✓ End Round & Show Results' : `End Round (${roundVotes.length}/${players.length} voted)`)}
         </button>
+      </div>
+    )
+  }
+
+  // ── BETWEEN ROUNDS (results) ──────────────────────────────────────────────
+  if (game?.status === 'active' && !currentRound && lastFinishedRound) {
+    const roundVotes = votes.filter((v) => v.round_id === lastFinishedRound.id)
+    const roundParts = participants.filter((p) => lastFinishedRound.participant_ids.includes(p.id))
+    const roundConfessions = confessions.filter((c) => c.round_id === lastFinishedRound.id)
+    const isLastRound = lastFinishedRound.round_number >= game.rounds_count
+
+    return (
+      <div className="min-h-screen px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
+        <div className="text-center">
+          <p className="text-zinc-500 text-xs uppercase tracking-wider">
+            Round {lastFinishedRound.round_number} of {game.rounds_count}
+          </p>
+          <h1 className="text-3xl font-black text-white mt-1">Results are in! 🗳️</h1>
+          <p className="text-zinc-500 text-sm mt-1">Players can see these results on their screens</p>
+        </div>
+
+        <div className="space-y-3">
+          {roundParts.map((p) => {
+            const k = roundVotes.filter((v) => v.kiss_participant_id  === p.id).length
+            const m = roundVotes.filter((v) => v.marry_participant_id === p.id).length
+            const d = roundVotes.filter((v) => v.kill_participant_id  === p.id).length
+            const total = roundVotes.length || 1
+            return (
+              <div key={p.id} className="bg-[#161616] border border-[#262626] rounded-2xl p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-9 h-9 rounded-full bg-purple-600 flex items-center justify-center text-white font-black shrink-0">
+                    {getInitial(p.name)}
+                  </div>
+                  <p className="text-white font-bold text-lg">{p.name}</p>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <MiniStat emoji="❤️" label="Kiss"  count={k} total={total} color="#f472b6" />
+                  <MiniStat emoji="💍" label="Marry" count={m} total={total} color="#fbbf24" />
+                  <MiniStat emoji="💀" label="Kill"  count={d} total={total} color="#f87171" />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {roundConfessions.length > 0 && (
+          <div>
+            <h2 className="text-zinc-400 text-xs uppercase tracking-wider mb-3">🔥 Hot Takes ({roundConfessions.length})</h2>
+            <div className="space-y-2">
+              {roundConfessions.map((c) => (
+                <div key={c.id} className="bg-[#161616] border border-[#262626] rounded-xl px-4 py-3">
+                  <p className="text-zinc-300 text-sm italic">&ldquo;{c.text}&rdquo;</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!isLastRound && (
+          <button
+            onClick={handleNextRound}
+            disabled={advancing}
+            className="w-full py-4 bg-gradient-to-r from-pink-500 via-purple-500 to-rose-500 text-white text-xl font-bold rounded-2xl hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 shadow-lg shadow-purple-500/20"
+          >
+            {advancing ? 'Starting...' : `→ Start Round ${lastFinishedRound.round_number + 1}`}
+          </button>
+        )}
       </div>
     )
   }

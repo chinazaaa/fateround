@@ -9,13 +9,12 @@ const supabase = createClient(
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const { hostToken } = await req.json()
+  const gameId = code.toUpperCase()
 
-  const { data: game } = await supabase.from('games').select('*').eq('id', code.toUpperCase()).maybeSingle()
+  const { data: game } = await supabase.from('games').select('*').eq('id', gameId).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
   if (game.status !== 'active') return NextResponse.json({ error: 'Game not active' }, { status: 400 })
-
-  const gameId = code.toUpperCase()
 
   const { data: activeRound } = await supabase
     .from('rounds')
@@ -24,27 +23,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     .eq('status', 'active')
     .maybeSingle()
 
-  if (activeRound) {
-    return NextResponse.json({ error: 'Current round must be ended before starting the next one' }, { status: 400 })
-  }
-
-  const nextRoundNumber = game.current_round_number + 1
-  if (nextRoundNumber > game.rounds_count) {
-    return NextResponse.json({ error: 'No more rounds' }, { status: 400 })
+  if (!activeRound) {
+    return NextResponse.json({ error: 'No active round to end' }, { status: 400 })
   }
 
   const now = new Date().toISOString()
 
   await supabase
     .from('rounds')
-    .update({ status: 'active', started_at: now })
-    .eq('game_id', gameId)
-    .eq('round_number', nextRoundNumber)
+    .update({ status: 'finished', ended_at: now })
+    .eq('id', activeRound.id)
 
-  await supabase
-    .from('games')
-    .update({ current_round_number: nextRoundNumber })
-    .eq('id', gameId)
+  const isLastRound = activeRound.round_number >= game.rounds_count
+  if (isLastRound) {
+    await supabase.from('games').update({ status: 'finished' }).eq('id', gameId)
+    return NextResponse.json({ finished: true, gameFinished: true, roundNumber: activeRound.round_number })
+  }
 
-  return NextResponse.json({ success: true, nextRound: nextRoundNumber })
+  return NextResponse.json({ finished: true, gameFinished: false, roundNumber: activeRound.round_number })
 }
