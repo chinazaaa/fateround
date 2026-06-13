@@ -96,6 +96,7 @@ import type {
 } from '@/types'
 import { parseThemeId, THEME_MAP } from '@/lib/themes'
 import { SegmentedControl } from '@/components/ui/CreateWizard'
+import { ROUND_TIMER_OPTIONS } from '@/lib/validation'
 
 export default function HostPage() {
   const { code } = useParams<{ code: string }>()
@@ -129,6 +130,7 @@ export default function HostPage() {
   const [addError, setAddError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [updatingRounds, setUpdatingRounds] = useState(false)
+  const [updatingTimer, setUpdatingTimer] = useState(false)
   const [listSearch, setListSearch] = useState('')
   const [playersSearch, setPlayersSearch] = useState('')
   const [wstPool, setWstPool] = useState<WstQuotePoolEntry[]>([])
@@ -883,6 +885,40 @@ export default function HostPage() {
     }
   }
 
+  async function hostUpdateTimer(timerSeconds: number) {
+    if (updatingTimer || game?.timer_seconds === timerSeconds) return
+    const previous = game!.timer_seconds
+    setGame((g) => (g ? { ...g, timer_seconds: timerSeconds } : g))
+    setUpdatingTimer(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, timer_seconds: timerSeconds }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setGame((g) => (g ? { ...g, timer_seconds: previous } : g))
+        toast.error(data.error || 'Failed to update timer')
+        return
+      }
+      if (data.game) setGame(data.game)
+    } finally {
+      setUpdatingTimer(false)
+    }
+  }
+
+  const timerControl = (
+    <div className="space-y-2">
+      <p className="text-muted text-[10px] uppercase tracking-wider">Time per round</p>
+      <SegmentedControl
+        value={String(game?.timer_seconds ?? 30)}
+        onChange={(v) => hostUpdateTimer(Number(v))}
+        options={ROUND_TIMER_OPTIONS.map((n) => ({ value: String(n), label: `${n}s` }))}
+      />
+    </div>
+  )
+
   useEffect(() => {
     if (!game || game.status !== 'waiting') return
     if (!isWhoSaidThis(parseGameType(game.game_type))) return
@@ -1179,10 +1215,7 @@ export default function HostPage() {
         </div>
 
         <div className="glass-card p-4 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-muted text-xs uppercase tracking-wider">Rounds</p>
-            <span className="text-faint text-xs">{game.timer_seconds}s each</span>
-          </div>
+          <p className="text-muted text-xs uppercase tracking-wider">Rounds</p>
           {isWst ? (
             <>
               <p className="font-bold text-body text-2xl">{game.rounds_count}</p>
@@ -1257,6 +1290,7 @@ export default function HostPage() {
                   : `Need at least ${minPool} joined people of one gender before you can set rounds`}
             </p>
           )}
+          <div className="pt-3 border-t border-theme">{timerControl}</div>
         </div>
 
         {isWst && wstPoolStatus && (game?.wst_quote_source ?? 'player') !== 'anime' && (
@@ -2388,12 +2422,16 @@ export default function HostPage() {
           </p>
         </div>
 
-        <div className="glass-card p-5 space-y-3 text-center">
-          <p className="font-semibold text-body">Same room, fresh game</p>
-          <p className="text-faint text-sm">
-            Send everyone back to the lobby with the same link and settings. Players stay joined — you start when ready.
-          </p>
-          <button onClick={handlePlayAgain} disabled={playingAgain} className="btn-primary w-full">
+        <div className="glass-card p-5 space-y-4 text-center">
+          <div>
+            <p className="font-semibold text-body">Same room, fresh game</p>
+            <p className="text-faint text-sm mt-1">
+              Send everyone back to the lobby with the same link and settings. Players stay joined — you start when
+              ready.
+            </p>
+          </div>
+          <div className="text-left">{timerControl}</div>
+          <button onClick={handlePlayAgain} disabled={playingAgain || updatingTimer} className="btn-primary w-full">
             {playingAgain ? 'Resetting…' : '↻ Play Again'}
           </button>
         </div>
