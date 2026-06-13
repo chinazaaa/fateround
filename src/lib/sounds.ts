@@ -3,6 +3,12 @@ let audioCtx: AudioContext | null = null
 /** Play tick-tock during the last N seconds of a round timer. */
 export const TIMER_TICK_THRESHOLD = 5
 
+/** Check whether the user has muted all game sounds via the toggle. */
+export function isSoundMuted(): boolean {
+  if (typeof window === 'undefined') return false
+  return localStorage.getItem('kmk-sound-muted') === 'true'
+}
+
 export function unlockAudio() {
   if (typeof window === 'undefined') return
   if (!audioCtx) audioCtx = new AudioContext()
@@ -303,36 +309,48 @@ export function stopTimerMusic() {
       try {
         g.gain.cancelScheduledValues(now)
         g.gain.setTargetAtTime(0, now, 0.08)
-      } catch {}
+      } catch {
+        /* ignored */
+      }
     }
     if (timerLfoGain) {
       try {
         timerLfoGain.gain.cancelScheduledValues(now)
         timerLfoGain.gain.setTargetAtTime(0, now, 0.05)
-      } catch {}
+      } catch {
+        /* ignored */
+      }
     }
     setTimeout(() => {
       for (const osc of timerOscillators) {
         try {
           osc.stop()
           osc.disconnect()
-        } catch {}
+        } catch {
+          /* ignored */
+        }
       }
       for (const g of timerGains) {
         try {
           g.disconnect()
-        } catch {}
+        } catch {
+          /* ignored */
+        }
       }
       if (timerLfo) {
         try {
           timerLfo.stop()
           timerLfo.disconnect()
-        } catch {}
+        } catch {
+          /* ignored */
+        }
       }
       if (timerLfoGain) {
         try {
           timerLfoGain.disconnect()
-        } catch {}
+        } catch {
+          /* ignored */
+        }
       }
       timerOscillators = []
       timerGains = []

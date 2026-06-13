@@ -1,7 +1,5 @@
 import type { Game, Participant, Player, Round, Vote } from '@/types'
 import { parseGameType, isPairGame, isWouldYouRather, isMostLikelyTo, isWhoSaidThis } from '@/lib/game-types'
-import { flagForParticipant, tallyRoundVotes, tallyWyrVotes, tallyMltVotes } from '@/lib/vote-stats'
-import { isMltImportGame, mltVoteTargets, mltTargetIdFromVote } from '@/lib/mlt'
 import { tallyWstPlayerScores, wstCorrectParticipantIdFromRound } from '@/lib/who-said-this'
 
 export interface Achievement {
@@ -20,7 +18,7 @@ function trioAndPairAchievements(
   participants: Participant[],
   rounds: Round[],
   votes: Vote[],
-  players: Player[]
+  _players: Player[]
 ): Achievement[] {
   const gameType = parseGameType(game.game_type)
   const achievements: Achievement[] = []
@@ -304,7 +302,7 @@ function mltAchievements(
   participants: Participant[],
   rounds: Round[],
   votes: Vote[],
-  players: Player[]
+  _players: Player[]
 ): Achievement[] {
   const achievements: Achievement[] = []
   const finishedRounds = rounds.filter((r) => r.status === 'finished')
@@ -372,7 +370,7 @@ function mltAchievements(
 function wstAchievements(
   rounds: Round[],
   votes: Vote[],
-  players: Player[],
+  _players: Player[],
   participants: Participant[]
 ): Achievement[] {
   const achievements: Achievement[] = []
@@ -433,7 +431,7 @@ export function computeAchievements(
   participants: Participant[],
   rounds: Round[],
   votes: Vote[],
-  players: Player[]
+  _players: Player[]
 ): Achievement[] {
   const gameType = parseGameType(game.game_type)
 
