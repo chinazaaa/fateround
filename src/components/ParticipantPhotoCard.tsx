@@ -85,16 +85,13 @@ export function ParticipantPhotoCard({
               onClick={() => onAssign(a)}
               disabled={slotDisabled}
               aria-label={`${slot.label} ${participant.name}`}
-              className={`flex-1 py-2 rounded-xl border text-xs font-bold transition-all active:scale-95 ${
+              className={`flex-1 py-1.5 rounded-xl border text-[11px] font-bold transition-all active:scale-95 whitespace-nowrap text-center ${
                 action === a
                   ? slot.activeClass
                   : `surface-inset border-theme text-muted ${!slotDisabled ? 'hover:border-theme-strong hover:text-body-muted' : ''}`
               } disabled:cursor-not-allowed disabled:opacity-40`}
             >
-              <span className="sm:hidden">{slot.emoji}</span>
-              <span className="hidden sm:inline">
-                {slot.emoji} {slot.label}
-              </span>
+              {slot.emoji} {slot.label}
             </button>
           )
         })}
