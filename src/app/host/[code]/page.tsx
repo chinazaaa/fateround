@@ -16,6 +16,7 @@ import {
   hasVotersForPolls,
   participantsWhoJoined,
   maxRecommendedRounds,
+  kmkRoundPickerOptions,
   roundLimitHint,
 } from '@/lib/participants'
 import type { ParticipantGender } from '@/types'
@@ -1029,7 +1030,7 @@ export default function HostPage() {
         ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
         : isWst
           ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
-          : [1, 2, 3, 4, 5, 6, 8, 10].filter((n) => n <= Math.max(maxRounds, 1))
+          : kmkRoundPickerOptions(maxRounds)
     const voterCheck = hasVotersForPolls(roundParticipants, players)
     const wstSource = game?.wst_quote_source ?? 'player'
     const animeQuoteCount = animePool.length
