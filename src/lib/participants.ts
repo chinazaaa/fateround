@@ -211,6 +211,16 @@ export function hasEnoughForRounds(participants: ParticipantInput[], gameType?: 
   return counts.male >= min || counts.female >= min
 }
 
+/** Round count buttons for KMK-style games — every value from 1 through max (up to 10). */
+export function kmkRoundPickerOptions(maxRounds: number): number[] {
+  const cap = Math.max(maxRounds, 1)
+  if (cap <= 10) {
+    return Array.from({ length: cap }, (_, i) => i + 1)
+  }
+  const presets = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20].filter((n) => n <= cap)
+  return presets.includes(cap) ? presets : [...presets, cap]
+}
+
 /** Max rounds before the same names repeat heavily. */
 export function maxRecommendedRounds(participants: ParticipantInput[], gameType?: GameType | string): number {
   if (isWouldYouRather(gameType)) return Math.min(20, WYR_QUESTION_COUNT)
