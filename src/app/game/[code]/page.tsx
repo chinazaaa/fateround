@@ -920,16 +920,20 @@ export default function GamePage() {
     const roundParts = parts.filter((p) => r.participant_ids.includes(p.id))
     const roundIds = roundParts.map((p) => p.id)
     const useRandom = g.auto_submit_behavior === 'random'
+    let animeCh = animeChoiceRef.current
+    const isAnimeWst = isWhoSaidThis(gameType) && !!r.anime_metadata
 
     // Only auto-fill random choices if the player has started voting
     // (picked at least one option). If they haven't touched anything, skip.
     const hasStartedVoting = isWouldYouRather(gameType)
       ? !!wyr
-      : isMostLikelyTo(gameType) || isWhoSaidThis(gameType)
-        ? !!mltTarget
-        : isPairGame(gameType)
-          ? Object.values(pa).some(Boolean)
-          : Object.values(a).some(Boolean)
+      : isAnimeWst
+        ? !!animeCh
+        : isMostLikelyTo(gameType) || isWhoSaidThis(gameType)
+          ? !!mltTarget
+          : isPairGame(gameType)
+            ? Object.values(pa).some(Boolean)
+            : Object.values(a).some(Boolean)
 
     if (useRandom && hasStartedVoting) {
       if (isWouldYouRather(gameType)) {
@@ -938,6 +942,11 @@ export default function GamePage() {
         const targets = mltVoteTargets(g, parts, plrs)
         if (targets.length > 0) {
           mltTarget = targets[Math.floor(Math.random() * targets.length)].id
+        }
+      } else if (isAnimeWst) {
+        const choices = (r.anime_metadata as { choices: string[] }).choices
+        if (choices.length > 0) {
+          animeCh = choices[Math.floor(Math.random() * choices.length)]
         }
       } else if (isWhoSaidThis(gameType)) {
         const targets = wstVoteTargets(parts)
@@ -973,8 +982,13 @@ export default function GamePage() {
     } else if (isWhoSaidThis(gameType)) {
       if (r.submitter_player_id === pid) return
       if (!r.quote_text) return
-      if (!mltTarget) return
-      voteBody = { targetParticipantId: mltTarget }
+      if (isAnimeWst) {
+        if (!animeCh) return
+        voteBody = { animeChoice: animeCh }
+      } else {
+        if (!mltTarget) return
+        voteBody = { targetParticipantId: mltTarget }
+      }
     } else if (isPairGame(gameType)) {
       const pairMode = parsePairVoteMode(g.pair_vote_mode)
       if (!isPairAssignmentValid(pa, roundIds, pairMode)) return
