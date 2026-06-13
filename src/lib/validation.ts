@@ -44,6 +44,7 @@ const gameTypeEnum = z.enum([
   'would_you_rather',
   'most_likely_to',
   'who_said_this',
+  'hot_seat',
 ])
 
 const participantModeEnum = z.enum(['import', 'joiners'])
@@ -274,6 +275,22 @@ export const rerollAnimeQuoteSchema = z.object({
 })
 
 export type RerollAnimeQuoteInput = z.infer<typeof rerollAnimeQuoteSchema>
+
+// ---------------------------------------------------------------------------
+// Hot Seat submissions (POST /api/hot-seat)
+// ---------------------------------------------------------------------------
+
+const hotSeatSubmissionTypeEnum = z.enum(['compliment', 'roast', 'observation'])
+
+export const hotSeatSubmissionSchema = z.object({
+  gameId: gameCodeString(),
+  roundId: uuidString('roundId'),
+  playerId: uuidString('playerId'),
+  text: sanitizedString(1, 300),
+  submissionType: hotSeatSubmissionTypeEnum,
+})
+
+export type HotSeatSubmissionInput = z.infer<typeof hotSeatSubmissionSchema>
 
 // ---------------------------------------------------------------------------
 // Re-exports for convenience

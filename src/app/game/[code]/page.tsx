@@ -63,6 +63,7 @@ import {
   isPairAssignmentValid,
   pairDisabledSlots,
   completeRandomPairAssignment,
+  isHotSeat,
 } from '@/lib/game-types'
 import {
   ParticipantRoundResults,
@@ -150,6 +151,14 @@ export default function GamePage() {
   const [submitted, setSubmitted] = useState(false)
   const [confessionText, setConfessionText] = useState('')
   const [confessionSent, setConfessionSent] = useState(false)
+
+  // Hot Seat
+  const [hotSeatText, setHotSeatText] = useState('')
+  const [hotSeatType, setHotSeatType] = useState<'compliment' | 'roast' | 'observation'>('observation')
+  const [hotSeatSubmitted, setHotSeatSubmitted] = useState(false)
+  const [hotSeatSubmissions, setHotSeatSubmissions] = useState<{ id: string; text: string; submission_type: string }[]>(
+    []
+  )
 
   // Between-rounds results
   const [lastFinishedRound, setLastFinishedRound] = useState<Round | null>(null)
@@ -437,6 +446,19 @@ export default function GamePage() {
     prevViewRef.current = view
   }, [view])
 
+  // Fetch Hot Seat submissions when entering round results
+  useEffect(() => {
+    if (view !== 'round_results' || !isHotSeat(game?.game_type) || !lastFinishedRound) return
+    async function fetchHotSeatResults() {
+      const res = await fetch(`/api/hot-seat?roundId=${lastFinishedRound!.id}&gameId=${gameCode}`)
+      if (res.ok) {
+        const { submissions } = await res.json()
+        setHotSeatSubmissions(submissions ?? [])
+      }
+    }
+    fetchHotSeatResults()
+  }, [view, game?.game_type, lastFinishedRound, gameCode])
+
   async function loadAllResults() {
     const [{ data: rounds }, { data: votes }, { data: confs }] = await Promise.all([
       supabase.from('rounds').select('*').eq('game_id', gameCode).order('round_number'),
@@ -461,6 +483,10 @@ export default function GamePage() {
     setQuoteSubmitting(false)
     setConfessionText('')
     setConfessionSent(false)
+    setHotSeatText('')
+    setHotSeatType('observation')
+    setHotSeatSubmitted(false)
+    setHotSeatSubmissions([])
   }
 
   function applyActiveRound(round: Round, options?: { switchView?: boolean }) {
@@ -2050,6 +2076,119 @@ export default function GamePage() {
     )
   }
 
+  // ROUND — Hot Seat
+  if (view === 'round' && currentRound && isHotSeat(game?.game_type)) {
+    const hotSeatPlayerId = currentRound.submitter_player_id
+    const isInHotSeat = myPlayerId === hotSeatPlayerId
+    const hotSeatPlayerName = players.find((p) => p.id === hotSeatPlayerId)?.name ?? 'Someone'
+
+    return (
+      <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full">
+        <PlayerNameBar name={myPlayerName} />
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <p className="text-muted text-xs uppercase tracking-wider">{game?.title}</p>
+            <GameTypeBadge gameType={game?.game_type} className="mt-1 mb-1" />
+            <p className="font-black text-body text-2xl">
+              Round {currentRound.round_number}
+              <span className="text-faint font-normal text-base"> / {game?.rounds_count}</span>
+            </p>
+          </div>
+          <TimerDisplay seconds={timeLeft} total={game?.timer_seconds ?? 30} />
+        </div>
+
+        {/* Hot seat spotlight */}
+        <div className="glass-card border-2 border-amber-500/40 rounded-2xl p-6 mb-6 text-center">
+          <div className="text-5xl mb-3">🪑🔥</div>
+          <p className="text-amber-400 text-xs uppercase tracking-wider mb-1">In the hot seat</p>
+          <p className="text-3xl font-black text-body">{isInHotSeat ? 'YOU' : hotSeatPlayerName}</p>
+        </div>
+
+        {isInHotSeat ? (
+          /* Hot seat player waits */
+          <div className="glass-card px-4 py-8 text-center">
+            <p className="text-muted text-lg">Everyone is writing something about you...</p>
+            <p className="text-faint text-sm mt-2">Brace yourself 😬</p>
+          </div>
+        ) : hotSeatSubmitted ? (
+          /* Already submitted */
+          <div className="glass-card border border-emerald-500/30 px-4 py-4 text-center">
+            <p className="text-green-400 font-semibold">✓ Submitted!</p>
+            <p className="text-muted text-sm mt-1">Waiting for everyone else...</p>
+          </div>
+        ) : (
+          /* Submission form */
+          <div className="space-y-4">
+            {/* Type selector */}
+            <div className="flex gap-2">
+              {(['compliment', 'roast', 'observation'] as const).map((type) => {
+                const config = {
+                  compliment: { emoji: '💛', label: 'Compliment' },
+                  roast: { emoji: '🔥', label: 'Roast' },
+                  observation: { emoji: '👀', label: 'Observation' },
+                }[type]
+                return (
+                  <button
+                    key={type}
+                    onClick={() => setHotSeatType(type)}
+                    className={`flex-1 py-2 rounded-xl border text-sm font-bold transition-all ${
+                      hotSeatType === type
+                        ? type === 'compliment'
+                          ? 'bg-amber-500/20 text-amber-100 border-amber-400'
+                          : type === 'roast'
+                            ? 'bg-red-500/20 text-red-200 border-red-400'
+                            : 'bg-slate-500/20 text-slate-200 border-slate-400'
+                        : 'surface-inset border-theme text-muted'
+                    }`}
+                  >
+                    {config.emoji} {config.label}
+                  </button>
+                )
+              })}
+            </div>
+
+            <textarea
+              value={hotSeatText}
+              onChange={(e) => setHotSeatText(e.target.value)}
+              placeholder={`Write a ${hotSeatType} about ${hotSeatPlayerName}...`}
+              maxLength={300}
+              rows={3}
+              className="input-field resize-none"
+            />
+
+            <button
+              onClick={async () => {
+                if (!hotSeatText.trim() || !currentRound || !myPlayerId) return
+                const res = await fetch('/api/hot-seat', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    gameId: gameCode,
+                    roundId: currentRound.id,
+                    playerId: myPlayerId,
+                    text: hotSeatText.trim(),
+                    submissionType: hotSeatType,
+                  }),
+                })
+                if (res.ok) {
+                  setHotSeatSubmitted(true)
+                  playVoteSubmittedSound()
+                }
+              }}
+              disabled={!hotSeatText.trim()}
+              className={
+                hotSeatText.trim() ? 'btn-primary w-full' : 'btn-secondary w-full opacity-60 cursor-not-allowed'
+              }
+            >
+              Submit {hotSeatType === 'compliment' ? '💛' : hotSeatType === 'roast' ? '🔥' : '👀'}
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // ROUND — voting
   if (view === 'round' && currentRound) {
     const roundParts = participants.filter((p) => currentRound.participant_ids.includes(p.id))
@@ -2194,6 +2333,74 @@ export default function GamePage() {
   // ROUND RESULTS — shown after round ends, before next round starts
   if (view === 'round_results' && lastFinishedRound) {
     const gameType = parseGameType(game?.game_type)
+
+    if (isHotSeat(gameType)) {
+      const hotSeatPlayerId = lastFinishedRound.submitter_player_id
+      const hotSeatPlayerName = players.find((p) => p.id === hotSeatPlayerId)?.name ?? 'Someone'
+      const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
+
+      return (
+        <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
+          <PlayerNameBar name={myPlayerName} />
+          <div className="text-center">
+            <p className="text-muted text-xs uppercase tracking-wider">
+              Round {lastFinishedRound.round_number} of {game?.rounds_count}
+            </p>
+            <GameTypeBadge gameType={gameType} className="mt-2" />
+            <h2 className="text-2xl font-black tracking-tight mt-2">Hot Seat Reveal! 🪑🔥</h2>
+          </div>
+
+          {/* Hot seat player spotlight */}
+          <div className="glass-card border-2 border-amber-500/40 rounded-2xl p-4 text-center">
+            <p className="text-amber-400 text-xs uppercase tracking-wider mb-1">In the hot seat</p>
+            <p className="text-2xl font-black text-body">{hotSeatPlayerName}</p>
+          </div>
+
+          {/* Submissions reveal */}
+          {hotSeatSubmissions.length === 0 ? (
+            <div className="glass-card px-4 py-6 text-center">
+              <p className="text-muted">No submissions this round</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {hotSeatSubmissions.map((sub, i) => {
+                const typeConfig = {
+                  compliment: { emoji: '💛', border: 'border-amber-500/30', bg: 'bg-amber-500/10' },
+                  roast: { emoji: '🔥', border: 'border-red-500/30', bg: 'bg-red-500/10' },
+                  observation: { emoji: '👀', border: 'border-slate-500/30', bg: 'bg-slate-500/10' },
+                }[sub.submission_type] ?? { emoji: '💬', border: 'border-slate-500/30', bg: 'bg-slate-500/10' }
+
+                return (
+                  <div
+                    key={sub.id}
+                    className={`glass-card border ${typeConfig.border} ${typeConfig.bg} rounded-xl px-4 py-3`}
+                    style={{
+                      animation: 'fade-in 0.4s ease backwards',
+                      animationDelay: `${i * 150}ms`,
+                    }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="text-2xl flex-shrink-0">{typeConfig.emoji}</span>
+                      <p className="text-body text-sm leading-relaxed">{sub.text}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <ReactionBar className="pt-1" />
+          <p className="text-faint text-sm text-center">
+            {roundResultsWaitMessage({
+              isLastRound,
+              autoReveal: !!game?.auto_reveal,
+              nextRoundSecondsLeft: nextRoundCountdown,
+              finalRevealSecondsLeft: finalRevealCountdown,
+            })}
+          </p>
+        </div>
+      )
+    }
 
     if (isWouldYouRather(gameType)) {
       const myVote = lastRoundVotes.find((v) => v.player_id === myPlayerId)

@@ -289,6 +289,48 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  hot_seat: {
+    id: 'hot_seat',
+    label: 'Hot Seat',
+    tagline: 'Take turns in the spotlight — everyone says one thing about you',
+    headerEmoji: '🪑🔥',
+    card: {
+      accent: '#f59e0b',
+      accentSoft: 'rgba(245, 158, 11, 0.15)',
+      emoji: '🪑',
+      players: '3+ players',
+      vibe: 'Brutally honest',
+    },
+    slots: {
+      kiss: {
+        emoji: '💛',
+        label: 'Compliment',
+        color: '#fbbf24',
+        leaderboardLabel: 'Compliments',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      marry: {
+        emoji: '👀',
+        label: 'Observation',
+        color: '#94a3b8',
+        leaderboardLabel: 'Observations',
+        activeClass: 'chip-active',
+        borderClass: 'border-[var(--border-strong)] bg-[var(--surface-inset-bg)]',
+        textColor: '#cbd5e1',
+      },
+      kill: {
+        emoji: '🔥',
+        label: 'Roast',
+        color: '#ef4444',
+        leaderboardLabel: 'Roasts',
+        activeClass: 'bg-red-500/20 text-red-200 border-red-400',
+        borderClass: 'border-red-500/50 bg-red-500/10',
+        textColor: '#fca5a5',
+      },
+    },
+  },
 }
 
 export const GAME_TYPE_OPTIONS: GameType[] = [
@@ -298,6 +340,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'would_you_rather',
   'most_likely_to',
   'who_said_this',
+  'hot_seat',
 ]
 
 export function parseGameType(raw: unknown): GameType {
@@ -306,6 +349,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'would_you_rather') return 'would_you_rather'
   if (raw === 'most_likely_to') return 'most_likely_to'
   if (raw === 'who_said_this') return 'who_said_this'
+  if (raw === 'hot_seat') return 'hot_seat'
   return 'smash_marry_kill'
 }
 
@@ -463,19 +507,24 @@ export function isWhoSaidThis(gameType: GameType | string | undefined): boolean 
   return parseGameType(gameType) === 'who_said_this'
 }
 
-/** Would You Rather only — forced joiners, no gender, always anonymous. */
-export function isLobbyGame(gameType: GameType | string | undefined): boolean {
-  return parseGameType(gameType) === 'would_you_rather'
+export function isHotSeat(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'hot_seat'
 }
 
-/** WYR + MLT player join: name only, no gender picker. */
+/** Would You Rather / Hot Seat — forced joiners, no gender, always anonymous. */
+export function isLobbyGame(gameType: GameType | string | undefined): boolean {
+  const type = parseGameType(gameType)
+  return type === 'would_you_rather' || type === 'hot_seat'
+}
+
+/** WYR + MLT + Hot Seat player join: name only, no gender picker. */
 export function isNameOnlyPlayerJoin(gameType: GameType | string | undefined): boolean {
   const type = parseGameType(gameType)
-  return type === 'would_you_rather' || type === 'most_likely_to'
+  return type === 'would_you_rather' || type === 'most_likely_to' || type === 'hot_seat'
 }
 
 export function isAnonymousGame(gameType: GameType | string | undefined): boolean {
-  return isNameOnlyPlayerJoin(gameType) || isWhoSaidThis(gameType)
+  return isNameOnlyPlayerJoin(gameType) || isWhoSaidThis(gameType) || isHotSeat(gameType)
 }
 
 export function isThreeChoiceGame(gameType: GameType | string | undefined): boolean {
