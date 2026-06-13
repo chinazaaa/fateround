@@ -14,6 +14,8 @@ interface NameSearchPickerProps {
   onChange: (id: string, name: string) => void
   searchPlaceholder?: string
   emptyMessage?: string
+  disabled?: boolean
+  listMaxHeight?: string
 }
 
 export function NameSearchPicker({
@@ -22,6 +24,8 @@ export function NameSearchPicker({
   onChange,
   searchPlaceholder = 'Search your name…',
   emptyMessage = 'No names match your search',
+  disabled = false,
+  listMaxHeight = 'max-h-56',
 }: NameSearchPickerProps) {
   const [query, setQuery] = useState('')
 
@@ -48,7 +52,8 @@ export function NameSearchPicker({
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
-          className="input-field pr-10"
+          disabled={disabled}
+          className="input-field pr-10 disabled:opacity-60"
         />
         {query && (
           <button
@@ -72,7 +77,7 @@ export function NameSearchPicker({
         role="listbox"
         aria-label="Select your name"
       >
-        <ul className="max-h-56 overflow-y-auto overscroll-contain divide-y divide-white/5">
+        <ul className={`${listMaxHeight} overflow-y-auto overscroll-contain divide-y divide-white/5`}>
           {filtered.length === 0 ? (
             <li className="px-4 py-8 text-center text-faint text-sm">{emptyMessage}</li>
           ) : (
@@ -84,8 +89,9 @@ export function NameSearchPicker({
                     type="button"
                     role="option"
                     aria-selected={active}
+                    disabled={disabled}
                     onClick={() => onChange(option.id, option.name)}
-                    className={`w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors ${
+                    className={`w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                       active
                         ? 'bg-[var(--primary-strong)]/35 text-white'
                         : 'text-white/85 hover:bg-white/5'

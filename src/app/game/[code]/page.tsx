@@ -28,6 +28,7 @@ import {
 import { ParticipantRoundResults, VoteCountStat, WyrRoundResults, MltRoundResults } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import { NameSearchPicker } from '@/components/NameSearchPicker'
+import { MltPlayerPicker } from '@/components/MltPlayerPicker'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import type { Game, Participant, Player, Round, Vote, VoteAssignment, Confession, GameType, PairAssignmentMap, WyrChoice } from '@/types'
 
@@ -1023,24 +1024,12 @@ export default function GamePage() {
         <div className={`glass-card border-2 ${borderCls} rounded-2xl p-5 mb-6 flex-1`}>
           <p className="text-muted text-xs uppercase tracking-wider text-center mb-3">Most likely to…</p>
           <p className="text-white/90 text-base text-center leading-snug font-medium mb-4">{question}</p>
-          <div className="grid gap-2">
-            {voteTargets.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                disabled={submitted || !canVote}
-                onClick={() => canVote && !submitted && setMltTargetPlayerId(p.id)}
-                className={`w-full text-left rounded-2xl border px-4 py-3 transition-all active:scale-[0.99] flex items-center gap-3 ${
-                  mltTargetPlayerId === p.id
-                    ? 'border-amber-400 bg-amber-500/15 text-amber-100'
-                    : 'border-white/10 surface-inset text-white/85 hover:border-white/25'
-                } disabled:cursor-not-allowed`}
-              >
-                <div className="avatar w-8 h-8 text-sm shrink-0">{getInitial(p.name)}</div>
-                <span className="font-medium truncate">{p.name}</span>
-              </button>
-            ))}
-          </div>
+          <MltPlayerPicker
+            players={voteTargets.map((p) => ({ id: p.id, name: p.name }))}
+            selectedId={mltTargetPlayerId}
+            onSelect={setMltTargetPlayerId}
+            disabled={submitted || !canVote}
+          />
         </div>
 
         {!submitted ? (

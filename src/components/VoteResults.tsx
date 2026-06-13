@@ -381,6 +381,12 @@ export function MltRoundResults({
         )}
 
         <div className="space-y-2">
+          {rows.length > 8 && (
+            <p className="text-faint text-[10px] uppercase tracking-wider text-center">
+              {rows.length} players · scroll for full breakdown
+            </p>
+          )}
+          <div className={`space-y-2 ${rows.length > 8 ? 'max-h-80 overflow-y-auto overscroll-contain pr-1 -mr-1' : ''}`}>
           {rows.map((row) => {
             const isWinner = maxCount > 0 && row.count === maxCount
             const pct = Math.min((row.count / barMax) * 100, 100)
@@ -404,6 +410,7 @@ export function MltRoundResults({
               </div>
             )
           })}
+          </div>
         </div>
 
         {myPickName && (
