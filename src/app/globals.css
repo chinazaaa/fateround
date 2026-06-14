@@ -389,6 +389,19 @@ body {
   cursor: not-allowed;
 }
 
+.btn-primary.btn-fit,
+.btn-secondary.btn-fit {
+  width: auto !important;
+  max-width: fit-content;
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 1.75rem;
+  padding-right: 1.75rem;
+}
+
 .btn-secondary {
   border-radius: 0.875rem;
   border: 1px solid var(--border-strong);
