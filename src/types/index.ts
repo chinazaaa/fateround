@@ -32,6 +32,8 @@ export interface CustomSlot {
 export interface CustomSlotsConfig {
   slots: CustomSlot[]
   title: string
+  /** When true, rounds are same-gender and players vote by gender (KMK-style). Default false. */
+  gender_based?: boolean
 }
 
 export interface Game {

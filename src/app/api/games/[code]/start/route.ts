@@ -16,7 +16,7 @@ import {
   isHotSeat,
   isCustomGame,
 } from '@/lib/game-types'
-import { getCustomSlotCount } from '@/lib/custom-game'
+import { getCustomSlotCount, isCustomGenderBased } from '@/lib/custom-game'
 import { buildHotSeatRoundRows } from '@/lib/hot-seat'
 import { buildRoundsFromQuotePool, buildRoundsFromAnimePool, wstAutoRoundCount } from '@/lib/who-said-this'
 import { pickWyrQuestions } from '@/lib/would-you-rather-questions'
@@ -33,6 +33,52 @@ import {
 import { hostActionSchema } from '@/lib/validation'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+
+import type { ParticipantForRounds } from '@/lib/utils'
+
+/** Same-gender round groups for custom games with 4–5 slots. */
+function generateGenderBasedNRounds(
+  participants: ParticipantForRounds[],
+  roundCount: number,
+  poolSize: number
+): string[][] {
+  if (roundCount <= 0 || poolSize < 2) return []
+
+  const byGender: Record<'male' | 'female', string[]> = { male: [], female: [] }
+  for (const p of participants) {
+    byGender[p.gender].push(p.id)
+  }
+
+  const eligible = (['male', 'female'] as const).filter((g) => byGender[g].length >= poolSize)
+  if (eligible.length === 0) return []
+
+  if (eligible.length === 1) {
+    return generateNRounds(byGender[eligible[0]], roundCount, poolSize)
+  }
+
+  const maleCount = Math.ceil(roundCount / 2)
+  const femaleCount = Math.floor(roundCount / 2)
+  const maleGroups = generateNRounds(byGender.male, maleCount, poolSize)
+  const femaleGroups = generateNRounds(byGender.female, femaleCount, poolSize)
+
+  const result: string[][] = []
+  let mi = 0
+  let fi = 0
+  const startWithMale = byGender.male.length >= byGender.female.length
+
+  for (let r = 0; r < roundCount; r++) {
+    const preferMale = startWithMale ? r % 2 === 0 : r % 2 === 1
+    if (preferMale) {
+      if (mi < maleGroups.length) result.push(maleGroups[mi++])
+      else if (fi < femaleGroups.length) result.push(femaleGroups[fi++])
+    } else {
+      if (fi < femaleGroups.length) result.push(femaleGroups[fi++])
+      else if (mi < maleGroups.length) result.push(maleGroups[mi++])
+    }
+  }
+
+  return result
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -396,10 +442,41 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     const participantIds = roundPool.map((p) => p.id)
-    const groups = generateNRounds(participantIds, game.rounds_count, slotCount)
+    const genderBased = isCustomGenderBased(game)
+    let groups: string[][]
 
-    if (groups.length === 0) {
-      return NextResponse.json({ error: `Need at least ${slotCount} people to start` }, { status: 400 })
+    if (genderBased) {
+      const participants = roundPool.map((p) => ({
+        id: p.id,
+        gender: parseParticipantGenderFromDb(p.gender) ?? ('female' as const),
+      }))
+      groups =
+        slotCount <= 3
+          ? generateRoundsByGender(participants, game.rounds_count, slotCount as 2 | 3)
+          : generateGenderBasedNRounds(participants, game.rounds_count, slotCount)
+
+      if (groups.length === 0) {
+        return NextResponse.json(
+          { error: `Need at least ${slotCount} joined people of the same gender to start` },
+          { status: 400 }
+        )
+      }
+
+      const voterCheck = hasVotersForPolls(
+        roundPool.map((p) => ({
+          id: p.id,
+          gender: parseParticipantGenderFromDb(p.gender) ?? ('female' as const),
+        })),
+        playersData
+      )
+      if (!voterCheck.ok) {
+        return NextResponse.json({ error: voterCheck.message }, { status: 400 })
+      }
+    } else {
+      groups = generateNRounds(participantIds, game.rounds_count, slotCount)
+      if (groups.length === 0) {
+        return NextResponse.json({ error: `Need at least ${slotCount} people to start` }, { status: 400 })
+      }
     }
 
     const roundRows = groups.map((group, index) => ({

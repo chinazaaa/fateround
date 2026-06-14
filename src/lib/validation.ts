@@ -102,6 +102,7 @@ export const createGameSchema = z.object({
         .min(2)
         .max(5),
       title: sanitizedString(1, 100),
+      gender_based: z.boolean().optional(),
     })
     .optional()
     .nullable(),

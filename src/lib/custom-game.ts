@@ -1,4 +1,5 @@
 import type { Game, Vote, Participant, CustomSlot } from '@/types'
+import { isCustomGame } from '@/lib/game-types'
 
 // ---------------------------------------------------------------------------
 // Config access
@@ -18,6 +19,14 @@ export function getCustomSlotCount(game: Game): number {
 
 export function getCustomTitle(game: Game): string {
   return game.custom_slots?.title ?? 'Custom Game'
+}
+
+export function isCustomGenderBased(game: Pick<Game, 'custom_slots'>): boolean {
+  return game.custom_slots?.gender_based === true
+}
+
+export function isCustomGenderFreeImport(game: Pick<Game, 'game_type' | 'custom_slots'>): boolean {
+  return isCustomGame(game.game_type) && !isCustomGenderBased(game)
 }
 
 // ---------------------------------------------------------------------------

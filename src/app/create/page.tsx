@@ -22,7 +22,7 @@ import {
   participantModeOptions,
   participantImportStepHint,
   participantUploadHint,
-  participantsNeedGender,
+  participantsNeedGenderForGame,
   participantSampleFile,
 } from '@/lib/participants'
 import {
@@ -151,9 +151,11 @@ function CreateGameInner() {
   const isHotSeatGame = isHotSeat(settings.game_type)
   const hotSeatCreateCapUpper = isHotSeatGame ? hotSeatMaxCapUpperBound(0, participants.length) : 20
   const isPair = isPairGame(settings.game_type)
-  const needsGender = participantsNeedGender(settings.game_type)
-  const minPool = roundPoolSize(settings.game_type)
-  const canCreateImport = participants.length >= minPool && hasEnoughForRounds(participants, settings.game_type)
+  const isCustom = isCustomGame(settings.game_type)
+  const needsGender = participantsNeedGenderForGame(settings.game_type, customSlots)
+  const minPool = isCustom && customSlots ? customSlots.slots.length : roundPoolSize(settings.game_type)
+  const canCreateImport =
+    participants.length >= minPool && hasEnoughForRounds(participants, settings.game_type, customSlots)
   const canCreateJoiners = !!settings.title.trim()
   const isLobbyQuestions = isWyr || isMlt
   const customQuestionCount = isWyr ? customWyrQuestions.length : customMltQuestions.length
@@ -180,7 +182,6 @@ function CreateGameInner() {
     (isLobbyQuestions && customQuestionCount >= settings.rounds_count && customQuestionCount > 0)
   const canCreateQuickLobby = !!settings.title.trim() && hasEnoughCustomQuestions
 
-  const isCustom = isCustomGame(settings.game_type)
   const customSlotsValid =
     !isCustom || (customSlots && customSlots.slots.length >= 2 && customSlots.slots.every((s) => s.label.trim()))
 
@@ -234,7 +235,7 @@ function CreateGameInner() {
   const addBulkParticipants = () => {
     if (!bulkPaste.trim()) return
     setUploadError(null)
-    const rows = parseParticipantsForGame(bulkPaste, settings.game_type)
+    const rows = parseParticipantsForGame(bulkPaste, settings.game_type, customSlots)
     if (rows.length === 0) {
       setUploadError(needsGender ? 'Use two columns: name and gender (e.g. Sarah,female)' : 'Add one name per line')
       return
@@ -247,7 +248,7 @@ function CreateGameInner() {
     const text = e.clipboardData.getData('text')
     if (!/[\n\r\t,;]/.test(text)) return
     e.preventDefault()
-    const rows = parseParticipantsForGame(text, settings.game_type)
+    const rows = parseParticipantsForGame(text, settings.game_type, customSlots)
     if (rows.length > 0) {
       addParticipantsFromRows(rows)
       setNameInput('')
@@ -272,7 +273,7 @@ function CreateGameInner() {
     try {
       if (ext === 'csv') {
         const text = await file.text()
-        const rows = parseParticipantsForGame(text, settings.game_type)
+        const rows = parseParticipantsForGame(text, settings.game_type, customSlots)
         if (rows.length === 0) {
           setUploadError(
             needsGender
@@ -287,7 +288,7 @@ function CreateGameInner() {
 
       if (ext === 'xlsx' || ext === 'xls') {
         const buffer = await file.arrayBuffer()
-        const rows = await parseExcelParticipants(buffer, settings.game_type)
+        const rows = await parseExcelParticipants(buffer, settings.game_type, customSlots)
         if (rows.length === 0) {
           setUploadError(
             needsGender
@@ -871,7 +872,7 @@ function CreateGameInner() {
   }
 
   if (step === 'participants') {
-    const sampleFile = participantSampleFile(settings.game_type)
+    const sampleFile = participantSampleFile(settings.game_type, customSlots)
     return (
       <PageShell>
         <BackBtn onClick={() => setStep('settings')} />
@@ -880,7 +881,7 @@ function CreateGameInner() {
         <div>
           <p className="label-caps mb-1">Step 2</p>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight gradient-title-subtle">Add People</h1>
-          <p className="text-muted text-sm mt-1.5">{participantImportStepHint(settings.game_type)}</p>
+          <p className="text-muted text-sm mt-1.5">{participantImportStepHint(settings.game_type, customSlots)}</p>
         </div>
 
         <div className="glass-card p-5 space-y-4">
@@ -926,7 +927,7 @@ function CreateGameInner() {
                 className="hidden"
                 onChange={handleFileUpload}
               />
-              <p className="text-faint text-xs text-center">{participantUploadHint(settings.game_type)}</p>
+              <p className="text-faint text-xs text-center">{participantUploadHint(settings.game_type, customSlots)}</p>
               {uploadError && <p className="text-red-400 text-sm">{uploadError}</p>}
             </div>
           ) : (
@@ -1026,7 +1027,7 @@ function CreateGameInner() {
           )}
           {needsGender &&
             !isMlt &&
-            !hasEnoughForRounds(participants, settings.game_type) &&
+            !hasEnoughForRounds(participants, settings.game_type, customSlots) &&
             participants.length > 0 && (
               <p className="text-amber-500 text-xs text-center">
                 Need at least {minPool} people of the same gender to run rounds

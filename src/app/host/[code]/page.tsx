@@ -34,7 +34,7 @@ import {
   isNameOnlyPlayerJoin,
   isCustomGame,
 } from '@/lib/game-types'
-import { getCustomSlots, tallyCustomVotes, buildCustomLeaderboard } from '@/lib/custom-game'
+import { getCustomSlots, tallyCustomVotes, buildCustomLeaderboard, getCustomSlotCount, isCustomGenderBased } from '@/lib/custom-game'
 import { CustomRoundResults } from '@/components/CustomRoundResults'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
@@ -1161,7 +1161,8 @@ export default function HostPage() {
     const lobbyOpts = { participantMode: game.participant_mode, participantCount: participants.length }
     const playerOnlyLobby = isPlayerOnlyJoinLobby(gameType, lobbyOpts)
     const hotSeatLobby = isHotSeatLobbyGame(gameType, lobbyOpts)
-    const minPool = roundPoolSize(gameType)
+    const minPool = isCustomGame(gameType) && game ? getCustomSlotCount(game) : roundPoolSize(gameType)
+    const customGenderBased = isCustomGame(gameType) && game ? isCustomGenderBased(game) : false
     const isJoinersMode = (game.participant_mode ?? 'import') === 'joiners'
     const hotSeatLegacyJoiners = isHotSeatGame && isJoinersMode && participants.length === 0
     const wstSubmitters = wstEligibleSubmitters(players)
@@ -1246,14 +1247,14 @@ export default function HostPage() {
               : isJoinersMode
                 ? players.length > 0 &&
                   participants.length >= minPool &&
-                  hasEnoughForRounds(participantInputs, gameType) &&
+                  hasEnoughForRounds(participantInputs, gameType, game.custom_slots) &&
                   !roundsTooHigh &&
                   voterCheck.ok
                 : players.length > 0 &&
                   roundParticipants.length >= minPool &&
-                  hasEnoughForRounds(participantInputs, gameType) &&
+                  hasEnoughForRounds(participantInputs, gameType, game.custom_slots) &&
                   !roundsTooHigh &&
-                  voterCheck.ok
+                  (customGenderBased ? voterCheck.ok : true)
 
     return (
       <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
@@ -1328,7 +1329,7 @@ export default function HostPage() {
             </>
           ) : isWyr ||
             isMlt ||
-            (roundParticipants.length >= minPool && hasEnoughForRounds(participantInputs, gameType)) ? (
+            (roundParticipants.length >= minPool && hasEnoughForRounds(participantInputs, gameType, game.custom_slots)) ? (
             <>
               {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
               <div className="flex gap-2 flex-wrap">
@@ -1368,7 +1369,9 @@ export default function HostPage() {
                     : participants.length >= 3
                       ? 'Need at least 3 players to claim a name before you can set rounds'
                       : 'Need at least 3 names on the list before you can set rounds'
-                  : `Need at least ${minPool} joined people of one gender before you can set rounds`}
+                  : isCustomGame(gameType) && !customGenderBased
+                    ? `Need at least ${minPool} names on the list before you can set rounds`
+                    : `Need at least ${minPool} joined people of one gender before you can set rounds`}
             </p>
           )}
           <div className="pt-3 border-t border-theme">{timerControl}</div>
@@ -1567,8 +1570,11 @@ export default function HostPage() {
               turns in the hot seat
             </p>
           )}
-          {!isJoinersMode && (
+          {!isJoinersMode && customGenderBased && (
             <p className="text-faint text-xs">Tap Male/Female to fix identity · Remove to kick someone out</p>
+          )}
+          {!isJoinersMode && !customGenderBased && isCustomGame(gameType) && (
+            <p className="text-faint text-xs">Remove to kick someone out</p>
           )}
           {isJoinersMode && participants.length > 0 && !hotSeatLobby && (
             <p className="text-faint text-xs">Tap to fix poll placement or gender · Remove to kick out</p>
@@ -1745,10 +1751,14 @@ export default function HostPage() {
             !isMlt &&
             !hotSeatLobby &&
             participants.length > 0 &&
-            !hasEnoughForRounds(participantInputs, gameType) && (
-              <p className="callout-warning text-center">Need at least {minPool} people of the same gender to start</p>
+            !hasEnoughForRounds(participantInputs, gameType, game.custom_slots) && (
+              <p className="callout-warning text-center">
+                {customGenderBased
+                  ? `Need at least ${minPool} people of the same gender to start`
+                  : `Need at least ${minPool} names to start`}
+              </p>
             )}
-          {!hotSeatLobby && !voterCheck.ok && players.length > 0 && roundParticipants.length >= minPool && (
+          {!hotSeatLobby && customGenderBased && !voterCheck.ok && players.length > 0 && roundParticipants.length >= minPool && (
             <p className="callout-warning text-center">{voterCheck.message}</p>
           )}
           {!isJoinersMode && roundParticipants.length < minPool && players.length > 0 && (
@@ -1775,7 +1785,7 @@ export default function HostPage() {
                   placeholder="Name"
                   className="input-field flex-1 py-2 text-sm"
                 />
-                {!isMltImport && (
+                {!isMltImport && customGenderBased && (
                   <div className="flex gap-1 shrink-0">
                     {(['female', 'male'] as const).map((g) => (
                       <button
@@ -1805,7 +1815,9 @@ export default function HostPage() {
             <p className="text-faint text-xs">
               {isMltImport
                 ? 'Everyone on the list can be voted for — players join separately to vote'
-                : "Tap gender to correct · Remove if someone shouldn't be in the poll"}
+                : customGenderBased
+                  ? "Tap gender to correct · Remove if someone shouldn't be in the poll"
+                  : 'Remove if someone should not be in the poll'}
             </p>
             {isMltImport && (
               <p className="text-faint text-xs text-center">
@@ -1855,7 +1867,7 @@ export default function HostPage() {
                     className="flex items-center gap-2 min-w-0 surface-inset border border-theme rounded-xl px-3 py-2"
                   >
                     <span className="text-body-muted text-sm truncate flex-1">{p.name}</span>
-                    {!isMltImport && (
+                    {!isMltImport && customGenderBased && (
                       <div className="flex gap-1 shrink-0">
                         {(['female', 'male'] as const).map((g) => (
                           <button
@@ -1929,7 +1941,9 @@ export default function HostPage() {
                                               ? `Lower to ${maxRounds} rounds max`
                                               : !voterCheck.ok
                                                 ? 'Need voters for each list'
-                                                : `Need ${minPool}+ joined of one gender`
+                                            : customGenderBased
+                                              ? `Need ${minPool}+ joined of one gender`
+                                              : `Need ${minPool}+ names joined`
               : hotSeatLobby
                 ? `Start Game (${hotSeatEffective} round${hotSeatEffective === 1 ? '' : 's'})`
                 : `Start Game (${players.length} players)`}

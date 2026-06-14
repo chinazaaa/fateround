@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generateGameCode, generateToken } from '@/lib/utils'
-import { normalizeGender, hasEnoughForRounds, participantsNeedGender, type ParticipantInput } from '@/lib/participants'
+import { normalizeGender, hasEnoughForRounds, participantsNeedGenderForGame, type ParticipantInput } from '@/lib/participants'
 import {
   parseGameType,
   roundPoolSize,
@@ -21,17 +21,21 @@ import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import { parseQuestionSource, parseStoredWyrQuestions, parseStoredMltQuestions } from '@/lib/custom-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
-import type { ParticipantMode, QuestionSource } from '@/types'
+import type { ParticipantMode, QuestionSource, CustomSlotsConfig } from '@/types'
 import { createGameSchema, stripHtml } from '@/lib/validation'
 import { parseThemeId } from '@/lib/themes'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
-function parseParticipants(raw: unknown, gameType: ReturnType<typeof parseGameType>): ParticipantInput[] | null {
+function parseParticipants(
+  raw: unknown,
+  gameType: ReturnType<typeof parseGameType>,
+  customSlots?: CustomSlotsConfig | null
+): ParticipantInput[] | null {
   if (!Array.isArray(raw)) return null
 
   const parsed: ParticipantInput[] = []
-  const needGender = participantsNeedGender(gameType)
+  const needGender = participantsNeedGenderForGame(gameType, customSlots)
   for (const item of raw) {
     if (typeof item === 'string') {
       const name = stripHtml(item.trim())
@@ -101,6 +105,7 @@ export async function POST(req: NextRequest) {
     theme: rawTheme,
     participants: rawParticipants,
     participant_filter,
+    custom_slots,
   } = parsed.data
 
   const game_type = parseGameType(rawGameType)
@@ -126,9 +131,11 @@ export async function POST(req: NextRequest) {
 
   let participants: ParticipantInput[] = []
   if (participant_mode === 'import') {
-    const participantsParsed = parseParticipants(rawParticipants, game_type)
-    if (!participantsParsed || participantsParsed.length < roundPoolSize(game_type)) {
-      return NextResponse.json({ error: `At least ${roundPoolSize(game_type)} participants required` }, { status: 400 })
+    const customMinPool =
+      isCustomGame(game_type) && custom_slots?.slots?.length ? custom_slots.slots.length : roundPoolSize(game_type)
+    const participantsParsed = parseParticipants(rawParticipants, game_type, custom_slots)
+    if (!participantsParsed || participantsParsed.length < customMinPool) {
+      return NextResponse.json({ error: `At least ${customMinPool} participants required` }, { status: 400 })
     }
     if (isMostLikelyTo(game_type)) {
       if (participantsParsed.length < 2) {
@@ -142,12 +149,12 @@ export async function POST(req: NextRequest) {
       if (participantsParsed.length < 3) {
         return NextResponse.json({ error: 'Need at least 3 names on the list for Hot Seat' }, { status: 400 })
       }
-    } else if (!hasEnoughForRounds(participantsParsed, game_type)) {
-      const min = roundPoolSize(game_type)
-      return NextResponse.json(
-        { error: `Need at least ${min} people of the same gender (male or female) for rounds` },
-        { status: 400 }
-      )
+    } else if (!hasEnoughForRounds(participantsParsed, game_type, custom_slots)) {
+      const min = isCustomGame(game_type) ? customMinPool : roundPoolSize(game_type)
+      const errorMsg = isCustomGame(game_type) && !custom_slots?.gender_based
+        ? `Need at least ${min} names on the list`
+        : `Need at least ${min} people of the same gender (male or female) for rounds`
+      return NextResponse.json({ error: errorMsg }, { status: 400 })
     }
     participants = participantsParsed
   }

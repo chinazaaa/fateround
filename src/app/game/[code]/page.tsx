@@ -98,6 +98,7 @@ import {
   tallyCustomVotes,
   completeRandomCustomAssignment,
   buildCustomLeaderboard,
+  isCustomGenderBased,
 } from '@/lib/custom-game'
 import { CustomVoteCard } from '@/components/CustomVoteCard'
 import { CustomRoundResults } from '@/components/CustomRoundResults'
@@ -229,7 +230,11 @@ export default function GamePage() {
 
   const isJoinersMode = game?.participant_mode === 'joiners'
   const isNameOnlyJoin = isNameOnlyPlayerJoin(game?.game_type)
-  const joinNeedsGender = playerJoinNeedsGender(game?.game_type)
+  const joinNeedsGender = isCustomGame(game?.game_type)
+    ? game
+      ? isCustomGenderBased(game)
+      : false
+    : playerJoinNeedsGender(game?.game_type)
   const isWstGame = isWhoSaidThis(game?.game_type)
   const isWyrGame = isWouldYouRather(game?.game_type)
   const isMltImport = game ? isMltImportGame(game) : false
@@ -916,9 +921,11 @@ export default function GamePage() {
       const r = currentRoundRef.current
       const isWstRound = isWhoSaidThis(gameType)
       const isSubmitter = isWstRound && r?.submitter_player_id === myPlayerIdRef.current
+      const isNonGenderCustom =
+        isCustomGame(gameType) && gameRef.current && !isCustomGenderBased(gameRef.current)
       const canVote = isWstRound
         ? !!myPlayerIdRef.current && !isSubmitter && !!r?.quote_text
-        : isNameOnlyPlayerJoin(gameType)
+        : isNameOnlyPlayerJoin(gameType) || isNonGenderCustom
           ? !!myPlayerIdRef.current
           : !!roundGender && !!playerGender && canPlayerVoteInRound(playerGender, roundGender)
 
@@ -2216,18 +2223,21 @@ export default function GamePage() {
 
   // ROUND — voting
   if (view === 'round' && currentRound) {
+    const gameType = parseGameType(game?.game_type)
     const roundParts = participants.filter((p) => currentRound.participant_ids.includes(p.id))
     const roundParticipantGender = getRoundParticipantGender(currentRound.participant_ids, participants)
     const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
     const voterHint = roundVoterLabel(roundParticipantGender)
     const effectiveGender = myPlayerGender ?? getPlayerSession(gameCode)?.playerGender ?? null
-    const canVote = !!(
-      effectiveGender &&
-      roundParticipantGender &&
-      canPlayerVoteInRound(effectiveGender, roundParticipantGender)
-    )
+    const isNonGenderCustom = isCustomGame(gameType) && game && !isCustomGenderBased(game)
+    const canVote = isNonGenderCustom
+      ? !!myPlayerId
+      : !!(
+          effectiveGender &&
+          roundParticipantGender &&
+          canPlayerVoteInRound(effectiveGender, roundParticipantGender)
+        )
     const voteBanner = canVote ? activeVoteBanner(effectiveGender) : null
-    const gameType = parseGameType(game?.game_type)
     const isPair = isPairGame(gameType)
     const roundPartIds = roundParts.map((p) => p.id)
     const pairMode = parsePairVoteMode(game?.pair_vote_mode)
@@ -2259,9 +2269,13 @@ export default function GamePage() {
               Round {currentRound.round_number}
               <span className="text-faint font-normal text-base"> / {game?.rounds_count}</span>
             </p>
-            {roundGender && <p className="text-[var(--primary)] text-sm font-medium mt-0.5">{roundGender}</p>}
-            {voterHint && <p className="text-muted text-xs mt-0.5">{voterHint}</p>}
-            {voteBanner && <p className="text-green-400/90 text-xs font-medium mt-1">{voteBanner}</p>}
+            {roundGender && !isNonGenderCustom && (
+              <p className="text-[var(--primary)] text-sm font-medium mt-0.5">{roundGender}</p>
+            )}
+            {voterHint && !isNonGenderCustom && <p className="text-muted text-xs mt-0.5">{voterHint}</p>}
+            {voteBanner && !isNonGenderCustom && (
+              <p className="text-green-400/90 text-xs font-medium mt-1">{voteBanner}</p>
+            )}
             {isPair && isPairOneEachMode(game!) && (
               <p className="text-faint text-xs mt-1">
                 {gameType === 'smash_or_pass' ? 'Pick one Smash and one Pass' : 'Pick one Green and one Red'}

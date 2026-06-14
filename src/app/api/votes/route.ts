@@ -16,7 +16,7 @@ import {
   voteSlots,
   isCustomGame,
 } from '@/lib/game-types'
-import { parseCustomAssignments, isCustomAssignmentValid } from '@/lib/custom-game'
+import { parseCustomAssignments, isCustomAssignmentValid, isCustomGenderBased } from '@/lib/custom-game'
 import type { PairFlag, WyrChoice } from '@/types'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     supabase.from('rounds').select('participant_ids, submitter_player_id, quote_text').eq('id', roundId).maybeSingle(),
     supabase
       .from('games')
-      .select('game_type, participant_mode, pair_vote_mode')
+      .select('game_type, participant_mode, pair_vote_mode, custom_slots')
       .eq('id', gameId.toUpperCase())
       .maybeSingle(),
   ])
@@ -292,7 +292,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (!isLobbyGame(gameType) && !isMostLikelyTo(gameType) && !isWhoSaidThis(gameType)) {
+  if (
+    !isLobbyGame(gameType) &&
+    !isMostLikelyTo(gameType) &&
+    !isWhoSaidThis(gameType) &&
+    !(isCustomGame(gameType) && !isCustomGenderBased(game))
+  ) {
     const { data: participants } = await supabase
       .from('participants')
       .select('id, gender')

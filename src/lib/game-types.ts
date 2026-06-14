@@ -431,7 +431,9 @@ export function gameHowItWorks(
     case 'smash_marry_kill':
     default:
       if (isCustomGame(gameType)) {
-        return "Add everyone's names on the next step. Each round shows a group of names — everyone assigns one person to each custom category."
+        return joiners
+          ? 'Players add their name to the poll when joining. Each round shows a group — everyone assigns one person to each custom category.'
+          : "Add everyone's names on the next step. Each round shows a group — everyone assigns one person to each custom category."
       }
       return joiners
         ? 'Players add their name to the poll when joining. Each round, three names appear — everyone picks one to smash, one to marry, and one to kill.'

@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import type { CustomSlot, CustomSlotsConfig } from '@/types'
+import { SegmentedControl } from '@/components/ui/CreateWizard'
 
 const PRESET_EMOJI = [
   '🔥',
@@ -94,11 +95,21 @@ export function CustomSlotBuilder({ value, onChange }: CustomSlotBuilderProps) {
 
   const slots = value?.slots ?? makeSlots(3)
   const title = value?.title ?? ''
+  const genderBased = value?.gender_based ?? false
+
+  function updateConfig(updates: Partial<CustomSlotsConfig>) {
+    onChange({
+      slots,
+      title,
+      gender_based: genderBased,
+      ...updates,
+    })
+  }
 
   function updateSlot(index: number, updates: Partial<CustomSlot>) {
     const newSlots = slots.map((s, i) => (i === index ? { ...s, ...updates } : s))
     const newTitle = newSlots.every((s) => s.label) ? newSlots.map((s) => s.label).join(' / ') : title
-    onChange({ slots: newSlots, title: newTitle })
+    updateConfig({ slots: newSlots, title: newTitle })
   }
 
   function setSlotCount(count: number) {
@@ -112,11 +123,11 @@ export function CustomSlotBuilder({ value, onChange }: CustomSlotBuilderProps) {
       newSlots = slots.slice(0, count)
     }
     const newTitle = newSlots.every((s) => s.label) ? newSlots.map((s) => s.label).join(' / ') : title
-    onChange({ slots: newSlots, title: newTitle })
+    updateConfig({ slots: newSlots, title: newTitle })
   }
 
   function selectTemplate(template: Template) {
-    onChange({ slots: template.slots, title: template.title })
+    updateConfig({ slots: template.slots, title: template.title })
     setShowTemplates(false)
   }
 
@@ -142,7 +153,7 @@ export function CustomSlotBuilder({ value, onChange }: CustomSlotBuilderProps) {
           <button
             type="button"
             onClick={() => {
-              onChange({ slots: makeSlots(2), title: '' })
+              updateConfig({ slots: makeSlots(2), title: '' })
               setShowTemplates(false)
             }}
             className="w-full text-left glass-card px-4 py-3 hover:border-theme-strong transition-colors"
@@ -169,6 +180,27 @@ export function CustomSlotBuilder({ value, onChange }: CustomSlotBuilderProps) {
         >
           Change template
         </button>
+      </div>
+
+      {/* Gender-based option */}
+      <div className="space-y-2">
+        <p className="text-muted text-xs uppercase tracking-wider">Who's in each round?</p>
+        <SegmentedControl
+          value={genderBased ? 'gender' : 'names'}
+          onChange={(v) => updateConfig({ gender_based: v === 'gender' })}
+          options={[
+            {
+              value: 'names',
+              label: 'Names only',
+              hint: 'Anyone can appear in any round — no gender needed.',
+            },
+            {
+              value: 'gender',
+              label: 'Gender-based',
+              hint: 'Same-gender groups each round — players vote on the opposite gender (like Smash / Marry / Kill).',
+            },
+          ]}
+        />
       </div>
 
       {/* Slot count */}
