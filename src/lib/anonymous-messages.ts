@@ -15,8 +15,8 @@ export const ANONYMOUS_ROOM_SESSION_SECONDS = 15 * 60
 
 /** Lobby size limits for anonymous rooms. */
 export const ANONYMOUS_ROOM_MIN_PLAYERS = 2
-export const ANONYMOUS_ROOM_MAX_PLAYERS = 50
-export const ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS = 50
+export const ANONYMOUS_ROOM_MAX_PLAYERS = 15
+export const ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS = 15
 
 export function clampAnonymousRoomMaxPlayers(value: number): number {
   return Math.min(ANONYMOUS_ROOM_MAX_PLAYERS, Math.max(ANONYMOUS_ROOM_MIN_PLAYERS, value))

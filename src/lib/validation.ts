@@ -94,7 +94,7 @@ export const createGameSchema = z.object({
   wst_quote_source: wstQuoteSourceEnum.optional(),
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
-  max_players: z.coerce.number().int().min(2).max(50).optional(),
+  max_players: z.coerce.number().int().min(2).max(15).optional(),
   custom_slots: z
     .object({
       slots: z
