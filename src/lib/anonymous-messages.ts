@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Game, Player } from '@/types'
 
 /** Keep at most this many messages per anonymous room — oldest are deleted first. */
 export const ANONYMOUS_ROOM_MAX_MESSAGES = 1000
@@ -13,6 +14,16 @@ export function truncateReplyPreview(text: string, max = ANONYMOUS_REPLY_PREVIEW
   const trimmed = text.trim()
   if (trimmed.length <= max) return trimmed
   return `${trimmed.slice(0, max)}…`
+}
+
+/** Players who join after the session starts may watch but not post. */
+export function anonymousPlayerCanChat(
+  player: Pick<Player, 'joined_at'>,
+  game: Pick<Game, 'status' | 'session_started_at'>
+): boolean {
+  if (game.status === 'waiting') return true
+  if (!game.session_started_at) return false
+  return new Date(player.joined_at).getTime() < new Date(game.session_started_at).getTime()
 }
 
 export function anonymousSessionExpired(sessionStartedAt: string | null | undefined): boolean {

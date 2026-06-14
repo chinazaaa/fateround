@@ -606,9 +606,9 @@ function CreateGameInner() {
             {isAnonymousRoom ? (
               <SettingsGroup title="Session">
                 <p className="text-faint text-sm leading-relaxed">
-                  Players join with one tap and get a random lobby name shown on their messages. Sessions last up to
-                  15 minutes and only the latest 1,000 messages are kept — remove players from the lobby anytime before
-                  the session ends.
+                  Players join with one tap and get a random lobby name shown on their messages. Anyone who joins after
+                  the session starts can watch only. Sessions last up to 15 minutes and only the latest 1,000 messages
+                  are kept — remove players from the lobby anytime before the session ends.
                 </p>
               </SettingsGroup>
             ) : (

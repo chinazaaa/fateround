@@ -10,6 +10,7 @@ import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { useAnonymousMessages } from '@/hooks/useAnonymousMessages'
 import { AnonymousSessionTimerBar } from '@/components/anonymous-messages/AnonymousSessionTimerBar'
 import { gameTypeConfig } from '@/lib/game-types'
+import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import type { AnonymousMessage, Game, Player } from '@/types'
@@ -133,7 +134,11 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       setMyPlayerId(data.playerId)
       setMyPlayerName(data.playerName)
       await load()
-      success(`Joined as ${data.playerName}`)
+      success(
+        data.canChat === false
+          ? `Joined as ${data.playerName} — view only`
+          : `Joined as ${data.playerName}`
+      )
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to join')
     } finally {
@@ -184,14 +189,17 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   }
 
   if (screen === 'join') {
+    const sessionInProgress = game?.status === 'active'
     return (
       <CenteredShell>
         <Header game={game} />
         <p className="text-muted text-sm text-center">
-          Join the anonymous room — you&apos;ll get a random lobby name shown on your messages.
+          {sessionInProgress
+            ? 'This session is already in progress. You can join to watch live — late joiners cannot send messages.'
+            : 'Join the anonymous room — you&apos;ll get a random lobby name shown on your messages.'}
         </p>
         <button type="button" onClick={join} disabled={joining} className="btn-primary w-full">
-          {joining ? 'Joining…' : 'Join anonymously'}
+          {joining ? 'Joining…' : sessionInProgress ? 'Join as viewer' : 'Join anonymously'}
         </button>
       </CenteredShell>
     )
@@ -220,25 +228,43 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     )
   }
 
+  const myPlayer = players.find((p) => p.id === myPlayerId) ?? null
+  const canChat = game && myPlayer ? anonymousPlayerCanChat(myPlayer, game) : false
+
   return (
     <PageShell>
       <Header game={game} />
       <AnonymousSessionTimerBar gameCode={gameCode} game={game} sticky />
-      <PlayerBar name={myPlayerName} subtitle="Your lobby name — shown on your messages" />
+      <PlayerBar
+        name={myPlayerName}
+        subtitle={
+          canChat
+            ? 'Your lobby name — shown on your messages'
+            : 'View-only — you joined after the session started'
+        }
+      />
+      {!canChat && (
+        <p className="callout-warning text-sm text-center">
+          View-only mode — you can read messages but cannot send or reply.
+        </p>
+      )}
       <AnonymousMessageFeed
         messages={messages}
-        canReply
-        onReply={setReplyTo}
+        readOnly={!canChat}
+        canReply={canChat}
+        onReply={canChat ? setReplyTo : undefined}
         highlightMessageId={replyTo?.id ?? null}
       />
-      <AnonymousMessageComposer
-        value={messageInput}
-        onChange={setMessageInput}
-        onSend={sendMessage}
-        sending={sending}
-        replyTo={replyTo}
-        onClearReply={() => setReplyTo(null)}
-      />
+      {canChat && (
+        <AnonymousMessageComposer
+          value={messageInput}
+          onChange={setMessageInput}
+          onSend={sendMessage}
+          sending={sending}
+          replyTo={replyTo}
+          onClearReply={() => setReplyTo(null)}
+        />
+      )}
     </PageShell>
   )
 }

@@ -4,6 +4,7 @@ import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/li
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { parseGameType, isNameOnlyPlayerJoin, isWhoSaidThis, isImportNameClaimGame, isHotSeat, isAnonymousMessagesGame } from '@/lib/game-types'
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
+import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
 import { isGenderFreeImportJoin, isGenderFreeJoinersJoin, isGenderFreeVotersJoin } from '@/lib/gender-based'
 import { isImportClaimMode, isJoinersPollMode, isVoterOnlyMode } from '@/lib/participant-mode'
 import {
@@ -73,20 +74,28 @@ export async function POST(req: NextRequest) {
   } = parsed.data
 
   const name = playerName?.trim() ?? ''
-  const waiting = await assertWaitingGame(gameCode)
-  if (waiting.error) return NextResponse.json({ error: waiting.error }, { status: waiting.status })
-  const { game, id } = waiting
-  const gameType = parseGameType(game!.game_type)
+  const gameId = gameCode.toUpperCase()
+  const { data: gameRow } = await supabase.from('games').select('*').eq('id', gameId).maybeSingle()
+  if (!gameRow) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
 
-  if (isAnonymousMessagesGame(gameType)) {
-    const { data: existingPlayers } = await supabase.from('players').select('name').eq('game_id', id)
-    const name = generateAnonymousDisplayName((existingPlayers ?? []).map((p) => p.name))
+  const rowGameType = parseGameType(gameRow.game_type)
+
+  if (isAnonymousMessagesGame(rowGameType)) {
+    if (gameRow.status === 'finished') {
+      return NextResponse.json({ error: 'This session has ended' }, { status: 400 })
+    }
+    if (gameRow.status !== 'waiting' && gameRow.status !== 'active') {
+      return NextResponse.json({ error: 'Cannot join this session' }, { status: 400 })
+    }
+
+    const { data: existingPlayers } = await supabase.from('players').select('name').eq('game_id', gameId)
+    const generatedName = generateAnonymousDisplayName((existingPlayers ?? []).map((p) => p.name))
 
     const { data: player, error } = await supabase
       .from('players')
       .insert({
-        game_id: id,
-        name,
+        game_id: gameId,
+        name: generatedName,
         gender: 'both',
         identity_gender: null,
         participant_id: null,
@@ -96,13 +105,21 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    const canChat = anonymousPlayerCanChat(player, gameRow)
+
     return NextResponse.json({
       playerId: player.id,
       playerName: player.name,
       playerGender: player.gender,
       playerIdentityGender: player.identity_gender,
+      canChat,
     })
   }
+
+  const waiting = await assertWaitingGame(gameCode)
+  if (waiting.error) return NextResponse.json({ error: waiting.error }, { status: waiting.status })
+  const { game, id } = waiting
+  const gameType = parseGameType(game!.game_type)
 
   if (isNameOnlyPlayerJoin(gameType) || (isHotSeat(gameType) && isJoinersPollMode(game as import('@/types').Game))) {
     if (!name) {
