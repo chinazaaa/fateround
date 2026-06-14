@@ -1413,6 +1413,13 @@ export default function GamePage() {
               }
             />
           )}
+          {!isWouldYouRather(game?.game_type) &&
+            !isMostLikelyTo(game?.game_type) &&
+            !isWhoSaidThis(game?.game_type) && (
+              <p className="text-faint text-xs text-center leading-snug">
+                You can add a profile picture in the lobby after joining — it shows on voting cards.
+              </p>
+            )}
           {!joinNeedsGender && isNameOnlyJoin && (
             <p className="text-faint text-xs text-center">
               {isHotSeat(game?.game_type)
@@ -1655,6 +1662,12 @@ export default function GamePage() {
 
         <div className="surface-inset border border-theme rounded-2xl p-4 space-y-2">
           <p className="text-muted text-xs uppercase tracking-wider">Players Joined ({players.length})</p>
+          {canUploadPhoto && (
+            <p className="text-faint text-xs leading-snug">
+              Your name is marked <span className="text-[var(--primary)] font-medium">(you)</span> in the list — tap
+              the camera icon next to it to add or change your photo.
+            </p>
+          )}
           <div className="space-y-1.5 max-h-52 overflow-y-auto">
             {players.map((p) => {
               const isMe = p.name === myPlayerName
