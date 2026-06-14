@@ -1,5 +1,6 @@
-import type { Game, Participant, Player } from '@/types'
 import { isMostLikelyTo } from '@/lib/game-types'
+import { isVoterOnlyMode } from '@/lib/participant-mode'
+import type { Game, Participant, Player } from '@/types'
 
 export type MltTargetKind = 'player' | 'participant'
 
@@ -10,7 +11,7 @@ export interface MltVoteTarget {
 }
 
 export function isMltImportGame(game: Pick<Game, 'game_type' | 'participant_mode'>): boolean {
-  return isMostLikelyTo(game.game_type) && game.participant_mode === 'import'
+  return isMostLikelyTo(game.game_type) && isVoterOnlyMode(game)
 }
 
 export function mltVoteTargets(

@@ -108,6 +108,7 @@ import {
   customVoteRecapItems,
 } from '@/lib/custom-game'
 import { isGameGenderBased, supportsGenderToggle, isGenderFreeVoting } from '@/lib/gender-based'
+import { isImportClaimMode, isVoterOnlyMode } from '@/lib/participant-mode'
 import { CustomVoteCard } from '@/components/CustomVoteCard'
 import { CustomRoundResults } from '@/components/CustomRoundResults'
 import { ShareResults } from '@/components/ShareResults'
@@ -236,6 +237,8 @@ export default function GamePage() {
   )
 
   const isJoinersMode = game?.participant_mode === 'joiners'
+  const isVoterOnly = game ? isVoterOnlyMode(game) : false
+  const isImportClaim = game ? isImportClaimMode(game) : false
   const isNameOnlyJoin = isNameOnlyPlayerJoin(game?.game_type)
   const joinNeedsGender = game ? isGameGenderBased(game) : false
   const isWstGame = isWhoSaidThis(game?.game_type)
@@ -250,7 +253,7 @@ export default function GamePage() {
   }
 
   const namePickerOptions = useMemo(() => {
-    if (isJoinersMode) return []
+    if (isJoinersMode || isVoterOnly) return []
     const claimedParticipantIds = new Set(
       players.filter((p) => p.id !== myPlayerId && p.participant_id).map((p) => p.participant_id as string)
     )
@@ -263,7 +266,7 @@ export default function GamePage() {
         name: p.name,
         ...(joinNeedsGender ? { subtitle: genderLabel(p.gender) } : {}),
       }))
-  }, [isJoinersMode, participants, players, myPlayerId, joinNeedsGender])
+  }, [isJoinersMode, isVoterOnly, participants, players, myPlayerId, joinNeedsGender])
 
   const handleSelectParticipant = (id: string, name: string) => {
     const changed = id !== selectedParticipantId
@@ -276,7 +279,7 @@ export default function GamePage() {
     }
   }
 
-  const useFreeNameJoin = isJoinersMode || isMltImport
+  const useFreeNameJoin = isJoinersMode || isVoterOnly
 
   const canSubmitJoin = useFreeNameJoin ? nameInput.trim().length > 0 : selectedParticipantId !== null
 
@@ -1235,11 +1238,11 @@ export default function GamePage() {
     setJoining(true)
     try {
       const body =
-        isNameOnlyJoin || (isJoinersMode && !joinNeedsGender)
+        isNameOnlyJoin || ((isJoinersMode || isVoterOnly) && !joinNeedsGender)
           ? { gameCode, playerName: nameInput.trim() }
-          : !joinNeedsGender
+          : !joinNeedsGender && isImportClaim
             ? { gameCode, participantId: selectedParticipantId! }
-            : isJoinersMode
+            : isJoinersMode || isVoterOnly
               ? {
                   gameCode,
                   playerName: nameInput.trim(),
@@ -1386,14 +1389,16 @@ export default function GamePage() {
                 ? 'Enter your name to join'
                 : isJoinersMode
                   ? 'Join the game — your name goes in the poll'
-                  : 'Select your name from the list'}
+                  : isVoterOnly
+                    ? 'Enter your name to vote — names on the list appear in rounds'
+                    : 'Select your name from the list'}
           </p>
           {useFreeNameJoin ? (
             <input
               value={nameInput}
               onChange={(e) => setNameInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && canSubmitJoin && joinGame()}
-              placeholder={isMltImport ? 'Your name (any name is fine)' : 'Your name'}
+              placeholder={isVoterOnly ? 'Your name (any name is fine)' : 'Your name'}
               autoFocus
               className={inputCls}
             />
@@ -1451,14 +1456,16 @@ export default function GamePage() {
               </label>
               <p className="text-faint text-xs text-center">
                 {isNameOnlyJoin
-                  ? isMltImport
+                  ? isVoterOnly
                     ? "Enter any name to join — you'll vote on people from the imported list"
                     : isMostLikelyTo(game?.game_type)
                       ? 'Vote for who fits each prompt — your choice stays anonymous'
                       : 'Pick between two options each round — your choice stays anonymous'
                   : isWstGame
                     ? 'Claim your name, then submit a quote and who said it while you wait'
-                    : joinGenderHint(joinIdentityGender, voteBothGenders, !!isJoinersMode)}
+                    : isVoterOnly
+                      ? "Enter any name to join — you'll vote on names from the host's list"
+                      : joinGenderHint(joinIdentityGender, voteBothGenders, !!isJoinersMode)}
               </p>
             </>
           )}

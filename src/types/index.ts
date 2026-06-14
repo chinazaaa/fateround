@@ -1,7 +1,7 @@
 export type GameStatus = 'waiting' | 'active' | 'finished'
 export type RoundStatus = 'pending' | 'active' | 'finished'
 export type AutoSubmitBehavior = 'random' | 'no_answer'
-export type ParticipantMode = 'import' | 'joiners'
+export type ParticipantMode = 'import' | 'joiners' | 'voters'
 /** Pair games: `any` = 2 smash OK; `one_each` = must pick one of each option. */
 export type PairVoteMode = 'any' | 'one_each'
 /** WYR / MLT: built-in pool vs host-uploaded CSV questions. */

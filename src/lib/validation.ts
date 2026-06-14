@@ -48,7 +48,7 @@ const gameTypeEnum = z.enum([
   'custom',
 ])
 
-const participantModeEnum = z.enum(['import', 'joiners'])
+const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
 const autoSubmitBehaviorEnum = z.enum(['random', 'no_answer'])
 const pairVoteModeEnum = z.enum(['any', 'one_each'])
 const questionSourceEnum = z.enum(['platform', 'custom'])

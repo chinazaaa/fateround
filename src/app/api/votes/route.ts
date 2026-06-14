@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { isVoterOnlyMode } from '@/lib/participant-mode'
 import { createVoteSchema } from '@/lib/validation'
 import { canPlayerVoteInRound, getRoundParticipantGender, playerVoteGenderForRound } from '@/lib/participants'
 import {
@@ -137,7 +138,7 @@ export async function POST(req: NextRequest) {
       }
     }
   } else if (isMostLikelyTo(gameType)) {
-    const isImport = game.participant_mode === 'import'
+    const isImport = isVoterOnlyMode(game)
 
     if (isImport) {
       const targetParticipantId = typeof rawTargetParticipantId === 'string' ? rawTargetParticipantId : null

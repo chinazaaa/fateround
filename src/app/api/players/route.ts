@@ -3,7 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { parseGameType, isNameOnlyPlayerJoin, isWhoSaidThis, isImportNameClaimGame } from '@/lib/game-types'
-import { isGenderFreeImportJoin, isGenderFreeJoinersJoin } from '@/lib/gender-based'
+import { isGenderFreeImportJoin, isGenderFreeJoinersJoin, isGenderFreeVotersJoin } from '@/lib/gender-based'
+import { isImportClaimMode, isJoinersPollMode, isVoterOnlyMode } from '@/lib/participant-mode'
 import {
   assertHostGame,
   deleteJoinerPair,
@@ -155,7 +156,37 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  if (isGenderFreeImportJoin(game as import('@/types').Game) && game!.participant_mode === 'import') {
+  if (isGenderFreeVotersJoin(game as import('@/types').Game)) {
+    if (!name) {
+      return NextResponse.json({ error: 'playerName is required' }, { status: 400 })
+    }
+    if (await nameTaken(id, name)) {
+      return NextResponse.json({ error: 'That name is already taken in this game' }, { status: 400 })
+    }
+
+    const { data: player, error } = await supabase
+      .from('players')
+      .insert({
+        game_id: id,
+        name,
+        gender: 'both',
+        identity_gender: null,
+        participant_id: null,
+      })
+      .select()
+      .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    return NextResponse.json({
+      playerId: player.id,
+      playerName: player.name,
+      playerGender: player.gender,
+      playerIdentityGender: player.identity_gender,
+    })
+  }
+
+  if (isGenderFreeImportJoin(game as import('@/types').Game) && isImportClaimMode(game as import('@/types').Game)) {
     const participantId = String(rawParticipantId ?? '').trim()
     if (!participantId) {
       return NextResponse.json({ error: 'Select your name from the game list' }, { status: 400 })
@@ -210,7 +241,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Please select male, female, or both' }, { status: 400 })
   }
 
-  if (game!.participant_mode === 'import') {
+  if (isImportClaimMode(game as import('@/types').Game)) {
     const participantId = String(rawParticipantId ?? '').trim()
     if (!participantId) {
       return NextResponse.json({ error: 'Select your name from the game list' }, { status: 400 })
@@ -281,7 +312,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'That name is already taken in this game' }, { status: 400 })
   }
 
-  if (game!.participant_mode === 'joiners') {
+  if (isVoterOnlyMode(game as import('@/types').Game)) {
+    const identityGender = resolveIdentityGender(rawIdentityGender, gender, null)
+    if (!identityGender) {
+      return NextResponse.json({ error: 'Please select male or female' }, { status: 400 })
+    }
+
+    const { data: player, error: playerError } = await supabase
+      .from('players')
+      .insert({
+        game_id: id,
+        name,
+        gender,
+        identity_gender: identityGender,
+        participant_id: null,
+      })
+      .select()
+      .single()
+
+    if (playerError) return NextResponse.json({ error: playerError.message }, { status: 500 })
+
+    return NextResponse.json({
+      playerId: player.id,
+      playerName: player.name,
+      playerGender: player.gender,
+      playerIdentityGender: player.identity_gender,
+    })
+  }
+
+  if (isJoinersPollMode(game as import('@/types').Game)) {
     const identityGender = resolveIdentityGender(rawIdentityGender, gender, null)
     if (!identityGender) {
       return NextResponse.json({ error: 'Please select male or female' }, { status: 400 })
@@ -430,7 +489,34 @@ export async function PATCH(req: NextRequest) {
     })
   }
 
-  if (isGenderFreeImportJoin(game as import('@/types').Game) && game!.participant_mode === 'import') {
+  if (isGenderFreeVotersJoin(game as import('@/types').Game)) {
+    if (rawName === undefined) {
+      return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+    }
+    const name = String(rawName).trim()
+    if (!name) return NextResponse.json({ error: 'Name cannot be empty' }, { status: 400 })
+    if (await nameTaken(id, name, playerId)) {
+      return NextResponse.json({ error: 'That name is already taken in this game' }, { status: 400 })
+    }
+
+    const { data: updatedPlayer, error } = await supabase
+      .from('players')
+      .update({ name })
+      .eq('id', playerId)
+      .select()
+      .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    return NextResponse.json({
+      playerId: updatedPlayer.id,
+      playerName: updatedPlayer.name,
+      playerGender: updatedPlayer.gender,
+      playerIdentityGender: updatedPlayer.identity_gender,
+    })
+  }
+
+  if (isGenderFreeImportJoin(game as import('@/types').Game) && isImportClaimMode(game as import('@/types').Game)) {
     if (rawParticipantId === undefined) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
     }
@@ -488,7 +574,7 @@ export async function PATCH(req: NextRequest) {
     participant_id?: string | null
   } = {}
 
-  if (game!.participant_mode === 'import' && rawParticipantId !== undefined) {
+  if (isImportClaimMode(game as import('@/types').Game) && rawParticipantId !== undefined) {
     const participantId = String(rawParticipantId ?? '').trim()
     if (!participantId) {
       return NextResponse.json({ error: 'Select your name from the game list' }, { status: 400 })
@@ -516,7 +602,7 @@ export async function PATCH(req: NextRequest) {
     if (await nameTaken(id, name, playerId)) {
       return NextResponse.json({ error: 'That name is already taken in this game' }, { status: 400 })
     }
-    if (game!.participant_mode === 'import') {
+    if (isImportClaimMode(game as import('@/types').Game)) {
       return NextResponse.json({ error: 'Select your name from the game list' }, { status: 400 })
     }
     updates.name = name
@@ -607,7 +693,7 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  if (game!.participant_mode === 'import') {
+  if (isImportClaimMode(game as import('@/types').Game)) {
     const participantId = updatedPlayer.participant_id ?? player.participant_id
     const identityGender = normalizeGender(String(updatedPlayer.identity_gender ?? ''))
     if (participantId && identityGender) {

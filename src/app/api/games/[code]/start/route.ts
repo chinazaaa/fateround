@@ -31,6 +31,7 @@ import {
   pickCustomMltQuestions,
   questionPoolCap,
 } from '@/lib/custom-questions'
+import { useFullHostListForRounds } from '@/lib/participant-mode'
 import { hostActionSchema } from '@/lib/validation'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -434,8 +435,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       )
     }
 
-    const isImportMode = (game.participant_mode ?? 'import') === 'import'
-    const useAllParticipants = !isImportMode || game.participant_filter === 'all'
+    const useAllParticipants = useFullHostListForRounds(game)
     const roundPool = useAllParticipants ? participantsData : participantsWhoJoined(participantsData, playersData)
 
     if (roundPool.length < slotCount) {
@@ -515,8 +515,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: `Need at least ${minPool} names on the list` }, { status: 400 })
   }
 
-  const isImportMode = (game.participant_mode ?? 'import') === 'import'
-  const useAllParticipants = !isImportMode || game.participant_filter === 'all'
+  const useAllParticipants = useFullHostListForRounds(game)
   const roundPool = useAllParticipants ? participantsData : participantsWhoJoined(participantsData, playersData)
 
   if (roundPool.length < minPool) {

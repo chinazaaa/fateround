@@ -200,7 +200,7 @@ export function participantModeOptions(gameType?: GameType | string): Participan
         hint: 'Players join and pick a friend for each prompt — no list to upload.',
       },
       {
-        value: 'import',
+        value: 'voters',
         label: 'Import list',
         hint: 'Upload names for the poll — players join separately to vote.',
       },
@@ -212,6 +212,11 @@ export function participantModeOptions(gameType?: GameType | string): Participan
       value: 'joiners',
       label: 'Join & play',
       hint: 'Everyone who joins is in the poll — no list to upload.',
+    },
+    {
+      value: 'voters',
+      label: 'Import list — vote only',
+      hint: 'Upload names for the poll — friends join with their own name to vote.',
     },
     {
       value: 'import',
@@ -236,8 +241,23 @@ export function participantImportStepHint(
   }
   if (isCustomGame(gameType)) {
     return participantsNeedGenderForGame(gameType, opts)
+      ? 'Add names and genders — these appear in rounds; players join separately to vote.'
+      : "Add everyone's names — these appear in rounds; players join separately to vote."
+  }
+  return participantsNeedGenderForGame(gameType, opts)
+    ? 'Add names and genders — these appear in rounds; players join separately to vote.'
+    : "Add everyone's names — these appear in rounds; players join separately to vote."
+}
+
+/** Hint when host uploads a claim-from-list roster (not voter-only). */
+export function participantClaimRosterHint(
+  gameType?: GameType | string,
+  opts?: Parameters<typeof participantsNeedGenderForGame>[1]
+): string {
+  if (isCustomGame(gameType)) {
+    return participantsNeedGenderForGame(gameType, opts)
       ? 'Add names and genders — each player picks their name from this list when joining.'
-      : 'Add everyone\'s names — each player picks their name from this list when joining.'
+      : "Add everyone's names — each player picks their name from this list when joining."
   }
   return 'Add names and genders — each player picks their name from this list when joining.'
 }

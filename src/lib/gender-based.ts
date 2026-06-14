@@ -1,4 +1,5 @@
 import { isCustomGame, isPairGame, isThreeChoiceGame } from '@/lib/game-types'
+import { isVoterOnlyMode } from '@/lib/participant-mode'
 import type { Game, GameType } from '@/types'
 
 /** Games where the host can choose gender-based vs names-only rounds. */
@@ -38,6 +39,13 @@ export function isGenderFreeJoinersJoin(
   game: Pick<Game, 'game_type' | 'gender_based' | 'custom_slots' | 'participant_mode'>
 ): boolean {
   return (game.participant_mode ?? 'import') === 'joiners' && isGenderFreeVoting(game)
+}
+
+/** Voters-only lobby — free name entry, no gender (names-only SMK / pair / custom). */
+export function isGenderFreeVotersJoin(
+  game: Pick<Game, 'game_type' | 'gender_based' | 'custom_slots' | 'participant_mode'>
+): boolean {
+  return isVoterOnlyMode(game) && isGenderFreeVoting(game)
 }
 
 /** Rounds and voting ignore gender (names-only mode). */

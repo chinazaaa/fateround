@@ -24,6 +24,7 @@ import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import type { ParticipantMode, QuestionSource, CustomSlotsConfig } from '@/types'
 import { createGameSchema, stripHtml } from '@/lib/validation'
 import { supportsGenderToggle, defaultGenderBasedForType } from '@/lib/gender-based'
+import { parseParticipantMode, usesHostParticipantList } from '@/lib/participant-mode'
 import { parseThemeId } from '@/lib/themes'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -131,12 +132,10 @@ export async function POST(req: NextRequest) {
     ? 'joiners'
     : isWhoSaidThis(game_type) || isHotSeat(game_type)
       ? 'import'
-      : rawMode === 'joiners'
-        ? 'joiners'
-        : 'import'
+      : parseParticipantMode(rawMode)
 
   let participants: ParticipantInput[] = []
-  if (participant_mode === 'import') {
+  if (usesHostParticipantList(participant_mode)) {
     const customMinPool =
       isCustomGame(game_type) && custom_slots?.slots?.length ? custom_slots.slots.length : roundPoolSize(game_type)
     const participantsParsed = parseParticipants(rawParticipants, game_type, gender_based)
@@ -202,7 +201,14 @@ export async function POST(req: NextRequest) {
     auto_reveal: auto_reveal !== false,
     auto_submit_behavior: auto_submit_behavior === 'random' ? 'random' : 'no_answer',
     participant_mode,
-    participant_filter: isHotSeat(game_type) ? 'joined' : participant_filter === 'joined' ? 'joined' : 'all',
+    participant_filter:
+      participant_mode === 'voters' || isHotSeat(game_type)
+        ? participant_mode === 'voters'
+          ? 'all'
+          : 'joined'
+        : participant_filter === 'joined'
+          ? 'joined'
+          : 'all',
     pair_vote_mode: isPairGame(game_type) || (isCustomGame(game_type) && (custom_slots?.slots?.length ?? 0) === 2)
       ? parsePairVoteMode(rawPairVoteMode)
       : 'any',
@@ -228,7 +234,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: gameError.message }, { status: 500 })
   }
 
-  if (participant_mode === 'import' && participants.length > 0) {
+  if (usesHostParticipantList(participant_mode) && participants.length > 0) {
     const participantRows = participants.map((p, index) => ({
       game_id: gameCode,
       name: p.name,

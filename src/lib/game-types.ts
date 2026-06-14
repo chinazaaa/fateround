@@ -419,25 +419,33 @@ export function gameHowItWorks(
     case 'most_likely_to':
       return joiners
         ? 'Players add their name to the poll when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
-        : 'Upload everyone\'s names on the next step. Players claim their name when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
+        : 'Upload everyone\'s names on the next step. Players join with their own name to vote. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
     case 'red_flag_green_flag':
       return joiners
         ? 'Players add their name to the poll when joining. Each round, two names appear — everyone rates each person green flag or red flag.'
-        : "Add everyone's names on the next step. Players claim their name when joining. Each round, two names appear — everyone rates each person green flag or red flag."
+        : participantMode === 'voters'
+          ? "Add names on the next step (celebrities, characters, anyone). Players join with their own name to vote. Each round, two names appear — everyone rates each person green flag or red flag."
+          : "Add everyone's names on the next step. Players claim their name when joining. Each round, two names appear — everyone rates each person green flag or red flag."
     case 'smash_or_pass':
       return joiners
         ? 'Players add their name to the poll when joining. Each round, two names appear — everyone picks smash or pass for each.'
-        : "Add everyone's names on the next step. Players claim their name when joining. Each round, two names appear — everyone picks smash or pass for each."
+        : participantMode === 'voters'
+          ? "Add names on the next step (celebrities, characters, anyone). Players join with their own name to vote. Each round, two names appear — everyone picks smash or pass for each."
+          : "Add everyone's names on the next step. Players claim their name when joining. Each round, two names appear — everyone picks smash or pass for each."
     case 'smash_marry_kill':
     default:
       if (isCustomGame(gameType)) {
         return joiners
           ? 'Players add their name to the poll when joining. Each round shows a group — everyone assigns one person to each custom category.'
-          : "Add everyone's names on the next step. Each round shows a group — everyone assigns one person to each custom category."
+          : participantMode === 'voters'
+            ? 'Add names on the next step. Players join with their own name to vote. Each round shows a group — everyone assigns one person to each custom category.'
+            : "Add everyone's names on the next step. Players claim their name when joining. Each round shows a group — everyone assigns one person to each custom category."
       }
       return joiners
         ? 'Players add their name to the poll when joining. Each round, three names appear — everyone picks one to smash, one to marry, and one to kill.'
-        : "Add everyone's names on the next step. Players claim their name when joining. Each round, three names appear — everyone picks one to smash, one to marry, and one to kill."
+        : participantMode === 'voters'
+          ? 'Add names on the next step. Players join with their own name to vote. Each round, three names appear — everyone picks one to smash, one to marry, and one to kill.'
+          : "Add everyone's names on the next step. Players claim their name when joining. Each round, three names appear — everyone picks one to smash, one to marry, and one to kill."
   }
 }
 

@@ -21,6 +21,7 @@ import {
   genderLabel,
   participantModeOptions,
   participantImportStepHint,
+  participantClaimRosterHint,
   participantUploadHint,
   participantsNeedGenderForGame,
   participantSampleFile,
@@ -143,7 +144,9 @@ function CreateGameInner() {
               participant_filter: 'joined' as const,
               ...(isHotSeat(type) ? { rounds_count: HOT_SEAT_MIN_PLAYERS } : {}),
             }
-          : {}),
+          : isMostLikelyTo(type)
+            ? { participant_mode: 'voters' as const }
+            : {}),
       }))
     }
   }, [searchParams])
@@ -224,7 +227,9 @@ function CreateGameInner() {
             participant_filter: 'joined' as const,
             ...(isHotSeat(type) ? { rounds_count: HOT_SEAT_MIN_PLAYERS } : {}),
           }
-        : {}),
+        : isMostLikelyTo(type)
+          ? { participant_mode: 'voters' as const }
+          : {}),
       ...(isCustomGame(type) ? { participant_mode: 'import' as const, gender_based: defaultGenderBasedForType(type) } : {}),
       ...(supportsGenderToggle(type) && !isCustomGame(type)
         ? { gender_based: defaultGenderBasedForType(type) }
@@ -907,7 +912,11 @@ function CreateGameInner() {
         <div>
           <p className="label-caps mb-1">Step 2</p>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight gradient-title-subtle">Add People</h1>
-          <p className="text-muted text-sm mt-1.5">{participantImportStepHint(settings.game_type, participantOpts)}</p>
+          <p className="text-muted text-sm mt-1.5">
+            {settings.participant_mode === 'import'
+              ? participantClaimRosterHint(settings.game_type, participantOpts)
+              : participantImportStepHint(settings.game_type, participantOpts)}
+          </p>
         </div>
 
         <div className="glass-card p-5 space-y-4">

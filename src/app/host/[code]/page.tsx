@@ -46,6 +46,7 @@ import {
   isCustomTwoSlotGame,
 } from '@/lib/custom-game'
 import { isGameGenderBased, supportsGenderToggle, isGenderFreeVoting } from '@/lib/gender-based'
+import { isVoterOnlyMode } from '@/lib/participant-mode'
 import { CustomRoundResults } from '@/components/CustomRoundResults'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
@@ -1173,6 +1174,7 @@ export default function HostPage() {
     const isWst = isWhoSaidThis(gameType)
     const isHotSeatGame = isHotSeat(gameType)
     const isMltImport = isMltImportGame(game)
+    const isVoterOnly = isVoterOnlyMode(game)
     const lobbyOpts = { participantMode: game.participant_mode, participantCount: participants.length }
     const playerOnlyLobby = isPlayerOnlyJoinLobby(gameType, lobbyOpts)
     const hotSeatLobby = isHotSeatLobbyGame(gameType, lobbyOpts)
@@ -1193,7 +1195,7 @@ export default function HostPage() {
         ? participantsWhoJoined(participants, players)
         : isJoinersMode
           ? participants
-          : isMltImport
+          : isVoterOnly
             ? participants
             : game.participant_filter === 'all'
               ? participants
@@ -1259,8 +1261,9 @@ export default function HostPage() {
           : participants.length >= 2 && wstSubmitters.length >= 2 && wstPool.length >= 2
       : hotSeatLobby
         ? hotSeatEffective >= HOT_SEAT_MIN_PLAYERS
-        : isMltImport
-          ? participants.length >= 2 && players.length > 0 && !roundsTooHigh
+        : isVoterOnly
+          ? participants.length >= minPool && players.length > 0 && !roundsTooHigh &&
+            (gameGenderBased ? voterCheck.ok : true)
           : isMlt
             ? players.length >= 2 && !roundsTooHigh
             : isWyr
@@ -1294,8 +1297,8 @@ export default function HostPage() {
                 <p className="text-faint text-xs mt-1">{customQuestionCount(game)} custom questions loaded</p>
               )}
             <p className="text-[var(--primary)] text-xs mt-1 font-medium">
-              {isMltImport
-                ? 'Most Likely To — everyone on the list is in the poll; players join to vote'
+              {isVoterOnly
+                ? 'Import list — everyone on the list is in the poll; players join to vote'
                 : isMlt
                   ? 'Most Likely To — players join and vote for a friend each round'
                   : isWst
@@ -1306,7 +1309,7 @@ export default function HostPage() {
                         ? 'Hot Seat — upload names, players claim theirs, then take turns in the spotlight'
                         : isJoinersMode
                           ? 'Join & play — joiners are the names in the poll'
-                          : 'Import list — voters join separately'}
+                          : 'Pre-set roster — players claim their name from the list'}
             </p>
           </div>
           <div className="text-right">
@@ -1559,13 +1562,13 @@ export default function HostPage() {
         <div className="glass-card p-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs uppercase tracking-wider">
-              {isMltImport ? 'Voters joined' : isJoinersMode ? 'In the game' : 'Players joined'}
+              {isVoterOnly ? 'Voters joined' : isJoinersMode ? 'In the game' : 'Players joined'}
             </p>
             <span className="bg-[var(--primary-strong)] text-white text-xs font-bold px-2 py-0.5 rounded-full">
               {players.length}
             </span>
           </div>
-          {!isJoinersMode && !isMltImport && !isWyr && !isMlt && !isWst && (
+          {!isJoinersMode && !isVoterOnly && !isWyr && !isMlt && !isWst && (
             <div className="space-y-1">
               <p className="text-muted text-xs uppercase tracking-wider">Rounds include:</p>
               <SegmentedControl
@@ -1660,9 +1663,9 @@ export default function HostPage() {
               {savingPairVoteMode && <p className="text-faint text-xs px-0.5">Saving…</p>}
             </div>
           )}
-          {!isJoinersMode && !hotSeatLobby && isMltImport && (
+          {!isJoinersMode && !hotSeatLobby && isVoterOnly && (
             <p className="text-faint text-xs">
-              {`${players.length} of ${participants.length} voters joined — all names appear in rounds`}
+              {players.length} voter{players.length === 1 ? '' : 's'} joined — all {participants.length} names on the list appear in rounds
             </p>
           )}
           {hotSeatLobby && !hotSeatLegacyJoiners && (
@@ -1869,9 +1872,14 @@ export default function HostPage() {
           {!hotSeatLobby && gameGenderBased && !voterCheck.ok && players.length > 0 && roundParticipants.length >= minPool && (
             <p className="callout-warning text-center">{voterCheck.message}</p>
           )}
-          {!isJoinersMode && roundParticipants.length < minPool && players.length > 0 && (
+          {!isJoinersMode && !isVoterOnly && roundParticipants.length < minPool && players.length > 0 && (
             <p className="callout-warning text-center">
               Need at least {minPool} people to join before starting ({roundParticipants.length}/{minPool} joined)
+            </p>
+          )}
+          {isVoterOnly && participants.length < minPool && (
+            <p className="callout-warning text-center">
+              Need at least {minPool} names on the list ({participants.length}/{minPool})
             </p>
           )}
         </div>
@@ -1921,13 +1929,13 @@ export default function HostPage() {
               {addError && <p className="text-red-300/90 text-xs">{addError}</p>}
             </div>
             <p className="text-faint text-xs">
-              {isMltImport
+              {isVoterOnly
                 ? 'Everyone on the list can be voted for — players join separately to vote'
                 : gameGenderBased
                   ? "Tap gender to correct · Remove if someone shouldn't be in the poll"
                   : 'Remove if someone should not be in the poll'}
             </p>
-            {isMltImport && (
+            {isVoterOnly && (
               <p className="text-faint text-xs text-center">
                 {participants.length} on the list · {players.length} voter{players.length === 1 ? '' : 's'} joined
               </p>
@@ -2025,11 +2033,11 @@ export default function HostPage() {
                       ? `Need 2+ players who claimed a name (${wstSubmitters.length} ready)`
                       : isWst && wstSource === 'player' && wstPool.length < 2
                         ? `Need 2+ quotes in the pool (${wstPool.length} submitted)`
-                        : isMltImport && participants.length < 2
-                          ? `Need at least 2 names on the list (${participants.length}/2)`
-                          : isMltImport && players.length === 0
+                        : isVoterOnly && participants.length < minPool
+                          ? `Need at least ${minPool} names on the list (${participants.length}/${minPool})`
+                          : isVoterOnly && players.length === 0
                             ? 'Waiting for voters to join...'
-                            : isMlt && !isMltImport && players.length < 2
+                            : isMlt && !isVoterOnly && players.length < 2
                               ? `Need at least 2 players (${players.length}/2)`
                               : hotSeatLobby && hotSeatLegacyJoiners && players.length < 3
                                 ? `Need at least 3 players (${players.length}/3)`
