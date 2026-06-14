@@ -123,6 +123,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
+import { useGameChannel } from '@/hooks/useGameChannel'
 import { finalResultsAutoRevealSeconds, msUntilDeadline, ROUND_RESULTS_AUTO_ADVANCE_SECONDS } from '@/lib/round-timing'
 import type {
   Game,
@@ -471,166 +472,52 @@ export default function HostPage() {
   }
 
   // ── Realtime ──────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const ch = supabase
-      .channel(`host-${gameCode}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        async (payload) => {
-          const g = payload.new as Game
-          setGame(g)
-          if (g.status === 'active') {
-            const { data: roundData } = await supabase
-              .from('rounds')
-              .select('*')
-              .eq('game_id', gameCode)
-              .eq('status', 'active')
-              .maybeSingle()
-            if (roundData) {
-              setCurrentRound((prev) => mergeActiveRound(prev, roundData))
-              advancingRef.current = false
-            }
-          }
-          if (g.status === 'finished') {
-            await loadResults()
-          }
-          if (g.status === 'waiting') {
-            resetHostLobbyState()
-          }
+  useGameChannel(gameCode, `host-${gameCode}`, {
+    setGame,
+    setPlayers,
+    setParticipants,
+    setWstPool,
+    setConfessions,
+  }, {
+    onGameUpdate: async (g) => {
+      if (g.status === 'active') {
+        const { data: roundData } = await supabase
+          .from('rounds')
+          .select('*')
+          .eq('game_id', gameCode)
+          .eq('status', 'active')
+          .maybeSingle()
+        if (roundData) {
+          setCurrentRound((prev) => mergeActiveRound(prev, roundData))
+          advancingRef.current = false
         }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const p = payload.new as Player
-          setPlayers((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p]))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const p = payload.new as Player
-          setPlayers((prev) => prev.map((x) => (x.id === p.id ? p : x)))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const p = payload.old as Player
-          setPlayers((prev) => prev.filter((x) => x.id !== p.id))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const p = payload.new as Participant
-          setParticipants((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p]))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const p = payload.new as Participant
-          setParticipants((prev) => prev.map((x) => (x.id === p.id ? p : x)))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const p = payload.old as Participant
-          setParticipants((prev) => prev.filter((x) => x.id !== p.id))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'votes', filter: `game_id=eq.${gameCode}` },
-        (payload) => setVotes((prev) => mergeVote(prev, payload.new as Vote))
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'votes', filter: `game_id=eq.${gameCode}` },
-        (payload) => setVotes((prev) => mergeVote(prev, payload.new as Vote))
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const r = payload.new as Round
-          if (r.status === 'active') {
-            setCurrentRound((prev) => mergeActiveRound(prev, r))
-            setLastFinishedRound(null)
-            advancingRef.current = false
-            setAdvancing(false)
-          }
-          if (r.status === 'finished') {
-            setCurrentRound(null)
-            setLastFinishedRound(r)
-            advancingRef.current = false
-            setEnding(false)
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const entry = payload.new as WstQuotePoolEntry
-          setWstPool((prev) => mergeWstPoolEntry(prev, entry))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const entry = payload.new as WstQuotePoolEntry
-          setWstPool((prev) => mergeWstPoolEntry(prev, entry))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const entry = payload.old as WstQuotePoolEntry
-          setWstPool((prev) => prev.filter((x) => x.id !== entry.id && x.player_id !== entry.player_id))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'confessions', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const c = payload.new as Confession
-          setConfessions((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c]))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'hot_seat_submissions', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const sub = payload.new as { id: string; player_id: string; round_id: string }
-          setActiveHotSeatSubs((prev) => mergeHotSeatSub(prev, sub))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'hot_seat_submissions', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const sub = payload.new as { id: string; player_id: string; round_id: string }
-          setActiveHotSeatSubs((prev) => mergeHotSeatSub(prev, sub))
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(ch)
-    }
-  }, [gameCode])
+      }
+      if (g.status === 'finished') {
+        await loadResults()
+      }
+      if (g.status === 'waiting') {
+        resetHostLobbyState()
+      }
+    },
+    onRoundUpdate: (r) => {
+      if (r.status === 'active') {
+        setCurrentRound((prev) => mergeActiveRound(prev, r))
+        setLastFinishedRound(null)
+        advancingRef.current = false
+        setAdvancing(false)
+      }
+      if (r.status === 'finished') {
+        setCurrentRound(null)
+        setLastFinishedRound(r)
+        advancingRef.current = false
+        setEnding(false)
+      }
+    },
+    onVoteInsert: (vote) => setVotes((prev) => mergeVote(prev, vote)),
+    onVoteUpdate: (vote) => setVotes((prev) => mergeVote(prev, vote)),
+    onHotSeatSubInsert: (sub) => setActiveHotSeatSubs((prev) => mergeHotSeatSub(prev, sub)),
+    onHotSeatSubUpdate: (sub) => setActiveHotSeatSubs((prev) => mergeHotSeatSub(prev, sub)),
+  })
 
   // Poll lobby while waiting for players — fallback if realtime is slow or unavailable
   useEffect(() => {
