@@ -6,6 +6,7 @@ import { getPlayerSession, setPlayerSession, clearPlayerSession, filterParticipa
 import { Avatar } from '@/components/Avatar'
 import { ParticipantPhotoCard } from '@/components/ParticipantPhotoCard'
 import { ParticipantGallery } from '@/components/ParticipantGallery'
+import { parseThemeId, THEME_MAP } from '@/lib/themes'
 import {
   playRoundStartSound,
   playVoteSubmittedSound,
@@ -265,6 +266,18 @@ export default function GamePage() {
     finalResultsAutoRevealSeconds(game?.game_type),
     roundResultsActive && roundResultsIsLast && !!game?.auto_reveal
   )
+
+  // Apply theme CSS variables
+  useEffect(() => {
+    const themeId = parseThemeId(game?.theme)
+    const vars = THEME_MAP[themeId]?.cssVars ?? {}
+    const root = document.documentElement
+    const keys = Object.keys(vars)
+    keys.forEach((k) => root.style.setProperty(k, vars[k]))
+    return () => {
+      keys.forEach((k) => root.style.removeProperty(k))
+    }
+  }, [game?.theme])
 
   const isJoinersMode = game?.participant_mode === 'joiners'
   const isVoterOnly = game ? isVoterOnlyMode(game) : false
