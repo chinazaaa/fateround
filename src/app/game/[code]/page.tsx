@@ -103,6 +103,7 @@ import {
   customDisabledSlots,
   isCustomOneEachMode,
   isCustomTwoSlotGame,
+  customVoteRecapItems,
 } from '@/lib/custom-game'
 import { isGameGenderBased, supportsGenderToggle, isGenderFreeVoting } from '@/lib/gender-based'
 import { CustomVoteCard } from '@/components/CustomVoteCard'
@@ -2725,32 +2726,42 @@ export default function GamePage() {
           <div className="glass-card border border-[var(--primary)]/30 p-4">
             <p className="text-[var(--primary)] text-xs uppercase tracking-wider mb-2">Your vote</p>
             <div className="flex gap-4 flex-wrap">
-              {isPairGame(gameType)
-                ? roundParts.map((p) => {
-                    const flag = flagForParticipant(myVote, p.id)
-                    if (!flag) return null
-                    const meta = slotMeta(gameType, flag)
-                    return (
-                      <span key={p.id} className="text-sm font-medium" style={{ color: meta.textColor }}>
-                        {p.name}: {meta.emoji} {meta.label}
-                      </span>
-                    )
-                  })
-                : voteSlots(gameType).map((slot) => {
-                    const participantId =
-                      slot === 'kiss'
-                        ? myVote.kiss_participant_id
-                        : slot === 'marry'
-                          ? myVote.marry_participant_id
-                          : myVote.kill_participant_id
-                    if (!participantId) return null
-                    const meta = slotMeta(gameType, slot)
-                    return (
-                      <span key={slot} className="text-sm font-medium" style={{ color: meta.textColor }}>
-                        {meta.emoji} {participants.find((p) => p.id === participantId)?.name}
-                      </span>
-                    )
-                  })}
+              {isCustomGame(gameType) && game
+                ? customVoteRecapItems(
+                    myVote.pair_assignments as Record<string, string> | null,
+                    roundParts,
+                    getCustomSlots(game)
+                  ).map((item) => (
+                    <span key={item.name} className="text-sm font-medium" style={{ color: item.color }}>
+                      {item.name}: {item.emoji} {item.label}
+                    </span>
+                  ))
+                : isPairGame(gameType)
+                  ? roundParts.map((p) => {
+                      const flag = flagForParticipant(myVote, p.id)
+                      if (!flag) return null
+                      const meta = slotMeta(gameType, flag)
+                      return (
+                        <span key={p.id} className="text-sm font-medium" style={{ color: meta.textColor }}>
+                          {p.name}: {meta.emoji} {meta.label}
+                        </span>
+                      )
+                    })
+                  : voteSlots(gameType).map((slot) => {
+                      const participantId =
+                        slot === 'kiss'
+                          ? myVote.kiss_participant_id
+                          : slot === 'marry'
+                            ? myVote.marry_participant_id
+                            : myVote.kill_participant_id
+                      if (!participantId) return null
+                      const meta = slotMeta(gameType, slot)
+                      return (
+                        <span key={slot} className="text-sm font-medium" style={{ color: meta.textColor }}>
+                          {meta.emoji} {participants.find((p) => p.id === participantId)?.name}
+                        </span>
+                      )
+                    })}
             </div>
           </div>
         )}

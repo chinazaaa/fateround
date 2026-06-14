@@ -166,6 +166,24 @@ export function completeRandomCustomAssignment(
   return out
 }
 
+export function customVoteRecapItems(
+  assignments: Record<string, string> | null | undefined,
+  roundParticipants: { id: string; name: string }[],
+  slots: CustomSlot[]
+): { name: string; emoji: string; label: string; color: string }[] {
+  if (!assignments) return []
+  const slotByKey = new Map(slots.map((s) => [s.key, s]))
+  const items: { name: string; emoji: string; label: string; color: string }[] = []
+  for (const p of roundParticipants) {
+    const slotKey = assignments[p.id]
+    if (!slotKey) continue
+    const slot = slotByKey.get(slotKey)
+    if (!slot) continue
+    items.push({ name: p.name, emoji: slot.emoji, label: slot.label, color: slot.color })
+  }
+  return items
+}
+
 // ---------------------------------------------------------------------------
 // Vote tallying
 // ---------------------------------------------------------------------------
