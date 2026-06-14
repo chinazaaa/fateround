@@ -18,6 +18,7 @@ import {
   voteSlots,
   isPairGame,
   isBinaryChoiceGame,
+  isThisOrThat,
   isMostLikelyTo,
   isWhoSaidThis,
 } from '@/lib/game-types'
@@ -224,6 +225,7 @@ export default function GameHistoryPage() {
                         countA={wyrTally.countA}
                         countB={wyrTally.countB}
                         voterCount={wyrTally.voterCount}
+                        mode={isThisOrThat(gameType) ? 'tot' : 'wyr'}
                       />
                     )
                   })()

@@ -2622,6 +2622,7 @@ export default function HostPage() {
             countA={countA}
             countB={countB}
             voterCount={voterCount}
+            mode={isTot ? 'tot' : 'wyr'}
           />
         ) : isCustomGame(gameType) && game ? (
           (() => {
@@ -2801,6 +2802,7 @@ export default function HostPage() {
                     countA={countA}
                     countB={countB}
                     voterCount={voterCount}
+                    mode={isTot ? 'tot' : 'wyr'}
                   />
                 </div>
               )

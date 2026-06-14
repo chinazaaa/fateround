@@ -2140,14 +2140,25 @@ export default function GamePage() {
     )
   }
 
-  // ROUND — Would You Rather
+  // ROUND — Would You Rather / This or That
   if (view === 'round' && currentRound && isBinaryChoiceGame(game?.game_type)) {
     const gameType = parseGameType(game?.game_type)
     const optionA = currentRound.wyr_option_a ?? ''
     const optionB = currentRound.wyr_option_b ?? ''
     const canVote = !!myPlayerId
+    const isTotRound = isTotGame
     const borderCls =
-      wyrChoice === 'a' ? 'border-violet-500/40' : wyrChoice === 'b' ? 'border-sky-500/40' : 'border-theme'
+      wyrChoice === 'a'
+        ? isTotRound
+          ? 'border-pink-400/50'
+          : 'border-violet-500/40'
+        : wyrChoice === 'b'
+          ? 'border-sky-500/40'
+          : 'border-theme'
+    const optionAActive = isTotRound
+      ? 'border-pink-400 bg-pink-500/15 ring-2 ring-pink-400/25'
+      : 'border-violet-400 bg-violet-500/15 ring-2 ring-violet-400/25'
+    const optionBActive = 'border-sky-400 bg-sky-500/15 ring-2 ring-sky-400/25'
 
     return (
       <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full">
@@ -2165,33 +2176,31 @@ export default function GamePage() {
         </div>
 
         <div className={`glass-card border-2 ${borderCls} rounded-2xl p-5 mb-6 flex-1`}>
-          <p className="text-muted text-xs uppercase tracking-wider text-center mb-3">Would you rather…</p>
+          <p className="text-muted text-xs uppercase tracking-wider text-center mb-3">
+            {isTotRound ? 'This or that…' : 'Would you rather…'}
+          </p>
           <div className="space-y-3">
             <button
               type="button"
               disabled={submitted || !canVote}
               onClick={() => canVote && !submitted && setWyrChoice('a')}
               className={`w-full text-left rounded-2xl border p-4 transition-all active:scale-[0.99] ${
-                wyrChoice === 'a'
-                  ? 'border-violet-400 bg-violet-500/15 text-violet-100'
-                  : 'border-theme surface-inset text-body hover:border-theme-strong'
+                wyrChoice === 'a' ? optionAActive : 'border-theme surface-inset hover:border-theme-strong'
               } disabled:cursor-not-allowed`}
             >
               <p className="text-[10px] uppercase tracking-wider text-faint mb-1">Option A</p>
-              <p className="text-sm leading-snug">{optionA}</p>
+              <p className="text-base font-semibold text-body leading-snug">{optionA}</p>
             </button>
             <button
               type="button"
               disabled={submitted || !canVote}
               onClick={() => canVote && !submitted && setWyrChoice('b')}
               className={`w-full text-left rounded-2xl border p-4 transition-all active:scale-[0.99] ${
-                wyrChoice === 'b'
-                  ? 'border-sky-400 bg-sky-500/15 text-sky-100'
-                  : 'border-theme surface-inset text-body hover:border-theme-strong'
+                wyrChoice === 'b' ? optionBActive : 'border-theme surface-inset hover:border-theme-strong'
               } disabled:cursor-not-allowed`}
             >
               <p className="text-[10px] uppercase tracking-wider text-faint mb-1">Option B</p>
-              <p className="text-sm leading-snug">{optionB}</p>
+              <p className="text-base font-semibold text-body leading-snug">{optionB}</p>
             </button>
           </div>
         </div>
@@ -2593,6 +2602,7 @@ export default function GamePage() {
             countB={countB}
             voterCount={voterCount}
             myChoice={myVote?.wyr_choice ?? null}
+            mode={isTotGame ? 'tot' : 'wyr'}
           />
           <ConfessionsTicker confessions={allConfessions.filter((c) => c.round_id === lastFinishedRound.id)} />
           <ReactionBar className="pt-1" gameCode={gameCode} playerId={myPlayerId} />
@@ -3129,6 +3139,7 @@ function FinalResultsView({
                     countB={countB}
                     voterCount={voterCount}
                     myChoice={myVote?.wyr_choice ?? null}
+                    mode={isThisOrThat(gameType) ? 'tot' : 'wyr'}
                   />
                 </div>
               )
