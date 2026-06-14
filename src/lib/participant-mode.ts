@@ -30,7 +30,7 @@ export function usesHostParticipantList(mode: ParticipantMode): boolean {
 }
 
 /** Round pool uses every name on the host list (not only claimed/joined list names). */
-export function useFullHostListForRounds(
+export function getFullHostListForRounds(
   game: Pick<Game, 'participant_mode' | 'participant_filter' | 'game_type'>
 ): boolean {
   if (isVoterOnlyMode(game)) return true

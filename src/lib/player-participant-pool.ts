@@ -1,7 +1,7 @@
 import type { Game } from '@/types'
 import { parseGameType, isPairGame, isThreeChoiceGame, isCustomGame } from '@/lib/game-types'
 import { participantsWhoJoined } from '@/lib/participants'
-import { useFullHostListForRounds } from '@/lib/participant-mode'
+import { getFullHostListForRounds } from '@/lib/participant-mode'
 import {
   combineLobbyQuestions,
   parsePlayerQuestionsOrder,
@@ -64,7 +64,7 @@ export function buildPeoplePollParticipantPool(
     ? participantsData.filter((p) => p.submitted_by_player_id)
     : []
 
-  const useAllHost = useFullHostListForRounds(game)
+  const useAllHost = getFullHostListForRounds(game)
   const hostPool = useAllHost ? hostRows : participantsWhoJoined(hostRows, playersData)
 
   const order = parsePlayerQuestionsOrder(game.player_questions_order)

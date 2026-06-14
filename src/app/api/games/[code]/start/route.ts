@@ -35,7 +35,7 @@ import {
   lobbyAllowsPlayerQuestions,
   parsePlayerQuestionsOrder,
 } from '@/lib/player-question-pool'
-import { useFullHostListForRounds } from '@/lib/participant-mode'
+import { getFullHostListForRounds } from '@/lib/participant-mode'
 import { buildPeoplePollParticipantPool } from '@/lib/player-participant-pool'
 import { hostActionSchema } from '@/lib/validation'
 import { ANONYMOUS_ROOM_MIN_PLAYERS } from '@/lib/anonymous-messages'
@@ -627,7 +627,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (roundPool.length < minPool) {
     const hostOnly = (participantsData ?? []).filter((p) => !p.submitted_by_player_id)
-    const useAllHost = useFullHostListForRounds(game)
+    const useAllHost = getFullHostListForRounds(game)
     const message =
       !useAllHost && hostOnly.length >= minPool
         ? `Need at least ${minPool} people to join before starting — only joined names appear in rounds`

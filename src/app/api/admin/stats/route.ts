@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   ])
 
   let feedbackCount = 0
-  let feedbackByCategory: Record<string, number> = {}
+  const feedbackByCategory: Record<string, number> = {}
   if (hasServiceRoleKey()) {
     const [feedbackRes, feedbackByCategoryRes] = await Promise.all([
       supabase.from('app_feedback').select('id', { count: 'exact', head: true }),
