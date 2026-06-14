@@ -19,15 +19,16 @@ export function AnonymousMessagesHostView({
   hostToken: string
 }) {
   const router = useRouter()
-  const { error: toastError } = useToast()
+  const { error: toastError, success } = useToast()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [starting, setStarting] = useState(false)
   const [ending, setEnding] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
+  const [removingId, setRemovingId] = useState<string | null>(null)
 
   const messagesEnabled = game?.status === 'active' || game?.status === 'finished'
-  const { messages } = useAnonymousMessages(gameCode, !!messagesEnabled)
+  const { messages, removeMessage } = useAnonymousMessages(gameCode, !!messagesEnabled)
 
   const load = useCallback(async () => {
     const [{ data: gameData }, { data: plrs }] = await Promise.all([
@@ -129,6 +130,25 @@ export function AnonymousMessagesHostView({
     }
   }
 
+  const removeMessageByHost = async (messageId: string) => {
+    setRemovingId(messageId)
+    try {
+      const res = await fetch('/api/anonymous-messages', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, messageId, hostToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to remove message')
+      removeMessage(messageId)
+      success('Message removed')
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to remove message')
+    } finally {
+      setRemovingId(null)
+    }
+  }
+
   if (!game) {
     return (
       <div className="page-wrap flex items-center justify-center">
@@ -193,7 +213,13 @@ export function AnonymousMessagesHostView({
 
       {game.status === 'active' && (
         <>
-          <AnonymousMessageFeed messages={messages} title="Live anonymous messages" />
+          <AnonymousMessageFeed
+            messages={messages}
+            title="Live anonymous messages"
+            canRemove
+            removingId={removingId}
+            onRemove={removeMessageByHost}
+          />
           <button type="button" onClick={endSession} disabled={ending} className="btn-secondary w-full">
             {ending ? 'Ending…' : 'End session'}
           </button>

@@ -12,6 +12,10 @@ export function useAnonymousMessages(gameCode: string, enabled: boolean) {
     setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]))
   }, [])
 
+  const removeMessage = useCallback((messageId: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== messageId))
+  }, [])
+
   const loadMessages = useCallback(async () => {
     const { data, error } = await supabase
       .from('anonymous_messages')
@@ -38,6 +42,14 @@ export function useAnonymousMessages(gameCode: string, enabled: boolean) {
         { event: 'INSERT', schema: 'public', table: 'anonymous_messages', filter: `game_id=eq.${gameCode}` },
         (payload) => mergeMessage(payload.new as AnonymousMessage)
       )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'anonymous_messages', filter: `game_id=eq.${gameCode}` },
+        (payload) => {
+          const removed = payload.old as { id?: string }
+          if (removed.id) removeMessage(removed.id)
+        }
+      )
       .subscribe()
 
     const poll = setInterval(loadMessages, 3000)
@@ -46,7 +58,7 @@ export function useAnonymousMessages(gameCode: string, enabled: boolean) {
       clearInterval(poll)
       supabase.removeChannel(channel)
     }
-  }, [enabled, gameCode, loadMessages, mergeMessage])
+  }, [enabled, gameCode, loadMessages, mergeMessage, removeMessage])
 
-  return { messages, loading, reload: loadMessages }
+  return { messages, loading, reload: loadMessages, removeMessage }
 }

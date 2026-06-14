@@ -289,6 +289,14 @@ export const createAnonymousMessageSchema = z.object({
 
 export type CreateAnonymousMessageInput = z.infer<typeof createAnonymousMessageSchema>
 
+export const deleteAnonymousMessageSchema = z.object({
+  gameId: gameCodeString(),
+  messageId: uuidString('messageId'),
+  hostToken: hostTokenString(),
+})
+
+export type DeleteAnonymousMessageInput = z.infer<typeof deleteAnonymousMessageSchema>
+
 // ---------------------------------------------------------------------------
 // Quote (POST /api/quote)
 // ---------------------------------------------------------------------------

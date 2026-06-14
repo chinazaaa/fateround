@@ -8,6 +8,9 @@ interface AnonymousMessageFeedProps {
   title?: string
   emptyLabel?: string
   readOnly?: boolean
+  canRemove?: boolean
+  removingId?: string | null
+  onRemove?: (messageId: string) => void
 }
 
 export function AnonymousMessageFeed({
@@ -15,6 +18,9 @@ export function AnonymousMessageFeed({
   title = 'Anonymous messages',
   emptyLabel = 'No messages yet — be the first to post',
   readOnly = false,
+  canRemove = false,
+  removingId = null,
+  onRemove,
 }: AnonymousMessageFeedProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevCountRef = useRef(messages.length)
@@ -43,7 +49,22 @@ export function AnonymousMessageFeed({
               className="confession-slide-in px-3 py-2.5 rounded-xl bg-white/5 border border-white/5"
               style={{ animationDelay: `${Math.min(i * 40, 240)}ms` }}
             >
-              <p className="text-body-muted text-sm leading-relaxed">&ldquo;{message.text}&rdquo;</p>
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-body-muted text-sm leading-relaxed flex-1 min-w-0">
+                  &ldquo;{message.text}&rdquo;
+                </p>
+                {canRemove && onRemove && (
+                  <button
+                    type="button"
+                    onClick={() => onRemove(message.id)}
+                    disabled={removingId === message.id}
+                    className="shrink-0 text-faint hover:text-red-400 text-xs disabled:opacity-50"
+                    aria-label="Remove message"
+                  >
+                    {removingId === message.id ? '…' : 'Remove'}
+                  </button>
+                )}
+              </div>
               <p className="text-faint text-[10px] mt-1.5">{new Date(message.created_at).toLocaleTimeString()}</p>
             </div>
           ))
