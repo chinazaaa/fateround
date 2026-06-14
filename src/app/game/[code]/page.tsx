@@ -118,6 +118,7 @@ import { ShareRoundResults } from '@/components/ShareRoundResults'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { ConfessionsTicker } from '@/components/ConfessionsTicker'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
+import { GameLobbySummary } from '@/components/GameLobbySummary'
 import ReactionBar from '@/components/ReactionBar'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -1378,6 +1379,7 @@ export default function GamePage() {
           <p className="text-muted text-sm">
             {game?.rounds_count} rounds · {game?.timer_seconds}s each
           </p>
+          {game && <GameLobbySummary game={game} className="pt-1" />}
         </div>
         <div className="space-y-4">
           <p className="text-muted font-medium text-center">
@@ -1563,6 +1565,10 @@ export default function GamePage() {
           <div className="text-4xl">⏳</div>
           <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
           <GameTypeBadge gameType={game?.game_type} />
+          {game && <GameLobbySummary game={game} />}
+          <p className="text-muted text-sm">
+            {game?.rounds_count} rounds · {game?.timer_seconds}s each
+          </p>
           <p className="text-muted">Waiting for the host to start...</p>
         </div>
 
