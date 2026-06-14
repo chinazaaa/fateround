@@ -22,6 +22,7 @@ import { useAnonymousRoomBans } from '@/hooks/useAnonymousRoomBans'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import type { AnonymousMessage, Game, Player } from '@/types'
+import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { useToast } from '@/components/ui/Toast'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
@@ -43,6 +44,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   const bansEnabled = screen === 'active' || screen === 'waiting'
   const { messages } = useAnonymousMessages(gameCode, messagesEnabled, players)
   const { banForPlayer } = useAnonymousRoomBans(gameCode, bansEnabled)
+  const { broadcastReaction, reactions: reactionsMap } = useAnonymousReactions(gameCode, screen === 'active')
   useAnonymousMessageTrim(gameCode, screen === 'active')
 
   const syncScreen = useCallback((gameData: Game, playerId: string | null) => {
@@ -180,6 +182,32 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     }
   }
 
+  const sendGif = async (mediaUrl: string) => {
+    if (!myPlayerId) return
+    setSending(true)
+    try {
+      const res = await fetch('/api/anonymous-messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameId: gameCode,
+          playerId: myPlayerId,
+          text: '',
+          messageType: 'gif',
+          mediaUrl,
+          ...(replyTo ? { replyToId: replyTo.id } : {}),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to send')
+      setReplyTo(null)
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to send GIF')
+    } finally {
+      setSending(false)
+    }
+  }
+
   if (screen === 'loading') {
     return (
       <CenteredShell>
@@ -277,12 +305,16 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         canReply={canPost}
         onReply={canPost ? setReplyTo : undefined}
         highlightMessageId={replyTo?.id ?? null}
+        reactionsMap={reactionsMap}
+        myPlayerName={myPlayerName ?? 'Unknown'}
+        onReact={(messageId, emoji, action) => broadcastReaction(messageId, emoji, myPlayerName ?? 'Unknown', action)}
       />
       {canPost && (
         <AnonymousMessageComposer
           value={messageInput}
           onChange={setMessageInput}
           onSend={sendMessage}
+          onSendGif={sendGif}
           sending={sending}
           replyTo={replyTo}
           onClearReply={() => setReplyTo(null)}

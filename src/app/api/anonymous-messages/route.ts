@@ -21,6 +21,8 @@ export async function POST(req: NextRequest) {
   }
 
   const { gameId, playerId, text, replyToId } = parsed.data
+  const messageType = parsed.data.messageType ?? 'text'
+  const mediaUrl = parsed.data.mediaUrl ?? null
   const gameCode = gameId.toUpperCase()
 
   const { data: game } = await supabase
@@ -57,6 +59,13 @@ export async function POST(req: NextRequest) {
     .eq('player_id', playerId)
     .maybeSingle()
 
+  if (messageType === 'text' && !text.trim()) {
+    return NextResponse.json({ error: 'Message cannot be empty' }, { status: 400 })
+  }
+  if (messageType === 'gif' && !mediaUrl) {
+    return NextResponse.json({ error: 'GIF URL is required' }, { status: 400 })
+  }
+
   if (!anonymousPlayerCanPost(player, game, ban?.banned_until)) {
     if (isPlayerBanned(ban?.banned_until)) {
       return NextResponse.json({ error: 'You are muted and cannot send messages right now' }, { status: 403 })
@@ -83,15 +92,17 @@ export async function POST(req: NextRequest) {
     }
 
     replyToIdValue = parent.id
-    replyToText = truncateReplyPreview(parent.text)
+    replyToText = parent.text?.trim() ? truncateReplyPreview(parent.text) : '[GIF]'
   }
 
   const { error } = await supabase.from('anonymous_messages').insert({
     game_id: gameCode,
     player_id: playerId,
-    text,
+    text: text || '',
     reply_to_id: replyToIdValue,
     reply_to_text: replyToText,
+    message_type: messageType,
+    media_url: mediaUrl,
   })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

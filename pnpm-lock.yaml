@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@emoji-mart/data':
+        specifier: ^1.2.1
+        version: 1.2.1
+      '@emoji-mart/react':
+        specifier: ^1.1.1
+        version: 1.1.1(emoji-mart@5.6.0)(react@19.2.4)
       '@supabase/supabase-js':
         specifier: ^2.108.1
         version: 2.108.1
@@ -154,6 +160,15 @@ packages:
 
   '@emnapi/runtime@1.11.1':
     resolution: {integrity: sha512-vgj7R3y3Wgx24IQaGPA/R6YFXLHVMOZ0uVEyIQPaWs+rd1AzfEMXlAC22FYwO1XkKR6NPsq7mUandH8oIRdZFw==}
+
+  '@emoji-mart/data@1.2.1':
+    resolution: {integrity: sha512-no2pQMWiBy6gpBEiqGeU77/bFejDqUTRY7KX+0+iur13op3bqUsXdnwoZs6Xb1zbv0gAj5VvS1PWoUUckSr5Dw==}
+
+  '@emoji-mart/react@1.1.1':
+    resolution: {integrity: sha512-NMlFNeWgv1//uPsvLxvGQoIerPuVdXwK/EUek8OOkJ6wVOWPUizRBJU0hDqWZCOROVpfBgCemaC3m6jDOXi03g==}
+    peerDependencies:
+      emoji-mart: ^5.2
+      react: ^16.8 || ^17 || ^18
 
   '@eslint-community/eslint-utils@4.9.1':
     resolution: {integrity: sha512-phrYmNiYppR7znFEdqgfWHXR6NCkZEK7hwWDHZUjit/2/U0r6XvkDl0SYnoM51Hq7FhCGdLDT6zxCCOY1hexsQ==}
@@ -783,6 +798,9 @@ packages:
 
   electron-to-chromium@1.5.372:
     resolution: {integrity: sha512-M3yhbAlilnwqC8D21t28UCDGHyitShTmmLRU/H+b74P6Ski16Nb9HONYEaVpMj/pwC7BEo5B95FpjODLCWbtfA==}
+
+  emoji-mart@5.6.0:
+    resolution: {integrity: sha512-eJp3QRe79pjwa+duv+n7+5YsNhRcMl812EcFVwrnRvYKoNPoQb5qxU8DG6Bgwji0akHdp6D4Ln6tYLG58MFSow==}
 
   enhanced-resolve@5.21.6:
     resolution: {integrity: sha512-aNnGCvbJ/RIyWo1IuhNdVjnNF+EjH9wpzpNHt+ci/m9He9LJvUN8wrCcXjp9cWsGNAuvSpVFTx/vraAFQ8qGjQ==}
@@ -1509,6 +1527,13 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+  '@emoji-mart/data@1.2.1': {}
+
+  '@emoji-mart/react@1.1.1(emoji-mart@5.6.0)(react@19.2.4)':
+    dependencies:
+      emoji-mart: 5.6.0
+      react: 19.2.4
+
   '@eslint-community/eslint-utils@4.9.1(eslint@10.5.0(jiti@2.7.0))':
     dependencies:
       eslint: 10.5.0(jiti@2.7.0)
@@ -2048,6 +2073,8 @@ snapshots:
       gopd: 1.2.0
 
   electron-to-chromium@1.5.372: {}
+
+  emoji-mart@5.6.0: {}
 
   enhanced-resolve@5.21.6:
     dependencies:

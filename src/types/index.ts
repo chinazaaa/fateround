@@ -162,6 +162,8 @@ export interface AnonymousMessage {
   created_at: string
   reply_to_id?: string | null
   reply_to_text?: string | null
+  message_type?: 'text' | 'gif'
+  media_url?: string | null
 }
 
 export interface AnonymousRoomBan {

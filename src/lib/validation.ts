@@ -94,7 +94,7 @@ export const createGameSchema = z.object({
   wst_quote_source: wstQuoteSourceEnum.optional(),
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
-  max_players: z.coerce.number().int().min(2).max(15).optional(),
+  max_players: z.coerce.number().int().min(2).max(50).optional(),
   custom_slots: z
     .object({
       slots: z
@@ -285,8 +285,14 @@ export type CreateConfessionInput = z.infer<typeof createConfessionSchema>
 export const createAnonymousMessageSchema = z.object({
   gameId: gameCodeString(),
   playerId: uuidString('playerId'),
-  text: sanitizedString(1, 500),
+  text: z
+    .string()
+    .transform((s) => stripHtml(s.trim()))
+    .pipe(z.string().max(500))
+    .default(''),
   replyToId: uuidString('replyToId').optional(),
+  messageType: z.enum(['text', 'gif']).default('text'),
+  mediaUrl: z.string().url().max(2000).optional().nullable(),
 })
 
 export type CreateAnonymousMessageInput = z.infer<typeof createAnonymousMessageSchema>

@@ -1,12 +1,15 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AnonymousMessage } from '@/types'
+import { EmojiPickerPopover } from './EmojiPickerPopover'
+import { GifStickerPicker } from './GifStickerPicker'
 
 interface AnonymousMessageComposerProps {
   value: string
   onChange: (value: string) => void
   onSend: () => void
+  onSendGif: (mediaUrl: string) => void
   sending: boolean
   replyTo: AnonymousMessage | null
   onClearReply: () => void
@@ -16,15 +19,34 @@ export function AnonymousMessageComposer({
   value,
   onChange,
   onSend,
+  onSendGif,
   sending,
   replyTo,
   onClearReply,
 }: AnonymousMessageComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
+  const [gifPickerOpen, setGifPickerOpen] = useState(false)
 
   useEffect(() => {
     if (replyTo) textareaRef.current?.focus()
   }, [replyTo])
+
+  const handleEmojiInsert = (emoji: string) => {
+    const textarea = textareaRef.current
+    if (textarea) {
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
+      const newValue = value.slice(0, start) + emoji + value.slice(end)
+      onChange(newValue)
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + emoji.length
+        textarea.focus()
+      }, 0)
+    } else {
+      onChange(value + emoji)
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -60,9 +82,48 @@ export function AnonymousMessageComposer({
         maxLength={500}
         className="input-field resize-none w-full"
       />
-      <button type="button" onClick={onSend} disabled={sending || !value.trim()} className="btn-primary w-full">
-        {sending ? 'Sending…' : replyTo ? 'Send reply' : 'Send anonymously'}
-      </button>
+      <div className="flex items-center gap-2">
+        <div className="flex gap-1 relative">
+          <button
+            type="button"
+            onClick={() => {
+              setEmojiPickerOpen((v) => !v)
+              setGifPickerOpen(false)
+            }}
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-lg surface-inset border-theme text-muted hover:text-body transition-colors"
+            aria-label="Add emoji"
+          >
+            😀
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setGifPickerOpen((v) => !v)
+              setEmojiPickerOpen(false)
+            }}
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold surface-inset border-theme text-muted hover:text-body transition-colors"
+            aria-label="Send GIF or sticker"
+          >
+            GIF
+          </button>
+          <EmojiPickerPopover
+            open={emojiPickerOpen}
+            onClose={() => setEmojiPickerOpen(false)}
+            onSelect={handleEmojiInsert}
+          />
+          <GifStickerPicker
+            open={gifPickerOpen}
+            onClose={() => setGifPickerOpen(false)}
+            onSelect={(url) => {
+              onSendGif(url)
+              setGifPickerOpen(false)
+            }}
+          />
+        </div>
+        <button type="button" onClick={onSend} disabled={sending || !value.trim()} className="btn-primary flex-1">
+          {sending ? 'Sending…' : replyTo ? 'Send reply' : 'Send anonymously'}
+        </button>
+      </div>
     </div>
   )
 }

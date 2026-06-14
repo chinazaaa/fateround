@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AnonymousMessage } from '@/types'
-import { useAnonymousFeedAutoScroll } from '@/hooks/useAnonymousFeedAutoScroll'
+import { ScrollToBottomButton } from './ScrollToBottomButton'
+import { MessageReactions } from './MessageReactions'
 
 interface AnonymousMessageFeedProps {
   messages: AnonymousMessage[]
@@ -15,7 +16,9 @@ interface AnonymousMessageFeedProps {
   onRemove?: (messageId: string) => void
   onReply?: (message: AnonymousMessage) => void
   highlightMessageId?: string | null
-  showAutoScrollToggle?: boolean
+  reactionsMap?: Map<string, Map<string, Set<string>>>
+  myPlayerName?: string
+  onReact?: (messageId: string, emoji: string, action: 'add' | 'remove') => void
 }
 
 const NEAR_BOTTOM_PX = 80
@@ -31,17 +34,16 @@ export function AnonymousMessageFeed({
   onRemove,
   onReply,
   highlightMessageId = null,
-  showAutoScrollToggle = true,
+  reactionsMap,
+  myPlayerName,
+  onReact,
 }: AnonymousMessageFeedProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const { autoScroll, toggleAutoScroll, ready } = useAnonymousFeedAutoScroll()
-  const lastMessageId = messages[messages.length - 1]?.id ?? null
+  const [showScrollButton, setShowScrollButton] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const prevMessageCount = useRef(messages.length)
 
-  const isNearBottom = useCallback(() => {
-    const el = scrollRef.current
-    if (!el) return true
-    return el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX
-  }, [])
+  const SCROLL_THRESHOLD = 200
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const el = scrollRef.current
@@ -49,49 +51,47 @@ export function AnonymousMessageFeed({
     el.scrollTo({ top: el.scrollHeight, behavior })
   }, [])
 
-  const prevAutoScrollRef = useRef(autoScroll)
-
+  // Track new messages when scrolled up
   useEffect(() => {
-    if (!ready) return
-
-    const turnedOn = !prevAutoScrollRef.current && autoScroll
-    prevAutoScrollRef.current = autoScroll
-
-    if (!autoScroll) return
-    if (turnedOn || (lastMessageId && isNearBottom())) {
+    const newMessages = messages.length - prevMessageCount.current
+    prevMessageCount.current = messages.length
+    if (newMessages > 0 && showScrollButton) {
+      setUnreadCount((c) => c + newMessages)
+    }
+    // Auto-scroll when near bottom
+    if (newMessages > 0 && !showScrollButton) {
       scrollToBottom(messages.length <= 1 ? 'auto' : 'smooth')
     }
-  }, [ready, autoScroll, lastMessageId, messages.length, isNearBottom, scrollToBottom])
+  }, [messages.length, showScrollButton, scrollToBottom])
 
-  const handleToggleAutoScroll = () => {
-    toggleAutoScroll()
+  // Scroll event handler
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const handleScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      setShowScrollButton(distFromBottom > SCROLL_THRESHOLD)
+      if (distFromBottom <= NEAR_BOTTOM_PX) {
+        setUnreadCount(0)
+      }
+    }
+    el.addEventListener('scroll', handleScroll)
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  const handleScrollToBottom = () => {
+    scrollToBottom('smooth')
+    setUnreadCount(0)
   }
 
   return (
     <div className="glass-card border border-white/10 p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-muted text-xs uppercase tracking-wider">{title}</p>
-        <div className="flex items-center gap-2 shrink-0">
-          {showAutoScrollToggle && (
-            <button
-              type="button"
-              onClick={handleToggleAutoScroll}
-              className={`text-[10px] uppercase tracking-wider px-2 py-1 rounded-lg border transition-colors ${
-                autoScroll
-                  ? 'border-violet-400/40 text-violet-300/90 bg-violet-500/10'
-                  : 'border-white/10 text-faint hover:text-muted'
-              }`}
-              aria-pressed={autoScroll}
-              aria-label={autoScroll ? 'Turn auto-scroll off' : 'Turn auto-scroll on'}
-            >
-              Auto-scroll {autoScroll ? 'on' : 'off'}
-            </button>
-          )}
-          <span className="text-faint text-xs tabular-nums">{messages.length}</span>
-        </div>
+        <span className="text-faint text-xs tabular-nums">{messages.length}</span>
       </div>
 
-      <div ref={scrollRef} className="max-h-[min(52vh,28rem)] overflow-y-auto scrollbar-thin">
+      <div ref={scrollRef} className="relative max-h-[min(52vh,28rem)] overflow-y-auto scrollbar-thin">
         <div className="space-y-2 pb-10">
           {messages.length === 0 ? (
             <p className="text-muted text-sm text-center py-8">{emptyLabel}</p>
@@ -117,31 +117,49 @@ export function AnonymousMessageFeed({
 
                   <p className="text-violet-300/90 text-xs font-semibold mb-1">{message.player_name ?? 'Unknown'}</p>
 
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-body-muted text-sm leading-relaxed flex-1 min-w-0">{message.text}</p>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {canReply && onReply && (
-                        <button
-                          type="button"
-                          onClick={() => onReply(message)}
-                          className="text-faint hover:text-violet-300 text-xs"
-                          aria-label="Reply to message"
-                        >
-                          Reply
-                        </button>
+                  <div className="space-y-1">
+                    <div className="flex items-start justify-between gap-3">
+                      {message.text ? (
+                        <p className="text-body-muted text-sm leading-relaxed flex-1 min-w-0">{message.text}</p>
+                      ) : (
+                        <div className="flex-1" />
                       )}
-                      {canRemove && onRemove && (
-                        <button
-                          type="button"
-                          onClick={() => onRemove(message.id)}
-                          disabled={removingId === message.id}
-                          className="text-faint hover:text-red-400 text-xs disabled:opacity-50"
-                          aria-label="Remove message"
-                        >
-                          {removingId === message.id ? '…' : 'Remove'}
-                        </button>
-                      )}
+                      <div className="flex shrink-0 items-center gap-2">
+                        {canReply && onReply && (
+                          <button
+                            type="button"
+                            onClick={() => onReply(message)}
+                            className="text-faint hover:text-violet-300 text-xs"
+                            aria-label="Reply to message"
+                          >
+                            Reply
+                          </button>
+                        )}
+                        {canRemove && onRemove && (
+                          <button
+                            type="button"
+                            onClick={() => onRemove(message.id)}
+                            disabled={removingId === message.id}
+                            className="text-faint hover:text-red-400 text-xs disabled:opacity-50"
+                            aria-label="Remove message"
+                          >
+                            {removingId === message.id ? '…' : 'Remove'}
+                          </button>
+                        )}
+                      </div>
                     </div>
+                    {message.media_url && (
+                      <img src={message.media_url} alt="GIF" loading="lazy" className="rounded-xl max-w-[200px]" />
+                    )}
+                    {reactionsMap && myPlayerName !== undefined && onReact && (
+                      <MessageReactions
+                        messageId={message.id}
+                        reactions={reactionsMap.get(message.id) ?? new Map()}
+                        myPlayerName={myPlayerName}
+                        onReact={onReact}
+                        disabled={readOnly}
+                      />
+                    )}
                   </div>
                   <p className="text-faint text-[10px] mt-1.5">{new Date(message.created_at).toLocaleTimeString()}</p>
                 </div>
@@ -149,6 +167,7 @@ export function AnonymousMessageFeed({
             })
           )}
         </div>
+        <ScrollToBottomButton visible={showScrollButton} unreadCount={unreadCount} onClick={handleScrollToBottom} />
       </div>
 
       {readOnly && messages.length > 0 && <p className="text-faint text-xs">Lobby names are shown on each message.</p>}

@@ -902,6 +902,22 @@ export default function GamePage() {
 
   useTimerTickSound(timeLeft, view === 'round')
 
+  // ── Apply theme CSS variables (same as host page) ─────────────────────────
+  useEffect(() => {
+    const themeId = parseThemeId(game?.theme)
+    const vars = THEME_MAP[themeId]?.cssVars ?? {}
+    const root = document.documentElement
+    const keys = Object.keys(vars)
+    keys.forEach((k) => root.style.setProperty(k, vars[k]))
+    if (Object.keys(vars).length > 0) {
+      root.style.setProperty('background', vars['--background'] ?? '')
+    }
+    return () => {
+      keys.forEach((k) => root.style.removeProperty(k))
+      root.style.removeProperty('background')
+    }
+  }, [game?.theme])
+
   // ── Actions ───────────────────────────────────────────────────────────────
   const assign = (action: keyof VoteAssignment, participantId: string) => {
     const gameType = parseGameType(game?.game_type)
