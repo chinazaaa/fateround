@@ -154,6 +154,8 @@ export interface AnonymousMessage {
   game_id: string
   text: string
   created_at: string
+  reply_to_id?: string | null
+  reply_to_text?: string | null
 }
 
 /** Lobby quote submission for Who Said This — one per player before the game starts. */

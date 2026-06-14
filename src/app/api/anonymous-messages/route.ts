@@ -6,6 +6,7 @@ import {
   anonymousSessionExpired,
   finishExpiredAnonymousSession,
   trimAnonymousMessages,
+  truncateReplyPreview,
 } from '@/lib/anonymous-messages'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId, text } = parsed.data
+  const { gameId, playerId, text, replyToId } = parsed.data
   const gameCode = gameId.toUpperCase()
 
   const { data: game } = await supabase
@@ -47,10 +48,31 @@ export async function POST(req: NextRequest) {
 
   if (!player) return NextResponse.json({ error: 'Player not in this game' }, { status: 403 })
 
+  let replyToIdValue: string | null = null
+  let replyToText: string | null = null
+
+  if (replyToId) {
+    const { data: parent } = await supabase
+      .from('anonymous_messages')
+      .select('id, text')
+      .eq('id', replyToId)
+      .eq('game_id', gameCode)
+      .maybeSingle()
+
+    if (!parent) {
+      return NextResponse.json({ error: 'Message you are replying to was not found' }, { status: 400 })
+    }
+
+    replyToIdValue = parent.id
+    replyToText = truncateReplyPreview(parent.text)
+  }
+
   const { error } = await supabase.from('anonymous_messages').insert({
     game_id: gameCode,
     player_id: playerId,
     text,
+    reply_to_id: replyToIdValue,
+    reply_to_text: replyToText,
   })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

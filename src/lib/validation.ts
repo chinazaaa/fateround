@@ -285,6 +285,7 @@ export const createAnonymousMessageSchema = z.object({
   gameId: gameCodeString(),
   playerId: uuidString('playerId'),
   text: sanitizedString(1, 500),
+  replyToId: uuidString('replyToId').optional(),
 })
 
 export type CreateAnonymousMessageInput = z.infer<typeof createAnonymousMessageSchema>

@@ -215,7 +215,7 @@ export function AnonymousMessagesHostView({
 
       {game.status === 'active' && (
         <>
-          <AnonymousSessionTimerBar gameCode={gameCode} game={game} />
+          <AnonymousSessionTimerBar gameCode={gameCode} game={game} sticky />
           <AnonymousMessageFeed
             messages={messages}
             title="Live anonymous messages"

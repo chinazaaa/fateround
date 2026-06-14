@@ -6,6 +6,15 @@ export const ANONYMOUS_ROOM_MAX_MESSAGES = 1000
 /** Fixed session length for anonymous rooms (15 minutes). */
 export const ANONYMOUS_ROOM_SESSION_SECONDS = 15 * 60
 
+/** Snapshot length for quoted replies shown in the feed. */
+export const ANONYMOUS_REPLY_PREVIEW_MAX = 120
+
+export function truncateReplyPreview(text: string, max = ANONYMOUS_REPLY_PREVIEW_MAX): string {
+  const trimmed = text.trim()
+  if (trimmed.length <= max) return trimmed
+  return `${trimmed.slice(0, max)}…`
+}
+
 export function anonymousSessionExpired(sessionStartedAt: string | null | undefined): boolean {
   if (!sessionStartedAt) return false
   const deadline = new Date(sessionStartedAt).getTime() + ANONYMOUS_ROOM_SESSION_SECONDS * 1000

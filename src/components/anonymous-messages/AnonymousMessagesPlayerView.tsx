@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AnonymousMessageFeed } from '@/components/anonymous-messages/AnonymousMessageFeed'
+import { AnonymousMessageComposer } from '@/components/anonymous-messages/AnonymousMessageComposer'
 import { AnonymousRoomSessionSummary } from '@/components/anonymous-messages/AnonymousRoomSessionSummary'
 import { GameLobbySummary } from '@/components/GameLobbySummary'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
@@ -11,7 +12,7 @@ import { AnonymousSessionTimerBar } from '@/components/anonymous-messages/Anonym
 import { gameTypeConfig } from '@/lib/game-types'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession } from '@/lib/utils'
-import type { Game, Player } from '@/types'
+import type { AnonymousMessage, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
@@ -26,6 +27,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   const [myPlayerName, setMyPlayerName] = useState('')
   const [joining, setJoining] = useState(false)
   const [messageInput, setMessageInput] = useState('')
+  const [replyTo, setReplyTo] = useState<AnonymousMessage | null>(null)
   const [sending, setSending] = useState(false)
 
   const messagesEnabled = screen === 'active'
@@ -135,11 +137,17 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       const res = await fetch('/api/anonymous-messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, text }),
+        body: JSON.stringify({
+          gameId: gameCode,
+          playerId: myPlayerId,
+          text,
+          ...(replyTo ? { replyToId: replyTo.id } : {}),
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to send message')
       setMessageInput('')
+      setReplyTo(null)
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to send message')
     } finally {
@@ -202,33 +210,22 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   return (
     <PageShell>
       <Header game={game} />
-      <AnonymousSessionTimerBar gameCode={gameCode} game={game} />
+      <AnonymousSessionTimerBar gameCode={gameCode} game={game} sticky />
       <PlayerBar name={myPlayerName} subtitle="Your lobby name — messages stay anonymous" />
-      <AnonymousMessageFeed messages={messages} />
-      <div className="space-y-3">
-        <textarea
-          value={messageInput}
-          onChange={(e) => setMessageInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              sendMessage()
-            }
-          }}
-          placeholder="Say something anonymous…"
-          rows={3}
-          maxLength={500}
-          className="input-field resize-none w-full"
-        />
-        <button
-          type="button"
-          onClick={sendMessage}
-          disabled={sending || !messageInput.trim()}
-          className="btn-primary w-full"
-        >
-          {sending ? 'Sending…' : 'Send anonymously'}
-        </button>
-      </div>
+      <AnonymousMessageFeed
+        messages={messages}
+        canReply
+        onReply={setReplyTo}
+        highlightMessageId={replyTo?.id ?? null}
+      />
+      <AnonymousMessageComposer
+        value={messageInput}
+        onChange={setMessageInput}
+        onSend={sendMessage}
+        sending={sending}
+        replyTo={replyTo}
+        onClearReply={() => setReplyTo(null)}
+      />
     </PageShell>
   )
 }
