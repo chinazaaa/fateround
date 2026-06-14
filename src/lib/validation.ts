@@ -53,6 +53,7 @@ const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
 const autoSubmitBehaviorEnum = z.enum(['random', 'no_answer'])
 const pairVoteModeEnum = z.enum(['any', 'one_each'])
 const questionSourceEnum = z.enum(['platform', 'custom'])
+const playerQuestionsOrderEnum = z.enum(['players_first', 'uploaded_first', 'mixed'])
 const wstQuoteSourceEnum = z.enum(['player', 'anime', 'both'])
 const wyrChoiceEnum = z.enum(['a', 'b'])
 const participantGenderEnum = z.enum(['male', 'female'])
@@ -85,6 +86,8 @@ export const createGameSchema = z.object({
   pair_vote_mode: pairVoteModeEnum.optional(),
   question_source: questionSourceEnum.optional(),
   custom_questions: z.array(z.unknown()).optional().nullable(),
+  player_questions_enabled: z.boolean().optional(),
+  player_questions_order: playerQuestionsOrderEnum.optional(),
   game_type: gameTypeEnum.optional(),
   theme: themeEnum.optional(),
   wst_quote_source: wstQuoteSourceEnum.optional(),
@@ -132,6 +135,8 @@ export const updateGameSchema = z.object({
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
   pair_vote_mode: pairVoteModeEnum.optional(),
+  player_questions_enabled: z.boolean().optional(),
+  player_questions_order: playerQuestionsOrderEnum.optional(),
 })
 
 export type UpdateGameInput = z.infer<typeof updateGameSchema>

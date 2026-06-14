@@ -3,9 +3,16 @@ import { createClient } from '@supabase/supabase-js'
 import { assertHostGameSettings } from '@/lib/game-admin'
 import { questionPoolCap } from '@/lib/custom-questions'
 import { parseTimerSeconds, updateGameSchema } from '@/lib/validation'
-import { parseGameType, isHotSeat, isPairGame, parsePairVoteMode } from '@/lib/game-types'
+import { parseGameType, isHotSeat, isPairGame, parsePairVoteMode, isBinaryChoiceGame, isMostLikelyTo } from '@/lib/game-types'
 import { isCustomTwoSlotGame } from '@/lib/custom-game'
 import { clampHotSeatMaxCap, hotSeatJoinedPlayers, hotSeatMaxCapUpperBound } from '@/lib/hot-seat'
+import {
+  parsePlayerQuestionsEnabled,
+  parsePlayerQuestionsOrder,
+  combineLobbyQuestions,
+  poolPickCountForLobby,
+  lobbyAllowsPlayerQuestions,
+} from '@/lib/player-question-pool'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -42,7 +49,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       const upper = hotSeatMaxCapUpperBound(joinedCount, participantsData?.length ?? 0)
       rounds_count = clampHotSeatMaxCap(rawRoundsCount, upper)
     } else {
-      const cap = questionPoolCap(auth.game!)
+      let cap = questionPoolCap(auth.game!)
+      if (isBinaryChoiceGame(gameType) || isMostLikelyTo(gameType)) {
+        const questionType = isMostLikelyTo(gameType) ? 'mlt' : 'wyr'
+        const { count } = await supabase
+          .from('player_questions')
+          .select('*', { count: 'exact', head: true })
+          .eq('game_id', auth.id)
+          .eq('question_type', questionType)
+        cap = questionPoolCap(auth.game!, count ?? 0)
+      }
       if (rawRoundsCount > cap) {
         return NextResponse.json({ error: `Too many rounds — pick ${cap} or fewer` }, { status: 400 })
       }
@@ -73,6 +89,51 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       return NextResponse.json({ error: 'This game type does not support pair voting settings' }, { status: 400 })
     }
     updatePayload.pair_vote_mode = parsePairVoteMode(parsed.data.pair_vote_mode)
+  }
+
+  const gameType = parseGameType(auth.game!.game_type)
+  const isLobbyQuestions = isBinaryChoiceGame(gameType) || isMostLikelyTo(gameType)
+
+  if (parsed.data.player_questions_enabled !== undefined) {
+    if (!isLobbyQuestions) {
+      return NextResponse.json({ error: 'This game type does not support player question settings' }, { status: 400 })
+    }
+    updatePayload.player_questions_enabled = parsePlayerQuestionsEnabled(parsed.data.player_questions_enabled)
+  }
+
+  if (parsed.data.player_questions_order !== undefined) {
+    if (!isLobbyQuestions) {
+      return NextResponse.json({ error: 'This game type does not support player question settings' }, { status: 400 })
+    }
+    updatePayload.player_questions_order = parsePlayerQuestionsOrder(parsed.data.player_questions_order)
+  }
+
+  if (
+    isLobbyQuestions &&
+    (parsed.data.player_questions_enabled !== undefined || parsed.data.player_questions_order !== undefined) &&
+    rawRoundsCount === undefined
+  ) {
+    const nextGame = {
+      ...auth.game!,
+      player_questions_enabled:
+        parsed.data.player_questions_enabled !== undefined
+          ? parsePlayerQuestionsEnabled(parsed.data.player_questions_enabled)
+          : auth.game!.player_questions_enabled,
+      player_questions_order:
+        parsed.data.player_questions_order !== undefined
+          ? parsePlayerQuestionsOrder(parsed.data.player_questions_order)
+          : auth.game!.player_questions_order,
+    }
+    const questionType = isMostLikelyTo(gameType) ? 'mlt' : 'wyr'
+    const { count } = await supabase
+      .from('player_questions')
+      .select('*', { count: 'exact', head: true })
+      .eq('game_id', auth.id)
+      .eq('question_type', questionType)
+    const cap = questionPoolCap(nextGame, count ?? 0)
+    if (auth.game!.rounds_count > cap) {
+      updatePayload.rounds_count = cap
+    }
   }
 
   if (Object.keys(updatePayload).length === 0) {

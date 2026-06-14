@@ -9,6 +9,7 @@ import type {
   QuestionSource,
   ThemeId,
   WstQuoteSource,
+  PlayerQuestionsOrder,
 } from '@/types'
 import { THEMES, type ThemeConfig } from '@/lib/themes'
 import {
@@ -58,7 +59,13 @@ import {
   questionSampleFile,
   questionUploadHint,
   questionSourceOptions,
+  questionRoundPickerOptions,
+  clampLobbyQuestionRounds,
 } from '@/lib/custom-questions'
+import {
+  playerQuestionsOrderOptions,
+  parsePlayerQuestionsOrder,
+} from '@/lib/player-question-pool'
 import { CustomSlotBuilder } from '@/components/CustomSlotBuilder'
 import { GenderRoundModeControl } from '@/components/GenderRoundModeControl'
 import { customPairVoteModeOptions } from '@/lib/custom-game'
@@ -123,6 +130,8 @@ function CreateGameInner() {
   const questionsFileRef = useRef<HTMLInputElement>(null)
   const [bulkPaste, setBulkPaste] = useState('')
   const [questionSource, setQuestionSource] = useState<QuestionSource>('platform')
+  const [playerQuestionsEnabled, setPlayerQuestionsEnabled] = useState(true)
+  const [playerQuestionsOrder, setPlayerQuestionsOrder] = useState<PlayerQuestionsOrder>('players_first')
   const [questionTab, setQuestionTab] = useState<QuestionTab>('upload')
   const [customWyrQuestions, setCustomWyrQuestions] = useState<WyrQuestion[]>([])
   const [customMltQuestions, setCustomMltQuestions] = useState<string[]>([])
@@ -190,8 +199,8 @@ function CreateGameInner() {
           : isMlt
             ? MLT_QUESTION_COUNT
             : 10
-  const mltRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= questionCap)
-  const wyrRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= questionCap)
+  const mltRoundOptions = questionRoundPickerOptions(questionCap)
+  const wyrRoundOptions = questionRoundPickerOptions(questionCap)
   const wstRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= Math.max(participants.length, 2))
   const roundOptions = isBinaryLobby
     ? wyrRoundOptions
@@ -223,6 +232,8 @@ function CreateGameInner() {
     setCustomSlots(null)
     setWstQuoteSource('player')
     setQuestionSource(isThisOrThat(type) ? 'custom' : 'platform')
+    setPlayerQuestionsEnabled(true)
+    setPlayerQuestionsOrder('players_first')
     setCustomWyrQuestions([])
     setCustomMltQuestions([])
     setQuestionsUploadError(null)
@@ -504,6 +515,8 @@ function CreateGameInner() {
           wst_quote_source: isWst ? wstQuoteSource : undefined,
           custom_slots: isCustom ? customSlots : null,
           gender_based: supportsGender ? settings.gender_based : undefined,
+          player_questions_enabled: isLobbyQuestions ? playerQuestionsEnabled : undefined,
+          player_questions_order: isLobbyQuestions ? playerQuestionsOrder : undefined,
         }),
       })
       const data = await res.json()
@@ -634,6 +647,28 @@ function CreateGameInner() {
                       {customQuestionCount} custom questions loaded — up to {customQuestionCount} rounds.
                     </p>
                   )}
+                  {isLobbyQuestions && questionCap > 0 && (
+                    <input
+                      type="number"
+                      min={1}
+                      max={questionCap}
+                      step={1}
+                      value={settings.rounds_count}
+                      onChange={(e) => {
+                        const n = Number.parseInt(e.target.value, 10)
+                        if (!Number.isNaN(n)) {
+                          setSettings((prev) => ({ ...prev, rounds_count: n }))
+                        }
+                      }}
+                      onBlur={(e) => {
+                        setSettings((prev) => ({
+                          ...prev,
+                          rounds_count: clampLobbyQuestionRounds(e.target.value, questionCap),
+                        }))
+                      }}
+                      className="input-field w-28 mb-2"
+                    />
+                  )}
                   <ChipGrid>
                     {roundOptions.map((n) => (
                       <Chip
@@ -687,6 +722,43 @@ function CreateGameInner() {
 
             {isLobbyQuestions && (
               <SettingsGroup title="Questions">
+                <Field label="Player submissions">
+                  <SegmentedControl
+                    value={playerQuestionsEnabled ? 'on' : 'off'}
+                    onChange={(v) => setPlayerQuestionsEnabled(v === 'on')}
+                    options={[
+                      { value: 'on', label: 'Allowed' },
+                      { value: 'off', label: 'Disabled' },
+                    ]}
+                  />
+                  <p className="text-faint text-xs mt-2">
+                    {playerQuestionsEnabled
+                      ? 'Players can add their own questions in the lobby before you start.'
+                      : 'Only your uploaded or platform questions will be used.'}
+                  </p>
+                </Field>
+
+                {playerQuestionsEnabled && (
+                  <Field label="Question mix">
+                    <SegmentedControl
+                      value={playerQuestionsOrder}
+                      onChange={(v) => setPlayerQuestionsOrder(parsePlayerQuestionsOrder(v))}
+                      options={playerQuestionsOrderOptions({
+                        game_type: settings.game_type,
+                        question_source: isTot ? 'custom' : questionSource,
+                      }).map((opt) => ({ value: opt.value, label: opt.label }))}
+                    />
+                    <p className="text-faint text-xs mt-2">
+                      {
+                        playerQuestionsOrderOptions({
+                          game_type: settings.game_type,
+                          question_source: isTot ? 'custom' : questionSource,
+                        }).find((opt) => opt.value === playerQuestionsOrder)?.hint
+                      }
+                    </p>
+                  </Field>
+                )}
+
                 {!isTot && (
                   <SegmentedControl
                     value={questionSource}

@@ -33,6 +33,12 @@ import {
   pickCustomMltQuestions,
   questionPoolCap,
 } from '@/lib/custom-questions'
+import {
+  combineLobbyQuestions,
+  poolPickCountForLobby,
+  lobbyAllowsPlayerQuestions,
+  parsePlayerQuestionsOrder,
+} from '@/lib/player-question-pool'
 import { useFullHostListForRounds } from '@/lib/participant-mode'
 import { hostActionSchema } from '@/lib/validation'
 
@@ -305,8 +311,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .filter((t): t is string => !!t?.trim())
       .sort(() => Math.random() - 0.5)
 
-    const basePoolCap = questionPoolCap(game)
-    const totalAvailable = basePoolCap + playerMltQuestions.length
+    const playerQuestionsEnabled = lobbyAllowsPlayerQuestions(game)
+    const questionOrder = parsePlayerQuestionsOrder(game.player_questions_order)
+    const effectivePlayerCount = playerQuestionsEnabled ? playerMltQuestions.length : 0
+    const basePoolCap = questionPoolCap(game, effectivePlayerCount)
+    const totalAvailable = basePoolCap
     if (game.rounds_count > totalAvailable) {
       return NextResponse.json(
         { error: `Too many rounds — lower to ${totalAvailable} or fewer before starting` },
@@ -316,14 +325,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const useCustom = parseQuestionSource(game.question_source, gameType) === 'custom'
     const customPool = useCustom ? parseStoredMltQuestions(game.custom_questions) : []
-    const platformNeeded = Math.max(0, game.rounds_count - playerMltQuestions.length)
+    const poolNeeded = poolPickCountForLobby(
+      game.rounds_count,
+      effectivePlayerCount,
+      questionOrder,
+      playerQuestionsEnabled
+    )
     const platformQuestions = useCustom
-      ? pickCustomMltQuestions(customPool, platformNeeded)
-      : pickMltQuestions(platformNeeded, await fetchMltQuestionUsage(supabase))
-    // Player questions first, then fill from platform/custom pool
-    const questions = [...playerMltQuestions.slice(0, game.rounds_count), ...platformQuestions].slice(
-      0,
-      game.rounds_count
+      ? pickCustomMltQuestions(customPool, poolNeeded)
+      : pickMltQuestions(poolNeeded, await fetchMltQuestionUsage(supabase))
+    const questions = combineLobbyQuestions(
+      playerQuestionsEnabled ? playerMltQuestions : [],
+      platformQuestions,
+      game.rounds_count,
+      playerQuestionsEnabled ? questionOrder : 'uploaded_first'
     )
     if (questions.length === 0) {
       return NextResponse.json(
@@ -366,8 +381,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .map((q) => ({ optionA: q.option_a!, optionB: q.option_b! }))
       .sort(() => Math.random() - 0.5)
 
+    const playerQuestionsEnabled = lobbyAllowsPlayerQuestions(game)
+    const questionOrder = parsePlayerQuestionsOrder(game.player_questions_order)
+    const effectivePlayerCount = playerQuestionsEnabled ? playerTotQuestions.length : 0
     const customPool = parseStoredWyrQuestions(game.custom_questions)
-    const totalAvailable = customPool.length + playerTotQuestions.length
+    const totalAvailable = customPool.length + effectivePlayerCount
     if (totalAvailable === 0) {
       return NextResponse.json({ error: 'No questions available — upload prompts or wait for player submissions' }, { status: 400 })
     }
@@ -378,9 +396,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       )
     }
 
-    const poolNeeded = Math.max(0, game.rounds_count - playerTotQuestions.length)
+    const poolNeeded = poolPickCountForLobby(
+      game.rounds_count,
+      effectivePlayerCount,
+      questionOrder,
+      playerQuestionsEnabled
+    )
     const poolQuestions = pickCustomWyrQuestions(customPool, poolNeeded)
-    const questions = [...playerTotQuestions.slice(0, game.rounds_count), ...poolQuestions].slice(0, game.rounds_count)
+    const questions = combineLobbyQuestions(
+      playerQuestionsEnabled ? playerTotQuestions : [],
+      poolQuestions,
+      game.rounds_count,
+      playerQuestionsEnabled ? questionOrder : 'uploaded_first'
+    )
     const roundRows = questions.map((q, index) => ({
       game_id: code.toUpperCase(),
       round_number: index + 1,
@@ -417,8 +445,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .map((q) => ({ optionA: q.option_a!, optionB: q.option_b! }))
       .sort(() => Math.random() - 0.5)
 
-    const basePoolCap = questionPoolCap(game)
-    const totalAvailable = basePoolCap + playerWyrQuestions.length
+    const playerQuestionsEnabled = lobbyAllowsPlayerQuestions(game)
+    const questionOrder = parsePlayerQuestionsOrder(game.player_questions_order)
+    const effectivePlayerCount = playerQuestionsEnabled ? playerWyrQuestions.length : 0
+    const basePoolCap = questionPoolCap(game, effectivePlayerCount)
+    const totalAvailable = basePoolCap
     if (game.rounds_count > totalAvailable) {
       return NextResponse.json(
         { error: `Too many rounds — lower to ${totalAvailable} or fewer before starting` },
@@ -428,14 +459,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const useCustom = parseQuestionSource(game.question_source, gameType) === 'custom'
     const customPool = useCustom ? parseStoredWyrQuestions(game.custom_questions) : []
-    const platformNeeded = Math.max(0, game.rounds_count - playerWyrQuestions.length)
+    const poolNeeded = poolPickCountForLobby(
+      game.rounds_count,
+      effectivePlayerCount,
+      questionOrder,
+      playerQuestionsEnabled
+    )
     const platformQuestions = useCustom
-      ? pickCustomWyrQuestions(customPool, platformNeeded)
-      : pickWyrQuestions(platformNeeded, await fetchWyrQuestionUsage(supabase))
-    // Player questions first, then fill from platform/custom pool
-    const questions = [...playerWyrQuestions.slice(0, game.rounds_count), ...platformQuestions].slice(
-      0,
-      game.rounds_count
+      ? pickCustomWyrQuestions(customPool, poolNeeded)
+      : pickWyrQuestions(poolNeeded, await fetchWyrQuestionUsage(supabase))
+    const questions = combineLobbyQuestions(
+      playerQuestionsEnabled ? playerWyrQuestions : [],
+      platformQuestions,
+      game.rounds_count,
+      playerQuestionsEnabled ? questionOrder : 'uploaded_first'
     )
     if (questions.length === 0) {
       return NextResponse.json(

@@ -28,6 +28,7 @@ import { createGameSchema, stripHtml } from '@/lib/validation'
 import { supportsGenderToggle, defaultGenderBasedForType } from '@/lib/gender-based'
 import { parseParticipantMode, usesHostParticipantList } from '@/lib/participant-mode'
 import { parseThemeId } from '@/lib/themes'
+import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -111,6 +112,8 @@ export async function POST(req: NextRequest) {
     participant_filter,
     custom_slots,
     gender_based: rawGenderBased,
+    player_questions_enabled: rawPlayerQuestionsEnabled,
+    player_questions_order: rawPlayerQuestionsOrder,
   } = parsed.data
 
   const game_type = parseGameType(rawGameType)
@@ -171,7 +174,7 @@ export async function POST(req: NextRequest) {
     ? wstAutoRoundCount(participants.length)
     : isHotSeat(game_type)
       ? clampHotSeatMaxCap(rounds_count ?? HOT_SEAT_MIN_PLAYERS, hotSeatMaxCapUpperBound(0, participants.length))
-      : Math.min(Math.max(Number(rounds_count) || 3, 1), Math.min(maxRounds, 20))
+      : Math.min(Math.max(Number(rounds_count) || 3, 1), maxRounds)
 
   if (question_source === 'custom' && custom_questions && roundsCount > custom_questions.length) {
     return NextResponse.json(
@@ -222,6 +225,14 @@ export async function POST(req: NextRequest) {
     current_round_number: 0,
     wst_quote_source: parsed.data.wst_quote_source ?? 'player',
     gender_based: supportsGenderToggle(game_type) ? gender_based : true,
+    player_questions_enabled:
+      isBinaryChoiceGame(game_type) || isMostLikelyTo(game_type)
+        ? parsePlayerQuestionsEnabled(rawPlayerQuestionsEnabled)
+        : true,
+    player_questions_order:
+      isBinaryChoiceGame(game_type) || isMostLikelyTo(game_type)
+        ? parsePlayerQuestionsOrder(rawPlayerQuestionsOrder)
+        : 'players_first',
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {

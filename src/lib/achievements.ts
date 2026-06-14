@@ -277,6 +277,25 @@ function wyrAchievements(rounds: Round[], votes: Vote[], players: Player[]): Ach
     }
   }
 
+  // Popular Vote — voted with the majority most often
+  const maxMajority = Math.max(0, ...playerMajority.values())
+  if (maxMajority >= 2) {
+    for (const [pid, count] of playerMajority) {
+      if (count === maxMajority) {
+        const player = players.find((p) => p.id === pid)
+        achievements.push({
+          id: `popular-vote-${pid}`,
+          emoji: '🗳️',
+          title: 'Popular Vote',
+          description: `Voted with the majority ${count} times`,
+          participantId: pid,
+          participantName: player?.name,
+        })
+        break
+      }
+    }
+  }
+
   // Sheep — always voted with the majority
   for (const [pid, count] of playerMajority) {
     const totalRounds = playerRounds.get(pid) ?? 0

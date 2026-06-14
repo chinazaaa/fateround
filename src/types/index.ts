@@ -6,6 +6,8 @@ export type ParticipantMode = 'import' | 'joiners' | 'voters'
 export type PairVoteMode = 'any' | 'one_each'
 /** WYR / MLT: built-in pool vs host-uploaded CSV questions. */
 export type QuestionSource = 'platform' | 'custom'
+/** How player-submitted lobby questions are mixed with uploaded/platform questions. */
+export type PlayerQuestionsOrder = 'players_first' | 'uploaded_first' | 'mixed'
 export type GameType =
   | 'smash_marry_kill'
   | 'red_flag_green_flag'
@@ -51,6 +53,10 @@ export interface Game {
   pair_vote_mode: PairVoteMode
   question_source?: QuestionSource
   custom_questions?: unknown[] | null
+  /** WYR / MLT / This or That: allow players to submit questions in the lobby. */
+  player_questions_enabled?: boolean
+  /** Order to mix player submissions with uploaded/platform questions when the game starts. */
+  player_questions_order?: PlayerQuestionsOrder
   game_type: GameType
   theme?: ThemeId
   status: GameStatus

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { parseGameType, isBinaryChoiceGame, isMostLikelyTo } from '@/lib/game-types'
+import { lobbyAllowsPlayerQuestions } from '@/lib/player-question-pool'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
   const upperGameId = gameId.toUpperCase()
 
   const [{ data: game }, { data: player }] = await Promise.all([
-    supabase.from('games').select('status, game_type').eq('id', upperGameId).maybeSingle(),
+    supabase.from('games').select('status, game_type, player_questions_enabled').eq('id', upperGameId).maybeSingle(),
     supabase.from('players').select('id').eq('id', playerId).eq('game_id', upperGameId).maybeSingle(),
   ])
 
@@ -43,6 +44,9 @@ export async function POST(req: NextRequest) {
   }
 
   const gameType = parseGameType(game.game_type)
+  if (!lobbyAllowsPlayerQuestions(game)) {
+    return NextResponse.json({ error: 'Player question submissions are disabled for this game' }, { status: 400 })
+  }
 
   // Rate limit: max 10 questions per player per game
   const { count } = await supabase

@@ -112,6 +112,7 @@ import {
 import { isGameGenderBased, supportsGenderToggle, isGenderFreeVoting } from '@/lib/gender-based'
 import { isImportClaimMode, isVoterOnlyMode } from '@/lib/participant-mode'
 import { parseOrSplitQuestion } from '@/lib/custom-questions'
+import { lobbyAllowsPlayerQuestions } from '@/lib/player-question-pool'
 import { CustomVoteCard } from '@/components/CustomVoteCard'
 import { CustomRoundResults } from '@/components/CustomRoundResults'
 import { ShareResults } from '@/components/ShareResults'
@@ -809,7 +810,7 @@ export default function GamePage() {
 
   // Poll player-submitted questions in lobby (WYR/MLT only)
   useEffect(() => {
-    if (view !== 'waiting' || (!isBinaryGame && !isMostLikelyTo(game?.game_type))) return
+    if (view !== 'waiting' || !game || (!isBinaryGame && !isMostLikelyTo(game.game_type)) || !lobbyAllowsPlayerQuestions(game)) return
     async function fetchPQ() {
       const { data } = await supabase.from('player_questions').select('*').eq('game_id', gameCode).order('created_at')
       if (data) setPqList(data)
@@ -817,7 +818,7 @@ export default function GamePage() {
     fetchPQ()
     const id = setInterval(fetchPQ, 4000)
     return () => clearInterval(id)
-  }, [view, gameCode, isBinaryGame, game?.game_type])
+  }, [view, gameCode, isBinaryGame, game?.game_type, game?.player_questions_enabled])
 
   // Poll during round / results — fallback when realtime misses round transitions
   useEffect(() => {
@@ -1741,7 +1742,7 @@ export default function GamePage() {
           </div>
         </div>
         {/* Player question submission for WYR / MLT */}
-        {(isBinaryGame || isMostLikelyTo(game?.game_type)) && myPlayerId && (
+        {game && (isBinaryGame || isMostLikelyTo(game.game_type)) && lobbyAllowsPlayerQuestions(game) && myPlayerId && (
           <div className="surface-inset border border-theme rounded-2xl p-4 space-y-3">
             <button
               type="button"

@@ -20,7 +20,7 @@ import {
   roundLimitHint,
   minPoolForGame,
 } from '@/lib/participants'
-import type { ParticipantGender, PairVoteMode } from '@/types'
+import type { ParticipantGender, PairVoteMode, PlayerQuestionsOrder } from '@/types'
 import { tallyRoundVotes, getCategoryMeta, getVoteCategories, tallyWyrVotes, tallyMltVotes } from '@/lib/vote-stats'
 import {
   parseGameType,
@@ -53,7 +53,12 @@ import { CustomRoundResults } from '@/components/CustomRoundResults'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import { isMltImportGame, mltTargetIdFromVote, mltVoteTargets } from '@/lib/mlt'
-import { questionPoolCap, parseQuestionSource, customQuestionCount } from '@/lib/custom-questions'
+import { questionPoolCap, parseQuestionSource, customQuestionCount, questionRoundPickerOptions, clampLobbyQuestionRounds } from '@/lib/custom-questions'
+import {
+  lobbyAllowsPlayerQuestions,
+  playerQuestionsOrderOptions,
+  parsePlayerQuestionsOrder,
+} from '@/lib/player-question-pool'
 import {
   wstVoteTargets,
   wstCorrectNameFromRound,
@@ -140,6 +145,7 @@ export default function HostPage() {
 
   const [starting, setStarting] = useState(false)
   const [savingPairVoteMode, setSavingPairVoteMode] = useState(false)
+  const [savingPlayerQuestions, setSavingPlayerQuestions] = useState(false)
   const [savingParticipantFilter, setSavingParticipantFilter] = useState(false)
   const [advancing, setAdvancing] = useState(false)
   const [ending, setEnding] = useState(false)
@@ -965,6 +971,35 @@ export default function HostPage() {
     }
   }
 
+  async function hostUpdatePlayerQuestions(patch: {
+    player_questions_enabled?: boolean
+    player_questions_order?: PlayerQuestionsOrder
+  }) {
+    if (savingPlayerQuestions || !game) return
+    const previous = {
+      player_questions_enabled: game.player_questions_enabled,
+      player_questions_order: game.player_questions_order,
+    }
+    setSavingPlayerQuestions(true)
+    setGame((g) => (g ? { ...g, ...patch } : g))
+    try {
+      const res = await fetch(`/api/games/${gameCode}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, ...patch }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setGame((g) => (g ? { ...g, ...previous } : g))
+        toast.error(data.error || 'Failed to save question settings')
+        return
+      }
+      if (data.game) setGame(data.game)
+    } finally {
+      setSavingPlayerQuestions(false)
+    }
+  }
+
   async function hostUpdateRounds(roundsCount: number) {
     if (updatingRounds || game?.rounds_count === roundsCount) return
     const previousCount = game!.rounds_count
@@ -1024,7 +1059,15 @@ export default function HostPage() {
 
   useEffect(() => {
     if (!game || game.status !== 'waiting') return
-    if (!isWhoSaidThis(parseGameType(game.game_type))) return
+    const gameType = parseGameType(game.game_type)
+    if (isBinaryChoiceGame(gameType) || isMostLikelyTo(gameType)) {
+      const max = questionPoolCap(game, playerQuestionCount)
+      if (max > 0 && game.rounds_count > max) {
+        hostUpdateRounds(max)
+      }
+      return
+    }
+    if (!isWhoSaidThis(gameType)) return
     const count = wstPool.length
     if (count === 0) return
     const autoRounds = wstAutoRoundCount(count)
@@ -1032,7 +1075,7 @@ export default function HostPage() {
       hostUpdateRounds(autoRounds)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.status, game?.rounds_count, game?.game_type, wstPool.length])
+  }, [game?.status, game?.rounds_count, game?.game_type, wstPool.length, playerQuestionCount])
 
   async function hostAddParticipant() {
     const name = addName.trim()
@@ -1223,11 +1266,9 @@ export default function HostPage() {
       ? hotSeatMaxCapUpperBound(hotSeatJoinedCount, participants.length)
       : HOT_SEAT_MAX_ROUNDS_CAP
     const lobbyQuestionMax =
-      isTot
-        ? Math.min(20, customQuestionCount(game) + playerQuestionCount)
-        : isBinaryLobby || isMlt
-          ? questionPoolCap(game) + (isBinaryLobby ? playerQuestionCount : 0)
-          : isWst
+      isBinaryLobby || isMlt
+        ? questionPoolCap(game, playerQuestionCount)
+        : isWst
           ? wstAutoRoundCount(wstPool.length || wstSubmitters.length)
           : isHotSeatGame
             ? hotSeatCapUpper
@@ -1249,25 +1290,28 @@ export default function HostPage() {
             ? `${wstSubmitters.length} players joined — waiting for quotes in the lobby`
             : 'Players claim a name and submit a quote before start'
           : isBinaryLobby || isMlt
-        ? parseQuestionSource(game.question_source, gameType) === 'custom' && customQuestionCount(game) > 0
-          ? `${customQuestionCount(game)} custom questions → up to ${lobbyQuestionMax} rounds`
-          : isTot
-            ? playerQuestionCount > 0
-              ? `${customQuestionCount(game)} uploaded · ${playerQuestionCount} from players → up to ${lobbyQuestionMax} rounds`
-              : `${customQuestionCount(game) || 0} custom questions loaded`
-            : isWyr
-              ? `Platform pool → up to ${lobbyQuestionMax} rounds`
-              : `Platform prompts → up to ${lobbyQuestionMax} rounds`
+        ? (() => {
+            const uploaded = customQuestionCount(game)
+            const useCustom =
+              parseQuestionSource(game.question_source, gameType) === 'custom' && uploaded > 0
+            const parts: string[] = []
+            if (useCustom) parts.push(`${uploaded} uploaded`)
+            else if (isTot) parts.push(`${uploaded} custom questions loaded`)
+            else if (isWyr) parts.push('Platform pool')
+            else parts.push('Platform prompts')
+            if (playerQuestionCount > 0 && lobbyAllowsPlayerQuestions(game)) {
+              parts.push(`${playerQuestionCount} from players`)
+            }
+            return `${parts.join(' · ')} → up to ${lobbyQuestionMax} rounds`
+          })()
         : roundLimitHint(participantInputs, gameType, gameGenderBased, participantOpts)
     const hotSeatEffective = hotSeatLobby ? hotSeatEffectiveRounds(hotSeatJoinedCount, game.rounds_count) : 0
     const roundsTooHigh = hotSeatLobby ? false : maxRounds > 0 && game.rounds_count > maxRounds
-    const roundOptions = isBinaryLobby
-      ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
-      : isMlt
-        ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
-        : isWst
-          ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
-          : kmkRoundPickerOptions(maxRounds)
+    const roundOptions = isBinaryLobby || isMlt
+      ? questionRoundPickerOptions(lobbyQuestionMax)
+      : isWst
+        ? questionRoundPickerOptions(lobbyQuestionMax)
+        : kmkRoundPickerOptions(maxRounds)
     const voterCheck = hasVotersForPolls(roundParticipants, players)
     const wstSource = game?.wst_quote_source ?? 'player'
     const animeQuoteCount = animePool.length
@@ -1287,7 +1331,7 @@ export default function HostPage() {
           : isMlt
             ? players.length >= 2 && !roundsTooHigh
             : isBinaryLobby
-              ? players.length > 0 && !roundsTooHigh && (!isTot || customQuestionCount(game) + playerQuestionCount > 0)
+              ? players.length > 0 && !roundsTooHigh && questionPoolCap(game, playerQuestionCount) > 0
               : isJoinersMode
                 ? players.length > 0 &&
                   participants.length >= minPool &&
@@ -1377,9 +1421,54 @@ export default function HostPage() {
                 />
               </div>
             </>
-          ) : isBinaryLobby ||
-            isMlt ||
-            (isJoinersMode
+          ) : isBinaryLobby || isMlt ? (
+            <>
+              {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
+              <div className="space-y-2">
+                <p className="text-muted text-[10px] uppercase tracking-wider">Rounds</p>
+                <input
+                  type="number"
+                  min={1}
+                  max={Math.max(lobbyQuestionMax, 1)}
+                  step={1}
+                  defaultValue={game.rounds_count}
+                  key={`${game.rounds_count}-${lobbyQuestionMax}`}
+                  disabled={updatingRounds || lobbyQuestionMax < 1}
+                  onBlur={(e) => {
+                    const n = clampLobbyQuestionRounds(e.target.value, lobbyQuestionMax)
+                    e.target.value = String(n)
+                    if (n !== game.rounds_count) hostUpdateRounds(n)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                  }}
+                  className="input-field w-28 py-2 text-sm disabled:opacity-50"
+                />
+              </div>
+              {roundOptions.length > 0 && (
+                <div className="flex gap-2 flex-wrap">
+                  {roundOptions.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      disabled={n > maxRounds || updatingRounds}
+                      onClick={() => hostUpdateRounds(n)}
+                      className={`min-w-[2.5rem] px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-40 ${
+                        game.rounds_count === n ? 'chip-active' : 'chip'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {roundsTooHigh && (
+                <p className="callout-warning">
+                  {game.rounds_count} rounds is too many — pick {maxRounds} or fewer
+                </p>
+              )}
+            </>
+          ) : (isJoinersMode
               ? participants.length >= minPool && hasEnoughForRounds(participantInputs, gameType, participantOpts)
               : roundParticipants.length >= minPool && hasEnoughForRounds(participantInputs, gameType, participantOpts)) ? (
             <>
@@ -1687,6 +1776,51 @@ export default function HostPage() {
                 }
               />
               {savingPairVoteMode && <p className="text-faint text-xs px-0.5">Saving…</p>}
+            </div>
+          )}
+          {(isBinaryLobby || isMlt) && (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <p className="text-muted text-xs uppercase tracking-wider">Player submissions</p>
+                <SegmentedControl
+                  value={lobbyAllowsPlayerQuestions(game) ? 'on' : 'off'}
+                  onChange={(v) => {
+                    hostUpdatePlayerQuestions({ player_questions_enabled: v === 'on' })
+                  }}
+                  options={[
+                    { value: 'on', label: 'Allowed' },
+                    { value: 'off', label: 'Disabled' },
+                  ]}
+                />
+                <p className="text-faint text-xs">
+                  {lobbyAllowsPlayerQuestions(game)
+                    ? 'Players can submit their own questions in the lobby before start.'
+                    : 'Only your uploaded or platform questions will be used.'}
+                </p>
+              </div>
+              {lobbyAllowsPlayerQuestions(game) && (
+                <div className="space-y-1">
+                  <p className="text-muted text-xs uppercase tracking-wider">Question mix</p>
+                  <SegmentedControl
+                    value={parsePlayerQuestionsOrder(game.player_questions_order)}
+                    onChange={(v) => {
+                      hostUpdatePlayerQuestions({ player_questions_order: v as PlayerQuestionsOrder })
+                    }}
+                    options={playerQuestionsOrderOptions(game).map((opt) => ({
+                      value: opt.value,
+                      label: opt.label,
+                    }))}
+                  />
+                  <p className="text-faint text-xs">
+                    {
+                      playerQuestionsOrderOptions(game).find(
+                        (opt) => opt.value === parsePlayerQuestionsOrder(game.player_questions_order)
+                      )?.hint
+                    }
+                  </p>
+                </div>
+              )}
+              {savingPlayerQuestions && <p className="text-faint text-xs px-0.5">Saving…</p>}
             </div>
           )}
           {!isJoinersMode && !hotSeatLobby && isVoterOnly && (
@@ -2045,7 +2179,7 @@ export default function HostPage() {
 
         <button
           onClick={handleStart}
-          disabled={!canStart || starting || savingPairVoteMode}
+          disabled={!canStart || starting || savingPairVoteMode || savingPlayerQuestions}
           className="btn-primary"
         >
           {starting
