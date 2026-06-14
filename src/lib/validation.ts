@@ -75,7 +75,7 @@ const participantItemSchema = z.union([
 
 export const createGameSchema = z.object({
   title: sanitizedString(1, 100),
-  rounds_count: z.coerce.number().int().min(1).max(20).optional(),
+  rounds_count: z.coerce.number().int().min(1).max(100).optional(),
   timer_seconds: z.coerce.number().optional(),
   anonymous: z.boolean().optional(),
   auto_reveal: z.boolean().optional(),
@@ -111,12 +111,21 @@ export const createGameSchema = z.object({
 export type CreateGameInput = z.infer<typeof createGameSchema>
 
 // ---------------------------------------------------------------------------
-// Update rounds count (PATCH /api/games/[code])
+// Update game settings (PATCH /api/games/[code])
 // ---------------------------------------------------------------------------
+
+export const ROUND_TIMER_OPTIONS = [15, 30, 60] as const
+export type RoundTimerSeconds = (typeof ROUND_TIMER_OPTIONS)[number]
+
+export function parseTimerSeconds(raw: unknown): RoundTimerSeconds {
+  const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw ?? ''), 10)
+  return ROUND_TIMER_OPTIONS.includes(n as RoundTimerSeconds) ? (n as RoundTimerSeconds) : 30
+}
 
 export const updateGameSchema = z.object({
   hostToken: hostTokenString(),
   rounds_count: z.coerce.number().int().min(1, 'rounds_count is required').optional(),
+  timer_seconds: z.coerce.number().optional(),
   participant_filter: participantFilterEnum.optional(),
 })
 

@@ -12,6 +12,23 @@ export async function assertHostGame(supabase: SupabaseClient, gameCode: string,
   return { error: null, status: 200 as const, game, id }
 }
 
+/** Host may tweak lobby/finished settings before the next game starts. */
+export async function assertHostGameSettings(supabase: SupabaseClient, gameCode: string, hostToken: string) {
+  const id = gameCode.toUpperCase()
+  const { data: game } = await supabase.from('games').select('*').eq('id', id).maybeSingle()
+  if (!game) return { error: 'Game not found', status: 404 as const, game: null, id }
+  if (game.host_token !== hostToken) return { error: 'Unauthorized', status: 403 as const, game: null, id }
+  if (game.status !== 'waiting' && game.status !== 'finished') {
+    return {
+      error: 'Settings can only be changed in the lobby or after the game ends',
+      status: 400 as const,
+      game: null,
+      id,
+    }
+  }
+  return { error: null, status: 200 as const, game, id }
+}
+
 export async function findJoinerParticipant(supabase: SupabaseClient, gameId: string, playerName: string) {
   const { data } = await supabase
     .from('participants')

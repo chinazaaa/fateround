@@ -31,6 +31,7 @@ import {
   isMostLikelyTo,
   isWouldYouRather,
   isWhoSaidThis,
+  isHotSeat,
   isAnonymousGame,
   parseGameType,
   isPairGame,
@@ -58,6 +59,7 @@ import { GameTypeModal } from '@/components/GameTypeModal'
 import { GameTypeCard } from '@/components/GameTypeCard'
 import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
 import { StepIndicator, SettingsGroup, StickyActionBar, SegmentedControl, ChipGrid } from '@/components/ui/CreateWizard'
+import { clampHotSeatMaxCap, hotSeatMaxCapUpperBound, HOT_SEAT_MIN_PLAYERS } from '@/lib/hot-seat'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { useToast } from '@/components/ui/Toast'
 
@@ -129,7 +131,14 @@ function CreateGameInner() {
         ...prev,
         game_type: type,
         ...(isLobbyGame(type) ? { participant_mode: 'joiners', anonymous: true } : {}),
-        ...(isWhoSaidThis(type) ? { participant_mode: 'import', anonymous: true } : {}),
+        ...(isWhoSaidThis(type) || isHotSeat(type)
+          ? {
+              participant_mode: 'import' as const,
+              anonymous: true,
+              participant_filter: 'joined' as const,
+              ...(isHotSeat(type) ? { rounds_count: HOT_SEAT_MIN_PLAYERS } : {}),
+            }
+          : {}),
       }))
     }
   }, [searchParams])
@@ -139,6 +148,8 @@ function CreateGameInner() {
   const isWyr = isWouldYouRather(settings.game_type)
   const isMlt = isMostLikelyTo(settings.game_type)
   const isWst = isWhoSaidThis(settings.game_type)
+  const isHotSeatGame = isHotSeat(settings.game_type)
+  const hotSeatCreateCapUpper = isHotSeatGame ? hotSeatMaxCapUpperBound(0, participants.length) : 20
   const isPair = isPairGame(settings.game_type)
   const needsGender = participantsNeedGender(settings.game_type)
   const minPool = roundPoolSize(settings.game_type)
@@ -194,7 +205,14 @@ function CreateGameInner() {
       ...settings,
       game_type: type,
       ...(isLobbyGame(type) ? { participant_mode: 'joiners', anonymous: true } : {}),
-      ...(isWhoSaidThis(type) ? { participant_mode: 'import', anonymous: true } : {}),
+      ...(isWhoSaidThis(type) || isHotSeat(type)
+        ? {
+            participant_mode: 'import' as const,
+            anonymous: true,
+            participant_filter: 'joined' as const,
+            ...(isHotSeat(type) ? { rounds_count: HOT_SEAT_MIN_PLAYERS } : {}),
+          }
+        : {}),
       ...(isCustomGame(type) ? { participant_mode: 'import' as const } : {}),
     })
   }
@@ -511,6 +529,33 @@ function CreateGameInner() {
                         : 'Rounds are automatic — one turn per player who joins and claims their name. The count updates in the host lobby as people join.'}
                   </p>
                 </div>
+              ) : isHotSeatGame ? (
+                <Field label="Max rounds">
+                  <p className="text-faint text-xs mb-2">
+                    One hot seat turn per player who joins and claims a name. The actual round count is set
+                    automatically in the lobby — enter the max cap ({HOT_SEAT_MIN_PLAYERS}–{hotSeatCreateCapUpper}).
+                  </p>
+                  <input
+                    type="number"
+                    min={HOT_SEAT_MIN_PLAYERS}
+                    max={hotSeatCreateCapUpper}
+                    step={1}
+                    value={settings.rounds_count}
+                    onChange={(e) => {
+                      const n = Number.parseInt(e.target.value, 10)
+                      if (!Number.isNaN(n)) {
+                        setSettings((prev) => ({ ...prev, rounds_count: n }))
+                      }
+                    }}
+                    onBlur={(e) => {
+                      setSettings((prev) => ({
+                        ...prev,
+                        rounds_count: clampHotSeatMaxCap(e.target.value, hotSeatCreateCapUpper),
+                      }))
+                    }}
+                    className="input-field w-28"
+                  />
+                </Field>
               ) : (
                 <Field label="Rounds">
                   {isLobbyQuestions && questionSource === 'custom' && customQuestionCount === 0 && (
@@ -528,7 +573,7 @@ function CreateGameInner() {
                       <Chip
                         key={n}
                         active={settings.rounds_count === n}
-                        onClick={() => setSettings({ ...settings, rounds_count: n })}
+                        onClick={() => setSettings((prev) => ({ ...prev, rounds_count: n }))}
                         className="!px-0 w-full"
                       >
                         {n}
@@ -736,7 +781,7 @@ function CreateGameInner() {
               </p>
             </SettingsGroup>
 
-            {!isWyr && !isWst && (
+            {!isWyr && !isWst && !isHotSeatGame && (
               <SettingsGroup title="Who's in the poll">
                 <SegmentedControl
                   value={settings.participant_mode}
@@ -746,7 +791,7 @@ function CreateGameInner() {
               </SettingsGroup>
             )}
 
-            {settings.participant_mode === 'import' && !isWyr && !isWst && (
+            {settings.participant_mode === 'import' && !isWyr && !isWst && !isHotSeatGame && (
               <SettingsGroup title="Who appears in rounds">
                 <SegmentedControl
                   value={settings.participant_filter}

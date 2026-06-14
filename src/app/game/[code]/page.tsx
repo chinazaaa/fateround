@@ -79,6 +79,7 @@ import {
   MltRoundResults,
   WstRoundResults,
   AnimeWstRoundResults,
+  HotSeatRoundResults,
 } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import { NameSearchPicker } from '@/components/NameSearchPicker'
@@ -118,6 +119,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
+import { HOT_SEAT_SUBMISSION_TYPES, hotSeatPlayerDisplayName } from '@/lib/hot-seat'
 import { SegmentedControl } from '@/components/ui/CreateWizard'
 import {
   FINAL_RESULTS_AUTO_REVEAL_SECONDS,
@@ -1372,6 +1374,15 @@ export default function GamePage() {
               }
             />
           )}
+          {!joinNeedsGender && isNameOnlyJoin && (
+            <p className="text-faint text-xs text-center">
+              {isHotSeat(game?.game_type)
+                ? 'Claim your name from the list — everyone takes a turn in the hot seat'
+                : isMostLikelyTo(game?.game_type)
+                  ? 'Vote for who fits each prompt — your choice stays anonymous'
+                  : 'Pick between two options each round — your choice stays anonymous'}
+            </p>
+          )}
           {!joinNeedsGender ? null : (
             <>
               <div>
@@ -2074,7 +2085,7 @@ export default function GamePage() {
   if (view === 'round' && currentRound && isHotSeat(game?.game_type)) {
     const hotSeatPlayerId = currentRound.submitter_player_id
     const isInHotSeat = myPlayerId === hotSeatPlayerId
-    const hotSeatPlayerName = players.find((p) => p.id === hotSeatPlayerId)?.name ?? 'Someone'
+    const hotSeatPlayerName = hotSeatPlayerDisplayName(hotSeatPlayerId, players, participants)
 
     return (
       <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full">
@@ -2116,30 +2127,16 @@ export default function GamePage() {
           <div className="space-y-4">
             {/* Type selector */}
             <div className="flex gap-2">
-              {(['compliment', 'roast', 'observation'] as const).map((type) => {
-                const config = {
-                  compliment: { emoji: '💛', label: 'Compliment' },
-                  roast: { emoji: '🔥', label: 'Roast' },
-                  observation: { emoji: '👀', label: 'Observation' },
-                }[type]
-                return (
-                  <button
-                    key={type}
-                    onClick={() => setHotSeatType(type)}
-                    className={`flex-1 py-2 rounded-xl border text-sm font-bold transition-all ${
-                      hotSeatType === type
-                        ? type === 'compliment'
-                          ? 'bg-amber-500/20 text-amber-100 border-amber-400'
-                          : type === 'roast'
-                            ? 'bg-red-500/20 text-red-200 border-red-400'
-                            : 'bg-slate-500/20 text-slate-200 border-slate-400'
-                        : 'surface-inset border-theme text-muted'
-                    }`}
-                  >
-                    {config.emoji} {config.label}
-                  </button>
-                )
-              })}
+              {HOT_SEAT_SUBMISSION_TYPES.map(({ type, emoji, label }) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setHotSeatType(type)}
+                  className={`hot-seat-type hot-seat-type-${type}${hotSeatType === type ? ' hot-seat-type-active' : ''}`}
+                >
+                  {emoji} {label}
+                </button>
+              ))}
             </div>
 
             <textarea
@@ -2369,7 +2366,7 @@ export default function GamePage() {
 
     if (isHotSeat(gameType)) {
       const hotSeatPlayerId = lastFinishedRound.submitter_player_id
-      const hotSeatPlayerName = players.find((p) => p.id === hotSeatPlayerId)?.name ?? 'Someone'
+      const hotSeatPlayerName = hotSeatPlayerDisplayName(hotSeatPlayerId, players, participants)
       const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
 
       return (
@@ -2383,44 +2380,7 @@ export default function GamePage() {
             <h2 className="text-2xl font-black tracking-tight mt-2">Hot Seat Reveal! 🪑🔥</h2>
           </div>
 
-          {/* Hot seat player spotlight */}
-          <div className="glass-card border-2 border-amber-500/40 rounded-2xl p-4 text-center">
-            <p className="text-amber-400 text-xs uppercase tracking-wider mb-1">In the hot seat</p>
-            <p className="text-2xl font-black text-body">{hotSeatPlayerName}</p>
-          </div>
-
-          {/* Submissions reveal */}
-          {hotSeatSubmissions.length === 0 ? (
-            <div className="glass-card px-4 py-6 text-center">
-              <p className="text-muted">No submissions this round</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {hotSeatSubmissions.map((sub, i) => {
-                const typeConfig = {
-                  compliment: { emoji: '💛', border: 'border-amber-500/30', bg: 'bg-amber-500/10' },
-                  roast: { emoji: '🔥', border: 'border-red-500/30', bg: 'bg-red-500/10' },
-                  observation: { emoji: '👀', border: 'border-slate-500/30', bg: 'bg-slate-500/10' },
-                }[sub.submission_type] ?? { emoji: '💬', border: 'border-slate-500/30', bg: 'bg-slate-500/10' }
-
-                return (
-                  <div
-                    key={sub.id}
-                    className={`glass-card border ${typeConfig.border} ${typeConfig.bg} rounded-xl px-4 py-3`}
-                    style={{
-                      animation: 'fade-in 0.4s ease backwards',
-                      animationDelay: `${i * 150}ms`,
-                    }}
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className="text-2xl flex-shrink-0">{typeConfig.emoji}</span>
-                      <p className="text-body text-sm leading-relaxed">{sub.text}</p>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+          <HotSeatRoundResults hotSeatPlayerName={hotSeatPlayerName} submissions={hotSeatSubmissions} />
 
           <ReactionBar className="pt-1" />
           <p className="text-faint text-sm text-center">

@@ -9,12 +9,14 @@ import {
   isWouldYouRather,
   isMostLikelyTo,
   isWhoSaidThis,
+  isHotSeat,
   isAnonymousGame,
   isPairGame,
   parsePairVoteMode,
   isCustomGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
+import { clampHotSeatMaxCap, hotSeatMaxCapUpperBound, HOT_SEAT_MIN_PLAYERS } from '@/lib/hot-seat'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import { parseQuestionSource, parseStoredWyrQuestions, parseStoredMltQuestions } from '@/lib/custom-questions'
@@ -116,7 +118,7 @@ export async function POST(req: NextRequest) {
 
   const participant_mode: ParticipantMode = isLobbyGame(game_type)
     ? 'joiners'
-    : isWhoSaidThis(game_type)
+    : isWhoSaidThis(game_type) || isHotSeat(game_type)
       ? 'import'
       : rawMode === 'joiners'
         ? 'joiners'
@@ -136,6 +138,10 @@ export async function POST(req: NextRequest) {
       if (participantsParsed.length < 2) {
         return NextResponse.json({ error: 'Need at least 2 names on the list' }, { status: 400 })
       }
+    } else if (isHotSeat(game_type)) {
+      if (participantsParsed.length < 3) {
+        return NextResponse.json({ error: 'Need at least 3 names on the list for Hot Seat' }, { status: 400 })
+      }
     } else if (!hasEnoughForRounds(participantsParsed, game_type)) {
       const min = roundPoolSize(game_type)
       return NextResponse.json(
@@ -149,7 +155,9 @@ export async function POST(req: NextRequest) {
   const maxRounds = lobbyMaxRounds(game_type, question_source, custom_questions)
   const roundsCount = isWhoSaidThis(game_type)
     ? wstAutoRoundCount(participants.length)
-    : Math.min(Math.max(Number(rounds_count) || 3, 1), Math.min(maxRounds, 20))
+    : isHotSeat(game_type)
+      ? clampHotSeatMaxCap(rounds_count ?? HOT_SEAT_MIN_PLAYERS, hotSeatMaxCapUpperBound(0, participants.length))
+      : Math.min(Math.max(Number(rounds_count) || 3, 1), Math.min(maxRounds, 20))
 
   if (question_source === 'custom' && custom_questions && roundsCount > custom_questions.length) {
     return NextResponse.json(
@@ -181,7 +189,7 @@ export async function POST(req: NextRequest) {
     auto_reveal: auto_reveal !== false,
     auto_submit_behavior: auto_submit_behavior === 'random' ? 'random' : 'no_answer',
     participant_mode,
-    participant_filter: participant_filter === 'joined' ? 'joined' : 'all',
+    participant_filter: isHotSeat(game_type) ? 'joined' : participant_filter === 'joined' ? 'joined' : 'all',
     pair_vote_mode: isPairGame(game_type) ? parsePairVoteMode(rawPairVoteMode) : 'any',
     question_source: isWouldYouRather(game_type) || isMostLikelyTo(game_type) ? question_source : 'platform',
     custom_questions,

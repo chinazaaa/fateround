@@ -49,6 +49,7 @@ export function Chip({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={`${wide ? 'flex-1' : 'px-4'} chip ${active ? 'chip-active' : ''} ${className}`}
     >

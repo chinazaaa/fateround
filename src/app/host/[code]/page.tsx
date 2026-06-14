@@ -28,6 +28,9 @@ import {
   isWouldYouRather,
   isMostLikelyTo,
   isWhoSaidThis,
+  isHotSeat,
+  isHotSeatLobbyGame,
+  isPlayerOnlyJoinLobby,
   isNameOnlyPlayerJoin,
   isCustomGame,
 } from '@/lib/game-types'
@@ -60,9 +63,20 @@ import {
   MltRoundResults,
   WstRoundResults,
   AnimeWstRoundResults,
+  HotSeatRoundResults,
 } from '@/components/VoteResults'
 import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import {
+  hotSeatEffectiveRounds,
+  hotSeatLobbyRoundsHint,
+  clampHotSeatMaxCap,
+  hotSeatMaxCapUpperBound,
+  HOT_SEAT_MIN_PLAYERS,
+  HOT_SEAT_MAX_ROUNDS_CAP,
+  hotSeatJoinedPlayers,
+  hotSeatPlayerDisplayName,
+} from '@/lib/hot-seat'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -86,6 +100,7 @@ import type {
 } from '@/types'
 import { parseThemeId, THEME_MAP } from '@/lib/themes'
 import { SegmentedControl } from '@/components/ui/CreateWizard'
+import { ROUND_TIMER_OPTIONS } from '@/lib/validation'
 
 export default function HostPage() {
   const { code } = useParams<{ code: string }>()
@@ -119,12 +134,17 @@ export default function HostPage() {
   const [addError, setAddError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [updatingRounds, setUpdatingRounds] = useState(false)
+  const [updatingTimer, setUpdatingTimer] = useState(false)
   const [listSearch, setListSearch] = useState('')
   const [playersSearch, setPlayersSearch] = useState('')
   const [wstPool, setWstPool] = useState<WstQuotePoolEntry[]>([])
   const [animePool, setAnimePool] = useState<AnimeQuotePoolEntry[]>([])
   const [animeFetching, setAnimeFetching] = useState(false)
   const [animeError, setAnimeError] = useState<string | null>(null)
+  const [hotSeatSubmissions, setHotSeatSubmissions] = useState<{ id: string; text: string; submission_type: string }[]>(
+    []
+  )
+  const [activeHotSeatSubs, setActiveHotSeatSubs] = useState<{ id: string; player_id: string; round_id: string }[]>([])
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const advancingRef = useRef(false)
@@ -143,6 +163,45 @@ export default function HostPage() {
     FINAL_RESULTS_AUTO_REVEAL_SECONDS,
     betweenRounds && isBetweenLastRound && !!game?.auto_reveal
   )
+
+  useEffect(() => {
+    if (!betweenRounds || !lastFinishedRound || !isHotSeat(game?.game_type)) {
+      setHotSeatSubmissions([])
+      return
+    }
+    let cancelled = false
+    async function fetchHotSeatResults() {
+      const res = await fetch(`/api/hot-seat?roundId=${lastFinishedRound!.id}&gameId=${gameCode}`)
+      if (cancelled) return
+      if (res.ok) {
+        const { submissions } = await res.json()
+        setHotSeatSubmissions(submissions ?? [])
+      }
+    }
+    fetchHotSeatResults()
+    return () => {
+      cancelled = true
+    }
+  }, [betweenRounds, game?.game_type, lastFinishedRound?.id, gameCode])
+
+  useEffect(() => {
+    if (!currentRound?.id || !isHotSeat(game?.game_type)) {
+      setActiveHotSeatSubs([])
+      return
+    }
+    let cancelled = false
+    async function loadActiveHotSeatSubs() {
+      const { data } = await supabase
+        .from('hot_seat_submissions')
+        .select('id, player_id, round_id')
+        .eq('round_id', currentRound!.id)
+      if (!cancelled && data) setActiveHotSeatSubs(data)
+    }
+    loadActiveHotSeatSubs()
+    return () => {
+      cancelled = true
+    }
+  }, [currentRound?.id, game?.game_type])
 
   useTimerTickSound(timeLeft, game?.status === 'active' && !!currentRound)
 
@@ -277,6 +336,7 @@ export default function HostPage() {
     setVotes([])
     setConfessions([])
     setWstPool([])
+    setActiveHotSeatSubs([])
     autoFinishTriggeredRef.current = false
     autoAdvanceScheduledRef.current = null
     advancingRef.current = false
@@ -295,6 +355,19 @@ export default function HostPage() {
       return next
     }
     return [...prev, vote]
+  }
+
+  function mergeHotSeatSub(
+    prev: { id: string; player_id: string; round_id: string }[],
+    sub: { id: string; player_id: string; round_id: string }
+  ) {
+    const idx = prev.findIndex((s) => s.id === sub.id || (s.player_id === sub.player_id && s.round_id === sub.round_id))
+    if (idx >= 0) {
+      const next = [...prev]
+      next[idx] = sub
+      return next
+    }
+    return [...prev, sub]
   }
 
   async function syncGameState() {
@@ -329,12 +402,20 @@ export default function HostPage() {
     if (activeRound) {
       setCurrentRound((prev) => mergeActiveRound(prev, activeRound))
       setLastFinishedRound(null)
+      if (isHotSeat(parseGameType(gameData?.game_type))) {
+        const { data: subs } = await supabase
+          .from('hot_seat_submissions')
+          .select('id, player_id, round_id')
+          .eq('round_id', activeRound.id)
+        if (subs) setActiveHotSeatSubs(subs)
+      }
       return
     }
 
     if (finishedRound) {
       setCurrentRound(null)
       setLastFinishedRound(finishedRound)
+      setActiveHotSeatSubs([])
       advancingRef.current = false
       setEnding(false)
       setAdvancing(false)
@@ -480,6 +561,22 @@ export default function HostPage() {
           setConfessions((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c]))
         }
       )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'hot_seat_submissions', filter: `game_id=eq.${gameCode}` },
+        (payload) => {
+          const sub = payload.new as { id: string; player_id: string; round_id: string }
+          setActiveHotSeatSubs((prev) => mergeHotSeatSub(prev, sub))
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'hot_seat_submissions', filter: `game_id=eq.${gameCode}` },
+        (payload) => {
+          const sub = payload.new as { id: string; player_id: string; round_id: string }
+          setActiveHotSeatSubs((prev) => mergeHotSeatSub(prev, sub))
+        }
+      )
       .subscribe()
 
     return () => {
@@ -617,6 +714,19 @@ export default function HostPage() {
       return
     }
 
+    if (isHotSeat(gameType)) {
+      const hotSeatPlayerId = currentRound.submitter_player_id
+      const joined = hotSeatJoinedPlayers(players, participants, game.participant_mode)
+      const eligible = joined.filter((p) => p.id !== hotSeatPlayerId)
+      if (eligible.length === 0) return
+      const eligibleIds = new Set(eligible.map((p) => p.id))
+      const roundSubs = activeHotSeatSubs.filter((s) => s.round_id === currentRound.id && eligibleIds.has(s.player_id))
+      if (roundSubs.length >= eligible.length) {
+        handleEndRound()
+      }
+      return
+    }
+
     const roundGender = getRoundParticipantGender(currentRound.participant_ids, participants)
     const eligible = eligibleVotersForRound(roundGender, players, game?.game_type)
     if (eligible.length === 0) return
@@ -627,7 +737,7 @@ export default function HostPage() {
       handleEndRound()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentRound?.id, currentRound?.quote_text, votes, players, participants, game?.status])
+  }, [currentRound?.id, currentRound?.quote_text, votes, players, participants, game?.status, activeHotSeatSubs])
 
   const handleStart = async () => {
     if (starting) return
@@ -829,6 +939,8 @@ export default function HostPage() {
 
   async function hostUpdateRounds(roundsCount: number) {
     if (updatingRounds || game?.rounds_count === roundsCount) return
+    const previousCount = game!.rounds_count
+    setGame((g) => (g ? { ...g, rounds_count: roundsCount } : g))
     setUpdatingRounds(true)
     try {
       const res = await fetch(`/api/games/${gameCode}`, {
@@ -838,6 +950,7 @@ export default function HostPage() {
       })
       const data = await res.json()
       if (!res.ok) {
+        setGame((g) => (g ? { ...g, rounds_count: previousCount } : g))
         toast.error(data.error || 'Failed to update rounds')
         return
       }
@@ -846,6 +959,40 @@ export default function HostPage() {
       setUpdatingRounds(false)
     }
   }
+
+  async function hostUpdateTimer(timerSeconds: number) {
+    if (updatingTimer || game?.timer_seconds === timerSeconds) return
+    const previous = game!.timer_seconds
+    setGame((g) => (g ? { ...g, timer_seconds: timerSeconds } : g))
+    setUpdatingTimer(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, timer_seconds: timerSeconds }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setGame((g) => (g ? { ...g, timer_seconds: previous } : g))
+        toast.error(data.error || 'Failed to update timer')
+        return
+      }
+      if (data.game) setGame(data.game)
+    } finally {
+      setUpdatingTimer(false)
+    }
+  }
+
+  const timerControl = (
+    <div className="space-y-2">
+      <p className="text-muted text-[10px] uppercase tracking-wider">Time per round</p>
+      <SegmentedControl
+        value={String(game?.timer_seconds ?? 30)}
+        onChange={(v) => hostUpdateTimer(Number(v))}
+        options={ROUND_TIMER_OPTIONS.map((n) => ({ value: String(n), label: `${n}s` }))}
+      />
+    </div>
+  )
 
   useEffect(() => {
     if (!game || game.status !== 'waiting') return
@@ -1009,28 +1156,50 @@ export default function HostPage() {
     const isWyr = isWouldYouRather(gameType)
     const isMlt = isMostLikelyTo(gameType)
     const isWst = isWhoSaidThis(gameType)
+    const isHotSeatGame = isHotSeat(gameType)
     const isMltImport = isMltImportGame(game)
-    const wstSubmitters = wstEligibleSubmitters(players)
-    const wstPoolStatus = isWst ? wstQuotePoolStatus(players, wstPool) : null
+    const lobbyOpts = { participantMode: game.participant_mode, participantCount: participants.length }
+    const playerOnlyLobby = isPlayerOnlyJoinLobby(gameType, lobbyOpts)
+    const hotSeatLobby = isHotSeatLobbyGame(gameType, lobbyOpts)
     const minPool = roundPoolSize(gameType)
     const isJoinersMode = (game.participant_mode ?? 'import') === 'joiners'
-    const roundParticipants = isJoinersMode
-      ? participants
-      : isMltImport
-        ? participants
-        : game.participant_filter === 'all'
+    const hotSeatLegacyJoiners = isHotSeatGame && isJoinersMode && participants.length === 0
+    const wstSubmitters = wstEligibleSubmitters(players)
+    const wstPoolStatus = isWst ? wstQuotePoolStatus(players, wstPool) : null
+    const roundParticipants =
+      isHotSeatGame && !hotSeatLegacyJoiners
+        ? participantsWhoJoined(participants, players)
+        : isJoinersMode
           ? participants
-          : participantsWhoJoined(participants, players)
-    const participantInputs = roundParticipants.map((p) => ({ name: p.name, gender: p.gender }))
+          : isMltImport
+            ? participants
+            : game.participant_filter === 'all'
+              ? participants
+              : participantsWhoJoined(participants, players)
+    const participantInputs = hotSeatLegacyJoiners
+      ? players.map((p) => ({ name: p.name, gender: 'female' as ParticipantGender }))
+      : roundParticipants.map((p) => ({ name: p.name, gender: p.gender }))
     const genderCounts = countByGender(participantInputs)
+    const hotSeatJoinedCount = hotSeatLegacyJoiners ? players.length : roundParticipants.length
+    const hotSeatCapUpper = hotSeatLobby
+      ? hotSeatMaxCapUpperBound(hotSeatJoinedCount, participants.length)
+      : HOT_SEAT_MAX_ROUNDS_CAP
     const lobbyQuestionMax =
       isWyr || isMlt
         ? questionPoolCap(game)
         : isWst
           ? wstAutoRoundCount(wstPool.length || wstSubmitters.length)
-          : maxRecommendedRounds(participantInputs, gameType)
+          : isHotSeatGame
+            ? hotSeatCapUpper
+            : maxRecommendedRounds(participantInputs, gameType)
     const maxRounds =
-      isWyr || isMlt ? lobbyQuestionMax : isWst ? lobbyQuestionMax : maxRecommendedRounds(participantInputs, gameType)
+      isWyr || isMlt
+        ? lobbyQuestionMax
+        : isWst
+          ? lobbyQuestionMax
+          : isHotSeatGame
+            ? hotSeatCapUpper
+            : maxRecommendedRounds(participantInputs, gameType)
     const roundsHint = isWst
       ? wstPool.length >= 2
         ? `${wstPool.length} quotes in the pool → ${wstAutoRoundCount(wstPool.length)} rounds`
@@ -1046,7 +1215,8 @@ export default function HostPage() {
             ? `Platform pool → up to ${lobbyQuestionMax} rounds`
             : `Platform prompts → up to ${lobbyQuestionMax} rounds`
         : roundLimitHint(participantInputs, gameType)
-    const roundsTooHigh = maxRounds > 0 && game.rounds_count > maxRounds
+    const hotSeatEffective = hotSeatLobby ? hotSeatEffectiveRounds(hotSeatJoinedCount, game.rounds_count) : 0
+    const roundsTooHigh = hotSeatLobby ? false : maxRounds > 0 && game.rounds_count > maxRounds
     const roundOptions = isWyr
       ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
       : isMlt
@@ -1065,23 +1235,25 @@ export default function HostPage() {
         : wstSource === 'both'
           ? totalQuotes >= 2
           : participants.length >= 2 && wstSubmitters.length >= 2 && wstPool.length >= 2
-      : isMltImport
-        ? participants.length >= 2 && players.length > 0 && !roundsTooHigh
-        : isMlt
-          ? players.length >= 2 && !roundsTooHigh
-          : isWyr
-            ? players.length > 0 && !roundsTooHigh
-            : isJoinersMode
-              ? players.length > 0 &&
-                participants.length >= minPool &&
-                hasEnoughForRounds(participantInputs, gameType) &&
-                !roundsTooHigh &&
-                voterCheck.ok
-              : players.length > 0 &&
-                roundParticipants.length >= minPool &&
-                hasEnoughForRounds(participantInputs, gameType) &&
-                !roundsTooHigh &&
-                voterCheck.ok
+      : hotSeatLobby
+        ? hotSeatEffective >= HOT_SEAT_MIN_PLAYERS
+        : isMltImport
+          ? participants.length >= 2 && players.length > 0 && !roundsTooHigh
+          : isMlt
+            ? players.length >= 2 && !roundsTooHigh
+            : isWyr
+              ? players.length > 0 && !roundsTooHigh
+              : isJoinersMode
+                ? players.length > 0 &&
+                  participants.length >= minPool &&
+                  hasEnoughForRounds(participantInputs, gameType) &&
+                  !roundsTooHigh &&
+                  voterCheck.ok
+                : players.length > 0 &&
+                  roundParticipants.length >= minPool &&
+                  hasEnoughForRounds(participantInputs, gameType) &&
+                  !roundsTooHigh &&
+                  voterCheck.ok
 
     return (
       <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
@@ -1090,7 +1262,9 @@ export default function HostPage() {
             <p className="text-muted text-xs uppercase tracking-wider">Host Panel</p>
             <h1 className="text-2xl font-black text-body mt-1">{game.title}</h1>
             <p className="text-muted text-sm">
-              {game.rounds_count} rounds · {game.timer_seconds}s each
+              {hotSeatLobby && hotSeatEffective > 0
+                ? `${hotSeatEffective} rounds · ${game.timer_seconds}s each`
+                : `${game.rounds_count} rounds · ${game.timer_seconds}s each`}
             </p>
             {(isWyr || isMlt) &&
               parseQuestionSource(game.question_source, gameType) === 'custom' &&
@@ -1106,9 +1280,11 @@ export default function HostPage() {
                     ? 'Who Said This — players submit quotes in the lobby, then guess who said each one'
                     : isWyr
                       ? 'Would You Rather — players join and pick A or B each round'
-                      : isJoinersMode
-                        ? 'Join & play — joiners are the names in the poll'
-                        : 'Import list — voters join separately'}
+                      : hotSeatLobby
+                        ? 'Hot Seat — upload names, players claim theirs, then take turns in the spotlight'
+                        : isJoinersMode
+                          ? 'Join & play — joiners are the names in the poll'
+                          : 'Import list — voters join separately'}
             </p>
           </div>
           <div className="text-right">
@@ -1118,14 +1294,37 @@ export default function HostPage() {
         </div>
 
         <div className="glass-card p-4 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-muted text-xs uppercase tracking-wider">Rounds</p>
-            <span className="text-faint text-xs">{game.timer_seconds}s each</span>
-          </div>
+          <p className="text-muted text-xs uppercase tracking-wider">Rounds</p>
           {isWst ? (
             <>
               <p className="font-bold text-body text-2xl">{game.rounds_count}</p>
               <p className="text-faint text-xs">{roundsHint}</p>
+            </>
+          ) : hotSeatLobby ? (
+            <>
+              <p className="font-bold text-body text-2xl">{hotSeatEffective > 0 ? hotSeatEffective : '—'}</p>
+              <p className="text-faint text-xs">{hotSeatLobbyRoundsHint(hotSeatJoinedCount, game.rounds_count)}</p>
+              <div className="space-y-2 pt-2">
+                <p className="text-muted text-[10px] uppercase tracking-wider">Max rounds (cap)</p>
+                <input
+                  type="number"
+                  min={HOT_SEAT_MIN_PLAYERS}
+                  max={hotSeatCapUpper}
+                  step={1}
+                  defaultValue={game.rounds_count}
+                  key={`${game.rounds_count}-${hotSeatCapUpper}`}
+                  disabled={updatingRounds}
+                  onBlur={(e) => {
+                    const n = clampHotSeatMaxCap(e.target.value, hotSeatCapUpper)
+                    e.target.value = String(n)
+                    if (n !== game.rounds_count) hostUpdateRounds(n)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                  }}
+                  className="input-field w-28 py-2 text-sm disabled:opacity-50"
+                />
+              </div>
             </>
           ) : isWyr ||
             isMlt ||
@@ -1137,9 +1336,9 @@ export default function HostPage() {
                   <button
                     key={n}
                     type="button"
-                    disabled={updatingRounds || n > maxRounds}
+                    disabled={n > maxRounds}
                     onClick={() => hostUpdateRounds(n)}
-                    className={`min-w-[2.5rem] px-3 py-2 rounded-xl border text-sm font-semibold transition-colors disabled:opacity-40 ${
+                    className={`min-w-[2.5rem] px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-40 ${
                       game.rounds_count === n ? 'chip-active' : 'chip'
                     }`}
                   >
@@ -1149,8 +1348,13 @@ export default function HostPage() {
               </div>
               {roundsTooHigh && (
                 <p className="callout-warning">
-                  {game.rounds_count} rounds is too many for {roundParticipants.length} in the game — pick {maxRounds}{' '}
-                  or fewer
+                  {game.rounds_count} rounds is too many for{' '}
+                  {hotSeatLobby
+                    ? hotSeatLegacyJoiners
+                      ? players.length
+                      : roundParticipants.length
+                    : roundParticipants.length}{' '}
+                  in the game — pick {maxRounds} or fewer
                 </p>
               )}
             </>
@@ -1158,9 +1362,16 @@ export default function HostPage() {
             <p className="text-faint text-xs">
               {isWyr || isMlt
                 ? 'Set how many questions to play'
-                : `Need at least ${minPool} joined people of one gender before you can set rounds`}
+                : hotSeatLobby
+                  ? hotSeatLegacyJoiners
+                    ? 'Need at least 3 players before you can set rounds'
+                    : participants.length >= 3
+                      ? 'Need at least 3 players to claim a name before you can set rounds'
+                      : 'Need at least 3 names on the list before you can set rounds'
+                  : `Need at least ${minPool} joined people of one gender before you can set rounds`}
             </p>
           )}
+          <div className="pt-3 border-t border-theme">{timerControl}</div>
         </div>
 
         {isWst && wstPoolStatus && (game?.wst_quote_source ?? 'player') !== 'anime' && (
@@ -1341,7 +1552,7 @@ export default function HostPage() {
               />
             </div>
           )}
-          {!isJoinersMode && (
+          {!isJoinersMode && !hotSeatLobby && (
             <p className="text-faint text-xs">
               {isMltImport
                 ? `${players.length} of ${participants.length} voters joined — all names appear in rounds`
@@ -1350,13 +1561,21 @@ export default function HostPage() {
                   : `${roundParticipants.length} of ${participants.length} on the list have joined — only joined names appear in rounds`}
             </p>
           )}
+          {hotSeatLobby && !hotSeatLegacyJoiners && (
+            <p className="text-faint text-xs">
+              {roundParticipants.length} of {participants.length} on the list have joined — only joined players take
+              turns in the hot seat
+            </p>
+          )}
           {!isJoinersMode && (
             <p className="text-faint text-xs">Tap Male/Female to fix identity · Remove to kick someone out</p>
           )}
-          {isJoinersMode && participants.length > 0 && (
+          {isJoinersMode && participants.length > 0 && !hotSeatLobby && (
             <p className="text-faint text-xs">Tap to fix poll placement or gender · Remove to kick out</p>
           )}
-          {(isJoinersMode ? joinerParticipantsWithPlayers.length : players.length) > 8 && (
+          {(playerOnlyLobby || hotSeatLegacyJoiners || !isJoinersMode
+            ? players.length
+            : joinerParticipantsWithPlayers.length) > 8 && (
             <div className="space-y-1">
               <div className="relative">
                 <input
@@ -1382,13 +1601,19 @@ export default function HostPage() {
               </div>
               {playersSearch.trim() && (
                 <p className="text-faint text-[10px] uppercase tracking-wider px-0.5">
-                  {isJoinersMode ? filteredJoinerParticipants.length : filteredPlayers.length} of{' '}
-                  {isJoinersMode ? joinerParticipantsWithPlayers.length : players.length} shown
+                  {playerOnlyLobby || hotSeatLegacyJoiners || !isJoinersMode
+                    ? filteredPlayers.length
+                    : filteredJoinerParticipants.length}{' '}
+                  of{' '}
+                  {playerOnlyLobby || hotSeatLegacyJoiners || !isJoinersMode
+                    ? players.length
+                    : joinerParticipantsWithPlayers.length}{' '}
+                  shown
                 </p>
               )}
             </div>
           )}
-          {isWyr || (isMlt && isJoinersMode) ? (
+          {playerOnlyLobby || hotSeatLegacyJoiners ? (
             filteredPlayers.length === 0 ? (
               <p className="text-faint text-sm">Waiting for people to join...</p>
             ) : (
@@ -1510,7 +1735,7 @@ export default function HostPage() {
               })}
             </div>
           )}
-          {isJoinersMode && !isWyr && !isMlt && participants.length > 0 && (
+          {isJoinersMode && !isWyr && !isMlt && !hotSeatLobby && participants.length > 0 && (
             <p className="text-faint text-xs text-center">
               {genderCounts.female} female · {genderCounts.male} male
             </p>
@@ -1518,11 +1743,12 @@ export default function HostPage() {
           {isJoinersMode &&
             !isWyr &&
             !isMlt &&
+            !hotSeatLobby &&
             participants.length > 0 &&
             !hasEnoughForRounds(participantInputs, gameType) && (
               <p className="callout-warning text-center">Need at least {minPool} people of the same gender to start</p>
             )}
-          {!voterCheck.ok && players.length > 0 && roundParticipants.length >= minPool && (
+          {!hotSeatLobby && !voterCheck.ok && players.length > 0 && roundParticipants.length >= minPool && (
             <p className="callout-warning text-center">{voterCheck.message}</p>
           )}
           {!isJoinersMode && roundParticipants.length < minPool && players.length > 0 && (
@@ -1681,24 +1907,32 @@ export default function HostPage() {
                             ? 'Waiting for voters to join...'
                             : isMlt && !isMltImport && players.length < 2
                               ? `Need at least 2 players (${players.length}/2)`
-                              : isWyr && players.length === 0
-                                ? 'Waiting for players...'
-                                : isJoinersMode
-                                  ? participants.length < minPool
-                                    ? `Need ${minPool - participants.length} more to start`
-                                    : roundsTooHigh
-                                      ? `Lower to ${maxRounds} rounds max`
-                                      : `Need ${minPool}+ of one gender to start`
-                                  : players.length === 0
-                                    ? 'Waiting for players...'
-                                    : roundParticipants.length < minPool
-                                      ? `Need ${minPool - roundParticipants.length} more to join (${roundParticipants.length}/${minPool})`
-                                      : roundsTooHigh
-                                        ? `Lower to ${maxRounds} rounds max`
-                                        : !voterCheck.ok
-                                          ? 'Need voters for each list'
-                                          : `Need ${minPool}+ joined of one gender`
-              : `Start Game (${players.length} players)`}
+                              : hotSeatLobby && hotSeatLegacyJoiners && players.length < 3
+                                ? `Need at least 3 players (${players.length}/3)`
+                                : hotSeatLobby && !hotSeatLegacyJoiners && roundParticipants.length < 3
+                                  ? `Need 3+ players who claimed a name (${roundParticipants.length}/3)`
+                                  : hotSeatLobby && !hotSeatLegacyJoiners && participants.length < 3
+                                    ? `Need at least 3 names on the list (${participants.length}/3)`
+                                    : isWyr && players.length === 0
+                                      ? 'Waiting for players...'
+                                      : isJoinersMode
+                                        ? participants.length < minPool
+                                          ? `Need ${minPool - participants.length} more to start`
+                                          : roundsTooHigh
+                                            ? `Lower to ${maxRounds} rounds max`
+                                            : `Need ${minPool}+ of one gender to start`
+                                        : players.length === 0
+                                          ? 'Waiting for players...'
+                                          : roundParticipants.length < minPool
+                                            ? `Need ${minPool - roundParticipants.length} more to join (${roundParticipants.length}/${minPool})`
+                                            : roundsTooHigh
+                                              ? `Lower to ${maxRounds} rounds max`
+                                              : !voterCheck.ok
+                                                ? 'Need voters for each list'
+                                                : `Need ${minPool}+ joined of one gender`
+              : hotSeatLobby
+                ? `Start Game (${hotSeatEffective} round${hotSeatEffective === 1 ? '' : 's'})`
+                : `Start Game (${players.length} players)`}
         </button>
       </div>
     )
@@ -1711,6 +1945,7 @@ export default function HostPage() {
     const isMlt = isMostLikelyTo(gameType)
     const isWst = isWhoSaidThis(gameType)
     const isWyr = isWouldYouRather(gameType)
+    const isHotSeatGame = isHotSeat(gameType)
     const roundVotes = votes.filter((v) => v.round_id === currentRound.id)
     const roundParts = participants.filter((p) => currentRound.participant_ids.includes(p.id))
     const roundParticipantGender = getRoundParticipantGender(currentRound.participant_ids, participants)
@@ -1887,6 +2122,89 @@ export default function HostPage() {
       )
     }
 
+    if (isHotSeatGame) {
+      const hotSeatPlayerId = currentRound.submitter_player_id
+      const hotSeatPlayerName = hotSeatPlayerDisplayName(hotSeatPlayerId, players, participants)
+      const joinedPlayers = hotSeatJoinedPlayers(players, participants, game.participant_mode)
+      const submitters = joinedPlayers.filter((p) => p.id !== hotSeatPlayerId)
+      const submitterIds = new Set(submitters.map((p) => p.id))
+      const roundSubs = activeHotSeatSubs.filter((s) => s.round_id === currentRound.id && submitterIds.has(s.player_id))
+      const submissionCount = roundSubs.length
+      const submittedPlayerIds = new Set(roundSubs.map((s) => s.player_id))
+      const allSubmitted = submissionCount >= submitters.length && submitters.length > 0
+
+      return (
+        <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-muted text-xs uppercase tracking-wider">Round</p>
+              <p className="font-black text-body text-3xl">
+                {currentRound.round_number}
+                <span className="text-faint font-normal text-lg"> / {game.rounds_count}</span>
+              </p>
+              <p className="text-amber-400/90 text-sm mt-1">Hot Seat</p>
+            </div>
+            <TimerDisplay seconds={timeLeft} total={game.timer_seconds} />
+          </div>
+
+          <div className="glass-card border-2 border-amber-500/40 rounded-2xl p-6 text-center">
+            <div className="text-4xl mb-2">🪑🔥</div>
+            <p className="text-amber-400 text-xs uppercase tracking-wider mb-1">In the hot seat</p>
+            <p className="text-2xl font-black text-body">{hotSeatPlayerName}</p>
+          </div>
+
+          <div className="glass-card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-muted text-xs uppercase tracking-wider">Submissions In</p>
+              <span className={`text-sm font-bold ${allSubmitted ? 'text-green-400' : 'text-body-muted'}`}>
+                {submissionCount} / {submitters.length}
+                {allSubmitted && ' · ending round...'}
+              </span>
+            </div>
+            <div className="h-2 bg-[var(--border-strong)] rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${allSubmitted ? 'bg-emerald-500' : 'bg-[var(--primary-strong)]'}`}
+                style={{
+                  width: submitters.length > 0 ? `${(submissionCount / submitters.length) * 100}%` : '0%',
+                }}
+              />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {submitters.map((p) => {
+                const submitted = submittedPlayerIds.has(p.id)
+                return (
+                  <div
+                    key={p.id}
+                    className={`flex items-center gap-1.5 text-xs ${submitted ? 'text-green-400' : 'text-faint'}`}
+                  >
+                    <span>{submitted ? '✓' : '○'}</span>
+                    <span className="truncate">{p.name}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-faint text-xs text-center">
+              Answers stay anonymous — only who has submitted is shown here
+            </p>
+          </div>
+
+          <button
+            onClick={handleEndRound}
+            disabled={ending}
+            className={allSubmitted || timeLeft === 0 ? 'btn-primary animate-pulse' : 'btn-secondary'}
+          >
+            {ending
+              ? 'Ending...'
+              : allSubmitted
+                ? '✓ End Round & Show Results'
+                : submissionCount > 0
+                  ? `End Round (${submissionCount}/${submitters.length} submitted)`
+                  : 'End Round Early'}
+          </button>
+        </div>
+      )
+    }
+
     return (
       <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
         {/* Header */}
@@ -2043,12 +2361,16 @@ export default function HostPage() {
     const isWyr = isWouldYouRather(gameType)
     const isMlt = isMostLikelyTo(gameType)
     const isWst = isWhoSaidThis(gameType)
+    const isHotSeatGame = isHotSeat(gameType)
     const isMltImport = isMltImportGame(game)
     const roundVotes = votes.filter((v) => v.round_id === lastFinishedRound.id)
     const roundParts = participants.filter((p) => lastFinishedRound.participant_ids.includes(p.id))
     const roundConfessions = confessions.filter((c) => c.round_id === lastFinishedRound.id)
     const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
     const isLastRound = lastFinishedRound.round_number >= game.rounds_count
+    const hotSeatPlayerName = isHotSeatGame
+      ? hotSeatPlayerDisplayName(lastFinishedRound.submitter_player_id, players, participants)
+      : ''
     const { countA, countB, voterCount } = tallyWyrVotes(roundVotes)
     const mltKind = isMltImport ? 'participant' : 'player'
     const mltTargets = mltVoteTargets(game, participants, players)
@@ -2059,13 +2381,21 @@ export default function HostPage() {
         <div className="text-center">
           <p className="text-muted text-xs uppercase tracking-wider">
             Round {lastFinishedRound.round_number} of {game.rounds_count}
-            {!isWyr && !isMlt && roundGender ? ` · ${roundGender}` : ''}
+            {!isWyr && !isMlt && !isHotSeatGame && roundGender ? ` · ${roundGender}` : ''}
           </p>
-          <h1 className="text-3xl font-black tracking-tight mt-1">Results are in! 🗳️</h1>
-          <p className="text-muted text-sm mt-1">Players can see these results on their screens</p>
+          <h1 className="text-3xl font-black tracking-tight mt-1">
+            {isHotSeatGame ? 'Hot Seat Reveal! 🪑🔥' : 'Results are in! 🗳️'}
+          </h1>
+          <p className="text-muted text-sm mt-1">
+            {isHotSeatGame
+              ? `Anonymous answers about ${hotSeatPlayerName}`
+              : 'Players can see these results on their screens'}
+          </p>
         </div>
 
-        {isWst ? (
+        {isHotSeatGame ? (
+          <HotSeatRoundResults hotSeatPlayerName={hotSeatPlayerName} submissions={hotSeatSubmissions} />
+        ) : isWst ? (
           (() => {
             if (isAnimeRound(lastFinishedRound)) {
               const meta = lastFinishedRound.anime_metadata as {
@@ -2246,12 +2576,16 @@ export default function HostPage() {
           </p>
         </div>
 
-        <div className="glass-card p-5 space-y-3 text-center">
-          <p className="font-semibold text-body">Same room, fresh game</p>
-          <p className="text-faint text-sm">
-            Send everyone back to the lobby with the same link and settings. Players stay joined — you start when ready.
-          </p>
-          <button onClick={handlePlayAgain} disabled={playingAgain} className="btn-primary w-full">
+        <div className="glass-card p-5 space-y-4 text-center">
+          <div>
+            <p className="font-semibold text-body">Same room, fresh game</p>
+            <p className="text-faint text-sm mt-1">
+              Send everyone back to the lobby with the same link and settings. Players stay joined — you start when
+              ready.
+            </p>
+          </div>
+          <div className="text-left">{timerControl}</div>
+          <button onClick={handlePlayAgain} disabled={playingAgain || updatingTimer} className="btn-primary w-full">
             {playingAgain ? 'Resetting…' : '↻ Play Again'}
           </button>
         </div>

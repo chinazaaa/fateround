@@ -251,6 +251,7 @@ alter table hot_seat_submissions enable row level security;
 create policy "public_hot_seat_submissions" on hot_seat_submissions for all to anon using (true) with check (true);
 
 -- If upgrading:
+-- alter table games add column if not exists participant_filter text not null default 'all' check (participant_filter in ('all', 'joined'));
 -- alter table games drop constraint if exists games_game_type_check;
 -- alter table games add constraint games_game_type_check check (game_type in ('smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'would_you_rather', 'most_likely_to', 'who_said_this', 'hot_seat'));
 

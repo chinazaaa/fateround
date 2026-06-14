@@ -3,10 +3,12 @@ import {
   isWouldYouRather,
   isMostLikelyTo,
   isWhoSaidThis,
+  isHotSeat,
   isLobbyGame,
   isNameOnlyPlayerJoin,
   parseGameType,
 } from '@/lib/game-types'
+import { HOT_SEAT_MIN_PLAYERS, HOT_SEAT_MAX_ROUNDS_CAP } from '@/lib/hot-seat'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import type { GameType, ParticipantMode } from '@/types'
@@ -67,10 +69,10 @@ export function parseParticipantRows(text: string): ParticipantInput[] {
   return rows
 }
 
-/** Smash / Red Flag / Smash or Pass need gender for same-gender rounds. WYR, MLT & WST do not. */
+/** Smash / pair / KMK need gender for same-gender rounds. Name-only lobby games, WST & Hot Seat do not. */
 export function participantsNeedGender(gameType?: GameType | string): boolean {
   const type = parseGameType(gameType)
-  return !isWouldYouRather(type) && !isMostLikelyTo(type) && !isWhoSaidThis(type)
+  return !isNameOnlyPlayerJoin(type) && !isWhoSaidThis(type) && !isHotSeat(type)
 }
 
 /** Whether the join screen should ask for gender / vote preference. */
@@ -143,12 +145,14 @@ export interface ParticipantModeOption {
 
 /** Copy for create-game "Who's in the poll" — differs by game type. */
 export function participantModeOptions(gameType?: GameType | string): ParticipantModeOption[] {
-  if (isWhoSaidThis(gameType)) {
+  if (isWhoSaidThis(gameType) || isHotSeat(gameType)) {
     return [
       {
         value: 'import',
         label: 'Import list',
-        hint: 'Upload names — players claim their name when joining, then take turns writing quotes.',
+        hint: isHotSeat(gameType)
+          ? 'Upload names — each player claims their name when joining.'
+          : 'Upload names — players claim their name when joining, then take turns writing quotes.',
       },
     ]
   }
@@ -186,6 +190,9 @@ export function participantImportStepHint(gameType?: GameType | string): string 
   if (isWhoSaidThis(gameType)) {
     return 'Add everyone in the group — each player claims their name when joining, then takes turns writing quotes.'
   }
+  if (isHotSeat(gameType)) {
+    return 'Add everyone in the group — each player claims their name from this list when joining.'
+  }
   if (isMostLikelyTo(gameType)) {
     return 'Add everyone who can be voted for — players join separately to vote.'
   }
@@ -204,6 +211,7 @@ export function countByGender(participants: ParticipantInput[]): Record<Particip
 
 export function hasEnoughForRounds(participants: ParticipantInput[], gameType?: GameType | string): boolean {
   if (isWouldYouRather(gameType)) return true
+  if (isHotSeat(gameType)) return participants.length >= HOT_SEAT_MIN_PLAYERS
   if (isMostLikelyTo(gameType)) return participants.length >= roundPoolSize(gameType)
   if (isWhoSaidThis(gameType)) return participants.length >= 2
   const min = roundPoolSize(gameType)
@@ -224,6 +232,7 @@ export function kmkRoundPickerOptions(maxRounds: number): number[] {
 /** Max rounds before the same names repeat heavily. */
 export function maxRecommendedRounds(participants: ParticipantInput[], gameType?: GameType | string): number {
   if (isWouldYouRather(gameType)) return Math.min(20, WYR_QUESTION_COUNT)
+  if (isHotSeat(gameType)) return participants.length >= HOT_SEAT_MIN_PLAYERS ? participants.length : 0
   if (isMostLikelyTo(gameType)) return Math.min(20, MLT_QUESTION_COUNT)
   if (isWhoSaidThis(gameType)) return Math.min(20, Math.max(participants.length, 2))
   const perRound = roundPoolSize(gameType)
@@ -241,6 +250,10 @@ export function maxRecommendedRounds(participants: ParticipantInput[], gameType?
 export function roundLimitHint(participants: ParticipantInput[], gameType?: GameType | string): string | null {
   if (isWouldYouRather(gameType)) {
     return `${WYR_QUESTION_COUNT} questions available → up to ${Math.min(20, WYR_QUESTION_COUNT)} rounds`
+  }
+  if (isHotSeat(gameType)) {
+    if (participants.length < HOT_SEAT_MIN_PLAYERS) return null
+    return `Up to ${participants.length} rounds (one per player who joins) — set a max cap below`
   }
   if (isMostLikelyTo(gameType)) {
     return `${MLT_QUESTION_COUNT} prompts available → up to ${Math.min(20, MLT_QUESTION_COUNT)} rounds`
@@ -350,7 +363,8 @@ export function playerIdentityLabel(
   participants?: { name: string; gender: ParticipantGender }[],
   gameType?: GameType | string
 ): string {
-  if (isLobbyGame(gameType) || isNameOnlyPlayerJoin(gameType) || isWhoSaidThis(gameType)) return ''
+  if (isLobbyGame(gameType) || isNameOnlyPlayerJoin(gameType) || isWhoSaidThis(gameType) || isHotSeat(gameType))
+    return ''
   return genderLabel(resolvePlayerIdentity(player, participants))
 }
 

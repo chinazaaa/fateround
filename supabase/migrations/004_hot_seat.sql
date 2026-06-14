@@ -2,6 +2,11 @@
 -- One player is "in the hot seat" each round. Everyone else anonymously
 -- submits one thing about them (compliment, roast, or observation).
 
+-- Required by game create/update (import mode: all list vs joined-only)
+alter table games
+  add column if not exists participant_filter text not null default 'all'
+  check (participant_filter in ('all', 'joined'));
+
 -- Update game_type check constraint to include 'hot_seat'
 alter table games drop constraint if exists games_game_type_check;
 alter table games add constraint games_game_type_check check (game_type in ('smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'would_you_rather', 'most_likely_to', 'who_said_this', 'hot_seat'));
