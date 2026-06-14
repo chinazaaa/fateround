@@ -8,6 +8,7 @@ import { AnonymousMessageComposer } from '@/components/anonymous-messages/Anonym
 import { AnonymousRoomSessionSummary } from '@/components/anonymous-messages/AnonymousRoomSessionSummary'
 import { GameLobbySummary } from '@/components/GameLobbySummary'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
+import { useAnonymousMessageTrim } from '@/hooks/useAnonymousMessageTrim'
 import { useAnonymousMessages } from '@/hooks/useAnonymousMessages'
 import { AnonymousSessionTimerBar } from '@/components/anonymous-messages/AnonymousSessionTimerBar'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -37,6 +38,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   const bansEnabled = screen === 'active' || screen === 'waiting'
   const { messages } = useAnonymousMessages(gameCode, messagesEnabled, players)
   const { banForPlayer } = useAnonymousRoomBans(gameCode, bansEnabled)
+  useAnonymousMessageTrim(gameCode, screen === 'active')
 
   const syncScreen = useCallback((gameData: Game, playerId: string | null) => {
     if (gameData.status === 'waiting') {

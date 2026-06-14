@@ -65,6 +65,8 @@ export interface Game {
   created_at: string
   /** Anonymous room — when the live session started (15 min cap). */
   session_started_at?: string | null
+  /** Anonymous room — last time a batch of old messages was trimmed. */
+  anonymous_messages_trimmed_at?: string | null
   wst_quote_source?: WstQuoteSource
   custom_slots?: CustomSlotsConfig | null
   /** When true, rounds use same-gender groups and opposite-gender voting. Default true for SMK/pair, false for custom. */

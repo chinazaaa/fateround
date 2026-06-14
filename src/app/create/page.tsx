@@ -608,8 +608,9 @@ function CreateGameInner() {
                 <p className="text-faint text-sm leading-relaxed">
                   Players join with one tap and get a random lobby name shown on their messages. Anyone who joins after
                   the session starts can watch only. Hosts can mute players for 5–30 minutes (default 10) — muted
-                  players can read but not send. Sessions last up to 15 minutes and only the latest 1,000 messages
-                  are kept — remove players from the lobby anytime before the session ends.
+                  players can read but not send. Once over 1,000 messages, the oldest 100 are removed every 5
+                  minutes during the session. Sessions last up to 15 minutes — all messages are deleted when the
+                  session ends.
                 </p>
               </SettingsGroup>
             ) : (

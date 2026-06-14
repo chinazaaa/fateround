@@ -1,8 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Game, Player } from '@/types'
 
-/** Keep at most this many messages per anonymous room — oldest are deleted first. */
+/** Keep at most this many messages per anonymous room before batch trimming kicks in. */
 export const ANONYMOUS_ROOM_MAX_MESSAGES = 1000
+
+/** How many oldest messages to delete per trim pass. */
+export const ANONYMOUS_ROOM_TRIM_BATCH = 100
+
+/** Minimum time between trim passes once over the cap. */
+export const ANONYMOUS_ROOM_TRIM_INTERVAL_MS = 5 * 60 * 1000
 
 /** Fixed session length for anonymous rooms (15 minutes). */
 export const ANONYMOUS_ROOM_SESSION_SECONDS = 15 * 60
@@ -68,35 +74,60 @@ export function anonymousSessionSecondsLeft(sessionStartedAt: string | null | un
   return Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
 }
 
-export async function trimAnonymousMessages(
+export async function trimAnonymousMessagesIfDue(
   supabase: SupabaseClient,
-  gameId: string,
-  maxMessages = ANONYMOUS_ROOM_MAX_MESSAGES
-): Promise<void> {
+  gameId: string
+): Promise<{ trimmed: number }> {
   const { count, error: countError } = await supabase
     .from('anonymous_messages')
     .select('id', { count: 'exact', head: true })
     .eq('game_id', gameId)
 
-  if (countError || !count || count <= maxMessages) return
+  if (countError || !count || count <= ANONYMOUS_ROOM_MAX_MESSAGES) {
+    return { trimmed: 0 }
+  }
 
-  const excess = count - maxMessages
+  const { data: game, error: gameError } = await supabase
+    .from('games')
+    .select('anonymous_messages_trimmed_at')
+    .eq('id', gameId)
+    .maybeSingle()
+
+  if (gameError) return { trimmed: 0 }
+
+  const lastTrimMs = game?.anonymous_messages_trimmed_at
+    ? new Date(game.anonymous_messages_trimmed_at).getTime()
+    : 0
+
+  if (Date.now() - lastTrimMs < ANONYMOUS_ROOM_TRIM_INTERVAL_MS) {
+    return { trimmed: 0 }
+  }
+
   const { data: oldest, error: fetchError } = await supabase
     .from('anonymous_messages')
     .select('id')
     .eq('game_id', gameId)
     .order('created_at', { ascending: true })
-    .limit(excess)
+    .limit(ANONYMOUS_ROOM_TRIM_BATCH)
 
-  if (fetchError || !oldest?.length) return
+  if (fetchError || !oldest?.length) return { trimmed: 0 }
 
-  await supabase
+  const { error: deleteError } = await supabase
     .from('anonymous_messages')
     .delete()
     .in(
       'id',
       oldest.map((row) => row.id)
     )
+
+  if (deleteError) return { trimmed: 0 }
+
+  await supabase
+    .from('games')
+    .update({ anonymous_messages_trimmed_at: new Date().toISOString() })
+    .eq('id', gameId)
+
+  return { trimmed: oldest.length }
 }
 
 /** Wipe live session data when an anonymous room ends — messages are not kept. */

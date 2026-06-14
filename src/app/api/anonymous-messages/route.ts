@@ -7,7 +7,7 @@ import {
   anonymousSessionExpired,
   finishExpiredAnonymousSession,
   isPlayerBanned,
-  trimAnonymousMessages,
+  trimAnonymousMessagesIfDue,
   truncateReplyPreview,
 } from '@/lib/anonymous-messages'
 
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  await trimAnonymousMessages(supabase, gameCode)
+  await trimAnonymousMessagesIfDue(supabase, gameCode)
 
   return NextResponse.json({ success: true })
 }

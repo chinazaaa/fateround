@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { AnonymousMessageFeed } from '@/components/anonymous-messages/AnonymousMessageFeed'
 import { AnonymousRoomSessionSummary } from '@/components/anonymous-messages/AnonymousRoomSessionSummary'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { useAnonymousMessageTrim } from '@/hooks/useAnonymousMessageTrim'
 import { useAnonymousMessages } from '@/hooks/useAnonymousMessages'
 import { AnonymousSessionTimerBar } from '@/components/anonymous-messages/AnonymousSessionTimerBar'
 import {
@@ -52,6 +53,7 @@ export function AnonymousMessagesHostView({
 
   const messagesEnabled = game?.status === 'active'
   const { messages, removeMessage } = useAnonymousMessages(gameCode, !!messagesEnabled, players)
+  useAnonymousMessageTrim(gameCode, !!messagesEnabled)
 
   const load = useCallback(async () => {
     const [{ data: gameData }, { data: plrs }] = await Promise.all([

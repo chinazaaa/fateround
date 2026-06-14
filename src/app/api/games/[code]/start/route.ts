@@ -131,6 +131,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         current_round_number: 1,
         rounds_count: 1,
         session_started_at: now,
+        anonymous_messages_trimmed_at: null,
       })
       .eq('id', code.toUpperCase())
 
