@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { roundGenderLabel } from '@/lib/participants'
+import { isGenderFreeVoting } from '@/lib/gender-based'
 import {
   assignmentEmojiFor,
   tallyRoundVotes,
@@ -199,7 +200,9 @@ export default function GameHistoryPage() {
             if (roundVotes.length === 0) return null
 
             const roundParts = participants.filter((p) => round.participant_ids.includes(p.id))
-            const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
+            const roundGender = isGenderFreeVoting(game)
+              ? null
+              : roundGenderLabel(roundParts.map((p) => p.gender))
             const tallies = tallyRoundVotes(round.participant_ids, roundVotes)
 
             return (

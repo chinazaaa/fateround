@@ -1,4 +1,4 @@
-import type { GameType, VoteAssignment, PairFlag, PairAssignmentMap, PairVoteMode, ParticipantMode } from '@/types'
+import type { Game, GameType, VoteAssignment, PairFlag, PairAssignmentMap, PairVoteMode, ParticipantMode } from '@/types'
 
 export type VoteSlot = 'kiss' | 'marry' | 'kill'
 /** Tally keys — `smash` counts the kill slot (Red Flag / Kill). */
@@ -461,7 +461,9 @@ export function gameHowItWorks(
     case 'this_or_that':
       return 'Upload your own “Coffee or Tea?” style prompts. Players join with any name — each round shows two options and everyone picks A or B. Votes stay anonymous.'
     case 'hot_seat':
-      return "Upload everyone's names on the next step. Players claim their name when joining. One round per player who joins — you set a max cap; the host lobby shows the final count."
+      return joiners
+        ? 'Players join with any name — no list to upload. One round per player who joins; you set a max cap and the host lobby shows the final count.'
+        : "Upload everyone's names on the next step. Players claim their name when joining. One round per player who joins — you set a max cap; the host lobby shows the final count."
     case 'most_likely_to':
       return joiners
         ? 'Players add their name to the poll when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
@@ -660,24 +662,26 @@ export function isNameOnlyPlayerJoin(gameType: GameType | string | undefined): b
   return type === 'would_you_rather' || type === 'this_or_that' || type === 'most_likely_to'
 }
 
-/** Import list + claim your name when joining (no gender) — Who Said This & Hot Seat. */
+/** Import list + claim your name when joining (no gender) — Who Said This & Hot Seat (import mode). */
 export function isImportNameClaimGame(gameType: GameType | string | undefined): boolean {
   return isWhoSaidThis(gameType) || isHotSeat(gameType)
 }
 
-/**
- * Hot Seat host lobby — import list + claim flow, or legacy joiners games created before import mode.
- */
-export function isHotSeatLobbyGame(gameType: GameType | string | undefined, opts: LobbyCounts): boolean {
-  if (!isHotSeat(gameType)) return false
-  if ((opts.participantMode ?? 'import') === 'import') return true
-  const joiners = opts.participantMode === 'joiners'
-  return joiners && opts.participantCount === 0
+/** Hot Seat — players join with any name, no host list. */
+export function isHotSeatJoinersGame(game: Pick<Game, 'game_type' | 'participant_mode'>): boolean {
+  return isHotSeat(game.game_type) && (game.participant_mode ?? 'import') === 'joiners'
 }
 
-/** Host lobby where players join by name only — no participant rows (WYR, MLT joiners). */
+/**
+ * Hot Seat host lobby — import list + claim, or joiners (free name entry).
+ */
+export function isHotSeatLobbyGame(gameType: GameType | string | undefined, _opts?: LobbyCounts): boolean {
+  return isHotSeat(gameType)
+}
+
+/** Host lobby where players join by name only — no participant rows from a host list. */
 export function isPlayerOnlyJoinLobby(gameType: GameType | string | undefined, opts: LobbyCounts): boolean {
-  if (isHotSeat(gameType)) return false
+  if (isHotSeat(gameType) && opts.participantMode === 'joiners') return true
   if (isNameOnlyPlayerJoin(gameType)) return true
   return false
 }

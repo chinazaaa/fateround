@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
-import { parseGameType, isNameOnlyPlayerJoin, isWhoSaidThis, isImportNameClaimGame } from '@/lib/game-types'
+import { parseGameType, isNameOnlyPlayerJoin, isWhoSaidThis, isImportNameClaimGame, isHotSeat } from '@/lib/game-types'
 import { isGenderFreeImportJoin, isGenderFreeJoinersJoin, isGenderFreeVotersJoin } from '@/lib/gender-based'
 import { isImportClaimMode, isJoinersPollMode, isVoterOnlyMode } from '@/lib/participant-mode'
 import {
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
   const { game, id } = waiting
   const gameType = parseGameType(game!.game_type)
 
-  if (isNameOnlyPlayerJoin(gameType)) {
+  if (isNameOnlyPlayerJoin(gameType) || (isHotSeat(gameType) && isJoinersPollMode(game as import('@/types').Game))) {
     if (!name) {
       return NextResponse.json({ error: 'playerName is required' }, { status: 400 })
     }
@@ -432,7 +432,7 @@ export async function PATCH(req: NextRequest) {
 
   const gameType = parseGameType((game as { game_type?: string }).game_type)
 
-  if (isNameOnlyPlayerJoin(gameType)) {
+  if (isNameOnlyPlayerJoin(gameType) || (isHotSeat(gameType) && isJoinersPollMode(game as import('@/types').Game))) {
     if (rawName === undefined) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
     }

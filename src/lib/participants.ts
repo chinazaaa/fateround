@@ -184,6 +184,15 @@ export interface ParticipantModeOption {
 export function participantModeOptions(gameType?: GameType | string): ParticipantModeOption[] {
   if (isWhoSaidThis(gameType) || isHotSeat(gameType)) {
     return [
+      ...(isHotSeat(gameType)
+        ? [
+            {
+              value: 'joiners' as const,
+              label: 'Join & play',
+              hint: 'Players enter their name when joining — no list to upload.',
+            },
+          ]
+        : []),
       {
         value: 'import',
         label: 'Import list',

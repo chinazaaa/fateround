@@ -151,16 +151,22 @@ function CreateGameInner() {
         ...prev,
         game_type: type,
         ...(isLobbyGame(type) ? { participant_mode: 'joiners', anonymous: true } : {}),
-        ...(isWhoSaidThis(type) || isHotSeat(type)
+        ...(isWhoSaidThis(type)
           ? {
               participant_mode: 'import' as const,
               anonymous: true,
               participant_filter: 'joined' as const,
-              ...(isHotSeat(type) ? { rounds_count: HOT_SEAT_MIN_PLAYERS } : {}),
             }
-          : isMostLikelyTo(type)
-            ? { participant_mode: 'voters' as const }
-            : {}),
+          : isHotSeat(type)
+            ? {
+                participant_mode: 'joiners' as const,
+                anonymous: true,
+                participant_filter: 'all' as const,
+                rounds_count: HOT_SEAT_MIN_PLAYERS,
+              }
+            : isMostLikelyTo(type)
+              ? { participant_mode: 'voters' as const }
+              : {}),
       }))
     }
   }, [searchParams])
@@ -241,16 +247,22 @@ function CreateGameInner() {
       ...settings,
       game_type: type,
       ...(isLobbyGame(type) ? { participant_mode: 'joiners', anonymous: true } : {}),
-      ...(isWhoSaidThis(type) || isHotSeat(type)
+      ...(isWhoSaidThis(type)
         ? {
             participant_mode: 'import' as const,
             anonymous: true,
             participant_filter: 'joined' as const,
-            ...(isHotSeat(type) ? { rounds_count: HOT_SEAT_MIN_PLAYERS } : {}),
           }
-        : isMostLikelyTo(type)
-          ? { participant_mode: 'voters' as const }
-          : {}),
+        : isHotSeat(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              participant_filter: 'all' as const,
+              rounds_count: HOT_SEAT_MIN_PLAYERS,
+            }
+          : isMostLikelyTo(type)
+            ? { participant_mode: 'voters' as const }
+            : {}),
       ...(isCustomGame(type) ? { participant_mode: 'import' as const, gender_based: defaultGenderBasedForType(type) } : {}),
       ...(supportsGenderToggle(type) && !isCustomGame(type)
         ? { gender_based: defaultGenderBasedForType(type) }
@@ -938,15 +950,15 @@ function CreateGameInner() {
               </p>
             </SettingsGroup>
 
-            {!isBinaryLobby && !isWst && !isHotSeatGame && (
-              <SettingsGroup title="Who's in the poll">
+            {(!isBinaryLobby && !isWst && !isWhoSaidThis(settings.game_type)) || isHotSeatGame ? (
+              <SettingsGroup title={isHotSeatGame ? "Who's in the game" : "Who's in the poll"}>
                 <SegmentedControl
                   value={settings.participant_mode}
                   onChange={(mode) => setSettings({ ...settings, participant_mode: mode })}
                   options={participantModeOptions(settings.game_type)}
                 />
               </SettingsGroup>
-            )}
+            ) : null}
 
             {settings.participant_mode === 'import' && !isBinaryLobby && !isWst && !isHotSeatGame && (
               <SettingsGroup title="Who appears in rounds">

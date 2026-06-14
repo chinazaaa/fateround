@@ -84,7 +84,7 @@ import {
   AnimeWstRoundResults,
   HotSeatRoundResults,
 } from '@/components/VoteResults'
-import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
+import { FinalGenderLeaderboards, FinalGenderBreakdown, FinalOverallLeaderboards, FinalOverallBreakdown } from '@/components/FinalLeaderboard'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import {
   hotSeatEffectiveRounds,
@@ -104,7 +104,7 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import {
-  FINAL_RESULTS_AUTO_REVEAL_SECONDS,
+  finalResultsAutoRevealSeconds,
   msUntilDeadline,
   ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
 } from '@/lib/round-timing'
@@ -185,7 +185,7 @@ export default function HostPage() {
   )
   const finalRevealCountdown = useDeadlineCountdown(
     lastFinishedRound?.ended_at,
-    FINAL_RESULTS_AUTO_REVEAL_SECONDS,
+    finalResultsAutoRevealSeconds(game?.game_type),
     betweenRounds && isBetweenLastRound && !!game?.auto_reveal
   )
 
@@ -657,14 +657,17 @@ export default function HostPage() {
     if (!game.auto_reveal || autoFinishTriggeredRef.current) return
 
     autoFinishTriggeredRef.current = true
-    const delay = msUntilDeadline(lastFinishedRound.ended_at, FINAL_RESULTS_AUTO_REVEAL_SECONDS)
+    const delay = msUntilDeadline(
+      lastFinishedRound.ended_at,
+      finalResultsAutoRevealSeconds(game.game_type)
+    )
     const timer = setTimeout(() => {
       handleFinishGame()
     }, delay)
 
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.status, game?.auto_reveal, game?.rounds_count, currentRound?.id, lastFinishedRound?.id])
+  }, [game?.status, game?.auto_reveal, game?.rounds_count, game?.game_type, currentRound?.id, lastFinishedRound?.id])
 
   useEffect(() => {
     if (!lastFinishedRound || lastFinishedRound.round_number < (game?.rounds_count ?? 0)) {
@@ -1244,7 +1247,7 @@ export default function HostPage() {
     const showPairVoting = isPair || isCustomTwoSlot
     const pairVoteMode = parsePairVoteMode(game.pair_vote_mode)
     const isJoinersMode = (game.participant_mode ?? 'import') === 'joiners'
-    const hotSeatLegacyJoiners = isHotSeatGame && isJoinersMode && participants.length === 0
+    const hotSeatLegacyJoiners = isHotSeatGame && isJoinersMode
     const wstSubmitters = wstEligibleSubmitters(players)
     const wstPoolStatus = isWst ? wstQuotePoolStatus(players, wstPool) : null
     const roundParticipants =
@@ -1398,7 +1401,7 @@ export default function HostPage() {
           ) : hotSeatLobby ? (
             <>
               <p className="font-bold text-body text-2xl">{hotSeatEffective > 0 ? hotSeatEffective : '—'}</p>
-              <p className="text-faint text-xs">{hotSeatLobbyRoundsHint(hotSeatJoinedCount, game.rounds_count)}</p>
+              <p className="text-faint text-xs">{hotSeatLobbyRoundsHint(hotSeatJoinedCount, game.rounds_count, game.participant_mode)}</p>
               <div className="space-y-2 pt-2">
                 <p className="text-muted text-[10px] uppercase tracking-wider">Max rounds (cap)</p>
                 <input
@@ -1832,6 +1835,12 @@ export default function HostPage() {
             <p className="text-faint text-xs">
               {roundParticipants.length} of {participants.length} on the list have joined — only joined players take
               turns in the hot seat
+            </p>
+          )}
+          {hotSeatLobby && hotSeatLegacyJoiners && (
+            <p className="text-faint text-xs">
+              {players.length} player{players.length === 1 ? '' : 's'} joined — everyone who joins takes a turn in the
+              hot seat
             </p>
           )}
           {!isJoinersMode && gameGenderBased && (
@@ -2833,12 +2842,16 @@ export default function HostPage() {
           game.auto_reveal ? (
             <p className="text-[var(--primary)] text-sm text-center animate-pulse">
               {finalRevealCountdown > 0
-                ? `Final leaderboard in ${finalRevealCountdown}s…`
-                : 'Final leaderboard in a few seconds...'}
+                ? isHotSeatGame
+                  ? `Final results in ${finalRevealCountdown}s…`
+                  : `Final leaderboard in ${finalRevealCountdown}s…`
+                : isHotSeatGame
+                  ? 'Final results in a few seconds...'
+                  : 'Final leaderboard in a few seconds...'}
             </p>
           ) : (
             <button onClick={handleFinishGame} disabled={finishing} className="btn-primary">
-              {finishing ? 'Loading...' : '🏆 Show Final Leaderboard'}
+              {finishing ? 'Loading...' : isHotSeatGame ? '🏆 Show Final Results' : '🏆 Show Final Leaderboard'}
             </button>
           )
         ) : (
@@ -2865,7 +2878,11 @@ export default function HostPage() {
     const isBinaryGame = isBinaryChoiceGame(gameType)
     const isMlt = isMostLikelyTo(gameType)
     const isWst = isWhoSaidThis(gameType)
+    const isHotSeatGame = isHotSeat(gameType)
     const isMltImport = isMltImportGame(game)
+    const showPollLeaderboards = !isBinaryGame && !isMlt && !isWst && !isHotSeatGame
+    const genderBasedLeaderboards = showPollLeaderboards && isGameGenderBased(game)
+    const namesOnlyLeaderboards = showPollLeaderboards && isGenderFreeVoting(game)
     const playedParticipants = filterParticipantsInRounds(participants, allRounds)
     const pollCount = mltVoteTargets(game, participants, players).length
     const wstScores = isWst ? tallyWstPlayerScores(allRounds, votes, players) : []
@@ -3014,6 +3031,18 @@ export default function HostPage() {
               )
             })}
           </div>
+        ) : isHotSeatGame ? (
+          <div className="space-y-8">
+            {allRounds.map((round) => {
+              const hotSeatPlayerName = hotSeatPlayerDisplayName(round.submitter_player_id, players, participants)
+              return (
+                <div key={round.id}>
+                  <h2 className="text-muted text-xs uppercase tracking-wider mb-3">Round {round.round_number}</h2>
+                  <p className="text-faint text-sm mb-3">🪑 {hotSeatPlayerName} was in the hot seat</p>
+                </div>
+              )
+            })}
+          </div>
         ) : isCustomGame(gameType) && game ? (
           <div className="space-y-8">
             {(() => {
@@ -3051,7 +3080,7 @@ export default function HostPage() {
               )
             })}
           </div>
-        ) : (
+        ) : genderBasedLeaderboards ? (
           <>
             <FinalGenderLeaderboards
               gameType={gameType}
@@ -3062,7 +3091,18 @@ export default function HostPage() {
             />
             <FinalGenderBreakdown gameType={gameType} participants={participants} rounds={allRounds} votes={votes} />
           </>
-        )}
+        ) : namesOnlyLeaderboards ? (
+          <>
+            <FinalOverallLeaderboards
+              gameType={gameType}
+              participants={participants}
+              rounds={allRounds}
+              votes={votes}
+              TopCard={StatCard}
+            />
+            <FinalOverallBreakdown gameType={gameType} participants={participants} rounds={allRounds} votes={votes} />
+          </>
+        ) : null}
 
         {achievements.length > 0 && <AchievementBadges achievements={achievements} />}
 

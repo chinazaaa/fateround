@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
 
   const participant_mode: ParticipantMode = isLobbyGame(game_type)
     ? 'joiners'
-    : isWhoSaidThis(game_type) || isHotSeat(game_type)
+    : isWhoSaidThis(game_type)
       ? 'import'
       : parseParticipantMode(rawMode)
 
@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Need at least 2 names on the list' }, { status: 400 })
       }
     } else if (isHotSeat(game_type)) {
-      if (participantsParsed.length < 3) {
+      if (participant_mode === 'import' && participantsParsed.length < 3) {
         return NextResponse.json({ error: 'Need at least 3 names on the list for Hot Seat' }, { status: 400 })
       }
     } else if (!hasEnoughForRounds(participantsParsed, game_type, participantOpts)) {
@@ -207,7 +207,7 @@ export async function POST(req: NextRequest) {
     auto_submit_behavior: auto_submit_behavior === 'random' ? 'random' : 'no_answer',
     participant_mode,
     participant_filter:
-      participant_mode === 'voters' || isHotSeat(game_type)
+      participant_mode === 'voters' || (isHotSeat(game_type) && participant_mode === 'import')
         ? participant_mode === 'voters'
           ? 'all'
           : 'joined'

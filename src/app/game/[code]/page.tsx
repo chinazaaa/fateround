@@ -78,7 +78,7 @@ import {
   AnimeWstRoundResults,
   HotSeatRoundResults,
 } from '@/components/VoteResults'
-import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
+import { FinalGenderLeaderboards, FinalGenderBreakdown, FinalOverallLeaderboards, FinalOverallBreakdown } from '@/components/FinalLeaderboard'
 import { NameSearchPicker } from '@/components/NameSearchPicker'
 import { MltPlayerPicker } from '@/components/MltPlayerPicker'
 import { isMltImportGame, mltTargetIdFromVote, mltVoteTargets } from '@/lib/mlt'
@@ -131,7 +131,7 @@ import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import { HOT_SEAT_SUBMISSION_TYPES, hotSeatPlayerDisplayName } from '@/lib/hot-seat'
 import { SegmentedControl } from '@/components/ui/CreateWizard'
 import {
-  FINAL_RESULTS_AUTO_REVEAL_SECONDS,
+  finalResultsAutoRevealSeconds,
   roundResultsWaitMessage,
   ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
 } from '@/lib/round-timing'
@@ -238,7 +238,7 @@ export default function GamePage() {
   )
   const finalRevealCountdown = useDeadlineCountdown(
     lastFinishedRound?.ended_at,
-    FINAL_RESULTS_AUTO_REVEAL_SECONDS,
+    finalResultsAutoRevealSeconds(game?.game_type),
     roundResultsActive && roundResultsIsLast && !!game?.auto_reveal
   )
 
@@ -3022,7 +3022,12 @@ function FinalResultsView({
   const isBinaryGameType = isBinaryChoiceGame(gameType)
   const isMlt = isMostLikelyTo(gameType)
   const isWst = isWhoSaidThis(gameType)
+  const isHotSeatGame = isHotSeat(gameType)
   const isMltImport = isMltImportGame(game)
+  const showPollLeaderboards =
+    !isBinaryGameType && !isMlt && !isWst && !isCustomGame(gameType) && !isHotSeatGame
+  const genderBasedLeaderboards = showPollLeaderboards && isGameGenderBased(game)
+  const namesOnlyLeaderboards = showPollLeaderboards && isGenderFreeVoting(game)
   const wstScores = isWst ? tallyWstPlayerScores(rounds, votes, players) : []
   const achievements = useMemo(
     () => computeAchievements(game, participants, rounds, votes, players),
@@ -3092,7 +3097,7 @@ function FinalResultsView({
           })()
         : null}
 
-      {!isBinaryGameType && !isMlt && !isWst && !isCustomGame(gameType) && (
+      {genderBasedLeaderboards && (
         <>
           <FinalGenderLeaderboards
             gameType={gameType}
@@ -3105,8 +3110,22 @@ function FinalResultsView({
         </>
       )}
 
+      {namesOnlyLeaderboards && (
+        <>
+          <FinalOverallLeaderboards
+            gameType={gameType}
+            participants={participants}
+            rounds={rounds}
+            votes={votes}
+            TopCard={LeaderCard}
+          />
+          <FinalOverallBreakdown gameType={gameType} participants={participants} rounds={rounds} votes={votes} />
+        </>
+      )}
+
       {achievements.length > 0 && <AchievementBadges achievements={achievements} />}
 
+      {!isHotSeatGame && (
       <div>
         <h2 className="text-muted text-xs uppercase tracking-wider mb-4">All round results</h2>
         <div className="space-y-8">
@@ -3314,6 +3333,7 @@ function FinalResultsView({
           })}
         </div>
       </div>
+      )}
 
       {/* All hot takes */}
       {confessions.length > 0 && (

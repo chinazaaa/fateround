@@ -20,13 +20,13 @@ export type HotSeatPlayerRow = {
   participant_id?: string | null
 }
 
-/** Players eligible for the hot seat — import: claimed names only; legacy joiners: everyone in the room. */
+/** Players eligible for the hot seat — joiners: everyone in the room; import: claimed names only. */
 export function hotSeatJoinedPlayers(
   players: HotSeatPlayerRow[],
   participants: { id: string; name: string }[],
   participantMode?: string | null
 ): HotSeatPlayerRow[] {
-  if ((participantMode ?? 'import') === 'joiners' && participants.length === 0) {
+  if ((participantMode ?? 'import') === 'joiners') {
     return [...players]
   }
 
@@ -34,14 +34,14 @@ export function hotSeatJoinedPlayers(
   return players.filter((p) => p.participant_id && joinedParticipantIds.has(p.participant_id))
 }
 
-/** Participant ids that may appear in hot seat rounds — joined names only. */
+/** Participant ids stored on hot seat rounds — import mode only. */
 export function hotSeatJoinedParticipantIds(
   players: HotSeatPlayerRow[],
   participants: { id: string; name: string }[],
   participantMode?: string | null
 ): string[] {
-  if ((participantMode ?? 'import') === 'joiners' && participants.length === 0) {
-    return players.map((p) => p.participant_id).filter((id): id is string => !!id)
+  if ((participantMode ?? 'import') === 'joiners') {
+    return []
   }
   return participantsWhoJoined(participants, players).map((p) => p.id)
 }
@@ -75,9 +75,12 @@ export function buildHotSeatRoundRows(opts: {
 }): { ok: true; roundRows: Array<Record<string, unknown>>; roundsCount: number } | { ok: false; error: string } {
   const joined = hotSeatJoinedPlayers(opts.players, opts.participants, opts.participantMode)
   if (joined.length < HOT_SEAT_MIN_PLAYERS) {
+    const joiners = (opts.participantMode ?? 'import') === 'joiners'
     return {
       ok: false,
-      error: `Need at least ${HOT_SEAT_MIN_PLAYERS} players who claimed a name from the list`,
+      error: joiners
+        ? `Need at least ${HOT_SEAT_MIN_PLAYERS} players to join before starting`
+        : `Need at least ${HOT_SEAT_MIN_PLAYERS} players who claimed a name from the list`,
     }
   }
 
@@ -124,9 +127,16 @@ export function hotSeatEffectiveRounds(joinedCount: number, maxCap: number): num
   return Math.min(joinedCount, cap)
 }
 
-export function hotSeatLobbyRoundsHint(joinedCount: number, maxCap: number): string {
+export function hotSeatLobbyRoundsHint(
+  joinedCount: number,
+  maxCap: number,
+  participantMode?: string | null
+): string {
+  const joiners = (participantMode ?? 'import') === 'joiners'
   if (joinedCount < HOT_SEAT_MIN_PLAYERS) {
-    return `Need at least ${HOT_SEAT_MIN_PLAYERS} players who claimed a name`
+    return joiners
+      ? `Need at least ${HOT_SEAT_MIN_PLAYERS} players to join`
+      : `Need at least ${HOT_SEAT_MIN_PLAYERS} players who claimed a name`
   }
   const effective = hotSeatEffectiveRounds(joinedCount, maxCap)
   if (effective < joinedCount) {
