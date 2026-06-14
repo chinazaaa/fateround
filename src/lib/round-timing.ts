@@ -1,8 +1,17 @@
+import { isHotSeat } from '@/lib/game-types'
+
 /** Seconds to wait on round results before auto-starting the next round. */
 export const ROUND_RESULTS_AUTO_ADVANCE_SECONDS = 30
 
 /** Seconds to wait after the final round before auto-showing the leaderboard. */
 export const FINAL_RESULTS_AUTO_REVEAL_SECONDS = 8
+
+/** Hot Seat — extra time on the last reveal so players can read all submissions. */
+export const HOT_SEAT_FINAL_RESULTS_AUTO_REVEAL_SECONDS = 30
+
+export function finalResultsAutoRevealSeconds(gameType?: string): number {
+  return isHotSeat(gameType) ? HOT_SEAT_FINAL_RESULTS_AUTO_REVEAL_SECONDS : FINAL_RESULTS_AUTO_REVEAL_SECONDS
+}
 
 export function msUntilDeadline(
   anchorTime: string | null | undefined,

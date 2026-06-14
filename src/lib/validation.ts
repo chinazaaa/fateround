@@ -42,16 +42,19 @@ const gameTypeEnum = z.enum([
   'red_flag_green_flag',
   'smash_or_pass',
   'would_you_rather',
+  'this_or_that',
   'most_likely_to',
   'who_said_this',
   'hot_seat',
   'custom',
+  'anonymous_messages',
 ])
 
-const participantModeEnum = z.enum(['import', 'joiners'])
+const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
 const autoSubmitBehaviorEnum = z.enum(['random', 'no_answer'])
 const pairVoteModeEnum = z.enum(['any', 'one_each'])
 const questionSourceEnum = z.enum(['platform', 'custom'])
+const playerQuestionsOrderEnum = z.enum(['players_first', 'uploaded_first', 'mixed'])
 const wstQuoteSourceEnum = z.enum(['player', 'anime', 'both'])
 const wyrChoiceEnum = z.enum(['a', 'b'])
 const participantGenderEnum = z.enum(['male', 'female'])
@@ -84,10 +87,14 @@ export const createGameSchema = z.object({
   pair_vote_mode: pairVoteModeEnum.optional(),
   question_source: questionSourceEnum.optional(),
   custom_questions: z.array(z.unknown()).optional().nullable(),
+  player_questions_enabled: z.boolean().optional(),
+  player_questions_order: playerQuestionsOrderEnum.optional(),
   game_type: gameTypeEnum.optional(),
   theme: themeEnum.optional(),
   wst_quote_source: wstQuoteSourceEnum.optional(),
   participant_filter: participantFilterEnum.optional(),
+  gender_based: z.boolean().optional(),
+  max_players: z.coerce.number().int().min(2).max(15).optional(),
   custom_slots: z
     .object({
       slots: z
@@ -102,6 +109,7 @@ export const createGameSchema = z.object({
         .min(2)
         .max(5),
       title: sanitizedString(1, 100),
+      gender_based: z.boolean().optional(),
     })
     .optional()
     .nullable(),
@@ -127,6 +135,10 @@ export const updateGameSchema = z.object({
   rounds_count: z.coerce.number().int().min(1, 'rounds_count is required').optional(),
   timer_seconds: z.coerce.number().optional(),
   participant_filter: participantFilterEnum.optional(),
+  gender_based: z.boolean().optional(),
+  pair_vote_mode: pairVoteModeEnum.optional(),
+  player_questions_enabled: z.boolean().optional(),
+  player_questions_order: playerQuestionsOrderEnum.optional(),
 })
 
 export type UpdateGameInput = z.infer<typeof updateGameSchema>
@@ -195,11 +207,11 @@ export type DeleteParticipantInput = z.infer<typeof deleteParticipantSchema>
 
 export const createPlayerSchema = z.object({
   gameCode: gameCodeString(),
-  playerName: sanitizedString(1, 50).optional(),
-  gender: playerGenderEnum.or(z.string()).optional(),
-  pollGender: participantGenderEnum.or(z.string()).optional(),
-  identityGender: participantGenderEnum.or(z.string()).optional(),
-  participantId: uuidString('participantId').optional(),
+  playerName: sanitizedString(1, 50).nullish(),
+  gender: playerGenderEnum.or(z.string()).nullish(),
+  pollGender: participantGenderEnum.or(z.string()).nullish(),
+  identityGender: participantGenderEnum.or(z.string()).nullish(),
+  participantId: uuidString('participantId').nullish(),
 })
 
 export type CreatePlayerInput = z.infer<typeof createPlayerSchema>
@@ -267,6 +279,44 @@ export const createConfessionSchema = z.object({
 export type CreateConfessionInput = z.infer<typeof createConfessionSchema>
 
 // ---------------------------------------------------------------------------
+// Anonymous messages (POST /api/anonymous-messages)
+// ---------------------------------------------------------------------------
+
+export const createAnonymousMessageSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  text: sanitizedString(1, 500),
+  replyToId: uuidString('replyToId').optional(),
+})
+
+export type CreateAnonymousMessageInput = z.infer<typeof createAnonymousMessageSchema>
+
+export const deleteAnonymousMessageSchema = z.object({
+  gameId: gameCodeString(),
+  messageId: uuidString('messageId'),
+  hostToken: hostTokenString(),
+})
+
+export type DeleteAnonymousMessageInput = z.infer<typeof deleteAnonymousMessageSchema>
+
+export const anonymousRoomBanSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  hostToken: hostTokenString(),
+  durationMinutes: z.coerce.number().int().min(1).max(120),
+})
+
+export type AnonymousRoomBanInput = z.infer<typeof anonymousRoomBanSchema>
+
+export const anonymousRoomUnbanSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  hostToken: hostTokenString(),
+})
+
+export type AnonymousRoomUnbanInput = z.infer<typeof anonymousRoomUnbanSchema>
+
+// ---------------------------------------------------------------------------
 // Quote (POST /api/quote)
 // ---------------------------------------------------------------------------
 
@@ -319,6 +369,40 @@ export const hotSeatSubmissionSchema = z.object({
 })
 
 export type HotSeatSubmissionInput = z.infer<typeof hotSeatSubmissionSchema>
+
+// ---------------------------------------------------------------------------
+// App feedback (POST /api/feedback)
+// ---------------------------------------------------------------------------
+
+const feedbackGameTypeEnum = z.enum([
+  'general',
+  'smash_marry_kill',
+  'red_flag_green_flag',
+  'smash_or_pass',
+  'would_you_rather',
+  'this_or_that',
+  'most_likely_to',
+  'who_said_this',
+  'hot_seat',
+  'custom',
+  'anonymous_messages',
+])
+
+const feedbackCategoryEnum = z.enum(['bug', 'feature', 'improvement', 'other'])
+
+export const createAppFeedbackSchema = z.object({
+  gameType: feedbackGameTypeEnum,
+  category: feedbackCategoryEnum,
+  message: sanitizedString(10, 2000),
+  pageUrl: z
+    .string()
+    .max(500)
+    .optional()
+    .nullable()
+    .transform((s) => (s ? stripHtml(s.trim()) : null)),
+})
+
+export type CreateAppFeedbackInput = z.infer<typeof createAppFeedbackSchema>
 
 // ---------------------------------------------------------------------------
 // Re-exports for convenience

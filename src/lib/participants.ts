@@ -1,17 +1,21 @@
 import {
   roundPoolSize,
   isWouldYouRather,
+  isBinaryChoiceGame,
+  isThisOrThat,
   isMostLikelyTo,
   isWhoSaidThis,
   isHotSeat,
   isLobbyGame,
   isNameOnlyPlayerJoin,
+  isCustomGame,
   parseGameType,
 } from '@/lib/game-types'
+import { supportsGenderToggle, isGameGenderBased, defaultGenderBasedForType, isGenderFreeVoting } from '@/lib/gender-based'
 import { HOT_SEAT_MIN_PLAYERS, HOT_SEAT_MAX_ROUNDS_CAP } from '@/lib/hot-seat'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
-import type { GameType, ParticipantMode } from '@/types'
+import type { CustomSlotsConfig, GameType, ParticipantMode } from '@/types'
 
 export type ParticipantGender = 'male' | 'female'
 export type PlayerGender = 'male' | 'female' | 'both'
@@ -69,15 +73,38 @@ export function parseParticipantRows(text: string): ParticipantInput[] {
   return rows
 }
 
-/** Smash / pair / KMK need gender for same-gender rounds. Name-only lobby games, WST & Hot Seat do not. */
+/** Smash / pair / KMK need gender when gender_based is on. Name-only lobby games, WST & Hot Seat never do. */
 export function participantsNeedGender(gameType?: GameType | string): boolean {
   const type = parseGameType(gameType)
-  return !isNameOnlyPlayerJoin(type) && !isWhoSaidThis(type) && !isHotSeat(type)
+  if (!supportsGenderToggle(type)) {
+    return !isNameOnlyPlayerJoin(type) && !isWhoSaidThis(type) && !isHotSeat(type) && !isCustomGame(type)
+  }
+  return defaultGenderBasedForType(type)
+}
+
+export function participantsNeedGenderForGame(
+  gameType?: GameType | string,
+  opts?: { genderBased?: boolean; customSlots?: CustomSlotsConfig | null; game?: Pick<
+    import('@/types').Game,
+    'game_type' | 'gender_based' | 'custom_slots'
+  > | null }
+): boolean {
+  if (opts?.game) return isGameGenderBased(opts.game)
+  const type = parseGameType(gameType)
+  if (!supportsGenderToggle(type)) {
+    return !isNameOnlyPlayerJoin(type) && !isWhoSaidThis(type) && !isHotSeat(type) && !isCustomGame(type)
+  }
+  if (opts?.genderBased !== undefined) return opts.genderBased
+  if (isCustomGame(type)) return opts?.customSlots?.gender_based === true
+  return defaultGenderBasedForType(type)
 }
 
 /** Whether the join screen should ask for gender / vote preference. */
-export function playerJoinNeedsGender(gameType?: GameType | string): boolean {
-  return participantsNeedGender(gameType)
+export function playerJoinNeedsGender(
+  gameType?: GameType | string,
+  opts?: Parameters<typeof participantsNeedGenderForGame>[1]
+): boolean {
+  return participantsNeedGenderForGame(gameType, opts)
 }
 
 /** Parse name-only rows (one name per line or single CSV column). Gender defaults for DB storage. */
@@ -101,8 +128,12 @@ export function parseNameOnlyRows(text: string): ParticipantInput[] {
 }
 
 /** Parse upload/paste text — gender required or optional depending on game type. */
-export function parseParticipantsForGame(text: string, gameType?: GameType | string): ParticipantInput[] {
-  if (participantsNeedGender(gameType)) {
+export function parseParticipantsForGame(
+  text: string,
+  gameType?: GameType | string,
+  opts?: Parameters<typeof participantsNeedGenderForGame>[1]
+): ParticipantInput[] {
+  if (participantsNeedGenderForGame(gameType, opts)) {
     return parseParticipantRows(text)
   }
   const withGender = parseParticipantRows(text)
@@ -110,15 +141,21 @@ export function parseParticipantsForGame(text: string, gameType?: GameType | str
   return parseNameOnlyRows(text)
 }
 
-export function participantUploadHint(gameType?: GameType | string): string {
-  if (participantsNeedGender(gameType)) {
+export function participantUploadHint(
+  gameType?: GameType | string,
+  opts?: Parameters<typeof participantsNeedGenderForGame>[1]
+): string {
+  if (participantsNeedGenderForGame(gameType, opts)) {
     return '.csv or .xlsx — name + gender columns'
   }
   return '.csv or .xlsx — names only (one per row)'
 }
 
-export function participantSampleFile(gameType?: GameType | string): { href: string; download: string } {
-  if (participantsNeedGender(gameType)) {
+export function participantSampleFile(
+  gameType?: GameType | string,
+  opts?: Parameters<typeof participantsNeedGenderForGame>[1]
+): { href: string; download: string } {
+  if (participantsNeedGenderForGame(gameType, opts)) {
     return { href: '/participants-sample.csv', download: 'participants-sample.csv' }
   }
   return { href: '/participants-sample-names.csv', download: 'participants-sample-names.csv' }
@@ -147,6 +184,15 @@ export interface ParticipantModeOption {
 export function participantModeOptions(gameType?: GameType | string): ParticipantModeOption[] {
   if (isWhoSaidThis(gameType) || isHotSeat(gameType)) {
     return [
+      ...(isHotSeat(gameType)
+        ? [
+            {
+              value: 'joiners' as const,
+              label: 'Join & play',
+              hint: 'Players enter their name when joining — no list to upload.',
+            },
+          ]
+        : []),
       {
         value: 'import',
         label: 'Import list',
@@ -165,7 +211,7 @@ export function participantModeOptions(gameType?: GameType | string): Participan
         hint: 'Players join and pick a friend for each prompt — no list to upload.',
       },
       {
-        value: 'import',
+        value: 'voters',
         label: 'Import list',
         hint: 'Upload names for the poll — players join separately to vote.',
       },
@@ -179,6 +225,11 @@ export function participantModeOptions(gameType?: GameType | string): Participan
       hint: 'Everyone who joins is in the poll — no list to upload.',
     },
     {
+      value: 'voters',
+      label: 'Import list — vote only',
+      hint: 'Upload names for the poll — friends join with their own name to vote.',
+    },
+    {
       value: 'import',
       label: 'Pre-set roster',
       hint: 'Upload names first — players claim their name from the list when they join.',
@@ -186,7 +237,10 @@ export function participantModeOptions(gameType?: GameType | string): Participan
   ]
 }
 
-export function participantImportStepHint(gameType?: GameType | string): string {
+export function participantImportStepHint(
+  gameType?: GameType | string,
+  opts?: Parameters<typeof participantsNeedGenderForGame>[1]
+): string {
   if (isWhoSaidThis(gameType)) {
     return 'Add everyone in the group — each player claims their name when joining, then takes turns writing quotes.'
   }
@@ -195,6 +249,26 @@ export function participantImportStepHint(gameType?: GameType | string): string 
   }
   if (isMostLikelyTo(gameType)) {
     return 'Add everyone who can be voted for — players join separately to vote.'
+  }
+  if (isCustomGame(gameType)) {
+    return participantsNeedGenderForGame(gameType, opts)
+      ? 'Add names and genders — these appear in rounds; players join separately to vote.'
+      : "Add everyone's names — these appear in rounds; players join separately to vote."
+  }
+  return participantsNeedGenderForGame(gameType, opts)
+    ? 'Add names and genders — these appear in rounds; players join separately to vote.'
+    : "Add everyone's names — these appear in rounds; players join separately to vote."
+}
+
+/** Hint when host uploads a claim-from-list roster (not voter-only). */
+export function participantClaimRosterHint(
+  gameType?: GameType | string,
+  opts?: Parameters<typeof participantsNeedGenderForGame>[1]
+): string {
+  if (isCustomGame(gameType)) {
+    return participantsNeedGenderForGame(gameType, opts)
+      ? 'Add names and genders — each player picks their name from this list when joining.'
+      : "Add everyone's names — each player picks their name from this list when joining."
   }
   return 'Add names and genders — each player picks their name from this list when joining.'
 }
@@ -209,12 +283,35 @@ export function countByGender(participants: ParticipantInput[]): Record<Particip
   )
 }
 
-export function hasEnoughForRounds(participants: ParticipantInput[], gameType?: GameType | string): boolean {
-  if (isWouldYouRather(gameType)) return true
+export type ParticipantGameOpts = Parameters<typeof participantsNeedGenderForGame>[1]
+
+/** Min names in the pool to run a round (respects custom slot count from game or customSlots opts). */
+export function minPoolForGame(gameType?: GameType | string, opts?: ParticipantGameOpts): number {
+  if (isCustomGame(gameType)) {
+    const slots = opts?.customSlots?.slots?.length ?? opts?.game?.custom_slots?.slots?.length
+    if (slots) return Math.max(slots, 2)
+  }
+  return roundPoolSize(gameType)
+}
+
+export function hasEnoughForRounds(
+  participants: ParticipantInput[],
+  gameType?: GameType | string,
+  opts?: ParticipantGameOpts
+): boolean {
+  if (isBinaryChoiceGame(gameType)) return true
   if (isHotSeat(gameType)) return participants.length >= HOT_SEAT_MIN_PLAYERS
   if (isMostLikelyTo(gameType)) return participants.length >= roundPoolSize(gameType)
   if (isWhoSaidThis(gameType)) return participants.length >= 2
-  const min = roundPoolSize(gameType)
+  const genderBased = participantsNeedGenderForGame(gameType, opts)
+  const min = minPoolForGame(gameType, opts)
+  if (isCustomGame(gameType) || supportsGenderToggle(gameType)) {
+    if (!genderBased) return participants.length >= min
+  }
+  if (isCustomGame(gameType)) {
+    const counts = countByGender(participants)
+    return counts.male >= min || counts.female >= min
+  }
   const counts = countByGender(participants)
   return counts.male >= min || counts.female >= min
 }
@@ -230,12 +327,21 @@ export function kmkRoundPickerOptions(maxRounds: number): number[] {
 }
 
 /** Max rounds before the same names repeat heavily. */
-export function maxRecommendedRounds(participants: ParticipantInput[], gameType?: GameType | string): number {
-  if (isWouldYouRather(gameType)) return Math.min(20, WYR_QUESTION_COUNT)
+export function maxRecommendedRounds(
+  participants: ParticipantInput[],
+  gameType?: GameType | string,
+  genderBased = true,
+  opts?: ParticipantGameOpts
+): number {
+  if (isWouldYouRather(gameType)) return WYR_QUESTION_COUNT
+  if (isThisOrThat(gameType)) return 0
   if (isHotSeat(gameType)) return participants.length >= HOT_SEAT_MIN_PLAYERS ? participants.length : 0
-  if (isMostLikelyTo(gameType)) return Math.min(20, MLT_QUESTION_COUNT)
+  if (isMostLikelyTo(gameType)) return MLT_QUESTION_COUNT
   if (isWhoSaidThis(gameType)) return Math.min(20, Math.max(participants.length, 2))
-  const perRound = roundPoolSize(gameType)
+  const perRound = minPoolForGame(gameType, opts)
+  if (!genderBased) {
+    return participants.length >= perRound ? Math.min(20, Math.floor(participants.length / perRound)) : 0
+  }
   const counts = countByGender(participants)
   const maleRounds = Math.floor(counts.male / perRound)
   const femaleRounds = Math.floor(counts.female / perRound)
@@ -247,20 +353,31 @@ export function maxRecommendedRounds(participants: ParticipantInput[], gameType?
   return 0
 }
 
-export function roundLimitHint(participants: ParticipantInput[], gameType?: GameType | string): string | null {
+export function roundLimitHint(
+  participants: ParticipantInput[],
+  gameType?: GameType | string,
+  genderBased = true,
+  opts?: ParticipantGameOpts
+): string | null {
   if (isWouldYouRather(gameType)) {
-    return `${WYR_QUESTION_COUNT} questions available → up to ${Math.min(20, WYR_QUESTION_COUNT)} rounds`
+    return `${WYR_QUESTION_COUNT} questions available → up to ${WYR_QUESTION_COUNT} rounds`
   }
+  if (isThisOrThat(gameType)) return null
   if (isHotSeat(gameType)) {
     if (participants.length < HOT_SEAT_MIN_PLAYERS) return null
     return `Up to ${participants.length} rounds (one per player who joins) — set a max cap below`
   }
   if (isMostLikelyTo(gameType)) {
-    return `${MLT_QUESTION_COUNT} prompts available → up to ${Math.min(20, MLT_QUESTION_COUNT)} rounds`
+    return `${MLT_QUESTION_COUNT} prompts available → up to ${MLT_QUESTION_COUNT} rounds`
   }
-  const min = roundPoolSize(gameType)
+  const min = minPoolForGame(gameType, opts)
+  if (!genderBased) {
+    const max = maxRecommendedRounds(participants, gameType, false, opts)
+    if (max === 0) return null
+    return `${participants.length} names → up to ${max} rounds`
+  }
   const counts = countByGender(participants)
-  const max = maxRecommendedRounds(participants, gameType)
+  const max = maxRecommendedRounds(participants, gameType, true, opts)
   if (max === 0) return null
   if (counts.male >= min && counts.female >= min) {
     return `${counts.male} male · ${counts.female} female → up to ${max} rounds`
@@ -388,12 +505,11 @@ export function joinChoicesFromPlayerGender(
 export function joinGenderHint(
   identity: ParticipantGender,
   voteBoth: boolean,
-  isJoinersMode: boolean,
-  pollGender?: ParticipantGender
+  isJoinersMode: boolean
 ): string {
   if (voteBoth) {
     return isJoinersMode
-      ? `You'll vote every round — your name is in the ${pollGender === 'male' ? "men's" : "women's"} poll`
+      ? `You'll vote every round — your name is in the ${identity === 'male' ? "men's" : "women's"} poll`
       : "You'll vote on both men's and women's rounds"
   }
   const opposite = identity === 'male' ? "women's" : "men's"
@@ -461,8 +577,14 @@ export function eligibleVotersForRound<
     identity_gender?: ParticipantGender | string | null
     name: string
   },
->(roundGender: ParticipantGender | null, players: T[], gameType?: GameType | string): T[] {
+>(
+  roundGender: ParticipantGender | null,
+  players: T[],
+  gameType?: GameType | string,
+  game?: Pick<import('@/types').Game, 'game_type' | 'gender_based' | 'custom_slots'> | null
+): T[] {
   if (isLobbyGame(gameType) || isMostLikelyTo(gameType)) return players
+  if (game && isGenderFreeVoting(game)) return players
   if (!roundGender) return []
   return players.filter((p) => {
     const g = playerVoteGenderForRound(p)
@@ -559,7 +681,8 @@ export function participantsInGenderRounds<T extends { id: string; gender: Parti
 /** Parse first sheet of an Excel workbook (ArrayBuffer). */
 export async function parseExcelParticipants(
   buffer: ArrayBuffer,
-  gameType?: GameType | string
+  gameType?: GameType | string,
+  opts?: Parameters<typeof participantsNeedGenderForGame>[1]
 ): Promise<ParticipantInput[]> {
   const XLSX = await import('xlsx')
   const workbook = XLSX.read(buffer, { type: 'array' })
@@ -577,5 +700,5 @@ export async function parseExcelParticipants(
     .filter(Boolean)
     .join('\n')
 
-  return parseParticipantsForGame(lines, gameType)
+  return parseParticipantsForGame(lines, gameType, opts)
 }

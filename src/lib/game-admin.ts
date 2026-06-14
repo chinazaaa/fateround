@@ -47,9 +47,12 @@ export async function deleteJoinerPair(supabase: SupabaseClient, gameId: string,
 export function pollGenderForPlayer(
   voteGender: 'male' | 'female' | 'both',
   rawPollGender: string | undefined,
-  fallback: ParticipantGender
+  fallback: ParticipantGender,
+  identityGender?: ParticipantGender | null
 ): ParticipantGender | null {
-  if (voteGender === 'both') return normalizeGender(String(rawPollGender ?? ''))
+  if (voteGender === 'both') {
+    return normalizeGender(String(rawPollGender ?? '')) ?? identityGender ?? fallback
+  }
   return voteGender
 }
 

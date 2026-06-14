@@ -11,9 +11,9 @@ create table if not exists games (
   anonymous boolean not null default true,
   auto_reveal boolean not null default true,
   auto_submit_behavior text not null default 'no_answer',
-  participant_mode text not null default 'import' check (participant_mode in ('import', 'joiners')),
+  participant_mode text not null default 'import' check (participant_mode in ('import', 'joiners', 'voters')),
   participant_filter text not null default 'all' check (participant_filter in ('all', 'joined')),
-  pair_vote_mode text not null default 'any' check (pair_vote_mode in ('any', 'one_each')),
+  pair_vote_mode text not null default 'one_each' check (pair_vote_mode in ('any', 'one_each')),
   question_source text not null default 'platform' check (question_source in ('platform', 'custom')),
   custom_questions jsonb,
   game_type text not null default 'smash_marry_kill' check (game_type in ('smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'would_you_rather', 'most_likely_to', 'who_said_this', 'hot_seat')),
@@ -151,6 +151,30 @@ create table if not exists confessions (
 );
 create index if not exists idx_confessions_game_id on confessions(game_id);
 
+-- App feedback (site-wide product feedback)
+create table if not exists app_feedback (
+  id uuid primary key default gen_random_uuid(),
+  game_type text not null default 'general'
+    check (game_type in (
+      'general',
+      'smash_marry_kill',
+      'red_flag_green_flag',
+      'smash_or_pass',
+      'would_you_rather',
+      'this_or_that',
+      'most_likely_to',
+      'who_said_this',
+      'hot_seat',
+      'custom'
+    )),
+  category text not null
+    check (category in ('bug', 'feature', 'improvement', 'other')),
+  message text not null,
+  page_url text,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_app_feedback_created_at on app_feedback(created_at desc);
+
 -- Row Level Security (permissive — no auth required for this game)
 alter table games enable row level security;
 alter table participants enable row level security;
@@ -158,6 +182,7 @@ alter table players enable row level security;
 alter table rounds enable row level security;
 alter table votes enable row level security;
 alter table confessions enable row level security;
+alter table app_feedback enable row level security;
 
 create policy "public_games"        on games        for all to anon using (true) with check (true);
 create policy "public_participants" on participants  for all to anon using (true) with check (true);
@@ -165,6 +190,7 @@ create policy "public_players"      on players      for all to anon using (true)
 create policy "public_rounds"       on rounds       for all to anon using (true) with check (true);
 create policy "public_votes"        on votes        for all to anon using (true) with check (true);
 create policy "public_confessions"  on confessions  for all to anon using (true) with check (true);
+create policy "public_app_feedback_insert" on app_feedback for insert to anon with check (true);
 
 -- Player-submitted questions (lobby phase, WYR/MLT only)
 create table if not exists player_questions (
@@ -260,3 +286,10 @@ create policy "public_hot_seat_submissions" on hot_seat_submissions for all to a
 -- ============================================================================
 
 ALTER TABLE games ADD COLUMN IF NOT EXISTS custom_slots jsonb;
+
+ALTER TABLE games ADD COLUMN IF NOT EXISTS gender_based boolean NOT NULL DEFAULT true;
+
+-- If upgrading:
+-- alter table games add column if not exists gender_based boolean not null default true;
+-- alter table games drop constraint if exists games_game_type_check;
+-- alter table games add constraint games_game_type_check check (game_type in ('smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'would_you_rather', 'most_likely_to', 'who_said_this', 'hot_seat', 'custom'));

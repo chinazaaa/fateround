@@ -1,4 +1,4 @@
-import type { GameType, VoteAssignment, PairFlag, PairAssignmentMap, PairVoteMode, ParticipantMode } from '@/types'
+import type { Game, GameType, VoteAssignment, PairFlag, PairAssignmentMap, PairVoteMode, ParticipantMode } from '@/types'
 
 export type VoteSlot = 'kiss' | 'marry' | 'kill'
 /** Tally keys — `smash` counts the kill slot (Red Flag / Kill). */
@@ -204,6 +204,48 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  this_or_that: {
+    id: 'this_or_that',
+    label: 'This or That',
+    tagline: 'Pick between two options — upload your own prompts',
+    headerEmoji: '↔️🎯',
+    card: {
+      accent: '#f472b6',
+      accentSoft: 'rgba(244, 114, 182, 0.15)',
+      emoji: '↔️',
+      players: '2+ players',
+      vibe: 'Quick picks',
+    },
+    slots: {
+      kiss: {
+        emoji: 'A',
+        label: 'Option A',
+        color: '#f472b6',
+        leaderboardLabel: 'Option A',
+        activeClass: 'bg-pink-500/20 text-pink-100 border-pink-400',
+        borderClass: 'border-pink-500/50 bg-pink-500/10',
+        textColor: '#f9a8d4',
+      },
+      marry: {
+        emoji: 'B',
+        label: 'Option B',
+        color: '#38bdf8',
+        leaderboardLabel: 'Option B',
+        activeClass: 'bg-sky-500/20 text-sky-100 border-sky-400',
+        borderClass: 'border-sky-500/50 bg-sky-500/10',
+        textColor: '#7dd3fc',
+      },
+      kill: {
+        emoji: 'B',
+        label: 'Option B',
+        color: '#38bdf8',
+        leaderboardLabel: 'Option B',
+        activeClass: 'bg-sky-500/20 text-sky-100 border-sky-400',
+        borderClass: 'border-sky-500/50 bg-sky-500/10',
+        textColor: '#7dd3fc',
+      },
+    },
+  },
   most_likely_to: {
     id: 'most_likely_to',
     label: 'Most Likely To',
@@ -373,6 +415,48 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  anonymous_messages: {
+    id: 'anonymous_messages',
+    label: 'Anonymous Room',
+    tagline: 'Drop anonymous messages — no names, just vibes',
+    headerEmoji: '🎭💬',
+    card: {
+      accent: '#8b5cf6',
+      accentSoft: 'rgba(139, 92, 246, 0.15)',
+      emoji: '🎭',
+      players: '2+ players',
+      vibe: 'Anonymous chat',
+    },
+    slots: {
+      kiss: {
+        emoji: '💬',
+        label: 'Message',
+        color: '#8b5cf6',
+        leaderboardLabel: 'Messages',
+        activeClass: 'bg-violet-500/20 text-violet-100 border-violet-400',
+        borderClass: 'border-violet-500/50 bg-violet-500/10',
+        textColor: '#c4b5fd',
+      },
+      marry: {
+        emoji: '💬',
+        label: 'Message',
+        color: '#8b5cf6',
+        leaderboardLabel: 'Messages',
+        activeClass: 'bg-violet-500/20 text-violet-100 border-violet-400',
+        borderClass: 'border-violet-500/50 bg-violet-500/10',
+        textColor: '#c4b5fd',
+      },
+      kill: {
+        emoji: '💬',
+        label: 'Message',
+        color: '#8b5cf6',
+        leaderboardLabel: 'Messages',
+        activeClass: 'bg-violet-500/20 text-violet-100 border-violet-400',
+        borderClass: 'border-violet-500/50 bg-violet-500/10',
+        textColor: '#c4b5fd',
+      },
+    },
+  },
 }
 
 export const GAME_TYPE_OPTIONS: GameType[] = [
@@ -380,20 +464,24 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'red_flag_green_flag',
   'smash_or_pass',
   'would_you_rather',
+  'this_or_that',
   'most_likely_to',
   'who_said_this',
   'hot_seat',
   'custom',
+  'anonymous_messages',
 ]
 
 export function parseGameType(raw: unknown): GameType {
   if (raw === 'red_flag_green_flag') return 'red_flag_green_flag'
   if (raw === 'smash_or_pass') return 'smash_or_pass'
   if (raw === 'would_you_rather') return 'would_you_rather'
+  if (raw === 'this_or_that') return 'this_or_that'
   if (raw === 'most_likely_to') return 'most_likely_to'
   if (raw === 'who_said_this') return 'who_said_this'
   if (raw === 'hot_seat') return 'hot_seat'
   if (raw === 'custom') return 'custom'
+  if (raw === 'anonymous_messages') return 'anonymous_messages'
   return 'smash_marry_kill'
 }
 
@@ -414,28 +502,44 @@ export function gameHowItWorks(
       return "Upload everyone's names on the next step. Players claim their name when joining, then submit a quote and who said it in the lobby. Only quotes in the pool become rounds — if 5 of 10 submit, that's 5 rounds."
     case 'would_you_rather':
       return 'Players join with any name — no list to set up. Each round shows two options and everyone picks A or B. Votes stay anonymous.'
+    case 'this_or_that':
+      return 'Upload your own “Coffee or Tea?” style prompts. Players join with any name — each round shows two options and everyone picks A or B. Votes stay anonymous.'
     case 'hot_seat':
-      return "Upload everyone's names on the next step. Players claim their name when joining. One round per player who joins — you set a max cap; the host lobby shows the final count."
+      return joiners
+        ? 'Players join with any name — no list to upload. One round per player who joins; you set a max cap and the host lobby shows the final count.'
+        : "Upload everyone's names on the next step. Players claim their name when joining. One round per player who joins — you set a max cap; the host lobby shows the final count."
+    case 'anonymous_messages':
+      return 'Players join with an auto-assigned name — no sign-up. When the host starts, everyone posts anonymous messages that appear live for the whole room.'
     case 'most_likely_to':
       return joiners
         ? 'Players add their name to the poll when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
-        : 'Upload everyone\'s names on the next step. Players claim their name when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
+        : 'Upload everyone\'s names on the next step. Players join with their own name to vote. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
     case 'red_flag_green_flag':
       return joiners
         ? 'Players add their name to the poll when joining. Each round, two names appear — everyone rates each person green flag or red flag.'
-        : "Add everyone's names on the next step. Players claim their name when joining. Each round, two names appear — everyone rates each person green flag or red flag."
+        : participantMode === 'voters'
+          ? "Add names on the next step (celebrities, characters, anyone). Players join with their own name to vote. Each round, two names appear — everyone rates each person green flag or red flag."
+          : "Add everyone's names on the next step. Players claim their name when joining. Each round, two names appear — everyone rates each person green flag or red flag."
     case 'smash_or_pass':
       return joiners
         ? 'Players add their name to the poll when joining. Each round, two names appear — everyone picks smash or pass for each.'
-        : "Add everyone's names on the next step. Players claim their name when joining. Each round, two names appear — everyone picks smash or pass for each."
+        : participantMode === 'voters'
+          ? "Add names on the next step (celebrities, characters, anyone). Players join with their own name to vote. Each round, two names appear — everyone picks smash or pass for each."
+          : "Add everyone's names on the next step. Players claim their name when joining. Each round, two names appear — everyone picks smash or pass for each."
     case 'smash_marry_kill':
     default:
       if (isCustomGame(gameType)) {
-        return "Add everyone's names on the next step. Each round shows a group of names — everyone assigns one person to each custom category."
+        return joiners
+          ? 'Players add their name to the poll when joining. Each round shows a group — everyone assigns one person to each custom category.'
+          : participantMode === 'voters'
+            ? 'Add names on the next step. Players join with their own name to vote. Each round shows a group — everyone assigns one person to each custom category.'
+            : "Add everyone's names on the next step. Players claim their name when joining. Each round shows a group — everyone assigns one person to each custom category."
       }
       return joiners
         ? 'Players add their name to the poll when joining. Each round, three names appear — everyone picks one to smash, one to marry, and one to kill.'
-        : "Add everyone's names on the next step. Players claim their name when joining. Each round, three names appear — everyone picks one to smash, one to marry, and one to kill."
+        : participantMode === 'voters'
+          ? 'Add names on the next step. Players join with their own name to vote. Each round, three names appear — everyone picks one to smash, one to marry, and one to kill.'
+          : "Add everyone's names on the next step. Players claim their name when joining. Each round, three names appear — everyone picks one to smash, one to marry, and one to kill."
   }
 }
 
@@ -446,7 +550,7 @@ export function isPairGame(gameType: GameType | string | undefined): boolean {
 }
 
 export function parsePairVoteMode(raw: unknown): PairVoteMode {
-  return raw === 'one_each' ? 'one_each' : 'any'
+  return raw === 'any' ? 'any' : 'one_each'
 }
 
 export function isPairOneEachMode(game: {
@@ -466,14 +570,14 @@ export function pairVoteModeOptions(gameType: GameType | string): {
   const negative = type === 'smash_or_pass' ? 'Pass' : 'Red'
   return [
     {
-      value: 'any',
-      label: 'Any combo',
-      hint: `Players can pick 2 ${positive}, 2 ${negative}, or 1 of each.`,
-    },
-    {
       value: 'one_each',
       label: 'One each',
       hint: `Must pick one ${positive} and one ${negative} every round.`,
+    },
+    {
+      value: 'any',
+      label: 'Any combo',
+      hint: `Players can pick 2 ${positive}, 2 ${negative}, or 1 of each.`,
     },
   ]
 }
@@ -490,17 +594,44 @@ export function isPairAssignmentValid(
 }
 
 export function pairDisabledSlots(
-  pairAssignment: PairAssignmentMap,
+  _pairAssignment: PairAssignmentMap,
+  _participantId: string,
+  _participantIds: string[],
+  _mode: PairVoteMode
+): VoteSlot[] {
+  // Slots are never disabled — one-each uses tap-to-swap instead.
+  return []
+}
+
+/** Assign a pair flag; one-each with 2 people swaps with the other voter. */
+export function assignPairSlot(
+  prev: PairAssignmentMap,
   participantId: string,
+  action: PairFlag,
   participantIds: string[],
   mode: PairVoteMode
-): VoteSlot[] {
-  if (mode !== 'one_each' || participantIds.length !== 2) return []
-  const otherId = participantIds.find((id) => id !== participantId)
-  if (!otherId) return []
-  const other = pairAssignment[otherId]
-  if (other === 'kiss' || other === 'kill') return [other]
-  return []
+): PairAssignmentMap {
+  if (prev[participantId] === action) {
+    const next = { ...prev }
+    delete next[participantId]
+    return next
+  }
+
+  if (mode === 'any') {
+    return { ...prev, [participantId]: action }
+  }
+
+  const next = { ...prev }
+  const myCurrent = prev[participantId]
+  const holderId = Object.entries(prev).find(([id, flag]) => flag === action && id !== participantId)?.[0]
+
+  if (holderId) {
+    if (myCurrent) next[holderId] = myCurrent
+    else delete next[holderId]
+  }
+
+  next[participantId] = action
+  return next
 }
 
 export function fillRandomPairAssignment(participantIds: string[], mode: PairVoteMode): PairAssignmentMap {
@@ -548,6 +679,15 @@ export function isWouldYouRather(gameType: GameType | string | undefined): boole
   return parseGameType(gameType) === 'would_you_rather'
 }
 
+export function isThisOrThat(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'this_or_that'
+}
+
+/** WYR + This or That — pick option A or B each round. */
+export function isBinaryChoiceGame(gameType: GameType | string | undefined): boolean {
+  return isWouldYouRather(gameType) || isThisOrThat(gameType)
+}
+
 export function isMostLikelyTo(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'most_likely_to'
 }
@@ -562,37 +702,40 @@ export function isHotSeat(gameType: GameType | string | undefined): boolean {
 
 type LobbyCounts = { participantMode?: string; participantCount: number }
 
-/** WYR + MLT player join: free name entry, no list. Hot Seat uses import + name claim (see isImportNameClaimGame). */
+/** WYR + MLT + This or That player join: free name entry, no list. Hot Seat uses import + name claim (see isImportNameClaimGame). */
 export function isNameOnlyPlayerJoin(gameType: GameType | string | undefined): boolean {
   const type = parseGameType(gameType)
-  return type === 'would_you_rather' || type === 'most_likely_to'
+  return type === 'would_you_rather' || type === 'this_or_that' || type === 'most_likely_to'
 }
 
-/** Import list + claim your name when joining (no gender) — Who Said This & Hot Seat. */
+/** Import list + claim your name when joining (no gender) — Who Said This & Hot Seat (import mode). */
 export function isImportNameClaimGame(gameType: GameType | string | undefined): boolean {
   return isWhoSaidThis(gameType) || isHotSeat(gameType)
 }
 
-/**
- * Hot Seat host lobby — import list + claim flow, or legacy joiners games created before import mode.
- */
-export function isHotSeatLobbyGame(gameType: GameType | string | undefined, opts: LobbyCounts): boolean {
-  if (!isHotSeat(gameType)) return false
-  if ((opts.participantMode ?? 'import') === 'import') return true
-  const joiners = opts.participantMode === 'joiners'
-  return joiners && opts.participantCount === 0
+/** Hot Seat — players join with any name, no host list. */
+export function isHotSeatJoinersGame(game: Pick<Game, 'game_type' | 'participant_mode'>): boolean {
+  return isHotSeat(game.game_type) && (game.participant_mode ?? 'import') === 'joiners'
 }
 
-/** Host lobby where players join by name only — no participant rows (WYR, MLT joiners). */
+/**
+ * Hot Seat host lobby — import list + claim, or joiners (free name entry).
+ */
+export function isHotSeatLobbyGame(gameType: GameType | string | undefined, _opts?: LobbyCounts): boolean {
+  return isHotSeat(gameType)
+}
+
+/** Host lobby where players join by name only — no participant rows from a host list. */
 export function isPlayerOnlyJoinLobby(gameType: GameType | string | undefined, opts: LobbyCounts): boolean {
-  if (isHotSeat(gameType)) return false
+  if (isHotSeat(gameType) && opts.participantMode === 'joiners') return true
   if (isNameOnlyPlayerJoin(gameType)) return true
   return false
 }
 
-/** Would You Rather — forced joiners, no gender, always anonymous. */
+/** WYR + This or That — forced joiners, no gender, always anonymous. */
 export function isLobbyGame(gameType: GameType | string | undefined): boolean {
-  return parseGameType(gameType) === 'would_you_rather'
+  const type = parseGameType(gameType)
+  return type === 'would_you_rather' || type === 'this_or_that' || type === 'anonymous_messages'
 }
 
 export function isAnonymousGame(gameType: GameType | string | undefined): boolean {
@@ -607,8 +750,17 @@ export function isCustomGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'custom'
 }
 
+export function isAnonymousMessagesGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'anonymous_messages'
+}
+
+/** Auto-assigned display name on join — no name input. */
+export function isAutoNameJoinGame(gameType: GameType | string | undefined): boolean {
+  return isAnonymousMessagesGame(gameType)
+}
+
 export function roundPoolSize(gameType: GameType | string | undefined): 2 | 3 {
-  if (isWouldYouRather(gameType) || isMostLikelyTo(gameType) || isWhoSaidThis(gameType)) return 2
+  if (isBinaryChoiceGame(gameType) || isMostLikelyTo(gameType) || isWhoSaidThis(gameType)) return 2
   return isPairGame(gameType) ? 2 : 3
 }
 

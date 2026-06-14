@@ -19,14 +19,18 @@ import {
   maxRecommendedRounds,
   kmkRoundPickerOptions,
   roundLimitHint,
+  minPoolForGame,
+  parseParticipantGenderFromDb,
 } from '@/lib/participants'
-import type { ParticipantGender } from '@/types'
+import type { ParticipantGender, PairVoteMode, PlayerQuestionsOrder } from '@/types'
 import { tallyRoundVotes, getCategoryMeta, getVoteCategories, tallyWyrVotes, tallyMltVotes } from '@/lib/vote-stats'
 import {
   parseGameType,
   roundPoolSize,
   isPairGame,
   isWouldYouRather,
+  isThisOrThat,
+  isBinaryChoiceGame,
   isMostLikelyTo,
   isWhoSaidThis,
   isHotSeat,
@@ -34,13 +38,37 @@ import {
   isPlayerOnlyJoinLobby,
   isNameOnlyPlayerJoin,
   isCustomGame,
+  isAnonymousMessagesGame,
+  pairVoteModeOptions,
+  parsePairVoteMode,
 } from '@/lib/game-types'
-import { getCustomSlots, tallyCustomVotes, buildCustomLeaderboard } from '@/lib/custom-game'
+import { AnonymousMessagesHostView } from '@/components/anonymous-messages/AnonymousMessagesHostView'
+import {
+  getCustomSlots,
+  tallyCustomVotes,
+  buildCustomLeaderboard,
+  getCustomSlotCount,
+  customPairVoteModeOptions,
+  isCustomTwoSlotGame,
+} from '@/lib/custom-game'
+import { isGameGenderBased, supportsGenderToggle, isGenderFreeVoting } from '@/lib/gender-based'
+import { isVoterOnlyMode } from '@/lib/participant-mode'
 import { CustomRoundResults } from '@/components/CustomRoundResults'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import { isMltImportGame, mltTargetIdFromVote, mltVoteTargets } from '@/lib/mlt'
-import { questionPoolCap, parseQuestionSource, customQuestionCount } from '@/lib/custom-questions'
+import { questionPoolCap, parseQuestionSource, customQuestionCount, questionRoundPickerOptions, clampLobbyQuestionRounds } from '@/lib/custom-questions'
+import {
+  lobbyAllowsPlayerQuestions,
+  playerQuestionsOrderOptions,
+  parsePlayerQuestionsOrder,
+} from '@/lib/player-question-pool'
+import {
+  isPeoplePollGame,
+  lobbyAllowsPlayerNameSubmissions,
+  buildPeoplePollParticipantPool,
+  playerNameSubmissionHint,
+} from '@/lib/player-participant-pool'
 import {
   wstVoteTargets,
   wstCorrectNameFromRound,
@@ -66,7 +94,7 @@ import {
   AnimeWstRoundResults,
   HotSeatRoundResults,
 } from '@/components/VoteResults'
-import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
+import { FinalGenderLeaderboards, FinalGenderBreakdown, FinalOverallLeaderboards, FinalOverallBreakdown } from '@/components/FinalLeaderboard'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import {
   hotSeatEffectiveRounds,
@@ -79,12 +107,14 @@ import {
   hotSeatPlayerDisplayName,
 } from '@/lib/hot-seat'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { AchievementBadges } from '@/components/AchievementBadges'
+import { computeAchievements } from '@/lib/achievements'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import {
-  FINAL_RESULTS_AUTO_REVEAL_SECONDS,
+  finalResultsAutoRevealSeconds,
   msUntilDeadline,
   ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
 } from '@/lib/round-timing'
@@ -123,10 +153,16 @@ export default function HostPage() {
   const [currentRound, setCurrentRound] = useState<Round | null>(null)
   const [lastFinishedRound, setLastFinishedRound] = useState<Round | null>(null)
   const [allRounds, setAllRounds] = useState<Round[]>([])
+  const [allHotSeatSubmissions, setAllHotSeatSubmissions] = useState<
+    { id: string; round_id: string; text: string; submission_type: string }[]
+  >([])
   const [votes, setVotes] = useState<Vote[]>([])
   const [confessions, setConfessions] = useState<Confession[]>([])
 
   const [starting, setStarting] = useState(false)
+  const [savingPairVoteMode, setSavingPairVoteMode] = useState(false)
+  const [savingPlayerQuestions, setSavingPlayerQuestions] = useState(false)
+  const [savingParticipantFilter, setSavingParticipantFilter] = useState(false)
   const [advancing, setAdvancing] = useState(false)
   const [ending, setEnding] = useState(false)
   const [finishing, setFinishing] = useState(false)
@@ -141,6 +177,8 @@ export default function HostPage() {
   const [updatingTimer, setUpdatingTimer] = useState(false)
   const [listSearch, setListSearch] = useState('')
   const [playersSearch, setPlayersSearch] = useState('')
+  const [playerQuestionCount, setPlayerQuestionCount] = useState(0)
+  const [playerNameSubmissionCount, setPlayerNameSubmissionCount] = useState(0)
   const [wstPool, setWstPool] = useState<WstQuotePoolEntry[]>([])
   const [animePool, setAnimePool] = useState<AnimeQuotePoolEntry[]>([])
   const [animeFetching, setAnimeFetching] = useState(false)
@@ -164,7 +202,7 @@ export default function HostPage() {
   )
   const finalRevealCountdown = useDeadlineCountdown(
     lastFinishedRound?.ended_at,
-    FINAL_RESULTS_AUTO_REVEAL_SECONDS,
+    finalResultsAutoRevealSeconds(game?.game_type),
     betweenRounds && isBetweenLastRound && !!game?.auto_reveal
   )
 
@@ -323,20 +361,26 @@ export default function HostPage() {
   }, [gameCode, hostToken])
 
   async function loadResults() {
-    const [{ data: rounds }, { data: vs }, { data: confs }] = await Promise.all([
+    const [{ data: rounds }, { data: vs }, { data: confs }, { data: subs }] = await Promise.all([
       supabase.from('rounds').select('*').eq('game_id', gameCode).order('round_number'),
       supabase.from('votes').select('*').eq('game_id', gameCode),
       supabase.from('confessions').select('*').eq('game_id', gameCode).order('created_at'),
+      supabase
+        .from('hot_seat_submissions')
+        .select('id, round_id, text, submission_type')
+        .eq('game_id', gameCode),
     ])
     setAllRounds(rounds || [])
     setVotes(vs || [])
     setConfessions(confs || [])
+    setAllHotSeatSubmissions(subs ?? [])
   }
 
   function resetHostLobbyState() {
     setCurrentRound(null)
     setLastFinishedRound(null)
     setAllRounds([])
+    setAllHotSeatSubmissions([])
     setVotes([])
     setConfessions([])
     setWstPool([])
@@ -593,16 +637,36 @@ export default function HostPage() {
     if (game?.status !== 'waiting') return
 
     async function refreshLobby() {
-      const [{ data: plrs }, { data: parts }, { data: pool }] = await Promise.all([
+      const gameType = parseGameType(game?.game_type)
+      const fetchPlayerQuestions = isBinaryChoiceGame(gameType) || isMostLikelyTo(gameType)
+      const fetchPlayerNames =
+        isPeoplePollGame(gameType) && game?.participant_mode === 'voters'
+      const [{ data: plrs }, { data: parts }, { data: pool }, { count: pqCount }, { count: pnCount }] =
+        await Promise.all([
         supabase.from('players').select('*').eq('game_id', gameCode).order('joined_at'),
         supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
-        isWhoSaidThis(parseGameType(game?.game_type))
+        isWhoSaidThis(gameType)
           ? supabase.from('wst_quote_pool').select('*').eq('game_id', gameCode).order('created_at')
           : Promise.resolve({ data: null }),
+        fetchPlayerQuestions
+          ? supabase
+              .from('player_questions')
+              .select('id', { count: 'exact', head: true })
+              .eq('game_id', gameCode)
+          : Promise.resolve({ count: 0 }),
+        fetchPlayerNames
+          ? supabase
+              .from('participants')
+              .select('id', { count: 'exact', head: true })
+              .eq('game_id', gameCode)
+              .not('submitted_by_player_id', 'is', null)
+          : Promise.resolve({ count: 0 }),
       ])
       if (plrs) setPlayers(plrs)
       if (parts) setParticipants(parts)
       if (pool) setWstPool(dedupeWstPool(pool))
+      if (fetchPlayerQuestions) setPlayerQuestionCount(pqCount ?? 0)
+      if (fetchPlayerNames) setPlayerNameSubmissionCount(pnCount ?? 0)
     }
 
     refreshLobby()
@@ -627,14 +691,17 @@ export default function HostPage() {
     if (!game.auto_reveal || autoFinishTriggeredRef.current) return
 
     autoFinishTriggeredRef.current = true
-    const delay = msUntilDeadline(lastFinishedRound.ended_at, FINAL_RESULTS_AUTO_REVEAL_SECONDS)
+    const delay = msUntilDeadline(
+      lastFinishedRound.ended_at,
+      finalResultsAutoRevealSeconds(game.game_type)
+    )
     const timer = setTimeout(() => {
       handleFinishGame()
     }, delay)
 
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.status, game?.auto_reveal, game?.rounds_count, currentRound?.id, lastFinishedRound?.id])
+  }, [game?.status, game?.auto_reveal, game?.rounds_count, game?.game_type, currentRound?.id, lastFinishedRound?.id])
 
   useEffect(() => {
     if (!lastFinishedRound || lastFinishedRound.round_number < (game?.rounds_count ?? 0)) {
@@ -732,7 +799,7 @@ export default function HostPage() {
     }
 
     const roundGender = getRoundParticipantGender(currentRound.participant_ids, participants)
-    const eligible = eligibleVotersForRound(roundGender, players, game?.game_type)
+    const eligible = eligibleVotersForRound(roundGender, players, game?.game_type, game)
     if (eligible.length === 0) return
 
     const eligibleIds = new Set(eligible.map((p) => p.id))
@@ -941,6 +1008,35 @@ export default function HostPage() {
     }
   }
 
+  async function hostUpdatePlayerQuestions(patch: {
+    player_questions_enabled?: boolean
+    player_questions_order?: PlayerQuestionsOrder
+  }) {
+    if (savingPlayerQuestions || !game) return
+    const previous = {
+      player_questions_enabled: game.player_questions_enabled,
+      player_questions_order: game.player_questions_order,
+    }
+    setSavingPlayerQuestions(true)
+    setGame((g) => (g ? { ...g, ...patch } : g))
+    try {
+      const res = await fetch(`/api/games/${gameCode}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, ...patch }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setGame((g) => (g ? { ...g, ...previous } : g))
+        toast.error(data.error || 'Failed to save question settings')
+        return
+      }
+      if (data.game) setGame(data.game)
+    } finally {
+      setSavingPlayerQuestions(false)
+    }
+  }
+
   async function hostUpdateRounds(roundsCount: number) {
     if (updatingRounds || game?.rounds_count === roundsCount) return
     const previousCount = game!.rounds_count
@@ -1000,7 +1096,15 @@ export default function HostPage() {
 
   useEffect(() => {
     if (!game || game.status !== 'waiting') return
-    if (!isWhoSaidThis(parseGameType(game.game_type))) return
+    const gameType = parseGameType(game.game_type)
+    if (isBinaryChoiceGame(gameType) || isMostLikelyTo(gameType)) {
+      const max = questionPoolCap(game, playerQuestionCount)
+      if (max > 0 && game.rounds_count > max) {
+        hostUpdateRounds(max)
+      }
+      return
+    }
+    if (!isWhoSaidThis(gameType)) return
     const count = wstPool.length
     if (count === 0) return
     const autoRounds = wstAutoRoundCount(count)
@@ -1008,7 +1112,7 @@ export default function HostPage() {
       hostUpdateRounds(autoRounds)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.status, game?.rounds_count, game?.game_type, wstPool.length])
+  }, [game?.status, game?.rounds_count, game?.game_type, wstPool.length, playerQuestionCount])
 
   async function hostAddParticipant() {
     const name = addName.trim()
@@ -1154,56 +1258,76 @@ export default function HostPage() {
     )
   }
 
+  if (game && isAnonymousMessagesGame(game.game_type)) {
+    return <AnonymousMessagesHostView gameCode={gameCode} hostToken={hostToken} />
+  }
+
   // ── WAITING ───────────────────────────────────────────────────────────────
   if (game?.status === 'waiting') {
     const gameType = parseGameType(game.game_type)
     const isWyr = isWouldYouRather(gameType)
+    const isTot = isThisOrThat(gameType)
+    const isBinaryLobby = isWyr || isTot
     const isMlt = isMostLikelyTo(gameType)
+    const isPeoplePoll = isPeoplePollGame(gameType)
     const isWst = isWhoSaidThis(gameType)
     const isHotSeatGame = isHotSeat(gameType)
     const isMltImport = isMltImportGame(game)
+    const isVoterOnly = isVoterOnlyMode(game)
+    const isPeoplePollVoters = isPeoplePoll && isVoterOnly
     const lobbyOpts = { participantMode: game.participant_mode, participantCount: participants.length }
     const playerOnlyLobby = isPlayerOnlyJoinLobby(gameType, lobbyOpts)
     const hotSeatLobby = isHotSeatLobbyGame(gameType, lobbyOpts)
-    const minPool = roundPoolSize(gameType)
+    const participantOpts = game ? { game } : undefined
+    const minPool = minPoolForGame(gameType, participantOpts)
+    const gameGenderBased = game ? isGameGenderBased(game) : false
+    const supportsGender = supportsGenderToggle(gameType)
+    const isPair = isPairGame(gameType)
+    const isCustomTwoSlot = isCustomTwoSlotGame(game)
+    const showPairVoting = isPair || isCustomTwoSlot
+    const pairVoteMode = parsePairVoteMode(game.pair_vote_mode)
     const isJoinersMode = (game.participant_mode ?? 'import') === 'joiners'
-    const hotSeatLegacyJoiners = isHotSeatGame && isJoinersMode && participants.length === 0
+    const hotSeatLegacyJoiners = isHotSeatGame && isJoinersMode
     const wstSubmitters = wstEligibleSubmitters(players)
     const wstPoolStatus = isWst ? wstQuotePoolStatus(players, wstPool) : null
-    const roundParticipants =
-      isHotSeatGame && !hotSeatLegacyJoiners
+    const roundParticipants = isPeoplePoll
+      ? buildPeoplePollParticipantPool(game, participants, players)
+      : isHotSeatGame && !hotSeatLegacyJoiners
         ? participantsWhoJoined(participants, players)
         : isJoinersMode
           ? participants
-          : isMltImport
+          : isVoterOnly
             ? participants
             : game.participant_filter === 'all'
               ? participants
               : participantsWhoJoined(participants, players)
     const participantInputs = hotSeatLegacyJoiners
       ? players.map((p) => ({ name: p.name, gender: 'female' as ParticipantGender }))
-      : roundParticipants.map((p) => ({ name: p.name, gender: p.gender }))
+      : roundParticipants.map((p) => ({
+          name: p.name,
+          gender: parseParticipantGenderFromDb(String(p.gender)) ?? ('female' as ParticipantGender),
+        }))
     const genderCounts = countByGender(participantInputs)
     const hotSeatJoinedCount = hotSeatLegacyJoiners ? players.length : roundParticipants.length
     const hotSeatCapUpper = hotSeatLobby
       ? hotSeatMaxCapUpperBound(hotSeatJoinedCount, participants.length)
       : HOT_SEAT_MAX_ROUNDS_CAP
     const lobbyQuestionMax =
-      isWyr || isMlt
-        ? questionPoolCap(game)
+      isBinaryLobby || isMlt
+        ? questionPoolCap(game, playerQuestionCount)
         : isWst
           ? wstAutoRoundCount(wstPool.length || wstSubmitters.length)
           : isHotSeatGame
             ? hotSeatCapUpper
-            : maxRecommendedRounds(participantInputs, gameType)
+            : maxRecommendedRounds(participantInputs, gameType, gameGenderBased, participantOpts)
     const maxRounds =
-      isWyr || isMlt
+      isBinaryLobby || isMlt
         ? lobbyQuestionMax
         : isWst
           ? lobbyQuestionMax
           : isHotSeatGame
             ? hotSeatCapUpper
-            : maxRecommendedRounds(participantInputs, gameType)
+            : maxRecommendedRounds(participantInputs, gameType, gameGenderBased, participantOpts)
     const roundsHint = isWst
       ? wstPool.length >= 2
         ? `${wstPool.length} quotes in the pool → ${wstAutoRoundCount(wstPool.length)} rounds`
@@ -1212,22 +1336,38 @@ export default function HostPage() {
           : wstSubmitters.length >= 1
             ? `${wstSubmitters.length} players joined — waiting for quotes in the lobby`
             : 'Players claim a name and submit a quote before start'
-      : isWyr || isMlt
-        ? parseQuestionSource(game.question_source, gameType) === 'custom' && customQuestionCount(game) > 0
-          ? `${customQuestionCount(game)} custom questions → up to ${lobbyQuestionMax} rounds`
-          : isWyr
-            ? `Platform pool → up to ${lobbyQuestionMax} rounds`
-            : `Platform prompts → up to ${lobbyQuestionMax} rounds`
-        : roundLimitHint(participantInputs, gameType)
+          : isBinaryLobby || isMlt
+        ? (() => {
+            const uploaded = customQuestionCount(game)
+            const useCustom =
+              parseQuestionSource(game.question_source, gameType) === 'custom' && uploaded > 0
+            const parts: string[] = []
+            if (useCustom) parts.push(`${uploaded} uploaded`)
+            else if (isTot) parts.push(`${uploaded} custom questions loaded`)
+            else if (isWyr) parts.push('Platform pool')
+            else parts.push('Platform prompts')
+            if (playerQuestionCount > 0 && lobbyAllowsPlayerQuestions(game)) {
+              parts.push(`${playerQuestionCount} from players`)
+            }
+            return `${parts.join(' · ')} → up to ${lobbyQuestionMax} rounds`
+          })()
+        : isPeoplePollVoters
+          ? (() => {
+              const hostCount = participants.filter((p) => !p.submitted_by_player_id).length
+              const parts = [`${hostCount} on list`]
+              if (playerNameSubmissionCount > 0 && lobbyAllowsPlayerNameSubmissions(game)) {
+                parts.push(`${playerNameSubmissionCount} from players`)
+              }
+              return `${parts.join(' · ')} → up to ${maxRounds} rounds`
+            })()
+        : roundLimitHint(participantInputs, gameType, gameGenderBased, participantOpts)
     const hotSeatEffective = hotSeatLobby ? hotSeatEffectiveRounds(hotSeatJoinedCount, game.rounds_count) : 0
     const roundsTooHigh = hotSeatLobby ? false : maxRounds > 0 && game.rounds_count > maxRounds
-    const roundOptions = isWyr
-      ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
-      : isMlt
-        ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
-        : isWst
-          ? [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= lobbyQuestionMax)
-          : kmkRoundPickerOptions(maxRounds)
+    const roundOptions = isBinaryLobby || isMlt
+      ? questionRoundPickerOptions(lobbyQuestionMax)
+      : isWst
+        ? questionRoundPickerOptions(lobbyQuestionMax)
+        : kmkRoundPickerOptions(maxRounds)
     const voterCheck = hasVotersForPolls(roundParticipants, players)
     const wstSource = game?.wst_quote_source ?? 'player'
     const animeQuoteCount = animePool.length
@@ -1241,23 +1381,24 @@ export default function HostPage() {
           : participants.length >= 2 && wstSubmitters.length >= 2 && wstPool.length >= 2
       : hotSeatLobby
         ? hotSeatEffective >= HOT_SEAT_MIN_PLAYERS
-        : isMltImport
-          ? participants.length >= 2 && players.length > 0 && !roundsTooHigh
+        : isVoterOnly
+          ? participants.length >= minPool && players.length > 0 && !roundsTooHigh &&
+            (gameGenderBased ? voterCheck.ok : true)
           : isMlt
             ? players.length >= 2 && !roundsTooHigh
-            : isWyr
-              ? players.length > 0 && !roundsTooHigh
+            : isBinaryLobby
+              ? players.length > 0 && !roundsTooHigh && questionPoolCap(game, playerQuestionCount) > 0
               : isJoinersMode
                 ? players.length > 0 &&
                   participants.length >= minPool &&
-                  hasEnoughForRounds(participantInputs, gameType) &&
+                  hasEnoughForRounds(participantInputs, gameType, participantOpts) &&
                   !roundsTooHigh &&
-                  voterCheck.ok
+                  (gameGenderBased ? voterCheck.ok : true)
                 : players.length > 0 &&
                   roundParticipants.length >= minPool &&
-                  hasEnoughForRounds(participantInputs, gameType) &&
+                  hasEnoughForRounds(participantInputs, gameType, participantOpts) &&
                   !roundsTooHigh &&
-                  voterCheck.ok
+                  (gameGenderBased ? voterCheck.ok : true)
 
     return (
       <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
@@ -1270,25 +1411,31 @@ export default function HostPage() {
                 ? `${hotSeatEffective} rounds · ${game.timer_seconds}s each`
                 : `${game.rounds_count} rounds · ${game.timer_seconds}s each`}
             </p>
-            {(isWyr || isMlt) &&
-              parseQuestionSource(game.question_source, gameType) === 'custom' &&
-              customQuestionCount(game) > 0 && (
-                <p className="text-faint text-xs mt-1">{customQuestionCount(game)} custom questions loaded</p>
+            {((isBinaryLobby || isMlt) &&
+              ((parseQuestionSource(game.question_source, gameType) === 'custom' && customQuestionCount(game) > 0) ||
+                (isTot && playerQuestionCount > 0))) && (
+                <p className="text-faint text-xs mt-1">
+                  {isTot && playerQuestionCount > 0
+                    ? `${customQuestionCount(game)} uploaded · ${playerQuestionCount} from players`
+                    : `${customQuestionCount(game)} custom questions loaded`}
+                </p>
               )}
             <p className="text-[var(--primary)] text-xs mt-1 font-medium">
-              {isMltImport
-                ? 'Most Likely To — everyone on the list is in the poll; players join to vote'
+              {isVoterOnly
+                ? 'Import list — everyone on the list is in the poll; players join to vote'
                 : isMlt
                   ? 'Most Likely To — players join and vote for a friend each round'
                   : isWst
                     ? 'Who Said This — players submit quotes in the lobby, then guess who said each one'
-                    : isWyr
-                      ? 'Would You Rather — players join and pick A or B each round'
+                    : isTot
+                      ? 'This or That — your custom prompts, players pick A or B each round'
+                      : isWyr
+                        ? 'Would You Rather — players join and pick A or B each round'
                       : hotSeatLobby
                         ? 'Hot Seat — upload names, players claim theirs, then take turns in the spotlight'
                         : isJoinersMode
                           ? 'Join & play — joiners are the names in the poll'
-                          : 'Import list — voters join separately'}
+                          : 'Pre-set roster — players claim their name from the list'}
             </p>
           </div>
           <div className="text-right">
@@ -1307,7 +1454,7 @@ export default function HostPage() {
           ) : hotSeatLobby ? (
             <>
               <p className="font-bold text-body text-2xl">{hotSeatEffective > 0 ? hotSeatEffective : '—'}</p>
-              <p className="text-faint text-xs">{hotSeatLobbyRoundsHint(hotSeatJoinedCount, game.rounds_count)}</p>
+              <p className="text-faint text-xs">{hotSeatLobbyRoundsHint(hotSeatJoinedCount, game.rounds_count, game.participant_mode)}</p>
               <div className="space-y-2 pt-2">
                 <p className="text-muted text-[10px] uppercase tracking-wider">Max rounds (cap)</p>
                 <input
@@ -1330,9 +1477,56 @@ export default function HostPage() {
                 />
               </div>
             </>
-          ) : isWyr ||
-            isMlt ||
-            (roundParticipants.length >= minPool && hasEnoughForRounds(participantInputs, gameType)) ? (
+          ) : isBinaryLobby || isMlt ? (
+            <>
+              {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
+              <div className="space-y-2">
+                <p className="text-muted text-[10px] uppercase tracking-wider">Rounds</p>
+                <input
+                  type="number"
+                  min={1}
+                  max={Math.max(lobbyQuestionMax, 1)}
+                  step={1}
+                  defaultValue={game.rounds_count}
+                  key={`${game.rounds_count}-${lobbyQuestionMax}`}
+                  disabled={updatingRounds || lobbyQuestionMax < 1}
+                  onBlur={(e) => {
+                    const n = clampLobbyQuestionRounds(e.target.value, lobbyQuestionMax)
+                    e.target.value = String(n)
+                    if (n !== game.rounds_count) hostUpdateRounds(n)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                  }}
+                  className="input-field w-28 py-2 text-sm disabled:opacity-50"
+                />
+              </div>
+              {roundOptions.length > 0 && (
+                <div className="flex gap-2 flex-wrap">
+                  {roundOptions.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      disabled={n > maxRounds || updatingRounds}
+                      onClick={() => hostUpdateRounds(n)}
+                      className={`min-w-[2.5rem] px-3 py-2 rounded-xl border text-sm font-semibold disabled:opacity-40 ${
+                        game.rounds_count === n ? 'chip-active' : 'chip'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {roundsTooHigh && (
+                <p className="callout-warning">
+                  {game.rounds_count} rounds is too many — pick {maxRounds} or fewer
+                </p>
+              )}
+            </>
+          ) : (isJoinersMode
+              ? participants.length >= minPool && hasEnoughForRounds(participantInputs, gameType, participantOpts)
+              : roundParticipants.length >= minPool && hasEnoughForRounds(participantInputs, gameType, participantOpts)) ? (
             <>
               {roundsHint && <p className="text-faint text-xs">{roundsHint}</p>}
               <div className="flex gap-2 flex-wrap">
@@ -1364,7 +1558,7 @@ export default function HostPage() {
             </>
           ) : (
             <p className="text-faint text-xs">
-              {isWyr || isMlt
+              {isBinaryLobby || isMlt
                 ? 'Set how many questions to play'
                 : hotSeatLobby
                   ? hotSeatLegacyJoiners
@@ -1372,7 +1566,15 @@ export default function HostPage() {
                     : participants.length >= 3
                       ? 'Need at least 3 players to claim a name before you can set rounds'
                       : 'Need at least 3 names on the list before you can set rounds'
-                  : `Need at least ${minPool} joined people of one gender before you can set rounds`}
+                  : isJoinersMode
+                    ? gameGenderBased
+                      ? `Need at least ${minPool} joined people of one gender before you can set rounds`
+                      : `Need at least ${minPool} people to join before you can set rounds`
+                    : supportsGender && !gameGenderBased
+                      ? `Need at least ${minPool} names on the list before you can set rounds`
+                      : supportsGender && gameGenderBased
+                        ? `Need at least ${minPool} joined people of one gender before you can set rounds`
+                        : `Need at least ${minPool} joined people of one gender before you can set rounds`}
             </p>
           )}
           <div className="pt-3 border-t border-theme">{timerControl}</div>
@@ -1531,38 +1733,165 @@ export default function HostPage() {
         <div className="glass-card p-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs uppercase tracking-wider">
-              {isMltImport ? 'Voters joined' : isJoinersMode ? 'In the game' : 'Players joined'}
+              {isVoterOnly ? 'Voters joined' : isJoinersMode ? 'In the game' : 'Players joined'}
             </p>
             <span className="bg-[var(--primary-strong)] text-white text-xs font-bold px-2 py-0.5 rounded-full">
               {players.length}
             </span>
           </div>
-          {!isJoinersMode && !isMltImport && !isWyr && !isMlt && !isWst && (
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-muted shrink-0">Rounds include:</span>
+          {!isJoinersMode && !isVoterOnly && !isWyr && !isMlt && !isWst && (
+            <div className="space-y-1">
+              <p className="text-muted text-xs uppercase tracking-wider">Rounds include:</p>
               <SegmentedControl
                 value={game.participant_filter ?? 'all'}
-                onChange={async (v: string) => {
-                  await fetch(`/api/games/${game.id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ hostToken, participant_filter: v }),
-                  })
+                onChange={async (v) => {
+                  const nextFilter = v as 'all' | 'joined'
+                  setSavingParticipantFilter(true)
+                  setGame((prev) => (prev ? { ...prev, participant_filter: nextFilter } : prev))
+                  try {
+                    const res = await fetch(`/api/games/${game.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ hostToken, participant_filter: nextFilter }),
+                    })
+                    const data = await res.json()
+                    if (!res.ok) {
+                      toast.error(data.error || 'Failed to save rounds setting')
+                      const { data: gameData } = await supabase
+                        .from('games')
+                        .select('*')
+                        .eq('id', gameCode)
+                        .maybeSingle()
+                      if (gameData) setGame(gameData)
+                      return
+                    }
+                    if (data.game) setGame(data.game)
+                  } finally {
+                    setSavingParticipantFilter(false)
+                  }
                 }}
                 options={[
                   { value: 'all', label: 'Everyone' },
                   { value: 'joined', label: 'Joined only' },
                 ]}
               />
-            </div>
-          )}
-          {!isJoinersMode && !hotSeatLobby && (
-            <p className="text-faint text-xs">
-              {isMltImport
-                ? `${players.length} of ${participants.length} voters joined — all names appear in rounds`
-                : game.participant_filter === 'all'
+              {savingParticipantFilter && <p className="text-faint text-xs px-0.5">Saving…</p>}
+              <p className="text-faint text-xs">
+                {game.participant_filter === 'all'
                   ? `All ${participants.length} names will appear in rounds`
                   : `${roundParticipants.length} of ${participants.length} on the list have joined — only joined names appear in rounds`}
+              </p>
+            </div>
+          )}
+          {supportsGender && (
+            <div className="space-y-1">
+              <p className="text-muted text-xs uppercase tracking-wider">Who&apos;s in each round?</p>
+              <p className="text-body text-sm font-semibold">{gameGenderBased ? 'Gender-based' : 'Names only'}</p>
+              <p className="text-faint text-xs">
+                {gameGenderBased
+                  ? 'Same-gender groups each round — set when you created the game.'
+                  : 'Anyone can appear in any round — set when you created the game.'}
+              </p>
+            </div>
+          )}
+          {showPairVoting && (
+            <div className="space-y-1">
+              <p className="text-muted text-xs uppercase tracking-wider">Pair voting</p>
+              <SegmentedControl
+                value={pairVoteMode}
+                onChange={async (v) => {
+                  const nextMode = v as PairVoteMode
+                  setSavingPairVoteMode(true)
+                  setGame((prev) => (prev ? { ...prev, pair_vote_mode: nextMode } : prev))
+                  try {
+                    const res = await fetch(`/api/games/${game.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ hostToken, pair_vote_mode: nextMode }),
+                    })
+                    const data = await res.json()
+                    if (!res.ok) {
+                      toast.error(data.error || 'Failed to save pair voting')
+                      const { data: gameData } = await supabase
+                        .from('games')
+                        .select('*')
+                        .eq('id', gameCode)
+                        .maybeSingle()
+                      if (gameData) setGame(gameData)
+                      return
+                    }
+                    if (data.game) setGame(data.game)
+                  } finally {
+                    setSavingPairVoteMode(false)
+                  }
+                }}
+                options={
+                  isCustomTwoSlot
+                    ? customPairVoteModeOptions(getCustomSlots(game))
+                    : pairVoteModeOptions(gameType)
+                }
+              />
+              {savingPairVoteMode && <p className="text-faint text-xs px-0.5">Saving…</p>}
+            </div>
+          )}
+          {(isBinaryLobby || isMlt || isPeoplePollVoters) && (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <p className="text-muted text-xs uppercase tracking-wider">Player submissions</p>
+                <SegmentedControl
+                  value={
+                    (isPeoplePollVoters ? lobbyAllowsPlayerNameSubmissions(game) : lobbyAllowsPlayerQuestions(game))
+                      ? 'on'
+                      : 'off'
+                  }
+                  onChange={(v) => {
+                    hostUpdatePlayerQuestions({ player_questions_enabled: v === 'on' })
+                  }}
+                  options={[
+                    { value: 'on', label: 'Allowed' },
+                    { value: 'off', label: 'Disabled' },
+                  ]}
+                />
+                <p className="text-faint text-xs">
+                  {isPeoplePollVoters
+                    ? lobbyAllowsPlayerNameSubmissions(game)
+                      ? playerNameSubmissionHint()
+                      : 'Only names from your list will appear in rounds.'
+                    : lobbyAllowsPlayerQuestions(game)
+                      ? 'Players can submit their own questions in the lobby before start.'
+                      : 'Only your uploaded or platform questions will be used.'}
+                </p>
+              </div>
+              {(isPeoplePollVoters ? lobbyAllowsPlayerNameSubmissions(game) : lobbyAllowsPlayerQuestions(game)) && (
+                <div className="space-y-1">
+                  <p className="text-muted text-xs uppercase tracking-wider">
+                    {isPeoplePollVoters ? 'Name mix' : 'Question mix'}
+                  </p>
+                  <SegmentedControl
+                    value={parsePlayerQuestionsOrder(game.player_questions_order)}
+                    onChange={(v) => {
+                      hostUpdatePlayerQuestions({ player_questions_order: v as PlayerQuestionsOrder })
+                    }}
+                    options={playerQuestionsOrderOptions(game).map((opt) => ({
+                      value: opt.value,
+                      label: opt.label,
+                    }))}
+                  />
+                  <p className="text-faint text-xs">
+                    {
+                      playerQuestionsOrderOptions(game).find(
+                        (opt) => opt.value === parsePlayerQuestionsOrder(game.player_questions_order)
+                      )?.hint
+                    }
+                  </p>
+                </div>
+              )}
+              {savingPlayerQuestions && <p className="text-faint text-xs px-0.5">Saving…</p>}
+            </div>
+          )}
+          {!isJoinersMode && !hotSeatLobby && isVoterOnly && (
+            <p className="text-faint text-xs">
+              {players.length} voter{players.length === 1 ? '' : 's'} joined — all {participants.length} names on the list appear in rounds
             </p>
           )}
           {hotSeatLobby && !hotSeatLegacyJoiners && (
@@ -1571,11 +1900,23 @@ export default function HostPage() {
               turns in the hot seat
             </p>
           )}
-          {!isJoinersMode && (
+          {hotSeatLobby && hotSeatLegacyJoiners && (
+            <p className="text-faint text-xs">
+              {players.length} player{players.length === 1 ? '' : 's'} joined — everyone who joins takes a turn in the
+              hot seat
+            </p>
+          )}
+          {!isJoinersMode && gameGenderBased && (
             <p className="text-faint text-xs">Tap Male/Female to fix identity · Remove to kick someone out</p>
           )}
-          {isJoinersMode && participants.length > 0 && !hotSeatLobby && (
+          {!isJoinersMode && !gameGenderBased && supportsGender && (
+            <p className="text-faint text-xs">Remove to kick someone out</p>
+          )}
+          {isJoinersMode && participants.length > 0 && !hotSeatLobby && gameGenderBased && (
             <p className="text-faint text-xs">Tap to fix poll placement or gender · Remove to kick out</p>
+          )}
+          {isJoinersMode && participants.length > 0 && !hotSeatLobby && !gameGenderBased && (
+            <p className="text-faint text-xs">Remove to kick someone out</p>
           )}
           {(playerOnlyLobby || hotSeatLegacyJoiners || !isJoinersMode
             ? players.length
@@ -1659,38 +2000,42 @@ export default function HostPage() {
                           Remove
                         </button>
                       </div>
-                      <div className="flex flex-wrap gap-1.5 items-center">
-                        <span className="text-[10px] uppercase text-faint w-10 shrink-0">Poll</span>
-                        {(['female', 'male'] as const).map((g) => (
-                          <button
-                            key={g}
-                            type="button"
-                            disabled={busy}
-                            onClick={() => hostUpdateParticipant(part.id, g)}
-                            className={`text-[10px] px-2 py-1 rounded-lg border transition-colors ${
-                              part.gender === g ? 'chip-active' : 'chip'
-                            }`}
-                          >
-                            {g === 'male' ? 'Men' : 'Women'}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 items-center">
-                        <span className="text-[10px] uppercase text-faint w-10 shrink-0">Gender</span>
-                        {(['female', 'male'] as const).map((g) => (
-                          <button
-                            key={g}
-                            type="button"
-                            disabled={busy}
-                            onClick={() => hostUpdatePlayerIdentity(player.id, g)}
-                            className={`text-[10px] px-2 py-1 rounded-lg border transition-colors ${
-                              identity === g ? 'chip-active' : 'chip'
-                            }`}
-                          >
-                            {genderLabel(g)}
-                          </button>
-                        ))}
-                      </div>
+                      {gameGenderBased && (
+                        <>
+                          <div className="flex flex-wrap gap-1.5 items-center">
+                            <span className="text-[10px] uppercase text-faint w-10 shrink-0">Poll</span>
+                            {(['female', 'male'] as const).map((g) => (
+                              <button
+                                key={g}
+                                type="button"
+                                disabled={busy}
+                                onClick={() => hostUpdateParticipant(part.id, g)}
+                                className={`text-[10px] px-2 py-1 rounded-lg border transition-colors ${
+                                  part.gender === g ? 'chip-active' : 'chip'
+                                }`}
+                              >
+                                {g === 'male' ? 'Men' : 'Women'}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 items-center">
+                            <span className="text-[10px] uppercase text-faint w-10 shrink-0">Gender</span>
+                            {(['female', 'male'] as const).map((g) => (
+                              <button
+                                key={g}
+                                type="button"
+                                disabled={busy}
+                                onClick={() => hostUpdatePlayerIdentity(player.id, g)}
+                                className={`text-[10px] px-2 py-1 rounded-lg border transition-colors ${
+                                  identity === g ? 'chip-active' : 'chip'
+                                }`}
+                              >
+                                {genderLabel(g)}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </div>
                   )
                 })}
@@ -1711,21 +2056,23 @@ export default function HostPage() {
                   >
                     <Avatar name={p.name} size="sm" />
                     <span className="text-body-muted text-sm truncate flex-1">{p.name}</span>
-                    <div className="flex gap-1 shrink-0">
-                      {(['female', 'male'] as const).map((g) => (
-                        <button
-                          key={g}
-                          type="button"
-                          disabled={adminBusy === p.id}
-                          onClick={() => hostUpdatePlayerIdentity(p.id, g)}
-                          className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
-                            identity === g ? 'chip-active' : 'chip'
-                          }`}
-                        >
-                          {g === 'male' ? 'M' : 'F'}
-                        </button>
-                      ))}
-                    </div>
+                    {gameGenderBased && (
+                      <div className="flex gap-1 shrink-0">
+                        {(['female', 'male'] as const).map((g) => (
+                          <button
+                            key={g}
+                            type="button"
+                            disabled={adminBusy === p.id}
+                            onClick={() => hostUpdatePlayerIdentity(p.id, g)}
+                            className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                              identity === g ? 'chip-active' : 'chip'
+                            }`}
+                          >
+                            {g === 'male' ? 'M' : 'F'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <button
                       type="button"
                       disabled={adminBusy === p.id}
@@ -1739,7 +2086,7 @@ export default function HostPage() {
               })}
             </div>
           )}
-          {isJoinersMode && !isWyr && !isMlt && !hotSeatLobby && participants.length > 0 && (
+          {isJoinersMode && !isWyr && !isMlt && !hotSeatLobby && participants.length > 0 && gameGenderBased && (
             <p className="text-faint text-xs text-center">
               {genderCounts.female} female · {genderCounts.male} male
             </p>
@@ -1749,15 +2096,24 @@ export default function HostPage() {
             !isMlt &&
             !hotSeatLobby &&
             participants.length > 0 &&
-            !hasEnoughForRounds(participantInputs, gameType) && (
-              <p className="callout-warning text-center">Need at least {minPool} people of the same gender to start</p>
+            !hasEnoughForRounds(participantInputs, gameType, participantOpts) && (
+              <p className="callout-warning text-center">
+                {gameGenderBased
+                  ? `Need at least ${minPool} people of the same gender to start`
+                  : `Need at least ${minPool} names to start`}
+              </p>
             )}
-          {!hotSeatLobby && !voterCheck.ok && players.length > 0 && roundParticipants.length >= minPool && (
+          {!hotSeatLobby && gameGenderBased && !voterCheck.ok && players.length > 0 && roundParticipants.length >= minPool && (
             <p className="callout-warning text-center">{voterCheck.message}</p>
           )}
-          {!isJoinersMode && roundParticipants.length < minPool && players.length > 0 && (
+          {!isJoinersMode && !isVoterOnly && roundParticipants.length < minPool && players.length > 0 && (
             <p className="callout-warning text-center">
               Need at least {minPool} people to join before starting ({roundParticipants.length}/{minPool} joined)
+            </p>
+          )}
+          {isVoterOnly && participants.length < minPool && (
+            <p className="callout-warning text-center">
+              Need at least {minPool} names on the list ({participants.length}/{minPool})
             </p>
           )}
         </div>
@@ -1779,7 +2135,7 @@ export default function HostPage() {
                   placeholder="Name"
                   className="input-field flex-1 py-2 text-sm"
                 />
-                {!isMltImport && (
+                {!isMltImport && gameGenderBased && (
                   <div className="flex gap-1 shrink-0">
                     {(['female', 'male'] as const).map((g) => (
                       <button
@@ -1807,11 +2163,13 @@ export default function HostPage() {
               {addError && <p className="text-red-300/90 text-xs">{addError}</p>}
             </div>
             <p className="text-faint text-xs">
-              {isMltImport
+              {isVoterOnly
                 ? 'Everyone on the list can be voted for — players join separately to vote'
-                : "Tap gender to correct · Remove if someone shouldn't be in the poll"}
+                : gameGenderBased
+                  ? "Tap gender to correct · Remove if someone shouldn't be in the poll"
+                  : 'Remove if someone should not be in the poll'}
             </p>
-            {isMltImport && (
+            {isVoterOnly && (
               <p className="text-faint text-xs text-center">
                 {participants.length} on the list · {players.length} voter{players.length === 1 ? '' : 's'} joined
               </p>
@@ -1859,7 +2217,7 @@ export default function HostPage() {
                     className="flex items-center gap-2 min-w-0 surface-inset border border-theme rounded-xl px-3 py-2"
                   >
                     <span className="text-body-muted text-sm truncate flex-1">{p.name}</span>
-                    {!isMltImport && (
+                    {!isMltImport && gameGenderBased && (
                       <div className="flex gap-1 shrink-0">
                         {(['female', 'male'] as const).map((g) => (
                           <button
@@ -1891,7 +2249,11 @@ export default function HostPage() {
           </div>
         )}
 
-        <button onClick={handleStart} disabled={!canStart || starting} className="btn-primary">
+        <button
+          onClick={handleStart}
+          disabled={!canStart || starting || savingPairVoteMode || savingPlayerQuestions}
+          className="btn-primary"
+        >
           {starting
             ? 'Starting...'
             : !canStart
@@ -1905,11 +2267,11 @@ export default function HostPage() {
                       ? `Need 2+ players who claimed a name (${wstSubmitters.length} ready)`
                       : isWst && wstSource === 'player' && wstPool.length < 2
                         ? `Need 2+ quotes in the pool (${wstPool.length} submitted)`
-                        : isMltImport && participants.length < 2
-                          ? `Need at least 2 names on the list (${participants.length}/2)`
-                          : isMltImport && players.length === 0
+                        : isVoterOnly && participants.length < minPool
+                          ? `Need at least ${minPool} names on the list (${participants.length}/${minPool})`
+                          : isVoterOnly && players.length === 0
                             ? 'Waiting for voters to join...'
-                            : isMlt && !isMltImport && players.length < 2
+                            : isMlt && !isVoterOnly && players.length < 2
                               ? `Need at least 2 players (${players.length}/2)`
                               : hotSeatLobby && hotSeatLegacyJoiners && players.length < 3
                                 ? `Need at least 3 players (${players.length}/3)`
@@ -1924,7 +2286,9 @@ export default function HostPage() {
                                           ? `Need ${minPool - participants.length} more to start`
                                           : roundsTooHigh
                                             ? `Lower to ${maxRounds} rounds max`
-                                            : `Need ${minPool}+ of one gender to start`
+                                            : gameGenderBased
+                                              ? `Need ${minPool}+ of one gender to start`
+                                              : `Need ${minPool}+ people to start`
                                         : players.length === 0
                                           ? 'Waiting for players...'
                                           : roundParticipants.length < minPool
@@ -1933,7 +2297,9 @@ export default function HostPage() {
                                               ? `Lower to ${maxRounds} rounds max`
                                               : !voterCheck.ok
                                                 ? 'Need voters for each list'
-                                                : `Need ${minPool}+ joined of one gender`
+                                            : gameGenderBased
+                                              ? `Need ${minPool}+ joined of one gender`
+                                              : `Need ${minPool}+ names joined`
               : hotSeatLobby
                 ? `Start Game (${hotSeatEffective} round${hotSeatEffective === 1 ? '' : 's'})`
                 : `Start Game (${players.length} players)`}
@@ -1949,16 +2315,20 @@ export default function HostPage() {
     const isMlt = isMostLikelyTo(gameType)
     const isWst = isWhoSaidThis(gameType)
     const isWyr = isWouldYouRather(gameType)
+    const isTot = isThisOrThat(gameType)
+    const isBinaryGame = isBinaryChoiceGame(gameType)
     const isHotSeatGame = isHotSeat(gameType)
     const roundVotes = votes.filter((v) => v.round_id === currentRound.id)
     const roundParts = participants.filter((p) => currentRound.participant_ids.includes(p.id))
     const roundParticipantGender = getRoundParticipantGender(currentRound.participant_ids, participants)
-    const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
-    const voterHint = roundVoterLabel(roundParticipantGender)
-    const eligible = eligibleVotersForRound(roundParticipantGender, players, gameType)
+    const genderFreeVoting = isGenderFreeVoting(game)
+    const roundGender = genderFreeVoting ? null : roundGenderLabel(roundParts.map((p) => p.gender))
+    const voterHint = genderFreeVoting ? null : roundVoterLabel(roundParticipantGender)
+    const eligible = eligibleVotersForRound(roundParticipantGender, players, gameType, game)
     const eligibleIds = new Set(eligible.map((p) => p.id))
-    const eligibleVotes = isNameOnly ? roundVotes : roundVotes.filter((v) => eligibleIds.has(v.player_id))
-    const voteDenominator = isNameOnly ? players.length : eligible.length
+    const eligibleVotes =
+      isNameOnly || genderFreeVoting ? roundVotes : roundVotes.filter((v) => eligibleIds.has(v.player_id))
+    const voteDenominator = isNameOnly || genderFreeVoting ? players.length : eligible.length
     const allVoted = eligibleVotes.length >= voteDenominator && voteDenominator > 0
 
     if (isWst) {
@@ -2078,7 +2448,7 @@ export default function HostPage() {
       )
     }
 
-    if (isWyr) {
+    if (isBinaryGame) {
       return (
         <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
           <div className="flex items-center justify-between">
@@ -2093,7 +2463,9 @@ export default function HostPage() {
           </div>
 
           <div className="glass-card p-5 space-y-3">
-            <p className="text-muted text-xs uppercase tracking-wider text-center">Would you rather…</p>
+            <p className="text-muted text-xs uppercase tracking-wider text-center">
+              {isTot ? 'This or that…' : 'Would you rather…'}
+            </p>
             <p className="text-body text-sm leading-relaxed text-center">
               <span className="label-violet font-medium">{currentRound.wyr_option_a}</span> or{' '}
               <span className="label-sky font-medium">{currentRound.wyr_option_b}</span>?
@@ -2363,6 +2735,8 @@ export default function HostPage() {
   if (game?.status === 'active' && !currentRound && lastFinishedRound) {
     const gameType = parseGameType(game.game_type)
     const isWyr = isWouldYouRather(gameType)
+    const isTot = isThisOrThat(gameType)
+    const isBinaryGame = isBinaryChoiceGame(gameType)
     const isMlt = isMostLikelyTo(gameType)
     const isWst = isWhoSaidThis(gameType)
     const isHotSeatGame = isHotSeat(gameType)
@@ -2370,7 +2744,9 @@ export default function HostPage() {
     const roundVotes = votes.filter((v) => v.round_id === lastFinishedRound.id)
     const roundParts = participants.filter((p) => lastFinishedRound.participant_ids.includes(p.id))
     const roundConfessions = confessions.filter((c) => c.round_id === lastFinishedRound.id)
-    const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
+    const roundGender = isGenderFreeVoting(game)
+      ? null
+      : roundGenderLabel(roundParts.map((p) => p.gender))
     const isLastRound = lastFinishedRound.round_number >= game.rounds_count
     const hotSeatPlayerName = isHotSeatGame
       ? hotSeatPlayerDisplayName(lastFinishedRound.submitter_player_id, players, participants)
@@ -2385,7 +2761,7 @@ export default function HostPage() {
         <div className="text-center">
           <p className="text-muted text-xs uppercase tracking-wider">
             Round {lastFinishedRound.round_number} of {game.rounds_count}
-            {!isWyr && !isMlt && !isHotSeatGame && roundGender ? ` · ${roundGender}` : ''}
+            {!isBinaryGame && !isMlt && !isHotSeatGame && roundGender ? ` · ${roundGender}` : ''}
           </p>
           <h1 className="text-3xl font-black tracking-tight mt-1">
             {isHotSeatGame ? 'Hot Seat Reveal! 🪑🔥' : 'Results are in! 🗳️'}
@@ -2445,13 +2821,14 @@ export default function HostPage() {
             maxCount={mltTally.maxCount}
             winnerNames={mltTally.winnerNames}
           />
-        ) : isWyr ? (
+        ) : isBinaryGame ? (
           <WyrRoundResults
             optionA={lastFinishedRound.wyr_option_a ?? ''}
             optionB={lastFinishedRound.wyr_option_b ?? ''}
             countA={countA}
             countB={countB}
             voterCount={voterCount}
+            mode={isTot ? 'tot' : 'wyr'}
           />
         ) : isCustomGame(gameType) && game ? (
           (() => {
@@ -2528,12 +2905,16 @@ export default function HostPage() {
           game.auto_reveal ? (
             <p className="text-[var(--primary)] text-sm text-center animate-pulse">
               {finalRevealCountdown > 0
-                ? `Final leaderboard in ${finalRevealCountdown}s…`
-                : 'Final leaderboard in a few seconds...'}
+                ? isHotSeatGame
+                  ? `Final results in ${finalRevealCountdown}s…`
+                  : `Final leaderboard in ${finalRevealCountdown}s…`
+                : isHotSeatGame
+                  ? 'Final results in a few seconds...'
+                  : 'Final leaderboard in a few seconds...'}
             </p>
           ) : (
             <button onClick={handleFinishGame} disabled={finishing} className="btn-primary">
-              {finishing ? 'Loading...' : '🏆 Show Final Leaderboard'}
+              {finishing ? 'Loading...' : isHotSeatGame ? '🏆 Show Final Results' : '🏆 Show Final Leaderboard'}
             </button>
           )
         ) : (
@@ -2556,12 +2937,19 @@ export default function HostPage() {
   if (game?.status === 'finished') {
     const gameType = parseGameType(game.game_type)
     const isWyr = isWouldYouRather(gameType)
+    const isTot = isThisOrThat(gameType)
+    const isBinaryGame = isBinaryChoiceGame(gameType)
     const isMlt = isMostLikelyTo(gameType)
     const isWst = isWhoSaidThis(gameType)
+    const isHotSeatGame = isHotSeat(gameType)
     const isMltImport = isMltImportGame(game)
+    const showPollLeaderboards = !isBinaryGame && !isMlt && !isWst && !isHotSeatGame
+    const genderBasedLeaderboards = showPollLeaderboards && isGameGenderBased(game)
+    const namesOnlyLeaderboards = showPollLeaderboards && isGenderFreeVoting(game)
     const playedParticipants = filterParticipantsInRounds(participants, allRounds)
     const pollCount = mltVoteTargets(game, participants, players).length
     const wstScores = isWst ? tallyWstPlayerScores(allRounds, votes, players) : []
+    const achievements = computeAchievements(game, participants, allRounds, votes, players)
 
     return (
       <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-8">
@@ -2574,24 +2962,32 @@ export default function HostPage() {
               ? ` · ${pollCount} in poll`
               : isWst
                 ? ` · ${participants.length} names`
-                : !isWyr && !isMlt
+                : !isBinaryGame && !isMlt
                   ? ` · ${playedParticipants.length} in game`
                   : ''}
           </p>
         </div>
 
-        <div className="glass-card p-5 space-y-4 text-center">
-          <div>
-            <p className="font-semibold text-body">Same room, fresh game</p>
-            <p className="text-faint text-sm mt-1">
-              Send everyone back to the lobby with the same link and settings. Players stay joined — you start when
-              ready.
-            </p>
+        <div className="glass-card p-4 space-y-3">
+          <p className="text-muted text-xs uppercase tracking-wider text-center">What&apos;s next?</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={handlePlayAgain}
+              disabled={playingAgain}
+              className="btn-primary py-3 flex flex-col items-center gap-0.5 min-h-[3.25rem]"
+            >
+              <span>{playingAgain ? 'Resetting…' : '↻ Play Again'}</span>
+              <span className="text-[10px] font-normal opacity-80 leading-tight">Same room & link</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push(`/create?type=${gameType}`)}
+              className="btn-secondary py-3 flex flex-col items-center gap-0.5 min-h-[3.25rem]"
+            >
+              <span>+ New Game</span>
+              <span className="text-[10px] font-normal text-faint leading-tight">Fresh code</span>
+            </button>
           </div>
-          <div className="text-left">{timerControl}</div>
-          <button onClick={handlePlayAgain} disabled={playingAgain || updatingTimer} className="btn-primary w-full">
-            {playingAgain ? 'Resetting…' : '↻ Play Again'}
-          </button>
         </div>
 
         {isWst && wstScores.length > 0 && (
@@ -2606,7 +3002,7 @@ export default function HostPage() {
           />
         )}
 
-        {isWyr ? (
+        {isBinaryGame ? (
           <div className="space-y-8">
             {allRounds.map((round) => {
               const roundVotes = votes.filter((v) => v.round_id === round.id)
@@ -2620,6 +3016,7 @@ export default function HostPage() {
                     countA={countA}
                     countB={countB}
                     voterCount={voterCount}
+                    mode={isTot ? 'tot' : 'wyr'}
                   />
                 </div>
               )
@@ -2697,6 +3094,24 @@ export default function HostPage() {
               )
             })}
           </div>
+        ) : isHotSeatGame ? (
+          <div className="space-y-8">
+            <h2 className="text-muted text-xs uppercase tracking-wider">All round results</h2>
+            {allRounds.map((round) => {
+              const hotSeatPlayerName = hotSeatPlayerDisplayName(round.submitter_player_id, players, participants)
+              const roundSubs = allHotSeatSubmissions.filter((s) => s.round_id === round.id)
+              return (
+                <div key={round.id}>
+                  <h2 className="text-muted text-xs uppercase tracking-wider mb-3">Round {round.round_number}</h2>
+                  <HotSeatRoundResults
+                    hotSeatPlayerName={hotSeatPlayerName ?? 'Unknown'}
+                    submissions={roundSubs}
+                    animate={false}
+                  />
+                </div>
+              )
+            })}
+          </div>
         ) : isCustomGame(gameType) && game ? (
           <div className="space-y-8">
             {(() => {
@@ -2734,7 +3149,7 @@ export default function HostPage() {
               )
             })}
           </div>
-        ) : (
+        ) : genderBasedLeaderboards ? (
           <>
             <FinalGenderLeaderboards
               gameType={gameType}
@@ -2745,7 +3160,20 @@ export default function HostPage() {
             />
             <FinalGenderBreakdown gameType={gameType} participants={participants} rounds={allRounds} votes={votes} />
           </>
-        )}
+        ) : namesOnlyLeaderboards ? (
+          <>
+            <FinalOverallLeaderboards
+              gameType={gameType}
+              participants={participants}
+              rounds={allRounds}
+              votes={votes}
+              TopCard={StatCard}
+            />
+            <FinalOverallBreakdown gameType={gameType} participants={participants} rounds={allRounds} votes={votes} />
+          </>
+        ) : null}
+
+        {achievements.length > 0 && <AchievementBadges achievements={achievements} />}
 
         {/* Confessions / hot takes */}
         {confessions.length > 0 && (

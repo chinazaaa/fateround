@@ -6,7 +6,7 @@ import {
   parseGameType,
   gameTypeConfig,
   isPairGame,
-  isWouldYouRather,
+  isBinaryChoiceGame,
   isMostLikelyTo,
   isWhoSaidThis,
   isCustomGame,
@@ -23,8 +23,7 @@ import {
   tallyAnimeWstVotes,
 } from '@/lib/who-said-this'
 import { useToast } from '@/components/ui/Toast'
-
-const APP_URL = 'kissmarrykill.app'
+import { appDomain } from '@/lib/site'
 
 function buildRoundShareText({
   game,
@@ -43,7 +42,7 @@ function buildRoundShareText({
   const config = gameTypeConfig(gameType)
   const lines: string[] = []
 
-  if (isWouldYouRather(gameType)) {
+  if (isBinaryChoiceGame(gameType)) {
     const { countA, countB } = tallyWyrVotes(votes)
     const optA = round.wyr_option_a ?? 'Option A'
     const optB = round.wyr_option_b ?? 'Option B'
@@ -137,7 +136,7 @@ function buildRoundShareText({
   }
 
   lines.push('')
-  lines.push(`Play at ${APP_URL}`)
+  lines.push(`Play at ${appDomain()}`)
 
   return lines.join('\n')
 }

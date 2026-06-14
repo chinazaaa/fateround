@@ -9,6 +9,7 @@ import type {
   QuestionSource,
   ThemeId,
   WstQuoteSource,
+  PlayerQuestionsOrder,
 } from '@/types'
 import { THEMES, type ThemeConfig } from '@/lib/themes'
 import {
@@ -21,15 +22,19 @@ import {
   genderLabel,
   participantModeOptions,
   participantImportStepHint,
+  participantClaimRosterHint,
   participantUploadHint,
-  participantsNeedGender,
+  participantsNeedGenderForGame,
   participantSampleFile,
 } from '@/lib/participants'
 import {
   roundPoolSize,
   isLobbyGame,
-  isMostLikelyTo,
+  isAnonymousMessagesGame,
   isWouldYouRather,
+  isThisOrThat,
+  isBinaryChoiceGame,
+  isMostLikelyTo,
   isWhoSaidThis,
   isHotSeat,
   isAnonymousGame,
@@ -44,22 +49,40 @@ import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import {
   parseWyrQuestionRows,
+  parseThisOrThatQuestionRows,
+  parseOrSplitQuestion,
   parseMltQuestionRows,
   parseExcelWyrQuestions,
+  parseExcelThisOrThatQuestions,
   parseExcelMltQuestions,
   mergeWyrQuestions,
   mergeMltQuestions,
   questionSampleFile,
   questionUploadHint,
   questionSourceOptions,
+  questionRoundPickerOptions,
+  clampLobbyQuestionRounds,
 } from '@/lib/custom-questions'
+import {
+  playerQuestionsOrderOptions,
+  parsePlayerQuestionsOrder,
+} from '@/lib/player-question-pool'
+import { isPeoplePollGame, playerNameSubmissionHint } from '@/lib/player-participant-pool'
 import { CustomSlotBuilder } from '@/components/CustomSlotBuilder'
+import { GenderRoundModeControl } from '@/components/GenderRoundModeControl'
+import { customPairVoteModeOptions } from '@/lib/custom-game'
+import { supportsGenderToggle, defaultGenderBasedForType } from '@/lib/gender-based'
 import type { CustomSlotsConfig } from '@/types'
 import { GameTypeModal } from '@/components/GameTypeModal'
 import { GameTypeCard } from '@/components/GameTypeCard'
 import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
 import { StepIndicator, SettingsGroup, StickyActionBar, SegmentedControl, ChipGrid } from '@/components/ui/CreateWizard'
 import { clampHotSeatMaxCap, hotSeatMaxCapUpperBound, HOT_SEAT_MIN_PLAYERS } from '@/lib/hot-seat'
+import {
+  ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS,
+  ANONYMOUS_ROOM_MAX_PLAYERS,
+  ANONYMOUS_ROOM_MIN_PLAYERS,
+} from '@/lib/anonymous-messages'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { useToast } from '@/components/ui/Toast'
 
@@ -75,6 +98,7 @@ interface Settings {
   game_type: GameType
   theme: ThemeId
   participant_filter: 'all' | 'joined'
+  gender_based: boolean
 }
 
 type Step = 'settings' | 'participants' | 'done'
@@ -96,10 +120,11 @@ function CreateGameInner() {
     auto_reveal: true,
     auto_submit_behavior: 'no_answer',
     participant_mode: 'import',
-    pair_vote_mode: 'any',
+    pair_vote_mode: 'one_each',
     game_type: 'smash_marry_kill',
     theme: 'default',
     participant_filter: 'all' as 'all' | 'joined',
+    gender_based: true,
   })
   const [participants, setParticipants] = useState<ParticipantInput[]>([])
   const [nameInput, setNameInput] = useState('')
@@ -112,6 +137,8 @@ function CreateGameInner() {
   const questionsFileRef = useRef<HTMLInputElement>(null)
   const [bulkPaste, setBulkPaste] = useState('')
   const [questionSource, setQuestionSource] = useState<QuestionSource>('platform')
+  const [playerQuestionsEnabled, setPlayerQuestionsEnabled] = useState(true)
+  const [playerQuestionsOrder, setPlayerQuestionsOrder] = useState<PlayerQuestionsOrder>('players_first')
   const [questionTab, setQuestionTab] = useState<QuestionTab>('upload')
   const [customWyrQuestions, setCustomWyrQuestions] = useState<WyrQuestion[]>([])
   const [customMltQuestions, setCustomMltQuestions] = useState<string[]>([])
@@ -122,6 +149,7 @@ function CreateGameInner() {
   const [questionsBulkPaste, setQuestionsBulkPaste] = useState('')
   const [wstQuoteSource, setWstQuoteSource] = useState<WstQuoteSource>('player')
   const [customSlots, setCustomSlots] = useState<CustomSlotsConfig | null>(null)
+  const [anonymousMaxPlayers, setAnonymousMaxPlayers] = useState(ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS)
 
   useEffect(() => {
     const typeParam = searchParams.get('type')
@@ -131,14 +159,25 @@ function CreateGameInner() {
         ...prev,
         game_type: type,
         ...(isLobbyGame(type) ? { participant_mode: 'joiners', anonymous: true } : {}),
-        ...(isWhoSaidThis(type) || isHotSeat(type)
+      ...(isAnonymousMessagesGame(type)
+        ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
+        : {}),
+        ...(isWhoSaidThis(type)
           ? {
               participant_mode: 'import' as const,
               anonymous: true,
               participant_filter: 'joined' as const,
-              ...(isHotSeat(type) ? { rounds_count: HOT_SEAT_MIN_PLAYERS } : {}),
             }
-          : {}),
+          : isHotSeat(type)
+            ? {
+                participant_mode: 'joiners' as const,
+                anonymous: true,
+                participant_filter: 'all' as const,
+                rounds_count: HOT_SEAT_MIN_PLAYERS,
+              }
+            : isMostLikelyTo(type)
+              ? { participant_mode: 'voters' as const }
+              : {}),
       }))
     }
   }, [searchParams])
@@ -146,29 +185,44 @@ function CreateGameInner() {
   const genderCounts = countByGender(participants)
   const isJoinersMode = settings.participant_mode === 'joiners'
   const isWyr = isWouldYouRather(settings.game_type)
+  const isTot = isThisOrThat(settings.game_type)
+  const isBinaryLobby = isWyr || isTot
   const isMlt = isMostLikelyTo(settings.game_type)
   const isWst = isWhoSaidThis(settings.game_type)
   const isHotSeatGame = isHotSeat(settings.game_type)
   const hotSeatCreateCapUpper = isHotSeatGame ? hotSeatMaxCapUpperBound(0, participants.length) : 20
   const isPair = isPairGame(settings.game_type)
-  const needsGender = participantsNeedGender(settings.game_type)
-  const minPool = roundPoolSize(settings.game_type)
-  const canCreateImport = participants.length >= minPool && hasEnoughForRounds(participants, settings.game_type)
+  const isCustom = isCustomGame(settings.game_type)
+  const isCustomTwoSlot = isCustom && (customSlots?.slots.length ?? 0) === 2
+  const supportsGender = supportsGenderToggle(settings.game_type)
+  const participantOpts = {
+    genderBased: settings.gender_based,
+    customSlots: customSlots,
+  }
+  const needsGender = participantsNeedGenderForGame(settings.game_type, participantOpts)
+  const minPool = isCustom && customSlots ? customSlots.slots.length : roundPoolSize(settings.game_type)
+  const canCreateImport =
+    participants.length >= minPool && hasEnoughForRounds(participants, settings.game_type, participantOpts)
   const canCreateJoiners = !!settings.title.trim()
-  const isLobbyQuestions = isWyr || isMlt
-  const customQuestionCount = isWyr ? customWyrQuestions.length : customMltQuestions.length
+  const isLobbyQuestions = isBinaryLobby || isMlt
+  const isPeoplePoll = isPeoplePollGame(settings.game_type)
+  const isPeoplePollVoters = isPeoplePoll && settings.participant_mode === 'voters'
+  const isPlayerSubmissions = isLobbyQuestions || isPeoplePollVoters
+  const customQuestionCount = isBinaryLobby ? customWyrQuestions.length : customMltQuestions.length
   const questionCap =
     questionSource === 'custom' && customQuestionCount > 0
       ? customQuestionCount
-      : isWyr
-        ? WYR_QUESTION_COUNT
-        : isMlt
-          ? MLT_QUESTION_COUNT
-          : 10
-  const mltRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= questionCap)
-  const wyrRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= questionCap)
+      : isTot
+        ? customQuestionCount
+        : isWyr
+          ? WYR_QUESTION_COUNT
+          : isMlt
+            ? MLT_QUESTION_COUNT
+            : 10
+  const mltRoundOptions = questionRoundPickerOptions(questionCap)
+  const wyrRoundOptions = questionRoundPickerOptions(questionCap)
   const wstRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= Math.max(participants.length, 2))
-  const roundOptions = isWyr
+  const roundOptions = isBinaryLobby
     ? wyrRoundOptions
     : isMlt
       ? mltRoundOptions
@@ -176,15 +230,17 @@ function CreateGameInner() {
         ? wstRoundOptions
         : [2, 3, 4, 5, 6, 8, 10]
   const hasEnoughCustomQuestions =
-    questionSource === 'platform' ||
-    (isLobbyQuestions && customQuestionCount >= settings.rounds_count && customQuestionCount > 0)
+    (isTot && customQuestionCount >= settings.rounds_count && customQuestionCount > 0) ||
+    (questionSource === 'platform' && !isTot) ||
+    (isLobbyQuestions && !isTot && customQuestionCount >= settings.rounds_count && customQuestionCount > 0)
   const canCreateQuickLobby = !!settings.title.trim() && hasEnoughCustomQuestions
 
-  const isCustom = isCustomGame(settings.game_type)
   const customSlotsValid =
     !isCustom || (customSlots && customSlots.slots.length >= 2 && customSlots.slots.every((s) => s.label.trim()))
 
-  const needsParticipantStep = !isWyr && !(isMlt && isJoinersMode) && !isJoinersMode
+  const isAnonymousRoom = isAnonymousMessagesGame(settings.game_type)
+  const needsParticipantStep =
+    !isAnonymousRoom && !isBinaryLobby && !(isMlt && isJoinersMode) && !isJoinersMode
   const wizardSteps = needsParticipantStep ? ['Setup', 'People'] : ['Setup']
   const stepIndex = step === 'participants' ? 2 : 1
 
@@ -197,7 +253,9 @@ function CreateGameInner() {
   const selectGameType = (type: GameType) => {
     setCustomSlots(null)
     setWstQuoteSource('player')
-    setQuestionSource('platform')
+    setQuestionSource(isThisOrThat(type) ? 'custom' : 'platform')
+    setPlayerQuestionsEnabled(true)
+    setPlayerQuestionsOrder('players_first')
     setCustomWyrQuestions([])
     setCustomMltQuestions([])
     setQuestionsUploadError(null)
@@ -205,15 +263,29 @@ function CreateGameInner() {
       ...settings,
       game_type: type,
       ...(isLobbyGame(type) ? { participant_mode: 'joiners', anonymous: true } : {}),
-      ...(isWhoSaidThis(type) || isHotSeat(type)
+      ...(isAnonymousMessagesGame(type)
+        ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
+        : {}),
+      ...(isWhoSaidThis(type)
         ? {
             participant_mode: 'import' as const,
             anonymous: true,
             participant_filter: 'joined' as const,
-            ...(isHotSeat(type) ? { rounds_count: HOT_SEAT_MIN_PLAYERS } : {}),
           }
+        : isHotSeat(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              participant_filter: 'all' as const,
+              rounds_count: HOT_SEAT_MIN_PLAYERS,
+            }
+          : isMostLikelyTo(type)
+            ? { participant_mode: 'voters' as const }
+            : {}),
+      ...(isCustomGame(type) ? { participant_mode: 'import' as const, gender_based: defaultGenderBasedForType(type) } : {}),
+      ...(supportsGenderToggle(type) && !isCustomGame(type)
+        ? { gender_based: defaultGenderBasedForType(type) }
         : {}),
-      ...(isCustomGame(type) ? { participant_mode: 'import' as const } : {}),
     })
   }
 
@@ -234,7 +306,7 @@ function CreateGameInner() {
   const addBulkParticipants = () => {
     if (!bulkPaste.trim()) return
     setUploadError(null)
-    const rows = parseParticipantsForGame(bulkPaste, settings.game_type)
+    const rows = parseParticipantsForGame(bulkPaste, settings.game_type, participantOpts)
     if (rows.length === 0) {
       setUploadError(needsGender ? 'Use two columns: name and gender (e.g. Sarah,female)' : 'Add one name per line')
       return
@@ -247,7 +319,7 @@ function CreateGameInner() {
     const text = e.clipboardData.getData('text')
     if (!/[\n\r\t,;]/.test(text)) return
     e.preventDefault()
-    const rows = parseParticipantsForGame(text, settings.game_type)
+    const rows = parseParticipantsForGame(text, settings.game_type, participantOpts)
     if (rows.length > 0) {
       addParticipantsFromRows(rows)
       setNameInput('')
@@ -272,7 +344,7 @@ function CreateGameInner() {
     try {
       if (ext === 'csv') {
         const text = await file.text()
-        const rows = parseParticipantsForGame(text, settings.game_type)
+        const rows = parseParticipantsForGame(text, settings.game_type, participantOpts)
         if (rows.length === 0) {
           setUploadError(
             needsGender
@@ -287,7 +359,7 @@ function CreateGameInner() {
 
       if (ext === 'xlsx' || ext === 'xls') {
         const buffer = await file.arrayBuffer()
-        const rows = await parseExcelParticipants(buffer, settings.game_type)
+        const rows = await parseExcelParticipants(buffer, settings.game_type, participantOpts)
         if (rows.length === 0) {
           setUploadError(
             needsGender
@@ -313,7 +385,7 @@ function CreateGameInner() {
   const removeParticipant = (i: number) => setParticipants((prev) => prev.filter((_, idx) => idx !== i))
 
   const addCustomQuestionsFromRows = (wyrRows: WyrQuestion[], mltRows: string[]) => {
-    if (isWyr && wyrRows.length > 0) {
+    if ((isWyr || isTot) && wyrRows.length > 0) {
       setCustomWyrQuestions((prev) => mergeWyrQuestions(prev, wyrRows))
     }
     if (isMlt && mltRows.length > 0) {
@@ -332,6 +404,16 @@ function CreateGameInner() {
       setWyrOptionB('')
       return
     }
+    if (isTot) {
+      const parsed = parseOrSplitQuestion(mltQuestionInput)
+      if (!parsed) {
+        setQuestionsUploadError('Use “Coffee or Tea?” format with “ or ” between options')
+        return
+      }
+      addCustomQuestionsFromRows([parsed], [])
+      setMltQuestionInput('')
+      return
+    }
     if (isMlt) {
       const question = mltQuestionInput.trim()
       if (!question) return
@@ -347,6 +429,13 @@ function CreateGameInner() {
       const rows = parseWyrQuestionRows(questionsBulkPaste)
       if (rows.length === 0) {
         setQuestionsUploadError('Use two columns: option_a and option_b')
+        return
+      }
+      addCustomQuestionsFromRows(rows, [])
+    } else if (isTot) {
+      const rows = parseThisOrThatQuestionRows(questionsBulkPaste)
+      if (rows.length === 0) {
+        setQuestionsUploadError('Add one question per line (e.g. Coffee or Tea?)')
         return
       }
       addCustomQuestionsFromRows(rows, [])
@@ -379,6 +468,13 @@ function CreateGameInner() {
             return
           }
           addCustomQuestionsFromRows(rows, [])
+        } else if (isTot) {
+          const rows = parseThisOrThatQuestionRows(text)
+          if (rows.length === 0) {
+            setQuestionsUploadError('No valid rows. Use one question per line (e.g. Coffee or Tea?).')
+            return
+          }
+          addCustomQuestionsFromRows(rows, [])
         } else if (isMlt) {
           const rows = parseMltQuestionRows(text)
           if (rows.length === 0) {
@@ -396,6 +492,13 @@ function CreateGameInner() {
           const rows = await parseExcelWyrQuestions(buffer)
           if (rows.length === 0) {
             setQuestionsUploadError('No valid rows. Use option_a and option_b columns.')
+            return
+          }
+          addCustomQuestionsFromRows(rows, [])
+        } else if (isTot) {
+          const rows = await parseExcelThisOrThatQuestions(buffer)
+          if (rows.length === 0) {
+            setQuestionsUploadError('No valid rows. Use one question per line (e.g. Coffee or Tea?).')
             return
           }
           addCustomQuestionsFromRows(rows, [])
@@ -417,7 +520,7 @@ function CreateGameInner() {
   }
 
   const removeCustomQuestion = (index: number) => {
-    if (isWyr) setCustomWyrQuestions((prev) => prev.filter((_, i) => i !== index))
+    if (isWyr || isTot) setCustomWyrQuestions((prev) => prev.filter((_, i) => i !== index))
     if (isMlt) setCustomMltQuestions((prev) => prev.filter((_, i) => i !== index))
   }
 
@@ -432,12 +535,20 @@ function CreateGameInner() {
         body: JSON.stringify({
           ...settings,
           rounds_count: isWst ? Math.max(participants.length, 2) : settings.rounds_count,
-          question_source: isLobbyQuestions ? questionSource : 'platform',
+          question_source: isTot ? 'custom' : isLobbyQuestions ? questionSource : 'platform',
           custom_questions:
-            isLobbyQuestions && questionSource === 'custom' ? (isWyr ? customWyrQuestions : customMltQuestions) : null,
+            isLobbyQuestions && (isTot || questionSource === 'custom')
+              ? isBinaryLobby
+                ? customWyrQuestions
+                : customMltQuestions
+              : null,
           participants: isJoinersMode ? [] : participants,
           wst_quote_source: isWst ? wstQuoteSource : undefined,
           custom_slots: isCustom ? customSlots : null,
+          gender_based: supportsGender ? settings.gender_based : undefined,
+          player_questions_enabled: isPlayerSubmissions ? playerQuestionsEnabled : undefined,
+          player_questions_order: isPlayerSubmissions ? playerQuestionsOrder : undefined,
+          max_players: isAnonymousRoom ? anonymousMaxPlayers : undefined,
         }),
       })
       const data = await res.json()
@@ -499,6 +610,35 @@ function CreateGameInner() {
 
           {/* Rules */}
           <div className="glass-card p-5 space-y-5">
+            {isAnonymousRoom ? (
+              <SettingsGroup title="Session">
+                <Field label={`Max players (${ANONYMOUS_ROOM_MIN_PLAYERS}–${ANONYMOUS_ROOM_MAX_PLAYERS})`}>
+                  <select
+                    value={anonymousMaxPlayers}
+                    onChange={(e) => setAnonymousMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {Array.from(
+                      { length: ANONYMOUS_ROOM_MAX_PLAYERS - ANONYMOUS_ROOM_MIN_PLAYERS + 1 },
+                      (_, i) => i + ANONYMOUS_ROOM_MIN_PLAYERS
+                    ).map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <p className="text-faint text-sm leading-relaxed">
+                  Players join with one tap and get a random lobby name shown on their messages. The cap applies to
+                  the lobby before start; extra viewers can join during an active session (watch only). Anyone who
+                  joins after the session starts can watch only. Hosts can mute players for 5–30 minutes (default 10)
+                  — muted players can read but not send. Once over 1,000 messages, the oldest 100 are removed every 5
+                  minutes during the session. Sessions last up to 15 minutes — all messages are deleted when the
+                  session ends.
+                </p>
+              </SettingsGroup>
+            ) : (
+              <>
             <SettingsGroup title="Round settings">
               {isWst ? (
                 <div className="space-y-4">
@@ -568,6 +708,28 @@ function CreateGameInner() {
                       {customQuestionCount} custom questions loaded — up to {customQuestionCount} rounds.
                     </p>
                   )}
+                  {isLobbyQuestions && questionCap > 0 && (
+                    <input
+                      type="number"
+                      min={1}
+                      max={questionCap}
+                      step={1}
+                      value={settings.rounds_count}
+                      onChange={(e) => {
+                        const n = Number.parseInt(e.target.value, 10)
+                        if (!Number.isNaN(n)) {
+                          setSettings((prev) => ({ ...prev, rounds_count: n }))
+                        }
+                      }}
+                      onBlur={(e) => {
+                        setSettings((prev) => ({
+                          ...prev,
+                          rounds_count: clampLobbyQuestionRounds(e.target.value, questionCap),
+                        }))
+                      }}
+                      className="input-field w-28 mb-2"
+                    />
+                  )}
                   <ChipGrid>
                     {roundOptions.map((n) => (
                       <Chip
@@ -595,14 +757,25 @@ function CreateGameInner() {
                 />
               </Field>
 
+              {supportsGender && (
+                <GenderRoundModeControl
+                  value={settings.gender_based}
+                  onChange={(gender_based) => setSettings((prev) => ({ ...prev, gender_based }))}
+                />
+              )}
+
               {isCustom && <CustomSlotBuilder value={customSlots} onChange={setCustomSlots} />}
 
-              {isPair && (
+              {(isPair || isCustomTwoSlot) && (
                 <Field label="Pair voting">
                   <SegmentedControl
                     value={settings.pair_vote_mode}
                     onChange={(v) => setSettings({ ...settings, pair_vote_mode: v })}
-                    options={pairVoteModeOptions(settings.game_type)}
+                    options={
+                      isCustomTwoSlot && customSlots?.slots
+                        ? customPairVoteModeOptions(customSlots.slots)
+                        : pairVoteModeOptions(settings.game_type)
+                    }
                   />
                 </Field>
               )}
@@ -610,20 +783,59 @@ function CreateGameInner() {
 
             {isLobbyQuestions && (
               <SettingsGroup title="Questions">
-                <SegmentedControl
-                  value={questionSource}
-                  onChange={(v) => {
-                    setQuestionSource(v)
-                    if (v === 'platform') {
-                      setCustomWyrQuestions([])
-                      setCustomMltQuestions([])
-                      setQuestionsUploadError(null)
-                    }
-                  }}
-                  options={questionSourceOptions(settings.game_type)}
-                />
+                <Field label="Player submissions">
+                  <SegmentedControl
+                    value={playerQuestionsEnabled ? 'on' : 'off'}
+                    onChange={(v) => setPlayerQuestionsEnabled(v === 'on')}
+                    options={[
+                      { value: 'on', label: 'Allowed' },
+                      { value: 'off', label: 'Disabled' },
+                    ]}
+                  />
+                  <p className="text-faint text-xs mt-2">
+                    {playerQuestionsEnabled
+                      ? 'Players can add their own questions in the lobby before you start.'
+                      : 'Only your uploaded or platform questions will be used.'}
+                  </p>
+                </Field>
 
-                {questionSource === 'custom' && (
+                {playerQuestionsEnabled && (
+                  <Field label="Question mix">
+                    <SegmentedControl
+                      value={playerQuestionsOrder}
+                      onChange={(v) => setPlayerQuestionsOrder(parsePlayerQuestionsOrder(v))}
+                      options={playerQuestionsOrderOptions({
+                        game_type: settings.game_type,
+                        question_source: isTot ? 'custom' : questionSource,
+                      }).map((opt) => ({ value: opt.value, label: opt.label }))}
+                    />
+                    <p className="text-faint text-xs mt-2">
+                      {
+                        playerQuestionsOrderOptions({
+                          game_type: settings.game_type,
+                          question_source: isTot ? 'custom' : questionSource,
+                        }).find((opt) => opt.value === playerQuestionsOrder)?.hint
+                      }
+                    </p>
+                  </Field>
+                )}
+
+                {isLobbyQuestions && !isTot && (
+                  <SegmentedControl
+                    value={questionSource}
+                    onChange={(v) => {
+                      setQuestionSource(v)
+                      if (v === 'platform') {
+                        setCustomWyrQuestions([])
+                        setCustomMltQuestions([])
+                        setQuestionsUploadError(null)
+                      }
+                    }}
+                    options={questionSourceOptions(settings.game_type)}
+                  />
+                )}
+
+                {isLobbyQuestions && (isTot || questionSource === 'custom') && (
                   <div className="space-y-4 pt-1">
                     <SegmentedControl
                       value={questionTab}
@@ -637,7 +849,11 @@ function CreateGameInner() {
                         {
                           value: 'manual',
                           label: 'Add manually',
-                          hint: isWyr ? 'Type or paste option pairs.' : 'Type or paste one question per line.',
+                          hint: isWyr
+                            ? 'Type or paste option pairs.'
+                            : isTot
+                              ? 'Type “Coffee or Tea?” style prompts.'
+                              : 'Type or paste one question per line.',
                         },
                       ]}
                     />
@@ -692,7 +908,7 @@ function CreateGameInner() {
                             value={mltQuestionInput}
                             onChange={(e) => setMltQuestionInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && addManualQuestion()}
-                            placeholder="Who is most likely to…"
+                            placeholder={isTot ? 'Coffee or Tea?' : 'Who is most likely to…'}
                             className="input-field py-2.5 text-sm"
                           />
                         )}
@@ -709,7 +925,9 @@ function CreateGameInner() {
                           placeholder={
                             isWyr
                               ? 'Paste from Excel:\nNever have pizza,Never have tacos\nLive without music,Live without movies'
-                              : 'Paste questions:\nWho is most likely to become famous?\nWho is most likely to win a dance-off?'
+                              : isTot
+                                ? 'Paste questions:\nCoffee or Tea?\nBeach vacation or Mountain getaway?'
+                                : 'Paste questions:\nWho is most likely to become famous?\nWho is most likely to win a dance-off?'
                           }
                           rows={4}
                           className="input-field resize-none font-medium text-sm"
@@ -731,7 +949,7 @@ function CreateGameInner() {
                     {customQuestionCount > 0 && (
                       <div className="surface-inset border border-theme rounded-xl p-3 space-y-2 max-h-48 overflow-y-auto">
                         <p className="text-muted text-xs uppercase tracking-wider">Loaded ({customQuestionCount})</p>
-                        {isWyr
+                        {isBinaryLobby
                           ? customWyrQuestions.map((q, i) => (
                               <div key={i} className="flex items-start gap-2 text-sm">
                                 <p className="text-body flex-1 min-w-0">
@@ -775,23 +993,59 @@ function CreateGameInner() {
               </SettingsGroup>
             )}
 
-            <SettingsGroup title="How it works">
-              <p className="text-faint text-sm leading-relaxed">
-                {gameHowItWorks(settings.game_type, settings.participant_mode)}
-              </p>
-            </SettingsGroup>
-
-            {!isWyr && !isWst && !isHotSeatGame && (
-              <SettingsGroup title="Who's in the poll">
+            {!isAnonymousRoom &&
+            (((!isBinaryLobby && !isWst && !isWhoSaidThis(settings.game_type)) || isHotSeatGame) ? (
+              <SettingsGroup title={isHotSeatGame ? "Who's in the game" : "Who's in the poll"}>
                 <SegmentedControl
                   value={settings.participant_mode}
                   onChange={(mode) => setSettings({ ...settings, participant_mode: mode })}
                   options={participantModeOptions(settings.game_type)}
                 />
               </SettingsGroup>
+            ) : null)}
+
+            {!isAnonymousRoom && isPeoplePollVoters && (
+              <SettingsGroup title="Poll names">
+                <Field label="Player submissions">
+                  <SegmentedControl
+                    value={playerQuestionsEnabled ? 'on' : 'off'}
+                    onChange={(v) => setPlayerQuestionsEnabled(v === 'on')}
+                    options={[
+                      { value: 'on', label: 'Allowed' },
+                      { value: 'off', label: 'Disabled' },
+                    ]}
+                  />
+                  <p className="text-faint text-xs mt-2">
+                    {playerQuestionsEnabled
+                      ? playerNameSubmissionHint()
+                      : 'Only names from your list will appear in rounds.'}
+                  </p>
+                </Field>
+
+                {playerQuestionsEnabled && (
+                  <Field label="Name mix">
+                    <SegmentedControl
+                      value={playerQuestionsOrder}
+                      onChange={(v) => setPlayerQuestionsOrder(parsePlayerQuestionsOrder(v))}
+                      options={playerQuestionsOrderOptions({
+                        game_type: settings.game_type,
+                        question_source: questionSource,
+                      }).map((opt) => ({ value: opt.value, label: opt.label }))}
+                    />
+                    <p className="text-faint text-xs mt-2">
+                      {
+                        playerQuestionsOrderOptions({
+                          game_type: settings.game_type,
+                          question_source: questionSource,
+                        }).find((opt) => opt.value === playerQuestionsOrder)?.hint
+                      }
+                    </p>
+                  </Field>
+                )}
+              </SettingsGroup>
             )}
 
-            {settings.participant_mode === 'import' && !isWyr && !isWst && !isHotSeatGame && (
+            {!isAnonymousRoom && settings.participant_mode === 'import' && !isBinaryLobby && !isWst && !isHotSeatGame && (
               <SettingsGroup title="Who appears in rounds">
                 <SegmentedControl
                   value={settings.participant_filter}
@@ -804,6 +1058,7 @@ function CreateGameInner() {
               </SettingsGroup>
             )}
 
+            {!isAnonymousRoom && (
             <SettingsGroup title="Advanced" description="Timer behavior & privacy" collapsible defaultOpen={false}>
               <Field label="When timer runs out">
                 <SegmentedControl
@@ -838,10 +1093,23 @@ function CreateGameInner() {
                 />
               </div>
             </SettingsGroup>
+            )}
+              </>
+            )}
+
+            <SettingsGroup title="How it works">
+              <p className="text-faint text-sm leading-relaxed">
+                {gameHowItWorks(settings.game_type, settings.participant_mode)}
+              </p>
+            </SettingsGroup>
           </div>
 
           <StickyActionBar>
-            {isWyr || (isMlt && isJoinersMode) ? (
+            {isAnonymousRoom ? (
+              <PrimaryBtn onClick={createGame} disabled={!settings.title.trim() || loading}>
+                {loading ? 'Creating...' : 'Create Game'}
+              </PrimaryBtn>
+            ) : isBinaryLobby || (isMlt && isJoinersMode) ? (
               <PrimaryBtn onClick={createGame} disabled={!canCreateQuickLobby || loading || !customSlotsValid}>
                 {loading ? 'Creating...' : 'Create Game'}
               </PrimaryBtn>
@@ -871,7 +1139,7 @@ function CreateGameInner() {
   }
 
   if (step === 'participants') {
-    const sampleFile = participantSampleFile(settings.game_type)
+    const sampleFile = participantSampleFile(settings.game_type, participantOpts)
     return (
       <PageShell>
         <BackBtn onClick={() => setStep('settings')} />
@@ -880,7 +1148,11 @@ function CreateGameInner() {
         <div>
           <p className="label-caps mb-1">Step 2</p>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight gradient-title-subtle">Add People</h1>
-          <p className="text-muted text-sm mt-1.5">{participantImportStepHint(settings.game_type)}</p>
+          <p className="text-muted text-sm mt-1.5">
+            {settings.participant_mode === 'import'
+              ? participantClaimRosterHint(settings.game_type, participantOpts)
+              : participantImportStepHint(settings.game_type, participantOpts)}
+          </p>
         </div>
 
         <div className="glass-card p-5 space-y-4">
@@ -926,7 +1198,7 @@ function CreateGameInner() {
                 className="hidden"
                 onChange={handleFileUpload}
               />
-              <p className="text-faint text-xs text-center">{participantUploadHint(settings.game_type)}</p>
+              <p className="text-faint text-xs text-center">{participantUploadHint(settings.game_type, participantOpts)}</p>
               {uploadError && <p className="text-red-400 text-sm">{uploadError}</p>}
             </div>
           ) : (
@@ -1026,7 +1298,7 @@ function CreateGameInner() {
           )}
           {needsGender &&
             !isMlt &&
-            !hasEnoughForRounds(participants, settings.game_type) &&
+            !hasEnoughForRounds(participants, settings.game_type, participantOpts) &&
             participants.length > 0 && (
               <p className="text-amber-500 text-xs text-center">
                 Need at least {minPool} people of the same gender to run rounds

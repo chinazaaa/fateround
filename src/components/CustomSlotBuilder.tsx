@@ -95,10 +95,14 @@ export function CustomSlotBuilder({ value, onChange }: CustomSlotBuilderProps) {
   const slots = value?.slots ?? makeSlots(3)
   const title = value?.title ?? ''
 
+  function updateConfig(updates: Partial<CustomSlotsConfig>) {
+    onChange({ slots, title, ...updates })
+  }
+
   function updateSlot(index: number, updates: Partial<CustomSlot>) {
     const newSlots = slots.map((s, i) => (i === index ? { ...s, ...updates } : s))
     const newTitle = newSlots.every((s) => s.label) ? newSlots.map((s) => s.label).join(' / ') : title
-    onChange({ slots: newSlots, title: newTitle })
+    updateConfig({ slots: newSlots, title: newTitle })
   }
 
   function setSlotCount(count: number) {
@@ -112,11 +116,11 @@ export function CustomSlotBuilder({ value, onChange }: CustomSlotBuilderProps) {
       newSlots = slots.slice(0, count)
     }
     const newTitle = newSlots.every((s) => s.label) ? newSlots.map((s) => s.label).join(' / ') : title
-    onChange({ slots: newSlots, title: newTitle })
+    updateConfig({ slots: newSlots, title: newTitle })
   }
 
   function selectTemplate(template: Template) {
-    onChange({ slots: template.slots, title: template.title })
+    updateConfig({ slots: template.slots, title: template.title })
     setShowTemplates(false)
   }
 
@@ -142,7 +146,7 @@ export function CustomSlotBuilder({ value, onChange }: CustomSlotBuilderProps) {
           <button
             type="button"
             onClick={() => {
-              onChange({ slots: makeSlots(2), title: '' })
+              updateConfig({ slots: makeSlots(2), title: '' })
               setShowTemplates(false)
             }}
             className="w-full text-left glass-card px-4 py-3 hover:border-theme-strong transition-colors"

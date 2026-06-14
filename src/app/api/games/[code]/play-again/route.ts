@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { hostActionSchema } from '@/lib/validation'
+import { parseGameType, isAnonymousMessagesGame } from '@/lib/game-types'
+import { clearAnonymousRoomSessionData } from '@/lib/anonymous-messages'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -37,12 +39,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { error: pqError } = await supabase.from('player_questions').delete().eq('game_id', gameId)
   if (pqError) return NextResponse.json({ error: pqError.message }, { status: 500 })
 
+  const { error: playerNamesError } = await supabase
+    .from('participants')
+    .delete()
+    .eq('game_id', gameId)
+    .not('submitted_by_player_id', 'is', null)
+  if (playerNamesError) return NextResponse.json({ error: playerNamesError.message }, { status: 500 })
+
   const { error: hotSeatError } = await supabase.from('hot_seat_submissions').delete().eq('game_id', gameId)
   if (hotSeatError) return NextResponse.json({ error: hotSeatError.message }, { status: 500 })
 
+  if (isAnonymousMessagesGame(parseGameType(game.game_type))) {
+    const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId)
+    if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
+  }
+
   const { data: updated, error: gameError } = await supabase
     .from('games')
-    .update({ status: 'waiting', current_round_number: 0 })
+    .update({ status: 'waiting', current_round_number: 0, session_started_at: null, anonymous_messages_trimmed_at: null })
     .eq('id', gameId)
     .select()
     .single()

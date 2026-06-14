@@ -1,20 +1,24 @@
 export type GameStatus = 'waiting' | 'active' | 'finished'
 export type RoundStatus = 'pending' | 'active' | 'finished'
 export type AutoSubmitBehavior = 'random' | 'no_answer'
-export type ParticipantMode = 'import' | 'joiners'
+export type ParticipantMode = 'import' | 'joiners' | 'voters'
 /** Pair games: `any` = 2 smash OK; `one_each` = must pick one of each option. */
 export type PairVoteMode = 'any' | 'one_each'
 /** WYR / MLT: built-in pool vs host-uploaded CSV questions. */
 export type QuestionSource = 'platform' | 'custom'
+/** How player-submitted lobby questions are mixed with uploaded/platform questions. */
+export type PlayerQuestionsOrder = 'players_first' | 'uploaded_first' | 'mixed'
 export type GameType =
   | 'smash_marry_kill'
   | 'red_flag_green_flag'
   | 'smash_or_pass'
   | 'would_you_rather'
+  | 'this_or_that'
   | 'most_likely_to'
   | 'who_said_this'
   | 'hot_seat'
   | 'custom'
+  | 'anonymous_messages'
 export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical'
 export type WyrChoice = 'a' | 'b'
 
@@ -32,6 +36,8 @@ export interface CustomSlot {
 export interface CustomSlotsConfig {
   slots: CustomSlot[]
   title: string
+  /** When true, rounds are same-gender and players vote by gender (KMK-style). Default false. */
+  gender_based?: boolean
 }
 
 export interface Game {
@@ -48,13 +54,25 @@ export interface Game {
   pair_vote_mode: PairVoteMode
   question_source?: QuestionSource
   custom_questions?: unknown[] | null
+  /** WYR / MLT / This or That: allow players to submit questions. People poll games: allow name submissions. */
+  player_questions_enabled?: boolean
+  /** Order to mix player submissions with uploaded/platform questions when the game starts. */
+  player_questions_order?: PlayerQuestionsOrder
   game_type: GameType
   theme?: ThemeId
   status: GameStatus
   current_round_number: number
   created_at: string
+  /** Anonymous room — when the live session started (15 min cap). */
+  session_started_at?: string | null
+  /** Anonymous room — max players allowed in the lobby (2–15). */
+  max_players?: number | null
+  /** Anonymous room — last time a batch of old messages was trimmed. */
+  anonymous_messages_trimmed_at?: string | null
   wst_quote_source?: WstQuoteSource
   custom_slots?: CustomSlotsConfig | null
+  /** When true, rounds use same-gender groups and opposite-gender voting. Default true for SMK/pair, false for custom. */
+  gender_based?: boolean
 }
 
 export interface Participant {
@@ -67,6 +85,8 @@ export interface Participant {
   display_order: number
   /** MLT import mode: host adds names from the list into the poll. */
   in_mlt_poll?: boolean | null
+  /** Player-submitted name for people-based poll games (RFGF, SMK, etc.). */
+  submitted_by_player_id?: string | null
 }
 
 export interface Player {
@@ -130,6 +150,25 @@ export interface Confession {
   game_id: string
   round_id: string | null
   text: string
+  created_at: string
+}
+
+export interface AnonymousMessage {
+  id: string
+  game_id: string
+  player_id: string
+  player_name?: string
+  text: string
+  created_at: string
+  reply_to_id?: string | null
+  reply_to_text?: string | null
+}
+
+export interface AnonymousRoomBan {
+  id: string
+  game_id: string
+  player_id: string
+  banned_until: string
   created_at: string
 }
 

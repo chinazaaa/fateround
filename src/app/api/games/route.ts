@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generateGameCode, generateToken } from '@/lib/utils'
-import { normalizeGender, hasEnoughForRounds, participantsNeedGender, type ParticipantInput } from '@/lib/participants'
+import { normalizeGender, hasEnoughForRounds, participantsNeedGenderForGame, type ParticipantInput } from '@/lib/participants'
 import {
   parseGameType,
   roundPoolSize,
   isLobbyGame,
   isWouldYouRather,
+  isThisOrThat,
+  isBinaryChoiceGame,
   isMostLikelyTo,
   isWhoSaidThis,
   isHotSeat,
@@ -14,6 +16,7 @@ import {
   isPairGame,
   parsePairVoteMode,
   isCustomGame,
+  isAnonymousMessagesGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { clampHotSeatMaxCap, hotSeatMaxCapUpperBound, HOT_SEAT_MIN_PLAYERS } from '@/lib/hot-seat'
@@ -21,17 +24,26 @@ import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import { parseQuestionSource, parseStoredWyrQuestions, parseStoredMltQuestions } from '@/lib/custom-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
-import type { ParticipantMode, QuestionSource } from '@/types'
+import type { ParticipantMode, QuestionSource, CustomSlotsConfig } from '@/types'
 import { createGameSchema, stripHtml } from '@/lib/validation'
+import { supportsGenderToggle, defaultGenderBasedForType } from '@/lib/gender-based'
+import { parseParticipantMode, usesHostParticipantList } from '@/lib/participant-mode'
 import { parseThemeId } from '@/lib/themes'
+import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
+import { isPeoplePollGame, supportsPlayerNameSubmissions } from '@/lib/player-participant-pool'
+import { clampAnonymousRoomMaxPlayers, ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS } from '@/lib/anonymous-messages'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
-function parseParticipants(raw: unknown, gameType: ReturnType<typeof parseGameType>): ParticipantInput[] | null {
+function parseParticipants(
+  raw: unknown,
+  gameType: ReturnType<typeof parseGameType>,
+  genderBased: boolean
+): ParticipantInput[] | null {
   if (!Array.isArray(raw)) return null
 
   const parsed: ParticipantInput[] = []
-  const needGender = participantsNeedGender(gameType)
+  const needGender = participantsNeedGenderForGame(gameType, { genderBased })
   for (const item of raw) {
     if (typeof item === 'string') {
       const name = stripHtml(item.trim())
@@ -54,11 +66,11 @@ function lobbyMaxRounds(
   customQuestions: unknown[] | null
 ): number {
   if (questionSource === 'custom') {
-    if (isWouldYouRather(gameType)) return parseStoredWyrQuestions(customQuestions).length
+    if (isBinaryChoiceGame(gameType)) return parseStoredWyrQuestions(customQuestions).length
     if (isMostLikelyTo(gameType)) return parseStoredMltQuestions(customQuestions).length
     return 20
   }
-  if (isWouldYouRather(gameType)) return WYR_QUESTION_COUNT
+  if (isBinaryChoiceGame(gameType)) return isThisOrThat(gameType) ? 0 : WYR_QUESTION_COUNT
   if (isMostLikelyTo(gameType)) return MLT_QUESTION_COUNT
   return 20
 }
@@ -68,7 +80,7 @@ function parseCustomQuestionsBody(
   gameType: ReturnType<typeof parseGameType>
 ): WyrQuestion[] | string[] | null {
   if (!Array.isArray(raw)) return null
-  if (isWouldYouRather(gameType)) {
+  if (isBinaryChoiceGame(gameType)) {
     const parsed = parseStoredWyrQuestions(raw)
     return parsed.length > 0 ? parsed : null
   }
@@ -101,14 +113,23 @@ export async function POST(req: NextRequest) {
     theme: rawTheme,
     participants: rawParticipants,
     participant_filter,
+    custom_slots,
+    gender_based: rawGenderBased,
+    player_questions_enabled: rawPlayerQuestionsEnabled,
+    player_questions_order: rawPlayerQuestionsOrder,
+    max_players: rawMaxPlayers,
   } = parsed.data
 
   const game_type = parseGameType(rawGameType)
+  const gender_based = supportsGenderToggle(game_type)
+    ? rawGenderBased ?? (isCustomGame(game_type) ? custom_slots?.gender_based === true : defaultGenderBasedForType(game_type))
+    : false
+  const participantOpts = { genderBased: gender_based, customSlots: custom_slots ?? null }
   const theme = parseThemeId(rawTheme)
   const question_source = parseQuestionSource(rawQuestionSource, game_type)
   let custom_questions: unknown[] | null = null
 
-  if (question_source === 'custom' && (isWouldYouRather(game_type) || isMostLikelyTo(game_type))) {
+  if (question_source === 'custom' && (isBinaryChoiceGame(game_type) || isMostLikelyTo(game_type))) {
     const cqParsed = parseCustomQuestionsBody(rawCustomQuestions, game_type)
     if (!cqParsed) {
       return NextResponse.json({ error: 'Upload at least one custom question' }, { status: 400 })
@@ -118,17 +139,17 @@ export async function POST(req: NextRequest) {
 
   const participant_mode: ParticipantMode = isLobbyGame(game_type)
     ? 'joiners'
-    : isWhoSaidThis(game_type) || isHotSeat(game_type)
+    : isWhoSaidThis(game_type)
       ? 'import'
-      : rawMode === 'joiners'
-        ? 'joiners'
-        : 'import'
+      : parseParticipantMode(rawMode)
 
   let participants: ParticipantInput[] = []
-  if (participant_mode === 'import') {
-    const participantsParsed = parseParticipants(rawParticipants, game_type)
-    if (!participantsParsed || participantsParsed.length < roundPoolSize(game_type)) {
-      return NextResponse.json({ error: `At least ${roundPoolSize(game_type)} participants required` }, { status: 400 })
+  if (usesHostParticipantList(participant_mode)) {
+    const customMinPool =
+      isCustomGame(game_type) && custom_slots?.slots?.length ? custom_slots.slots.length : roundPoolSize(game_type)
+    const participantsParsed = parseParticipants(rawParticipants, game_type, gender_based)
+    if (!participantsParsed || participantsParsed.length < customMinPool) {
+      return NextResponse.json({ error: `At least ${customMinPool} participants required` }, { status: 400 })
     }
     if (isMostLikelyTo(game_type)) {
       if (participantsParsed.length < 2) {
@@ -139,25 +160,27 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Need at least 2 names on the list' }, { status: 400 })
       }
     } else if (isHotSeat(game_type)) {
-      if (participantsParsed.length < 3) {
+      if (participant_mode === 'import' && participantsParsed.length < 3) {
         return NextResponse.json({ error: 'Need at least 3 names on the list for Hot Seat' }, { status: 400 })
       }
-    } else if (!hasEnoughForRounds(participantsParsed, game_type)) {
-      const min = roundPoolSize(game_type)
-      return NextResponse.json(
-        { error: `Need at least ${min} people of the same gender (male or female) for rounds` },
-        { status: 400 }
-      )
+    } else if (!hasEnoughForRounds(participantsParsed, game_type, participantOpts)) {
+      const min = isCustomGame(game_type) ? customMinPool : roundPoolSize(game_type)
+      const errorMsg = !gender_based
+        ? `Need at least ${min} names on the list`
+        : `Need at least ${min} people of the same gender (male or female) for rounds`
+      return NextResponse.json({ error: errorMsg }, { status: 400 })
     }
     participants = participantsParsed
   }
 
   const maxRounds = lobbyMaxRounds(game_type, question_source, custom_questions)
-  const roundsCount = isWhoSaidThis(game_type)
+  const roundsCount = isAnonymousMessagesGame(game_type)
+    ? 1
+    : isWhoSaidThis(game_type)
     ? wstAutoRoundCount(participants.length)
     : isHotSeat(game_type)
       ? clampHotSeatMaxCap(rounds_count ?? HOT_SEAT_MIN_PLAYERS, hotSeatMaxCapUpperBound(0, participants.length))
-      : Math.min(Math.max(Number(rounds_count) || 3, 1), Math.min(maxRounds, 20))
+      : Math.min(Math.max(Number(rounds_count) || 3, 1), maxRounds)
 
   if (question_source === 'custom' && custom_questions && roundsCount > custom_questions.length) {
     return NextResponse.json(
@@ -178,6 +201,9 @@ export async function POST(req: NextRequest) {
   }
 
   const hostToken = generateToken()
+  const maxPlayers = isAnonymousMessagesGame(game_type)
+    ? clampAnonymousRoomMaxPlayers(Number(rawMaxPlayers) || ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS)
+    : null
 
   const { error: gameError } = await supabase.from('games').insert({
     id: gameCode,
@@ -185,12 +211,21 @@ export async function POST(req: NextRequest) {
     host_token: hostToken,
     rounds_count: roundsCount,
     timer_seconds: [15, 30, 60].includes(Number(timer_seconds)) ? Number(timer_seconds) : 30,
-    anonymous: isAnonymousGame(game_type) ? true : anonymous !== false,
+    anonymous: isAnonymousMessagesGame(game_type) || isAnonymousGame(game_type) ? true : anonymous !== false,
     auto_reveal: auto_reveal !== false,
     auto_submit_behavior: auto_submit_behavior === 'random' ? 'random' : 'no_answer',
     participant_mode,
-    participant_filter: isHotSeat(game_type) ? 'joined' : participant_filter === 'joined' ? 'joined' : 'all',
-    pair_vote_mode: isPairGame(game_type) ? parsePairVoteMode(rawPairVoteMode) : 'any',
+    participant_filter:
+      participant_mode === 'voters' || (isHotSeat(game_type) && participant_mode === 'import')
+        ? participant_mode === 'voters'
+          ? 'all'
+          : 'joined'
+        : participant_filter === 'joined'
+          ? 'joined'
+          : 'all',
+    pair_vote_mode: isPairGame(game_type) || (isCustomGame(game_type) && (custom_slots?.slots?.length ?? 0) === 2)
+      ? parsePairVoteMode(rawPairVoteMode)
+      : 'any',
     question_source: isWouldYouRather(game_type) || isMostLikelyTo(game_type) ? question_source : 'platform',
     custom_questions,
     game_type,
@@ -198,14 +233,37 @@ export async function POST(req: NextRequest) {
     status: 'waiting',
     current_round_number: 0,
     wst_quote_source: parsed.data.wst_quote_source ?? 'player',
-    ...(isCustomGame(game_type) && parsed.data.custom_slots ? { custom_slots: parsed.data.custom_slots } : {}),
+    gender_based: supportsGenderToggle(game_type) ? gender_based : true,
+    player_questions_enabled:
+      isBinaryChoiceGame(game_type) || isMostLikelyTo(game_type)
+        ? parsePlayerQuestionsEnabled(rawPlayerQuestionsEnabled)
+        : supportsPlayerNameSubmissions({ game_type, participant_mode })
+          ? parsePlayerQuestionsEnabled(rawPlayerQuestionsEnabled)
+          : isPeoplePollGame(game_type)
+            ? false
+            : true,
+    player_questions_order:
+      isBinaryChoiceGame(game_type) || isMostLikelyTo(game_type)
+        ? parsePlayerQuestionsOrder(rawPlayerQuestionsOrder)
+        : supportsPlayerNameSubmissions({ game_type, participant_mode })
+          ? parsePlayerQuestionsOrder(rawPlayerQuestionsOrder)
+          : 'players_first',
+    ...(maxPlayers != null ? { max_players: maxPlayers } : {}),
+    ...(isCustomGame(game_type) && parsed.data.custom_slots
+      ? {
+          custom_slots: {
+            ...parsed.data.custom_slots,
+            gender_based: supportsGenderToggle(game_type) ? gender_based : false,
+          },
+        }
+      : {}),
   })
 
   if (gameError) {
     return NextResponse.json({ error: gameError.message }, { status: 500 })
   }
 
-  if (participant_mode === 'import' && participants.length > 0) {
+  if (usesHostParticipantList(participant_mode) && participants.length > 0) {
     const participantRows = participants.map((p, index) => ({
       game_id: gameCode,
       name: p.name,

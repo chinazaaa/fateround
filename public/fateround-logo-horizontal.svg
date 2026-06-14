@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 160">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f43f5e"/>
+      <stop offset="100%" stop-color="#e11d48"/>
+    </linearGradient>
+  </defs>
+
+  <!-- icon -->
+  <rect x="8" y="8" width="144" height="144" rx="32" fill="url(#bg)"/>
+  <g transform="translate(8,8)">
+    <g stroke="#ffffff" stroke-width="7" stroke-linecap="round" fill="none" opacity="0.9">
+      <path d="M72 40 L104 92 L40 92 Z"/>
+    </g>
+    <circle cx="72" cy="40" r="13" fill="#ffffff"/>
+    <circle cx="104" cy="92" r="13" fill="#ffffff"/>
+    <circle cx="40" cy="92" r="13" fill="#ffffff"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="178" y="103" font-family="Liberation Sans, Arial, sans-serif" font-weight="700" font-size="68" fill="#1e1b2e">Fate<tspan fill="#e11d48">Round</tspan></text>
+</svg>

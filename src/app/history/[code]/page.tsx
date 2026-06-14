@@ -1,11 +1,10 @@
 'use client'
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useGame } from '@/hooks/queries/useGame'
-import { usePlayers } from '@/hooks/queries/usePlayers'
-import { useParticipants } from '@/hooks/queries/useParticipants'
-import { useAllResults } from '@/hooks/queries/useAllResults'
+import { supabase } from '@/lib/supabase'
 import { roundGenderLabel } from '@/lib/participants'
+import { isGenderFreeVoting } from '@/lib/gender-based'
 import {
   assignmentEmojiFor,
   tallyRoundVotes,
@@ -19,10 +18,15 @@ import {
   slotMeta,
   voteSlots,
   isPairGame,
-  isWouldYouRather,
+  isBinaryChoiceGame,
+  isThisOrThat,
   isMostLikelyTo,
   isWhoSaidThis,
+  isHotSeat,
+  isAnonymousMessagesGame,
 } from '@/lib/game-types'
+import { AnonymousRoomSessionSummary } from '@/components/anonymous-messages/AnonymousRoomSessionSummary'
+import { hotSeatPlayerDisplayName } from '@/lib/hot-seat'
 import { isMltImportGame, mltVoteTargets } from '@/lib/mlt'
 import {
   wstVoteTargets,
@@ -30,8 +34,10 @@ import {
   wstCorrectParticipantIdFromRound,
   tallyWstVotes,
 } from '@/lib/who-said-this'
-import { ParticipantRoundResults, WyrRoundResults, MltRoundResults, WstRoundResults } from '@/components/VoteResults'
-import type { Game, Participant } from '@/types'
+import { ParticipantRoundResults, WyrRoundResults, MltRoundResults, WstRoundResults, HotSeatRoundResults } from '@/components/VoteResults'
+import type { Confession, Game, Participant, Player, Round, Vote } from '@/types'
+
+type LoadState = 'loading' | 'not_found' | 'ready'
 
 function participantName(participants: Participant[], id: string | null): string {
   if (!id) return '—'
@@ -57,17 +63,74 @@ export default function GameHistoryPage() {
   const router = useRouter()
   const gameCode = String(params.code ?? '').toUpperCase()
 
-  const { data: game, isLoading: gameLoading } = useGame(gameCode)
-  const { data: participants = [] } = useParticipants(gameCode)
-  const { data: players = [] } = usePlayers(gameCode)
-  const { data: results, isLoading: resultsLoading } = useAllResults(gameCode, !!game)
-  const rounds = results?.rounds ?? []
-  const votes = results?.votes ?? []
-  const confessions = results?.confessions ?? []
+  const [loadState, setLoadState] = useState<LoadState>('loading')
+  const [game, setGame] = useState<Game | null>(null)
+  const [participants, setParticipants] = useState<Participant[]>([])
+  const [players, setPlayers] = useState<Player[]>([])
+  const [rounds, setRounds] = useState<Round[]>([])
+  const [votes, setVotes] = useState<Vote[]>([])
+  const [confessions, setConfessions] = useState<Confession[]>([])
+  const [hotSeatSubmissions, setHotSeatSubmissions] = useState<
+    { id: string; round_id: string; text: string; submission_type: string }[]
+  >([])
 
-  const isLoading = gameLoading || resultsLoading
+  useEffect(() => {
+    if (!gameCode || gameCode.length < 4) {
+      setLoadState('not_found')
+      return
+    }
 
-  if (isLoading) {
+    async function load() {
+      setLoadState('loading')
+      const { data: gameData } = await supabase.from('games').select('*').eq('id', gameCode).maybeSingle()
+
+      if (!gameData) {
+        setLoadState('not_found')
+        return
+      }
+
+      const isAnonymousRoom = isAnonymousMessagesGame(parseGameType(gameData.game_type))
+
+      if (isAnonymousRoom) {
+        const { data: plrs } = await supabase.from('players').select('*').eq('game_id', gameCode).order('joined_at')
+        setGame(gameData)
+        setPlayers(plrs ?? [])
+        setParticipants([])
+        setRounds([])
+        setVotes([])
+        setConfessions([])
+        setHotSeatSubmissions([])
+        setLoadState('ready')
+        return
+      }
+
+      const [{ data: parts }, { data: plrs }, { data: rds }, { data: vts }, { data: confs }, { data: subs }] =
+        await Promise.all([
+        supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
+        supabase.from('players').select('*').eq('game_id', gameCode).order('joined_at'),
+        supabase.from('rounds').select('*').eq('game_id', gameCode).order('round_number'),
+        supabase.from('votes').select('*').eq('game_id', gameCode),
+        supabase.from('confessions').select('*').eq('game_id', gameCode).order('created_at'),
+        supabase
+          .from('hot_seat_submissions')
+          .select('id, round_id, text, submission_type')
+          .eq('game_id', gameCode),
+      ])
+
+      setGame(gameData)
+      setParticipants(parts ?? [])
+      setPlayers(plrs ?? [])
+      setRounds(rds ?? [])
+      setVotes(vts ?? [])
+      setConfessions(confs ?? [])
+      setHotSeatSubmissions(subs ?? [])
+      setLoadState('ready')
+    }
+
+    load()
+  }, [gameCode])
+
+  if (loadState === 'loading') {
     return (
       <div className="page-wrap flex items-center justify-center">
         <div className="w-11 h-11 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
@@ -75,7 +138,7 @@ export default function GameHistoryPage() {
     )
   }
 
-  if (!isLoading && !game) {
+  if (loadState === 'not_found' || !game) {
     return (
       <div className="page-wrap flex items-center justify-center px-4 py-12">
         <div className="text-center space-y-4 max-w-sm">
@@ -94,6 +157,39 @@ export default function GameHistoryPage() {
 
   const playerNameById = new Map(players.map((p) => [p.id, p.name]))
   const gameType = parseGameType(game.game_type)
+
+  if (isAnonymousMessagesGame(gameType)) {
+    return (
+      <div className="page-wrap px-4 py-8 max-w-4xl mx-auto w-full space-y-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-1">
+            <p className="label-caps">Game history</p>
+            <h1 className="text-3xl font-black tracking-tight gradient-title-subtle">{game.title}</h1>
+            <p className="text-muted text-sm font-mono tracking-wider">{game.id}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/history" className="btn-secondary text-sm py-2 px-4">
+              Search
+            </Link>
+            {game.status !== 'finished' && (
+              <Link href={`/game/${game.id}`} className="btn-primary text-sm py-2 px-4">
+                Open game
+              </Link>
+            )}
+          </div>
+        </div>
+
+        <AnonymousRoomSessionSummary game={game} playerCount={players.length} />
+
+        <p className="text-center pb-4">
+          <Link href="/" className="text-faint text-sm hover:text-body transition-colors">
+            ← Back home
+          </Link>
+        </p>
+      </div>
+    )
+  }
+
   const voteColumns = voteSlots(gameType).map((slot) => ({
     slot,
     meta: slotMeta(gameType, slot),
@@ -106,6 +202,10 @@ export default function GameHistoryPage() {
   }))
   const tallyCategories = getVoteCategories(gameType)
   const roundsWithVotes = rounds.filter((r) => votes.some((v) => v.round_id === r.id))
+  const isHotSeatGame = isHotSeat(gameType)
+  const roundsWithContent = isHotSeatGame
+    ? rounds.filter((r) => hotSeatSubmissions.some((s) => s.round_id === r.id) || r.status === 'finished')
+    : roundsWithVotes
 
   return (
     <div className="page-wrap px-4 py-8 max-w-4xl mx-auto w-full space-y-8">
@@ -154,18 +254,38 @@ export default function GameHistoryPage() {
 
       {rounds.length === 0 ? (
         <div className="glass-card p-8 text-center text-muted">No rounds yet — the host hasn't started this game.</div>
-      ) : roundsWithVotes.length === 0 ? (
+      ) : roundsWithContent.length === 0 ? (
         <div className="glass-card p-8 text-center text-muted">
-          {rounds.length} round{rounds.length === 1 ? '' : 's'} set up, but no votes recorded yet.
+          {isHotSeatGame
+            ? `${rounds.length} round${rounds.length === 1 ? '' : 's'} played, but no submissions recorded yet.`
+            : `${rounds.length} round${rounds.length === 1 ? '' : 's'} set up, but no votes recorded yet.`}
         </div>
       ) : (
         <div className="space-y-8">
           {rounds.map((round) => {
+            if (isHotSeatGame) {
+              const roundSubs = hotSeatSubmissions.filter((s) => s.round_id === round.id)
+              if (round.status !== 'finished' && roundSubs.length === 0) return null
+              const hotSeatPlayerName = hotSeatPlayerDisplayName(round.submitter_player_id, players, participants)
+              return (
+                <section key={round.id} className="space-y-3">
+                  <h2 className="text-lg font-bold text-body">Round {round.round_number}</h2>
+                  <HotSeatRoundResults
+                    hotSeatPlayerName={hotSeatPlayerName ?? 'Unknown'}
+                    submissions={roundSubs}
+                    animate={false}
+                  />
+                </section>
+              )
+            }
+
             const roundVotes = votes.filter((v) => v.round_id === round.id)
             if (roundVotes.length === 0) return null
 
             const roundParts = participants.filter((p) => round.participant_ids.includes(p.id))
-            const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
+            const roundGender = isGenderFreeVoting(game)
+              ? null
+              : roundGenderLabel(roundParts.map((p) => p.gender))
             const tallies = tallyRoundVotes(round.participant_ids, roundVotes)
 
             return (
@@ -181,7 +301,7 @@ export default function GameHistoryPage() {
                   </p>
                 </div>
 
-                {isWouldYouRather(gameType) ? (
+                {isBinaryChoiceGame(gameType) ? (
                   (() => {
                     const wyrTally = tallyWyrVotes(roundVotes)
                     return (
@@ -191,6 +311,7 @@ export default function GameHistoryPage() {
                         countA={wyrTally.countA}
                         countB={wyrTally.countB}
                         voterCount={wyrTally.voterCount}
+                        mode={isThisOrThat(gameType) ? 'tot' : 'wyr'}
                       />
                     )
                   })()

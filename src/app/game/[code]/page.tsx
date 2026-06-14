@@ -6,12 +6,6 @@ import { getPlayerSession, setPlayerSession, clearPlayerSession, filterParticipa
 import { Avatar } from '@/components/Avatar'
 import { ParticipantPhotoCard } from '@/components/ParticipantPhotoCard'
 import { ParticipantGallery } from '@/components/ParticipantGallery'
-import { usePlayerQuestions } from '@/hooks/queries/usePlayerQuestions'
-import { useHotSeatSubmissions } from '@/hooks/queries/useHotSeatSubmissions'
-import { useGameRealtime } from '@/hooks/useGameRealtime'
-import { useSubmitPlayerQuestion, useDeletePlayerQuestion } from '@/hooks/mutations/useSubmitPlayerQuestion'
-import { useSubmitHotSeat } from '@/hooks/mutations/useSubmitHotSeat'
-import { useSendConfession } from '@/hooks/mutations/useSendConfession'
 import {
   playRoundStartSound,
   playVoteSubmittedSound,
@@ -59,6 +53,8 @@ import {
   isThreeChoiceGame,
   isPairGame,
   isWouldYouRather,
+  isThisOrThat,
+  isBinaryChoiceGame,
   isMostLikelyTo,
   isWhoSaidThis,
   isNameOnlyPlayerJoin,
@@ -68,10 +64,13 @@ import {
   isPairOneEachMode,
   isPairAssignmentValid,
   pairDisabledSlots,
+  assignPairSlot,
   completeRandomPairAssignment,
   isHotSeat,
   isCustomGame,
+  isAnonymousMessagesGame,
 } from '@/lib/game-types'
+import { AnonymousMessagesPlayerView } from '@/components/anonymous-messages/AnonymousMessagesPlayerView'
 import {
   ParticipantRoundResults,
   VoteCountStat,
@@ -81,7 +80,7 @@ import {
   AnimeWstRoundResults,
   HotSeatRoundResults,
 } from '@/components/VoteResults'
-import { FinalGenderLeaderboards, FinalGenderBreakdown } from '@/components/FinalLeaderboard'
+import { FinalGenderLeaderboards, FinalGenderBreakdown, FinalOverallLeaderboards, FinalOverallBreakdown } from '@/components/FinalLeaderboard'
 import { NameSearchPicker } from '@/components/NameSearchPicker'
 import { MltPlayerPicker } from '@/components/MltPlayerPicker'
 import { isMltImportGame, mltTargetIdFromVote, mltVoteTargets } from '@/lib/mlt'
@@ -104,7 +103,19 @@ import {
   tallyCustomVotes,
   completeRandomCustomAssignment,
   buildCustomLeaderboard,
+  isCustomAssignmentValid,
+  customAssignmentMode,
+  customDisabledSlots,
+  assignCustomSlot,
+  isCustomOneEachMode,
+  isCustomTwoSlotGame,
+  customVoteRecapItems,
 } from '@/lib/custom-game'
+import { isGameGenderBased, supportsGenderToggle, isGenderFreeVoting } from '@/lib/gender-based'
+import { isImportClaimMode, isVoterOnlyMode } from '@/lib/participant-mode'
+import { parseOrSplitQuestion } from '@/lib/custom-questions'
+import { lobbyAllowsPlayerQuestions } from '@/lib/player-question-pool'
+import { isPeoplePollGame, lobbyAllowsPlayerNameSubmissions, playerNameSubmissionHint, playerNameSubmissionPlaceholder, playerNameSubmissionPanelTitle } from '@/lib/player-participant-pool'
 import { CustomVoteCard } from '@/components/CustomVoteCard'
 import { CustomRoundResults } from '@/components/CustomRoundResults'
 import { ShareResults } from '@/components/ShareResults'
@@ -114,8 +125,7 @@ import { ShareRoundResults } from '@/components/ShareRoundResults'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { ConfessionsTicker } from '@/components/ConfessionsTicker'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
-import { WaitingView } from '@/components/game/WaitingView'
-import { RoundResultsView } from '@/components/game/RoundResultsView'
+import { GameLobbySummary } from '@/components/GameLobbySummary'
 import ReactionBar from '@/components/ReactionBar'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -124,7 +134,7 @@ import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import { HOT_SEAT_SUBMISSION_TYPES, hotSeatPlayerDisplayName } from '@/lib/hot-seat'
 import { SegmentedControl } from '@/components/ui/CreateWizard'
 import {
-  FINAL_RESULTS_AUTO_REVEAL_SECONDS,
+  finalResultsAutoRevealSeconds,
   roundResultsWaitMessage,
   ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
 } from '@/lib/round-timing'
@@ -149,15 +159,6 @@ export default function GamePage() {
   const toast = useToast()
   const { confirm } = useConfirm()
   const gameCode = (Array.isArray(code) ? code[0] : code).toUpperCase()
-
-  // Realtime → React Query cache bridge (runs alongside existing setState handlers)
-  useGameRealtime(gameCode)
-
-  // Mutation hooks
-  const submitPQ = useSubmitPlayerQuestion(gameCode)
-  const deletePQ = useDeletePlayerQuestion(gameCode)
-  const submitHotSeatMutation = useSubmitHotSeat(gameCode)
-  const sendConfessionMutation = useSendConfession(gameCode)
 
   const [view, setView] = useState<View>('loading')
   const [game, setGame] = useState<Game | null>(null)
@@ -186,6 +187,9 @@ export default function GamePage() {
   const [hotSeatText, setHotSeatText] = useState('')
   const [hotSeatType, setHotSeatType] = useState<'compliment' | 'roast' | 'observation'>('observation')
   const [hotSeatSubmitted, setHotSeatSubmitted] = useState(false)
+  const [hotSeatSubmissions, setHotSeatSubmissions] = useState<{ id: string; text: string; submission_type: string }[]>(
+    []
+  )
 
   // Between-rounds results
   const [lastFinishedRound, setLastFinishedRound] = useState<Round | null>(null)
@@ -194,6 +198,9 @@ export default function GamePage() {
   // All-game accumulation (for final results)
   const [allVotes, setAllVotes] = useState<Vote[]>([])
   const [allRounds, setAllRounds] = useState<Round[]>([])
+  const [allHotSeatSubmissions, setAllHotSeatSubmissions] = useState<
+    { id: string; round_id: string; text: string; submission_type: string }[]
+  >([])
   const [allConfessions, setAllConfessions] = useState<Confession[]>([])
 
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
@@ -203,16 +210,33 @@ export default function GamePage() {
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null)
   const [joinIdentityGender, setJoinIdentityGender] = useState<ParticipantGender>('female')
   const [voteBothGenders, setVoteBothGenders] = useState(false)
-  const [joinPollGender, setJoinPollGender] = useState<ParticipantGender>('female')
   const [joining, setJoining] = useState(false)
   const [editingJoin, setEditingJoin] = useState(false)
 
   // Player question submission (WYR/MLT lobby)
   const [pqWyrA, setPqWyrA] = useState('')
   const [pqWyrB, setPqWyrB] = useState('')
+  const [pqTotText, setPqTotText] = useState('')
   const [pqMltText, setPqMltText] = useState('')
   const [pqSubmitting, setPqSubmitting] = useState(false)
+  const [pqList, setPqList] = useState<
+    {
+      id: string
+      player_id: string
+      question_type: string
+      option_a?: string
+      option_b?: string
+      question_text?: string
+    }[]
+  >([])
   const [pqOpen, setPqOpen] = useState(false)
+
+  // Player name submission (people poll games — RFGF, SMK, etc.)
+  const [pnNameInput, setPnNameInput] = useState('')
+  const [pnGender, setPnGender] = useState<ParticipantGender>('female')
+  const [pnSubmitting, setPnSubmitting] = useState(false)
+  const [pnList, setPnList] = useState<Participant[]>([])
+  const [pnOpen, setPnOpen] = useState(false)
 
   // Photo upload (people-based modes)
   const [photoUploading, setPhotoUploading] = useState(false)
@@ -227,15 +251,19 @@ export default function GamePage() {
   )
   const finalRevealCountdown = useDeadlineCountdown(
     lastFinishedRound?.ended_at,
-    FINAL_RESULTS_AUTO_REVEAL_SECONDS,
+    finalResultsAutoRevealSeconds(game?.game_type),
     roundResultsActive && roundResultsIsLast && !!game?.auto_reveal
   )
 
   const isJoinersMode = game?.participant_mode === 'joiners'
+  const isVoterOnly = game ? isVoterOnlyMode(game) : false
+  const isImportClaim = game ? isImportClaimMode(game) : false
   const isNameOnlyJoin = isNameOnlyPlayerJoin(game?.game_type)
-  const joinNeedsGender = playerJoinNeedsGender(game?.game_type)
+  const joinNeedsGender = game ? isGameGenderBased(game) : false
   const isWstGame = isWhoSaidThis(game?.game_type)
   const isWyrGame = isWouldYouRather(game?.game_type)
+  const isTotGame = isThisOrThat(game?.game_type)
+  const isBinaryGame = isBinaryChoiceGame(game?.game_type)
   const isMltImport = game ? isMltImportGame(game) : false
   const joinPlayerGender: PlayerGender =
     isNameOnlyJoin || !joinNeedsGender ? 'both' : playerGenderFromJoin(joinIdentityGender, voteBothGenders)
@@ -243,11 +271,10 @@ export default function GamePage() {
   const setJoinIdentity = (gender: ParticipantGender) => {
     joinGenderTouchedRef.current = true
     setJoinIdentityGender(gender)
-    if (isJoinersMode && !voteBothGenders) setJoinPollGender(gender)
   }
 
   const namePickerOptions = useMemo(() => {
-    if (isJoinersMode) return []
+    if (isJoinersMode || isVoterOnly) return []
     const claimedParticipantIds = new Set(
       players.filter((p) => p.id !== myPlayerId && p.participant_id).map((p) => p.participant_id as string)
     )
@@ -260,7 +287,7 @@ export default function GamePage() {
         name: p.name,
         ...(joinNeedsGender ? { subtitle: genderLabel(p.gender) } : {}),
       }))
-  }, [isJoinersMode, participants, players, myPlayerId, joinNeedsGender])
+  }, [isJoinersMode, isVoterOnly, participants, players, myPlayerId, joinNeedsGender])
 
   const handleSelectParticipant = (id: string, name: string) => {
     const changed = id !== selectedParticipantId
@@ -270,11 +297,10 @@ export default function GamePage() {
     if (p && !isJoinersMode && changed && !joinGenderTouchedRef.current) {
       setJoinIdentityGender(p.gender)
       setVoteBothGenders(false)
-      setJoinPollGender(p.gender)
     }
   }
 
-  const useFreeNameJoin = isJoinersMode || isMltImport
+  const useFreeNameJoin = isJoinersMode || isVoterOnly
 
   const canSubmitJoin = useFreeNameJoin ? nameInput.trim().length > 0 : selectedParticipantId !== null
 
@@ -369,7 +395,7 @@ export default function GamePage() {
                 .maybeSingle()
               if (existingVote) {
                 const gameType = parseGameType(gameData.game_type)
-                if (isWouldYouRather(gameType)) {
+                if (isBinaryChoiceGame(gameType)) {
                   setWyrChoice(existingVote.wyr_choice)
                 } else if (isMostLikelyTo(gameType)) {
                   const targetId = isMltImportGame(gameData)
@@ -465,23 +491,33 @@ export default function GamePage() {
     prevViewRef.current = view
   }, [view])
 
-  // Hot Seat submissions — React Query (replaces one-shot fetch)
-  const { data: hotSeatData } = useHotSeatSubmissions(
-    gameCode,
-    lastFinishedRound?.id ?? null,
-    view === 'round_results' && isHotSeat(game?.game_type)
-  )
-  const hotSeatSubmissions = hotSeatData ?? []
+  // Fetch Hot Seat submissions when entering round results
+  useEffect(() => {
+    if (view !== 'round_results' || !isHotSeat(game?.game_type) || !lastFinishedRound) return
+    async function fetchHotSeatResults() {
+      const res = await fetch(`/api/hot-seat?roundId=${lastFinishedRound!.id}&gameId=${gameCode}`)
+      if (res.ok) {
+        const { submissions } = await res.json()
+        setHotSeatSubmissions(submissions ?? [])
+      }
+    }
+    fetchHotSeatResults()
+  }, [view, game?.game_type, lastFinishedRound, gameCode])
 
   async function loadAllResults() {
-    const [{ data: rounds }, { data: votes }, { data: confs }] = await Promise.all([
+    const [{ data: rounds }, { data: votes }, { data: confs }, { data: subs }] = await Promise.all([
       supabase.from('rounds').select('*').eq('game_id', gameCode).order('round_number'),
       supabase.from('votes').select('*').eq('game_id', gameCode),
       supabase.from('confessions').select('*').eq('game_id', gameCode).order('created_at'),
+      supabase
+        .from('hot_seat_submissions')
+        .select('id, round_id, text, submission_type')
+        .eq('game_id', gameCode),
     ])
     setAllRounds(rounds || [])
     setAllVotes(votes || [])
     setAllConfessions(confs || [])
+    setAllHotSeatSubmissions(subs ?? [])
   }
 
   function resetRoundPlayerState() {
@@ -501,6 +537,7 @@ export default function GamePage() {
     setHotSeatText('')
     setHotSeatType('observation')
     setHotSeatSubmitted(false)
+    setHotSeatSubmissions([])
   }
 
   function applyActiveRound(round: Round, options?: { switchView?: boolean }) {
@@ -789,12 +826,39 @@ export default function GamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- polling interval, deps intentionally limited
   }, [view, gameCode])
 
-  // Player-submitted questions — React Query with auto-refetch (replaces 4s polling)
-  const { data: pqData } = usePlayerQuestions(
-    gameCode,
-    view === 'waiting' && (isWyrGame || isMostLikelyTo(game?.game_type))
-  )
-  const pqList = pqData ?? []
+  // Poll player-submitted questions in lobby (WYR/MLT only)
+  useEffect(() => {
+    if (view !== 'waiting' || !game || (!isBinaryGame && !isMostLikelyTo(game.game_type)) || !lobbyAllowsPlayerQuestions(game)) return
+    async function fetchPQ() {
+      const { data } = await supabase.from('player_questions').select('*').eq('game_id', gameCode).order('created_at')
+      if (data) setPqList(data)
+    }
+    fetchPQ()
+    const id = setInterval(fetchPQ, 4000)
+    return () => clearInterval(id)
+  }, [view, gameCode, isBinaryGame, game?.game_type, game?.player_questions_enabled])
+
+  // Poll player-submitted names in lobby (people poll games)
+  useEffect(() => {
+    if (
+      view !== 'waiting' ||
+      !game ||
+      !isPeoplePollGame(game.game_type) ||
+      !lobbyAllowsPlayerNameSubmissions(game)
+    ) {
+      return
+    }
+    async function fetchPN() {
+      const res = await fetch(`/api/player-participants?gameId=${gameCode}`)
+      if (res.ok) {
+        const { participants: subs } = await res.json()
+        setPnList(subs ?? [])
+      }
+    }
+    fetchPN()
+    const id = setInterval(fetchPN, 4000)
+    return () => clearInterval(id)
+  }, [view, gameCode, game?.game_type, game?.player_questions_enabled])
 
   // Poll during round / results — fallback when realtime misses round transitions
   useEffect(() => {
@@ -909,16 +973,21 @@ export default function GamePage() {
       const r = currentRoundRef.current
       const isWstRound = isWhoSaidThis(gameType)
       const isSubmitter = isWstRound && r?.submitter_player_id === myPlayerIdRef.current
+      const genderFreeVoting = !!gameRef.current && isGenderFreeVoting(gameRef.current)
       const canVote = isWstRound
         ? !!myPlayerIdRef.current && !isSubmitter && !!r?.quote_text
-        : isNameOnlyPlayerJoin(gameType)
+        : isNameOnlyPlayerJoin(gameType) || genderFreeVoting
           ? !!myPlayerIdRef.current
           : !!roundGender && !!playerGender && canPlayerVoteInRound(playerGender, roundGender)
 
       if (remaining === 0 && !submittedRef.current && canVote) {
-        submittedRef.current = true
-        setSubmitted(true)
-        autoSubmitFromRefs()
+        void autoSubmitFromRefs().then((didSubmit) => {
+          if (didSubmit) {
+            submittedRef.current = true
+            setSubmitted(true)
+            playVoteSubmittedSound()
+          }
+        })
       }
     }
 
@@ -940,18 +1009,19 @@ export default function GamePage() {
   // Note: `submitted` intentionally excluded — the timer always counts to zero
 
   // Uses only refs so it never causes stale closure issues
-  function autoSubmitFromRefs() {
+  async function autoSubmitFromRefs(): Promise<boolean> {
     const a = { ...assignmentRef.current }
     const pa = { ...pairAssignmentRef.current }
     let wyr = wyrChoiceRef.current
     let mltTarget = mltTargetPlayerIdRef.current
+    let customCa = { ...customAssignmentsRef.current }
     const plrs = playersRef.current
     const r = currentRoundRef.current
     const g = gameRef.current
     const parts = participantsRef.current
     const pid = myPlayerIdRef.current
 
-    if (!r || !pid || !g) return
+    if (!r || !pid || !g) return false
 
     const gameType = parseGameType(g.game_type)
     const roundParts = parts.filter((p) => r.participant_ids.includes(p.id))
@@ -962,20 +1032,20 @@ export default function GamePage() {
 
     // Only auto-fill random choices if the player has started voting
     // (picked at least one option). If they haven't touched anything, skip.
-    const hasStartedVoting = isWouldYouRather(gameType)
+    const hasStartedVoting = isBinaryChoiceGame(gameType)
       ? !!wyr
       : isAnimeWst
         ? !!animeCh
         : isMostLikelyTo(gameType) || isWhoSaidThis(gameType)
           ? !!mltTarget
           : isCustomGame(gameType)
-            ? Object.keys(customAssignmentsRef.current).length > 0
+            ? Object.keys(customCa).length > 0
             : isPairGame(gameType)
               ? Object.values(pa).some(Boolean)
               : Object.values(a).some(Boolean)
 
     if (useRandom && hasStartedVoting) {
-      if (isWouldYouRather(gameType)) {
+      if (isBinaryChoiceGame(gameType)) {
         wyr = Math.random() < 0.5 ? 'a' : 'b'
       } else if (isMostLikelyTo(gameType)) {
         const targets = mltVoteTargets(g, parts, plrs)
@@ -994,10 +1064,11 @@ export default function GamePage() {
         }
       } else if (isCustomGame(gameType) && g) {
         const slotKeys = getCustomSlotKeys(g)
-        const ca = { ...customAssignmentsRef.current }
-        const filled = completeRandomCustomAssignment(ca, roundIds, slotKeys)
-        Object.assign(ca, filled)
-        setCustomAssignments(ca)
+        const customMode = customAssignmentMode(g, roundIds.length, slotKeys)
+        const filled = completeRandomCustomAssignment(customCa, roundIds, slotKeys, customMode)
+        customCa = { ...customCa, ...filled }
+        customAssignmentsRef.current = customCa
+        setCustomAssignments(customCa)
       } else if (isPairGame(gameType)) {
         const pairMode = parsePairVoteMode(g.pair_vote_mode)
         if (pairMode === 'one_each' && roundIds.length === 2) {
@@ -1016,31 +1087,32 @@ export default function GamePage() {
       }
     }
 
-    let voteBody: Record<string, unknown> | null
+    let voteBody: Record<string, unknown> | null = null
 
-    if (isWouldYouRather(gameType)) {
-      if (!wyr) return
+    if (isBinaryChoiceGame(gameType)) {
+      if (!wyr) return false
       voteBody = { wyrChoice: wyr }
     } else if (isMostLikelyTo(gameType)) {
-      if (!mltTarget) return
+      if (!mltTarget) return false
       voteBody = isMltImportGame(g) ? { targetParticipantId: mltTarget } : { targetPlayerId: mltTarget }
     } else if (isWhoSaidThis(gameType)) {
-      if (r.submitter_player_id === pid) return
-      if (!r.quote_text) return
+      if (r.submitter_player_id === pid) return false
+      if (!r.quote_text) return false
       if (isAnimeWst) {
-        if (!animeCh) return
+        if (!animeCh) return false
         voteBody = { animeChoice: animeCh }
       } else {
-        if (!mltTarget) return
+        if (!mltTarget) return false
         voteBody = { targetParticipantId: mltTarget }
       }
     } else if (isCustomGame(gameType)) {
-      const ca = customAssignmentsRef.current
-      if (Object.keys(ca).length === 0) return
-      voteBody = { customAssignments: ca }
+      const slotKeys = getCustomSlotKeys(g)
+      const customMode = customAssignmentMode(g, roundIds.length, slotKeys)
+      if (!isCustomAssignmentValid(customCa, roundIds, slotKeys, customMode)) return false
+      voteBody = { customAssignments: customCa }
     } else if (isPairGame(gameType)) {
       const pairMode = parsePairVoteMode(g.pair_vote_mode)
-      if (!isPairAssignmentValid(pa, roundIds, pairMode)) return
+      if (!isPairAssignmentValid(pa, roundIds, pairMode)) return false
       voteBody = {
         pairAssignments: Object.fromEntries(
           roundIds
@@ -1049,7 +1121,7 @@ export default function GamePage() {
         ),
       }
     } else {
-      if (!isAssignmentComplete(a, gameType)) return
+      if (!isAssignmentComplete(a, gameType)) return false
       voteBody = {
         kiss: a.kiss,
         marry: isThreeChoiceGame(gameType) ? a.marry : null,
@@ -1057,16 +1129,21 @@ export default function GamePage() {
       }
     }
 
-    fetch('/api/votes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        playerId: pid,
-        roundId: r.id,
-        gameId: gameCode,
-        ...voteBody,
-      }),
-    })
+    try {
+      const res = await fetch('/api/votes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: pid,
+          roundId: r.id,
+          gameId: gameCode,
+          ...voteBody,
+        }),
+      })
+      return res.ok
+    } catch {
+      return false
+    }
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -1074,16 +1151,14 @@ export default function GamePage() {
     const gameType = parseGameType(game?.game_type)
     if (isPairGame(gameType) && (action === 'kiss' || action === 'kill')) {
       setPairAssignment((prev) => {
-        const next = { ...prev, [participantId]: action }
-        if (!game || !currentRound) return next
-        const roundIds = currentRound.participant_ids
-        if (isPairOneEachMode(game) && roundIds.length === 2) {
-          const otherId = roundIds.find((id) => id !== participantId)
-          if (otherId && next[otherId] === action) {
-            delete next[otherId]
-          }
-        }
-        return next
+        if (!game || !currentRound) return { ...prev, [participantId]: action }
+        return assignPairSlot(
+          prev,
+          participantId,
+          action,
+          currentRound.participant_ids,
+          parsePairVoteMode(game.pair_vote_mode)
+        )
       })
       return
     }
@@ -1150,7 +1225,12 @@ export default function GamePage() {
     ) {
       return
     }
-    const voteBody = isWouldYouRather(submitGameType)
+    if (isCustomGame(submitGameType)) {
+      const slotKeys = getCustomSlotKeys(game)
+      const customMode = customAssignmentMode(game, roundIds.length, slotKeys)
+      if (!isCustomAssignmentValid(customAssignments, roundIds, slotKeys, customMode)) return
+    }
+    const voteBody = isBinaryChoiceGame(submitGameType)
       ? { wyrChoice }
       : isMostLikelyTo(submitGameType)
         ? isMltImportGame(game!)
@@ -1205,22 +1285,25 @@ export default function GamePage() {
     unlockAudio()
     setJoining(true)
     try {
-      const body = isNameOnlyJoin
-        ? { gameCode, playerName: nameInput.trim() }
-        : !joinNeedsGender
-          ? {
-              gameCode,
-              playerName: nameInput.trim(),
-              participantId: selectedParticipantId,
-            }
-          : {
-              gameCode,
-              playerName: nameInput.trim(),
-              gender: joinPlayerGender,
-              identityGender: joinIdentityGender,
-              ...(!isJoinersMode && selectedParticipantId ? { participantId: selectedParticipantId } : {}),
-              ...(isJoinersMode && voteBothGenders ? { pollGender: joinPollGender } : {}),
-            }
+      const body =
+        isNameOnlyJoin || ((isJoinersMode || isVoterOnly) && !joinNeedsGender)
+          ? { gameCode, playerName: nameInput.trim() }
+          : !joinNeedsGender && isImportClaim
+            ? { gameCode, participantId: selectedParticipantId! }
+            : isJoinersMode || isVoterOnly
+              ? {
+                  gameCode,
+                  playerName: nameInput.trim(),
+                  gender: joinPlayerGender,
+                  identityGender: joinIdentityGender,
+                  ...(voteBothGenders ? { pollGender: joinIdentityGender } : {}),
+                }
+              : {
+                  gameCode,
+                  gender: joinPlayerGender,
+                  identityGender: joinIdentityGender,
+                  participantId: selectedParticipantId!,
+                }
 
       const res = await fetch('/api/players', {
         method: editingJoin && myPlayerId ? 'PATCH' : 'POST',
@@ -1268,7 +1351,6 @@ export default function GamePage() {
       me?.identity_gender ? (parseParticipantGenderFromDb(me.identity_gender) ?? 'female') : (part?.gender ?? 'female')
     )
     setVoteBothGenders(voteBoth)
-    setJoinPollGender(part?.gender ?? 'female')
     joinGenderTouchedRef.current = true
     setEditingJoin(true)
     setView('join')
@@ -1306,7 +1388,6 @@ export default function GamePage() {
         setSelectedParticipantId(null)
         setJoinIdentityGender('female')
         setVoteBothGenders(false)
-        setJoinPollGender('female')
         joinGenderTouchedRef.current = false
         setEditingJoin(false)
         setView('join')
@@ -1322,15 +1403,20 @@ export default function GamePage() {
   const sendConfession = async () => {
     if (!confessionText.trim() || confessionSent) return
     setConfessionSent(true)
-    sendConfessionMutation.mutate(
-      { gameId: gameCode, roundId: currentRound?.id, text: confessionText },
-      { onSuccess: () => playConfessionSound() }
-    )
+    const res = await fetch('/api/confessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameId: gameCode, roundId: currentRound?.id, text: confessionText }),
+    })
+    if (res.ok) playConfessionSound()
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
   if (view === 'loading') return <FullLoader />
   if (view === 'not_found') return <NotFound onHome={() => router.push('/')} />
+  if (game && isAnonymousMessagesGame(game.game_type)) {
+    return <AnonymousMessagesPlayerView gameCode={gameCode} />
+  }
 
   // JOIN
   if (view === 'join') {
@@ -1343,6 +1429,7 @@ export default function GamePage() {
           <p className="text-muted text-sm">
             {game?.rounds_count} rounds · {game?.timer_seconds}s each
           </p>
+          {game && <GameLobbySummary game={game} className="pt-1" />}
         </div>
         <div className="space-y-4">
           <p className="text-muted font-medium text-center">
@@ -1354,14 +1441,16 @@ export default function GamePage() {
                 ? 'Enter your name to join'
                 : isJoinersMode
                   ? 'Join the game — your name goes in the poll'
-                  : 'Select your name from the list'}
+                  : isVoterOnly
+                    ? 'Enter your name to vote — names on the list appear in rounds'
+                    : 'Select your name from the list'}
           </p>
           {useFreeNameJoin ? (
             <input
               value={nameInput}
               onChange={(e) => setNameInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && canSubmitJoin && joinGame()}
-              placeholder={isMltImport ? 'Your name (any name is fine)' : 'Your name'}
+              placeholder={isVoterOnly ? 'Your name (any name is fine)' : 'Your name'}
               autoFocus
               className={inputCls}
             />
@@ -1376,6 +1465,13 @@ export default function GamePage() {
               }
             />
           )}
+          {!isBinaryChoiceGame(game?.game_type) &&
+            !isMostLikelyTo(game?.game_type) &&
+            !isWhoSaidThis(game?.game_type) && (
+              <p className="text-faint text-xs text-center leading-snug">
+                You can add a profile picture in the lobby after joining — it shows on voting cards.
+              </p>
+            )}
           {!joinNeedsGender && isNameOnlyJoin && (
             <p className="text-faint text-xs text-center">
               {isHotSeat(game?.game_type)
@@ -1410,29 +1506,18 @@ export default function GamePage() {
                   <span className="block text-faint text-xs mt-0.5">You'll vote on men's and women's rounds</span>
                 </span>
               </label>
-              {isJoinersMode && voteBothGenders && (
-                <div>
-                  <p className="text-faint text-xs mb-2 text-center">Your name appears in the</p>
-                  <SegmentedControl
-                    value={joinPollGender}
-                    onChange={setJoinPollGender}
-                    options={[
-                      { value: 'female', label: "Women's poll" },
-                      { value: 'male', label: "Men's poll" },
-                    ]}
-                  />
-                </div>
-              )}
               <p className="text-faint text-xs text-center">
                 {isNameOnlyJoin
-                  ? isMltImport
+                  ? isVoterOnly
                     ? "Enter any name to join — you'll vote on people from the imported list"
                     : isMostLikelyTo(game?.game_type)
                       ? 'Vote for who fits each prompt — your choice stays anonymous'
                       : 'Pick between two options each round — your choice stays anonymous'
                   : isWstGame
                     ? 'Claim your name, then submit a quote and who said it while you wait'
-                    : joinGenderHint(joinIdentityGender, voteBothGenders, !!isJoinersMode, joinPollGender)}
+                    : isVoterOnly
+                      ? "Enter any name to join — you'll vote on names from the host's list"
+                      : joinGenderHint(joinIdentityGender, voteBothGenders, !!isJoinersMode)}
               </p>
             </>
           )}
@@ -1455,50 +1540,604 @@ export default function GamePage() {
 
   // WAITING
   if (view === 'waiting') {
+    const isWst = isWhoSaidThis(game?.game_type)
+    const wstTargets = isWst ? wstVoteTargets(participants) : []
+    const me = myPlayerId ? players.find((p) => p.id === myPlayerId) : null
+    const myPoolEntry = isWst && myPlayerId ? wstPool.find((e) => e.player_id === myPlayerId) : null
+    const canSubmitPoolQuote = !!me?.participant_id
+    const isPeopleMode =
+      !isBinaryChoiceGame(game?.game_type) && !isMostLikelyTo(game?.game_type) && !isWst && !isVoterOnly
+    const myParticipant = me?.participant_id ? participants.find((p) => p.id === me.participant_id) : null
+    const canUploadPhoto = isPeopleMode && !!me?.participant_id
+
+    const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (!file || !me?.participant_id || photoUploading) return
+      e.target.value = ''
+
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error('Photo must be under 2MB')
+        return
+      }
+
+      setPhotoUploading(true)
+      try {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('gameId', gameCode)
+        fd.append('participantId', me.participant_id)
+        fd.append('playerId', me.id)
+
+        const res = await fetch('/api/photos', { method: 'POST', body: fd })
+        const data = await res.json()
+        if (!res.ok) {
+          toast.error(data.error || 'Failed to upload photo')
+          return
+        }
+        const url = data.photoUrl + '?t=' + Date.now()
+        setParticipants((prev) => prev.map((p) => (p.id === me.participant_id ? { ...p, photo_url: url } : p)))
+      } catch {
+        toast.error('Upload failed — try again')
+      } finally {
+        setPhotoUploading(false)
+      }
+    }
+
+    const handlePhotoDelete = async () => {
+      if (!me?.participant_id || photoUploading) return
+      setPhotoUploading(true)
+      try {
+        const res = await fetch('/api/photos', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gameId: gameCode,
+            participantId: me.participant_id,
+            playerId: me.id,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          toast.error(data.error || 'Failed to remove photo')
+          return
+        }
+        setParticipants((prev) => prev.map((p) => (p.id === me.participant_id ? { ...p, photo_url: null } : p)))
+      } catch {
+        toast.error('Could not remove photo — try again')
+      } finally {
+        setPhotoUploading(false)
+      }
+    }
+
     return (
-      <WaitingView
-        game={game}
-        participants={participants}
-        players={players}
-        myPlayerId={myPlayerId}
-        myPlayerName={myPlayerName}
-        gameCode={gameCode}
-        isWyrGame={isWyrGame}
-        isWstGame={isWstGame}
-        joinNeedsGender={joinNeedsGender}
-        isNameOnlyJoin={isNameOnlyJoin}
-        isJoinersMode={isJoinersMode}
-        wstPool={wstPool}
-        quoteInput={quoteInput}
-        setQuoteInput={setQuoteInput}
-        quoteAuthorParticipantId={quoteAuthorParticipantId}
-        setQuoteAuthorParticipantId={setQuoteAuthorParticipantId}
-        quoteSubmitting={quoteSubmitting}
-        poolQuoteSaved={poolQuoteSaved}
-        setPoolQuoteSaved={setPoolQuoteSaved}
-        handleSubmitPoolQuote={handleSubmitPoolQuote}
-        pqList={pqList}
-        pqWyrA={pqWyrA}
-        setPqWyrA={setPqWyrA}
-        pqWyrB={pqWyrB}
-        setPqWyrB={setPqWyrB}
-        pqMltText={pqMltText}
-        setPqMltText={setPqMltText}
-        pqSubmitting={pqSubmitting}
-        setPqSubmitting={setPqSubmitting}
-        pqOpen={pqOpen}
-        setPqOpen={setPqOpen}
-        submitPQ={submitPQ}
-        deletePQ={deletePQ}
-        photoInputRef={photoInputRef}
-        photoUploading={photoUploading}
-        setPhotoUploading={setPhotoUploading}
-        setParticipants={setParticipants}
-        openEditJoin={openEditJoin}
-        leaveGame={leaveGame}
-        joining={joining}
-        toast={toast}
-      />
+      <CenteredCard>
+        <PlayerNameBar name={myPlayerName} />
+        <div className="text-center space-y-1">
+          <div className="text-4xl">⏳</div>
+          <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
+          <GameTypeBadge gameType={game?.game_type} />
+          {game && <GameLobbySummary game={game} />}
+          <p className="text-muted text-sm">
+            {game?.rounds_count} rounds · {game?.timer_seconds}s each
+          </p>
+          <p className="text-muted">Waiting for the host to start...</p>
+        </div>
+
+        {isWst &&
+          (game?.wst_quote_source === 'anime' ? (
+            <div className="glass-card px-4 py-8 text-center space-y-2">
+              <p className="text-body text-lg font-semibold">Anime Quote Mode</p>
+              <p className="text-muted text-sm">The host is loading anime quotes — sit tight!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="surface-inset border border-theme rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-muted text-xs uppercase tracking-wider">Quote pool</p>
+                  <span className="text-sm font-bold text-body">{wstPool.length} submitted</span>
+                </div>
+                <p className="text-faint text-xs">
+                  Submit your quote and the correct answer now. Only people in the pool get a round — if 5 of 10 submit,
+                  that&apos;s 5 rounds.
+                </p>
+              </div>
+
+              {canSubmitPoolQuote ? (
+                <div className="glass-card p-5 space-y-4">
+                  {myPoolEntry && poolQuoteSaved ? (
+                    <div className="text-center space-y-1">
+                      <p className="text-green-400 text-sm font-semibold">✓ Your quote is in the pool</p>
+                      <p className="text-faint text-xs">You can edit it below until the host starts.</p>
+                    </div>
+                  ) : (
+                    <p className="font-semibold text-body text-center">Add your quote to the pool</p>
+                  )}
+                  <textarea
+                    value={quoteInput}
+                    onChange={(e) => {
+                      setQuoteInput(e.target.value)
+                      setPoolQuoteSaved(false)
+                    }}
+                    placeholder="e.g. Roses are red"
+                    maxLength={500}
+                    rows={3}
+                    className="input-field resize-none"
+                    disabled={quoteSubmitting}
+                  />
+                  <div className="space-y-2">
+                    <p className="text-faint text-xs uppercase tracking-wider text-center">Who said this?</p>
+                    <NameSearchPicker
+                      options={wstTargets.map((p) => ({ id: p.id, name: p.name }))}
+                      valueId={quoteAuthorParticipantId}
+                      onChange={(id) => {
+                        setQuoteAuthorParticipantId(id)
+                        setPoolQuoteSaved(false)
+                      }}
+                      searchPlaceholder="Search names…"
+                      emptyMessage="No names match"
+                      disabled={quoteSubmitting}
+                    />
+                  </div>
+                  <button
+                    onClick={handleSubmitPoolQuote}
+                    disabled={!quoteInput.trim() || !quoteAuthorParticipantId || quoteSubmitting}
+                    className={
+                      quoteInput.trim() && quoteAuthorParticipantId
+                        ? 'btn-primary w-full'
+                        : 'btn-secondary w-full opacity-60 cursor-not-allowed'
+                    }
+                  >
+                    {quoteSubmitting ? 'Saving…' : myPoolEntry ? 'Update Quote' : 'Add to Pool →'}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-faint text-xs text-center">Claim your name when joining to submit a quote.</p>
+              )}
+            </div>
+          ))}
+
+        {canUploadPhoto && (
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={handlePhotoUpload}
+          />
+        )}
+
+        <div className="surface-inset border border-theme rounded-2xl p-4 space-y-2">
+          <p className="text-muted text-xs uppercase tracking-wider">
+            {isVoterOnly ? `Voters joined (${players.length})` : `Players joined (${players.length})`}
+          </p>
+          {canUploadPhoto && (
+            <p className="text-faint text-xs leading-snug">
+              Your name is marked <span className="text-[var(--primary)] font-medium">(you)</span> in the list — tap
+              the camera icon next to it to add or change your photo.
+            </p>
+          )}
+          <div className="space-y-1.5 max-h-52 overflow-y-auto">
+            {players.map((p) => {
+              const isMe = p.name === myPlayerName
+              const myPart = isMe ? myParticipant : null
+              const hasPhoto = isMe && !!myPart?.photo_url
+
+              return (
+                <div key={p.id} className="flex items-center gap-2">
+                  {isMe && canUploadPhoto ? (
+                    photoUploading ? (
+                      <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center">
+                        <div className="w-4 h-4 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    ) : hasPhoto ? (
+                      <div className="relative shrink-0">
+                        <button type="button" onClick={() => photoInputRef.current?.click()} className="block">
+                          <Avatar name={p.name} photoUrl={myPart!.photo_url} size="sm" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handlePhotoDelete}
+                          className="absolute -top-1 -right-1 w-4 h-4 min-w-[24px] min-h-[24px] flex items-center justify-center rounded-full bg-red-500/90 text-white text-[10px] leading-none hover:bg-red-400 transition-colors"
+                          style={{ padding: 0 }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => photoInputRef.current?.click()}
+                        className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center bg-[var(--surface-inset)] border border-dashed border-[var(--border-strong)] text-faint hover:text-[var(--primary)] hover:border-[var(--primary)] transition-colors"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          className="w-3.5 h-3.5"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M1 8a2 2 0 0 1 2-2h.93a2 2 0 0 0 1.664-.89l.812-1.22A2 2 0 0 1 8.07 3h3.86a2 2 0 0 1 1.664.89l.812 1.22A2 2 0 0 0 16.07 6H17a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8Zm13.5 3a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM10 14a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </button>
+                    )
+                  ) : (
+                    <div
+                      className={`w-2 h-2 rounded-full shrink-0 ${isMe ? 'bg-[var(--primary)]' : 'bg-[var(--border-strong)]'}`}
+                    />
+                  )}
+                  <span
+                    className={`text-sm flex-1 min-w-0 truncate ${isMe ? 'text-[var(--primary)] font-semibold' : 'text-body-muted'}`}
+                  >
+                    {p.name}
+                    {isMe ? ' (you)' : ''}
+                  </span>
+                  {!joinNeedsGender ? null : (
+                    <span className="text-[10px] uppercase tracking-wider text-faint shrink-0">
+                      {playerIdentityLabel(p, participants, game?.game_type)}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        {/* Player question submission for WYR / MLT */}
+        {game && (isBinaryGame || isMostLikelyTo(game.game_type)) && lobbyAllowsPlayerQuestions(game) && myPlayerId && (
+          <div className="surface-inset border border-theme rounded-2xl p-4 space-y-3">
+            <button
+              type="button"
+              onClick={() => setPqOpen(!pqOpen)}
+              className="w-full flex items-center justify-between"
+            >
+              <p className="text-muted text-xs uppercase tracking-wider">
+                Submit a Question {pqList.length > 0 ? `(${pqList.length})` : ''}
+              </p>
+              <span className="text-faint text-xs">{pqOpen ? '−' : '+'}</span>
+            </button>
+            {pqOpen && (
+              <div className="space-y-3">
+                {isWyrGame ? (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Option A"
+                      value={pqWyrA}
+                      onChange={(e) => setPqWyrA(e.target.value)}
+                      maxLength={200}
+                      className="input-field text-sm"
+                      disabled={pqSubmitting}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Option B"
+                      value={pqWyrB}
+                      onChange={(e) => setPqWyrB(e.target.value)}
+                      maxLength={200}
+                      className="input-field text-sm"
+                      disabled={pqSubmitting}
+                    />
+                    <button
+                      type="button"
+                      disabled={!pqWyrA.trim() || !pqWyrB.trim() || pqSubmitting}
+                      onClick={async () => {
+                        setPqSubmitting(true)
+                        try {
+                          const res = await fetch('/api/player-questions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              gameId: gameCode,
+                              playerId: myPlayerId,
+                              questionType: 'wyr',
+                              optionA: pqWyrA.trim(),
+                              optionB: pqWyrB.trim(),
+                            }),
+                          })
+                          if (res.ok) {
+                            const { question } = await res.json()
+                            setPqList((prev) => [...prev, question])
+                            setPqWyrA('')
+                            setPqWyrB('')
+                          } else {
+                            const { error } = await res.json()
+                            toast.error(error || 'Failed to submit')
+                          }
+                        } finally {
+                          setPqSubmitting(false)
+                        }
+                      }}
+                      className={
+                        pqWyrA.trim() && pqWyrB.trim()
+                          ? 'btn-primary text-sm w-full'
+                          : 'btn-secondary text-sm w-full opacity-60 cursor-not-allowed'
+                      }
+                    >
+                      {pqSubmitting ? 'Submitting...' : 'Add Question'}
+                    </button>
+                  </div>
+                ) : isTotGame ? (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Coffee or Tea?"
+                      value={pqTotText}
+                      onChange={(e) => setPqTotText(e.target.value)}
+                      maxLength={200}
+                      className="input-field text-sm"
+                      disabled={pqSubmitting}
+                    />
+                    <button
+                      type="button"
+                      disabled={!pqTotText.trim() || pqSubmitting}
+                      onClick={async () => {
+                        const parsed = parseOrSplitQuestion(pqTotText)
+                        if (!parsed) {
+                          toast.error('Use “Coffee or Tea?” format with “ or ” between options')
+                          return
+                        }
+                        setPqSubmitting(true)
+                        try {
+                          const res = await fetch('/api/player-questions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              gameId: gameCode,
+                              playerId: myPlayerId,
+                              questionType: 'wyr',
+                              optionA: parsed.optionA,
+                              optionB: parsed.optionB,
+                            }),
+                          })
+                          if (res.ok) {
+                            const { question } = await res.json()
+                            setPqList((prev) => [...prev, question])
+                            setPqTotText('')
+                          } else {
+                            const { error } = await res.json()
+                            toast.error(error || 'Failed to submit')
+                          }
+                        } finally {
+                          setPqSubmitting(false)
+                        }
+                      }}
+                      className={
+                        pqTotText.trim()
+                          ? 'btn-primary text-sm w-full'
+                          : 'btn-secondary text-sm w-full opacity-60 cursor-not-allowed'
+                      }
+                    >
+                      {pqSubmitting ? 'Submitting...' : 'Add Question'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Most likely to..."
+                      value={pqMltText}
+                      onChange={(e) => setPqMltText(e.target.value)}
+                      maxLength={200}
+                      className="input-field text-sm"
+                      disabled={pqSubmitting}
+                    />
+                    <button
+                      type="button"
+                      disabled={!pqMltText.trim() || pqSubmitting}
+                      onClick={async () => {
+                        setPqSubmitting(true)
+                        try {
+                          const res = await fetch('/api/player-questions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              gameId: gameCode,
+                              playerId: myPlayerId,
+                              questionType: 'mlt',
+                              questionText: pqMltText.trim(),
+                            }),
+                          })
+                          if (res.ok) {
+                            const { question } = await res.json()
+                            setPqList((prev) => [...prev, question])
+                            setPqMltText('')
+                          } else {
+                            const { error } = await res.json()
+                            toast.error(error || 'Failed to submit')
+                          }
+                        } finally {
+                          setPqSubmitting(false)
+                        }
+                      }}
+                      className={
+                        pqMltText.trim()
+                          ? 'btn-primary text-sm w-full'
+                          : 'btn-secondary text-sm w-full opacity-60 cursor-not-allowed'
+                      }
+                    >
+                      {pqSubmitting ? 'Submitting...' : 'Add Question'}
+                    </button>
+                  </div>
+                )}
+                {pqList.filter((q) => q.player_id === myPlayerId).length > 0 && (
+                  <div className="space-y-1.5 pt-2 border-t border-theme">
+                    <p className="text-faint text-[10px] uppercase tracking-wider">Your questions</p>
+                    {pqList
+                      .filter((q) => q.player_id === myPlayerId)
+                      .map((q) => (
+                        <div key={q.id} className="flex items-start gap-2 text-sm">
+                          <span className="flex-1 min-w-0 text-body-muted">
+                            {q.question_type === 'wyr' ? `${q.option_a} vs ${q.option_b}` : q.question_text}
+                          </span>
+                          <button
+                            type="button"
+                            className="text-faint hover:text-red-400 text-xs shrink-0"
+                            onClick={async () => {
+                              await fetch('/api/player-questions', {
+                                method: 'DELETE',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ questionId: q.id, playerId: myPlayerId }),
+                              })
+                              setPqList((prev) => prev.filter((x) => x.id !== q.id))
+                            }}
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                )}
+                {pqList.length > 0 && (
+                  <p className="text-faint text-[10px] text-center">
+                    {pqList.length} question{pqList.length === 1 ? '' : 's'} submitted by all players
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Player name submission for people poll games (RFGF, SMK, etc.) */}
+        {game && isPeoplePollGame(game.game_type) && lobbyAllowsPlayerNameSubmissions(game) && myPlayerId && (
+          <div className="surface-inset border border-theme rounded-2xl p-4 space-y-3">
+            <button
+              type="button"
+              onClick={() => setPnOpen(!pnOpen)}
+              className="w-full flex items-center justify-between"
+            >
+              <p className="text-muted text-xs uppercase tracking-wider">
+                {playerNameSubmissionPanelTitle()}{' '}
+                {pnList.length > 0 ? `(${pnList.length})` : ''}
+              </p>
+              <span className="text-faint text-xs">{pnOpen ? '−' : '+'}</span>
+            </button>
+            {pnOpen && (
+              <div className="space-y-3">
+                <p className="text-faint text-xs leading-relaxed">{playerNameSubmissionHint()}</p>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder={playerNameSubmissionPlaceholder()}
+                    value={pnNameInput}
+                    onChange={(e) => setPnNameInput(e.target.value)}
+                    maxLength={50}
+                    className="input-field text-sm"
+                    disabled={pnSubmitting}
+                  />
+                  {joinNeedsGender && (
+                    <SegmentedControl
+                      value={pnGender}
+                      onChange={(v) => setPnGender(v as ParticipantGender)}
+                      options={[
+                        { value: 'female', label: 'Female' },
+                        { value: 'male', label: 'Male' },
+                      ]}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    disabled={!pnNameInput.trim() || pnSubmitting}
+                    onClick={async () => {
+                      setPnSubmitting(true)
+                      try {
+                        const res = await fetch('/api/player-participants', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            gameId: gameCode,
+                            playerId: myPlayerId,
+                            name: pnNameInput.trim(),
+                            ...(joinNeedsGender ? { gender: pnGender } : {}),
+                          }),
+                        })
+                        if (res.ok) {
+                          const { participant } = await res.json()
+                          setPnList((prev) => [...prev, participant])
+                          setPnNameInput('')
+                          const { data: parts } = await supabase
+                            .from('participants')
+                            .select('*')
+                            .eq('game_id', gameCode)
+                            .order('display_order')
+                          if (parts) setParticipants(parts)
+                        } else {
+                          const { error } = await res.json()
+                          toast.error(error || 'Failed to submit')
+                        }
+                      } finally {
+                        setPnSubmitting(false)
+                      }
+                    }}
+                    className={
+                      pnNameInput.trim()
+                        ? 'btn-primary text-sm w-full'
+                        : 'btn-secondary text-sm w-full opacity-60 cursor-not-allowed'
+                    }
+                  >
+                    {pnSubmitting ? 'Submitting...' : 'Add Name'}
+                  </button>
+                </div>
+                {pnList.filter((p) => p.submitted_by_player_id === myPlayerId).length > 0 && (
+                  <div className="space-y-1.5 pt-2 border-t border-theme">
+                    <p className="text-faint text-[10px] uppercase tracking-wider">Your names</p>
+                    {pnList
+                      .filter((p) => p.submitted_by_player_id === myPlayerId)
+                      .map((p) => (
+                        <div key={p.id} className="flex items-start gap-2 text-sm">
+                          <span className="flex-1 min-w-0 text-body-muted truncate">{p.name}</span>
+                          <button
+                            type="button"
+                            className="text-faint hover:text-red-400 text-xs shrink-0"
+                            onClick={async () => {
+                              await fetch('/api/player-participants', {
+                                method: 'DELETE',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ participantId: p.id, playerId: myPlayerId }),
+                              })
+                              setPnList((prev) => prev.filter((x) => x.id !== p.id))
+                            }}
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                )}
+                {pnList.length > 0 && (
+                  <p className="text-faint text-[10px] text-center">
+                    {pnList.length} player-submitted name{pnList.length === 1 ? '' : 's'}
+                    {isVoterOnly && participants.length > pnList.length
+                      ? ` · ${participants.length - pnList.length} from host list`
+                      : ''}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Participant gallery for games with photo cards */}
+        {participants.length > 0 && !isBinaryGame && !isMostLikelyTo(game?.game_type) && !isWst && !isVoterOnly && (
+          <ParticipantGallery participants={participants} />
+        )}
+
+        <div className="flex flex-col gap-2">
+          <button type="button" onClick={openEditJoin} className="btn-secondary text-sm py-2.5">
+            {isNameOnlyJoin || !joinNeedsGender ? 'Change name' : 'Change name or gender'}
+          </button>
+          <button
+            type="button"
+            onClick={leaveGame}
+            disabled={joining}
+            className="text-faint text-xs hover:text-red-300 transition-colors"
+          >
+            Leave game
+          </button>
+        </div>
+        <p className="text-faint text-xs text-center">Keep this tab open</p>
+      </CenteredCard>
     )
   }
 
@@ -1664,14 +2303,25 @@ export default function GamePage() {
     )
   }
 
-  // ROUND — Would You Rather
-  if (view === 'round' && currentRound && isWouldYouRather(game?.game_type)) {
+  // ROUND — Would You Rather / This or That
+  if (view === 'round' && currentRound && isBinaryChoiceGame(game?.game_type)) {
     const gameType = parseGameType(game?.game_type)
     const optionA = currentRound.wyr_option_a ?? ''
     const optionB = currentRound.wyr_option_b ?? ''
     const canVote = !!myPlayerId
+    const isTotRound = isTotGame
     const borderCls =
-      wyrChoice === 'a' ? 'border-violet-500/40' : wyrChoice === 'b' ? 'border-sky-500/40' : 'border-theme'
+      wyrChoice === 'a'
+        ? isTotRound
+          ? 'border-pink-400/50'
+          : 'border-violet-500/40'
+        : wyrChoice === 'b'
+          ? 'border-sky-500/40'
+          : 'border-theme'
+    const optionAActive = isTotRound
+      ? 'border-pink-400 bg-pink-500/15 ring-2 ring-pink-400/25'
+      : 'border-violet-400 bg-violet-500/15 ring-2 ring-violet-400/25'
+    const optionBActive = 'border-sky-400 bg-sky-500/15 ring-2 ring-sky-400/25'
 
     return (
       <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full">
@@ -1689,33 +2339,31 @@ export default function GamePage() {
         </div>
 
         <div className={`glass-card border-2 ${borderCls} rounded-2xl p-5 mb-6 flex-1`}>
-          <p className="text-muted text-xs uppercase tracking-wider text-center mb-3">Would you rather…</p>
+          <p className="text-muted text-xs uppercase tracking-wider text-center mb-3">
+            {isTotRound ? 'This or that…' : 'Would you rather…'}
+          </p>
           <div className="space-y-3">
             <button
               type="button"
               disabled={submitted || !canVote}
               onClick={() => canVote && !submitted && setWyrChoice('a')}
               className={`w-full text-left rounded-2xl border p-4 transition-all active:scale-[0.99] ${
-                wyrChoice === 'a'
-                  ? 'border-violet-400 bg-violet-500/15 text-violet-100'
-                  : 'border-theme surface-inset text-body hover:border-theme-strong'
+                wyrChoice === 'a' ? optionAActive : 'border-theme surface-inset hover:border-theme-strong'
               } disabled:cursor-not-allowed`}
             >
               <p className="text-[10px] uppercase tracking-wider text-faint mb-1">Option A</p>
-              <p className="text-sm leading-snug">{optionA}</p>
+              <p className="text-base font-semibold text-body leading-snug">{optionA}</p>
             </button>
             <button
               type="button"
               disabled={submitted || !canVote}
               onClick={() => canVote && !submitted && setWyrChoice('b')}
               className={`w-full text-left rounded-2xl border p-4 transition-all active:scale-[0.99] ${
-                wyrChoice === 'b'
-                  ? 'border-sky-400 bg-sky-500/15 text-sky-100'
-                  : 'border-theme surface-inset text-body hover:border-theme-strong'
+                wyrChoice === 'b' ? optionBActive : 'border-theme surface-inset hover:border-theme-strong'
               } disabled:cursor-not-allowed`}
             >
               <p className="text-[10px] uppercase tracking-wider text-faint mb-1">Option B</p>
-              <p className="text-sm leading-snug">{optionB}</p>
+              <p className="text-base font-semibold text-body leading-snug">{optionB}</p>
             </button>
           </div>
         </div>
@@ -1806,23 +2454,23 @@ export default function GamePage() {
             />
 
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!hotSeatText.trim() || !currentRound || !myPlayerId) return
-                submitHotSeatMutation.mutate(
-                  {
+                const res = await fetch('/api/hot-seat', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
                     gameId: gameCode,
                     roundId: currentRound.id,
                     playerId: myPlayerId,
                     text: hotSeatText.trim(),
                     submissionType: hotSeatType,
-                  },
-                  {
-                    onSuccess: () => {
-                      setHotSeatSubmitted(true)
-                      playVoteSubmittedSound()
-                    },
-                  }
-                )
+                  }),
+                })
+                if (res.ok) {
+                  setHotSeatSubmitted(true)
+                  playVoteSubmittedSound()
+                }
               }}
               disabled={!hotSeatText.trim()}
               className={
@@ -1839,33 +2487,46 @@ export default function GamePage() {
 
   // ROUND — voting
   if (view === 'round' && currentRound) {
+    const gameType = parseGameType(game?.game_type)
     const roundParts = participants.filter((p) => currentRound.participant_ids.includes(p.id))
     const roundParticipantGender = getRoundParticipantGender(currentRound.participant_ids, participants)
-    const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
-    const voterHint = roundVoterLabel(roundParticipantGender)
+    const genderFreeVoting = !!game && isGenderFreeVoting(game)
+    const roundGender = genderFreeVoting ? null : roundGenderLabel(roundParts.map((p) => p.gender))
+    const voterHint = genderFreeVoting ? null : roundVoterLabel(roundParticipantGender)
     const effectiveGender = myPlayerGender ?? getPlayerSession(gameCode)?.playerGender ?? null
-    const canVote = !!(
-      effectiveGender &&
-      roundParticipantGender &&
-      canPlayerVoteInRound(effectiveGender, roundParticipantGender)
-    )
-    const voteBanner = canVote ? activeVoteBanner(effectiveGender) : null
-    const gameType = parseGameType(game?.game_type)
+    const canVote = genderFreeVoting
+      ? !!myPlayerId
+      : !!(
+          effectiveGender &&
+          roundParticipantGender &&
+          canPlayerVoteInRound(effectiveGender, roundParticipantGender)
+        )
+    const voteBanner = canVote && !genderFreeVoting ? activeVoteBanner(effectiveGender) : null
     const isPair = isPairGame(gameType)
     const roundPartIds = roundParts.map((p) => p.id)
     const pairMode = parsePairVoteMode(game?.pair_vote_mode)
     const isCustom = isCustomGame(gameType)
+    const customSlots = isCustom && game ? getCustomSlots(game) : []
+    const customMode =
+      isCustom && game ? customAssignmentMode(game, roundParts.length, customSlots.map((s) => s.key)) : 'one_each'
     const customComplete =
-      isCustom && game ? Object.keys(customAssignments).length === getCustomSlots(game).length : false
+      isCustom && game
+        ? isCustomAssignmentValid(
+            customAssignments,
+            roundParts.map((p) => p.id),
+            customSlots.map((s) => s.key),
+            customMode
+          )
+        : false
     const allAssigned = isCustom
       ? customComplete
       : isPair
         ? isPairAssignmentValid(pairAssignment, roundPartIds, pairMode)
         : isAssignmentComplete(assignment, gameType)
     const assignTarget =
-      isCustom && game ? getCustomSlots(game).length : assignmentTargetCount(gameType, roundParts.length)
+      isCustom && game ? roundParts.length : assignmentTargetCount(gameType, roundParts.length)
     const assignProgress = isCustom
-      ? Object.keys(customAssignments).length
+      ? Object.keys(customAssignments).filter((id) => roundParts.some((p) => p.id === id)).length
       : isPair
         ? pairAssignedCount(pairAssignment, roundPartIds)
         : assignedCount(assignment, gameType)
@@ -1887,9 +2548,33 @@ export default function GamePage() {
             {voteBanner && <p className="text-green-400/90 text-xs font-medium mt-1">{voteBanner}</p>}
             {isPair && isPairOneEachMode(game!) && (
               <p className="text-faint text-xs mt-1">
-                {gameType === 'smash_or_pass' ? 'Pick one Smash and one Pass' : 'Pick one Green and one Red'}
+                {gameType === 'smash_or_pass'
+                  ? 'One Smash and one Pass — tap the other person&apos;s choice to swap'
+                  : 'One Green and one Red — tap the other person&apos;s choice to swap'}
               </p>
             )}
+            {isPair && !isPairOneEachMode(game!) && roundParts.length === 2 && (
+              <p className="text-faint text-xs mt-1">
+                {gameType === 'smash_or_pass'
+                  ? 'Any combo — both Smash, both Pass, or one of each'
+                  : 'Any combo — both Green, both Red, or one of each'}
+              </p>
+            )}
+            {isCustom && isCustomTwoSlotGame(game!) && isCustomOneEachMode(game!) && customSlots.length === 2 && (
+              <p className="text-faint text-xs mt-1">
+                One {customSlots[0].label || 'option'} and one {customSlots[1].label || 'option'} — tap the other
+                person&apos;s choice to swap
+              </p>
+            )}
+            {isCustom &&
+              isCustomTwoSlotGame(game!) &&
+              !isCustomOneEachMode(game!) &&
+              customSlots.length === 2 && (
+                <p className="text-faint text-xs mt-1">
+                  Any combo — both {customSlots[0].label || 'options'}, both {customSlots[1].label || 'options'}, or
+                  one of each
+                </p>
+              )}
           </div>
           {canVote ? (
             <TimerDisplay seconds={timeLeft} total={game?.timer_seconds ?? 30} />
@@ -1900,7 +2585,7 @@ export default function GamePage() {
           )}
         </div>
 
-        {!canVote && (
+        {!canVote && !genderFreeVoting && (
           <div className="glass-card border border-theme-strong px-4 py-3 mb-4 text-center">
             <p className="text-body text-sm">{spectatorMessage(roundParticipantGender, effectiveGender)}</p>
           </div>
@@ -1911,22 +2596,28 @@ export default function GamePage() {
           ? (() => {
               const slots = getCustomSlots(game)
               const roundPartsCustom = participants.filter((p) => currentRound.participant_ids.includes(p.id))
+              const roundIdsCustom = roundPartsCustom.map((p) => p.id)
+              const customMode = customAssignmentMode(game, roundIdsCustom.length, slots.map((s) => s.key))
               return (
                 <div className="flex-1 mb-6">
                   <CustomVoteCard
                     participants={roundPartsCustom}
                     slots={slots}
                     assignments={customAssignments}
+                    getDisabledSlotKeys={(participantId) =>
+                      customDisabledSlots(
+                        customAssignments,
+                        participantId,
+                        roundIdsCustom,
+                        slots.map((s) => s.key),
+                        customMode
+                      )
+                    }
                     onAssign={(pid, slotKey) => {
                       if (!canVote || submitted) return
-                      setCustomAssignments((prev) => {
-                        const cleaned: Record<string, string> = {}
-                        for (const [id, key] of Object.entries(prev)) {
-                          if (key !== slotKey && id !== pid) cleaned[id] = key
-                        }
-                        cleaned[pid] = slotKey
-                        return cleaned
-                      })
+                      setCustomAssignments((prev) =>
+                        assignCustomSlot(prev, pid, slotKey, roundIdsCustom, customMode)
+                      )
                     }}
                     disabled={submitted || !canVote}
                   />
@@ -2017,23 +2708,420 @@ export default function GamePage() {
     )
   }
 
-  // ROUND RESULTS — extracted to RoundResultsView component
+  // ROUND RESULTS — shown after round ends, before next round starts
   if (view === 'round_results' && lastFinishedRound) {
+    const gameType = parseGameType(game?.game_type)
+
+    if (isHotSeat(gameType)) {
+      const hotSeatPlayerId = lastFinishedRound.submitter_player_id
+      const hotSeatPlayerName = hotSeatPlayerDisplayName(hotSeatPlayerId, players, participants)
+      const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
+
+      return (
+        <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
+          <PlayerNameBar name={myPlayerName} />
+          <div className="text-center">
+            <p className="text-muted text-xs uppercase tracking-wider">
+              Round {lastFinishedRound.round_number} of {game?.rounds_count}
+            </p>
+            <GameTypeBadge gameType={gameType} className="mt-2" />
+            <h2 className="text-2xl font-black tracking-tight mt-2">Hot Seat Reveal! 🪑🔥</h2>
+          </div>
+
+          <HotSeatRoundResults hotSeatPlayerName={hotSeatPlayerName} submissions={hotSeatSubmissions} />
+
+          <ReactionBar className="pt-1" gameCode={gameCode} playerId={myPlayerId} />
+          <p className="text-faint text-sm text-center">
+            {roundResultsWaitMessage({
+              isLastRound,
+              autoReveal: !!game?.auto_reveal,
+              nextRoundSecondsLeft: nextRoundCountdown,
+              finalRevealSecondsLeft: finalRevealCountdown,
+            })}
+          </p>
+        </div>
+      )
+    }
+
+    if (isBinaryChoiceGame(gameType)) {
+      const myVote = lastRoundVotes.find((v) => v.player_id === myPlayerId)
+      const { countA, countB, voterCount } = tallyWyrVotes(lastRoundVotes)
+      const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
+
+      return (
+        <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
+          <PlayerNameBar name={myPlayerName} />
+          <div className="text-center">
+            <p className="text-muted text-xs uppercase tracking-wider">
+              Round {lastFinishedRound.round_number} of {game?.rounds_count}
+            </p>
+            <GameTypeBadge gameType={gameType} className="mt-2" />
+            <h2 className="text-2xl font-black tracking-tight mt-2">Results are in! 🗳️</h2>
+          </div>
+          <WyrRoundResults
+            optionA={lastFinishedRound.wyr_option_a ?? ''}
+            optionB={lastFinishedRound.wyr_option_b ?? ''}
+            countA={countA}
+            countB={countB}
+            voterCount={voterCount}
+            myChoice={myVote?.wyr_choice ?? null}
+            mode={isTotGame ? 'tot' : 'wyr'}
+          />
+          <ConfessionsTicker confessions={allConfessions.filter((c) => c.round_id === lastFinishedRound.id)} />
+          <ReactionBar className="pt-1" gameCode={gameCode} playerId={myPlayerId} />
+          <ShareRoundResults
+            game={game!}
+            round={lastFinishedRound}
+            votes={lastRoundVotes}
+            participants={participants}
+            players={players}
+          />
+          <p className="text-faint text-sm text-center">
+            {roundResultsWaitMessage({
+              isLastRound,
+              autoReveal: !!game?.auto_reveal,
+              nextRoundSecondsLeft: nextRoundCountdown,
+              finalRevealSecondsLeft: finalRevealCountdown,
+            })}
+          </p>
+        </div>
+      )
+    }
+
+    if (isWhoSaidThis(gameType) && game) {
+      const myVote = lastRoundVotes.find((v) => v.player_id === myPlayerId)
+      const myPickName = lastFinishedRound.anime_metadata
+        ? (myVote?.anime_choice ?? null)
+        : myVote?.target_participant_id
+          ? (participants.find((p) => p.id === myVote.target_participant_id)?.name ?? null)
+          : null
+      const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
+
+      if (isAnimeRound(lastFinishedRound)) {
+        const meta = lastFinishedRound.anime_metadata as {
+          anime_name: string
+          correct_character: string
+          choices: string[]
+        }
+        const animeTally = tallyAnimeWstVotes(lastRoundVotes, meta.choices, meta.correct_character)
+        return (
+          <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
+            <PlayerNameBar name={myPlayerName} />
+            <div className="text-center">
+              <p className="text-muted text-xs uppercase tracking-wider">
+                Round {lastFinishedRound.round_number} of {game?.rounds_count}
+              </p>
+              <GameTypeBadge gameType={gameType} className="mt-2" />
+              <h2 className="text-2xl font-black tracking-tight mt-2">Results are in! 🕵️</h2>
+            </div>
+            <AnimeWstRoundResults
+              quote={lastFinishedRound.quote_text ?? '(no quote)'}
+              animeName={meta.anime_name}
+              rows={animeTally.rows}
+              voterCount={animeTally.voterCount}
+              maxCount={animeTally.maxCount}
+              topGuesses={animeTally.topGuesses}
+              correctCharacter={meta.correct_character}
+              correctCount={animeTally.correctCount}
+              myPickName={myPickName}
+            />
+            <ShareRoundResults
+              game={game!}
+              round={lastFinishedRound}
+              votes={lastRoundVotes}
+              participants={participants}
+              players={players}
+            />
+            <p className="text-faint text-sm text-center">
+              {roundResultsWaitMessage({
+                isLastRound,
+                autoReveal: !!game?.auto_reveal,
+                nextRoundSecondsLeft: nextRoundCountdown,
+                finalRevealSecondsLeft: finalRevealCountdown,
+              })}
+            </p>
+          </div>
+        )
+      }
+
+      const targets = wstVoteTargets(participants)
+      const correctName = wstCorrectNameFromRound(lastFinishedRound, players, participants)
+      const correctId = wstCorrectParticipantIdFromRound(lastFinishedRound, players)
+      const { rows, voterCount, maxCount, topGuesses, correctCount } = tallyWstVotes(lastRoundVotes, targets, correctId)
+
+      return (
+        <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
+          <PlayerNameBar name={myPlayerName} />
+          <div className="text-center">
+            <p className="text-muted text-xs uppercase tracking-wider">
+              Round {lastFinishedRound.round_number} of {game?.rounds_count}
+            </p>
+            <GameTypeBadge gameType={gameType} className="mt-2" />
+            <h2 className="text-2xl font-black tracking-tight mt-2">Results are in! 🕵️</h2>
+          </div>
+          <WstRoundResults
+            quote={lastFinishedRound.quote_text ?? '(no quote submitted)'}
+            rows={rows}
+            voterCount={voterCount}
+            maxCount={maxCount}
+            topGuesses={topGuesses}
+            correctName={correctName}
+            correctCount={correctCount}
+            myPickName={myPickName}
+          />
+          <ConfessionsTicker confessions={allConfessions.filter((c) => c.round_id === lastFinishedRound.id)} />
+          <ReactionBar className="pt-1" gameCode={gameCode} playerId={myPlayerId} />
+          <ShareRoundResults
+            game={game!}
+            round={lastFinishedRound}
+            votes={lastRoundVotes}
+            participants={participants}
+            players={players}
+          />
+          <p className="text-faint text-sm text-center">
+            {roundResultsWaitMessage({
+              isLastRound,
+              autoReveal: !!game?.auto_reveal,
+              nextRoundSecondsLeft: nextRoundCountdown,
+              finalRevealSecondsLeft: finalRevealCountdown,
+            })}
+          </p>
+        </div>
+      )
+    }
+
+    if (isMostLikelyTo(gameType) && game) {
+      const myVote = lastRoundVotes.find((v) => v.player_id === myPlayerId)
+      const mltKind = isMltImportGame(game) ? 'participant' : 'player'
+      const mltTargets = mltVoteTargets(game, participants, players)
+      const { rows, voterCount, maxCount, winnerNames } = tallyMltVotes(lastRoundVotes, mltTargets, mltKind)
+      const pickedId = myVote ? mltTargetIdFromVote(myVote, mltKind) : null
+      const myPickName = pickedId ? (mltTargets.find((t) => t.id === pickedId)?.name ?? null) : null
+      const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
+
+      return (
+        <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
+          <PlayerNameBar name={myPlayerName} />
+          <div className="text-center">
+            <p className="text-muted text-xs uppercase tracking-wider">
+              Round {lastFinishedRound.round_number} of {game?.rounds_count}
+            </p>
+            <GameTypeBadge gameType={gameType} className="mt-2" />
+            <h2 className="text-2xl font-black tracking-tight mt-2">Results are in! 🗳️</h2>
+          </div>
+          <MltRoundResults
+            question={lastFinishedRound.mlt_question ?? ''}
+            rows={rows}
+            voterCount={voterCount}
+            maxCount={maxCount}
+            winnerNames={winnerNames}
+            myPickName={myPickName}
+          />
+          <ConfessionsTicker confessions={allConfessions.filter((c) => c.round_id === lastFinishedRound.id)} />
+          <ReactionBar className="pt-1" gameCode={gameCode} playerId={myPlayerId} />
+          <ShareRoundResults
+            game={game!}
+            round={lastFinishedRound}
+            votes={lastRoundVotes}
+            participants={participants}
+            players={players}
+          />
+          <p className="text-faint text-sm text-center">
+            {roundResultsWaitMessage({
+              isLastRound,
+              autoReveal: !!game?.auto_reveal,
+              nextRoundSecondsLeft: nextRoundCountdown,
+              finalRevealSecondsLeft: finalRevealCountdown,
+            })}
+          </p>
+        </div>
+      )
+    }
+
+    const roundParts = participants.filter((p) => lastFinishedRound.participant_ids.includes(p.id))
+    const roundParticipantGender = getRoundParticipantGender(lastFinishedRound.participant_ids, participants)
+    const genderFreeVoting = !!game && isGenderFreeVoting(game)
+    const roundGender = genderFreeVoting ? null : roundGenderLabel(roundParts.map((p) => p.gender))
+    const myVote = lastRoundVotes.find((v) => v.player_id === myPlayerId)
+    const watchedRound = !!(
+      !genderFreeVoting &&
+      !myVote &&
+      myPlayerGender &&
+      roundParticipantGender &&
+      !canPlayerVoteInRound(myPlayerGender, roundParticipantGender)
+    )
+    const roundConfessions = allConfessions.filter((c) => c.round_id === lastFinishedRound.id)
+    const isLastRound = lastFinishedRound.round_number >= (game?.rounds_count ?? 0)
+
     return (
-      <RoundResultsView
-        game={game}
-        participants={participants}
-        players={players}
-        myPlayerId={myPlayerId}
-        myPlayerName={myPlayerName}
-        myPlayerGender={myPlayerGender}
-        lastFinishedRound={lastFinishedRound}
-        lastRoundVotes={lastRoundVotes}
-        allConfessions={allConfessions}
-        hotSeatSubmissions={hotSeatSubmissions}
-        nextRoundCountdown={nextRoundCountdown}
-        finalRevealCountdown={finalRevealCountdown}
-      />
+      <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
+        <PlayerNameBar name={myPlayerName} />
+        {/* Header */}
+        <div className="text-center">
+          <p className="text-muted text-xs uppercase tracking-wider">
+            Round {lastFinishedRound.round_number} of {game?.rounds_count}
+            {roundGender ? ` · ${roundGender}` : ''}
+          </p>
+          <GameTypeBadge gameType={gameType} className="mt-2" />
+          <h2 className="text-2xl font-black tracking-tight mt-2">Results are in! 🗳️</h2>
+          {watchedRound && (
+            <p className="text-muted text-sm mt-2">You watched this round — everyone sees the same results</p>
+          )}
+        </div>
+
+        {/* My vote recap */}
+        {myVote && (
+          <div className="glass-card border border-[var(--primary)]/30 p-4">
+            <p className="text-[var(--primary)] text-xs uppercase tracking-wider mb-2">Your vote</p>
+            {isCustomGame(gameType) && game ? (
+              <div className="space-y-1.5">
+                {customVoteRecapItems(
+                  myVote.pair_assignments as Record<string, string> | null,
+                  roundParts,
+                  getCustomSlots(game)
+                ).map((item) => (
+                  <p key={`${item.label}-${item.name}`} className="text-sm font-medium" style={{ color: item.color }}>
+                    {item.emoji} {item.label}: {item.name}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <div className="inline-flex flex-wrap gap-x-3 gap-y-1">
+                {isPairGame(gameType)
+                  ? roundParts.map((p) => {
+                      const flag = flagForParticipant(myVote, p.id)
+                      if (!flag) return null
+                      const meta = slotMeta(gameType, flag)
+                      return (
+                        <span key={p.id} className="text-sm font-medium" style={{ color: meta.textColor }}>
+                          {p.name}: {meta.emoji} {meta.label}
+                        </span>
+                      )
+                    })
+                  : voteSlots(gameType).map((slot) => {
+                      const participantId =
+                        slot === 'kiss'
+                          ? myVote.kiss_participant_id
+                          : slot === 'marry'
+                            ? myVote.marry_participant_id
+                            : myVote.kill_participant_id
+                      if (!participantId) return null
+                      const meta = slotMeta(gameType, slot)
+                      return (
+                        <span key={slot} className="text-sm font-medium" style={{ color: meta.textColor }}>
+                          {meta.emoji} {participants.find((p) => p.id === participantId)?.name}
+                        </span>
+                      )
+                    })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Per-person vote counts */}
+        {isCustomGame(gameType) && game
+          ? (() => {
+              const slots = getCustomSlots(game)
+              const slotKeys = slots.map((s) => s.key)
+              const roundPartsIds = lastFinishedRound.participant_ids
+              const nameMap = new Map(participants.map((p) => [p.id, p.name]))
+              const tally = tallyCustomVotes(lastRoundVotes, roundPartsIds, nameMap, slotKeys)
+              const myAssignment = myVote?.pair_assignments as Record<string, string> | null
+              return <CustomRoundResults tally={tally} slots={slots} myAssignment={myAssignment} />
+            })()
+          : (() => {
+              const tallies = tallyRoundVotes(
+                roundParts.map((p) => p.id),
+                lastRoundVotes
+              )
+              const nameById = new Map(roundParts.map((p) => [p.id, p.name]))
+              const voterCount = lastRoundVotes.length
+
+              return (
+                <ParticipantRoundResults
+                  gameType={gameType}
+                  tallies={tallies}
+                  nameById={nameById}
+                  voterCount={voterCount}
+                  participantDetails={roundParts.map((p) => ({ id: p.id, name: p.name, gender: p.gender }))}
+                  myFlagsByParticipantId={
+                    myVote
+                      ? Object.fromEntries(roundParts.map((p) => [p.id, flagForParticipant(myVote, p.id)]))
+                      : undefined
+                  }
+                  renderCard={
+                    isPairGame(gameType)
+                      ? undefined
+                      : ({ tally, name, maxes, isWinner }) => {
+                          const myAction =
+                            myVote?.kiss_participant_id === tally.id
+                              ? 'kiss'
+                              : myVote?.marry_participant_id === tally.id
+                                ? 'marry'
+                                : myVote?.kill_participant_id === tally.id
+                                  ? 'kill'
+                                  : null
+
+                          const borderCls = myActionBorderClass(gameType, myAction)
+
+                          return (
+                            <div key={tally.id} className={`glass-card border-2 ${borderCls} rounded-2xl p-4`}>
+                              <div className="flex items-center gap-3 mb-3">
+                                <Avatar name={name} />
+                                <p className="font-bold text-body text-lg">{name}</p>
+                                {myAction && (
+                                  <span className="ml-auto text-xs text-muted italic">
+                                    you: {assignmentEmojiFor(gameType, myAction)}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-3 gap-3">
+                                {getVoteCategories(gameType).map((category) => {
+                                  const meta = getCategoryMeta(gameType, category)
+                                  return (
+                                    <VoteCountStat
+                                      key={category}
+                                      emoji={meta.emoji}
+                                      label={meta.label}
+                                      count={tally[category]}
+                                      max={maxes[category]}
+                                      color={meta.color}
+                                      isWinner={isWinner(category)}
+                                    />
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        }
+                  }
+                />
+              )
+            })()}
+
+        {/* Hot takes for this round */}
+        <ConfessionsTicker confessions={roundConfessions} />
+
+        <ReactionBar className="pt-1" gameCode={gameCode} playerId={myPlayerId} />
+
+        <ShareRoundResults
+          game={game!}
+          round={lastFinishedRound}
+          votes={lastRoundVotes}
+          participants={participants}
+          players={players}
+        />
+
+        <p className={`text-sm text-center animate-pulse ${isLastRound ? 'text-[var(--primary)]' : 'text-faint'}`}>
+          {roundResultsWaitMessage({
+            isLastRound,
+            autoReveal: !!game?.auto_reveal,
+            nextRoundSecondsLeft: nextRoundCountdown,
+            finalRevealSecondsLeft: finalRevealCountdown,
+            finalLabel: 'leaderboard',
+          })}
+        </p>
+      </div>
     )
   }
 
@@ -2049,6 +3137,7 @@ export default function GamePage() {
         players={players}
         myPlayerId={myPlayerId}
         myPlayerName={myPlayerName}
+        hotSeatSubmissions={allHotSeatSubmissions}
       />
     )
   }
@@ -2081,6 +3170,7 @@ function FinalResultsView({
   players,
   myPlayerId,
   myPlayerName,
+  hotSeatSubmissions,
 }: {
   game: Game
   participants: Participant[]
@@ -2090,13 +3180,19 @@ function FinalResultsView({
   players: Player[]
   myPlayerId: string | null
   myPlayerName: string | null
+  hotSeatSubmissions: { id: string; round_id: string; text: string; submission_type: string }[]
 }) {
   const gameType = parseGameType(game.game_type)
   const playedParticipants = filterParticipantsInRounds(participants, rounds)
-  const isWyr = isWouldYouRather(gameType)
+  const isBinaryGameType = isBinaryChoiceGame(gameType)
   const isMlt = isMostLikelyTo(gameType)
   const isWst = isWhoSaidThis(gameType)
+  const isHotSeatGame = isHotSeat(gameType)
   const isMltImport = isMltImportGame(game)
+  const showPollLeaderboards =
+    !isBinaryGameType && !isMlt && !isWst && !isCustomGame(gameType) && !isHotSeatGame
+  const genderBasedLeaderboards = showPollLeaderboards && isGameGenderBased(game)
+  const namesOnlyLeaderboards = showPollLeaderboards && isGenderFreeVoting(game)
   const wstScores = isWst ? tallyWstPlayerScores(rounds, votes, players) : []
   const achievements = useMemo(
     () => computeAchievements(game, participants, rounds, votes, players),
@@ -2116,7 +3212,7 @@ function FinalResultsView({
             ? ` · ${mltVoteTargets(game, participants, players).length} in poll`
             : isWst
               ? ` · ${participants.length} names`
-              : !isWyr && !isMlt
+              : !isBinaryGameType && !isMlt
                 ? ` · ${playedParticipants.length} in game`
                 : ''}
         </p>
@@ -2166,7 +3262,7 @@ function FinalResultsView({
           })()
         : null}
 
-      {!isWyr && !isMlt && !isWst && !isCustomGame(gameType) && (
+      {genderBasedLeaderboards && (
         <>
           <FinalGenderLeaderboards
             gameType={gameType}
@@ -2179,8 +3275,42 @@ function FinalResultsView({
         </>
       )}
 
+      {namesOnlyLeaderboards && (
+        <>
+          <FinalOverallLeaderboards
+            gameType={gameType}
+            participants={participants}
+            rounds={rounds}
+            votes={votes}
+            TopCard={LeaderCard}
+          />
+          <FinalOverallBreakdown gameType={gameType} participants={participants} rounds={rounds} votes={votes} />
+        </>
+      )}
+
       {achievements.length > 0 && <AchievementBadges achievements={achievements} />}
 
+      {isHotSeatGame ? (
+        <div>
+          <h2 className="text-muted text-xs uppercase tracking-wider mb-4">All round results</h2>
+          <div className="space-y-8">
+            {rounds.map((round) => {
+              const hotSeatPlayerName = hotSeatPlayerDisplayName(round.submitter_player_id, players, participants)
+              const roundSubs = hotSeatSubmissions.filter((s) => s.round_id === round.id)
+              return (
+                <div key={round.id}>
+                  <h2 className="text-muted text-xs uppercase tracking-wider mb-3">Round {round.round_number}</h2>
+                  <HotSeatRoundResults
+                    hotSeatPlayerName={hotSeatPlayerName ?? 'Unknown'}
+                    submissions={roundSubs}
+                    animate={false}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : (
       <div>
         <h2 className="text-muted text-xs uppercase tracking-wider mb-4">All round results</h2>
         <div className="space-y-8">
@@ -2202,7 +3332,7 @@ function FinalResultsView({
               )
             }
 
-            if (isWyr) {
+            if (isBinaryGameType) {
               const { countA, countB, voterCount } = tallyWyrVotes(roundVotes)
               return (
                 <div key={round.id}>
@@ -2214,6 +3344,7 @@ function FinalResultsView({
                     countB={countB}
                     voterCount={voterCount}
                     myChoice={myVote?.wyr_choice ?? null}
+                    mode={isThisOrThat(gameType) ? 'tot' : 'wyr'}
                   />
                 </div>
               )
@@ -2295,7 +3426,9 @@ function FinalResultsView({
             }
 
             const roundParts = participants.filter((p) => round.participant_ids.includes(p.id))
-            const roundGender = roundGenderLabel(roundParts.map((p) => p.gender))
+            const roundGender = game && isGenderFreeVoting(game)
+              ? null
+              : roundGenderLabel(roundParts.map((p) => p.gender))
 
             return (
               <div key={round.id}>
@@ -2385,6 +3518,7 @@ function FinalResultsView({
           })}
         </div>
       </div>
+      )}
 
       {/* All hot takes */}
       {confessions.length > 0 && (
