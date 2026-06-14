@@ -65,7 +65,6 @@ import {
   isPairAssignmentValid,
   pairDisabledSlots,
   assignPairSlot,
-  completeRandomPairAssignment,
   isHotSeat,
   isCustomGame,
   isAnonymousMessagesGame,
@@ -106,7 +105,6 @@ import {
   getCustomSlots,
   getCustomSlotKeys,
   tallyCustomVotes,
-  completeRandomCustomAssignment,
   buildCustomLeaderboard,
   isCustomAssignmentValid,
   customAssignmentMode,
@@ -142,6 +140,9 @@ import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
+import { useGameChannel } from '@/hooks/useGameChannel'
+import { useRoundTimer } from '@/hooks/useRoundTimer'
+import { useAutoSubmit } from '@/hooks/useAutoSubmit'
 import { HOT_SEAT_SUBMISSION_TYPES, hotSeatPlayerDisplayName } from '@/lib/hot-seat'
 import { SegmentedControl } from '@/components/ui/CreateWizard'
 import {
@@ -178,7 +179,6 @@ export default function GamePage() {
 
   // Active round state
   const [currentRound, setCurrentRound] = useState<Round | null>(null)
-  const [timeLeft, setTimeLeft] = useState(0)
   const [assignment, setAssignment] = useState<VoteAssignment>(emptyAssignment())
   const [pairAssignment, setPairAssignment] = useState<PairAssignmentMap>({})
   const [wyrChoice, setWyrChoice] = useState<WyrChoice | null>(null)
@@ -325,32 +325,39 @@ export default function GamePage() {
       joinGenderTouchedRef.current = false
     }
   }, [namePickerOptions, selectedParticipantId, useFreeNameJoin, view])
-  const submittedRef = useRef(false)
-  const assignmentRef = useRef(assignment)
+  const { refs: autoSubmitRefs, triggerAutoSubmit } = useAutoSubmit(gameCode, {
+    onCustomAssignmentsChange: setCustomAssignments,
+  })
+  const {
+    assignmentRef,
+    pairAssignmentRef,
+    customAssignmentsRef,
+    wyrChoiceRef,
+    mltTargetPlayerIdRef: autoMltRef,
+    animeChoiceRef,
+    playersRef,
+    currentRoundRef,
+    gameRef,
+    participantsRef,
+    myPlayerIdRef,
+    myPlayerGenderRef,
+    submittedRef,
+  } = autoSubmitRefs
+
+  // Sync state → refs so auto-submit reads current values
   assignmentRef.current = assignment
-  const pairAssignmentRef = useRef(pairAssignment)
   pairAssignmentRef.current = pairAssignment
-  const customAssignmentsRef = useRef(customAssignments)
   customAssignmentsRef.current = customAssignments
-  const wyrChoiceRef = useRef(wyrChoice)
   wyrChoiceRef.current = wyrChoice
-  const mltTargetPlayerIdRef = useRef(mltTargetPlayerId)
-  mltTargetPlayerIdRef.current = mltTargetPlayerId
-  const animeChoiceRef = useRef(animeChoice)
+  autoMltRef.current = mltTargetPlayerId
   animeChoiceRef.current = animeChoice
-  const playersRef = useRef(players)
   playersRef.current = players
-  const currentRoundRef = useRef(currentRound)
   currentRoundRef.current = currentRound
-  const gameRef = useRef(game)
   gameRef.current = game
-  const participantsRef = useRef(participants)
   participantsRef.current = participants
-  const myPlayerIdRef = useRef(myPlayerId)
   myPlayerIdRef.current = myPlayerId
-  const myPlayerGenderRef = useRef(myPlayerGender)
   myPlayerGenderRef.current = myPlayerGender
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   const announcedRoundIdRef = useRef<string | null>(null)
   const suppressRoundSoundRef = useRef(true)
   const joinGenderTouchedRef = useRef(false)
@@ -576,209 +583,100 @@ export default function GamePage() {
   }
 
   // ── Real-time subscriptions ───────────────────────────────────────────────
-  useEffect(() => {
-    const ch = supabase
-      .channel(`game-player-${gameCode}`)
-
-      // Game status changes
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        async (payload) => {
-          const newGame = payload.new as Game
-          setGame(newGame)
-
-          if (newGame.status === 'active' && myPlayerIdRef.current) {
-            const [{ data: activeRound }, { data: parts }] = await Promise.all([
-              supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
-              supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
-            ])
-            if (parts) setParticipants(parts)
-            if (activeRound) {
-              applyActiveRound(activeRound)
-            }
-          }
-
-          if (newGame.status === 'finished') {
-            await loadAllResults()
-            setView('results')
-          }
-
-          if (newGame.status === 'waiting') {
-            resetPlayerForLobby(!!myPlayerIdRef.current)
+  useGameChannel(
+    gameCode,
+    `game-player-${gameCode}`,
+    {
+      setGame,
+      setPlayers,
+      setParticipants,
+      setWstPool,
+      setConfessions: setAllConfessions,
+    },
+    {
+      onGameUpdate: async (newGame) => {
+        if (newGame.status === 'active' && myPlayerIdRef.current) {
+          const [{ data: activeRound }, { data: parts }] = await Promise.all([
+            supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
+            supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
+          ])
+          if (parts) setParticipants(parts)
+          if (activeRound) {
+            applyActiveRound(activeRound)
           }
         }
-      )
-
-      // First round is inserted (not updated) when the host starts the game
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
-        async (payload) => {
-          const round = payload.new as Round
-          if (round.status === 'active' && myPlayerIdRef.current) {
-            const { data: parts } = await supabase
-              .from('participants')
-              .select('*')
-              .eq('game_id', gameCode)
-              .order('display_order')
-            if (parts) setParticipants(parts)
-            applyActiveRound(round)
+        if (newGame.status === 'finished') {
+          await loadAllResults()
+          setView('results')
+        }
+        if (newGame.status === 'waiting') {
+          resetPlayerForLobby(!!myPlayerIdRef.current)
+        }
+      },
+      onRoundInsert: async (round) => {
+        if (round.status === 'active' && myPlayerIdRef.current) {
+          const { data: parts } = await supabase
+            .from('participants')
+            .select('*')
+            .eq('game_id', gameCode)
+            .order('display_order')
+          if (parts) setParticipants(parts)
+          applyActiveRound(round)
+        }
+      },
+      onRoundUpdate: async (round) => {
+        if (round.status === 'active') {
+          const priorId = roundFormIdRef.current
+          applyActiveRound(round, { switchView: priorId !== round.id })
+        }
+        if (round.status === 'finished') {
+          const [{ data: rv }, { data: rc }] = await Promise.all([
+            supabase.from('votes').select('*').eq('round_id', round.id),
+            supabase.from('confessions').select('*').eq('round_id', round.id).order('created_at'),
+          ])
+          setLastFinishedRound(round)
+          setLastRoundVotes(rv || [])
+          setAllConfessions((prev) => {
+            const ids = new Set(prev.map((c) => c.id))
+            return [...prev, ...(rc || []).filter((c) => !ids.has(c.id))]
+          })
+          setAllVotes((prev) => {
+            const ids = new Set(prev.map((v) => v.id))
+            return [...prev, ...(rv || []).filter((v) => !ids.has(v.id))]
+          })
+          setAllRounds((prev) => {
+            const ids = new Set(prev.map((r) => r.id))
+            return ids.has(round.id) ? prev.map((r) => (r.id === round.id ? round : r)) : [...prev, round]
+          })
+          setView('round_results')
+        }
+      },
+      onPlayerUpdate: (p) => {
+        if (p.id === myPlayerIdRef.current) {
+          setMyPlayerName(p.name)
+          const voteGender = playerVoteGenderForRound(p, participantsRef.current)
+          if (voteGender) {
+            setMyPlayerGender(voteGender)
+            setPlayerSession(gameCode, p.id, p.name, voteGender)
           }
         }
-      )
-
-      // Round status changes — this drives the whole flow
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
-        async (payload) => {
-          const round = payload.new as Round
-
-          if (round.status === 'active') {
-            const priorId = roundFormIdRef.current
-            applyActiveRound(round, { switchView: priorId !== round.id })
-          }
-
-          if (round.status === 'finished') {
-            // Round ended — show results before next round
-            const [{ data: rv }, { data: rc }] = await Promise.all([
-              supabase.from('votes').select('*').eq('round_id', round.id),
-              supabase.from('confessions').select('*').eq('round_id', round.id).order('created_at'),
-            ])
-            setLastFinishedRound(round)
-            setLastRoundVotes(rv || [])
-            // Merge into allConfessions (dedup)
-            setAllConfessions((prev) => {
-              const ids = new Set(prev.map((c) => c.id))
-              return [...prev, ...(rc || []).filter((c) => !ids.has(c.id))]
-            })
-            // Merge into allVotes
-            setAllVotes((prev) => {
-              const ids = new Set(prev.map((v) => v.id))
-              return [...prev, ...(rv || []).filter((v) => !ids.has(v.id))]
-            })
-            setAllRounds((prev) => {
-              const ids = new Set(prev.map((r) => r.id))
-              return ids.has(round.id) ? prev.map((r) => (r.id === round.id ? round : r)) : [...prev, round]
-            })
-            setView('round_results')
-          }
+      },
+      onPlayerDelete: (p) => {
+        if (p.id === myPlayerIdRef.current) {
+          clearPlayerSession(gameCode)
+          setMyPlayerId(null)
+          setMyPlayerName(null)
+          setMyPlayerGender(null)
+          setEditingJoin(false)
+          setView('join')
         }
-      )
-
-      // New player joined
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const p = payload.new as Player
-          setPlayers((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p]))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const p = payload.new as Player
-          setPlayers((prev) => prev.map((x) => (x.id === p.id ? p : x)))
-          if (p.id === myPlayerIdRef.current) {
-            setMyPlayerName(p.name)
-            const voteGender = playerVoteGenderForRound(p, participantsRef.current)
-            if (voteGender) {
-              setMyPlayerGender(voteGender)
-              setPlayerSession(gameCode, p.id, p.name, voteGender)
-            }
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const p = payload.old as Player
-          setPlayers((prev) => prev.filter((x) => x.id !== p.id))
-          if (p.id === myPlayerIdRef.current) {
-            clearPlayerSession(gameCode)
-            setMyPlayerId(null)
-            setMyPlayerName(null)
-            setMyPlayerGender(null)
-            setEditingJoin(false)
-            setView('join')
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const p = payload.new as Participant
-          setParticipants((prev) =>
-            prev.some((x) => x.id === p.id) ? prev : [...prev, p].sort((a, b) => a.display_order - b.display_order)
-          )
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const p = payload.new as Participant
-          setParticipants((prev) => prev.map((x) => (x.id === p.id ? p : x)))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const p = payload.old as Participant
-          setParticipants((prev) => prev.filter((x) => x.id !== p.id))
-        }
-      )
-
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const entry = payload.new as WstQuotePoolEntry
-          setWstPool((prev) => mergeWstPoolEntry(prev, entry))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const entry = payload.new as WstQuotePoolEntry
-          setWstPool((prev) => mergeWstPoolEntry(prev, entry))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'wst_quote_pool', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const entry = payload.old as WstQuotePoolEntry
-          setWstPool((prev) => prev.filter((x) => x.id !== entry.id && x.player_id !== entry.player_id))
-        }
-      )
-
-      // New confession (live hot takes)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'confessions', filter: `game_id=eq.${gameCode}` },
-        (payload) => {
-          const c = payload.new as Confession
-          setAllConfessions((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c]))
-          // If it belongs to the currently-displayed finished round, add it live
-          setLastRoundVotes((prev) => prev) // trigger no-op to let view re-render
-        }
-      )
-
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(ch)
+      },
+      onConfessionInsert: () => {
+        // Trigger re-render for live confessions in round results
+        setLastRoundVotes((prev) => prev)
+      },
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- realtime subscription, deps intentionally limited
-  }, [gameCode])
+  )
 
   // Poll during final results — return to lobby when host resets
   useEffect(() => {
@@ -955,28 +853,17 @@ export default function GamePage() {
     }
   }, [view, myPlayerId, wstPool])
 
-  useTimerTickSound(timeLeft, view === 'round')
+  const timeLeft = useRoundTimer({
+    game,
+    currentRound,
+    active: view === 'round' && !!currentRound?.started_at && !!game,
+    onExpire: () => {
+      if (submittedRef.current) return
 
-  // ── Timer — NO `submitted` in deps so it keeps running after submit ───────
-  useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current)
-
-    if (view !== 'round' || !currentRound?.started_at || !game) return
-
-    const gameType = parseGameType(game.game_type)
-    const isWst = isWhoSaidThis(gameType)
-    const timerStartMs =
-      isWst && currentRound.quote_text && currentRound.quote_submitted_at
-        ? new Date(currentRound.quote_submitted_at).getTime()
-        : new Date(currentRound.started_at).getTime()
-    const endMs = timerStartMs + game.timer_seconds * 1000
-
-    const tick = () => {
-      const remaining = Math.max(0, Math.ceil((endMs - Date.now()) / 1000))
-
-      setTimeLeft(remaining)
-
-      const roundGender = getRoundParticipantGender(currentRound.participant_ids, participantsRef.current)
+      const roundGender = getRoundParticipantGender(
+        currentRoundRef.current?.participant_ids ?? [],
+        participantsRef.current
+      )
       const gameType = parseGameType(gameRef.current?.game_type)
       const playerGender = myPlayerGenderRef.current ?? getPlayerSession(gameCode)?.playerGender ?? null
       const r = currentRoundRef.current
@@ -989,8 +876,8 @@ export default function GamePage() {
           ? !!myPlayerIdRef.current
           : !!roundGender && !!playerGender && canPlayerVoteInRound(playerGender, roundGender)
 
-      if (remaining === 0 && !submittedRef.current && canVote) {
-        void autoSubmitFromRefs().then((didSubmit) => {
+      if (canVote) {
+        void triggerAutoSubmit().then((didSubmit) => {
           if (didSubmit) {
             submittedRef.current = true
             setSubmitted(true)
@@ -998,162 +885,10 @@ export default function GamePage() {
           }
         })
       }
-    }
+    },
+  })
 
-    tick()
-    timerRef.current = setInterval(tick, 500)
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    view,
-    currentRound?.id,
-    currentRound?.started_at,
-    currentRound?.quote_text,
-    currentRound?.quote_submitted_at,
-    game?.timer_seconds,
-    game?.game_type,
-  ])
-  // Note: `submitted` intentionally excluded — the timer always counts to zero
-
-  // Uses only refs so it never causes stale closure issues
-  async function autoSubmitFromRefs(): Promise<boolean> {
-    const a = { ...assignmentRef.current }
-    const pa = { ...pairAssignmentRef.current }
-    let wyr = wyrChoiceRef.current
-    let mltTarget = mltTargetPlayerIdRef.current
-    let customCa = { ...customAssignmentsRef.current }
-    const plrs = playersRef.current
-    const r = currentRoundRef.current
-    const g = gameRef.current
-    const parts = participantsRef.current
-    const pid = myPlayerIdRef.current
-
-    if (!r || !pid || !g) return false
-
-    const gameType = parseGameType(g.game_type)
-    const roundParts = parts.filter((p) => r.participant_ids.includes(p.id))
-    const roundIds = roundParts.map((p) => p.id)
-    const useRandom = g.auto_submit_behavior === 'random'
-    let animeCh = animeChoiceRef.current
-    const isAnimeWst = isWhoSaidThis(gameType) && !!r.anime_metadata
-
-    // Only auto-fill random choices if the player has started voting
-    // (picked at least one option). If they haven't touched anything, skip.
-    const hasStartedVoting = isBinaryChoiceGame(gameType)
-      ? !!wyr
-      : isAnimeWst
-        ? !!animeCh
-        : isMostLikelyTo(gameType) || isWhoSaidThis(gameType)
-          ? !!mltTarget
-          : isCustomGame(gameType)
-            ? Object.keys(customCa).length > 0
-            : isPairGame(gameType)
-              ? Object.values(pa).some(Boolean)
-              : Object.values(a).some(Boolean)
-
-    if (useRandom && hasStartedVoting) {
-      if (isBinaryChoiceGame(gameType)) {
-        wyr = Math.random() < 0.5 ? 'a' : 'b'
-      } else if (isMostLikelyTo(gameType)) {
-        const targets = mltVoteTargets(g, parts, plrs)
-        if (targets.length > 0) {
-          mltTarget = targets[Math.floor(Math.random() * targets.length)].id
-        }
-      } else if (isAnimeWst) {
-        const choices = (r.anime_metadata as { choices: string[] }).choices
-        if (choices.length > 0) {
-          animeCh = choices[Math.floor(Math.random() * choices.length)]
-        }
-      } else if (isWhoSaidThis(gameType)) {
-        const targets = wstVoteTargets(parts)
-        if (targets.length > 0) {
-          mltTarget = targets[Math.floor(Math.random() * targets.length)].id
-        }
-      } else if (isCustomGame(gameType) && g) {
-        const slotKeys = getCustomSlotKeys(g)
-        const customMode = customAssignmentMode(g, roundIds.length, slotKeys)
-        const filled = completeRandomCustomAssignment(customCa, roundIds, slotKeys, customMode)
-        customCa = { ...customCa, ...filled }
-        customAssignmentsRef.current = customCa
-        setCustomAssignments(customCa)
-      } else if (isPairGame(gameType)) {
-        const pairMode = parsePairVoteMode(g.pair_vote_mode)
-        if (pairMode === 'one_each' && roundIds.length === 2) {
-          Object.assign(pa, completeRandomPairAssignment(pa, roundIds, pairMode))
-        } else {
-          for (const p of roundParts) {
-            if (!pa[p.id]) pa[p.id] = Math.random() < 0.5 ? 'kiss' : 'kill'
-          }
-        }
-      } else {
-        const unassigned = voteSlots(gameType).filter((slot) => !a[slot])
-        const available = shuffleCopy(roundParts.filter((p) => !Object.values(a).includes(p.id)))
-        unassigned.forEach((slot, i) => {
-          if (available[i]) a[slot] = available[i].id
-        })
-      }
-    }
-
-    let voteBody: Record<string, unknown> | null
-
-    if (isBinaryChoiceGame(gameType)) {
-      if (!wyr) return false
-      voteBody = { wyrChoice: wyr }
-    } else if (isMostLikelyTo(gameType)) {
-      if (!mltTarget) return false
-      voteBody = isMltImportGame(g) ? { targetParticipantId: mltTarget } : { targetPlayerId: mltTarget }
-    } else if (isWhoSaidThis(gameType)) {
-      if (r.submitter_player_id === pid) return false
-      if (!r.quote_text) return false
-      if (isAnimeWst) {
-        if (!animeCh) return false
-        voteBody = { animeChoice: animeCh }
-      } else {
-        if (!mltTarget) return false
-        voteBody = { targetParticipantId: mltTarget }
-      }
-    } else if (isCustomGame(gameType)) {
-      const slotKeys = getCustomSlotKeys(g)
-      const customMode = customAssignmentMode(g, roundIds.length, slotKeys)
-      if (!isCustomAssignmentValid(customCa, roundIds, slotKeys, customMode)) return false
-      voteBody = { customAssignments: customCa }
-    } else if (isPairGame(gameType)) {
-      const pairMode = parsePairVoteMode(g.pair_vote_mode)
-      if (!isPairAssignmentValid(pa, roundIds, pairMode)) return false
-      voteBody = {
-        pairAssignments: Object.fromEntries(
-          roundIds
-            .map((id) => [id, pa[id]] as const)
-            .filter((entry): entry is [string, 'kiss' | 'kill'] => entry[1] === 'kiss' || entry[1] === 'kill')
-        ),
-      }
-    } else {
-      if (!isAssignmentComplete(a, gameType)) return false
-      voteBody = {
-        kiss: a.kiss,
-        marry: isThreeChoiceGame(gameType) ? a.marry : null,
-        kill: a.kill,
-      }
-    }
-
-    try {
-      const res = await fetch('/api/votes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playerId: pid,
-          roundId: r.id,
-          gameId: gameCode,
-          ...voteBody,
-        }),
-      })
-      return res.ok
-    } catch {
-      return false
-    }
-  }
+  useTimerTickSound(timeLeft, view === 'round')
 
   // ── Actions ───────────────────────────────────────────────────────────────
   const assign = (action: keyof VoteAssignment, participantId: string) => {
@@ -3619,12 +3354,3 @@ function NotFound({ onHome }: { onHome: () => void }) {
 
 const inputCls = 'input-field'
 const primaryBtnCls = 'btn-primary'
-
-function shuffleCopy<T>(items: T[]): T[] {
-  const arr = [...items]
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[arr[i], arr[j]] = [arr[j], arr[i]]
-  }
-  return arr
-}
