@@ -46,7 +46,9 @@ export function useAnonymousMessages(gameCode: string, enabled: boolean, players
   const loadMessages = useCallback(async () => {
     const { data, error } = await supabase
       .from('anonymous_messages')
-      .select('id, game_id, player_id, text, created_at, reply_to_id, reply_to_text, message_type, media_url, players(name)')
+      .select(
+        'id, game_id, player_id, text, created_at, reply_to_id, reply_to_text, message_type, media_url, players(name)'
+      )
       .eq('game_id', gameCode)
       .order('created_at', { ascending: true })
 

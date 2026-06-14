@@ -121,13 +121,28 @@ export function AnonymousMessageFeed({
                     <div className="flex items-start justify-between gap-3">
                       {message.text ? (
                         <p className="text-body-muted text-sm leading-relaxed flex-1 min-w-0">{message.text}</p>
-                      ) : <div className="flex-1" />}
+                      ) : (
+                        <div className="flex-1" />
+                      )}
                       <div className="flex shrink-0 items-center gap-2">
                         {canReply && onReply && (
-                          <button type="button" onClick={() => onReply(message)} className="text-faint hover:text-violet-300 text-xs" aria-label="Reply to message">Reply</button>
+                          <button
+                            type="button"
+                            onClick={() => onReply(message)}
+                            className="text-faint hover:text-violet-300 text-xs"
+                            aria-label="Reply to message"
+                          >
+                            Reply
+                          </button>
                         )}
                         {canRemove && onRemove && (
-                          <button type="button" onClick={() => onRemove(message.id)} disabled={removingId === message.id} className="text-faint hover:text-red-400 text-xs disabled:opacity-50" aria-label="Remove message">
+                          <button
+                            type="button"
+                            onClick={() => onRemove(message.id)}
+                            disabled={removingId === message.id}
+                            className="text-faint hover:text-red-400 text-xs disabled:opacity-50"
+                            aria-label="Remove message"
+                          >
                             {removingId === message.id ? '…' : 'Remove'}
                           </button>
                         )}
@@ -152,11 +167,7 @@ export function AnonymousMessageFeed({
             })
           )}
         </div>
-        <ScrollToBottomButton
-          visible={showScrollButton}
-          unreadCount={unreadCount}
-          onClick={handleScrollToBottom}
-        />
+        <ScrollToBottomButton visible={showScrollButton} unreadCount={unreadCount} onClick={handleScrollToBottom} />
       </div>
 
       {readOnly && messages.length > 0 && <p className="text-faint text-xs">Lobby names are shown on each message.</p>}

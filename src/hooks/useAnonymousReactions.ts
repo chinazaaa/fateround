@@ -68,14 +68,14 @@ export function useAnonymousReactions(gameCode: string, enabled: boolean) {
         payload: { messageId, emoji, playerName, action } satisfies ReactionEvent,
       })
     },
-    [gameCode],
+    [gameCode]
   )
 
   const getReactionsForMessage = useCallback(
     (messageId: string): Map<string, Set<string>> => {
       return reactions.get(messageId) ?? new Map()
     },
-    [reactions],
+    [reactions]
   )
 
   return { reactions, broadcastReaction, getReactionsForMessage }

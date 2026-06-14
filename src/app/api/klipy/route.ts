@@ -8,10 +8,7 @@ export async function GET(req: NextRequest) {
   const page = Number(searchParams.get('page') ?? '1')
 
   try {
-    const result =
-      type === 'stickers'
-        ? await searchKlipyStickers(query, page)
-        : await searchKlipyGifs(query, page)
+    const result = type === 'stickers' ? await searchKlipyStickers(query, page) : await searchKlipyGifs(query, page)
 
     return NextResponse.json(result)
   } catch (err) {

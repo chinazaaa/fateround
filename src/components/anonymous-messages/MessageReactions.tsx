@@ -66,11 +66,7 @@ export function MessageReactions({
           >
             😊
           </button>
-          <EmojiPickerPopover
-            open={pickerOpen}
-            onClose={() => setPickerOpen(false)}
-            onSelect={handleEmojiSelect}
-          />
+          <EmojiPickerPopover open={pickerOpen} onClose={() => setPickerOpen(false)} onSelect={handleEmojiSelect} />
         </div>
       )}
     </div>

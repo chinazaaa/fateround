@@ -86,7 +86,10 @@ export function AnonymousMessageComposer({
         <div className="flex gap-1 relative">
           <button
             type="button"
-            onClick={() => { setEmojiPickerOpen((v) => !v); setGifPickerOpen(false) }}
+            onClick={() => {
+              setEmojiPickerOpen((v) => !v)
+              setGifPickerOpen(false)
+            }}
             className="w-9 h-9 rounded-xl flex items-center justify-center text-lg surface-inset border-theme text-muted hover:text-body transition-colors"
             aria-label="Add emoji"
           >
@@ -94,7 +97,10 @@ export function AnonymousMessageComposer({
           </button>
           <button
             type="button"
-            onClick={() => { setGifPickerOpen((v) => !v); setEmojiPickerOpen(false) }}
+            onClick={() => {
+              setGifPickerOpen((v) => !v)
+              setEmojiPickerOpen(false)
+            }}
             className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold surface-inset border-theme text-muted hover:text-body transition-colors"
             aria-label="Send GIF or sticker"
           >
@@ -108,7 +114,10 @@ export function AnonymousMessageComposer({
           <GifStickerPicker
             open={gifPickerOpen}
             onClose={() => setGifPickerOpen(false)}
-            onSelect={(url) => { onSendGif(url); setGifPickerOpen(false) }}
+            onSelect={(url) => {
+              onSendGif(url)
+              setGifPickerOpen(false)
+            }}
           />
         </div>
         <button type="button" onClick={onSend} disabled={sending || !value.trim()} className="btn-primary flex-1">

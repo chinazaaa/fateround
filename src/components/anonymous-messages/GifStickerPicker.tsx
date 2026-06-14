@@ -20,24 +20,21 @@ export function GifStickerPicker({ open, onClose, onSelect }: GifStickerPickerPr
   const containerRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const fetchItems = useCallback(
-    async (q: string, type: Tab) => {
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await fetch(`/api/klipy?type=${type}&q=${encodeURIComponent(q)}`)
-        if (!res.ok) throw new Error('Failed to load')
-        const data = await res.json()
-        setItems(data.data?.data ?? [])
-      } catch {
-        setError("Couldn't load — try again")
-        setItems([])
-      } finally {
-        setLoading(false)
-      }
-    },
-    [],
-  )
+  const fetchItems = useCallback(async (q: string, type: Tab) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/klipy?type=${type}&q=${encodeURIComponent(q)}`)
+      if (!res.ok) throw new Error('Failed to load')
+      const data = await res.json()
+      setItems(data.data?.data ?? [])
+    } catch {
+      setError("Couldn't load — try again")
+      setItems([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -85,7 +82,10 @@ export function GifStickerPicker({ open, onClose, onSelect }: GifStickerPickerPr
         <div className="flex gap-1">
           <button
             type="button"
-            onClick={() => { setTab('gifs'); setQuery('') }}
+            onClick={() => {
+              setTab('gifs')
+              setQuery('')
+            }}
             className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
               tab === 'gifs' ? 'bg-violet-500/20 text-violet-300' : 'text-muted hover:text-body'
             }`}
@@ -94,7 +94,10 @@ export function GifStickerPicker({ open, onClose, onSelect }: GifStickerPickerPr
           </button>
           <button
             type="button"
-            onClick={() => { setTab('stickers'); setQuery('') }}
+            onClick={() => {
+              setTab('stickers')
+              setQuery('')
+            }}
             className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
               tab === 'stickers' ? 'bg-violet-500/20 text-violet-300' : 'text-muted hover:text-body'
             }`}
