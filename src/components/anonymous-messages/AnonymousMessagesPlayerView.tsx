@@ -197,19 +197,19 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   if (screen === 'join') {
     const sessionInProgress = game?.status === 'active'
     const roomCapacity = game ? anonymousRoomMaxPlayers(game) : null
-    const roomFull = roomCapacity != null && players.length >= roomCapacity
+    const lobbyFull = game?.status === 'waiting' && roomCapacity != null && players.length >= roomCapacity
     return (
       <CenteredShell>
         <Header game={game} />
         <p className="text-muted text-sm text-center">
-          {roomFull
+          {lobbyFull
             ? `This room is full (${roomCapacity} players max).`
             : sessionInProgress
               ? 'This session is already in progress. You can join to watch live — late joiners cannot send messages.'
-              : 'Join the anonymous room — you&apos;ll get a random lobby name shown on your messages.'}
+              : "Join the anonymous room — you'll get a random lobby name shown on your messages."}
         </p>
-        <button type="button" onClick={join} disabled={joining || roomFull} className="btn-primary w-full">
-          {joining ? 'Joining…' : roomFull ? 'Room full' : sessionInProgress ? 'Join as viewer' : 'Join anonymously'}
+        <button type="button" onClick={join} disabled={joining || lobbyFull} className="btn-primary w-full">
+          {joining ? 'Joining…' : lobbyFull ? 'Room full' : sessionInProgress ? 'Join as viewer' : 'Join anonymously'}
         </button>
       </CenteredShell>
     )

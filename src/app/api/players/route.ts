@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
 
-    if ((playerCount ?? 0) >= maxPlayers) {
+    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This room is full' }, { status: 400 })
     }
 
