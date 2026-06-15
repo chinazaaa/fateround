@@ -181,14 +181,15 @@ export async function finishAnonymousRoomSession(
   return clearAnonymousRoomSessionData(supabase, gameId)
 }
 
-/** Close a secret message board — messages stay in the inbox for the host. */
+/** Close a secret message board and wipe inbox data (same retention as anonymous rooms). */
 export async function finishSecretMessageBoard(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
   const { error: gameError } = await supabase.from('games').update({ status: 'finished' }).eq('id', gameId)
   if (gameError) return { error: gameError.message }
-  return { error: null }
+
+  return clearAnonymousRoomSessionData(supabase, gameId)
 }
 
 /** Clear inbox and reopen a secret message board. */

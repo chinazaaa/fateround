@@ -23,7 +23,7 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
   const [sharingId, setSharingId] = useState<string | null>(null)
   const sharingLock = useRef(false)
 
-  const inboxEnabled = game?.status === 'active' || game?.status === 'finished'
+  const inboxEnabled = game?.status === 'active'
   const { messages, removeMessage } = useAnonymousMessages(gameCode, !!inboxEnabled)
   useAnonymousMessageTrim(gameCode, game?.status === 'active')
 
@@ -66,7 +66,7 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to close board')
-      success('Board closed — senders can no longer post')
+      success('Board closed — inbox cleared')
       await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to close board')
@@ -85,7 +85,7 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to reopen board')
-      success('Board reopened — inbox cleared')
+      success('Board reopened')
       await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to reopen board')
@@ -175,7 +175,7 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
         <div className="glass-card p-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-body font-semibold">Board is open</p>
-            <p className="text-faint text-xs mt-0.5">Senders can post right now</p>
+            <p className="text-faint text-xs mt-0.5">Senders can post right now · inbox trims at 1,000 messages</p>
           </div>
           <button type="button" onClick={closeBoard} disabled={ending} className="btn-secondary text-sm py-2 px-4">
             {ending ? 'Closing…' : 'Close board'}
@@ -185,7 +185,7 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
         <div className="glass-card p-4 flex flex-wrap items-center justify-between gap-3 border border-amber-500/30">
           <div>
             <p className="text-body font-semibold">Board is closed</p>
-            <p className="text-faint text-xs mt-0.5">Reopen to accept new messages (clears inbox)</p>
+            <p className="text-faint text-xs mt-0.5">Reopen to accept new messages</p>
           </div>
           <button type="button" onClick={reopenBoard} disabled={reopening} className="btn-primary text-sm py-2 px-4">
             {reopening ? 'Reopening…' : 'Reopen board'}
@@ -193,18 +193,20 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
         </div>
       )}
 
-      <AnonymousMessageFeed
-        messages={messages}
-        title="Your inbox"
-        emptyLabel="No messages yet — share your link to start receiving"
-        hideSenderNames
-        canShareAsImage
-        sharingId={sharingId}
-        onShareAsImage={shareMessageAsImage}
-        canRemove
-        removingId={removingId}
-        onRemove={deleteMessage}
-      />
+      {inboxEnabled ? (
+        <AnonymousMessageFeed
+          messages={messages}
+          title="Your inbox"
+          emptyLabel="No messages yet — share your link to start receiving"
+          hideSenderNames
+          canShareAsImage
+          sharingId={sharingId}
+          onShareAsImage={shareMessageAsImage}
+          canRemove
+          removingId={removingId}
+          onRemove={deleteMessage}
+        />
+      ) : null}
 
       <div className="flex flex-wrap gap-2 justify-center pt-2">
         <button type="button" onClick={() => router.push('/')} className="btn-secondary text-sm py-2 px-4">
