@@ -137,9 +137,19 @@ export function PlayAgainSetup({ open, onClose, game, participants, onConfirm, l
     return hints.join(' ')
   }, [showQuestions, showParticipants, game])
 
-  const addCustomQuestionsFromRows = (wyrRows: WyrQuestion[], mltRows: string[]) => {
-    if (wyrRows.length > 0) setCustomWyrQuestions((prev) => mergeWyrQuestions(prev, wyrRows))
-    if (mltRows.length > 0) setCustomMltQuestions((prev) => mergeMltQuestions(prev, mltRows))
+  const addCustomQuestionsFromRows = (wyrRows: WyrQuestion[], mltRows: string[], replace = false) => {
+    if (wyrRows.length > 0) {
+      setCustomWyrQuestions(replace ? wyrRows : (prev) => mergeWyrQuestions(prev, wyrRows))
+    }
+    if (mltRows.length > 0) {
+      setCustomMltQuestions(replace ? mltRows : (prev) => mergeMltQuestions(prev, mltRows))
+    }
+  }
+
+  const clearAllQuestions = () => {
+    setCustomWyrQuestions([])
+    setCustomMltQuestions([])
+    setQuestionsUploadError(null)
   }
 
   const handleQuestionsFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -149,6 +159,7 @@ export function PlayAgainSetup({ open, onClose, game, participants, onConfirm, l
 
     setQuestionsUploadError(null)
     const ext = file.name.split('.').pop()?.toLowerCase()
+    const replace = questionMode === 'change'
 
     try {
       if (ext === 'csv') {
@@ -159,21 +170,21 @@ export function PlayAgainSetup({ open, onClose, game, participants, onConfirm, l
             setQuestionsUploadError('No valid rows. Use option_a and option_b columns.')
             return
           }
-          addCustomQuestionsFromRows(rows, [])
+          addCustomQuestionsFromRows(rows, [], replace)
         } else if (isTot) {
           const rows = parseThisOrThatQuestionRows(text)
           if (rows.length === 0) {
             setQuestionsUploadError('No valid rows. Use one question per line (e.g. Coffee or Tea?).')
             return
           }
-          addCustomQuestionsFromRows(rows, [])
+          addCustomQuestionsFromRows(rows, [], replace)
         } else if (isMlt) {
           const rows = parseMltQuestionRows(text)
           if (rows.length === 0) {
             setQuestionsUploadError('No valid rows. Add one question per line.')
             return
           }
-          addCustomQuestionsFromRows([], rows)
+          addCustomQuestionsFromRows([], rows, replace)
         }
         return
       }
@@ -186,21 +197,21 @@ export function PlayAgainSetup({ open, onClose, game, participants, onConfirm, l
             setQuestionsUploadError('No valid rows. Use option_a and option_b columns.')
             return
           }
-          addCustomQuestionsFromRows(rows, [])
+          addCustomQuestionsFromRows(rows, [], replace)
         } else if (isTot) {
           const rows = await parseExcelThisOrThatQuestions(buffer)
           if (rows.length === 0) {
             setQuestionsUploadError('No valid rows. Use one question per line (e.g. Coffee or Tea?).')
             return
           }
-          addCustomQuestionsFromRows(rows, [])
+          addCustomQuestionsFromRows(rows, [], replace)
         } else if (isMlt) {
           const rows = await parseExcelMltQuestions(buffer)
           if (rows.length === 0) {
             setQuestionsUploadError('No valid rows. Add one question per line.')
             return
           }
-          addCustomQuestionsFromRows([], rows)
+          addCustomQuestionsFromRows([], rows, replace)
         }
         return
       }
@@ -238,27 +249,28 @@ export function PlayAgainSetup({ open, onClose, game, participants, onConfirm, l
 
   const addBulkQuestions = () => {
     if (!questionsBulkPaste.trim()) return
+    const replace = questionMode === 'change'
     if (isBinaryLobby) {
       const rows = parseWyrQuestionRows(questionsBulkPaste)
       if (rows.length === 0) {
         setQuestionsUploadError('No valid rows found.')
         return
       }
-      addCustomQuestionsFromRows(rows, [])
+      addCustomQuestionsFromRows(rows, [], replace)
     } else if (isTot) {
       const rows = parseThisOrThatQuestionRows(questionsBulkPaste)
       if (rows.length === 0) {
         setQuestionsUploadError('No valid questions found.')
         return
       }
-      addCustomQuestionsFromRows(rows, [])
+      addCustomQuestionsFromRows(rows, [], replace)
     } else {
       const rows = parseMltQuestionRows(questionsBulkPaste)
       if (rows.length === 0) {
         setQuestionsUploadError('No valid questions found.')
         return
       }
-      addCustomQuestionsFromRows([], rows)
+      addCustomQuestionsFromRows([], rows, replace)
     }
     setQuestionsBulkPaste('')
   }
@@ -392,7 +404,7 @@ export function PlayAgainSetup({ open, onClose, game, participants, onConfirm, l
                   label: 'Same list',
                   hint: `${customQuestionCount || parseStoredWyrQuestions(game.custom_questions).length || parseStoredMltQuestions(game.custom_questions).length} loaded — unused ones first`,
                 },
-                { value: 'change', label: 'Upload or edit', hint: 'Replace with a new CSV or manual list' },
+                { value: 'change', label: 'Upload or edit', hint: 'Upload replaces the list — or clear and build a new one' },
               ]}
             />
 
@@ -433,6 +445,7 @@ export function PlayAgainSetup({ open, onClose, game, participants, onConfirm, l
                       onChange={handleQuestionsFileUpload}
                     />
                     <p className="text-faint text-xs text-center">{questionUploadHint(gameType)}</p>
+                    <p className="text-faint text-xs text-center">Uploading a file replaces the current list.</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -488,7 +501,16 @@ export function PlayAgainSetup({ open, onClose, game, participants, onConfirm, l
 
                 {customQuestionCount > 0 && (
                   <div className="max-h-36 overflow-y-auto space-y-1.5">
-                    <p className="text-muted text-xs uppercase tracking-wider">Loaded ({customQuestionCount})</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-muted text-xs uppercase tracking-wider">Loaded ({customQuestionCount})</p>
+                      <button
+                        type="button"
+                        onClick={clearAllQuestions}
+                        className="text-faint hover:text-red-300 text-xs shrink-0"
+                      >
+                        Clear all
+                      </button>
+                    </div>
                     {isBinaryLobby
                       ? customWyrQuestions.map((q, i) => (
                           <div key={i} className="flex items-start gap-2 text-sm">
