@@ -59,7 +59,8 @@ export function CodewordsActiveRound({
   const isMyTurn = board.current_turn === myTeam && !board.winner
   const canGiveClue = isMyTurn && isSpymaster && turnPhase === 'clue' && !board.current_clue_word
   const canGuess = isMyTurn && isOperative && turnPhase === 'guess' && !!board.current_clue_word
-  const showKey = !hideKey && isSpymaster
+  const gameOver = Boolean(board.winner) || game.status === 'finished'
+  const showKey = gameOver || (!hideKey && isSpymaster)
   const active = game.status === 'active' && !board.winner
 
   const { secondsLeft, urgent } = useCodewordsTurnTimer(gameCode, board, active)

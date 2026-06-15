@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { CodewordsActiveRound } from '@/components/codewords/CodewordsActiveRound'
+import { CodewordsScoreboard } from '@/components/codewords/CodewordsScoreboard'
 import { CodewordsBoardGrid, CodewordsTeamBadge } from '@/components/codewords/CodewordsBoardGrid'
 import { CodewordsWaitingPanel } from '@/components/codewords/CodewordsWaitingPanel'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
@@ -9,6 +10,7 @@ import { gameTypeConfig } from '@/lib/game-types'
 import {
   codewordsLateJoin,
   codewordsPlayerPicks,
+  guessAttributionMap,
   mergeCodewordsGuesses,
   roleLabel,
   teamLabel,
@@ -233,7 +235,6 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const playersPickTeams = game ? codewordsPlayerPicks(game) : true
   const lateJoinAllowed = game ? codewordsLateJoin(game) : false
   const myTeam = myRole?.team
-  const isSpymaster = myRole?.role === 'spymaster'
   const needsTeamPick =
     !!myPlayerId &&
     !myRole &&
@@ -435,6 +436,8 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     }
 
     const iWon = board.winner && myTeam === board.winner
+    const playerNameById = new Map(allPlayers.map((p) => [p.id, p.name]))
+    const cellAttribution = guessAttributionMap(guesses, playerNameById)
     return (
       <div className="min-h-screen flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-2xl space-y-4">
@@ -462,8 +465,10 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
               </>
             )}
           </div>
-          <div className="glass-card p-4">
-            <CodewordsBoardGrid board={board} showKey={isSpymaster} />
+          <div className="glass-card p-4 space-y-4">
+            <p className="label-caps text-center">Full board</p>
+            <CodewordsBoardGrid board={board} showKey cellAttribution={cellAttribution} />
+            <CodewordsScoreboard board={board} players={allPlayers} roles={allRoles} highlightPlayerId={myPlayerId} />
           </div>
         </div>
       </div>

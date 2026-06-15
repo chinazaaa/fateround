@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import type { BingoCalledNumber, BingoCard, BingoClaim, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
-import { useBingoWinNotification } from '@/hooks/useBingoNotifications'
+import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useBingoNotifications'
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
@@ -249,6 +249,11 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     card != null && hasBingoWin(card.cells, card.marked_indices, 'line') && game?.status === 'active'
   const winnerPlayer = winner ? players.find((p) => p.id === winner.player_id) : null
   const iWon = winner != null && myPlayerId != null && winner.player_id === myPlayerId
+
+  useBingoStartNotification({
+    game,
+    enabled: screen === 'waiting' || screen === 'active',
+  })
 
   useBingoWinNotification({
     winner,

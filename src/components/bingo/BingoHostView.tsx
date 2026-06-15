@@ -18,7 +18,7 @@ import { supabase } from '@/lib/supabase'
 import { appOrigin } from '@/lib/site'
 import type { BingoCallMode, BingoCalledNumber, BingoClaim, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
-import { useBingoWinNotification } from '@/hooks/useBingoNotifications'
+import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useBingoNotifications'
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
 
 export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
@@ -212,6 +212,11 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const callMode = game ? bingoCallModeFromGame(game) : 'manual'
   const callInterval = game ? bingoCallIntervalFromGame(game) : BINGO_DEFAULT_CALL_INTERVAL
   const isAuto = callMode === 'auto'
+
+  useBingoStartNotification({
+    game,
+    enabled: !!game,
+  })
 
   useBingoWinNotification({
     winner,
