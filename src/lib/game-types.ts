@@ -689,7 +689,6 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       emoji: '🎭',
       players: '3–40 players',
       vibe: 'Social deduction',
-      featured: true,
     },
     slots: {
       kiss: {
@@ -730,7 +729,6 @@ export const HOMEPAGE_FEATURED_GAMES: GameType[] = [
   'codewords',
   'bingo',
   'trivia',
-  'two_truths',
   'anonymous_messages',
 ]
 
