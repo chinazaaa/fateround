@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, useMemo } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { filterParticipantsInRounds } from '@/lib/utils'
+import { hexToRgba } from '@/lib/color'
 import { useGameRealtime } from '@/hooks/useGameRealtime'
 import { Avatar } from '@/components/Avatar'
 import {
@@ -104,7 +105,7 @@ import {
   FinalOverallBreakdown,
 } from '@/components/FinalLeaderboard'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
-import { PlayAgainSetup, playAgainNeedsSetup, type PlayAgainPayload } from '@/components/PlayAgainSetup'
+import { PlayAgainSetup, playAgainNeedsSetup, hostPoolSetupLabels, type PlayAgainPayload, type PoolSetupVariant } from '@/components/PlayAgainSetup'
 import {
   hotSeatEffectiveRounds,
   hotSeatLobbyRoundsHint,
@@ -176,7 +177,11 @@ export default function HostPage() {
   const [ending, setEnding] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [showPlayAgainSetup, setShowPlayAgainSetup] = useState(false)
+  const [savingLobbyPool, setSavingLobbyPool] = useState(false)
+  const [poolSetup, setPoolSetup] = useState<{ open: boolean; variant: PoolSetupVariant }>({
+    open: false,
+    variant: 'play-again',
+  })
   const [adminBusy, setAdminBusy] = useState<string | null>(null)
   const [addName, setAddName] = useState('')
   const [addGender, setAddGender] = useState<ParticipantGender>('female')
@@ -793,7 +798,7 @@ export default function HostPage() {
         toast.error(data.error || 'Failed to reset for another game')
         return
       }
-      setShowPlayAgainSetup(false)
+      setPoolSetup((prev) => ({ ...prev, open: false }))
       resetHostLobbyState()
       if (data.game) setGame(data.game)
       await refreshLobbyLists()
@@ -804,13 +809,52 @@ export default function HostPage() {
     }
   }
 
+  const handleLobbyPoolSave = async (payload: PlayAgainPayload = {}) => {
+    if (savingLobbyPool) return
+    if (!payload.custom_questions && !payload.participants) {
+      setPoolSetup((prev) => ({ ...prev, open: false }))
+      return
+    }
+    setSavingLobbyPool(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode}/lobby-pool`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, ...payload }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to save changes')
+        return
+      }
+      setPoolSetup((prev) => ({ ...prev, open: false }))
+      if (data.game) setGame(data.game)
+      await refreshLobbyLists()
+      toast.success('List updated')
+    } catch {
+      toast.error('Failed to save changes')
+    } finally {
+      setSavingLobbyPool(false)
+    }
+  }
+
+  const openPoolSetup = (variant: PoolSetupVariant) => {
+    if (!game || (variant === 'play-again' && playingAgain) || (variant === 'lobby' && savingLobbyPool)) return
+    setPoolSetup({ open: true, variant })
+  }
+
   const openPlayAgain = () => {
     if (!game || playingAgain) return
     if (playAgainNeedsSetup(game)) {
-      setShowPlayAgainSetup(true)
+      openPoolSetup('play-again')
       return
     }
     void handlePlayAgain()
+  }
+
+  const handlePoolSetupConfirm = (payload: PlayAgainPayload) => {
+    if (poolSetup.variant === 'lobby') return handleLobbyPoolSave(payload)
+    return handlePlayAgain(payload)
   }
 
   const playerLinkUrl =
@@ -1461,6 +1505,45 @@ export default function HostPage() {
           )}
           <div className="pt-3 border-t border-theme">{timerControl}</div>
         </div>
+
+        {playAgainNeedsSetup(game) && (() => {
+          const poolLabels = hostPoolSetupLabels(game)
+          const hostListCount = participants.filter((p) => !p.submitted_by_player_id).length
+          return (
+            <div className="glass-card p-4 space-y-3">
+              <p className="text-muted text-xs uppercase tracking-wider">{poolLabels.title}</p>
+              <p className="text-faint text-xs">
+                {poolLabels.hasQuestions && poolLabels.hasParticipants
+                  ? 'Keep your current lists or upload a new CSV before you start.'
+                  : poolLabels.hasQuestions
+                    ? 'Keep your loaded questions or upload a new CSV before you start.'
+                    : 'Keep your current name list or upload a new CSV before you start.'}
+              </p>
+              {poolLabels.hasQuestions && (
+                <p className="text-body text-sm">
+                  {customQuestionCount(game)} question{customQuestionCount(game) === 1 ? '' : 's'} loaded
+                </p>
+              )}
+              {poolLabels.hasParticipants && (
+                <p className="text-body text-sm">
+                  {hostListCount} name{hostListCount === 1 ? '' : 's'} on your list
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => openPoolSetup('lobby')}
+                disabled={savingLobbyPool}
+                className="btn-secondary w-full py-3"
+              >
+                {poolLabels.hasQuestions && poolLabels.hasParticipants
+                  ? 'Change list or upload CSV'
+                  : poolLabels.hasQuestions
+                    ? 'Change questions or upload CSV'
+                    : 'Change names or upload CSV'}
+              </button>
+            </div>
+          )
+        })()}
 
         {isWst && wstPoolStatus && (game?.wst_quote_source ?? 'player') !== 'anime' && (
           <div className="glass-card p-4 space-y-4">
@@ -2187,6 +2270,18 @@ export default function HostPage() {
                 ? `Start Game (${hotSeatEffective} round${hotSeatEffective === 1 ? '' : 's'})`
                 : `Start Game (${players.length} players)`}
         </button>
+
+        {game && (
+          <PlayAgainSetup
+            open={poolSetup.open}
+            onClose={() => setPoolSetup((prev) => ({ ...prev, open: false }))}
+            game={game}
+            participants={participants}
+            onConfirm={handlePoolSetupConfirm}
+            loading={poolSetup.variant === 'lobby' ? savingLobbyPool : playingAgain}
+            variant={poolSetup.variant}
+          />
+        )}
       </div>
     )
   }
@@ -3099,12 +3194,13 @@ export default function HostPage() {
         )}
         {game && (
           <PlayAgainSetup
-            open={showPlayAgainSetup}
-            onClose={() => setShowPlayAgainSetup(false)}
+            open={poolSetup.open}
+            onClose={() => setPoolSetup((prev) => ({ ...prev, open: false }))}
             game={game}
             participants={participants}
-            onConfirm={handlePlayAgain}
-            loading={playingAgain}
+            onConfirm={handlePoolSetupConfirm}
+            loading={poolSetup.variant === 'lobby' ? savingLobbyPool : playingAgain}
+            variant={poolSetup.variant}
           />
         )}
       </div>
@@ -3147,7 +3243,10 @@ function StatCard({
   return (
     <div
       className="glass-card border rounded-2xl p-3 text-center"
-      style={{ borderColor: `${accentColor}55`, backgroundColor: `${accentColor}14` }}
+      style={{
+        borderColor: hexToRgba(accentColor, 0.33),
+        backgroundColor: hexToRgba(accentColor, 0.08),
+      }}
     >
       <p className="text-2xl">{emoji}</p>
       <p className="text-muted text-xs mt-1 leading-tight">{label}</p>

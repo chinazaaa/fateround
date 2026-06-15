@@ -49,6 +49,7 @@ export type PlayAgainPayload = {
 
 type PoolTab = 'upload' | 'manual'
 type PoolMode = 'same' | 'change'
+export type PoolSetupVariant = 'play-again' | 'lobby'
 
 interface PlayAgainSetupProps {
   open: boolean
@@ -57,6 +58,7 @@ interface PlayAgainSetupProps {
   participants: Participant[]
   onConfirm: (payload: PlayAgainPayload) => void | Promise<void>
   loading?: boolean
+  variant?: PoolSetupVariant
 }
 
 function hostParticipants(participants: Participant[]): ParticipantInput[] {
@@ -66,9 +68,21 @@ function hostParticipants(participants: Participant[]): ParticipantInput[] {
 }
 
 export function playAgainNeedsSetup(game: Game): boolean {
+  return hostPoolSetupAvailable(game)
+}
+
+export function hostPoolSetupAvailable(game: Game): boolean {
   const type = parseGameType(game.game_type)
   if (isAnonymousMessagesGame(type) || type === 'secret_message') return false
   return hasQuestionPool(game) || hasParticipantPool(game)
+}
+
+export function hostPoolSetupLabels(game: Game): { title: string; hasQuestions: boolean; hasParticipants: boolean } {
+  const hasQuestions = hasQuestionPool(game)
+  const hasParticipants = hasParticipantPool(game)
+  const title =
+    hasQuestions && hasParticipants ? 'Questions & name list' : hasQuestions ? 'Questions' : 'Name list'
+  return { title, hasQuestions, hasParticipants }
 }
 
 function hasQuestionPool(game: Game): boolean {
@@ -83,7 +97,15 @@ function hasParticipantPool(game: Game): boolean {
   return supportsHostListPlayAgain(game)
 }
 
-export function PlayAgainSetup({ open, onClose, game, participants, onConfirm, loading }: PlayAgainSetupProps) {
+export function PlayAgainSetup({
+  open,
+  onClose,
+  game,
+  participants,
+  onConfirm,
+  loading,
+  variant = 'play-again',
+}: PlayAgainSetupProps) {
   const gameType = parseGameType(game.game_type)
   const showQuestions = hasQuestionPool(game)
   const showParticipants = hasParticipantPool(game)
@@ -380,13 +402,18 @@ export function PlayAgainSetup({ open, onClose, game, participants, onConfirm, l
 
   const questionSample = questionSampleFile(gameType)
   const participantSample = participantSampleFile(gameType, participantOpts)
+  const isLobby = variant === 'lobby'
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="Play again"
-      subtitle="Same room and link — players stay connected"
+      title={isLobby ? hostPoolSetupLabels(game).title : 'Play again'}
+      subtitle={
+        isLobby
+          ? 'Keep your current list or upload a new CSV before you start'
+          : 'Same room and link — players stay connected'
+      }
       size="lg"
     >
       <div className="space-y-6">
@@ -673,7 +700,7 @@ export function PlayAgainSetup({ open, onClose, game, participants, onConfirm, l
             Cancel
           </button>
           <button type="button" onClick={handleConfirm} disabled={loading} className="btn-primary flex-1 py-3">
-            {loading ? 'Resetting…' : 'Start lobby'}
+            {loading ? (isLobby ? 'Saving…' : 'Resetting…') : isLobby ? 'Save changes' : 'Start lobby'}
           </button>
         </div>
       </div>

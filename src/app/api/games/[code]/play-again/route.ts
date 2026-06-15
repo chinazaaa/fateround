@@ -1,81 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { playAgainSchema, stripHtml } from '@/lib/validation'
+import { playAgainSchema } from '@/lib/validation'
 import {
   parseGameType,
   isAnonymousMessagesGame,
   isSecretMessageGame,
-  isBinaryChoiceGame,
-  isMostLikelyTo,
-  isThisOrThat,
 } from '@/lib/game-types'
 import { clearAnonymousRoomSessionData, reopenSecretMessageBoard } from '@/lib/anonymous-messages'
-import { usesHostParticipantList } from '@/lib/participant-mode'
 import {
-  normalizeGender,
-  participantsNeedGenderForGame,
-  type ParticipantInput,
-} from '@/lib/participants'
-import {
-  parseStoredMltQuestions,
-  parseStoredWyrQuestions,
-  parseQuestionSource,
-} from '@/lib/custom-questions'
-import { wyrQuestionKey } from '@/lib/would-you-rather-questions'
-import type { WyrQuestion } from '@/lib/would-you-rather-questions'
+  applyCustomQuestionsUpdate,
+  applyParticipantListUpdate,
+  canReplaceHostParticipantList,
+  parseHostPoolCustomQuestions,
+  parseHostPoolParticipants,
+  replaceHostParticipantList,
+} from '@/lib/host-pool-update'
 import {
   extractRoundUsage,
   mergePoolUsageState,
   parsePoolUsage,
-  pruneParticipantUsage,
-  pruneQuestionUsage,
 } from '@/lib/pool-usage'
 import { isGameGenderBased } from '@/lib/gender-based'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-
-function parsePlayAgainParticipants(
-  raw: unknown,
-  gameType: ReturnType<typeof parseGameType>,
-  genderBased: boolean
-): ParticipantInput[] | null {
-  if (!Array.isArray(raw)) return null
-
-  const needGender = participantsNeedGenderForGame(gameType, { genderBased })
-  const parsed: ParticipantInput[] = []
-
-  for (const item of raw) {
-    if (typeof item === 'string') {
-      const name = stripHtml(item.trim())
-      if (name) parsed.push({ name, gender: 'female' })
-      continue
-    }
-    if (item && typeof item === 'object' && typeof item.name === 'string') {
-      const name = stripHtml(item.name.trim())
-      const gender = normalizeGender(String(item.gender ?? ''))
-      if (name && gender) parsed.push({ name, gender })
-      else if (name && !needGender) parsed.push({ name, gender: 'female' })
-    }
-  }
-
-  return parsed.length > 0 ? parsed : null
-}
-
-function parsePlayAgainCustomQuestions(
-  raw: unknown,
-  gameType: ReturnType<typeof parseGameType>
-): WyrQuestion[] | string[] | null {
-  if (!Array.isArray(raw)) return null
-  if (isBinaryChoiceGame(gameType) || isThisOrThat(gameType)) {
-    const parsed = parseStoredWyrQuestions(raw)
-    return parsed.length > 0 ? parsed : null
-  }
-  if (isMostLikelyTo(gameType)) {
-    const parsed = parseStoredMltQuestions(raw)
-    return parsed.length > 0 ? parsed : null
-  }
-  return null
-}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -119,71 +66,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   if (rawCustomQuestions !== undefined) {
-    const nextQuestions = parsePlayAgainCustomQuestions(rawCustomQuestions, gameType)
+    const nextQuestions = parseHostPoolCustomQuestions(rawCustomQuestions, gameType)
     if (!nextQuestions) {
       return NextResponse.json({ error: 'Upload at least one valid question' }, { status: 400 })
     }
-    gameUpdate.custom_questions = nextQuestions
-    if (isBinaryChoiceGame(gameType) || isThisOrThat(gameType)) {
-      poolUsage = {
-        ...poolUsage,
-        wyr: pruneQuestionUsage(poolUsage.wyr, nextQuestions as WyrQuestion[], (q) =>
-          wyrQuestionKey(q.optionA, q.optionB)
-        ),
-      }
-    } else if (isMostLikelyTo(gameType)) {
-      poolUsage = {
-        ...poolUsage,
-        mlt: pruneQuestionUsage(poolUsage.mlt, nextQuestions as string[], (q) => q),
-      }
-    }
-    if (isThisOrThat(gameType)) {
-      gameUpdate.question_source = 'custom'
-    }
+    const { gameUpdate: questionUpdate, poolUsage: nextPoolUsage } = applyCustomQuestionsUpdate(
+      game,
+      nextQuestions,
+      poolUsage
+    )
+    Object.assign(gameUpdate, questionUpdate)
+    poolUsage = nextPoolUsage
   }
 
   if (rawParticipants !== undefined) {
-    if (!usesHostParticipantList(game.participant_mode)) {
+    if (!canReplaceHostParticipantList(game)) {
       return NextResponse.json({ error: 'This game mode does not support replacing the name list' }, { status: 400 })
     }
 
-    const nextParticipants = parsePlayAgainParticipants(rawParticipants, gameType, genderBased)
+    const nextParticipants = parseHostPoolParticipants(rawParticipants, gameType, genderBased)
     if (!nextParticipants) {
       return NextResponse.json({ error: 'Add at least one valid name' }, { status: 400 })
     }
 
-    const { data: hostParticipants } = await supabase
-      .from('participants')
-      .select('id')
-      .eq('game_id', gameId)
-      .is('submitted_by_player_id', null)
+    const { error: replaceError } = await replaceHostParticipantList(supabase, gameId, nextParticipants)
+    if (replaceError) return NextResponse.json({ error: replaceError }, { status: 500 })
 
-    const hostIds = (hostParticipants ?? []).map((p) => p.id)
-    if (hostIds.length > 0) {
-      await supabase.from('players').update({ participant_id: null }).eq('game_id', gameId).in('participant_id', hostIds)
-      const { error: deleteHostPartsError } = await supabase
-        .from('participants')
-        .delete()
-        .eq('game_id', gameId)
-        .is('submitted_by_player_id', null)
-      if (deleteHostPartsError) {
-        return NextResponse.json({ error: deleteHostPartsError.message }, { status: 500 })
-      }
-    }
-
-    const participantRows = nextParticipants.map((p, index) => ({
-      game_id: gameId,
-      name: p.name,
-      gender: p.gender,
-      display_order: index,
-    }))
-    const { error: insertPartsError } = await supabase.from('participants').insert(participantRows)
-    if (insertPartsError) return NextResponse.json({ error: insertPartsError.message }, { status: 500 })
-
-    poolUsage = {
-      ...poolUsage,
-      participants: pruneParticipantUsage(poolUsage.participants, nextParticipants),
-    }
+    poolUsage = applyParticipantListUpdate(game, nextParticipants, poolUsage).poolUsage
   }
 
   gameUpdate.pool_usage = poolUsage

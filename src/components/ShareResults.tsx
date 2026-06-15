@@ -159,10 +159,17 @@ export function ShareResults({
   const handleShare = useCallback(async () => {
     if (sharingLock.current) return
 
+    const wantsImage = !!captureRef
+    const target = captureRef?.current
+
+    if (wantsImage && (!target || target.offsetHeight === 0)) {
+      error('Nothing to share yet')
+      return
+    }
+
     sharingLock.current = true
     setSharing(true)
     try {
-      const target = captureRef?.current
       if (target) {
         const blob = await captureElementAsImage(target)
         const result = await shareImageBlob(blob, 'final-results.png')
@@ -191,6 +198,11 @@ export function ShareResults({
       success('Results copied to clipboard!')
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
+
+      if (wantsImage) {
+        error(err instanceof Error ? err.message : 'Could not share results image')
+        return
+      }
 
       try {
         const text = buildShareText({ game, participants, votes, rounds, players })

@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, clearPlayerSession, filterParticipantsInRounds } from '@/lib/utils'
+import { hexToRgba } from '@/lib/color'
 import { Avatar } from '@/components/Avatar'
 import { ParticipantPhotoCard } from '@/components/ParticipantPhotoCard'
 import { ParticipantGallery } from '@/components/ParticipantGallery'
@@ -3360,7 +3361,10 @@ function LeaderCard({
   return (
     <div
       className="glass-card border rounded-2xl p-3 text-center"
-      style={{ borderColor: `${accentColor}55`, backgroundColor: `${accentColor}14` }}
+      style={{
+        borderColor: hexToRgba(accentColor, 0.33),
+        backgroundColor: hexToRgba(accentColor, 0.08),
+      }}
     >
       <p className="text-2xl">{emoji}</p>
       <p className="text-muted text-xs mt-1 leading-tight">{label}</p>
