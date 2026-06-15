@@ -73,7 +73,7 @@ export function playAgainNeedsSetup(game: Game): boolean {
 
 export function hostPoolSetupAvailable(game: Game): boolean {
   const type = parseGameType(game.game_type)
-  if (isAnonymousMessagesGame(type) || type === 'secret_message') return false
+  if (isAnonymousMessagesGame(type) || type === 'secret_message' || type === 'bingo') return false
   return hasQuestionPool(game) || hasParticipantPool(game)
 }
 

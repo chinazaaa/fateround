@@ -1,0 +1,406 @@
+'use client'
+
+import { useCallback, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { BingoCardGrid, CalledNumbersBoard } from '@/components/bingo/BingoCardGrid'
+import { GameTypeBadge } from '@/components/GameTypeBadge'
+import { gameTypeConfig } from '@/lib/game-types'
+import { formatBingoNumber, hasBingoWin } from '@/lib/bingo'
+import { supabase } from '@/lib/supabase'
+import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
+import type { BingoCalledNumber, BingoCard, BingoClaim, Game, Player } from '@/types'
+import { useToast } from '@/components/ui/Toast'
+
+type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
+
+export function BingoPlayerView({ gameCode }: { gameCode: string }) {
+  const router = useRouter()
+  const { success, error: toastError } = useToast()
+  const [screen, setScreen] = useState<Screen>('loading')
+  const [game, setGame] = useState<Game | null>(null)
+  const [players, setPlayers] = useState<Player[]>([])
+  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
+  const [myPlayerName, setMyPlayerName] = useState('')
+  const [joinName, setJoinName] = useState('')
+  const [joining, setJoining] = useState(false)
+  const [card, setCard] = useState<BingoCard | null>(null)
+  const [calledNumbers, setCalledNumbers] = useState<BingoCalledNumber[]>([])
+  const [winner, setWinner] = useState<BingoClaim | null>(null)
+  const [claiming, setClaiming] = useState(false)
+  const [marking, setMarking] = useState(false)
+
+  const syncScreen = useCallback((gameData: Game, playerId: string | null) => {
+    if (gameData.status === 'waiting') {
+      setScreen(playerId ? 'waiting' : 'join')
+      return
+    }
+    if (gameData.status === 'active') {
+      setScreen(playerId ? 'active' : 'join')
+      return
+    }
+    setScreen(playerId ? 'finished' : 'join')
+  }, [])
+
+  const loadCard = useCallback(
+    async (playerId: string) => {
+      const { data } = await supabase
+        .from('bingo_cards')
+        .select('*')
+        .eq('game_id', gameCode)
+        .eq('player_id', playerId)
+        .maybeSingle()
+      if (data) setCard(data as BingoCard)
+    },
+    [gameCode]
+  )
+
+  const load = useCallback(async () => {
+    const [{ data: gameData }, { data: plrs }, { data: called }, { data: claim }] = await Promise.all([
+      supabase.from('games').select('*').eq('id', gameCode).maybeSingle(),
+      supabase.from('players').select('*').eq('game_id', gameCode).order('joined_at'),
+      supabase.from('bingo_called_numbers').select('*').eq('game_id', gameCode).order('called_at'),
+      supabase
+        .from('bingo_claims')
+        .select('*')
+        .eq('game_id', gameCode)
+        .eq('status', 'approved')
+        .maybeSingle(),
+    ])
+
+    if (!gameData) {
+      setScreen('not_found')
+      return
+    }
+
+    setGame(gameData)
+    setPlayers(plrs ?? [])
+    setCalledNumbers(called ?? [])
+    setWinner(claim ?? null)
+
+    const session = getPlayerSession(gameCode)
+    let playerId = session?.playerId ?? null
+    if (session && plrs && !plrs.some((p) => p.id === session.playerId)) {
+      clearPlayerSession(gameCode)
+      playerId = null
+      setMyPlayerId(null)
+      setMyPlayerName('')
+      setCard(null)
+    } else if (session) {
+      setMyPlayerId(session.playerId)
+      setMyPlayerName(session.playerName)
+      await loadCard(session.playerId)
+    }
+    syncScreen(gameData, playerId)
+  }, [gameCode, loadCard, syncScreen])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  useEffect(() => {
+    if (screen !== 'active' || !myPlayerId || card) return
+    const poll = window.setInterval(() => {
+      void loadCard(myPlayerId)
+    }, 2000)
+    return () => window.clearInterval(poll)
+  }, [screen, myPlayerId, card, loadCard])
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`bingo-player-${gameCode}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
+        async (payload) => {
+          const next = payload.new as Game
+          setGame(next)
+          syncScreen(next, myPlayerId)
+          if (next.status === 'active' && myPlayerId) {
+            await loadCard(myPlayerId)
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'bingo_called_numbers', filter: `game_id=eq.${gameCode}` },
+        (payload) => {
+          const row = payload.new as BingoCalledNumber
+          setCalledNumbers((prev) => (prev.some((c) => c.id === row.id) ? prev : [...prev, row]))
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'bingo_cards', filter: `game_id=eq.${gameCode}` },
+        (payload) => {
+          const next = payload.new as BingoCard
+          if (next.player_id === myPlayerId) setCard(next)
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'bingo_claims', filter: `game_id=eq.${gameCode}` },
+        (payload) => {
+          const row = payload.new as BingoClaim
+          if (row.status === 'approved') setWinner(row)
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'bingo_cards', filter: `game_id=eq.${gameCode}` },
+        (payload) => {
+          const next = payload.new as BingoCard
+          if (next.player_id === myPlayerId) setCard(next)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [gameCode, myPlayerId, syncScreen, loadCard])
+
+  const joinGame = async () => {
+    const name = joinName.trim()
+    if (!name) return
+    setJoining(true)
+    try {
+      const res = await fetch('/api/players', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameCode, playerName: name }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
+
+      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender)
+      setMyPlayerId(data.playerId)
+      setMyPlayerName(data.playerName)
+      await load()
+      success(`Joined as ${data.playerName}`)
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to join')
+    } finally {
+      setJoining(false)
+    }
+  }
+
+  const markCell = async (index: number) => {
+    if (!myPlayerId || marking) return
+    setMarking(true)
+    try {
+      const res = await fetch('/api/bingo/mark', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, cellIndex: index }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to mark')
+      if (card) {
+        setCard({ ...card, marked_indices: data.marked_indices })
+      }
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to mark')
+    } finally {
+      setMarking(false)
+    }
+  }
+
+  const claimBingo = async () => {
+    if (!myPlayerId || claiming) return
+    setClaiming(true)
+    try {
+      const res = await fetch('/api/bingo/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Not a valid bingo')
+      if (data.claim) setWinner(data.claim)
+      success('BINGO! You won!')
+      await load()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Invalid bingo')
+    } finally {
+      setClaiming(false)
+    }
+  }
+
+  const cfg = gameTypeConfig('bingo')
+  const called = calledNumbers.map((row) => row.number)
+  const lastCalled = called.length > 0 ? called[called.length - 1] : null
+  const canClaim =
+    card != null && hasBingoWin(card.cells, card.marked_indices, 'line') && game?.status === 'active'
+  const winnerPlayer = winner ? players.find((p) => p.id === winner.player_id) : null
+  const iWon = winner != null && myPlayerId != null && winner.player_id === myPlayerId
+
+  if (screen === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted">Loading…</p>
+      </div>
+    )
+  }
+
+  if (screen === 'not_found') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-4">
+        <p className="text-xl font-bold">Game not found</p>
+        <button type="button" onClick={() => router.push('/')} className="btn-secondary">
+          Go home
+        </button>
+      </div>
+    )
+  }
+
+  if (screen === 'join') {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="glass-card p-6 w-full max-w-md space-y-5">
+          <div className="text-center space-y-1">
+            <div className="text-4xl">{cfg.headerEmoji}</div>
+            <h1 className="text-2xl font-black gradient-title">{game?.title}</h1>
+            <GameTypeBadge gameType="bingo" />
+          </div>
+          <div>
+            <label className="label-caps block mb-2">Your name</label>
+            <input
+              type="text"
+              value={joinName}
+              onChange={(e) => setJoinName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && joinGame()}
+              placeholder="Enter your name"
+              className="input-field w-full"
+              maxLength={40}
+            />
+          </div>
+          <p className="text-faint text-xs leading-relaxed">
+            You&apos;ll receive a random card when the host starts — tap squares when your numbers are called.
+          </p>
+          <button
+            type="button"
+            onClick={joinGame}
+            disabled={!joinName.trim() || joining}
+            className="btn-primary w-full"
+          >
+            {joining ? 'Joining…' : 'Join Bingo'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (screen === 'waiting') {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="glass-card p-6 w-full max-w-md text-center space-y-4">
+          <div className="text-4xl">🎱</div>
+          <h2 className="text-xl font-black">You&apos;re in, {myPlayerName}!</h2>
+          <p className="text-muted text-sm leading-relaxed">
+            Waiting for the host to start. You&apos;ll get a <strong className="text-[var(--text)]">random bingo card</strong>{' '}
+            automatically — you don&apos;t pick the numbers on your card.
+          </p>
+          <p className="text-faint text-xs leading-relaxed">
+            Once the game starts, the host calls numbers (B1–O75). Tap matching squares on your card when they&apos;re
+            called, then hit BINGO when you complete a line.
+          </p>
+          <p className="text-faint text-xs">{players.length} player{players.length === 1 ? '' : 's'} in lobby</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (screen === 'finished') {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 py-8">
+        <div className="w-full max-w-md space-y-4">
+          {iWon ? (
+            <div className="glass-card p-8 text-center space-y-3 border-amber-400/50 shadow-lg">
+              <p className="text-5xl">🏆</p>
+              <p className="text-3xl font-black text-amber-600 dark:text-amber-200">BINGO!</p>
+              <p className="text-xl font-bold">You won!</p>
+              <p className="text-muted text-sm">Nice one, {myPlayerName} 🎉</p>
+            </div>
+          ) : winnerPlayer ? (
+            <div className="glass-card p-8 text-center space-y-3">
+              <p className="text-4xl">🏁</p>
+              <p className="text-xl font-black">Round over</p>
+              <p className="text-lg font-bold text-amber-600 dark:text-amber-200">{winnerPlayer.name} got BINGO!</p>
+              <p className="text-muted text-sm">The host can start a new round.</p>
+            </div>
+          ) : (
+            <div className="glass-card p-6 text-center space-y-3">
+              <p className="text-4xl">🏁</p>
+              <h2 className="text-xl font-black">Round over</h2>
+              <p className="text-muted text-sm">Thanks for playing! The host can start a new round.</p>
+            </div>
+          )}
+          {card && (
+            <div className="glass-card p-4">
+              <BingoCardGrid
+                cells={card.cells}
+                markedIndices={card.marked_indices}
+                calledNumbers={called}
+                disabled
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen pb-24">
+      <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
+        <div className="text-center space-y-1">
+          <div className="text-3xl">{cfg.headerEmoji}</div>
+          <h1 className="text-xl font-black gradient-title">{game?.title}</h1>
+          <p className="text-muted text-sm">Playing as {myPlayerName}</p>
+        </div>
+
+        {lastCalled != null && (
+          <div className="glass-card p-4 text-center">
+            <p className="text-faint text-xs uppercase tracking-wider">Latest call</p>
+            <p className="text-2xl font-black text-blue-300">{formatBingoNumber(lastCalled)}</p>
+          </div>
+        )}
+
+        {card ? (
+          <div className="glass-card p-4 space-y-3">
+            <p className="text-faint text-xs text-center leading-relaxed">
+              {called.length === 0
+                ? 'Your card is ready. Wait for the host to call a number — called squares turn blue and you can tap them to mark.'
+                : 'Tap blue squares to mark numbers the host has called. Complete a row, column, or diagonal, then tap BINGO!'}
+            </p>
+            <BingoCardGrid
+              cells={card.cells}
+              markedIndices={card.marked_indices}
+              calledNumbers={called}
+              onMark={markCell}
+              disabled={marking}
+            />
+          </div>
+        ) : (
+          <div className="glass-card p-6 text-center space-y-2">
+            <p className="text-muted text-sm">Dealing your card…</p>
+            <p className="text-faint text-xs">If this stays empty, ask the host to start the game.</p>
+          </div>
+        )}
+
+        {canClaim && (
+          <button type="button" onClick={claimBingo} disabled={claiming} className="btn-primary w-full text-lg font-black">
+            {claiming ? 'Claiming…' : 'BINGO! 🎉'}
+          </button>
+        )}
+
+        <details className="glass-card p-4">
+          <summary className="cursor-pointer text-sm font-medium text-muted">Called numbers board</summary>
+          <div className="mt-4">
+            <CalledNumbersBoard calledNumbers={called} />
+          </div>
+        </details>
+      </div>
+    </div>
+  )
+}

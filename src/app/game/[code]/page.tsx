@@ -70,9 +70,11 @@ import {
   isCustomGame,
   isAnonymousMessagesGame,
   isSecretMessageGame,
+  isBingoGame,
 } from '@/lib/game-types'
 import { AnonymousMessagesPlayerView } from '@/components/anonymous-messages/AnonymousMessagesPlayerView'
 import { SecretMessageSenderView } from '@/components/secret-message/SecretMessageSenderView'
+import { BingoPlayerView } from '@/components/bingo/BingoPlayerView'
 import {
   ParticipantRoundResults,
   VoteCountStat,
@@ -1192,6 +1194,9 @@ export default function GamePage() {
   if (view === 'not_found') return <NotFound onHome={() => router.push('/')} />
   if (game && isSecretMessageGame(game.game_type)) {
     return <SecretMessageSenderView gameCode={gameCode} />
+  }
+  if (game && isBingoGame(game.game_type)) {
+    return <BingoPlayerView gameCode={gameCode} />
   }
   if (game && isAnonymousMessagesGame(game.game_type)) {
     return <AnonymousMessagesPlayerView gameCode={gameCode} />

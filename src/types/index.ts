@@ -20,6 +20,7 @@ export type GameType =
   | 'custom'
   | 'anonymous_messages'
   | 'secret_message'
+  | 'bingo'
 export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical'
 export type WyrChoice = 'a' | 'b'
 
@@ -207,3 +208,28 @@ export interface AnimeQuotePoolEntry {
 }
 
 export type WstQuoteSource = 'player' | 'anime' | 'both'
+
+export interface BingoCard {
+  id: string
+  game_id: string
+  player_id: string
+  cells: number[]
+  marked_indices: number[]
+  created_at: string
+}
+
+export interface BingoCalledNumber {
+  id: string
+  game_id: string
+  number: number
+  called_at: string
+}
+
+export interface BingoClaim {
+  id: string
+  game_id: string
+  player_id: string
+  pattern: 'line' | 'full_house'
+  status: 'pending' | 'approved' | 'rejected'
+  created_at: string
+}

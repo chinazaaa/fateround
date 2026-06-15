@@ -40,11 +40,13 @@ import {
   isCustomGame,
   isAnonymousMessagesGame,
   isSecretMessageGame,
+  isBingoGame,
   pairVoteModeOptions,
   parsePairVoteMode,
 } from '@/lib/game-types'
 import { AnonymousMessagesHostView } from '@/components/anonymous-messages/AnonymousMessagesHostView'
 import { SecretMessageHostView } from '@/components/secret-message/SecretMessageHostView'
+import { BingoHostView } from '@/components/bingo/BingoHostView'
 import {
   getCustomSlots,
   tallyCustomVotes,
@@ -1175,6 +1177,10 @@ export default function HostPage() {
 
   if (game && isSecretMessageGame(game.game_type)) {
     return <SecretMessageHostView gameCode={gameCode} hostToken={hostToken} />
+  }
+
+  if (game && isBingoGame(game.game_type)) {
+    return <BingoHostView gameCode={gameCode} hostToken={hostToken} />
   }
 
   if (game && isAnonymousMessagesGame(game.game_type)) {

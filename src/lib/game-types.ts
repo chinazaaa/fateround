@@ -507,6 +507,48 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  bingo: {
+    id: 'bingo',
+    label: 'Bingo',
+    tagline: 'Classic number bingo — host calls, players mark their cards',
+    headerEmoji: '🎱🔢',
+    card: {
+      accent: '#3b82f6',
+      accentSoft: 'rgba(59, 130, 246, 0.15)',
+      emoji: '🎱',
+      players: '2–30 players',
+      vibe: 'Party classic',
+    },
+    slots: {
+      kiss: {
+        emoji: '🎱',
+        label: 'Called',
+        color: '#3b82f6',
+        leaderboardLabel: 'Numbers Called',
+        activeClass: 'bg-blue-500/20 text-blue-100 border-blue-400',
+        borderClass: 'border-blue-500/50 bg-blue-500/10',
+        textColor: '#93c5fd',
+      },
+      marry: {
+        emoji: '✓',
+        label: 'Marked',
+        color: '#22c55e',
+        leaderboardLabel: 'Marked',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Bingo',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winners',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
 }
 
 export const GAME_TYPE_OPTIONS: GameType[] = [
@@ -521,6 +563,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'custom',
   'anonymous_messages',
   'secret_message',
+  'bingo',
 ]
 
 export function parseGameType(raw: unknown): GameType {
@@ -534,6 +577,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'custom') return 'custom'
   if (raw === 'anonymous_messages') return 'anonymous_messages'
   if (raw === 'secret_message') return 'secret_message'
+  if (raw === 'bingo') return 'bingo'
   return 'smash_marry_kill'
 }
 
@@ -564,6 +608,8 @@ export function gameHowItWorks(
       return 'Players join with an auto-assigned name — no sign-up. When the host starts, everyone posts anonymous messages that appear live for the whole room.'
     case 'secret_message':
       return 'Create your link and share it anywhere. Anyone who opens it can send you a message — senders never see each other’s messages, and only you can read your inbox.'
+    case 'bingo':
+      return 'Players join with their name and get a random bingo card when you start — they do not pick their own numbers. Call numbers B1–O75; players tap called squares on their card and hit BINGO when they complete a line.'
     case 'most_likely_to':
       return joiners
         ? 'Players add their name to the poll when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
@@ -810,6 +856,10 @@ export function isAnonymousMessagesGame(gameType: GameType | string | undefined)
 
 export function isSecretMessageGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'secret_message'
+}
+
+export function isBingoGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'bingo'
 }
 
 /** Anonymous room or host-only secret message inbox — shared message storage. */

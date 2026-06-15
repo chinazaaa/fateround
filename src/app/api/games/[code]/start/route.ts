@@ -12,6 +12,7 @@ import {
   isHotSeat,
   isCustomGame,
   isAnonymousMessagesGame,
+  isBingoGame,
 } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
@@ -38,6 +39,7 @@ import { getFullHostListForRounds } from '@/lib/participant-mode'
 import { buildPeoplePollParticipantPool } from '@/lib/player-participant-pool'
 import { hostActionSchema } from '@/lib/validation'
 import { ANONYMOUS_ROOM_MIN_PLAYERS } from '@/lib/anonymous-messages'
+import { BINGO_MIN_PLAYERS, createBingoCardsForPlayers } from '@/lib/bingo'
 import { appearanceCountsForParticipants, mergeUsageMaps, parsePoolUsage, poolUsageToMap } from '@/lib/pool-usage'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -137,6 +139,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         rounds_count: 1,
         session_started_at: now,
         anonymous_messages_trimmed_at: null,
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isBingoGame(gameType)) {
+    if (playersData.length < BINGO_MIN_PLAYERS) {
+      return NextResponse.json(
+        { error: `Need at least ${BINGO_MIN_PLAYERS} players to start` },
+        { status: 400 }
+      )
+    }
+
+    const { error: cardsError } = await createBingoCardsForPlayers(
+      supabase,
+      code.toUpperCase(),
+      playersData.map((p) => p.id)
+    )
+    if (cardsError) return NextResponse.json({ error: cardsError }, { status: 500 })
+
+    const { error: gameError } = await supabase
+      .from('games')
+      .update({
+        status: 'active',
+        current_round_number: 1,
+        rounds_count: 1,
       })
       .eq('id', code.toUpperCase())
 

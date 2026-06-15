@@ -5,8 +5,10 @@ import {
   parseGameType,
   isAnonymousMessagesGame,
   isSecretMessageGame,
+  isBingoGame,
 } from '@/lib/game-types'
 import { clearAnonymousRoomSessionData, reopenSecretMessageBoard } from '@/lib/anonymous-messages'
+import { clearBingoSessionData } from '@/lib/bingo'
 import {
   applyCustomQuestionsUpdate,
   applyParticipantListUpdate,
@@ -137,6 +139,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .single()
     if (secretFetchError) return NextResponse.json({ error: secretFetchError.message }, { status: 500 })
     return NextResponse.json({ success: true, game: updatedSecret })
+  }
+
+  if (isBingoGame(gameType)) {
+    const { error: clearError } = await clearBingoSessionData(supabase, gameId)
+    if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
   }
 
   const { data: updated, error: gameError } = await supabase

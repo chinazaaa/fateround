@@ -33,6 +33,7 @@ import {
   isLobbyGame,
   isAnonymousMessagesGame,
   isSecretMessageGame,
+  isBingoGame,
   isWouldYouRather,
   isThisOrThat,
   isMostLikelyTo,
@@ -81,6 +82,11 @@ import {
   ANONYMOUS_ROOM_MAX_PLAYERS,
   ANONYMOUS_ROOM_MIN_PLAYERS,
 } from '@/lib/anonymous-messages'
+import {
+  BINGO_DEFAULT_MAX_PLAYERS,
+  BINGO_MAX_PLAYERS,
+  BINGO_MIN_PLAYERS,
+} from '@/lib/bingo'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { useToast } from '@/components/ui/Toast'
 
@@ -149,6 +155,7 @@ function CreateGameInner() {
   const [wstQuoteSource, setWstQuoteSource] = useState<WstQuoteSource>('player')
   const [customSlots, setCustomSlots] = useState<CustomSlotsConfig | null>(null)
   const [anonymousMaxPlayers, setAnonymousMaxPlayers] = useState(ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS)
+  const [bingoMaxPlayers, setBingoMaxPlayers] = useState(BINGO_DEFAULT_MAX_PLAYERS)
 
   useEffect(() => {
     const typeParam = searchParams.get('type')
@@ -162,6 +169,9 @@ function CreateGameInner() {
           ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
           : {}),
         ...(isSecretMessageGame(type)
+          ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
+          : {}),
+        ...(isBingoGame(type)
           ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
           : {}),
         ...(isWhoSaidThis(type)
@@ -242,8 +252,10 @@ function CreateGameInner() {
 
   const isAnonymousRoom = isAnonymousMessagesGame(settings.game_type)
   const isSecretMessage = isSecretMessageGame(settings.game_type)
+  const isBingo = isBingoGame(settings.game_type)
   const isMessageBoard = isAnonymousRoom || isSecretMessage
-  const needsParticipantStep = !isMessageBoard && !isBinaryLobby && !(isMlt && isJoinersMode) && !isJoinersMode
+  const isQuickLobby = isMessageBoard || isBingo
+  const needsParticipantStep = !isQuickLobby && !isBinaryLobby && !(isMlt && isJoinersMode) && !isJoinersMode
   const wizardSteps = needsParticipantStep ? ['Setup', 'People'] : ['Setup']
   const stepIndex = step === 'participants' ? 2 : 1
 
@@ -270,6 +282,9 @@ function CreateGameInner() {
         ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
         : {}),
       ...(isSecretMessageGame(type)
+        ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
+        : {}),
+      ...(isBingoGame(type)
         ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
         : {}),
       ...(isWhoSaidThis(type)
@@ -532,7 +547,9 @@ function CreateGameInner() {
 
   const createGame = async () => {
     if (loading) return
-    if (isJoinersMode ? !canCreateJoiners : !canCreateImport) return
+    if (isQuickLobby) {
+      if (!settings.title.trim()) return
+    } else if (isJoinersMode ? !canCreateJoiners : !canCreateImport) return
     setLoading(true)
     try {
       const res = await fetch('/api/games', {
@@ -554,7 +571,7 @@ function CreateGameInner() {
           gender_based: supportsGender ? settings.gender_based : undefined,
           player_questions_enabled: isPlayerSubmissions ? playerQuestionsEnabled : undefined,
           player_questions_order: isPlayerSubmissions ? playerQuestionsOrder : undefined,
-          max_players: isAnonymousRoom ? anonymousMaxPlayers : undefined,
+          max_players: isAnonymousRoom ? anonymousMaxPlayers : isBingo ? bingoMaxPlayers : undefined,
         }),
       })
       const data = await res.json()
@@ -649,6 +666,28 @@ function CreateGameInner() {
                   after the session starts can watch only. Hosts can mute players for 5–30 minutes (default 10) — muted
                   players can read but not send. Once over 1,000 messages, the oldest 100 are removed every 5 minutes
                   during the session. Sessions last up to 15 minutes — all messages are deleted when the session ends.
+                </p>
+              </SettingsGroup>
+            ) : isBingo ? (
+              <SettingsGroup title="Bingo room">
+                <Field label={`Max players (${BINGO_MIN_PLAYERS}–${BINGO_MAX_PLAYERS})`}>
+                  <select
+                    value={bingoMaxPlayers}
+                    onChange={(e) => setBingoMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {Array.from({ length: BINGO_MAX_PLAYERS - BINGO_MIN_PLAYERS + 1 }, (_, i) => i + BINGO_MIN_PLAYERS).map(
+                      (n) => (
+                        <option key={n} value={n}>
+                          {n} players
+                        </option>
+                      )
+                    )}
+                  </select>
+                </Field>
+                <p className="text-faint text-sm leading-relaxed">
+                  Players join with their name and get a unique 5×5 card. You call numbers B1–O75 — they mark called
+                  numbers and tap BINGO when they complete a line. First valid bingo wins the round.
                 </p>
               </SettingsGroup>
             ) : (
@@ -1130,7 +1169,7 @@ function CreateGameInner() {
           </div>
 
           <StickyActionBar>
-            {isMessageBoard ? (
+            {isQuickLobby ? (
               <PrimaryBtn onClick={createGame} disabled={!settings.title.trim() || loading}>
                 {loading ? 'Creating...' : 'Create Game'}
               </PrimaryBtn>

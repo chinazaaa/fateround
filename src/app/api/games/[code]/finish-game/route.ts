@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { hostActionSchema } from '@/lib/validation'
 import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anonymous-messages'
-import { parseGameType, isAnonymousMessagesGame, isSecretMessageGame } from '@/lib/game-types'
+import { parseGameType, isAnonymousMessagesGame, isSecretMessageGame, isBingoGame } from '@/lib/game-types'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -31,6 +31,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (isSecretMessageGame(parseGameType(game.game_type))) {
     const { error } = await finishSecretMessageBoard(supabase, gameId)
     if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isBingoGame(parseGameType(game.game_type))) {
+    const { error } = await supabase.from('games').update({ status: 'finished' }).eq('id', gameId)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ success: true })
   }
 

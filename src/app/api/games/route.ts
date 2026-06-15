@@ -23,6 +23,7 @@ import {
   isCustomGame,
   isAnonymousMessagesGame,
   isSecretMessageGame,
+  isBingoGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { clampHotSeatMaxCap, hotSeatMaxCapUpperBound, HOT_SEAT_MIN_PLAYERS } from '@/lib/hot-seat'
@@ -38,6 +39,7 @@ import { parseThemeId } from '@/lib/themes'
 import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, supportsPlayerNameSubmissions } from '@/lib/player-participant-pool'
 import { clampAnonymousRoomMaxPlayers, ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS } from '@/lib/anonymous-messages'
+import { clampBingoMaxPlayers, BINGO_DEFAULT_MAX_PLAYERS } from '@/lib/bingo'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -181,7 +183,7 @@ export async function POST(req: NextRequest) {
   }
 
   const maxRounds = lobbyMaxRounds(game_type, question_source, custom_questions)
-  const roundsCount = isAnonymousMessagesGame(game_type) || isSecretMessageGame(game_type)
+  const roundsCount = isAnonymousMessagesGame(game_type) || isSecretMessageGame(game_type) || isBingoGame(game_type)
     ? 1
     : isWhoSaidThis(game_type)
       ? wstAutoRoundCount(participants.length)
@@ -210,7 +212,9 @@ export async function POST(req: NextRequest) {
   const hostToken = generateToken()
   const maxPlayers = isAnonymousMessagesGame(game_type)
     ? clampAnonymousRoomMaxPlayers(Number(rawMaxPlayers) || ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS)
-    : null
+    : isBingoGame(game_type)
+      ? clampBingoMaxPlayers(Number(rawMaxPlayers) || BINGO_DEFAULT_MAX_PLAYERS)
+      : null
   const isSecret = isSecretMessageGame(game_type)
 
   const { error: gameError } = await supabase.from('games').insert({

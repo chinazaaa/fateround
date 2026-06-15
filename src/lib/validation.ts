@@ -49,6 +49,7 @@ const gameTypeEnum = z.enum([
   'custom',
   'anonymous_messages',
   'secret_message',
+  'bingo',
 ])
 
 const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
@@ -341,6 +342,32 @@ export const anonymousRoomUnbanSchema = z.object({
 export type AnonymousRoomUnbanInput = z.infer<typeof anonymousRoomUnbanSchema>
 
 // ---------------------------------------------------------------------------
+// Bingo (POST /api/bingo/*)
+// ---------------------------------------------------------------------------
+
+export const bingoCallSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: hostTokenString(),
+  number: z.coerce.number().int().min(1).max(75).optional(),
+  random: z.boolean().optional(),
+})
+
+export const bingoMarkSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  cellIndex: z.coerce.number().int().min(0).max(24),
+})
+
+export const bingoClaimSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+})
+
+export type BingoCallInput = z.infer<typeof bingoCallSchema>
+export type BingoMarkInput = z.infer<typeof bingoMarkSchema>
+export type BingoClaimInput = z.infer<typeof bingoClaimSchema>
+
+// ---------------------------------------------------------------------------
 // Quote (POST /api/quote)
 // ---------------------------------------------------------------------------
 
@@ -411,6 +438,7 @@ const feedbackGameTypeEnum = z.enum([
   'custom',
   'anonymous_messages',
   'secret_message',
+  'bingo',
 ])
 
 const feedbackCategoryEnum = z.enum(['bug', 'feature', 'improvement', 'other'])

@@ -27,6 +27,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   custom: 'custom-game',
   anonymous_messages: 'anonymous-room',
   secret_message: 'secret-message',
+  bingo: 'bingo',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -398,6 +399,36 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       { title: 'Read your inbox', description: 'Messages arrive on your host panel in real time.' },
     ],
     perfectFor: ['Instagram stories', 'Honest feedback', 'Q&A prompts', 'Fan messages'],
+  }),
+
+  bingo: landing('bingo', {
+    seoTitle: 'Bingo — Free Online Number Bingo Game',
+    seoDescription:
+      'Host a free online bingo game for your group. Players get unique cards, you call numbers B1–O75, and the first line wins.',
+    keywords: ['online bingo game', 'free bingo party', 'number bingo multiplayer', 'host bingo night'],
+    heroSubtitle:
+      'Classic 75-ball bingo for parties and game nights. Everyone gets their own card on their phone — you call the numbers, they mark and shout BINGO.',
+    highlights: ['Unique cards', 'Host calls numbers', 'First line wins'],
+    features: [
+      {
+        title: 'Real bingo cards',
+        description: 'Each player gets a unique 5×5 card with a free center square.',
+        emoji: '🎱',
+      },
+      {
+        title: 'You’re the caller',
+        description: 'Tap to call random numbers or pick them yourself — everyone sees what’s been called.',
+        emoji: '📣',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Create a room', description: 'Set a title, share the code, and wait for players to join.' },
+      { title: 'Deal cards', description: 'Start the game — every player gets a unique bingo card instantly.' },
+      { title: 'Call & win', description: 'Call numbers until someone completes a line and claims BINGO.' },
+    ],
+    perfectFor: ['Family game night', 'Office parties', 'Classroom fun', 'Pub quizzes'],
   }),
 }
 
