@@ -108,8 +108,8 @@ import {
   TRIVIA_MIN_PLAYERS,
   TRIVIA_DEFAULT_ROUNDS,
   TRIVIA_DEFAULT_TIMER,
-  TRIVIA_TIMER_OPTIONS,
 } from '@/lib/trivia'
+import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
 import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { useToast } from '@/components/ui/Toast'
@@ -1018,21 +1018,26 @@ function CreateGameInner() {
                     </Field>
                   )}
 
-                  <Field label={isTrivia ? 'Time per question' : 'Time per round'}>
-                    <SegmentedControl
-                      value={String(settings.timer_seconds) as `${(typeof TRIVIA_TIMER_OPTIONS)[number]}` | '15' | '30' | '60'}
-                      onChange={(v) => setSettings({ ...settings, timer_seconds: Number(v) })}
-                      options={
-                        isTrivia
-                          ? TRIVIA_TIMER_OPTIONS.map((n) => ({ value: String(n), label: `${n}s` }))
-                          : [
-                              { value: '15', label: '15s' },
-                              { value: '30', label: '30s' },
-                              { value: '60', label: '60s' },
-                            ]
-                      }
-                    />
-                  </Field>
+                  {isTrivia ? (
+                    <Field label="Time per question">
+                      <TriviaTimerPicker
+                        value={settings.timer_seconds}
+                        onChange={(timer_seconds) => setSettings({ ...settings, timer_seconds })}
+                      />
+                    </Field>
+                  ) : (
+                    <Field label="Time per round">
+                      <SegmentedControl
+                        value={String(settings.timer_seconds) as '15' | '30' | '60'}
+                        onChange={(v) => setSettings({ ...settings, timer_seconds: Number(v) })}
+                        options={[
+                          { value: '15', label: '15s' },
+                          { value: '30', label: '30s' },
+                          { value: '60', label: '60s' },
+                        ]}
+                      />
+                    </Field>
+                  )}
 
                   {supportsGender && (
                     <GenderRoundModeControl

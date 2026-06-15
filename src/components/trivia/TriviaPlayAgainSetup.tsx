@@ -5,6 +5,7 @@ import type { Game, QuestionSource, TriviaCategory, TriviaQuestion } from '@/typ
 import { Modal } from '@/components/ui/Modal'
 import { Field, Chip } from '@/components/ui/PageShell'
 import { ChipGrid, SegmentedControl } from '@/components/ui/CreateWizard'
+import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
 import {
   mergeTriviaQuestions,
   parseExcelTriviaQuestions,
@@ -21,7 +22,7 @@ import {
   TRIVIA_MAX_ROUNDS,
   TRIVIA_MIN_ROUNDS,
   TRIVIA_DEFAULT_TIMER,
-  TRIVIA_TIMER_OPTIONS,
+  clampTriviaTimer,
   triviaCategoryFromGame,
 } from '@/lib/trivia'
 
@@ -84,7 +85,7 @@ export function TriviaPlayAgainSetup({
     setQuestionMode('same')
     setQuestionTab('upload')
     setTriviaCategory(triviaCategoryFromGame(game))
-    setTimerSeconds(game.timer_seconds ?? TRIVIA_DEFAULT_TIMER)
+    setTimerSeconds(clampTriviaTimer(game.timer_seconds))
     setRoundsCount(game.rounds_count ?? 10)
     setCustomQuestions(parseStoredTriviaQuestions(game.custom_questions))
     setQuestionsUploadError(null)
@@ -192,7 +193,7 @@ export function TriviaPlayAgainSetup({
     const payload: TriviaSettingsPayload = {
       question_source: questionSource,
       trivia_category: triviaCategory,
-      timer_seconds: timerSeconds,
+      timer_seconds: clampTriviaTimer(timerSeconds),
       rounds_count: roundsCount,
     }
 
@@ -341,6 +342,10 @@ export function TriviaPlayAgainSetup({
           </div>
         )}
 
+        <Field label="Time per question">
+          <TriviaTimerPicker value={timerSeconds} onChange={setTimerSeconds} />
+        </Field>
+
         <Field label="Rounds">
           <ChipGrid>
             {roundOptions.map((n) => (
@@ -349,14 +354,6 @@ export function TriviaPlayAgainSetup({
               </Chip>
             ))}
           </ChipGrid>
-        </Field>
-
-        <Field label="Time per question">
-          <SegmentedControl
-            value={String(timerSeconds)}
-            onChange={(v) => setTimerSeconds(Number(v))}
-            options={TRIVIA_TIMER_OPTIONS.map((n) => ({ value: String(n), label: `${n}s` }))}
-          />
         </Field>
 
         {questionsUploadError && <p className="text-rose-500 text-sm">{questionsUploadError}</p>}

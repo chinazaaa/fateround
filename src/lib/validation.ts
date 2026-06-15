@@ -67,7 +67,7 @@ const playerGenderEnum = z.enum(['male', 'female', 'both'])
 const pairFlagEnum = z.enum(['kiss', 'kill'])
 const themeEnum = z.enum(['default', 'neon', 'retro', 'elegant', 'tropical'])
 const participantFilterEnum = z.enum(['all', 'joined'])
-const timerSecondsEnum = z.union([z.literal(15), z.literal(30), z.literal(60)])
+const timerSecondsEnum = z.union([z.literal(10), z.literal(15), z.literal(30), z.literal(60)])
 
 // ---------------------------------------------------------------------------
 // Game creation (POST /api/games)

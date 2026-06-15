@@ -25,7 +25,7 @@ import type { TriviaQuestion } from '@/types'
 import type { Game } from '@/types'
 import { parsePoolUsage, pruneParticipantUsage, pruneQuestionUsage } from '@/lib/pool-usage'
 import { isGameGenderBased } from '@/lib/gender-based'
-import { triviaCategoryFromGame } from '@/lib/trivia'
+import { triviaCategoryFromGame, clampTriviaTimer } from '@/lib/trivia'
 import { platformTriviaPool } from '@/lib/trivia-questions'
 
 export function parseHostPoolParticipants(
@@ -190,7 +190,7 @@ export function applyTriviaSettingsUpdate(
   }
 
   if (input.trivia_category !== undefined) gameUpdate.trivia_category = input.trivia_category
-  if (input.timer_seconds !== undefined) gameUpdate.timer_seconds = input.timer_seconds
+  if (input.timer_seconds !== undefined) gameUpdate.timer_seconds = clampTriviaTimer(input.timer_seconds)
   if (input.rounds_count !== undefined) gameUpdate.rounds_count = input.rounds_count
 
   if (input.question_source === 'platform') {
