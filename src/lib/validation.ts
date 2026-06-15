@@ -48,6 +48,7 @@ const gameTypeEnum = z.enum([
   'hot_seat',
   'custom',
   'anonymous_messages',
+  'secret_message',
 ])
 
 const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
@@ -409,6 +410,7 @@ const feedbackGameTypeEnum = z.enum([
   'hot_seat',
   'custom',
   'anonymous_messages',
+  'secret_message',
 ])
 
 const feedbackCategoryEnum = z.enum(['bug', 'feature', 'improvement', 'other'])

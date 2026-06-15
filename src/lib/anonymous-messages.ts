@@ -181,6 +181,38 @@ export async function finishAnonymousRoomSession(
   return clearAnonymousRoomSessionData(supabase, gameId)
 }
 
+/** Close a secret message board — messages stay in the inbox for the host. */
+export async function finishSecretMessageBoard(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error: string | null }> {
+  const { error: gameError } = await supabase.from('games').update({ status: 'finished' }).eq('id', gameId)
+  if (gameError) return { error: gameError.message }
+  return { error: null }
+}
+
+/** Clear inbox and reopen a secret message board. */
+export async function reopenSecretMessageBoard(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error: string | null }> {
+  const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId)
+  if (clearError) return { error: clearError }
+
+  const now = new Date().toISOString()
+  const { error: gameError } = await supabase
+    .from('games')
+    .update({
+      status: 'active',
+      session_started_at: now,
+      anonymous_messages_trimmed_at: null,
+    })
+    .eq('id', gameId)
+
+  if (gameError) return { error: gameError.message }
+  return { error: null }
+}
+
 export async function finishExpiredAnonymousSession(
   supabase: SupabaseClient,
   game: { id: string; status: string; game_type: string; session_started_at?: string | null }

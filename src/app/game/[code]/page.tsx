@@ -68,8 +68,10 @@ import {
   isHotSeat,
   isCustomGame,
   isAnonymousMessagesGame,
+  isSecretMessageGame,
 } from '@/lib/game-types'
 import { AnonymousMessagesPlayerView } from '@/components/anonymous-messages/AnonymousMessagesPlayerView'
+import { SecretMessageSenderView } from '@/components/secret-message/SecretMessageSenderView'
 import {
   ParticipantRoundResults,
   VoteCountStat,
@@ -1186,6 +1188,9 @@ export default function GamePage() {
   // ── Render ────────────────────────────────────────────────────────────────
   if (view === 'loading') return <FullLoader />
   if (view === 'not_found') return <NotFound onHome={() => router.push('/')} />
+  if (game && isSecretMessageGame(game.game_type)) {
+    return <SecretMessageSenderView gameCode={gameCode} />
+  }
   if (game && isAnonymousMessagesGame(game.game_type)) {
     return <AnonymousMessagesPlayerView gameCode={gameCode} />
   }

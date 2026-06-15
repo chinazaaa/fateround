@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createAnonymousMessageSchema, deleteAnonymousMessageSchema } from '@/lib/validation'
-import { parseGameType, isAnonymousMessagesGame } from '@/lib/game-types'
+import { parseGameType, isMessageInboxGame, isAnonymousMessagesGame, isSecretMessageGame } from '@/lib/game-types'
 import {
   anonymousPlayerCanPost,
   anonymousSessionExpired,
@@ -32,15 +32,20 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (!isAnonymousMessagesGame(parseGameType(game.game_type))) {
-    return NextResponse.json({ error: 'Not an anonymous room' }, { status: 400 })
+
+  const gameType = parseGameType(game.game_type)
+  if (!isMessageInboxGame(gameType)) {
+    return NextResponse.json({ error: 'Not a message board' }, { status: 400 })
   }
   if (game.status !== 'active') {
-    return NextResponse.json({ error: 'Session is not active' }, { status: 400 })
+    return NextResponse.json({ error: 'Board is not accepting messages' }, { status: 400 })
   }
-  if (anonymousSessionExpired(game.session_started_at)) {
-    await finishExpiredAnonymousSession(supabase, { ...game, id: gameCode })
-    return NextResponse.json({ error: 'Session has ended' }, { status: 400 })
+
+  if (isAnonymousMessagesGame(gameType)) {
+    if (anonymousSessionExpired(game.session_started_at)) {
+      await finishExpiredAnonymousSession(supabase, { ...game, id: gameCode })
+      return NextResponse.json({ error: 'Session has ended' }, { status: 400 })
+    }
   }
 
   const { data: player } = await supabase
@@ -59,6 +64,10 @@ export async function POST(req: NextRequest) {
     .eq('player_id', playerId)
     .maybeSingle()
 
+  if (messageType === 'gif' && isSecretMessageGame(gameType)) {
+    return NextResponse.json({ error: 'GIFs are not supported on secret message boards' }, { status: 400 })
+  }
+
   if (messageType === 'text' && !text.trim()) {
     return NextResponse.json({ error: 'Message cannot be empty' }, { status: 400 })
   }
@@ -66,7 +75,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'GIF URL is required' }, { status: 400 })
   }
 
-  if (!anonymousPlayerCanPost(player, game, ban?.banned_until)) {
+  if (!anonymousPlayerCanPost(player, game, ban?.banned_until) && isAnonymousMessagesGame(gameType)) {
     if (isPlayerBanned(ban?.banned_until)) {
       return NextResponse.json({ error: 'You are muted and cannot send messages right now' }, { status: 403 })
     }
@@ -78,6 +87,10 @@ export async function POST(req: NextRequest) {
 
   let replyToIdValue: string | null = null
   let replyToText: string | null = null
+
+  if (replyToId && isSecretMessageGame(gameType)) {
+    return NextResponse.json({ error: 'Replies are not supported on secret message boards' }, { status: 400 })
+  }
 
   if (replyToId) {
     const { data: parent } = await supabase
@@ -129,10 +142,10 @@ export async function DELETE(req: NextRequest) {
     .maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (!isAnonymousMessagesGame(parseGameType(game.game_type))) {
-    return NextResponse.json({ error: 'Not an anonymous room' }, { status: 400 })
+  if (!isMessageInboxGame(parseGameType(game.game_type))) {
+    return NextResponse.json({ error: 'Not a message board' }, { status: 400 })
   }
-  if (game.status !== 'active') {
+  if (isAnonymousMessagesGame(parseGameType(game.game_type)) && game.status !== 'active') {
     return NextResponse.json({ error: 'Messages can only be removed during an active session' }, { status: 400 })
   }
 

@@ -4,11 +4,12 @@ import { playAgainSchema, stripHtml } from '@/lib/validation'
 import {
   parseGameType,
   isAnonymousMessagesGame,
+  isSecretMessageGame,
   isBinaryChoiceGame,
   isMostLikelyTo,
   isThisOrThat,
 } from '@/lib/game-types'
-import { clearAnonymousRoomSessionData } from '@/lib/anonymous-messages'
+import { clearAnonymousRoomSessionData, reopenSecretMessageBoard } from '@/lib/anonymous-messages'
 import { usesHostParticipantList } from '@/lib/participant-mode'
 import {
   normalizeGender,
@@ -215,6 +216,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (isAnonymousMessagesGame(gameType)) {
     const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId)
     if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
+  }
+
+  if (isSecretMessageGame(gameType)) {
+    const { error: reopenError } = await reopenSecretMessageBoard(supabase, gameId)
+    if (reopenError) return NextResponse.json({ error: reopenError }, { status: 500 })
+    const { data: updatedSecret, error: secretFetchError } = await supabase
+      .from('games')
+      .select()
+      .eq('id', gameId)
+      .single()
+    if (secretFetchError) return NextResponse.json({ error: secretFetchError.message }, { status: 500 })
+    return NextResponse.json({ success: true, game: updatedSecret })
   }
 
   const { data: updated, error: gameError } = await supabase

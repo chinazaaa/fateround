@@ -19,6 +19,7 @@ export type GameType =
   | 'hot_seat'
   | 'custom'
   | 'anonymous_messages'
+  | 'secret_message'
 export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical'
 export type WyrChoice = 'a' | 'b'
 

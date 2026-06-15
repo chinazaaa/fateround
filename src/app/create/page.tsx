@@ -31,6 +31,7 @@ import {
   roundPoolSize,
   isLobbyGame,
   isAnonymousMessagesGame,
+  isSecretMessageGame,
   isWouldYouRather,
   isThisOrThat,
   isMostLikelyTo,
@@ -158,6 +159,9 @@ function CreateGameInner() {
         ...(isAnonymousMessagesGame(type)
           ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
           : {}),
+        ...(isSecretMessageGame(type)
+          ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
+          : {}),
         ...(isWhoSaidThis(type)
           ? {
               participant_mode: 'import' as const,
@@ -235,7 +239,9 @@ function CreateGameInner() {
     !isCustom || (customSlots && customSlots.slots.length >= 2 && customSlots.slots.every((s) => s.label.trim()))
 
   const isAnonymousRoom = isAnonymousMessagesGame(settings.game_type)
-  const needsParticipantStep = !isAnonymousRoom && !isBinaryLobby && !(isMlt && isJoinersMode) && !isJoinersMode
+  const isSecretMessage = isSecretMessageGame(settings.game_type)
+  const isMessageBoard = isAnonymousRoom || isSecretMessage
+  const needsParticipantStep = !isMessageBoard && !isBinaryLobby && !(isMlt && isJoinersMode) && !isJoinersMode
   const wizardSteps = needsParticipantStep ? ['Setup', 'People'] : ['Setup']
   const stepIndex = step === 'participants' ? 2 : 1
 
@@ -259,6 +265,9 @@ function CreateGameInner() {
       game_type: type,
       ...(isLobbyGame(type) ? { participant_mode: 'joiners', anonymous: true } : {}),
       ...(isAnonymousMessagesGame(type)
+        ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
+        : {}),
+      ...(isSecretMessageGame(type)
         ? { participant_mode: 'joiners' as const, anonymous: true, rounds_count: 1 }
         : {}),
       ...(isWhoSaidThis(type)
@@ -605,7 +614,15 @@ function CreateGameInner() {
 
           {/* Rules */}
           <div className="glass-card p-5 space-y-5">
-            {isAnonymousRoom ? (
+            {isSecretMessage ? (
+              <SettingsGroup title="Your board">
+                <p className="text-faint text-sm leading-relaxed">
+                  Your link goes live as soon as you create it. Share it on Instagram, WhatsApp, or anywhere — anyone
+                  can send you a message without signing up. Only you see the inbox on your host panel. Close the board
+                  anytime to stop new messages; reopening clears the inbox for a fresh start.
+                </p>
+              </SettingsGroup>
+            ) : isAnonymousRoom ? (
               <SettingsGroup title="Session">
                 <Field label={`Max players (${ANONYMOUS_ROOM_MIN_PLAYERS}–${ANONYMOUS_ROOM_MAX_PLAYERS})`}>
                   <select
@@ -1110,7 +1127,7 @@ function CreateGameInner() {
           </div>
 
           <StickyActionBar>
-            {isAnonymousRoom ? (
+            {isMessageBoard ? (
               <PrimaryBtn onClick={createGame} disabled={!settings.title.trim() || loading}>
                 {loading ? 'Creating...' : 'Create Game'}
               </PrimaryBtn>

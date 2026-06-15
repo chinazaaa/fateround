@@ -22,6 +22,7 @@ import {
   parsePairVoteMode,
   isCustomGame,
   isAnonymousMessagesGame,
+  isSecretMessageGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { clampHotSeatMaxCap, hotSeatMaxCapUpperBound, HOT_SEAT_MIN_PLAYERS } from '@/lib/hot-seat'
@@ -180,7 +181,7 @@ export async function POST(req: NextRequest) {
   }
 
   const maxRounds = lobbyMaxRounds(game_type, question_source, custom_questions)
-  const roundsCount = isAnonymousMessagesGame(game_type)
+  const roundsCount = isAnonymousMessagesGame(game_type) || isSecretMessageGame(game_type)
     ? 1
     : isWhoSaidThis(game_type)
       ? wstAutoRoundCount(participants.length)
@@ -210,6 +211,7 @@ export async function POST(req: NextRequest) {
   const maxPlayers = isAnonymousMessagesGame(game_type)
     ? clampAnonymousRoomMaxPlayers(Number(rawMaxPlayers) || ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS)
     : null
+  const isSecret = isSecretMessageGame(game_type)
 
   const { error: gameError } = await supabase.from('games').insert({
     id: gameCode,
@@ -217,7 +219,7 @@ export async function POST(req: NextRequest) {
     host_token: hostToken,
     rounds_count: roundsCount,
     timer_seconds: [15, 30, 60].includes(Number(timer_seconds)) ? Number(timer_seconds) : 30,
-    anonymous: isAnonymousMessagesGame(game_type) || isAnonymousGame(game_type) ? true : anonymous !== false,
+    anonymous: isAnonymousMessagesGame(game_type) || isSecretMessageGame(game_type) || isAnonymousGame(game_type) ? true : anonymous !== false,
     auto_reveal: auto_reveal !== false,
     auto_submit_behavior: auto_submit_behavior === 'random' ? 'random' : 'no_answer',
     participant_mode,
@@ -237,8 +239,9 @@ export async function POST(req: NextRequest) {
     custom_questions,
     game_type,
     theme,
-    status: 'waiting',
+    status: isSecret ? 'active' : 'waiting',
     current_round_number: 0,
+    ...(isSecret ? { session_started_at: new Date().toISOString() } : {}),
     wst_quote_source: parsed.data.wst_quote_source ?? 'player',
     gender_based: supportsGenderToggle(game_type) ? gender_based : true,
     player_questions_enabled:

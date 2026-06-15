@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
-import { parseGameType, isNameOnlyPlayerJoin, isHotSeat, isAnonymousMessagesGame } from '@/lib/game-types'
+import { parseGameType, isNameOnlyPlayerJoin, isHotSeat, isAnonymousMessagesGame, isSecretMessageGame } from '@/lib/game-types'
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
 import { anonymousPlayerCanChat, anonymousRoomMaxPlayers } from '@/lib/anonymous-messages'
 import { isGenderFreeImportJoin, isGenderFreeJoinersJoin, isGenderFreeVotersJoin } from '@/lib/gender-based'
@@ -123,6 +123,37 @@ export async function POST(req: NextRequest) {
       playerGender: player.gender,
       playerIdentityGender: player.identity_gender,
       canChat,
+    })
+  }
+
+  if (isSecretMessageGame(rowGameType)) {
+    if (gameRow.status !== 'active') {
+      return NextResponse.json({ error: 'This board is closed' }, { status: 400 })
+    }
+
+    const { data: existingPlayers } = await supabase.from('players').select('name').eq('game_id', gameId)
+    const generatedName = generateAnonymousDisplayName((existingPlayers ?? []).map((p) => p.name))
+
+    const { data: player, error } = await supabase
+      .from('players')
+      .insert({
+        game_id: gameId,
+        name: generatedName,
+        gender: 'both',
+        identity_gender: null,
+        participant_id: null,
+      })
+      .select()
+      .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    return NextResponse.json({
+      playerId: player.id,
+      playerName: player.name,
+      playerGender: player.gender,
+      playerIdentityGender: player.identity_gender,
+      canChat: true,
     })
   }
 

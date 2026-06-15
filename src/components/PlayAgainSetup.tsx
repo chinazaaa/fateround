@@ -66,7 +66,8 @@ function hostParticipants(participants: Participant[]): ParticipantInput[] {
 }
 
 export function playAgainNeedsSetup(game: Game): boolean {
-  if (isAnonymousMessagesGame(parseGameType(game.game_type))) return false
+  const type = parseGameType(game.game_type)
+  if (isAnonymousMessagesGame(type) || type === 'secret_message') return false
   return hasQuestionPool(game) || hasParticipantPool(game)
 }
 

@@ -465,6 +465,48 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  secret_message: {
+    id: 'secret_message',
+    label: 'Secret Message',
+    tagline: 'Share a link — only you see what people send',
+    headerEmoji: '💌✨',
+    card: {
+      accent: '#ec4899',
+      accentSoft: 'rgba(236, 72, 153, 0.15)',
+      emoji: '💌',
+      players: 'Unlimited senders',
+      vibe: 'Private inbox',
+    },
+    slots: {
+      kiss: {
+        emoji: '💌',
+        label: 'Message',
+        color: '#ec4899',
+        leaderboardLabel: 'Messages',
+        activeClass: 'bg-pink-500/20 text-pink-100 border-pink-400',
+        borderClass: 'border-pink-500/50 bg-pink-500/10',
+        textColor: '#f9a8d4',
+      },
+      marry: {
+        emoji: '💌',
+        label: 'Message',
+        color: '#ec4899',
+        leaderboardLabel: 'Messages',
+        activeClass: 'bg-pink-500/20 text-pink-100 border-pink-400',
+        borderClass: 'border-pink-500/50 bg-pink-500/10',
+        textColor: '#f9a8d4',
+      },
+      kill: {
+        emoji: '💌',
+        label: 'Message',
+        color: '#ec4899',
+        leaderboardLabel: 'Messages',
+        activeClass: 'bg-pink-500/20 text-pink-100 border-pink-400',
+        borderClass: 'border-pink-500/50 bg-pink-500/10',
+        textColor: '#f9a8d4',
+      },
+    },
+  },
 }
 
 export const GAME_TYPE_OPTIONS: GameType[] = [
@@ -478,6 +520,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'hot_seat',
   'custom',
   'anonymous_messages',
+  'secret_message',
 ]
 
 export function parseGameType(raw: unknown): GameType {
@@ -490,6 +533,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'hot_seat') return 'hot_seat'
   if (raw === 'custom') return 'custom'
   if (raw === 'anonymous_messages') return 'anonymous_messages'
+  if (raw === 'secret_message') return 'secret_message'
   return 'smash_marry_kill'
 }
 
@@ -518,6 +562,8 @@ export function gameHowItWorks(
         : "Upload everyone's names on the next step. Players claim their name when joining. One round per player who joins — you set a max cap; the host lobby shows the final count."
     case 'anonymous_messages':
       return 'Players join with an auto-assigned name — no sign-up. When the host starts, everyone posts anonymous messages that appear live for the whole room.'
+    case 'secret_message':
+      return 'Create your link and share it anywhere. Anyone who opens it can send you a message — senders never see each other’s messages, and only you can read your inbox.'
     case 'most_likely_to':
       return joiners
         ? 'Players add their name to the poll when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'
@@ -743,7 +789,7 @@ export function isPlayerOnlyJoinLobby(gameType: GameType | string | undefined, o
 /** WYR + This or That — forced joiners, no gender, always anonymous. */
 export function isLobbyGame(gameType: GameType | string | undefined): boolean {
   const type = parseGameType(gameType)
-  return type === 'would_you_rather' || type === 'this_or_that' || type === 'anonymous_messages'
+  return type === 'would_you_rather' || type === 'this_or_that' || type === 'anonymous_messages' || type === 'secret_message'
 }
 
 export function isAnonymousGame(gameType: GameType | string | undefined): boolean {
@@ -762,9 +808,19 @@ export function isAnonymousMessagesGame(gameType: GameType | string | undefined)
   return parseGameType(gameType) === 'anonymous_messages'
 }
 
+export function isSecretMessageGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'secret_message'
+}
+
+/** Anonymous room or host-only secret message inbox — shared message storage. */
+export function isMessageInboxGame(gameType: GameType | string | undefined): boolean {
+  const type = parseGameType(gameType)
+  return type === 'anonymous_messages' || type === 'secret_message'
+}
+
 /** Auto-assigned display name on join — no name input. */
 export function isAutoNameJoinGame(gameType: GameType | string | undefined): boolean {
-  return isAnonymousMessagesGame(gameType)
+  return isAnonymousMessagesGame(gameType) || isSecretMessageGame(gameType)
 }
 
 export function roundPoolSize(gameType: GameType | string | undefined): 2 | 3 {

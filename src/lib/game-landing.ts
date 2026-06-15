@@ -26,6 +26,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   hot_seat: 'hot-seat',
   custom: 'custom-game',
   anonymous_messages: 'anonymous-room',
+  secret_message: 'secret-message',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -362,6 +363,41 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       { title: 'Post live', description: 'Host starts the session and anonymous messages flow for the whole room.' },
     ],
     perfectFor: ['Confession nights', 'Team retros', 'Icebreakers', 'Group chats'],
+  }),
+
+  secret_message: landing('secret_message', {
+    seoTitle: 'Secret Message Link — Free Anonymous Inbox',
+    seoDescription:
+      'Create a free secret message link and share it anywhere. Friends send anonymous messages — only you see your private inbox. No sign-up for senders.',
+    keywords: [
+      'secret message link',
+      'anonymous message inbox',
+      'send me anonymous messages',
+      'instagram anonymous messages',
+    ],
+    heroSubtitle:
+      'Like a private suggestion box for your link. Share once — anyone can send you a message, and only you read them.',
+    highlights: ['Host-only inbox', 'Share anywhere', 'No sender sign-up'],
+    features: [
+      {
+        title: 'Only you see messages',
+        description: 'Senders never see each other’s messages — your inbox is private to you.',
+        emoji: '🔒',
+      },
+      {
+        title: 'Zero friction',
+        description: 'Open the link, type, send. No account or app required.',
+        emoji: '✉️',
+      },
+      SHARED_FEATURES.noSignup,
+      SHARED_FEATURES.mobile,
+    ],
+    steps: [
+      { title: 'Create your board', description: 'Pick a title and get your link instantly.' },
+      { title: 'Share the link', description: 'Drop it in your story, bio, or group chat.' },
+      { title: 'Read your inbox', description: 'Messages arrive on your host panel in real time.' },
+    ],
+    perfectFor: ['Instagram stories', 'Honest feedback', 'Q&A prompts', 'Fan messages'],
   }),
 }
 

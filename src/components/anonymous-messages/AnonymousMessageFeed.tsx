@@ -10,6 +10,7 @@ interface AnonymousMessageFeedProps {
   title?: string
   emptyLabel?: string
   readOnly?: boolean
+  hideSenderNames?: boolean
   canRemove?: boolean
   canReply?: boolean
   removingId?: string | null
@@ -28,6 +29,7 @@ export function AnonymousMessageFeed({
   title = 'Anonymous messages',
   emptyLabel = 'No messages yet — be the first to post',
   readOnly = false,
+  hideSenderNames = false,
   canRemove = false,
   canReply = false,
   removingId = null,
@@ -115,7 +117,9 @@ export function AnonymousMessageFeed({
                     </div>
                   )}
 
-                  <p className="text-violet-300/90 text-xs font-semibold mb-1">{message.player_name ?? 'Unknown'}</p>
+                  {!hideSenderNames && (
+                    <p className="text-violet-300/90 text-xs font-semibold mb-1">{message.player_name ?? 'Unknown'}</p>
+                  )}
 
                   <div className="space-y-1">
                     <div className="flex items-start justify-between gap-3">
