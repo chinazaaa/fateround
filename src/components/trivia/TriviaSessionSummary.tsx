@@ -1,6 +1,7 @@
 'use client'
 
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { tallyTriviaPlayerScores, triviaCategoryFromGame } from '@/lib/trivia'
 import { triviaCategoryLabel } from '@/lib/trivia-questions'
 import type { Game, Player, Round, TriviaAnswer } from '@/types'
@@ -44,11 +45,20 @@ export function TriviaSessionSummary({
       </div>
 
       {leaderboard.length > 0 ? (
-        <PaginatedLeaderboard
-          title="Final leaderboard"
-          rows={leaderboard.map((row, i) => ({ ...row, rank: i + 1 }))}
-          scoreLabel={(n) => `${n} pts`}
-        />
+        <FinalResultsShareBlock
+          game={game}
+          participants={[]}
+          votes={[]}
+          rounds={rounds}
+          players={players}
+          triviaAnswers={answers}
+        >
+          <PaginatedLeaderboard
+            title="Final leaderboard"
+            rows={leaderboard.map((row, i) => ({ ...row, rank: i + 1 }))}
+            scoreLabel={(n) => `${n} pts`}
+          />
+        </FinalResultsShareBlock>
       ) : (
         <div className="glass-card p-8 text-center text-muted">No rounds completed yet.</div>
       )}

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import {
   formatTriviaChoiceLabel,
@@ -238,7 +239,7 @@ export function TriviaHostManagePanel({
         </div>
       )}
 
-      {(game.status === 'active' || game.status === 'finished') && (
+      {game.status === 'active' && (
         <PaginatedLeaderboard
           title="Live leaderboard"
           rows={leaderboard.map((row, i) => ({ ...row, rank: i + 1 }))}
@@ -248,11 +249,25 @@ export function TriviaHostManagePanel({
 
       {game.status === 'finished' && (
         <>
-          <div className="glass-card-strong p-8 text-center space-y-2">
-            <p className="text-4xl">🏆</p>
-            <p className="text-2xl font-black">{leaderboard[0]?.name ?? 'Someone'} wins!</p>
-            <p className="text-muted text-base">{leaderboard[0]?.score ?? 0} points total</p>
-          </div>
+          <FinalResultsShareBlock
+            game={game}
+            participants={[]}
+            votes={[]}
+            rounds={rounds}
+            players={players}
+            triviaAnswers={answers}
+          >
+            <PaginatedLeaderboard
+              title="Final leaderboard"
+              rows={leaderboard.map((row, i) => ({ ...row, rank: i + 1 }))}
+              scoreLabel={(n) => `${n} pts`}
+            />
+            <div className="glass-card-strong p-8 text-center space-y-2">
+              <p className="text-4xl">🏆</p>
+              <p className="text-2xl font-black">{leaderboard[0]?.name ?? 'Someone'} wins!</p>
+              <p className="text-muted text-base">{leaderboard[0]?.score ?? 0} points total</p>
+            </div>
+          </FinalResultsShareBlock>
           <button type="button" onClick={onPlayAgain} disabled={playingAgain} className="btn-secondary w-full py-3.5 text-base">
             {playingAgain ? 'Resetting…' : 'Play again'}
           </button>

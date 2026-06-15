@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, type ReactNode } from 'react'
-import type { Game, Participant, Player, Round, Vote } from '@/types'
+import type { Game, Participant, Player, Round, TriviaAnswer, Vote } from '@/types'
 import { parseGameType, gameTypeConfig } from '@/lib/game-types'
 import { ShareResults } from '@/components/ShareResults'
 
@@ -13,6 +13,7 @@ export function FinalResultsShareBlock({
   votes,
   rounds,
   players,
+  triviaAnswers,
 }: {
   children: ReactNode
   game: Game
@@ -20,6 +21,7 @@ export function FinalResultsShareBlock({
   votes: Vote[]
   rounds: Round[]
   players: Player[]
+  triviaAnswers?: TriviaAnswer[]
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
   const gameType = parseGameType(game.game_type)
@@ -42,6 +44,7 @@ export function FinalResultsShareBlock({
         votes={votes}
         rounds={rounds}
         players={players}
+        triviaAnswers={triviaAnswers}
       />
     </>
   )

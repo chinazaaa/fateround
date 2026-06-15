@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useRef, useState, type RefObject } from 'react'
-import type { Game, Participant, Player, Round, Vote } from '@/types'
+import type { Game, Participant, Player, Round, TriviaAnswer, Vote } from '@/types'
 import {
   parseGameType,
   gameTypeConfig,
@@ -10,7 +10,9 @@ import {
   isMostLikelyTo,
   isWhoSaidThis,
   isCustomGame,
+  isTriviaGame,
 } from '@/lib/game-types'
+import { tallyTriviaPlayerScores } from '@/lib/trivia'
 import { buildCustomLeaderboard } from '@/lib/custom-game'
 import { getCategoryMeta, getVoteCategories, flagForParticipant, tallyWyrVotes, tallyMltVotes } from '@/lib/vote-stats'
 import { isMltImportGame, mltVoteTargets } from '@/lib/mlt'
@@ -27,12 +29,14 @@ function buildShareText({
   votes,
   rounds,
   players,
+  triviaAnswers,
 }: {
   game: Game
   participants: Participant[]
   votes: Vote[]
   rounds: Round[]
   players: Player[]
+  triviaAnswers?: TriviaAnswer[]
 }): string {
   const gameType = parseGameType(game.game_type)
   const config = gameTypeConfig(gameType)
@@ -45,8 +49,20 @@ function buildShareText({
   const isWyr = isBinaryChoiceGame(gameType)
   const isMlt = isMostLikelyTo(gameType)
   const isWst = isWhoSaidThis(gameType)
+  const isTrivia = isTriviaGame(gameType)
 
-  if (isWyr) {
+  if (isTrivia && triviaAnswers) {
+    const scores = tallyTriviaPlayerScores(triviaAnswers, players)
+    lines.push('Final leaderboard:')
+    const medals = ['1st', '2nd', '3rd']
+    scores.slice(0, 5).forEach((s, i) => {
+      const label = i < 3 ? medals[i] : `${i + 1}.`
+      lines.push(`  ${label}: ${s.name} (${s.score} pts)`)
+    })
+    if (scores.length > 5) {
+      lines.push(`  ...and ${scores.length - 5} more players`)
+    }
+  } else if (isWyr) {
     lines.push('Top results:')
     const shownRounds = rounds.slice(0, 5)
     for (const round of shownRounds) {
@@ -144,6 +160,7 @@ export function ShareResults({
   votes,
   rounds,
   players,
+  triviaAnswers,
 }: {
   captureRef?: RefObject<HTMLElement | null>
   game: Game
@@ -151,6 +168,7 @@ export function ShareResults({
   votes: Vote[]
   rounds: Round[]
   players: Player[]
+  triviaAnswers?: TriviaAnswer[]
 }) {
   const { success, error } = useToast()
   const [sharing, setSharing] = useState(false)
@@ -184,7 +202,7 @@ export function ShareResults({
         return
       }
 
-      const text = buildShareText({ game, participants, votes, rounds, players })
+      const text = buildShareText({ game, participants, votes, rounds, players, triviaAnswers })
       if (typeof navigator !== 'undefined' && navigator.share) {
         try {
           await navigator.share({ text })
@@ -205,7 +223,7 @@ export function ShareResults({
       }
 
       try {
-        const text = buildShareText({ game, participants, votes, rounds, players })
+        const text = buildShareText({ game, participants, votes, rounds, players, triviaAnswers })
         await navigator.clipboard.writeText(text)
         success('Results copied to clipboard!')
       } catch {
@@ -215,7 +233,7 @@ export function ShareResults({
       sharingLock.current = false
       setSharing(false)
     }
-  }, [captureRef, game, participants, votes, rounds, players, success, error])
+  }, [captureRef, game, participants, votes, rounds, players, triviaAnswers, success, error])
 
   return (
     <button
