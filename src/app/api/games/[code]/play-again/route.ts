@@ -156,6 +156,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { error: confessionsError } = await supabase.from('confessions').delete().eq('game_id', gameId)
   if (confessionsError) return NextResponse.json({ error: confessionsError.message }, { status: 500 })
 
+  if (isTriviaGame(gameType)) {
+    const { error: clearError } = await clearTriviaSessionData(supabase, gameId)
+    if (clearError) return NextResponse.json({ error: clearError.message }, { status: 500 })
+  }
+
   const { error: roundsError } = await supabase.from('rounds').delete().eq('game_id', gameId)
   if (roundsError) return NextResponse.json({ error: roundsError.message }, { status: 500 })
 
@@ -202,10 +207,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
   }
 
-  if (isTriviaGame(gameType)) {
-    const { error: clearError } = await clearTriviaSessionData(supabase, gameId)
-    if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
-  }
 
   const { data: updated, error: gameError } = await supabase
     .from('games')

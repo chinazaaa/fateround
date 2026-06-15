@@ -8,10 +8,11 @@ import { ChipGrid, SegmentedControl } from '@/components/ui/CreateWizard'
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
 import {
   mergeTriviaQuestions,
-  parseExcelTriviaQuestions,
+  parseExcelTriviaQuestionImport,
   parseQuestionSource,
   parseStoredTriviaQuestions,
-  parseTriviaQuestionRows,
+  parseTriviaQuestionImport,
+  formatTriviaImportSummary,
   questionRoundPickerOptions,
   questionSampleFile,
   questionUploadHint,
@@ -68,7 +69,9 @@ export function TriviaPlayAgainSetup({
   const [roundsCount, setRoundsCount] = useState(10)
   const [customQuestions, setCustomQuestions] = useState<TriviaQuestion[]>([])
   const [questionsUploadError, setQuestionsUploadError] = useState<string | null>(null)
+  const [questionsUploadInfo, setQuestionsUploadInfo] = useState<string | null>(null)
   const [questionsBulkPaste, setQuestionsBulkPaste] = useState('')
+  const [confirming, setConfirming] = useState(false)
   const questionsFileRef = useRef<HTMLInputElement>(null)
   const wasOpenRef = useRef(false)
 
@@ -89,6 +92,7 @@ export function TriviaPlayAgainSetup({
     setRoundsCount(game.rounds_count ?? 10)
     setCustomQuestions(parseStoredTriviaQuestions(game.custom_questions))
     setQuestionsUploadError(null)
+    setQuestionsUploadInfo(null)
     setQuestionsBulkPaste('')
   }, [open, game])
 
@@ -122,10 +126,19 @@ export function TriviaPlayAgainSetup({
     }
   }, [customQuestions.length, questionSource, roundsCount])
 
-  const addQuestionsFromRows = (rows: TriviaQuestion[], replace = false) => {
-    if (rows.length === 0) return
-    setCustomQuestions(replace ? rows : (prev) => mergeTriviaQuestions(prev, rows))
+  const addQuestionsFromRows = (
+    result: ReturnType<typeof parseTriviaQuestionImport>,
+    replace = false
+  ) => {
+    if (result.questions.length === 0) return
+    setCustomQuestions(replace ? result.questions : (prev) => mergeTriviaQuestions(prev, result.questions))
     setQuestionsUploadError(null)
+    const summary = formatTriviaImportSummary(result)
+    setQuestionsUploadInfo(
+      summary
+        ? `Loaded ${result.questions.length} question${result.questions.length === 1 ? '' : 's'} · ${summary}`
+        : `Loaded ${result.questions.length} question${result.questions.length === 1 ? '' : 's'}`
+    )
   }
 
   const handleQuestionsFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -134,29 +147,30 @@ export function TriviaPlayAgainSetup({
     if (!file) return
 
     setQuestionsUploadError(null)
+    setQuestionsUploadInfo(null)
     const ext = file.name.split('.').pop()?.toLowerCase()
-    const replace = questionMode === 'change'
+    const replace = isLobby || questionMode === 'change'
 
     try {
       if (ext === 'csv') {
         const text = await file.text()
-        const rows = parseTriviaQuestionRows(text, triviaCategory)
-        if (rows.length === 0) {
+        const result = parseTriviaQuestionImport(text, triviaCategory)
+        if (result.questions.length === 0) {
           setQuestionsUploadError('No valid rows. Check the sample CSV format.')
           return
         }
-        addQuestionsFromRows(rows, replace)
+        addQuestionsFromRows(result, replace)
         return
       }
 
       if (ext === 'xlsx' || ext === 'xls') {
         const buffer = await file.arrayBuffer()
-        const rows = await parseExcelTriviaQuestions(buffer, triviaCategory)
-        if (rows.length === 0) {
+        const result = await parseExcelTriviaQuestionImport(buffer, triviaCategory)
+        if (result.questions.length === 0) {
           setQuestionsUploadError('No valid rows. Check the sample CSV format.')
           return
         }
-        addQuestionsFromRows(rows, replace)
+        addQuestionsFromRows(result, replace)
         return
       }
 
@@ -166,10 +180,10 @@ export function TriviaPlayAgainSetup({
     }
   }
 
-  const showCustomUpload = isLobby || questionMode === 'change'
+  const showCustomUpload = isLobby || questionMode === 'change' || storedCustomCount === 0
   const showCustomKeepMode = !isLobby && storedCustomCount > 0
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const storedCustom = parseStoredTriviaQuestions(game.custom_questions)
 
     if (questionSource === 'custom') {
@@ -207,7 +221,12 @@ export function TriviaPlayAgainSetup({
       }
     }
 
-    void onConfirm(payload)
+    setConfirming(true)
+    try {
+      await onConfirm(payload)
+    } finally {
+      setConfirming(false)
+    }
   }
 
   const sample = questionSampleFile('trivia')
@@ -253,6 +272,11 @@ export function TriviaPlayAgainSetup({
         {questionSource === 'custom' && (
           <div className="space-y-3">
             <p className="label-caps">Your questions</p>
+            <p className="text-faint text-xs">{questionUploadHint('trivia')}</p>
+            <a href={sample.href} download={sample.download} className="text-sm text-[var(--primary)] underline">
+              Download sample CSV
+            </a>
+
             {showCustomKeepMode && (
               <SegmentedControl
                 value={questionMode}
@@ -262,6 +286,13 @@ export function TriviaPlayAgainSetup({
                   { value: 'change', label: 'Upload new', hint: 'Replace with a new CSV or paste' },
                 ]}
               />
+            )}
+
+            {showCustomKeepMode && questionMode === 'same' && (
+              <p className="text-muted text-sm">
+                {storedCustomCount} question{storedCustomCount === 1 ? '' : 's'} in your pool — unused ones are
+                picked first. Switch to <strong className="text-body">Upload new</strong> to replace them.
+              </p>
             )}
 
             {showCustomUpload && (
@@ -291,10 +322,6 @@ export function TriviaPlayAgainSetup({
                     >
                       Choose CSV or Excel file
                     </button>
-                    <p className="text-faint text-xs">{questionUploadHint('trivia')}</p>
-                    <a href={sample.href} download={sample.download} className="text-faint text-xs underline">
-                      Download sample CSV
-                    </a>
                   </div>
                 )}
 
@@ -310,12 +337,12 @@ export function TriviaPlayAgainSetup({
                     <button
                       type="button"
                       onClick={() => {
-                        const rows = parseTriviaQuestionRows(questionsBulkPaste, triviaCategory)
-                        if (rows.length === 0) {
+                        const result = parseTriviaQuestionImport(questionsBulkPaste, triviaCategory)
+                        if (result.questions.length === 0) {
                           setQuestionsUploadError('No valid rows found')
                           return
                         }
-                        addQuestionsFromRows(rows, true)
+                        addQuestionsFromRows(result, true)
                         setQuestionsBulkPaste('')
                       }}
                       disabled={!questionsBulkPaste.trim()}
@@ -326,18 +353,16 @@ export function TriviaPlayAgainSetup({
                   </div>
                 )}
 
-                {(customQuestions.length > 0 || storedCustomCount > 0) && (
+                {customQuestions.length > 0 && (
                   <p className="text-muted text-sm">
-                    {customQuestions.length > 0 ? customQuestions.length : storedCustomCount} question(s) loaded
+                    {customQuestions.length} question{customQuestions.length === 1 ? '' : 's'} in pool
                   </p>
                 )}
-              </div>
-            )}
 
-            {showCustomKeepMode && questionMode === 'same' && (
-              <p className="text-muted text-sm">
-                {storedCustomCount} question(s) in your pool — unused ones are picked first.
-              </p>
+                {questionsUploadInfo && (
+                  <p className="text-emerald-600 dark:text-emerald-400 text-sm">{questionsUploadInfo}</p>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -362,8 +387,19 @@ export function TriviaPlayAgainSetup({
           <button type="button" onClick={onClose} disabled={loading} className="btn-secondary flex-1 py-3">
             Cancel
           </button>
-          <button type="button" onClick={handleConfirm} disabled={loading} className="btn-primary flex-1 py-3">
-            {loading ? 'Saving…' : isLobby ? 'Save settings' : 'Reopen lobby'}
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={loading || confirming || (!isLobby && game.status !== 'finished')}
+            className="btn-primary flex-1 py-3"
+          >
+            {loading || confirming
+              ? 'Saving…'
+              : !isLobby && game.status !== 'finished'
+                ? 'Finishing game…'
+                : isLobby
+                  ? 'Save settings'
+                  : 'Reopen lobby'}
           </button>
         </div>
       </div>

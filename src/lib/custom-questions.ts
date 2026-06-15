@@ -6,11 +6,37 @@ import { TRIVIA_QUESTION_COUNT, triviaQuestionKey } from '@/lib/trivia-questions
 import { isWouldYouRather, isMostLikelyTo, isThisOrThat, isBinaryChoiceGame, isTriviaGame, parseGameType } from '@/lib/game-types'
 import { pickLeastUsed } from '@/lib/question-picker'
 
+function splitCsvRow(line: string): string[] {
+  const result: string[] = []
+  let current = ''
+  let inQuotes = false
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"'
+        i++
+        continue
+      }
+      inQuotes = !inQuotes
+      continue
+    }
+    if (ch === ',' && !inQuotes) {
+      result.push(current.trim().replace(/^"|"$/g, ''))
+      current = ''
+      continue
+    }
+    current += ch
+  }
+
+  result.push(current.trim().replace(/^"|"$/g, ''))
+  return result
+}
+
 function splitRow(line: string): string[] {
   if (line.includes('\t')) return line.split('\t').map((s) => s.trim())
-  if (line.includes(',')) {
-    return line.split(',').map((s) => s.trim().replace(/^"|"$/g, ''))
-  }
+  if (line.includes(',')) return splitCsvRow(line)
   return [line.trim()]
 }
 
@@ -72,9 +98,54 @@ export function parseThisOrThatQuestionRows(text: string): WyrQuestion[] {
   return rows
 }
 
+function normalizeHeaderKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, '_')
+}
+
 function isTriviaHeader(cols: string[]): boolean {
-  const q = cols[0]?.trim().toLowerCase()
-  return q === 'question' || q === 'questions'
+  const normalized = cols.map(normalizeHeaderKey)
+  if (normalized.includes('question') || normalized.includes('questions')) return true
+  return normalized.includes('option_a') || normalized.includes('optiona')
+}
+
+type TriviaHeaderMap = {
+  question: number
+  choices: number[]
+  correct: number
+  category?: number
+}
+
+function buildTriviaHeaderMap(cols: string[]): TriviaHeaderMap | null {
+  const normalized = cols.map(normalizeHeaderKey)
+  const question =
+    normalized.indexOf('question') >= 0
+      ? normalized.indexOf('question')
+      : normalized.indexOf('questions')
+
+  if (question < 0) return null
+
+  const choiceKeys = ['option_a', 'option_b', 'option_c', 'option_d'] as const
+  const choices: number[] = []
+  for (const key of choiceKeys) {
+    const idx = normalized.indexOf(key)
+    if (idx >= 0) choices.push(idx)
+  }
+  if (choices.length < 2) {
+    for (const key of ['a', 'b', 'c', 'd'] as const) {
+      const idx = normalized.indexOf(key)
+      if (idx >= 0 && !choices.includes(idx)) choices.push(idx)
+    }
+  }
+
+  const correct =
+    ['correct', 'correct_answer', 'answer', 'correct_index'].map((k) => normalized.indexOf(k)).find((i) => i >= 0) ??
+    -1
+
+  if (choices.length < 2 || correct < 0) return null
+
+  const category = ['category', 'cat'].map((k) => normalized.indexOf(k)).find((i) => i >= 0)
+
+  return { question, choices, correct, category }
 }
 
 function parseCorrectIndex(raw: string, choices: string[]): number | null {
@@ -91,56 +162,137 @@ function parseCorrectIndex(raw: string, choices: string[]): number | null {
   return idx >= 0 ? idx : null
 }
 
-export function parseTriviaQuestionRows(text: string, defaultCategory: TriviaCategory = 'general'): TriviaQuestion[] {
+function parseTriviaQuestionFromCols(
+  cols: string[],
+  defaultCategory: TriviaCategory,
+  headerMap?: TriviaHeaderMap | null
+): TriviaQuestion | null {
+  if (headerMap) {
+    const question = cols[headerMap.question]?.trim()
+    if (!question) return null
+
+    const choices = headerMap.choices.map((i) => cols[i]?.trim() ?? '').filter(Boolean)
+    const correctRaw = cols[headerMap.correct]?.trim() ?? ''
+    const catRaw = headerMap.category != null ? cols[headerMap.category]?.trim().toLowerCase() : ''
+    const category: TriviaCategory = catRaw === 'tech' ? 'tech' : defaultCategory
+
+    if (choices.length < 2) return null
+    const correctIndex = parseCorrectIndex(correctRaw, choices)
+    if (correctIndex == null) return null
+
+    return { question, choices: choices.slice(0, 4), correctIndex, category }
+  }
+
+  if (cols.length < 3) return null
+
+  const question = cols[0]?.trim()
+  if (!question) return null
+
+  let choices: string[] = []
+  let correctRaw = ''
+  let category: TriviaCategory = defaultCategory
+
+  if (cols.length >= 6) {
+    choices = cols.slice(1, 5).map((c) => c.trim()).filter(Boolean)
+    correctRaw = cols[5] ?? ''
+    const cat = cols[6]?.trim().toLowerCase()
+    if (cat === 'tech' || cat === 'general') category = cat
+  } else if (cols.length === 5) {
+    choices = cols.slice(1, 4).map((c) => c.trim()).filter(Boolean)
+    correctRaw = cols[4] ?? ''
+  } else if (cols.length === 4) {
+    choices = cols.slice(1, 3).map((c) => c.trim()).filter(Boolean)
+    correctRaw = cols[3] ?? ''
+  } else {
+    choices = [cols[1], cols[2]].map((c) => c.trim()).filter(Boolean)
+    correctRaw = cols[3] ?? cols[2] ?? ''
+  }
+
+  if (choices.length < 2) return null
+  const correctIndex = parseCorrectIndex(correctRaw, choices)
+  if (correctIndex == null) return null
+
+  return { question, choices: choices.slice(0, 4), correctIndex, category }
+}
+
+export type TriviaQuestionImportResult = {
+  questions: TriviaQuestion[]
+  totalRows: number
+  skippedRows: number
+  duplicateRows: number
+}
+
+export function parseTriviaQuestionImport(
+  text: string,
+  defaultCategory: TriviaCategory = 'general'
+): TriviaQuestionImportResult {
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean)
-  const rows: TriviaQuestion[] = []
+
+  const parsed: TriviaQuestion[] = []
+  let headerMap: TriviaHeaderMap | null = null
+  let totalRows = 0
+  let skippedRows = 0
 
   for (const line of lines) {
     const cols = splitRow(line)
-    if (rows.length === 0 && isTriviaHeader(cols)) continue
-    if (cols.length < 3) continue
-
-    const question = cols[0]?.trim()
-    if (!question) continue
-
-    let choices: string[] = []
-    let correctRaw = ''
-    let category: TriviaCategory = defaultCategory
-
-    if (cols.length >= 6) {
-      choices = cols.slice(1, 5).map((c) => c.trim()).filter(Boolean)
-      correctRaw = cols[5] ?? ''
-      const cat = cols[6]?.trim().toLowerCase()
-      if (cat === 'tech' || cat === 'general') category = cat
-    } else if (cols.length === 5) {
-      choices = cols.slice(1, 4).map((c) => c.trim()).filter(Boolean)
-      correctRaw = cols[4] ?? ''
-    } else if (cols.length === 4) {
-      choices = cols.slice(1, 3).map((c) => c.trim()).filter(Boolean)
-      correctRaw = cols[3] ?? ''
-    } else {
-      choices = [cols[1], cols[2]].map((c) => c.trim()).filter(Boolean)
-      correctRaw = cols[3] ?? cols[2] ?? ''
+    if (!headerMap && isTriviaHeader(cols)) {
+      headerMap = buildTriviaHeaderMap(cols)
+      continue
     }
 
-    if (choices.length < 2) continue
-    const correctIndex = parseCorrectIndex(correctRaw, choices)
-    if (correctIndex == null) continue
-
-    rows.push({ question, choices: choices.slice(0, 4), correctIndex, category })
+    totalRows++
+    const row = parseTriviaQuestionFromCols(cols, defaultCategory, headerMap)
+    if (row) parsed.push(row)
+    else skippedRows++
   }
 
-  return rows
+  const seen = new Set<string>()
+  const questions: TriviaQuestion[] = []
+  let duplicateRows = 0
+  for (const q of parsed) {
+    const key = triviaQuestionKey(q)
+    if (seen.has(key)) {
+      duplicateRows++
+      continue
+    }
+    seen.add(key)
+    questions.push(q)
+  }
+
+  return { questions, totalRows, skippedRows, duplicateRows }
+}
+
+export function formatTriviaImportSummary(result: TriviaQuestionImportResult): string | null {
+  const parts: string[] = []
+  if (result.skippedRows > 0) {
+    parts.push(`${result.skippedRows} row${result.skippedRows === 1 ? '' : 's'} skipped (check format)`)
+  }
+  if (result.duplicateRows > 0) {
+    parts.push(`${result.duplicateRows} duplicate question${result.duplicateRows === 1 ? '' : 's'} removed`)
+  }
+  if (parts.length === 0) return null
+  return parts.join(' · ')
+}
+
+export function parseTriviaQuestionRows(text: string, defaultCategory: TriviaCategory = 'general'): TriviaQuestion[] {
+  return parseTriviaQuestionImport(text, defaultCategory).questions
 }
 
 export async function parseExcelTriviaQuestions(
   buffer: ArrayBuffer,
   defaultCategory: TriviaCategory = 'general'
 ): Promise<TriviaQuestion[]> {
-  return parseTriviaQuestionRows(await sheetBufferToText(buffer), defaultCategory)
+  return (await parseExcelTriviaQuestionImport(buffer, defaultCategory)).questions
+}
+
+export async function parseExcelTriviaQuestionImport(
+  buffer: ArrayBuffer,
+  defaultCategory: TriviaCategory = 'general'
+): Promise<TriviaQuestionImportResult> {
+  return parseTriviaQuestionImport(await sheetBufferToText(buffer), defaultCategory)
 }
 
 export function mergeTriviaQuestions(existing: TriviaQuestion[], incoming: TriviaQuestion[]): TriviaQuestion[] {
@@ -236,13 +388,8 @@ async function sheetBufferToText(buffer: ArrayBuffer): Promise<string> {
 
   const grid = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '' }) as string[][]
   return grid
-    .map((row) =>
-      row
-        .map((cell) => String(cell ?? '').trim())
-        .filter(Boolean)
-        .join('\t')
-    )
-    .filter(Boolean)
+    .map((row) => row.map((cell) => String(cell ?? '').trim()).join('\t'))
+    .filter((line) => line.replace(/\t/g, '').length > 0)
     .join('\n')
 }
 
@@ -299,7 +446,7 @@ export function questionSampleFile(gameType?: GameType | string): { href: string
 
 export function questionUploadHint(gameType?: GameType | string): string {
   if (isTriviaGame(gameType)) {
-    return '.csv or .xlsx — question, option_a, option_b, option_c, option_d, correct (A–D or answer text)'
+    return '.csv or .xlsx — question, option_a–option_d, correct (A–D). Quote questions that contain commas.'
   }
   if (isThisOrThat(gameType)) {
     return '.csv or .xlsx — one question per row (e.g. Coffee or Tea?)'
@@ -442,7 +589,7 @@ export function questionSourceOptions(gameType: GameType | string): {
     {
       value: 'custom',
       label: 'Your own',
-      hint: 'Upload a CSV with your questions — download the sample format first.',
+      hint: 'Upload a CSV or Excel file with your questions.',
     },
   ]
 }

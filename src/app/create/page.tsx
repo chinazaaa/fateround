@@ -61,7 +61,9 @@ import {
   parseExcelWyrQuestions,
   parseExcelThisOrThatQuestions,
   parseExcelMltQuestions,
-  parseTriviaQuestionRows,
+  parseTriviaQuestionImport,
+  formatTriviaImportSummary,
+  parseExcelTriviaQuestionImport,
   parseExcelTriviaQuestions,
   mergeWyrQuestions,
   mergeMltQuestions,
@@ -547,12 +549,12 @@ function CreateGameInner() {
       }
       addCustomQuestionsFromRows([], rows)
     } else if (isTrivia) {
-      const rows = parseTriviaQuestionRows(questionsBulkPaste, triviaCategory)
-      if (rows.length === 0) {
+      const result = parseTriviaQuestionImport(questionsBulkPaste, triviaCategory)
+      if (result.questions.length === 0) {
         setQuestionsUploadError('Use: question, option_a, option_b, option_c, option_d, correct')
         return
       }
-      addCustomQuestionsFromRows([], [], rows)
+      addCustomQuestionsFromRows([], [], result.questions)
     }
     setQuestionsBulkPaste('')
   }
@@ -590,12 +592,13 @@ function CreateGameInner() {
           }
           addCustomQuestionsFromRows([], rows)
         } else if (isTrivia) {
-          const rows = parseTriviaQuestionRows(text, triviaCategory)
-          if (rows.length === 0) {
+          const result = parseTriviaQuestionImport(text, triviaCategory)
+          if (result.questions.length === 0) {
             setQuestionsUploadError('No valid rows. Use question, options, and correct answer columns.')
             return
           }
-          addCustomQuestionsFromRows([], [], rows)
+          setCustomTriviaQuestions(result.questions)
+          setQuestionsUploadError(formatTriviaImportSummary(result))
         }
         return
       }
@@ -624,12 +627,13 @@ function CreateGameInner() {
           }
           addCustomQuestionsFromRows([], rows)
         } else if (isTrivia) {
-          const rows = await parseExcelTriviaQuestions(buffer, triviaCategory)
-          if (rows.length === 0) {
+          const result = await parseExcelTriviaQuestionImport(buffer, triviaCategory)
+          if (result.questions.length === 0) {
             setQuestionsUploadError('No valid rows. Use question, options, and correct answer columns.')
             return
           }
-          addCustomQuestionsFromRows([], [], rows)
+          setCustomTriviaQuestions(result.questions)
+          setQuestionsUploadError(formatTriviaImportSummary(result))
         }
         return
       }

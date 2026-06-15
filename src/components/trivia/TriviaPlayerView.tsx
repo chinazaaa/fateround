@@ -185,6 +185,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           answers={answers}
           myPlayerId={myPlayerId}
           playerName={myPlayerName}
+          onReload={load}
         />
       </div>
     </div>

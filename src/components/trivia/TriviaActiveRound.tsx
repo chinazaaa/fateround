@@ -11,6 +11,7 @@ import {
   TRIVIA_REVEAL_SECONDS,
 } from '@/lib/trivia'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
+import { useTriviaRevealAdvance } from '@/hooks/useTriviaRevealAdvance'
 import { useTriviaNotifications } from '@/hooks/useTriviaNotifications'
 import { playVoteSubmittedSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
@@ -32,6 +33,7 @@ interface TriviaActiveRoundProps {
   answers: TriviaAnswer[]
   myPlayerId: string
   playerName: string
+  onReload?: () => void
 }
 
 export function TriviaActiveRound({
@@ -42,6 +44,7 @@ export function TriviaActiveRound({
   answers,
   myPlayerId,
   playerName,
+  onReload,
 }: TriviaActiveRoundProps) {
   const { error: toastError } = useToast()
   const [submitting, setSubmitting] = useState(false)
@@ -120,6 +123,14 @@ export function TriviaActiveRound({
   })
 
   const correct = myAnswer?.is_correct ?? lastResult?.isCorrect
+
+  useTriviaRevealAdvance({
+    gameCode,
+    game,
+    rounds,
+    enabled: game.status === 'active',
+    onAdvanced: onReload,
+  })
 
   useTriviaNotifications({
     game,

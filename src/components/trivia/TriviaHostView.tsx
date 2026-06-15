@@ -224,8 +224,8 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
     answers,
     advancing,
     onEndRound: endRound,
-    onNextRound: nextRound,
-    onFinishGame: finishGame,
+    gameCode,
+    onReload: load,
     enabled: game?.status === 'active',
   })
 
@@ -239,7 +239,10 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
           body: JSON.stringify({ hostToken, ...payload }),
         })
         const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'Failed to reset')
+        if (!res.ok) {
+          const msg = data.error ?? 'Failed to reset'
+          throw new Error(msg === 'Game must be finished before playing again' ? 'Game is still wrapping up — try again in a moment' : msg)
+        }
         setAnswers([])
         setRounds([])
         await load()
@@ -397,15 +400,16 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
         )}
 
         {tab === 'play' && hostPlays && hostPlayerId && game.status !== 'waiting' && (
-          <TriviaActiveRound
-            gameCode={gameCode}
-            game={game}
-            players={players}
-            rounds={rounds}
-            answers={answers}
-            myPlayerId={hostPlayerId}
-            playerName={hostPlayerName}
-          />
+        <TriviaActiveRound
+          gameCode={gameCode}
+          game={game}
+          players={players}
+          rounds={rounds}
+          answers={answers}
+          myPlayerId={hostPlayerId}
+          playerName={hostPlayerName}
+          onReload={load}
+        />
         )}
 
         {(tab === 'manage' || !showPlayTab) && (

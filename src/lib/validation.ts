@@ -387,6 +387,12 @@ export const triviaAnswerSchema = z.object({
 
 export type TriviaAnswerInput = z.infer<typeof triviaAnswerSchema>
 
+export const triviaAdvanceSchema = z.object({
+  gameId: gameCodeString(),
+})
+
+export type TriviaAdvanceInput = z.infer<typeof triviaAdvanceSchema>
+
 const codewordsTeamEnum = z.enum(['red', 'blue'])
 const codewordsRoleEnum = z.enum(['spymaster', 'operative'])
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { playAgainSchema } from '@/lib/validation'
-import { assertHostGame } from '@/lib/game-admin'
+import { assertHostGameSettings } from '@/lib/game-admin'
 import {
   applyCustomQuestionsUpdate,
   applyParticipantListUpdate,
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
 
-  const auth = await assertHostGame(supabase, code, hostToken)
+  const auth = await assertHostGameSettings(supabase, code, hostToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   const game = auth.game!
