@@ -10,7 +10,7 @@ export const BINGO_DEFAULT_MAX_PLAYERS = 20
 export const BINGO_FREE_INDEX = 12
 
 export type BingoCallMode = 'manual' | 'auto'
-export const BINGO_DEFAULT_CALL_MODE: BingoCallMode = 'manual'
+export const BINGO_DEFAULT_CALL_MODE: BingoCallMode = 'auto'
 export const BINGO_CALL_INTERVAL_OPTIONS = [3, 5, 8, 10, 15] as const
 export const BINGO_DEFAULT_CALL_INTERVAL = 5
 
@@ -124,7 +124,8 @@ export function bingoMaxPlayers(game: { max_players?: number | null }): number {
 }
 
 export function parseBingoCallMode(raw: unknown): BingoCallMode {
-  return raw === 'auto' ? 'auto' : 'manual'
+  if (raw === 'manual' || raw === 'auto') return raw
+  return BINGO_DEFAULT_CALL_MODE
 }
 
 export function bingoCallModeFromGame(game: { bingo_call_mode?: string | null }): BingoCallMode {

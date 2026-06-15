@@ -9,6 +9,7 @@ import { gameTypeConfig } from '@/lib/game-types'
 import {
   BINGO_CALL_INTERVAL_OPTIONS,
   BINGO_DEFAULT_CALL_INTERVAL,
+  BINGO_DEFAULT_CALL_MODE,
   BINGO_MIN_PLAYERS,
   bingoCallIntervalFromGame,
   bingoCallModeFromGame,
@@ -32,7 +33,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const [calling, setCalling] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
-  const [lobbyCallMode, setLobbyCallMode] = useState<BingoCallMode>('manual')
+  const [lobbyCallMode, setLobbyCallMode] = useState<BingoCallMode>(BINGO_DEFAULT_CALL_MODE)
   const [lobbyCallInterval, setLobbyCallInterval] = useState(BINGO_DEFAULT_CALL_INTERVAL)
   const [lobbyMaxPlayers, setLobbyMaxPlayers] = useState(BINGO_MIN_PLAYERS)
 
@@ -209,7 +210,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const lastCalled = called.length > 0 ? called[called.length - 1] : null
   const winnerPlayer = winner ? players.find((p) => p.id === winner.player_id) : null
   const playerLink = `${appOrigin()}/game/${gameCode}`
-  const callMode = game ? bingoCallModeFromGame(game) : 'manual'
+  const callMode = game ? bingoCallModeFromGame(game) : BINGO_DEFAULT_CALL_MODE
   const callInterval = game ? bingoCallIntervalFromGame(game) : BINGO_DEFAULT_CALL_INTERVAL
   const isAuto = callMode === 'auto'
 
