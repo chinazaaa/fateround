@@ -49,7 +49,7 @@ export function AnonymousMessageComposer({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 relative">
       {replyTo && (
         <div className="glass-card px-3 py-2.5 flex items-start gap-3 border border-violet-400/30">
           <div className="flex-1 min-w-0 border-l-2 border-violet-400 pl-2">
@@ -83,7 +83,7 @@ export function AnonymousMessageComposer({
         className="input-field resize-none w-full"
       />
       <div className="flex items-center gap-2">
-        <div className="flex gap-1 relative">
+        <div className="flex gap-1">
           <button
             type="button"
             onClick={() => {
@@ -106,24 +106,25 @@ export function AnonymousMessageComposer({
           >
             GIF
           </button>
-          <EmojiPickerPopover
-            open={emojiPickerOpen}
-            onClose={() => setEmojiPickerOpen(false)}
-            onSelect={handleEmojiInsert}
-          />
-          <GifStickerPicker
-            open={gifPickerOpen}
-            onClose={() => setGifPickerOpen(false)}
-            onSelect={(url) => {
-              onSendGif(url)
-              setGifPickerOpen(false)
-            }}
-          />
         </div>
         <button type="button" onClick={onSend} disabled={sending || !value.trim()} className="btn-primary flex-1">
           {sending ? 'Sending…' : replyTo ? 'Send reply' : 'Send anonymously'}
         </button>
       </div>
+
+      <EmojiPickerPopover
+        open={emojiPickerOpen}
+        onClose={() => setEmojiPickerOpen(false)}
+        onSelect={handleEmojiInsert}
+      />
+      <GifStickerPicker
+        open={gifPickerOpen}
+        onClose={() => setGifPickerOpen(false)}
+        onSelect={(url) => {
+          onSendGif(url)
+          setGifPickerOpen(false)
+        }}
+      />
     </div>
   )
 }

@@ -15,6 +15,7 @@ import {
   ANONYMOUS_ROOM_MIN_PLAYERS,
   anonymousRoomMaxPlayers,
   banSecondsLeft,
+  countAnonymousRoomPresence,
   formatBanCountdown,
   isPlayerBanned,
 } from '@/lib/anonymous-messages'
@@ -245,6 +246,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
   const playerLink = `${appOrigin()}/game/${gameCode}`
   const canStart = players.length >= ANONYMOUS_ROOM_MIN_PLAYERS
   const roomCapacity = anonymousRoomMaxPlayers(game)
+  const presence = countAnonymousRoomPresence(players, game)
 
   return (
     <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
@@ -270,9 +272,20 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
 
       <div className="glass-card p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-muted text-xs uppercase tracking-wider">In the lobby</p>
-          <span className="text-faint text-xs">
-            {players.length} / {roomCapacity}
+          <p className="text-muted text-xs uppercase tracking-wider">
+            {game.status === 'waiting' ? 'In the lobby' : 'In the room'}
+          </p>
+          <span className="text-faint text-xs tabular-nums">
+            {game.status === 'waiting' ? (
+              <>
+                {players.length} / {roomCapacity}
+              </>
+            ) : (
+              <>
+                {presence.participants} {presence.participants === 1 ? 'player' : 'players'}
+                {presence.viewers > 0 && ` · ${presence.viewers} viewing`}
+              </>
+            )}
           </span>
         </div>
         {lobbyActionsEnabled && players.length > 0 && (

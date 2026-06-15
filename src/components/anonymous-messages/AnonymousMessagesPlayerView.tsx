@@ -11,6 +11,7 @@ import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { useAnonymousMessageTrim } from '@/hooks/useAnonymousMessageTrim'
 import { useAnonymousMessages } from '@/hooks/useAnonymousMessages'
 import { AnonymousSessionTimerBar } from '@/components/anonymous-messages/AnonymousSessionTimerBar'
+import { AnonymousRoomHeadcount } from '@/components/anonymous-messages/AnonymousRoomHeadcount'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   anonymousPlayerCanChat,
@@ -234,15 +235,23 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return (
       <CenteredShell>
         <Header game={game} />
+        {game && <AnonymousRoomHeadcount game={game} players={players} />}
         <p className="text-muted text-sm text-center">
-          {lobbyFull
-            ? `This room is full (${roomCapacity} players max).`
-            : sessionInProgress
-              ? 'This session is already in progress. You can join to watch live — late joiners cannot send messages.'
-              : "Join the anonymous room — you'll get a random lobby name shown on your messages."}
+          {lobbyFull ? (
+            <>
+              This room is full ({roomCapacity} players max).
+              <span className="block mt-2 text-faint">
+                Stick around — once the host starts, you can join as a viewer and watch live (read-only).
+              </span>
+            </>
+          ) : sessionInProgress ? (
+            'This session is already in progress. You can join to watch live — late joiners cannot send messages.'
+          ) : (
+            "Join the anonymous room — you'll get a random lobby name shown on your messages."
+          )}
         </p>
         <button type="button" onClick={join} disabled={joining || lobbyFull} className="btn-primary w-full">
-          {joining ? 'Joining…' : lobbyFull ? 'Room full' : sessionInProgress ? 'Join as viewer' : 'Join anonymously'}
+          {joining ? 'Joining…' : lobbyFull ? 'Lobby full — check back when live' : sessionInProgress ? 'Join as viewer' : 'Join anonymously'}
         </button>
       </CenteredShell>
     )
@@ -252,8 +261,9 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return (
       <CenteredShell>
         <Header game={game} />
+        {game && <AnonymousRoomHeadcount game={game} players={players} />}
         <PlayerBar name={myPlayerName} />
-        <LobbyPlayers players={players} />
+        <LobbyPlayers players={players} game={game} />
         <p className="text-muted text-sm text-center">Waiting for the host to start the session…</p>
       </CenteredShell>
     )
@@ -280,6 +290,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   return (
     <PageShell>
       <Header game={game} />
+      {game && <AnonymousRoomHeadcount game={game} players={players} />}
       <AnonymousSessionTimerBar gameCode={gameCode} game={game} sticky />
       {isMuted && myBan && <AnonymousBanCountdownBar bannedUntil={myBan.banned_until} />}
       <PlayerBar
@@ -346,12 +357,16 @@ function PlayerBar({ name, subtitle }: { name: string; subtitle?: string }) {
   )
 }
 
-function LobbyPlayers({ players }: { players: Player[] }) {
+function LobbyPlayers({ players, game }: { players: Player[]; game: Game | null }) {
+  const capacity = game ? anonymousRoomMaxPlayers(game) : null
   return (
     <div className="glass-card p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-muted text-xs uppercase tracking-wider">In the lobby</p>
-        <span className="text-faint text-xs">{players.length}</span>
+        <p className="text-muted text-xs uppercase tracking-wider">Lobby names</p>
+        <span className="text-faint text-xs tabular-nums">
+          {players.length}
+          {capacity != null ? ` / ${capacity}` : ''}
+        </span>
       </div>
       <div className="flex flex-wrap gap-2">
         {players.map((player) => (

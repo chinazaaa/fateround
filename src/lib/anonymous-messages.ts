@@ -15,8 +15,8 @@ export const ANONYMOUS_ROOM_SESSION_SECONDS = 15 * 60
 
 /** Lobby size limits for anonymous rooms. */
 export const ANONYMOUS_ROOM_MIN_PLAYERS = 2
-export const ANONYMOUS_ROOM_MAX_PLAYERS = 50
-export const ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS = 50
+export const ANONYMOUS_ROOM_MAX_PLAYERS = 20
+export const ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS = 20
 
 export function clampAnonymousRoomMaxPlayers(value: number): number {
   return Math.min(ANONYMOUS_ROOM_MAX_PLAYERS, Math.max(ANONYMOUS_ROOM_MIN_PLAYERS, value))
@@ -65,6 +65,24 @@ export function anonymousPlayerCanChat(
   if (game.status === 'waiting') return true
   if (!game.session_started_at) return false
   return new Date(player.joined_at).getTime() < new Date(game.session_started_at).getTime()
+}
+
+export function countAnonymousRoomPresence(
+  players: Pick<Player, 'joined_at'>[],
+  game: Pick<Game, 'status' | 'session_started_at'>
+): { total: number; participants: number; viewers: number } {
+  if (game.status !== 'active') {
+    return { total: players.length, participants: players.length, viewers: 0 }
+  }
+
+  let participants = 0
+  let viewers = 0
+  for (const player of players) {
+    if (anonymousPlayerCanChat(player, game)) participants++
+    else viewers++
+  }
+
+  return { total: players.length, participants, viewers }
 }
 
 export function anonymousPlayerCanPost(

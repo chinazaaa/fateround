@@ -65,7 +65,7 @@ export interface Game {
   created_at: string
   /** Anonymous room — when the live session started (15 min cap). */
   session_started_at?: string | null
-  /** Anonymous room — max players allowed in the lobby (2–50). */
+  /** Anonymous room — max players allowed in the lobby (2–20). */
   max_players?: number | null
   /** Anonymous room — last time a batch of old messages was trimmed. */
   anonymous_messages_trimmed_at?: string | null

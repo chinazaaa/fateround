@@ -103,7 +103,7 @@ export function AnonymousMessageFeed({
               return (
                 <div
                   key={message.id}
-                  className={`confession-slide-in px-3 py-2.5 rounded-xl border transition-colors ${
+                  className={`group/message confession-slide-in px-3 py-2.5 rounded-xl border transition-colors ${
                     isHighlighted ? 'bg-violet-500/15 border-violet-400/40' : 'bg-white/5 border-white/5'
                   }`}
                   style={{ animationDelay: `${Math.min(i * 40, 240)}ms` }}

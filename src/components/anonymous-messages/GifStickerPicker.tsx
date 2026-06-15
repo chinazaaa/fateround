@@ -74,19 +74,19 @@ export function GifStickerPicker({ open, onClose, onSelect }: GifStickerPickerPr
   return (
     <div
       ref={containerRef}
-      className="absolute bottom-full mb-2 left-0 right-0 z-50 glass-card border border-white/10 rounded-2xl overflow-hidden"
-      style={{ maxHeight: '320px' }}
+      className="absolute bottom-full mb-2 left-0 right-0 z-50 w-full glass-card-strong border border-white/10 rounded-2xl overflow-hidden shadow-2xl"
+      style={{ maxHeight: 'min(52vh, 420px)' }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
-        <div className="flex gap-1">
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/10">
+        <div className="flex gap-1.5">
           <button
             type="button"
             onClick={() => {
               setTab('gifs')
               setQuery('')
             }}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+            className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
               tab === 'gifs' ? 'bg-violet-500/20 text-violet-300' : 'text-muted hover:text-body'
             }`}
           >
@@ -98,31 +98,31 @@ export function GifStickerPicker({ open, onClose, onSelect }: GifStickerPickerPr
               setTab('stickers')
               setQuery('')
             }}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+            className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
               tab === 'stickers' ? 'bg-violet-500/20 text-violet-300' : 'text-muted hover:text-body'
             }`}
           >
             Stickers
           </button>
         </div>
-        <button type="button" onClick={onClose} className="text-faint hover:text-body text-lg px-1" aria-label="Close">
+        <button type="button" onClick={onClose} className="text-faint hover:text-body text-xl px-2" aria-label="Close">
           ×
         </button>
       </div>
 
       {/* Search */}
-      <div className="px-3 py-2">
+      <div className="px-3 py-2.5">
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={`Search ${tab}…`}
-          className="input-field w-full text-sm"
+          className="input-field w-full"
         />
       </div>
 
       {/* Grid */}
-      <div className="px-3 pb-3 overflow-y-auto" style={{ maxHeight: '220px' }}>
+      <div className="px-3 pb-3 overflow-y-auto" style={{ maxHeight: 'min(38vh, 300px)' }}>
         {loading && items.length === 0 && (
           <div className="text-center py-8">
             <div className="animate-spin h-5 w-5 border-2 border-violet-400 border-t-transparent rounded-full mx-auto" />
@@ -140,7 +140,7 @@ export function GifStickerPicker({ open, onClose, onSelect }: GifStickerPickerPr
           <p className="text-muted text-sm text-center py-6">No results found</p>
         )}
         {items.length > 0 && (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
             {items.map((item) => {
               const preview = getPreviewUrl(item)
               const full = getFullUrl(item)
@@ -153,13 +153,13 @@ export function GifStickerPicker({ open, onClose, onSelect }: GifStickerPickerPr
                     onSelect(full)
                     onClose()
                   }}
-                  className="rounded-xl overflow-hidden border border-white/5 hover:border-violet-400/40 transition-colors aspect-square"
+                  className="rounded-xl overflow-hidden border border-white/10 hover:border-violet-400/50 transition-colors aspect-square bg-black/20 min-h-[72px] sm:min-h-[88px]"
                 >
                   <img
                     src={preview}
                     alt={item.title}
                     loading="lazy"
-                    className="w-full h-full object-cover"
+                    className={`w-full h-full ${tab === 'stickers' ? 'object-contain p-1' : 'object-cover'}`}
                     style={{ background: `url(${item.blur_preview}) center/cover` }}
                   />
                 </button>
