@@ -48,16 +48,16 @@ export function ResultsPagination({
   const to = Math.min((page + 1) * pageSize, totalItems)
 
   return (
-    <div className="flex items-center justify-between gap-3 pt-1">
-      <p className="text-faint text-xs">
+    <div className="pt-1 space-y-1.5">
+      <p className="text-faint text-xs text-center">
         {from}–{to} of {totalItems} {noun}
       </p>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-center gap-2">
         <button
           type="button"
           onClick={() => onPageChange(Math.max(0, page - 1))}
           disabled={page === 0}
-          className="chip text-xs py-1.5 px-2.5 disabled:opacity-40"
+          className="chip text-xs py-1 px-2.5 disabled:opacity-40"
         >
           ← Prev
         </button>
@@ -68,7 +68,7 @@ export function ResultsPagination({
           type="button"
           onClick={() => onPageChange(Math.min(totalPages - 1, page + 1))}
           disabled={page >= totalPages - 1}
-          className="chip text-xs py-1.5 px-2.5 disabled:opacity-40"
+          className="chip text-xs py-1 px-2.5 disabled:opacity-40"
         >
           Next →
         </button>

@@ -126,7 +126,7 @@ export function TwoTruthsHostManagePanel({
           )}
           {ready.ok && submittedIds.size < players.length && (
             <p className="text-faint text-sm">
-              {players.length - submittedIds.size} player{players.length - submittedIds.size === 1 ? '' : 's'} haven&apos;t submitted — they&apos;ll be skipped.
+              {players.length - submittedIds.size} player{players.length - submittedIds.size === 1 ? '' : 's'} {' '} haven&apos;t submitted — they&apos;ll be skipped.
             </p>
           )}
 
