@@ -186,7 +186,8 @@ export function CodewordsHostManagePanel({
                   </>
                 ) : (
                   <>
-                    Team lineup for this round. Use Waiting to unassign a player, or Remove to kick them from the game.
+                    Team lineup for this round. Use arrows to move players, Waiting to unassign, or Remove to kick
+                    them from the game.
                   </>
                 )}
               </p>
@@ -211,7 +212,7 @@ export function CodewordsHostManagePanel({
             savingRoleFor={savingRoleFor}
             benchingPlayerId={benchingPlayerId}
             removingPlayerId={removingPlayerId}
-            readOnly={!inLobby}
+            readOnly={game.status === 'finished'}
             randomizeTeams={randomizeTeams && inLobby}
             onSetSpymaster={handleSetSpymaster}
             onMoveTeam={onMoveTeam}

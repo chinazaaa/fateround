@@ -148,6 +148,8 @@ import { ShareResults } from '@/components/ShareResults'
 import { computeAchievements } from '@/lib/achievements'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { AllowViewersToggle, LateJoinPolicyToggle } from '@/components/AllowViewersToggle'
+import { gameSupportsViewerSetting, lateJoinPolicyFromGame, type LateJoinPolicy } from '@/lib/viewers'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
@@ -215,6 +217,7 @@ export default function HostPage() {
   const [adding, setAdding] = useState(false)
   const [updatingRounds, setUpdatingRounds] = useState(false)
   const [updatingTimer, setUpdatingTimer] = useState(false)
+  const [updatingViewers, setUpdatingViewers] = useState(false)
   const [listSearch, setListSearch] = useState('')
   const [playersSearch, setPlayersSearch] = useState('')
   const [playerQuestionCount, setPlayerQuestionCount] = useState(0)
@@ -1152,6 +1155,45 @@ export default function HostPage() {
     }
   }
 
+  async function hostUpdateLateJoinPolicy(next: LateJoinPolicy) {
+    if (updatingViewers || !game || lateJoinPolicyFromGame(game) === next) return
+    const previous = lateJoinPolicyFromGame(game)
+    setGame((g) =>
+      g
+        ? {
+            ...g,
+            allow_viewers: next !== 'lobby_only',
+            allow_late_players: next === 'viewers_and_players',
+          }
+        : g
+    )
+    setUpdatingViewers(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, late_join_policy: next }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setGame((g) =>
+          g
+            ? {
+                ...g,
+                allow_viewers: previous !== 'lobby_only',
+                allow_late_players: previous === 'viewers_and_players',
+              }
+            : g
+        )
+        toast.error(data.error || 'Failed to update late join setting')
+        return
+      }
+      if (data.game) setGame(data.game)
+    } finally {
+      setUpdatingViewers(false)
+    }
+  }
+
   const timerControl = (
     <div className="space-y-2">
       <p className="text-muted text-[10px] uppercase tracking-wider">Time per round</p>
@@ -1698,6 +1740,17 @@ export default function HostPage() {
           )}
           <div className="pt-3 border-t border-theme">{timerControl}</div>
         </div>
+
+        {gameSupportsViewerSetting(gameType) && (
+          <div className="glass-card p-4 space-y-3">
+            <p className="text-muted text-xs uppercase tracking-wider">Late joiners</p>
+            <LateJoinPolicyToggle
+              value={lateJoinPolicyFromGame(game)}
+              onChange={hostUpdateLateJoinPolicy}
+              disabled={updatingViewers}
+            />
+          </div>
+        )}
 
         {playAgainNeedsSetup(game) && (() => {
           const poolLabels = hostPoolSetupLabels(game)

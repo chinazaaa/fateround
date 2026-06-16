@@ -38,8 +38,10 @@ export async function POST(req: NextRequest) {
     .eq('player_id', playerId)
     .maybeSingle()
 
-  const lateJoinPick = game.status === 'active' && game.codewords_late_join === true && !existingRole
-  if (game.status !== 'waiting' && !lateJoinPick) {
+  if (game.status === 'active' && game.codewords_late_join === true && !existingRole) {
+    return NextResponse.json({ error: 'Late joiners are assigned a team automatically' }, { status: 403 })
+  }
+  if (game.status !== 'waiting') {
     return NextResponse.json({ error: 'Team picks are locked after the game starts' }, { status: 400 })
   }
 

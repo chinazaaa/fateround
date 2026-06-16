@@ -10,7 +10,6 @@ import { CodewordsWaitingPanel } from '@/components/codewords/CodewordsWaitingPa
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
-  codewordsLateJoin,
   codewordsPlayerPicks,
   codewordsRandomizeTeams,
   guessAttributionMap,
@@ -20,6 +19,12 @@ import {
 } from '@/lib/codewords'
 import { useCodewordsRealtime } from '@/hooks/useCodewordsRealtime'
 import { useCodewordsNotifications } from '@/hooks/useCodewordsNotifications'
+import { GameStartedWaiting } from '@/components/GameStartedWaiting'
+import { LateJoinChoice } from '@/components/LateJoinChoice'
+import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
+import { allowLateJoin, allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import type {
@@ -33,7 +38,7 @@ import type {
 } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 
-type Screen = 'loading' | 'join' | 'lobby' | 'active' | 'finished' | 'not_found'
+type Screen = 'loading' | 'join' | 'game_started_waiting' | 'late_join_choice' | 'lobby' | 'active' | 'finished' | 'not_found'
 
 export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const { success, error: toastError } = useToast()
@@ -100,6 +105,19 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const syncScreen = useCallback((gameData: Game, playerId: string | null) => {
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      if (pre === 'game_started_waiting') {
+        setScreen('game_started_waiting')
+        return
+      }
+      if (pre === 'late_join_choice') {
+        setScreen('late_join_choice')
+        return
+      }
+      setScreen('join')
+      return
+    }
     if (gameData.status === 'waiting') {
       setScreen(playerId ? 'lobby' : 'join')
       return
@@ -224,7 +242,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     void loadBoard()
   }, [board, loadBoard, screen])
 
-  const joinGame = async () => {
+  const joinGame = async (joinAsViewer?: boolean) => {
     const name = joinName.trim()
     if (!name) return
     setJoining(true)
@@ -232,15 +250,24 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
       const res = await fetch('/api/players', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
+        body: JSON.stringify({
+          gameCode,
+          playerName: name,
+          ...(game?.status === 'active' ? { joinAsViewer } : {}),
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
       setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender)
       setMyPlayerId(data.playerId)
       setMyPlayerName(data.playerName)
+      if (data.codewordsRole) setMyRole(data.codewordsRole)
       await load()
-      success(`Joined as ${data.playerName}`)
+      if (data.codewordsRole) {
+        success(`You're ${teamLabel(data.codewordsRole.team)} operative`)
+      } else {
+        success(`Joined as ${data.playerName}`)
+      }
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to join')
     } finally {
@@ -268,21 +295,32 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  const openLobbyJoin = useCallback(() => {
+    setScreen('join')
+    void load()
+  }, [load])
+
+  useLobbyOpenNotification(game?.status, () => {
+    if (screen === 'finished' || screen === 'game_started_waiting' || screen === 'late_join_choice') void load()
+  })
+
   const cfg = gameTypeConfig('codewords')
   const playersPickTeams = game ? codewordsPlayerPicks(game) : true
   const randomizeTeams = game ? codewordsRandomizeTeams(game) : false
-  const lateJoinAllowed = game ? codewordsLateJoin(game) : false
+  const lateJoinAllowed = game ? allowLateJoin(game) : false
+  const lateJoinAsPlayer = game ? allowLatePlayers(game) : false
+  const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
+    gameCode,
+    game,
+    screen === 'late_join_choice'
+  )
   const myTeam = myRole?.team
   const needsTeamPick =
-    !!myPlayerId &&
-    !myRole &&
-    playersPickTeams &&
-    !randomizeTeams &&
-    (game?.status === 'waiting' || (game?.status === 'active' && lateJoinAllowed))
+    !!myPlayerId && !myRole && playersPickTeams && !randomizeTeams && game?.status === 'waiting'
   const waitingInLobby =
     !!myPlayerId && !myRole && game?.status === 'waiting' && (!playersPickTeams || randomizeTeams)
   const waitingForAssignment =
-    !!myPlayerId && !myRole && game?.status === 'active' && (!lateJoinAllowed || !playersPickTeams)
+    !!myPlayerId && !myRole && game?.status === 'active' && !lateJoinAllowed && !playersPickTeams
 
   useCodewordsNotifications({
     game,
@@ -304,6 +342,28 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-4">
         <p className="text-xl font-bold">Game not found</p>
       </div>
+    )
+  }
+
+  if (screen === 'game_started_waiting') {
+    return <GameStartedWaiting gameCode={gameCode} game={game} onLobbyOpen={openLobbyJoin} />
+  }
+
+  if (screen === 'late_join_choice' && game) {
+    return (
+      <LateJoinChoice
+        gameCode={gameCode}
+        game={game}
+        context={lateJoinContext}
+        contextLoading={lateJoinContextLoading}
+        playersAllowed={game ? allowLatePlayers(game) : false}
+        showNameField
+        nameInput={joinName}
+        onNameChange={setJoinName}
+        joining={joining}
+        onJoinAsViewer={() => void joinGame(true)}
+        onJoinAsPlayer={() => void joinGame(false)}
+      />
     )
   }
 
@@ -331,7 +391,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
           <p className="text-faint text-xs">
             {game?.status === 'active'
               ? lateJoinAllowed
-                ? 'This game is in progress — pick a team to jump in.'
+                ? 'This game is in progress — join as a player (auto-assigned to a team) or watch as a viewer.'
                 : 'This game has already started.'
               : playersPickTeams
                 ? "You'll pick a team and role in the lobby before the host starts."
@@ -339,9 +399,10 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
                   ? 'The host picks spymasters — your team is shuffled when the game starts.'
                   : 'The host will assign your team and role in the lobby.'}
           </p>
-          <button type="button" onClick={joinGame} disabled={!joinName.trim() || joining} className="btn-primary w-full">
+          <button type="button" onClick={() => void joinGame()} disabled={!joinName.trim() || joining} className="btn-primary w-full">
             {joining ? 'Joining…' : 'Join game'}
           </button>
+          <ShareGameLinkCard gameCode={gameCode} />
         </div>
       </div>
     )
@@ -466,6 +527,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
             myRole={myRole}
             playerCount={allPlayers.length}
           />
+          <ShareGameLinkCard gameCode={gameCode} />
           {leaveButton}
         </div>
       </div>

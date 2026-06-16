@@ -106,6 +106,9 @@ export const createGameSchema = z.object({
   max_players: z.coerce.number().int().min(2).max(100).optional(),
   codewords_player_picks: z.boolean().optional(),
   codewords_late_join: z.boolean().optional(),
+  allow_viewers: z.boolean().optional(),
+  allow_late_players: z.boolean().optional(),
+  late_join_policy: z.enum(['lobby_only', 'viewers_only', 'viewers_and_players']).optional(),
   codewords_randomize_teams: z.boolean().optional(),
   trivia_category: triviaCategoryEnum.optional(),
   bingo_call_mode: z.enum(['manual', 'auto']).optional(),
@@ -154,6 +157,9 @@ export const updateGameSchema = z.object({
   pair_vote_mode: pairVoteModeEnum.optional(),
   player_questions_enabled: z.boolean().optional(),
   player_questions_order: playerQuestionsOrderEnum.optional(),
+  allow_viewers: z.boolean().optional(),
+  allow_late_players: z.boolean().optional(),
+  late_join_policy: z.enum(['lobby_only', 'viewers_only', 'viewers_and_players']).optional(),
 })
 
 export type UpdateGameInput = z.infer<typeof updateGameSchema>
@@ -248,6 +254,7 @@ export const createPlayerSchema = z.object({
   pollGender: participantGenderEnum.or(z.string()).nullish(),
   identityGender: participantGenderEnum.or(z.string()).nullish(),
   participantId: uuidString('participantId').nullish(),
+  joinAsViewer: z.boolean().optional(),
 })
 
 export type CreatePlayerInput = z.infer<typeof createPlayerSchema>

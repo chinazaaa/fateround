@@ -13,8 +13,15 @@ import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/ut
 import type { Game, Player, Round, TriviaAnswer } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { GameStartedWaiting } from '@/components/GameStartedWaiting'
+import { LateJoinChoice } from '@/components/LateJoinChoice'
+import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
+import { playerIsViewer, preJoinScreen, allowLatePlayers } from '@/lib/viewers'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 
-type Screen = 'loading' | 'join' | 'playing' | 'not_found'
+type Screen = 'loading' | 'join' | 'game_started_waiting' | 'late_join_choice' | 'playing' | 'not_found'
 
 export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
@@ -63,7 +70,13 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
       setMyPlayerName(session.playerName)
     }
 
-    setScreen(playerId ? 'playing' : 'join')
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      setScreen(pre === 'game_started_waiting' ? 'game_started_waiting' : pre === 'late_join_choice' ? 'late_join_choice' : 'join')
+      return true
+    }
+
+    setScreen('playing')
     return true
   }, [gameCode])
 
@@ -92,7 +105,24 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
-  const joinGame = async () => {
+  const openLobbyJoin = useCallback(() => {
+    setScreen('join')
+    void load()
+  }, [load])
+
+  useLobbyOpenNotification(game?.status, () => {
+    if (screen === 'game_started_waiting' || screen === 'late_join_choice') void load()
+  })
+
+  const me = players.find((p) => p.id === myPlayerId)
+  const isViewer = !!(game && me && playerIsViewer(me, game))
+  const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
+    gameCode,
+    game,
+    screen === 'late_join_choice'
+  )
+
+  const joinGame = async (joinAsViewer?: boolean) => {
     const name = joinName.trim()
     if (!name) return
     setJoining(true)
@@ -100,7 +130,11 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
       const res = await fetch('/api/players', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
+        body: JSON.stringify({
+          gameCode,
+          playerName: name,
+          ...(game?.status === 'active' ? { joinAsViewer } : {}),
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
@@ -137,6 +171,28 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
+  if (screen === 'game_started_waiting') {
+    return <GameStartedWaiting gameCode={gameCode} game={game} onLobbyOpen={openLobbyJoin} />
+  }
+
+  if (screen === 'late_join_choice' && game) {
+    return (
+      <LateJoinChoice
+        gameCode={gameCode}
+        game={game}
+        context={lateJoinContext}
+        contextLoading={lateJoinContextLoading}
+        playersAllowed={game ? allowLatePlayers(game) : false}
+        showNameField
+        nameInput={joinName}
+        onNameChange={setJoinName}
+        joining={joining}
+        onJoinAsViewer={() => void joinGame(true)}
+        onJoinAsPlayer={() => void joinGame(false)}
+      />
+    )
+  }
+
   if (screen === 'join') {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 py-8">
@@ -162,12 +218,13 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           />
           <button
             type="button"
-            onClick={joinGame}
+            onClick={() => void joinGame()}
             disabled={joining || !joinName.trim()}
             className="btn-primary w-full py-4 text-base sm:text-lg"
           >
             {joining ? 'Joining…' : 'Join game'}
           </button>
+          <ShareGameLinkCard gameCode={gameCode} />
         </div>
       </div>
     )
@@ -184,6 +241,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           <p className="text-muted text-sm sm:text-base">{cfg.label}</p>
         </div>
 
+        {isViewer && <ViewerModeBanner />}
         <TriviaActiveRound
           gameCode={gameCode}
           game={game}
@@ -193,6 +251,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           myPlayerId={myPlayerId}
           playerName={myPlayerName}
           onReload={load}
+          readOnly={isViewer}
         />
       </div>
     </div>

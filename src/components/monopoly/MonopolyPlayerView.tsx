@@ -43,8 +43,12 @@ import type { Game, MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { GameStartedWaiting } from '@/components/GameStartedWaiting'
+import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
+import { preJoinScreen } from '@/lib/viewers'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
+type Screen = 'loading' | 'join' | 'game_started_waiting' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 function colorBarClass(color?: MonopolyColorGroup): string {
   if (!color) return 'bg-neutral-500'
@@ -68,6 +72,15 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   useApplyGameTheme(game?.theme)
 
   const syncScreen = useCallback((gameData: Game, playerId: string | null) => {
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      if (pre === 'game_started_waiting') {
+        setScreen('game_started_waiting')
+        return
+      }
+      setScreen('join')
+      return
+    }
     if (gameData.status === 'waiting') {
       setScreen(playerId ? 'waiting' : 'join')
       return
@@ -145,6 +158,15 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
+  const openLobbyJoin = useCallback(() => {
+    setScreen('join')
+    void load()
+  }, [load])
+
+  useLobbyOpenNotification(game?.status, () => {
+    if (screen === 'finished' || screen === 'game_started_waiting') void load()
+  })
+
   const join = async () => {
     if (!joinName.trim()) return
     setJoining(true)
@@ -152,7 +174,10 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       const res = await fetch('/api/players', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: joinName.trim() }),
+        body: JSON.stringify({
+          gameCode,
+          playerName: joinName.trim(),
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
@@ -212,6 +237,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'loading') return <MonopolyLoadingScreen />
 
+  if (screen === 'game_started_waiting') {
+    return (
+      <GameStartedWaiting
+        gameCode={gameCode}
+        game={game}
+        onLobbyOpen={openLobbyJoin}
+      />
+    )
+  }
+
   if (screen === 'not_found') {
     return (
       <MonopolyShell title="Game not found">
@@ -236,10 +271,11 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             maxLength={40}
             onKeyDown={(e) => e.key === 'Enter' && join()}
           />
-          <MonopolyPrimaryButton onClick={join} disabled={!joinName.trim()} loading={joining}>
+          <MonopolyPrimaryButton onClick={() => void join()} disabled={!joinName.trim()} loading={joining}>
             Take my seat
           </MonopolyPrimaryButton>
         </MonopolyGlassCard>
+        <ShareGameLinkCard gameCode={gameCode} className="max-w-md mx-auto" />
       </MonopolyShell>
     )
   }
@@ -266,6 +302,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             </MonopolyGlassCard>
           ))}
         </div>
+        <ShareGameLinkCard gameCode={gameCode} />
       </MonopolyShell>
     )
   }

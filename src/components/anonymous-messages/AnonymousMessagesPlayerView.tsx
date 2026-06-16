@@ -27,8 +27,12 @@ import type { AnonymousMessage, Game, Player } from '@/types'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { GameStartedWaiting } from '@/components/GameStartedWaiting'
+import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
+import { allowLateJoin, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
+type Screen = 'loading' | 'join' | 'game_started_waiting' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
@@ -56,7 +60,11 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       return
     }
     if (gameData.status === 'active') {
-      setScreen(playerId ? 'active' : 'join')
+      if (!playerId) {
+        setScreen(allowLateJoin(gameData) ? 'join' : 'game_started_waiting')
+        return
+      }
+      setScreen('active')
       return
     }
     setScreen(playerId ? 'finished' : 'join')
@@ -142,6 +150,15 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   }, [gameCode, myPlayerId, syncScreen, toastError])
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+
+  const openLobbyJoin = useCallback(() => {
+    setScreen('join')
+    void load()
+  }, [load])
+
+  useLobbyOpenNotification(game?.status, () => {
+    if (screen === 'game_started_waiting' || screen === 'finished') void load()
+  })
 
   const join = async () => {
     setJoining(true)
@@ -238,6 +255,10 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     )
   }
 
+  if (screen === 'game_started_waiting') {
+    return <GameStartedWaiting gameCode={gameCode} game={game} onLobbyOpen={openLobbyJoin} />
+  }
+
   if (screen === 'join') {
     const sessionInProgress = game?.status === 'active'
     const roomCapacity = game ? anonymousRoomMaxPlayers(game) : null
@@ -263,6 +284,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         <button type="button" onClick={join} disabled={joining || lobbyFull} className="btn-primary w-full">
           {joining ? 'Joining…' : lobbyFull ? 'Lobby full — check back when live' : sessionInProgress ? 'Join as viewer' : 'Join anonymously'}
         </button>
+        <ShareGameLinkCard gameCode={gameCode} />
       </CenteredShell>
     )
   }
@@ -275,6 +297,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         <PlayerBar name={myPlayerName} />
         <LobbyPlayers players={players} game={game} />
         <p className="text-muted text-sm text-center">Waiting for the host to start the session…</p>
+        <ShareGameLinkCard gameCode={gameCode} />
       </CenteredShell>
     )
   }

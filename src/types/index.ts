@@ -124,6 +124,10 @@ export interface Game {
   session_started_at?: string | null
   /** Lobby cap for joiner modes (anonymous 2–20, bingo 2–30, codewords 4–20). */
   max_players?: number | null
+  /** When false, players cannot join as spectators after the game starts. */
+  allow_viewers?: boolean
+  /** When allow_viewers is true: false = watch-only late join; true = late joiners may play. */
+  allow_late_players?: boolean
   /** Anonymous room — last time a batch of old messages was trimmed. */
   anonymous_messages_trimmed_at?: string | null
   wst_quote_source?: WstQuoteSource
@@ -257,6 +261,8 @@ export interface Player {
   /** Import mode: which list name was claimed. */
   participant_id: string | null
   joined_at: string
+  /** Read-only spectator (explicit choice or inferred for poll-game late join). */
+  spectator?: boolean
 }
 
 export interface Round {

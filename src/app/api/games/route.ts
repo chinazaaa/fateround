@@ -57,6 +57,7 @@ import {
   lobbyDefaultMaxPlayers,
   type LobbyLimitGameType,
 } from '@/lib/game-limits'
+import { gameSupportsViewerSetting, lateJoinPolicyToFields, type LateJoinPolicy } from '@/lib/viewers'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -153,6 +154,9 @@ export async function POST(req: NextRequest) {
     codewords_player_picks: rawCodewordsPlayerPicks,
     codewords_late_join: rawCodewordsLateJoin,
     codewords_randomize_teams: rawCodewordsRandomizeTeams,
+    allow_viewers: rawAllowViewers,
+    allow_late_players: rawAllowLatePlayers,
+    late_join_policy: rawLateJoinPolicy,
     trivia_category: rawTriviaCategory,
     bingo_call_mode: rawBingoCallMode,
     bingo_call_interval_seconds: rawBingoCallInterval,
@@ -262,6 +266,16 @@ export async function POST(req: NextRequest) {
               ? resolveMaxPlayers('monopoly', rawMaxPlayers, lobbyDefaultMaxPlayers('monopoly', lobbyLimits))
             : null
   const isSecret = isSecretMessageGame(game_type)
+  const lateJoinFields = gameSupportsViewerSetting(game_type)
+    ? rawLateJoinPolicy
+      ? lateJoinPolicyToFields(rawLateJoinPolicy)
+      : {
+          allow_viewers: rawAllowViewers !== false && rawCodewordsLateJoin !== false,
+          allow_late_players:
+            rawAllowLatePlayers !== false && rawAllowViewers !== false && rawCodewordsLateJoin !== false,
+        }
+    : { allow_viewers: true, allow_late_players: true }
+  const { allow_viewers: viewersAllowed, allow_late_players: latePlayersAllowed } = lateJoinFields
 
   const { error: gameError } = await supabase.from('games').insert({
     id: gameCode,
@@ -283,9 +297,12 @@ export async function POST(req: NextRequest) {
             Number(rawOperativeTimerSeconds) || CODEWORDS_DEFAULT_OPERATIVE_TIMER
           ),
           codewords_player_picks: rawCodewordsPlayerPicks !== false,
-          codewords_late_join: rawCodewordsLateJoin === true,
+          codewords_late_join: latePlayersAllowed,
           codewords_randomize_teams: rawCodewordsRandomizeTeams === true,
         }
+      : {}),
+    ...(gameSupportsViewerSetting(game_type)
+      ? { allow_viewers: viewersAllowed, allow_late_players: latePlayersAllowed }
       : {}),
     anonymous: isAnonymousMessagesGame(game_type) || isSecretMessageGame(game_type) || isAnonymousGame(game_type) ? true : anonymous !== false,
     auto_reveal: auto_reveal !== false,

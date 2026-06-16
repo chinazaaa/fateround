@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { bingoMarkSchema } from '@/lib/validation'
 import { parseGameType, isBingoGame } from '@/lib/game-types'
 import { canMarkCell } from '@/lib/bingo'
+import { playerIsViewer } from '@/lib/viewers'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -16,12 +17,27 @@ export async function POST(req: NextRequest) {
   const { gameId, playerId, cellIndex } = parsed.data
   const code = gameId.toUpperCase()
 
-  const { data: game } = await supabase.from('games').select('game_type, status').eq('id', code).maybeSingle()
+  const { data: game } = await supabase
+    .from('games')
+    .select('game_type, status, session_started_at')
+    .eq('id', code)
+    .maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (!isBingoGame(parseGameType(game.game_type))) {
     return NextResponse.json({ error: 'Not a bingo game' }, { status: 400 })
   }
   if (game.status !== 'active') return NextResponse.json({ error: 'Game not active' }, { status: 400 })
+
+  const { data: player } = await supabase
+    .from('players')
+    .select('id, joined_at, spectator')
+    .eq('id', playerId)
+    .eq('game_id', code)
+    .maybeSingle()
+  if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
+  if (playerIsViewer(player, game)) {
+    return NextResponse.json({ error: 'Viewers cannot mark their card' }, { status: 403 })
+  }
 
   const { data: card } = await supabase
     .from('bingo_cards')

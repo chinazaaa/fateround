@@ -345,6 +345,38 @@ export function codewordsLateJoin(game: Pick<Game, 'codewords_late_join'>): bool
   return game.codewords_late_join === true
 }
 
+export function pickBalancedOperativeTeam(roles: CodewordsLobbyRole[]): CodewordsTeam {
+  const redOps = roles.filter((r) => r.team === 'red' && r.role === 'operative').length
+  const blueOps = roles.filter((r) => r.team === 'blue' && r.role === 'operative').length
+  if (redOps < blueOps) return 'red'
+  if (blueOps < redOps) return 'blue'
+  return Math.random() < 0.5 ? 'red' : 'blue'
+}
+
+export async function assignCodewordsLateJoinOperative(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string
+): Promise<{ team: CodewordsTeam; role: CodewordsPlayerRole | null; error: string | null }> {
+  const code = gameId.toUpperCase()
+  const { data: roles, error: rolesError } = await supabase
+    .from('codewords_player_roles')
+    .select('player_id, team, role')
+    .eq('game_id', code)
+
+  if (rolesError) return { team: 'red', role: null, error: rolesError.message }
+
+  const team = pickBalancedOperativeTeam((roles as CodewordsLobbyRole[]) ?? [])
+  const { data: roleRow, error } = await supabase
+    .from('codewords_player_roles')
+    .upsert({ game_id: code, player_id: playerId, team, role: 'operative' }, { onConflict: 'game_id,player_id' })
+    .select()
+    .single()
+
+  if (error) return { team, role: null, error: error.message }
+  return { team, role: roleRow as CodewordsPlayerRole, error: null }
+}
+
 export function codewordsRandomizeTeams(game: Pick<Game, 'codewords_randomize_teams'>): boolean {
   return game.codewords_randomize_teams === true
 }

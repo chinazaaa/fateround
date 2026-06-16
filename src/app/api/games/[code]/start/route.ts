@@ -154,7 +154,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'Need at least one player to start' }, { status: 400 })
   }
 
-  const now = new Date().toISOString()
+  const sessionStartedAt = new Date().toISOString()
+
+  const now = sessionStartedAt
 
   if (isAnonymousMessagesGame(gameType)) {
     if (playersData.length < ANONYMOUS_ROOM_MIN_PLAYERS) {
@@ -168,9 +170,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .from('games')
       .update({
         status: 'active',
+        session_started_at: sessionStartedAt,
         current_round_number: 1,
         rounds_count: 1,
-        session_started_at: now,
         anonymous_messages_trimmed_at: null,
       })
       .eq('id', code.toUpperCase())
@@ -229,6 +231,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .from('games')
       .update({
         status: 'active',
+        session_started_at: sessionStartedAt,
         current_round_number: 1,
         pool_usage: updatedPoolUsage,
       })
@@ -257,6 +260,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .from('games')
       .update({
         status: 'active',
+        session_started_at: sessionStartedAt,
         current_round_number: 1,
         rounds_count: 1,
       })
@@ -285,6 +289,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .from('games')
       .update({
         status: 'active',
+        session_started_at: sessionStartedAt,
         current_round_number: 1,
         rounds_count: 1,
       })
@@ -358,6 +363,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .from('games')
       .update({
         status: 'active',
+        session_started_at: sessionStartedAt,
         current_round_number: 1,
         rounds_count: 1,
       })
@@ -410,6 +416,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .from('games')
       .update({
         status: 'active',
+        session_started_at: sessionStartedAt,
         current_round_number: 1,
         rounds_count: roundRows.length,
       })
@@ -449,6 +456,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .from('games')
       .update({
         status: 'active',
+        session_started_at: sessionStartedAt,
         current_round_number: 1,
         rounds_count: roundsCount,
       })
@@ -570,6 +578,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .from('games')
       .update({
         status: 'active',
+        session_started_at: sessionStartedAt,
         current_round_number: 1,
         rounds_count: allRoundRows.length,
       })
@@ -664,7 +673,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const { error: gameError } = await supabase
       .from('games')
-      .update({ status: 'active', current_round_number: 1 })
+      .update({ status: 'active', current_round_number: 1, session_started_at: sessionStartedAt })
       .eq('id', code.toUpperCase())
 
     if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
@@ -730,7 +739,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const { error: gameError } = await supabase
       .from('games')
-      .update({ status: 'active', current_round_number: 1 })
+      .update({ status: 'active', current_round_number: 1, session_started_at: sessionStartedAt })
       .eq('id', code.toUpperCase())
 
     if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
@@ -802,7 +811,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const { error: gameError } = await supabase
       .from('games')
-      .update({ status: 'active', current_round_number: 1 })
+      .update({ status: 'active', current_round_number: 1, session_started_at: sessionStartedAt })
       .eq('id', code.toUpperCase())
 
     if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
@@ -888,7 +897,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const { error: gameError } = await supabase
       .from('games')
-      .update({ status: 'active', current_round_number: 1, rounds_count: groups.length })
+      .update({ status: 'active', current_round_number: 1, rounds_count: groups.length, session_started_at: sessionStartedAt })
       .eq('id', code.toUpperCase())
 
     if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
@@ -979,7 +988,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { error: gameError } = await supabase
     .from('games')
-    .update({ status: 'active', current_round_number: 1 })
+    .update({ status: 'active', current_round_number: 1, session_started_at: sessionStartedAt })
     .eq('id', code.toUpperCase())
 
   if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })

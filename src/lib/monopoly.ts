@@ -265,6 +265,44 @@ export async function initializeMonopolyGame(
   return { error: null }
 }
 
+/** Add a player who joined mid-game (appended to turn order, starts on GO). */
+export async function addMonopolyLateJoinPlayer(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string
+): Promise<{ error: string | null }> {
+  const { data: board } = await supabase.from('monopoly_boards').select('*').eq('game_id', gameId).maybeSingle()
+  if (!board) return { error: 'Game board not found' }
+
+  const { data: existing } = await supabase
+    .from('monopoly_player_state')
+    .select('id')
+    .eq('game_id', gameId)
+    .eq('player_id', playerId)
+    .maybeSingle()
+  if (existing) return { error: null }
+
+  const turnOrder = [...((board.turn_order as string[]) ?? []), playerId]
+  const playerOrder = turnOrder.length - 1
+
+  const { error: stateError } = await supabase.from('monopoly_player_state').insert({
+    game_id: gameId,
+    player_id: playerId,
+    position: 0,
+    cash: MONOPOLY_STARTING_CASH,
+    player_order: playerOrder,
+  })
+  if (stateError) return { error: stateError.message }
+
+  const { error: boardError } = await supabase
+    .from('monopoly_boards')
+    .update({ turn_order: turnOrder })
+    .eq('game_id', gameId)
+  if (boardError) return { error: boardError.message }
+
+  return { error: null }
+}
+
 export async function clearMonopolySessionData(
   supabase: SupabaseClient,
   gameId: string

@@ -15,6 +15,38 @@ export function unlockAudio() {
   if (audioCtx.state === 'suspended') void audioCtx.resume()
 }
 
+/** Warm chime when the lobby reopens (play again / host reset). */
+export function playLobbyOpenSound() {
+  if (typeof window === 'undefined' || isSoundMuted()) return
+
+  try {
+    unlockAudio()
+    if (!audioCtx) audioCtx = new AudioContext()
+    const ctx = audioCtx
+    const now = ctx.currentTime
+
+    const playTone = (freq: number, start: number, duration: number, volume = 0.11) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0, start)
+      gain.gain.linearRampToValueAtTime(volume, start + 0.012)
+      gain.gain.exponentialRampToValueAtTime(0.001, start + duration)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(start)
+      osc.stop(start + duration + 0.05)
+    }
+
+    playTone(392, now, 0.14)
+    playTone(523.25, now + 0.1, 0.16)
+    playTone(659.25, now + 0.22, 0.28, 0.13)
+  } catch {
+    // Browser may block audio until user gesture — ignore silently
+  }
+}
+
 /** Short ascending chime when a new round starts. */
 export function playRoundStartSound() {
   if (typeof window === 'undefined' || isSoundMuted()) return

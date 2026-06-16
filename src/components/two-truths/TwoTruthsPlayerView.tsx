@@ -17,8 +17,13 @@ import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/ut
 import type { Game, Player, Round, TtlGuess, TtlStatement } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { GameStartedWaiting } from '@/components/GameStartedWaiting'
+import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
+import { playerIsViewer, preJoinScreen } from '@/lib/viewers'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 
-type Screen = 'loading' | 'join' | 'lobby' | 'playing' | 'not_found'
+type Screen = 'loading' | 'join' | 'game_started_waiting' | 'lobby' | 'playing' | 'not_found'
 
 export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const { error: toastError, success } = useToast()
@@ -71,7 +76,8 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     }
 
     if (!playerId) {
-      setScreen('join')
+      const pre = preJoinScreen(gameData, false)
+      setScreen(pre === 'game_started_waiting' ? 'game_started_waiting' : 'join')
       return true
     }
 
@@ -111,6 +117,18 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
+  const openLobbyJoin = useCallback(() => {
+    setScreen('join')
+    void load()
+  }, [load])
+
+  useLobbyOpenNotification(game?.status, () => {
+    if (screen === 'game_started_waiting' || screen === 'playing') void load()
+  })
+
+  const me = players.find((p) => p.id === myPlayerId)
+  const isViewer = !!(game && me && playerIsViewer(me, game))
+
   const joinGame = async () => {
     const name = joinName.trim()
     if (!name) return
@@ -119,7 +137,11 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
       const res = await fetch('/api/players', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
+        body: JSON.stringify({
+          gameCode,
+          playerName: name,
+          ...(game?.status === 'active' ? { joinAsViewer: true } : {}),
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
@@ -157,6 +179,10 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
+  if (screen === 'game_started_waiting') {
+    return <GameStartedWaiting gameCode={gameCode} game={game} onLobbyOpen={openLobbyJoin} />
+  }
+
   if (screen === 'join') {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
@@ -178,6 +204,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
           <button type="button" onClick={joinGame} disabled={!joinName.trim() || joining} className="btn-primary w-full">
             {joining ? 'Joining…' : 'Join game'}
           </button>
+          <ShareGameLinkCard gameCode={gameCode} />
         </div>
       </div>
     )
@@ -191,7 +218,9 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
             <h2 className="text-xl font-black">Lobby</h2>
             <p className="text-muted text-sm">Playing as {myPlayerName}</p>
           </div>
-          {myStatement ? (
+          {isViewer ? (
+            <ViewerModeBanner />
+          ) : myStatement ? (
             <div className="space-y-4">
               <p className="text-center text-sm text-emerald-700 dark:text-emerald-200 font-semibold">
                 ✓ Statements saved — waiting for the host to start
@@ -207,6 +236,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
           ) : (
             <TwoTruthsLobbySubmit gameCode={gameCode} playerId={myPlayerId} onSaved={load} />
           )}
+          <ShareGameLinkCard gameCode={gameCode} />
         </div>
       </div>
     )
@@ -220,6 +250,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
             <div className="text-3xl">{cfg.headerEmoji}</div>
             <h1 className="text-xl font-black gradient-title">{game.title}</h1>
           </div>
+          {isViewer && <ViewerModeBanner />}
           <TwoTruthsActiveRound
             gameCode={gameCode}
             game={game}
@@ -229,6 +260,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
             myPlayerId={myPlayerId}
             playerName={myPlayerName}
             onReload={load}
+            readOnly={isViewer}
           />
         </div>
       </div>

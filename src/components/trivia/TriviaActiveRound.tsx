@@ -36,6 +36,7 @@ interface TriviaActiveRoundProps {
   onReload?: () => void
   /** Host play tab runs sync via useTriviaHostRoundAutomation — skip duplicate polling */
   skipGameSync?: boolean
+  readOnly?: boolean
 }
 
 export function TriviaActiveRound({
@@ -48,6 +49,7 @@ export function TriviaActiveRound({
   playerName,
   onReload,
   skipGameSync = false,
+  readOnly = false,
 }: TriviaActiveRoundProps) {
   const { error: toastError } = useToast()
   const [submitting, setSubmitting] = useState(false)
@@ -153,7 +155,7 @@ export function TriviaActiveRound({
 
   const submitAnswer = useCallback(
     async (choiceIndex: number) => {
-      if (!currentRound || submitting || myAnswer || answerLockRef.current) return
+      if (!currentRound || readOnly || submitting || myAnswer || answerLockRef.current) return
       answerLockRef.current = true
       setSubmitting(true)
       setSubmittingChoice(choiceIndex)
@@ -183,7 +185,7 @@ export function TriviaActiveRound({
         setSubmittingChoice(null)
       }
     },
-    [currentRound, submitting, myAnswer, gameCode, myPlayerId, toastError, onReload]
+    [currentRound, readOnly, submitting, myAnswer, gameCode, myPlayerId, toastError, onReload]
   )
 
   const points = myAnswer?.points ?? lastResult?.points ?? 0
@@ -235,7 +237,7 @@ export function TriviaActiveRound({
                 key={i}
                 type="button"
                 onClick={() => submitAnswer(i)}
-                disabled={submitting}
+                disabled={submitting || readOnly}
                 className="rounded-2xl border-2 border-[var(--border-strong)] px-5 py-4 sm:py-5 min-h-[3.25rem] text-left text-base sm:text-lg font-medium hover:border-[var(--primary)] hover:bg-rose-500/5 active:scale-[0.98] active:border-[var(--primary)] transition-transform transition-colors flex items-center gap-3 disabled:opacity-50 touch-manipulation select-none"
               >
                 <span className={CHOICE_BADGE}>{formatTriviaChoiceLabel(i)}</span>

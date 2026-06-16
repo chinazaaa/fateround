@@ -87,6 +87,8 @@ import { GameTypeModal } from '@/components/GameTypeModal'
 import { GameTypeCard } from '@/components/GameTypeCard'
 import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
 import { StepIndicator, SettingsGroup, StickyActionBar, SegmentedControl, ChipGrid } from '@/components/ui/CreateWizard'
+import { LateJoinPolicyToggle } from '@/components/AllowViewersToggle'
+import { gameSupportsViewerSetting, type LateJoinPolicy } from '@/lib/viewers'
 import { clampHotSeatMaxCap, hotSeatMaxCapUpperBound, HOT_SEAT_MIN_PLAYERS } from '@/lib/hot-seat'
 import {
   ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS,
@@ -196,7 +198,7 @@ function CreateGameInner() {
   const [codewordsMaxPlayers, setCodewordsMaxPlayers] = useState(CODEWORDS_DEFAULT_MAX_PLAYERS)
   const [codewordsOperativeTimer, setCodewordsOperativeTimer] = useState(CODEWORDS_DEFAULT_OPERATIVE_TIMER)
   const [codewordsPlayerPicks, setCodewordsPlayerPicks] = useState(true)
-  const [codewordsLateJoin, setCodewordsLateJoin] = useState(false)
+  const [lateJoinPolicy, setLateJoinPolicy] = useState<LateJoinPolicy>('viewers_and_players')
   const [codewordsRandomizeTeams, setCodewordsRandomizeTeams] = useState(false)
   const [triviaCategory, setTriviaCategory] = useState<TriviaCategory>('general')
   const [triviaMaxPlayers, setTriviaMaxPlayers] = useState(TRIVIA_DEFAULT_MAX_PLAYERS)
@@ -304,6 +306,7 @@ function CreateGameInner() {
   const isTrivia = isTriviaGame(settings.game_type)
   const isTwoTruths = isTwoTruthsGame(settings.game_type)
   const isMonopoly = isMonopolyGame(settings.game_type)
+  const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
   const isWst = isWhoSaidThis(settings.game_type)
   const isHotSeatGame = isHotSeat(settings.game_type)
   const hotSeatCreateCapUpper = isHotSeatGame ? hotSeatMaxCapUpperBound(0, participants.length) : 20
@@ -765,8 +768,15 @@ function CreateGameInner() {
                     : undefined,
           operative_timer_seconds: isCodewords ? codewordsOperativeTimer : undefined,
           codewords_player_picks: isCodewords ? codewordsPlayerPicks : undefined,
-          codewords_late_join: isCodewords ? codewordsLateJoin : undefined,
+          codewords_late_join: isCodewords ? lateJoinPolicy === 'viewers_and_players' : undefined,
           codewords_randomize_teams: isCodewords ? codewordsRandomizeTeams : undefined,
+          allow_viewers: gameSupportsViewerSetting(settings.game_type)
+            ? lateJoinPolicy !== 'lobby_only'
+            : undefined,
+          allow_late_players: gameSupportsViewerSetting(settings.game_type)
+            ? lateJoinPolicy === 'viewers_and_players'
+            : undefined,
+          late_join_policy: gameSupportsViewerSetting(settings.game_type) ? lateJoinPolicy : undefined,
           bingo_call_mode: isBingo ? bingoCallMode : undefined,
           bingo_call_interval_seconds: isBingo ? bingoCallInterval : undefined,
         }),
@@ -857,10 +867,12 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
+                <Field label="Late joiners">
+                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
+                </Field>
                 <p className="text-faint text-sm leading-relaxed">
                   Players join with one tap and get a random lobby name shown on their messages. The cap applies to the
-                  lobby before start; extra viewers can join during an active session (watch only). Anyone who joins
-                  after the session starts can watch only. Hosts can mute players for 5–30 minutes (default 10) — muted
+                  lobby before start. With &quot;Allow viewers&quot;, people can watch after the session starts (read-only).
                   players can read but not send. Once over 1,000 messages, the oldest 100 are removed every 5 minutes
                   during the session. Sessions last up to 15 minutes — all messages are deleted when the session ends.
                 </p>
@@ -925,6 +937,11 @@ function CreateGameInner() {
                     </select>
                   </Field>
                 )}
+                {showViewerToggle && (
+                  <Field label="Late joiners">
+                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
+                  </Field>
+                )}
                 <p className="text-faint text-sm leading-relaxed">
                   Players join with their name and get a unique 5×5 card. Called squares turn blue on their card; they
                   tap blue to mark green, then tap BINGO when they complete a line.
@@ -961,6 +978,11 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
+                {showViewerToggle && (
+                  <Field label="Late joiners">
+                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
+                  </Field>
+                )}
                 <p className="text-faint text-sm leading-relaxed">
                   Everyone writes two truths and one lie in the lobby. Each round spotlights one player — the rest guess
                   which statement is the lie. Correct guesses earn points; fool the room for bonus points.
@@ -1061,22 +1083,7 @@ function CreateGameInner() {
                   />
                 </Field>
                 <Field label="Join after game starts">
-                  <SegmentedControl
-                    value={codewordsLateJoin ? 'yes' : 'no'}
-                    onChange={(v) => setCodewordsLateJoin(v === 'yes')}
-                    options={[
-                      {
-                        value: 'no',
-                        label: 'Lobby only',
-                        hint: 'New players can only join before you start',
-                      },
-                      {
-                        value: 'yes',
-                        label: 'Allow late join',
-                        hint: 'Players can join mid-game — you assign them, or they pick if allowed',
-                      },
-                    ]}
-                  />
+                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
                   Two teams of spymasters and operatives. Spymasters give one-word clues — operatives guess words on the
@@ -1099,6 +1106,11 @@ function CreateGameInner() {
                           </option>
                         ))}
                       </select>
+                    </Field>
+                  )}
+                  {isTrivia && showViewerToggle && (
+                    <Field label="Late joiners">
+                      <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
                     </Field>
                   )}
                   {isWst ? (
@@ -1247,6 +1259,12 @@ function CreateGameInner() {
                             : pairVoteModeOptions(settings.game_type)
                         }
                       />
+                    </Field>
+                  )}
+
+                  {showViewerToggle && !isQuickLobby && !isTrivia && (
+                    <Field label="Late joiners">
+                      <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
                     </Field>
                   )}
                 </SettingsGroup>

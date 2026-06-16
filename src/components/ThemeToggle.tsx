@@ -1,15 +1,30 @@
 'use client'
+
+import { usePathname } from 'next/navigation'
 import { useTheme } from './ThemeProvider'
 
-export function ThemeToggle() {
+type ThemeToggleProps = {
+  variant?: 'fixed' | 'inline'
+  className?: string
+}
+
+export function ThemeToggle({ variant = 'fixed', className = '' }: ThemeToggleProps) {
+  const pathname = usePathname()
   const { theme, toggle } = useTheme()
   const isDark = theme === 'dark'
 
+  const onGamePlayerPage = /^\/game\/[^/]+/.test(pathname ?? '')
+  if (variant === 'fixed' && onGamePlayerPage) return null
+
+  const positionClass =
+    variant === 'fixed' ? 'fixed top-4 right-4 z-50' : 'shrink-0'
+
   return (
     <button
+      type="button"
       onClick={toggle}
       aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      className="fixed top-4 right-4 z-50 flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-all duration-200 glass-card"
+      className={`${positionClass} flex items-center gap-1.5 rounded-full px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-medium transition-all duration-200 glass-card ${className}`}
       style={{ color: 'var(--muted)' }}
     >
       {isDark ? (

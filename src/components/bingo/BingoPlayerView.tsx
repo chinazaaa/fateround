@@ -21,8 +21,15 @@ import { useToast } from '@/components/ui/Toast'
 import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useBingoNotifications'
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { GameStartedWaiting } from '@/components/GameStartedWaiting'
+import { LateJoinChoice } from '@/components/LateJoinChoice'
+import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
+import { playerIsViewer, preJoinScreen, allowLatePlayers } from '@/lib/viewers'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
+type Screen = 'loading' | 'join' | 'game_started_waiting' | 'late_join_choice' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
@@ -41,6 +48,19 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const [marking, setMarking] = useState(false)
 
   const syncScreen = useCallback((gameData: Game, playerId: string | null) => {
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      if (pre === 'game_started_waiting') {
+        setScreen('game_started_waiting')
+        return
+      }
+      if (pre === 'late_join_choice') {
+        setScreen('late_join_choice')
+        return
+      }
+      setScreen('join')
+      return
+    }
     if (gameData.status === 'waiting') {
       setScreen(playerId ? 'waiting' : 'join')
       return
@@ -175,6 +195,24 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
+  const openLobbyJoin = useCallback(() => {
+    setScreen('join')
+    void load()
+  }, [load])
+
+  useLobbyOpenNotification(game?.status, () => {
+    if (screen === 'finished' || screen === 'game_started_waiting' || screen === 'late_join_choice') void load()
+  })
+
+  const me = players.find((p) => p.id === myPlayerId)
+  const isViewer = !!(game && me && playerIsViewer(me, game))
+  const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
+    gameCode,
+    game,
+    screen === 'late_join_choice',
+    calledNumbers.length
+  )
+
   useBingoAutoCall({
     gameCode,
     game,
@@ -182,7 +220,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     onSynced: load,
   })
 
-  const joinGame = async () => {
+  const joinGame = async (joinAsViewer?: boolean) => {
     const name = joinName.trim()
     if (!name) return
     setJoining(true)
@@ -190,7 +228,11 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
       const res = await fetch('/api/players', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name }),
+        body: JSON.stringify({
+          gameCode,
+          playerName: name,
+          ...(game?.status === 'active' ? { joinAsViewer } : {}),
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
@@ -252,7 +294,10 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const called = calledNumbers.map((row) => row.number)
   const lastCalled = called.length > 0 ? called[called.length - 1] : null
   const canClaim =
-    card != null && hasBingoWin(card.cells, card.marked_indices, 'line') && game?.status === 'active'
+    !isViewer &&
+    card != null &&
+    hasBingoWin(card.cells, card.marked_indices, 'line') &&
+    game?.status === 'active'
   const winnerPlayer = winner ? players.find((p) => p.id === winner.player_id) : null
   const iWon = winner != null && myPlayerId != null && winner.player_id === myPlayerId
 
@@ -287,6 +332,28 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
+  if (screen === 'game_started_waiting') {
+    return <GameStartedWaiting gameCode={gameCode} game={game} onLobbyOpen={openLobbyJoin} />
+  }
+
+  if (screen === 'late_join_choice' && game) {
+    return (
+      <LateJoinChoice
+        gameCode={gameCode}
+        game={game}
+        context={lateJoinContext}
+        contextLoading={lateJoinContextLoading}
+        playersAllowed={game ? allowLatePlayers(game) : false}
+        showNameField
+        nameInput={joinName}
+        onNameChange={setJoinName}
+        joining={joining}
+        onJoinAsViewer={() => void joinGame(true)}
+        onJoinAsPlayer={() => void joinGame(false)}
+      />
+    )
+  }
+
   if (screen === 'join') {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
@@ -315,12 +382,13 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
           <BingoCardLegend />
           <button
             type="button"
-            onClick={joinGame}
+            onClick={() => void joinGame()}
             disabled={!joinName.trim() || joining}
             className="btn-primary w-full"
           >
             {joining ? 'Joining…' : 'Join Bingo'}
           </button>
+          <ShareGameLinkCard gameCode={gameCode} />
         </div>
       </div>
     )
@@ -342,6 +410,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
           </p>
           <BingoCardLegend />
           <p className="text-faint text-xs">{players.length} player{players.length === 1 ? '' : 's'} in lobby</p>
+          <ShareGameLinkCard gameCode={gameCode} />
         </div>
       </div>
     )
@@ -383,6 +452,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <div className="min-h-screen pb-24">
       <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
+        {isViewer && <ViewerModeBanner />}
         <div className="text-center space-y-1">
           <div className="text-3xl">{cfg.headerEmoji}</div>
           <h1 className="text-xl font-black gradient-title">{game?.title}</h1>
@@ -410,6 +480,10 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
               onMark={markCell}
               disabled={marking}
             />
+          </div>
+        ) : isViewer ? (
+          <div className="glass-card p-4">
+            <CalledNumbersBoard calledNumbers={called} />
           </div>
         ) : (
           <div className="glass-card p-6 text-center space-y-2">

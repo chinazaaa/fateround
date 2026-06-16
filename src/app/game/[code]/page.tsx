@@ -158,6 +158,13 @@ import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import { useGameChannel } from '@/hooks/useGameChannel'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { GameStartedWaiting } from '@/components/GameStartedWaiting'
+import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { LateJoinChoice } from '@/components/LateJoinChoice'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
+import { gameOffersLateJoinChoice, preJoinScreen, playerIsViewer, allowLatePlayers } from '@/lib/viewers'
 import {
   CONFESSION_SELECT,
   GAME_SELECT,
@@ -189,7 +196,23 @@ import type {
   WstQuotePoolEntry,
 } from '@/types'
 
-type View = 'loading' | 'not_found' | 'join' | 'waiting' | 'round' | 'round_results' | 'results'
+type View =
+  | 'loading'
+  | 'not_found'
+  | 'join'
+  | 'game_started_waiting'
+  | 'late_join_choice'
+  | 'waiting'
+  | 'round'
+  | 'round_results'
+  | 'results'
+
+function preJoinView(game: Game, hasPlayer: boolean): View {
+  const pre = preJoinScreen(game, hasPlayer)
+  if (pre === 'game_started_waiting') return 'game_started_waiting'
+  if (pre === 'late_join_choice') return 'late_join_choice'
+  return 'join'
+}
 
 export default function GamePage() {
   const { code } = useParams<{ code: string }>()
@@ -313,6 +336,11 @@ export default function GamePage() {
   const isWyrGame = isWouldYouRather(game?.game_type)
   const isTotGame = isThisOrThat(game?.game_type)
   const isBinaryGame = isBinaryChoiceGame(game?.game_type)
+  const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
+    gameCode,
+    game,
+    view === 'late_join_choice'
+  )
   const isMltImport = game ? isMltImportGame(game) : false
   const joinPlayerGender: PlayerGender =
     isNameOnlyJoin || !joinNeedsGender ? 'both' : playerGenderFromJoin(joinIdentityGender, voteBothGenders)
@@ -352,6 +380,9 @@ export default function GamePage() {
   const useFreeNameJoin = isJoinersMode || isVoterOnly
 
   const canSubmitJoin = useFreeNameJoin ? nameInput.trim().length > 0 : selectedParticipantId !== null
+
+  const myPlayer = useMemo(() => players.find((p) => p.id === myPlayerId) ?? null, [players, myPlayerId])
+  const isViewer = !!(game && myPlayer && playerIsViewer(myPlayer, game))
 
   // If someone else claims this name while you're still on the join screen, clear your pick
   useEffect(() => {
@@ -472,7 +503,7 @@ export default function GamePage() {
                 setSubmitted(true)
               }
             }
-            setView(session ? 'round' : 'join')
+            setView(session ? 'round' : preJoinView(gameData, false))
           } else {
             const { data: finishedRound } = await supabase
               .from('rounds')
@@ -498,7 +529,7 @@ export default function GamePage() {
               }
               setView('round_results')
             } else {
-              setView(session ? 'waiting' : 'join')
+              setView(session ? 'waiting' : preJoinView(gameData, false))
             }
           }
           return
@@ -618,6 +649,14 @@ export default function GamePage() {
     setView(hasSession ? 'waiting' : 'join')
   }
 
+  useLobbyOpenNotification(game?.status, () => {
+    if (myPlayerIdRef.current) {
+      resetPlayerForLobby(true)
+    } else {
+      setView('join')
+    }
+  })
+
   // ── Real-time subscriptions ───────────────────────────────────────────────
   useGameChannel(
     gameCode,
@@ -631,6 +670,9 @@ export default function GamePage() {
     },
     {
       onGameUpdate: async (newGame) => {
+        if (newGame.status === 'active' && !myPlayerIdRef.current) {
+          setView(preJoinView(newGame, false))
+        }
         if (newGame.status === 'active' && myPlayerIdRef.current) {
           const [{ data: activeRound }, { data: parts }] = await Promise.all([
             supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
@@ -741,6 +783,15 @@ export default function GamePage() {
       if (plrsRes.data) setPlayers(plrsRes.data)
       if (partsRes.data) setParticipants(partsRes.data)
       if (gameRes.data) setGame(gameRes.data)
+      if (!myPlayerIdRef.current && gameRes.data) {
+        setView((current) => {
+          const next = preJoinView(gameRes.data as Game, false)
+          if (current === 'join' || current === 'game_started_waiting' || current === 'late_join_choice') {
+            return next
+          }
+          return current
+        })
+      }
       if (gameRes.data && isWhoSaidThis(parseGameType(gameRes.data.game_type))) {
         await fetchWstPool()
       }
@@ -760,7 +811,7 @@ export default function GamePage() {
       return true
     },
     [gameCode, view],
-    { intervalMs: POLL_INTERVALS.lobby, enabled: view === 'waiting' || view === 'join' }
+    { intervalMs: POLL_INTERVALS.lobby, enabled: view === 'waiting' || view === 'join' || view === 'game_started_waiting' || view === 'late_join_choice' }
   )
 
   // Poll player-submitted questions in lobby (WYR/MLT only)
@@ -1028,7 +1079,7 @@ export default function GamePage() {
   }
 
   const handleSubmit = async () => {
-    if (submittedRef.current || !currentRound || !myPlayerId || !game) return
+    if (submittedRef.current || !currentRound || !myPlayerId || !game || isViewer) return
     const submitGameType = parseGameType(game.game_type)
     const roundIds = currentRound.participant_ids
     if (
@@ -1091,7 +1142,7 @@ export default function GamePage() {
     }
   }
 
-  const joinGame = async () => {
+  const joinGame = async (joinAsViewer?: boolean) => {
     if (joining) return
     if (useFreeNameJoin ? !nameInput.trim() : !selectedParticipantId) return
     unlockAudio()
@@ -1117,10 +1168,22 @@ export default function GamePage() {
                   participantId: selectedParticipantId!,
                 }
 
+      const gameType = parseGameType(game?.game_type)
+      const activeJoinExtras =
+        game?.status === 'active'
+          ? gameOffersLateJoinChoice(gameType)
+            ? { joinAsViewer }
+            : allowLatePlayers(game!)
+              ? {}
+              : { joinAsViewer: true }
+          : {}
+
       const res = await fetch('/api/players', {
         method: editingJoin && myPlayerId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingJoin && myPlayerId ? { ...body, playerId: myPlayerId } : body),
+        body: JSON.stringify(
+          editingJoin && myPlayerId ? { ...body, playerId: myPlayerId } : { ...body, ...activeJoinExtras }
+        ),
       })
       const data = await res.json()
       if (data.playerId) {
@@ -1139,7 +1202,21 @@ export default function GamePage() {
         setMyPlayerId(data.playerId)
         setMyPlayerName(data.playerName)
         setEditingJoin(false)
-        setView('waiting')
+        if (game?.status === 'active') {
+          const { data: activeRound } = await supabase
+            .from('rounds')
+            .select('*')
+            .eq('game_id', gameCode)
+            .eq('status', 'active')
+            .maybeSingle()
+          if (activeRound) {
+            applyActiveRound(activeRound)
+          } else {
+            setView('waiting')
+          }
+        } else {
+          setView('waiting')
+        }
       } else {
         const msg = data.error ?? 'Failed to join'
         toast.error(msg.toLowerCase().includes('taken') ? 'That name was just taken — pick another' : msg)
@@ -1249,6 +1326,34 @@ export default function GamePage() {
     return <AnonymousMessagesPlayerView gameCode={gameCode} />
   }
 
+  if (view === 'game_started_waiting') {
+    return (
+      <GameStartedWaiting
+        gameCode={gameCode}
+        game={game}
+        onLobbyOpen={() => setView('join')}
+      />
+    )
+  }
+
+  if (view === 'late_join_choice' && game) {
+    return (
+      <LateJoinChoice
+        gameCode={gameCode}
+        game={game}
+        context={lateJoinContext}
+        contextLoading={lateJoinContextLoading}
+        playersAllowed={allowLatePlayers(game)}
+        showNameField={useFreeNameJoin}
+        nameInput={nameInput}
+        onNameChange={setNameInput}
+        joining={joining}
+        onJoinAsViewer={() => void joinGame(true)}
+        onJoinAsPlayer={() => void joinGame(false)}
+      />
+    )
+  }
+
   // JOIN
   if (view === 'join') {
     return (
@@ -1352,7 +1457,7 @@ export default function GamePage() {
               </p>
             </>
           )}
-          <button onClick={joinGame} disabled={!canSubmitJoin || joining} className={primaryBtnCls}>
+          <button onClick={() => void joinGame()} disabled={!canSubmitJoin || joining} className={primaryBtnCls}>
             {joining ? (editingJoin ? 'Saving...' : 'Joining...') : editingJoin ? 'Save changes' : 'Join Game'}
           </button>
           {editingJoin ? (
@@ -1364,6 +1469,7 @@ export default function GamePage() {
               Cancel
             </button>
           ) : null}
+          <ShareGameLinkCard gameCode={gameCode} />
         </div>
       </CenteredCard>
     )
@@ -1444,6 +1550,7 @@ export default function GamePage() {
     return (
       <CenteredCard>
         <PlayerNameBar name={myPlayerName} />
+        {isViewer && <ViewerModeBanner className="mb-2" />}
         <div className="text-center space-y-1">
           <div className="text-4xl">⏳</div>
           <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
@@ -2000,6 +2107,8 @@ export default function GamePage() {
           <ParticipantGallery participants={participants} />
         )}
 
+        <ShareGameLinkCard gameCode={gameCode} />
+
         <div className="flex flex-col gap-2">
           <button type="button" onClick={openEditJoin} className="btn-secondary text-sm py-2.5">
             {isNameOnlyJoin || !joinNeedsGender ? 'Change name' : 'Change name or gender'}
@@ -2026,7 +2135,7 @@ export default function GamePage() {
     const submitterName = wstSubmitterName(submitterId, players)
     const quote = currentRound.quote_text ?? ''
     const targets = wstVoteTargets(participants)
-    const canVote = !!myPlayerId && !isSubmitter && !!quote
+    const canVote = !!myPlayerId && !isViewer && !isSubmitter && !!quote && !isViewer
 
     return (
       <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full">
@@ -2128,7 +2237,7 @@ export default function GamePage() {
   if (view === 'round' && currentRound && isMostLikelyTo(game?.game_type)) {
     const gameType = parseGameType(game?.game_type)
     const question = currentRound.mlt_question ?? ''
-    const canVote = !!myPlayerId
+    const canVote = !!myPlayerId && !isViewer
     const mltTargets = game ? mltVoteTargets(game, participants, players) : []
     const mltSelfId = isMltImport
       ? (participants.find((p) => myPlayerName && p.name.toLowerCase() === myPlayerName.toLowerCase())?.id ?? null)
@@ -2185,7 +2294,7 @@ export default function GamePage() {
     const gameType = parseGameType(game?.game_type)
     const optionA = currentRound.wyr_option_a ?? ''
     const optionB = currentRound.wyr_option_b ?? ''
-    const canVote = !!myPlayerId
+    const canVote = !!myPlayerId && !isViewer
     const isTotRound = isTotGame
     const borderCls =
       wyrChoice === 'a'
@@ -2372,8 +2481,8 @@ export default function GamePage() {
     const voterHint = genderFreeVoting ? null : roundVoterLabel(roundParticipantGender)
     const effectiveGender = myPlayerGender ?? getPlayerSession(gameCode)?.playerGender ?? null
     const canVote = genderFreeVoting
-      ? !!myPlayerId
-      : !!(effectiveGender && roundParticipantGender && canPlayerVoteInRound(effectiveGender, roundParticipantGender))
+      ? !!myPlayerId && !isViewer
+      : !!(effectiveGender && roundParticipantGender && canPlayerVoteInRound(effectiveGender, roundParticipantGender) && !isViewer)
     const voteBanner = canVote && !genderFreeVoting ? activeVoteBanner(effectiveGender) : null
     const isBinaryPoll = isBinaryPeoplePollGame(gameType)
     const isUnary = isUnaryPollGame(gameType)

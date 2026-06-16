@@ -6,7 +6,7 @@ import { parseGameType, isNameOnlyPlayerJoin, isHotSeat, isAnonymousMessagesGame
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
 import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
 import { createBingoCardForPlayer } from '@/lib/bingo'
-import { codewordsAllowsPlayerChanges, removeCodewordsPlayer } from '@/lib/codewords'
+import { assignCodewordsLateJoinOperative, codewordsAllowsPlayerChanges, removeCodewordsPlayer } from '@/lib/codewords'
 import { fetchGamePlayerLimits, isLobbyLimitGameType, lobbyMaxPlayersFromGame } from '@/lib/game-limits'
 import { isGenderFreeImportJoin, isGenderFreeJoinersJoin, isGenderFreeVotersJoin } from '@/lib/gender-based'
 import { isImportClaimMode, isJoinersPollMode, isVoterOnlyMode } from '@/lib/participant-mode'
@@ -17,6 +17,8 @@ import {
   pollGenderForPlayer,
   syncImportParticipantBallot,
 } from '@/lib/game-admin'
+import { canJoinGame, playerIsViewer, spectatorForActiveJoin, gameOffersLateJoinChoice, allowLateJoin, allowLatePlayers } from '@/lib/viewers'
+import type { Game } from '@/types'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -33,6 +35,46 @@ async function assertWaitingGame(gameCode: string) {
     return { error: 'Game has already started', status: 400 as const, game: null, id }
   }
   return { error: null, status: 200 as const, game, id }
+}
+
+function playerJoinResponse(
+  player: {
+    id: string
+    name: string
+    gender: string
+    identity_gender: string | null
+    joined_at: string
+    spectator?: boolean
+  },
+  game: Pick<Game, 'status' | 'session_started_at'>,
+  extra: Record<string, unknown> = {}
+) {
+  return {
+    playerId: player.id,
+    playerName: player.name,
+    playerGender: player.gender,
+    playerIdentityGender: player.identity_gender,
+    isViewer: playerIsViewer(player, game),
+    ...extra,
+  }
+}
+
+function lateJoinChoiceError(
+  game: Pick<Game, 'status' | 'game_type' | 'allow_viewers' | 'allow_late_players' | 'codewords_late_join'>,
+  joinAsViewer: boolean | undefined
+): string | null {
+  if (game.status !== 'active') return null
+  if (!gameOffersLateJoinChoice(parseGameType(game.game_type))) return null
+  if (!allowLatePlayers(game)) {
+    if (joinAsViewer === false) return 'This game only allows late joiners to watch'
+    return null
+  }
+  if (joinAsViewer === undefined) return 'Choose to join as a viewer or player'
+  return null
+}
+
+function spectatorOnJoin(game: Game, joinAsViewer: boolean | undefined): boolean {
+  return spectatorForActiveJoin(game, joinAsViewer)
 }
 
 async function nameTaken(gameId: string, name: string, excludePlayerId?: string) {
@@ -74,6 +116,7 @@ export async function POST(req: NextRequest) {
     pollGender: rawPollGender,
     identityGender: rawIdentityGender,
     participantId: rawParticipantId,
+    joinAsViewer: rawJoinAsViewer,
   } = parsed.data
 
   const name = playerName?.trim() ?? ''
@@ -87,6 +130,12 @@ export async function POST(req: NextRequest) {
   if (isAnonymousMessagesGame(rowGameType)) {
     if (gameRow.status === 'finished') {
       return NextResponse.json({ error: 'This session has ended' }, { status: 400 })
+    }
+    if (gameRow.status === 'active' && !allowLateJoin(gameRow as Game)) {
+      return NextResponse.json(
+        { error: 'This session has started — wait for the host to open the lobby again' },
+        { status: 400 }
+      )
     }
     if (gameRow.status !== 'waiting' && gameRow.status !== 'active') {
       return NextResponse.json({ error: 'Cannot join this session' }, { status: 400 })
@@ -113,6 +162,7 @@ export async function POST(req: NextRequest) {
         gender: 'both',
         identity_gender: null,
         participant_id: null,
+        spectator: spectatorOnJoin(gameRow as Game, true),
       })
       .select()
       .single()
@@ -146,6 +196,7 @@ export async function POST(req: NextRequest) {
         gender: 'both',
         identity_gender: null,
         participant_id: null,
+        spectator: false,
       })
       .select()
       .single()
@@ -162,12 +213,12 @@ export async function POST(req: NextRequest) {
   }
 
   if (isBingoGame(rowGameType)) {
-    if (gameRow.status === 'finished') {
-      return NextResponse.json({ error: 'This bingo round has ended' }, { status: 400 })
+    const joinCheck = canJoinGame(gameRow as Game)
+    if (!joinCheck.ok) {
+      return NextResponse.json({ error: joinCheck.error }, { status: 400 })
     }
-    if (gameRow.status !== 'waiting' && gameRow.status !== 'active') {
-      return NextResponse.json({ error: 'Cannot join this game' }, { status: 400 })
-    }
+    const choiceError = lateJoinChoiceError(gameRow as Game, rawJoinAsViewer)
+    if (choiceError) return NextResponse.json({ error: choiceError }, { status: 400 })
 
     if (!name) {
       return NextResponse.json({ error: 'playerName is required' }, { status: 400 })
@@ -187,6 +238,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
     }
 
+    const isSpectator = spectatorOnJoin(gameRow as Game, rawJoinAsViewer)
+
     const { data: player, error } = await supabase
       .from('players')
       .insert({
@@ -195,34 +248,25 @@ export async function POST(req: NextRequest) {
         gender: 'both',
         identity_gender: null,
         participant_id: null,
+        spectator: isSpectator,
       })
       .select()
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    if (gameRow.status === 'active') {
+    if (gameRow.status === 'waiting' || (gameRow.status === 'active' && !isSpectator)) {
       const { error: cardError } = await createBingoCardForPlayer(supabase, gameId, player.id)
       if (cardError) return NextResponse.json({ error: cardError }, { status: 500 })
     }
 
-    return NextResponse.json({
-      playerId: player.id,
-      playerName: player.name,
-      playerGender: player.gender,
-      playerIdentityGender: player.identity_gender,
-    })
+    return NextResponse.json(playerJoinResponse(player, gameRow as Game))
   }
 
   if (isMonopolyGame(rowGameType)) {
-    if (gameRow.status === 'finished') {
-      return NextResponse.json({ error: 'This game has ended' }, { status: 400 })
-    }
-    if (gameRow.status === 'active') {
-      return NextResponse.json({ error: 'This game has already started' }, { status: 400 })
-    }
-    if (gameRow.status !== 'waiting') {
-      return NextResponse.json({ error: 'Cannot join this game' }, { status: 400 })
+    const joinCheck = canJoinGame(gameRow as Game)
+    if (!joinCheck.ok) {
+      return NextResponse.json({ error: joinCheck.error }, { status: 400 })
     }
 
     if (!name) {
@@ -235,7 +279,7 @@ export async function POST(req: NextRequest) {
       .select('id', { count: 'exact', head: true })
       .eq('game_id', gameId)
 
-    if ((playerCount ?? 0) >= maxPlayers) {
+    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
       return NextResponse.json({ error: 'This game is full' }, { status: 400 })
     }
 
@@ -251,30 +295,23 @@ export async function POST(req: NextRequest) {
         gender: 'both',
         identity_gender: null,
         participant_id: null,
+        spectator: false,
       })
       .select()
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    return NextResponse.json({
-      playerId: player.id,
-      playerName: player.name,
-      playerGender: player.gender,
-      playerIdentityGender: player.identity_gender,
-    })
+    return NextResponse.json(playerJoinResponse(player, gameRow as Game))
   }
 
   if (isCodewordsGame(rowGameType)) {
-    if (gameRow.status === 'finished') {
-      return NextResponse.json({ error: 'This round has ended' }, { status: 400 })
+    const joinCheck = canJoinGame(gameRow as Game)
+    if (!joinCheck.ok) {
+      return NextResponse.json({ error: joinCheck.error }, { status: 400 })
     }
-    if (gameRow.status === 'active' && gameRow.codewords_late_join !== true) {
-      return NextResponse.json({ error: 'This game has already started — late join is disabled' }, { status: 400 })
-    }
-    if (gameRow.status !== 'waiting' && gameRow.status !== 'active') {
-      return NextResponse.json({ error: 'Cannot join this game' }, { status: 400 })
-    }
+    const choiceError = lateJoinChoiceError(gameRow as Game, rawJoinAsViewer)
+    if (choiceError) return NextResponse.json({ error: choiceError }, { status: 400 })
 
     if (!name) {
       return NextResponse.json({ error: 'playerName is required' }, { status: 400 })
@@ -298,6 +335,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
     }
 
+    const isSpectator = spectatorOnJoin(gameRow as Game, rawJoinAsViewer)
+
     const { data: player, error } = await supabase
       .from('players')
       .insert({
@@ -306,24 +345,37 @@ export async function POST(req: NextRequest) {
         gender: 'both',
         identity_gender: null,
         participant_id: null,
+        spectator: isSpectator,
       })
       .select()
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    return NextResponse.json({
-      playerId: player.id,
-      playerName: player.name,
-      playerGender: player.gender,
-      playerIdentityGender: player.identity_gender,
-    })
+    if (gameRow.status === 'active' && !isSpectator) {
+      const { role, error: assignError } = await assignCodewordsLateJoinOperative(supabase, gameId, player.id)
+      if (assignError) {
+        await supabase.from('players').delete().eq('id', player.id)
+        return NextResponse.json({ error: assignError }, { status: 500 })
+      }
+      return NextResponse.json(
+        playerJoinResponse(player, gameRow as Game, role ? { codewordsRole: role } : {})
+      )
+    }
+
+    return NextResponse.json(playerJoinResponse(player, gameRow as Game))
   }
 
-  const waiting = await assertWaitingGame(gameCode)
-  if (waiting.error) return NextResponse.json({ error: waiting.error }, { status: waiting.status })
-  const { game, id } = waiting
-  const gameType = parseGameType(game!.game_type)
+  const joinCheck = canJoinGame(gameRow as Game)
+  if (!joinCheck.ok) {
+    return NextResponse.json({ error: joinCheck.error }, { status: 400 })
+  }
+  const game = gameRow
+  const id = gameId
+  const gameType = parseGameType(game.game_type)
+  const choiceError = lateJoinChoiceError(game as Game, rawJoinAsViewer)
+  if (choiceError) return NextResponse.json({ error: choiceError }, { status: 400 })
+  const joinSpectator = spectatorOnJoin(game as Game, rawJoinAsViewer)
 
   if (isNameOnlyPlayerJoin(gameType) || (isHotSeat(gameType) && isJoinersPollMode(game as import('@/types').Game))) {
     if (!name) {
@@ -337,7 +389,7 @@ export async function POST(req: NextRequest) {
         .select('id', { count: 'exact', head: true })
         .eq('game_id', id)
 
-      if ((playerCount ?? 0) >= maxPlayers) {
+      if (game.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
         return NextResponse.json({ error: 'This room is full' }, { status: 400 })
       }
     }
@@ -354,18 +406,14 @@ export async function POST(req: NextRequest) {
         gender: 'both',
         identity_gender: null,
         participant_id: null,
+        spectator: joinSpectator,
       })
       .select()
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    return NextResponse.json({
-      playerId: player.id,
-      playerName: player.name,
-      playerGender: player.gender,
-      playerIdentityGender: player.identity_gender,
-    })
+    return NextResponse.json(playerJoinResponse(player, game as Game))
   }
 
   if (isGenderFreeJoinersJoin(game as import('@/types').Game)) {
@@ -400,6 +448,7 @@ export async function POST(req: NextRequest) {
         gender: 'both',
         identity_gender: null,
         participant_id: participant.id,
+        spectator: joinSpectator,
       })
       .select()
       .single()
@@ -409,12 +458,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: playerError.message }, { status: 500 })
     }
 
-    return NextResponse.json({
-      playerId: player.id,
-      playerName: player.name,
-      playerGender: player.gender,
-      playerIdentityGender: player.identity_gender,
-    })
+    return NextResponse.json(playerJoinResponse(player, game as Game))
   }
 
   if (isGenderFreeVotersJoin(game as import('@/types').Game)) {
@@ -433,18 +477,14 @@ export async function POST(req: NextRequest) {
         gender: 'both',
         identity_gender: null,
         participant_id: null,
+        spectator: joinSpectator,
       })
       .select()
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    return NextResponse.json({
-      playerId: player.id,
-      playerName: player.name,
-      playerGender: player.gender,
-      playerIdentityGender: player.identity_gender,
-    })
+    return NextResponse.json(playerJoinResponse(player, game as Game))
   }
 
   if (isGenderFreeImportJoin(game as import('@/types').Game) && isImportClaimMode(game as import('@/types').Game)) {
@@ -483,18 +523,14 @@ export async function POST(req: NextRequest) {
         gender: 'both',
         identity_gender: null,
         participant_id: participantId,
+        spectator: joinSpectator,
       })
       .select()
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    return NextResponse.json({
-      playerId: player.id,
-      playerName: player.name,
-      playerGender: player.gender,
-      playerIdentityGender: player.identity_gender,
-    })
+    return NextResponse.json(playerJoinResponse(player, game as Game))
   }
 
   const gender = normalizePlayerGender(String(rawGender ?? ''))
@@ -547,6 +583,7 @@ export async function POST(req: NextRequest) {
         gender,
         identity_gender: identityGender,
         participant_id: participantId,
+        spectator: joinSpectator,
       })
       .select()
       .single()
@@ -555,12 +592,7 @@ export async function POST(req: NextRequest) {
 
     await syncImportParticipantBallot(supabase, id, participantId, gender, identityGender, rawPollGender ?? undefined)
 
-    return NextResponse.json({
-      playerId: player.id,
-      playerName: player.name,
-      playerGender: player.gender,
-      playerIdentityGender: player.identity_gender,
-    })
+    return NextResponse.json(playerJoinResponse(player, game as Game))
   }
 
   if (!name) {
@@ -587,18 +619,14 @@ export async function POST(req: NextRequest) {
         gender,
         identity_gender: identityGender,
         participant_id: null,
+        spectator: joinSpectator,
       })
       .select()
       .single()
 
     if (playerError) return NextResponse.json({ error: playerError.message }, { status: 500 })
 
-    return NextResponse.json({
-      playerId: player.id,
-      playerName: player.name,
-      playerGender: player.gender,
-      playerIdentityGender: player.identity_gender,
-    })
+    return NextResponse.json(playerJoinResponse(player, game as Game))
   }
 
   if (isJoinersPollMode(game as import('@/types').Game)) {
@@ -633,6 +661,7 @@ export async function POST(req: NextRequest) {
         gender,
         identity_gender: identityGender,
         participant_id: participant.id,
+        spectator: joinSpectator,
       })
       .select()
       .single()
@@ -642,12 +671,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: playerError.message }, { status: 500 })
     }
 
-    return NextResponse.json({
-      playerId: player.id,
-      playerName: player.name,
-      playerGender: player.gender,
-      playerIdentityGender: player.identity_gender,
-    })
+    return NextResponse.json(playerJoinResponse(player, game as Game))
   }
 
   return NextResponse.json({ error: 'Invalid game mode' }, { status: 400 })

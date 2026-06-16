@@ -23,6 +23,7 @@ import {
   PLAYER_SELECT,
 } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
+import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import type { BingoCallMode, BingoCalledNumber, BingoClaim, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useBingoNotifications'
@@ -285,6 +286,12 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
                   ))}
                 </select>
               </label>
+              <HostAllowViewersField
+                gameCode={gameCode}
+                hostToken={hostToken}
+                game={game}
+                onGameUpdate={setGame}
+              />
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"

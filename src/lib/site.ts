@@ -16,3 +16,7 @@ export function appOrigin(): string {
   if (raw.includes('://')) return raw.replace(/\/$/, '')
   return `https://${raw.replace(/\/$/, '')}`
 }
+
+export function playerGameUrl(gameCode: string): string {
+  return `${appOrigin()}/game/${gameCode.trim().toUpperCase()}`
+}

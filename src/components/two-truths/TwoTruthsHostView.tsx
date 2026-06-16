@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { TwoTruthsActiveRound } from '@/components/two-truths/TwoTruthsActiveRound'
 import { TwoTruthsHostManagePanel } from '@/components/two-truths/TwoTruthsHostManagePanel'
+import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { TwoTruthsLobbySubmit } from '@/components/two-truths/TwoTruthsLobbySubmit'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useTwoTruthsAdvance } from '@/hooks/useTwoTruthsAdvance'
@@ -204,6 +205,12 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
           <h1 className="text-2xl font-black gradient-title">{game.title}</h1>
           <p className="text-muted text-sm">{cfg.tagline}</p>
         </div>
+
+        {game.status === 'waiting' && (
+          <div className="glass-card p-4">
+            <HostAllowViewersField gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          </div>
+        )}
 
         {game.status === 'waiting' && !hostPlayerId && (
           <div className="glass-card p-4 space-y-3">

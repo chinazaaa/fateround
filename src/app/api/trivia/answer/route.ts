@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { triviaAnswerSchema } from '@/lib/validation'
 import { parseGameType, isTriviaGame } from '@/lib/game-types'
 import { computeTriviaPoints, parseTriviaMetadata, TRIVIA_DEFAULT_TIMER } from '@/lib/trivia'
+import { playerIsViewer } from '@/lib/viewers'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -43,8 +44,16 @@ export async function POST(req: NextRequest) {
 
   if (existing) return NextResponse.json({ error: 'Already answered this round' }, { status: 400 })
 
-  const { data: player } = await supabase.from('players').select('id').eq('id', playerId).eq('game_id', code).maybeSingle()
+  const { data: player } = await supabase
+    .from('players')
+    .select('id, joined_at, spectator')
+    .eq('id', playerId)
+    .eq('game_id', code)
+    .maybeSingle()
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
+  if (playerIsViewer(player, game)) {
+    return NextResponse.json({ error: 'Viewers cannot answer questions' }, { status: 403 })
+  }
 
   const startedAt = round.started_at ? new Date(round.started_at).getTime() : Date.now()
   const now = Date.now()

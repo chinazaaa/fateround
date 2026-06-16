@@ -28,6 +28,7 @@ export function TwoTruthsActiveRound({
   playerName,
   onReload,
   skipGameSync = false,
+  readOnly = false,
 }: {
   gameCode: string
   game: Game
@@ -38,6 +39,7 @@ export function TwoTruthsActiveRound({
   playerName: string
   onReload?: () => void
   skipGameSync?: boolean
+  readOnly?: boolean
 }) {
   const { error: toastError } = useToast()
   const [submitting, setSubmitting] = useState(false)
@@ -102,7 +104,7 @@ export function TwoTruthsActiveRound({
   })
 
   const submitGuess = async (index: number) => {
-    if (!currentRound || submitting) return
+    if (!currentRound || readOnly || submitting) return
     setSubmitting(true)
     setSubmittingIndex(index)
     try {
@@ -202,7 +204,7 @@ export function TwoTruthsActiveRound({
         {metadata.statements.map((statement, index) => {
           const isLie = showLie && index === metadata.lie_index
           const isPicked = pickedIndex === index && (screen === 'locked' || screen === 'revealed')
-          const canPick = screen === 'active' && !submitting
+          const canPick = screen === 'active' && !submitting && !readOnly
           return (
             <button
               key={index}

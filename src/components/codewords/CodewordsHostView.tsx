@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CodewordsActiveRound } from '@/components/codewords/CodewordsActiveRound'
 import { CodewordsHostManagePanel } from '@/components/codewords/CodewordsHostManagePanel'
 import { CodewordsWaitingPanel } from '@/components/codewords/CodewordsWaitingPanel'
@@ -13,6 +13,7 @@ import {
   getCodewordsHostMode,
   mergeCodewordsGuesses,
   setCodewordsHostMode,
+  teamLabel,
   type CodewordsHostMode,
 } from '@/lib/codewords'
 import { useCodewordsRealtime } from '@/hooks/useCodewordsRealtime'
@@ -22,6 +23,7 @@ import { appOrigin } from '@/lib/site'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import type { CodewordsBoard, CodewordsGuess, CodewordsPlayerRole, CodewordsRole, CodewordsTeam, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
+import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 
 type HostTab = 'play' | 'manage'
 
@@ -87,6 +89,42 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     onGuesses: (updater) => setGuesses(updater),
     onReload: load,
   })
+
+  const lateJoinNotifyReadyRef = useRef(false)
+  const prevPlayerIdsRef = useRef<Set<string>>(new Set())
+  const prevRolesByPlayerRef = useRef<Map<string, CodewordsPlayerRole>>(new Map())
+
+  useEffect(() => {
+    if (!game || game.status !== 'active') {
+      lateJoinNotifyReadyRef.current = false
+      prevPlayerIdsRef.current = new Set(players.map((p) => p.id))
+      prevRolesByPlayerRef.current = new Map(roles.map((r) => [r.player_id, r]))
+      return
+    }
+
+    if (!lateJoinNotifyReadyRef.current) {
+      lateJoinNotifyReadyRef.current = true
+      prevPlayerIdsRef.current = new Set(players.map((p) => p.id))
+      prevRolesByPlayerRef.current = new Map(roles.map((r) => [r.player_id, r]))
+      return
+    }
+
+    for (const player of players) {
+      const role = roles.find((r) => r.player_id === player.id)
+      const prevRole = prevRolesByPlayerRef.current.get(player.id)
+      const isNewPlayer = !prevPlayerIdsRef.current.has(player.id)
+      if (role?.role === 'operative' && (isNewPlayer || !prevRole)) {
+        success(
+          isNewPlayer
+            ? `${player.name} joined mid-game — ${teamLabel(role.team)} operative`
+            : `${player.name} assigned to ${teamLabel(role.team)} team`
+        )
+      }
+    }
+
+    prevPlayerIdsRef.current = new Set(players.map((p) => p.id))
+    prevRolesByPlayerRef.current = new Map(roles.map((r) => [r.player_id, r]))
+  }, [game, players, roles, success])
 
   const assignRole = async (playerId: string, team: CodewordsTeam, role: CodewordsRole) => {
     setSavingRoleFor(playerId)
@@ -411,6 +449,12 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
                     : 'assign yourself in Manage → Teams.'}
               </p>
             )}
+          </div>
+        )}
+
+        {game.status === 'waiting' && (
+          <div className="glass-card p-4">
+            <HostAllowViewersField gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
           </div>
         )}
 

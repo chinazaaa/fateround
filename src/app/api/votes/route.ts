@@ -20,6 +20,7 @@ import {
 } from '@/lib/game-types'
 import { isGameGenderBased, supportsGenderToggle } from '@/lib/gender-based'
 import { parseCustomAssignments, isCustomAssignmentValid, customAssignmentMode } from '@/lib/custom-game'
+import { playerIsViewer } from '@/lib/viewers'
 import type { PairFlag, WyrChoice } from '@/types'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -54,11 +55,11 @@ export async function POST(req: NextRequest) {
   } = parsed.data
 
   const [{ data: player }, { data: round }, { data: game }] = await Promise.all([
-    supabase.from('players').select('id, gender, identity_gender, name').eq('id', playerId).maybeSingle(),
+    supabase.from('players').select('id, gender, identity_gender, name, joined_at, spectator').eq('id', playerId).maybeSingle(),
     supabase.from('rounds').select('participant_ids, submitter_player_id, quote_text').eq('id', roundId).maybeSingle(),
     supabase
       .from('games')
-      .select('game_type, participant_mode, pair_vote_mode, custom_slots, gender_based')
+      .select('game_type, participant_mode, pair_vote_mode, custom_slots, gender_based, status, session_started_at')
       .eq('id', gameId.toUpperCase())
       .maybeSingle(),
   ])
@@ -66,6 +67,9 @@ export async function POST(req: NextRequest) {
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
   if (!round) return NextResponse.json({ error: 'Round not found' }, { status: 404 })
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
+  if (playerIsViewer(player, game)) {
+    return NextResponse.json({ error: 'Viewers cannot vote' }, { status: 403 })
+  }
 
   const gameType = parseGameType(game.game_type)
   const roundIds = round.participant_ids as string[]

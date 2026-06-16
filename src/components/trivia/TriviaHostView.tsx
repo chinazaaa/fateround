@@ -14,6 +14,7 @@ import { getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player, Round, TriviaAnswer } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 
 type HostTab = 'play' | 'manage'
 
@@ -324,6 +325,12 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
                 Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
               </p>
             )}
+          </div>
+        )}
+
+        {game.status === 'waiting' && (
+          <div className="glass-card-strong p-5 sm:p-6">
+            <HostAllowViewersField gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
           </div>
         )}
 

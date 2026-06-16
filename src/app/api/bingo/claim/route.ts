@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { bingoClaimSchema } from '@/lib/validation'
 import { parseGameType, isBingoGame } from '@/lib/game-types'
 import { hasBingoWin } from '@/lib/bingo'
+import { playerIsViewer } from '@/lib/viewers'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -22,6 +23,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not a bingo game' }, { status: 400 })
   }
   if (game.status !== 'active') return NextResponse.json({ error: 'Game not active' }, { status: 400 })
+
+  const { data: player } = await supabase
+    .from('players')
+    .select('id, joined_at, spectator')
+    .eq('id', playerId)
+    .eq('game_id', code)
+    .maybeSingle()
+  if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
+  if (playerIsViewer(player, game)) {
+    return NextResponse.json({ error: 'Viewers cannot claim bingo' }, { status: 403 })
+  }
 
   const { data: existingWinner } = await supabase
     .from('bingo_claims')

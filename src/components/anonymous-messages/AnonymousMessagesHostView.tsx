@@ -28,6 +28,7 @@ import type { Game, Player } from '@/types'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 
 const LOBBY_PAGE_SIZE = 10
 
@@ -368,6 +369,12 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
           noun="players"
         />
       </div>
+
+      {game.status === 'waiting' && (
+        <div className="glass-card p-4">
+          <HostAllowViewersField gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        </div>
+      )}
 
       {game.status === 'waiting' && (
         <button type="button" onClick={startSession} disabled={!canStart || starting} className="btn-primary w-full">

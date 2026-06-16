@@ -59,16 +59,17 @@ export function formatBanCountdown(secondsLeft: number): string {
 
 /** Players who join after the session starts may watch but not post. */
 export function anonymousPlayerCanChat(
-  player: Pick<Player, 'joined_at'>,
+  player: Pick<Player, 'joined_at' | 'spectator'>,
   game: Pick<Game, 'status' | 'session_started_at'>
 ): boolean {
   if (game.status === 'waiting') return true
+  if (player.spectator) return false
   if (!game.session_started_at) return false
   return new Date(player.joined_at).getTime() < new Date(game.session_started_at).getTime()
 }
 
 export function countAnonymousRoomPresence(
-  players: Pick<Player, 'joined_at'>[],
+  players: Pick<Player, 'joined_at' | 'spectator'>[],
   game: Pick<Game, 'status' | 'session_started_at'>
 ): { total: number; participants: number; viewers: number } {
   if (game.status !== 'active') {
@@ -86,7 +87,7 @@ export function countAnonymousRoomPresence(
 }
 
 export function anonymousPlayerCanPost(
-  player: Pick<Player, 'joined_at'>,
+  player: Pick<Player, 'joined_at' | 'spectator'>,
   game: Pick<Game, 'status' | 'session_started_at'>,
   bannedUntil?: string | null
 ): boolean {
