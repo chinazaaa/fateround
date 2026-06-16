@@ -6,6 +6,8 @@ import {
   YAHTZEE_LOWER_CATEGORIES,
   YAHTZEE_UPPER_CATEGORIES,
   categoryScore,
+  upperBonus,
+  upperScore,
   totalScore,
 } from '@/lib/yahtzee'
 
@@ -24,6 +26,7 @@ function ScoreRow({
 }) {
   const filled = points != null
   const canPick = !filled && onScore && !disabled && preview != null
+  const displayValue = filled ? points : preview != null ? preview : '—'
 
   return (
     <button
@@ -38,7 +41,7 @@ function ScoreRow({
     >
       <span className="font-medium">{YAHTZEE_CATEGORY_LABELS[category]}</span>
       <span className="font-bold tabular-nums">
-        {filled ? points : preview != null && canPick ? preview : '—'}
+        {displayValue}
       </span>
     </button>
   )
@@ -55,14 +58,15 @@ export function YahtzeeScorecard({
   scoringEnabled?: boolean
   onScore?: (category: YahtzeeCategory) => void
 }) {
-  const upperSum = YAHTZEE_UPPER_CATEGORIES.reduce((sum, c) => sum + (categories[c] ?? 0), 0)
+  const upperSum = upperScore(categories)
+  const bonus = upperBonus(categories)
   const total = totalScore(categories)
 
   return (
     <div className="space-y-4">
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-widest text-faint mb-2 px-1">Upper section</p>
-        <div className="space-y-1">
+        <div className="grid grid-cols-2 gap-2">
           {YAHTZEE_UPPER_CATEGORIES.map((category) => (
             <ScoreRow
               key={category}
@@ -74,12 +78,15 @@ export function YahtzeeScorecard({
             />
           ))}
         </div>
-        <p className="text-xs text-muted text-right mt-2 px-1">Upper total: {upperSum}</p>
+        <p className="text-xs text-muted text-right mt-2 px-1">
+          Upper total: {upperSum}
+          {bonus > 0 ? ` + bonus ${bonus}` : ''}
+        </p>
       </div>
 
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-widest text-faint mb-2 px-1">Lower section</p>
-        <div className="space-y-1">
+        <div className="grid grid-cols-2 gap-2">
           {YAHTZEE_LOWER_CATEGORIES.map((category) => (
             <ScoreRow
               key={category}

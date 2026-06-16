@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
+import { PageShell } from '@/components/ui/PageShell'
 
 export function YahtzeeShell({
   children,
@@ -16,32 +17,26 @@ export function YahtzeeShell({
   const cfg = gameTypeConfig('yahtzee')
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-[var(--background)] text-[var(--foreground)]">
-      <div className="pointer-events-none fixed inset-0" style={{ background: 'var(--bg-gradient)' }} />
-      <div className="relative z-10 mx-auto max-w-2xl px-4 pb-28 pt-5 sm:pt-8 space-y-5">
-        {(title || subtitle) && (
-          <header className="text-center space-y-2">
-            <div className="inline-flex items-center justify-center gap-2">
-              <span className="text-3xl drop-shadow-lg">{cfg.card.emoji}</span>
-              <GameTypeBadge gameType="yahtzee" />
-            </div>
-            {title && (
-              <h1 className="text-2xl sm:text-3xl font-black tracking-tight gradient-title drop-shadow-sm">{title}</h1>
-            )}
-            {subtitle && <p className="text-sm text-muted max-w-md mx-auto">{subtitle}</p>}
-          </header>
-        )}
-        {children}
-      </div>
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      <PageShell centered>{(title || subtitle) && (
+        <header className="text-center space-y-2">
+          <div className="inline-flex items-center justify-center gap-2">
+            <span className="text-3xl drop-shadow-lg">{cfg.card.emoji}</span>
+            <GameTypeBadge gameType="yahtzee" />
+          </div>
+          {title && (
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight gradient-title drop-shadow-sm">{title}</h1>
+          )}
+          {subtitle && <p className="text-sm text-muted max-w-md mx-auto">{subtitle}</p>}
+        </header>
+      )}{children}</PageShell>
     </div>
   )
 }
 
 export function YahtzeeCard({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`rounded-2xl border border-[var(--border-strong)] bg-[var(--card)] shadow-[var(--card-shadow)] ${className}`}>
-      {children}
-    </div>
+    <div className={`glass-card ${className}`}>{children}</div>
   )
 }
 
@@ -61,7 +56,7 @@ export function YahtzeePrimaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled || loading}
-      className="w-full rounded-2xl bg-gradient-to-b from-[var(--marry)] to-[color-mix(in_srgb,var(--marry)_75%,#000)] px-5 py-4 text-base font-black text-[var(--background)] shadow-md disabled:opacity-45"
+      className="btn-primary w-full py-4 text-base sm:text-lg disabled:opacity-45"
     >
       {loading ? '…' : children}
     </button>
@@ -82,7 +77,7 @@ export function YahtzeeSecondaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="w-full rounded-2xl border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] px-5 py-3 text-sm font-semibold text-[var(--foreground)] disabled:opacity-45"
+      className="btn-secondary w-full py-3 text-sm font-semibold disabled:opacity-45"
     >
       {children}
     </button>

@@ -8,6 +8,9 @@ export const YAHTZEE_DEFAULT_MAX_PLAYERS = 6
 export const YAHTZEE_DICE_COUNT = 5
 export const YAHTZEE_ROLLS_PER_TURN = 3
 
+export const YAHTZEE_UPPER_BONUS_THRESHOLD = 63
+export const YAHTZEE_UPPER_BONUS_POINTS = 35
+
 export const YAHTZEE_CATEGORY_LABELS: Record<YahtzeeCategory, string> = {
   ones: 'Ones',
   twos: 'Twos',
@@ -141,12 +144,33 @@ export function categoryScore(dice: number[], category: YahtzeeCategory): number
   }
 }
 
+export function upperScore(points: YahtzeeCategoryPoints): number {
+  return (
+    (points.ones ?? 0) +
+    (points.twos ?? 0) +
+    (points.threes ?? 0) +
+    (points.fours ?? 0) +
+    (points.fives ?? 0) +
+    (points.sixes ?? 0)
+  )
+}
+
+export function upperBonus(points: YahtzeeCategoryPoints): number {
+  const u = upperScore(points)
+  return u >= YAHTZEE_UPPER_BONUS_THRESHOLD ? YAHTZEE_UPPER_BONUS_POINTS : 0
+}
+
 export function totalScore(points: YahtzeeCategoryPoints): number {
-  let sum = 0
-  for (const v of Object.values(points)) {
-    sum += v ?? 0
-  }
-  return sum
+  const lower =
+    (points.three_kind ?? 0) +
+    (points.four_kind ?? 0) +
+    (points.full_house ?? 0) +
+    (points.small_straight ?? 0) +
+    (points.large_straight ?? 0) +
+    (points.yahtzee ?? 0) +
+    (points.chance ?? 0)
+
+  return upperScore(points) + upperBonus(points) + lower
 }
 
 export function hasAnyUnusedCategory(points: YahtzeeCategoryPoints): boolean {

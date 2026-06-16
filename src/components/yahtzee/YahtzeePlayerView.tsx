@@ -15,7 +15,7 @@ import {
 import { YahtzeeDiceRow } from '@/components/yahtzee/YahtzeeDice'
 import { YahtzeeLeaderboard, YahtzeeScorecard } from '@/components/yahtzee/YahtzeeScorecard'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
+import { currentPlayerId, YAHTZEE_MIN_PLAYERS, upperBonus, upperScore, totalScore } from '@/lib/yahtzee'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, YAHTZEE_PLAYER_SCORES_SELECT, YAHTZEE_SESSION_SELECT } from '@/lib/supabase-selects'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
@@ -261,35 +261,55 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
       />
 
       {session && (
-        <YahtzeeCard className="p-5 space-y-4">
-          <YahtzeeDiceRow
-            dice={session.dice}
-            held={localHeld}
-            interactive={isMyTurn && (session.rolls_this_turn ?? 0) > 0 && session.rolls_remaining > 0}
-            onToggleHold={toggleHold}
-          />
-          <p className="text-center text-xs text-muted">
-            Rolls left: {session.rolls_remaining}
-            {isMyTurn && session.rolls_this_turn > 0 ? ' · Tap dice to hold' : ''}
-          </p>
-          {canRoll && (
-            <YahtzeePrimaryButton onClick={() => postAction('/api/yahtzee/roll')} loading={acting}>
-              Roll dice
-            </YahtzeePrimaryButton>
-          )}
-        </YahtzeeCard>
-      )}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+          <YahtzeeCard className="p-5 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-faint">Dice</p>
+                <p className="text-sm font-semibold">
+                  Rolls left: {session.rolls_remaining}
+                  {isMyTurn && session.rolls_this_turn > 0 ? ' · Hold dice' : ''}
+                </p>
+              </div>
+              <div className="text-3xl">{isMyTurn ? '🎲' : '—'}</div>
+            </div>
 
-      {myScore && session && (
-        <YahtzeeCard className="p-4">
-          <p className="text-xs uppercase tracking-widest text-faint mb-3">Your scorecard</p>
-          <YahtzeeScorecard
-            categories={myScore.scores.categories}
-            dice={isMyTurn ? session.dice : undefined}
-            scoringEnabled={canScore}
-            onScore={(category: YahtzeeCategory) => postAction('/api/yahtzee/score', { category })}
-          />
-        </YahtzeeCard>
+            <YahtzeeDiceRow
+              dice={session.dice}
+              held={localHeld}
+              interactive={isMyTurn && (session.rolls_this_turn ?? 0) > 0 && session.rolls_remaining > 0}
+              onToggleHold={toggleHold}
+            />
+
+            {canRoll && (
+              <YahtzeePrimaryButton onClick={() => postAction('/api/yahtzee/roll')} loading={acting}>
+                Roll dice
+              </YahtzeePrimaryButton>
+            )}
+          </YahtzeeCard>
+
+          {myScore && (
+            <YahtzeeCard className="p-4">
+              <p className="text-xs uppercase tracking-widest text-faint mb-3">Your scorecard</p>
+              {isMyTurn && (
+                <div className="mb-4 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] px-4 py-2.5 flex items-center justify-between">
+                  <span className="text-sm text-muted font-semibold">Upper: {upperScore(myScore.scores.categories)}</span>
+                  <span className="text-sm font-bold tabular-nums text-[var(--marry)]">
+                    {upperBonus(myScore.scores.categories) > 0 ? `+${upperBonus(myScore.scores.categories)} bonus` : 'No bonus yet'}
+                  </span>
+                  <span className="sr-only">Total score {totalScore(myScore.scores.categories)}</span>
+                </div>
+              )}
+
+              <YahtzeeScorecard
+                categories={myScore.scores.categories}
+                dice={isMyTurn ? session.dice : undefined}
+                scoringEnabled={canScore}
+                onScore={(category: YahtzeeCategory) => postAction('/api/yahtzee/score', { category })}
+              />
+            </YahtzeeCard>
+          )}
+        </div>
       )}
 
       <div>
