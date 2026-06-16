@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { TwoTruthsShareBlock } from '@/components/two-truths/TwoTruthsShareBlock'
 import { TwoTruthsSubmitterBadge } from '@/components/two-truths/TwoTruthsSubmitterBadge'
 import {
   formatTtlChoiceLabel,
@@ -136,17 +137,22 @@ export function TwoTruthsActiveRound({
   if (screen === 'finished') {
     return (
       <div className="space-y-4">
-        <div className="glass-card p-8 text-center space-y-2">
-          <p className="text-4xl">🏆</p>
-          <p className="text-2xl font-black">Game over!</p>
-          <p className="text-muted text-sm">Final standings for {playerName}</p>
-        </div>
-        <PaginatedLeaderboard
-          title="Final leaderboard"
-          rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
-          highlightId={myPlayerId}
-          scoreLabel={(score) => `${score} pts`}
-        />
+        <TwoTruthsShareBlock gameTitle={game.title}>
+          <div className="glass-card p-8 text-center space-y-2">
+            <p className="text-4xl">🏆</p>
+            <p className="text-2xl font-black">Game over!</p>
+            <p className="text-muted text-sm">Final standings for {playerName}</p>
+          </div>
+          <PaginatedLeaderboard
+            title="Final leaderboard"
+            rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
+            highlightId={myPlayerId}
+            scoreLabel={(score) => `${score} pts`}
+          />
+        </TwoTruthsShareBlock>
+        <p className="text-faint text-xs text-center">
+          You&apos;ll return to the lobby automatically when the host starts another game.
+        </p>
       </div>
     )
   }

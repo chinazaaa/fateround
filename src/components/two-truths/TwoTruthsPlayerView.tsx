@@ -128,7 +128,8 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   const me = players.find((p) => p.id === myPlayerId)
-  const isViewer = !!(game && me && playerIsViewer(me, game))
+  // In the lobby, everyone can participate regardless of spectator flag (gets cleared on reset)
+  const isViewer = !!(game && me && game.status !== 'waiting' && playerIsViewer(me, game))
 
   const joinGame = async () => {
     const name = joinName.trim()

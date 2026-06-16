@@ -185,5 +185,12 @@ export async function clearTwoTruthsSessionData(
     const { error } = await supabase.from(table).delete().eq('game_id', gameId)
     if (error) return { error: error.message }
   }
+  // Reset spectator flag so everyone can participate in the next round
+  const { error: spectatorError } = await supabase
+    .from('players')
+    .update({ spectator: false })
+    .eq('game_id', gameId)
+    .eq('spectator', true)
+  if (spectatorError) return { error: spectatorError.message }
   return { error: null }
 }

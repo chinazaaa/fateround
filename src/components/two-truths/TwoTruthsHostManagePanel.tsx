@@ -5,6 +5,7 @@ import { TwoTruthsSubmitterBadge } from '@/components/two-truths/TwoTruthsSubmit
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
+import { TwoTruthsShareBlock } from '@/components/two-truths/TwoTruthsShareBlock'
 import {
   formatTtlChoiceLabel,
   lobbyReadyForTwoTruths,
@@ -226,15 +227,17 @@ export function TwoTruthsHostManagePanel({
 
       {game.status === 'finished' && (
         <div className="space-y-4">
-          <div className="glass-card p-6 text-center space-y-2">
-            <p className="text-4xl">🏆</p>
-            <p className="text-xl font-black">Game finished</p>
-          </div>
-          <PaginatedLeaderboard
-            title="Final leaderboard"
-            rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
-            scoreLabel={(score) => `${score} pts`}
-          />
+          <TwoTruthsShareBlock gameTitle={game.title}>
+            <div className="glass-card p-6 text-center space-y-2">
+              <p className="text-4xl">🏆</p>
+              <p className="text-xl font-black">Game finished</p>
+            </div>
+            <PaginatedLeaderboard
+              title="Final leaderboard"
+              rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
+              scoreLabel={(score) => `${score} pts`}
+            />
+          </TwoTruthsShareBlock>
           <button type="button" onClick={onPlayAgain} disabled={playingAgain} className="btn-secondary w-full">
             {playingAgain ? 'Resetting…' : 'Return to lobby'}
           </button>
