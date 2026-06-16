@@ -424,7 +424,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return NextResponse.json({ error: ready.error ?? 'Not ready to start' }, { status: 400 })
     }
 
-    const playerOrder = shufflePlayerOrder(playerIds)
+    const submittedPlayerIds = statements.map((s) => s.player_id).filter((id) => playerIds.includes(id))
+    const playerOrder = shufflePlayerOrder(submittedPlayerIds)
     let roundRows: ReturnType<typeof buildTtlRoundRows>
     try {
       roundRows = buildTtlRoundRows({

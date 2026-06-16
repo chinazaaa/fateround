@@ -88,9 +88,9 @@ export function lobbyReadyForTwoTruths(playerIds: string[], statements: TtlState
     return { ok: false, error: `Need at least ${TTL_MIN_PLAYERS} players to start` }
   }
   const submitted = new Set(statements.map((s) => s.player_id))
-  const missing = playerIds.filter((id) => !submitted.has(id))
-  if (missing.length > 0) {
-    return { ok: false, error: `Waiting for ${missing.length} player${missing.length === 1 ? '' : 's'} to submit their statements` }
+  const submittedCount = playerIds.filter((id) => submitted.has(id)).length
+  if (submittedCount < TTL_MIN_PLAYERS) {
+    return { ok: false, error: `Need at least ${TTL_MIN_PLAYERS} players to submit their statements` }
   }
   return { ok: true }
 }

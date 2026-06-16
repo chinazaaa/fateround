@@ -70,7 +70,7 @@ export function TwoTruthsHostManagePanel({
             <div>
               <p className="label-caps">Lobby ({players.length} players)</p>
               <p className="text-faint text-xs mt-1 leading-relaxed">
-                Everyone submits two truths and a lie before you start. One round per player.
+                Players submit two truths and a lie. You can start once {TTL_MIN_PLAYERS}+ have submitted — others will be skipped.
               </p>
             </div>
             <span
@@ -96,8 +96,13 @@ export function TwoTruthsHostManagePanel({
             ))}
           </ul>
 
-          {!ready.ok && players.length >= TTL_MIN_PLAYERS && (
+          {!ready.ok && (
             <p className="text-amber-700 dark:text-amber-200 text-sm">{ready.error}</p>
+          )}
+          {ready.ok && submittedIds.size < players.length && (
+            <p className="text-faint text-sm">
+              {players.length - submittedIds.size} player{players.length - submittedIds.size === 1 ? '' : 's'} haven&apos;t submitted — they&apos;ll be skipped.
+            </p>
           )}
 
           <div className="space-y-2">
@@ -124,10 +129,10 @@ export function TwoTruthsHostManagePanel({
           <button
             type="button"
             onClick={onStartGame}
-            disabled={starting || players.length < TTL_MIN_PLAYERS || !ready.ok}
+            disabled={starting || !ready.ok}
             className="btn-primary w-full"
           >
-            {starting ? 'Starting…' : `Start game (${TTL_MIN_PLAYERS}+ players, all submitted)`}
+            {starting ? 'Starting…' : `Start game (${submittedIds.size} submitted)`}
           </button>
         </div>
       )}

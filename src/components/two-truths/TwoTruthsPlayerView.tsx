@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { TwoTruthsActiveRound } from '@/components/two-truths/TwoTruthsActiveRound'
 import { TwoTruthsLobbySubmit } from '@/components/two-truths/TwoTruthsLobbySubmit'
@@ -162,6 +162,12 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const existingStatements = myStatement
     ? ([myStatement.statement_a, myStatement.statement_b, myStatement.statement_c] as [string, string, string])
     : null
+  const [editingStatements, setEditingStatements] = useState(false)
+  const prevMyStatement = useRef(myStatement)
+  useEffect(() => {
+    if (!prevMyStatement.current && myStatement) setEditingStatements(false)
+    prevMyStatement.current = myStatement
+  }, [myStatement])
 
   if (screen === 'loading') {
     return (
@@ -220,18 +226,37 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
           </div>
           {isViewer ? (
             <ViewerModeBanner />
-          ) : myStatement ? (
+          ) : myStatement && !editingStatements ? (
             <div className="space-y-4">
-              <p className="text-center text-sm text-emerald-700 dark:text-emerald-200 font-semibold">
-                ✓ Statements saved — waiting for the host to start
-              </p>
+              <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-5 text-center space-y-1">
+                <p className="text-2xl">✓</p>
+                <p className="font-semibold text-emerald-800 dark:text-emerald-200">Statements submitted</p>
+                <p className="text-sm text-emerald-700 dark:text-emerald-300">Waiting for the host to start the game…</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingStatements(true)}
+                className="btn-secondary w-full"
+              >
+                Edit my statements
+              </button>
+            </div>
+          ) : myStatement && editingStatements ? (
+            <div className="space-y-4">
               <TwoTruthsLobbySubmit
                 gameCode={gameCode}
                 playerId={myPlayerId}
                 existingLieIndex={myStatement.lie_index}
                 existingStatements={existingStatements}
-                onSaved={load}
+                onSaved={() => { setEditingStatements(false); load() }}
               />
+              <button
+                type="button"
+                onClick={() => setEditingStatements(false)}
+                className="btn-secondary w-full"
+              >
+                Cancel
+              </button>
             </div>
           ) : (
             <TwoTruthsLobbySubmit gameCode={gameCode} playerId={myPlayerId} onSaved={load} />
