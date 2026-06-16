@@ -2,14 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  YahtzeeCard,
-  YahtzeeDiceTray,
-  YahtzeeLoadingScreen,
-  YahtzeePrimaryButton,
-  YahtzeeSecondaryButton,
-  YahtzeeShell,
-} from '@/components/yahtzee/YahtzeeChrome'
+import { YahtzeeDiceTray } from '@/components/yahtzee/YahtzeeChrome'
 import { YahtzeeLeaderboard, YahtzeeScorecard } from '@/components/yahtzee/YahtzeeScorecard'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -254,76 +247,83 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
   const { secondsLeft, hasTimer, urgent } = useYahtzeeTurnTimer(gameCode, session, game?.status === 'active')
   useYahtzeeNotifications({ game, session, myPlayerId: hostPlayerId, enabled: hostPlays && game?.status === 'active' })
 
-  if (!game) return <YahtzeeLoadingScreen />
+  if (!game) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted">Loading…</p>
+      </div>
+    )
+  }
 
   return (
-    <YahtzeeShell title={game.title} subtitle={`${cfg.label} · Room ${gameCode}`} wide compact>
-      <CopyLinkButton
-        value={joinUrl}
-        label="Copy player link"
-        className="w-full !rounded-2xl !border-[var(--border-strong)] !bg-[var(--card)] !text-[var(--foreground)] hover:!bg-[var(--card-hover)]"
-      />
+    <div className="min-h-screen pb-24">
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
+        <div className="text-center space-y-1">
+          <div className="text-4xl">{cfg.headerEmoji}</div>
+          <h1 className="text-2xl font-black tracking-tight gradient-title">{game.title}</h1>
+          <p className="text-muted text-sm">{cfg.label} · Host panel</p>
+        </div>
 
-      {/* Host mode selector — lobby only */}
-      {game.status === 'waiting' && (
-        <YahtzeeCard className="p-5 space-y-3">
-          <p className="label-caps text-[11px] uppercase tracking-widest text-faint">Host mode</p>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => changeHostMode('spectator')}
-              className={[
-                'rounded-2xl border-2 px-4 py-4 text-left',
-                hostMode === 'spectator'
-                  ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
-                  : 'border-[var(--border-strong)] text-muted',
-              ].join(' ')}
-            >
-              <span className="font-bold block text-sm">Host only</span>
-              <span className="text-faint text-xs">Spectate from Manage</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => changeHostMode('player')}
-              className={[
-                'rounded-2xl border-2 px-4 py-4 text-left',
-                hostMode === 'player'
-                  ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
-                  : 'border-[var(--border-strong)] text-muted',
-              ].join(' ')}
-            >
-              <span className="font-bold block text-sm">Host + play</span>
-              <span className="text-faint text-xs">Play tab + Manage tab</span>
-            </button>
-          </div>
-          {hostMode === 'player' && !hostPlayerId && (
-            <div className="flex items-center gap-2 pt-1">
-              <input
-                type="text"
-                value={hostJoinName}
-                onChange={(e) => setHostJoinName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && hostJoinGame()}
-                placeholder="Your name"
-                className="input-field flex-1"
-                maxLength={40}
-              />
+        {/* Host mode selector — lobby only */}
+        {game.status === 'waiting' && (
+          <div className="glass-card-strong p-5 space-y-3">
+            <p className="label-caps">Host mode</p>
+            <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={hostJoinGame}
-                disabled={!hostJoinName.trim() || hostJoining}
-                className="btn-primary btn-fit shrink-0 px-4 py-2.5 text-sm whitespace-nowrap"
+                onClick={() => changeHostMode('spectator')}
+                className={[
+                  'rounded-2xl border-2 px-4 py-4 text-left',
+                  hostMode === 'spectator'
+                    ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                    : 'border-[var(--border-strong)] text-muted',
+                ].join(' ')}
               >
-                {hostJoining ? 'Joining…' : 'Join'}
+                <span className="font-bold block text-base">Host only</span>
+                <span className="text-faint text-xs">Spectate from Manage</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => changeHostMode('player')}
+                className={[
+                  'rounded-2xl border-2 px-4 py-4 text-left',
+                  hostMode === 'player'
+                    ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                    : 'border-[var(--border-strong)] text-muted',
+                ].join(' ')}
+              >
+                <span className="font-bold block text-base">Host + play</span>
+                <span className="text-faint text-xs">Play tab + Manage tab</span>
               </button>
             </div>
-          )}
-          {hostMode === 'player' && hostPlayerId && (
-            <p className="text-sm text-muted">
-              Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
-            </p>
-          )}
-        </YahtzeeCard>
-      )}
+            {hostMode === 'player' && !hostPlayerId && (
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="text"
+                  value={hostJoinName}
+                  onChange={(e) => setHostJoinName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && hostJoinGame()}
+                  placeholder="Your name"
+                  className="input-field flex-1"
+                  maxLength={40}
+                />
+                <button
+                  type="button"
+                  onClick={hostJoinGame}
+                  disabled={!hostJoinName.trim() || hostJoining}
+                  className="btn-primary btn-fit shrink-0 px-4 py-2.5 text-sm whitespace-nowrap"
+                >
+                  {hostJoining ? 'Joining…' : 'Join'}
+                </button>
+              </div>
+            )}
+            {hostMode === 'player' && hostPlayerId && (
+              <p className="text-sm text-muted">
+                Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
+              </p>
+            )}
+          </div>
+        )}
 
       {/* Play / Manage tab switcher */}
       {showPlayTab && (
@@ -384,102 +384,117 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
             />
           </div>
         ) : (
-          <YahtzeeCard className="p-8 text-center text-sm text-muted">Loading game…</YahtzeeCard>
+          <div className="glass-card p-8 text-center text-sm text-muted">Loading game…</div>
         )
       )}
 
-      {/* Manage tab (or default when no Play tab) */}
-      {(tab === 'manage' || !showPlayTab) && (
-        <>
-          {game.status === 'waiting' && (
-            <>
-              <YahtzeeCard className="p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-widest text-faint">Lobby</p>
-                    <p className="text-2xl font-black">
-                      {players.length} <span className="text-lg font-semibold text-muted">players</span>
-                    </p>
-                  </div>
-                  <div className="text-4xl">🎲</div>
-                </div>
-                <div className="space-y-2">
+        {/* Manage tab (or default when no Play tab) */}
+        {(tab === 'manage' || !showPlayTab) && (
+          <>
+            <div className="glass-card p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-faint text-xs uppercase tracking-wider">Share with players</p>
+                <p className="font-mono font-bold text-lg">{gameCode}</p>
+              </div>
+              <CopyLinkButton value={joinUrl} label="Copy player link" />
+            </div>
+
+            {game.status === 'waiting' && (
+              <div className="glass-card p-5 space-y-4">
+                <div>
+                  <p className="label-caps mb-2">Lobby ({players.length} joined)</p>
                   {players.length === 0 ? (
-                    <p className="text-sm text-faint text-center py-4">Waiting for players…</p>
+                    <p className="text-muted text-sm">Waiting for players to join…</p>
                   ) : (
-                    players.map((p) => (
-                      <div key={p.id} className="flex items-center gap-3 rounded-xl bg-[var(--surface-inset-bg)] px-3 py-2.5 border border-[var(--border-strong)]">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--primary)_25%,transparent)] text-sm font-bold">
-                          {p.name.charAt(0).toUpperCase()}
-                        </span>
-                        <span className="font-semibold">{p.name}</span>
-                        {p.id === hostPlayerId && (
-                          <span className="ml-auto text-[10px] font-bold uppercase text-[var(--primary)]">You</span>
-                        )}
-                      </div>
-                    ))
+                    <ul className="space-y-1">
+                      {players.map((p) => (
+                        <li key={p.id} className="text-sm font-medium flex items-center gap-2">
+                          {p.name}
+                          {p.id === hostPlayerId && (
+                            <span className="text-[10px] font-bold uppercase text-[var(--primary)]">You</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
                 {!canStart && (
-                  <p className="text-sm text-[var(--marry)] text-center">Need at least {YAHTZEE_MIN_PLAYERS} players</p>
+                  <p className="text-sm text-[var(--marry)]">Need at least {YAHTZEE_MIN_PLAYERS} players to start.</p>
                 )}
-              </YahtzeeCard>
-              <YahtzeePrimaryButton onClick={startGame} disabled={!canStart} loading={starting}>
-                Start Yahtzee
-              </YahtzeePrimaryButton>
-            </>
-          )}
+                <button
+                  type="button"
+                  onClick={startGame}
+                  disabled={!canStart || starting}
+                  className="btn-primary w-full"
+                >
+                  {starting ? 'Starting…' : `Start Yahtzee (${YAHTZEE_MIN_PLAYERS}+ players)`}
+                </button>
+              </div>
+            )}
 
-          {game.status === 'active' && (
-            session ? (
+            {game.status === 'active' && (
+              session ? (
+                <>
+                  <div className="space-y-2">
+                    <YahtzeeScorecard
+                      players={players}
+                      scores={scores}
+                      activePlayerId={turnPlayerId}
+                      dice={session.dice}
+                      scoringEnabled={false}
+                    />
+                    <YahtzeeDiceTray
+                      dice={session.dice}
+                      held={session.held}
+                      rollsThisTurn={session.rolls_this_turn}
+                      rollsRemaining={session.rolls_remaining}
+                      turnName={turnPlayer?.name}
+                      secondsLeft={secondsLeft}
+                      hasTimer={hasTimer}
+                      urgent={urgent}
+                      spectator
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={finishGame}
+                    disabled={ending}
+                    className="btn-secondary w-full py-3"
+                  >
+                    {ending ? 'Ending…' : 'End game early'}
+                  </button>
+                </>
+              ) : (
+                <div className="glass-card p-8 text-center text-sm text-muted">Loading game…</div>
+              )
+            )}
+
+            {game.status === 'finished' && (
               <>
-                <div className="space-y-2">
-                  <YahtzeeScorecard
-                    players={players}
-                    scores={scores}
-                    activePlayerId={turnPlayerId}
-                    dice={session.dice}
-                    scoringEnabled={false}
-                  />
-                  <YahtzeeDiceTray
-                    dice={session.dice}
-                    held={session.held}
-                    rollsThisTurn={session.rolls_this_turn}
-                    rollsRemaining={session.rolls_remaining}
-                    turnName={turnPlayer?.name}
-                    secondsLeft={secondsLeft}
-                    hasTimer={hasTimer}
-                    urgent={urgent}
-                    spectator
-                  />
+                <div className="glass-card py-10 text-center">
+                  <div className="text-6xl mb-3">🏆</div>
+                  <p className="text-2xl font-black text-[var(--marry)]">
+                    {winner ? `${winner.name} wins!` : 'Game over'}
+                  </p>
                 </div>
-                <YahtzeeSecondaryButton onClick={finishGame} disabled={ending}>
-                  {ending ? 'Ending…' : 'End game early'}
-                </YahtzeeSecondaryButton>
+                <YahtzeeLeaderboard rows={scores} players={players} />
+                <button
+                  type="button"
+                  onClick={playAgain}
+                  disabled={playingAgain}
+                  className="btn-secondary w-full py-3"
+                >
+                  {playingAgain ? 'Resetting…' : 'Play again'}
+                </button>
               </>
-            ) : (
-              <YahtzeeCard className="p-8 text-center text-sm text-muted">Loading game…</YahtzeeCard>
-            )
-          )}
+            )}
+          </>
+        )}
 
-          {game.status === 'finished' && (
-            <>
-              <YahtzeeCard className="py-10 text-center">
-                <div className="text-6xl mb-3">🏆</div>
-                <p className="text-2xl font-black text-[var(--marry)]">
-                  {winner ? `${winner.name} wins!` : 'Game over'}
-                </p>
-              </YahtzeeCard>
-              <YahtzeeLeaderboard rows={scores} players={players} />
-              <YahtzeePrimaryButton onClick={playAgain} loading={playingAgain}>
-                Play again
-              </YahtzeePrimaryButton>
-            </>
-          )}
-        </>
-      )}
-
-      <YahtzeeSecondaryButton onClick={() => router.push('/create')}>Create another game</YahtzeeSecondaryButton>
-    </YahtzeeShell>
+        <button type="button" onClick={() => router.push('/')} className="btn-ghost w-full text-muted">
+          Back home
+        </button>
+      </div>
+    </div>
   )
 }
