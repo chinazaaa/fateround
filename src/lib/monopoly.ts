@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { markGameFinished } from '@/lib/game-finish'
 import type {
   MonopolyAuctionState,
   MonopolyBoard,
@@ -18,7 +19,10 @@ import {
   MONOPOLY_GO_SALARY,
   MONOPOLY_GO_TO_JAIL_POSITION,
   MONOPOLY_HOUSES_IN_BANK,
+  MONOPOLY_HOUSES_UNDER_HOTEL,
   MONOPOLY_HOTELS_IN_BANK,
+  MONOPOLY_HOTEL_LEVEL,
+  MONOPOLY_MAX_HOUSES_PER_PROPERTY,
   MONOPOLY_JAIL_FINE,
   MONOPOLY_JAIL_POSITION,
   MONOPOLY_STARTING_CASH,
@@ -222,8 +226,8 @@ export function checkWinner(states: MonopolyPlayerState[]): string | null {
 function buildingAssetValue(space: MonopolySpace, level: number): number {
   if (level === 0) return 0
   const half = Math.floor((space.houseCost ?? 0) / 2)
-  if (level === 5) return half * 4
-  return level * half
+  if (level === MONOPOLY_HOTEL_LEVEL) return half * MONOPOLY_HOUSES_UNDER_HOTEL
+  return Math.min(level, MONOPOLY_MAX_HOUSES_PER_PROPERTY) * half
 }
 
 export function computeMonopolyNetWorth(
@@ -364,7 +368,7 @@ export async function finishMonopolyGameEarly(
     .eq('game_id', gameId)
   if (boardError) return { error: boardError.message }
 
-  const { error: gameError } = await supabase.from('games').update({ status: 'finished' }).eq('id', gameId)
+  const { error: gameError } = await markGameFinished(supabase, gameId)
   if (gameError) return { error: gameError.message }
 
   return { error: null }
@@ -1308,7 +1312,7 @@ export async function processMonopolyRoll(
   )
   if (winner) {
     await supabase.from('monopoly_boards').update({ phase: 'finished', winner_player_id: winner, status_message: 'Game over!', turn_deadline_at: null }).eq('game_id', gameId)
-    await supabase.from('games').update({ status: 'finished' }).eq('id', gameId)
+    await markGameFinished(supabase, gameId)
   }
 
   return {}
@@ -1603,10 +1607,10 @@ export async function processMonopolyBuild(
       return { error: 'Cannot build a hotel here' }
     }
     if (cash < houseCost) return { error: 'Not enough cash' }
-    buildings[String(spaceIndex)] = 5
+    buildings[String(spaceIndex)] = MONOPOLY_HOTEL_LEVEL
     cash -= houseCost
     hotelsInBank -= 1
-    housesInBank += 4
+    housesInBank += MONOPOLY_HOUSES_UNDER_HOTEL
   } else if (action === 'sell_house') {
     if (!canRemoveHouse(spaceIndex, playerId, owners, buildings)) return { error: 'Cannot sell a house here' }
     buildings[String(spaceIndex)] = buildingLevel(buildings, spaceIndex) - 1
@@ -1614,10 +1618,10 @@ export async function processMonopolyBuild(
     housesInBank += 1
   } else if (action === 'sell_hotel') {
     if (!canRemoveHotel(spaceIndex, playerId, owners, buildings)) return { error: 'Cannot sell hotel here' }
-    buildings[String(spaceIndex)] = 4
-    cash += Math.floor(houseCost / 2) + Math.floor(houseCost / 2) * 4
+    buildings[String(spaceIndex)] = MONOPOLY_MAX_HOUSES_PER_PROPERTY
+    cash += Math.floor(houseCost / 2) + Math.floor(houseCost / 2) * MONOPOLY_HOUSES_UNDER_HOTEL
     hotelsInBank += 1
-    housesInBank -= 4
+    housesInBank -= MONOPOLY_HOUSES_UNDER_HOTEL
   }
 
   await supabase.from('monopoly_player_state').update({ cash }).eq('game_id', gameId).eq('player_id', playerId)
@@ -1947,9 +1951,9 @@ function releasePropertiesToBank(
     if (!releaseIds.has(owner)) continue
     delete nextOwners[idx]
     const level = nextBuildings[idx] ?? 0
-    if (level === 5) {
+    if (level === MONOPOLY_HOTEL_LEVEL) {
       hotelsReturned += 1
-      housesReturned += 4
+      housesReturned += MONOPOLY_HOUSES_UNDER_HOTEL
     } else {
       housesReturned += level
     }
@@ -2244,7 +2248,7 @@ async function bankruptPlayer(
     .eq('game_id', gameId)
 
   if (winner) {
-    await supabase.from('games').update({ status: 'finished' }).eq('id', gameId)
+    await markGameFinished(supabase, gameId)
   }
 
   return {}

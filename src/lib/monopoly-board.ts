@@ -37,8 +37,12 @@ export type MonopolyColorGroup =
   | 'station'
   | 'utility'
 
-/** 0 = site only, 1–4 = houses, 5 = hotel */
+/** 0 = site only, 1–3 = houses, 5 = hotel (level 4 kept for legacy saves). */
 export type BuildingLevel = 0 | 1 | 2 | 3 | 4 | 5
+
+export const MONOPOLY_MAX_HOUSES_PER_PROPERTY = 3
+export const MONOPOLY_HOTEL_LEVEL = 5 as const
+export const MONOPOLY_HOUSES_UNDER_HOTEL = 3
 
 export interface MonopolySpace {
   index: number

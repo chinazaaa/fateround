@@ -2,6 +2,9 @@ import {
   groupHasMortgage,
   ownsColorMonopoly,
   spaceAt,
+  MONOPOLY_HOUSES_UNDER_HOTEL,
+  MONOPOLY_HOTEL_LEVEL,
+  MONOPOLY_MAX_HOUSES_PER_PROPERTY,
   type BuildingLevel,
   type MonopolySpace,
 } from '@/lib/monopoly-board'
@@ -86,8 +89,8 @@ export function totalHousesOwned(
   let total = 0
   for (const [idx, level] of Object.entries(buildings)) {
     if (owners[idx] !== ownerId) continue
-    if (level === 5) total += 4
-    else total += level
+    if (level === MONOPOLY_HOTEL_LEVEL) total += MONOPOLY_HOUSES_UNDER_HOTEL
+    else total += Math.min(level, MONOPOLY_MAX_HOUSES_PER_PROPERTY)
   }
   return total
 }
@@ -98,6 +101,6 @@ export function totalHotelsOwned(
   owners: Record<string, string>
 ): number {
   return Object.entries(buildings).filter(
-    ([idx, level]) => owners[idx] === ownerId && level === 5
+    ([idx, level]) => owners[idx] === ownerId && level === MONOPOLY_HOTEL_LEVEL
   ).length
 }

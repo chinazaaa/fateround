@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { markGameFinished } from '@/lib/game-finish'
 import type { YahtzeeCategory, YahtzeeCategoryPoints, YahtzeePlayerScore, YahtzeeSession } from '@/types'
 
 export const YAHTZEE_MIN_PLAYERS = 1
@@ -426,7 +427,7 @@ export async function processYahtzeeScore(
       .eq('game_id', gameId)
     if (sessionError) return { error: sessionError.message }
 
-    const { error: gameError } = await supabase.from('games').update({ status: 'finished' }).eq('id', gameId)
+    const { error: gameError } = await markGameFinished(supabase, gameId)
     if (gameError) return { error: gameError.message }
     return {}
   }
@@ -535,7 +536,7 @@ export async function processYahtzeeExpireTurn(
       .update({ phase: 'finished', winner_player_id: winnerPlayerId, turn_deadline_at: null, updated_at: new Date().toISOString() })
       .eq('game_id', gameId)
     if (se) return { error: se.message }
-    await supabase.from('games').update({ status: 'finished' }).eq('id', gameId)
+    await markGameFinished(supabase, gameId)
     return {}
   }
 

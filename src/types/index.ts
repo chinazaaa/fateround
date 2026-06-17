@@ -137,6 +137,8 @@ export interface Game {
   status: GameStatus
   current_round_number: number
   created_at: string
+  /** When the game session ended (status set to finished). */
+  finished_at?: string | null
   /** Anonymous room — when the live session started (15 min cap). */
   session_started_at?: string | null
   /** Lobby cap for joiner modes (anonymous 2–20, bingo 2–30, codewords 4–20). */

@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { bingoClaimSchema } from '@/lib/validation'
 import { parseGameType, isBingoGame } from '@/lib/game-types'
 import { hasBingoWin } from '@/lib/bingo'
+import { markGameFinished } from '@/lib/game-finish'
 import { playerIsViewer } from '@/lib/viewers'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
 
   if (claimError) return NextResponse.json({ error: claimError.message }, { status: 500 })
 
-  const { error: gameError } = await supabase.from('games').update({ status: 'finished' }).eq('id', code)
+  const { error: gameError } = await markGameFinished(supabase, code)
   if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
 
   return NextResponse.json({ success: true, claim })

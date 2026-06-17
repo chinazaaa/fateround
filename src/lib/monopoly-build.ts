@@ -2,6 +2,8 @@ import {
   ownsColorMonopoly,
   spaceAt,
   spacesInGroup,
+  MONOPOLY_MAX_HOUSES_PER_PROPERTY,
+  MONOPOLY_HOTEL_LEVEL,
   type MonopolyColorGroup,
 } from '@/lib/monopoly-board'
 import { buildingLevel } from '@/lib/monopoly-rent'
@@ -54,13 +56,13 @@ export function canAddHouse(
   if (owners[String(spaceIndex)] !== ownerId) return false
   if (!canBuildOnGroup(space.color, ownerId, owners, buildings, mortgaged)) return false
   const level = buildingLevel(buildings, spaceIndex)
-  if (level >= 4) return false
+  if (level >= MONOPOLY_MAX_HOUSES_PER_PROPERTY) return false
   if (housesInBank < 1) return false
   const min = minBuildingsInGroup(space.color, ownerId, owners, buildings)
   return level <= min
 }
 
-/** True if a hotel may be built (4 houses on every site in group). */
+/** True if a hotel may be built (3 houses on this site; every site in group at 3 houses or hotel). */
 export function canAddHotel(
   spaceIndex: number,
   ownerId: string,
@@ -73,10 +75,14 @@ export function canAddHotel(
   if (space.type !== 'property' || !space.color) return false
   if (owners[String(spaceIndex)] !== ownerId) return false
   if (!canBuildOnGroup(space.color, ownerId, owners, buildings, mortgaged)) return false
-  if (buildingLevel(buildings, spaceIndex) !== 4) return false
+  const siteLevel = buildingLevel(buildings, spaceIndex)
+  if (siteLevel !== MONOPOLY_MAX_HOUSES_PER_PROPERTY && siteLevel !== 4) return false
   if (hotelsInBank < 1) return false
   const groupSites = spacesInGroup(space.color).filter((s) => owners[String(s.index)] === ownerId)
-  return groupSites.every((s) => buildingLevel(buildings, s.index) === 4)
+  return groupSites.every((s) => {
+    const level = buildingLevel(buildings, s.index)
+    return level === MONOPOLY_MAX_HOUSES_PER_PROPERTY || level === 4 || level === MONOPOLY_HOTEL_LEVEL
+  })
 }
 
 export function canRemoveHouse(
@@ -89,7 +95,7 @@ export function canRemoveHouse(
   if (space.type !== 'property' || !space.color) return false
   if (owners[String(spaceIndex)] !== ownerId) return false
   const level = buildingLevel(buildings, spaceIndex)
-  if (level <= 0 || level === 5) return false
+  if (level <= 0 || level === MONOPOLY_HOTEL_LEVEL) return false
   const max = maxBuildingsInGroup(space.color, ownerId, owners, buildings)
   return level >= max
 }
@@ -100,7 +106,7 @@ export function canRemoveHotel(
   owners: Record<string, string>,
   buildings: Record<string, number>
 ): boolean {
-  return owners[String(spaceIndex)] === ownerId && buildingLevel(buildings, spaceIndex) === 5
+  return owners[String(spaceIndex)] === ownerId && buildingLevel(buildings, spaceIndex) === MONOPOLY_HOTEL_LEVEL
 }
 
 export function groupHasBuildings(

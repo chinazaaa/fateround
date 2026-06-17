@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { markGameFinished } from '@/lib/game-finish'
 import type { Game, Player } from '@/types'
 
 /** Keep at most this many messages per anonymous room before batch trimming kicks in. */
@@ -176,7 +177,7 @@ export async function finishAnonymousRoomSession(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
-  const { error: gameError } = await supabase.from('games').update({ status: 'finished' }).eq('id', gameId)
+  const { error: gameError } = await markGameFinished(supabase, gameId)
   if (gameError) return { error: gameError.message }
 
   return clearAnonymousRoomSessionData(supabase, gameId)
@@ -187,7 +188,7 @@ export async function finishSecretMessageBoard(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
-  const { error: gameError } = await supabase.from('games').update({ status: 'finished' }).eq('id', gameId)
+  const { error: gameError } = await markGameFinished(supabase, gameId)
   if (gameError) return { error: gameError.message }
 
   return clearAnonymousRoomSessionData(supabase, gameId)

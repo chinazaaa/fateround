@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { codewordsGuessSchema } from '@/lib/validation'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
 import { cluePhaseUpdate, effectiveTurnPhase, otherTeam, teamWon } from '@/lib/codewords'
+import { markGameFinished } from '@/lib/game-finish'
 import type { CodewordsBoard, CodewordsCellType, CodewordsTeam } from '@/types'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -119,7 +120,7 @@ export async function POST(req: NextRequest) {
   })
 
   if (gameStatus === 'finished') {
-    await supabase.from('games').update({ status: 'finished' }).eq('id', code)
+    await markGameFinished(supabase, code)
   }
 
   return NextResponse.json({ success: true, board: updated, cellType })

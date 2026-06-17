@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { markGameFinished } from '@/lib/game-finish'
 import { isTwoTruthsGame, parseGameType } from '@/lib/game-types'
 import { TTL_DEFAULT_TIMER, TTL_REVEAL_SECONDS } from '@/lib/two-truths'
 import type { Game, Round } from '@/types'
@@ -139,7 +140,7 @@ export async function syncTwoTruthsGameState(
   if (pointerRound && pointerRound.status === 'finished') {
     const isLast = pointerRound.round_number >= game.rounds_count
     if (isLast) {
-      await supabase.from('games').update({ status: 'finished' }).eq('id', gameId)
+      await markGameFinished(supabase, gameId)
       return { ok: true, code: 'advanced_finish' }
     }
 

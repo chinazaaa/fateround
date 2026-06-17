@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { computeAveragePlayTime } from '@/lib/admin-play-time'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getSupabaseAdmin, hasServiceRoleKey } from '@/lib/supabase-admin'
 import type { GameType } from '@/types'
@@ -9,17 +10,23 @@ export async function GET(req: NextRequest) {
 
   const supabase = getSupabaseAdmin()
 
-  const [gamesRes, playersRes, votesRes, finishedGamesRes, activeGamesRes, gamesLast7DaysRes] = await Promise.all([
-    supabase.from('games').select('id, game_type, status, created_at', { count: 'exact', head: false }),
-    supabase.from('players').select('id', { count: 'exact', head: true }),
-    supabase.from('votes').select('id', { count: 'exact', head: true }),
-    supabase.from('games').select('id', { count: 'exact', head: true }).eq('status', 'finished'),
-    supabase.from('games').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-    supabase
-      .from('games')
-      .select('id', { count: 'exact', head: true })
-      .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
-  ])
+  const [gamesRes, playersRes, votesRes, finishedGamesRes, activeGamesRes, gamesLast7DaysRes, playSessionsRes] =
+    await Promise.all([
+      supabase.from('games').select('id, game_type, status, created_at', { count: 'exact', head: false }),
+      supabase.from('players').select('id', { count: 'exact', head: true }),
+      supabase.from('votes').select('id', { count: 'exact', head: true }),
+      supabase.from('games').select('id', { count: 'exact', head: true }).eq('status', 'finished'),
+      supabase.from('games').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+      supabase
+        .from('games')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+      supabase
+        .from('games')
+        .select('id, session_started_at, finished_at')
+        .eq('status', 'finished')
+        .not('session_started_at', 'is', null),
+    ])
 
   let feedbackCount = 0
   const feedbackByCategory: Record<string, number> = {}
@@ -47,6 +54,27 @@ export async function GET(req: NextRequest) {
     gamesByType[game.game_type] = (gamesByType[game.game_type] ?? 0) + 1
   }
 
+  const playSessions = playSessionsRes.data ?? []
+  const sessionsMissingFinishedAt = playSessions.filter((session) => !session.finished_at).map((session) => session.id)
+  const latestRoundEndedAtByGame = new Map<string, string>()
+
+  if (sessionsMissingFinishedAt.length > 0) {
+    const { data: roundEnds } = await supabase
+      .from('rounds')
+      .select('game_id, ended_at')
+      .in('game_id', sessionsMissingFinishedAt)
+      .not('ended_at', 'is', null)
+
+    for (const round of roundEnds ?? []) {
+      const current = latestRoundEndedAtByGame.get(round.game_id)
+      if (!current || new Date(round.ended_at).getTime() > new Date(current).getTime()) {
+        latestRoundEndedAtByGame.set(round.game_id, round.ended_at)
+      }
+    }
+  }
+
+  const averagePlayTime = computeAveragePlayTime(playSessions, latestRoundEndedAtByGame)
+
   return NextResponse.json({
     totals: {
       games: gamesRes.count ?? games.length,
@@ -56,6 +84,8 @@ export async function GET(req: NextRequest) {
       finishedGames: finishedGamesRes.count ?? 0,
       activeGames: activeGamesRes.count ?? 0,
       gamesLast7Days: gamesLast7DaysRes.count ?? 0,
+      averagePlayTimeSeconds: averagePlayTime.averageSeconds,
+      averagePlayTimeSampleCount: averagePlayTime.sampleCount,
     },
     gamesByStatus,
     gamesByType: gamesByType as Partial<Record<GameType | string, number>>,

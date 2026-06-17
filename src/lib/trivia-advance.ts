@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { markGameFinished } from '@/lib/game-finish'
 import { isTriviaGame, parseGameType } from '@/lib/game-types'
 import { TRIVIA_DEFAULT_TIMER, TRIVIA_REVEAL_SECONDS } from '@/lib/trivia'
 import type { Game, Round } from '@/types'
@@ -124,7 +125,7 @@ async function advanceAfterReveal(
       return { ok: false, code: 'not_finished' }
     }
 
-    const { error } = await supabase.from('games').update({ status: 'finished' }).eq('id', code)
+    const { error } = await markGameFinished(supabase, code)
     if (error) return { ok: false, code: 'not_finished' }
     return { ok: true, code: 'advanced_finish' }
   }

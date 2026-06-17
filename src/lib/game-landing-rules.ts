@@ -510,7 +510,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Houses, hotels & mortgages',
       points: [
-        'Own all sites in a colour-group to build houses (evenly across the group) and then hotels.',
+        'Own all sites in a colour-group to build up to three houses (evenly across the group), then upgrade to a hotel.',
         'Sell buildings back to the Bank at half price. Mortgaged properties cannot collect rent.',
         'Mortgage a property for half its price; unmortgage by paying the mortgage value plus 10% interest.',
       ],

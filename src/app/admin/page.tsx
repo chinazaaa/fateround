@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { AdminGamesTable } from '@/components/admin/AdminGamesTable'
+import { formatPlayDuration } from '@/lib/admin-play-time'
 import { GAME_TYPE_CONFIG } from '@/lib/game-types'
 
 type StatsResponse = {
@@ -13,6 +14,8 @@ type StatsResponse = {
     finishedGames: number
     activeGames: number
     gamesLast7Days: number
+    averagePlayTimeSeconds: number | null
+    averagePlayTimeSampleCount: number
   }
   gamesByStatus: Record<string, number>
   gamesByType: Record<string, number>
@@ -43,6 +46,11 @@ export default function AdminDashboardPage() {
   if (error) return <p className="text-red-500">{error}</p>
   if (!stats) return null
 
+  const averagePlayTimeLabel =
+    stats.totals.averagePlayTimeSeconds != null
+      ? formatPlayDuration(stats.totals.averagePlayTimeSeconds)
+      : '—'
+
   const statCards = [
     { label: 'Total games', value: stats.totals.games },
     { label: 'Players joined', value: stats.totals.players },
@@ -51,6 +59,14 @@ export default function AdminDashboardPage() {
     { label: 'Active games', value: stats.totals.activeGames },
     { label: 'Finished games', value: stats.totals.finishedGames },
     { label: 'Games (last 7 days)', value: stats.totals.gamesLast7Days },
+    {
+      label: 'Avg. time played',
+      value: averagePlayTimeLabel,
+      detail:
+        stats.totals.averagePlayTimeSampleCount > 0
+          ? `Based on ${stats.totals.averagePlayTimeSampleCount.toLocaleString()} finished sessions`
+          : 'No finished sessions yet',
+    },
   ]
 
   return (
@@ -64,7 +80,12 @@ export default function AdminDashboardPage() {
         {statCards.map((card) => (
           <div key={card.label} className="glass-card p-5">
             <p className="text-faint text-xs uppercase tracking-wide">{card.label}</p>
-            <p className="text-3xl font-black mt-2">{card.value.toLocaleString()}</p>
+            <p className="text-3xl font-black mt-2">
+              {typeof card.value === 'number' ? card.value.toLocaleString() : card.value}
+            </p>
+            {'detail' in card && card.detail ? (
+              <p className="text-muted text-xs mt-1">{card.detail}</p>
+            ) : null}
           </div>
         ))}
       </div>
