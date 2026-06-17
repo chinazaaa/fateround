@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { isMonopolyGame, parseGameType } from '@/lib/game-types'
-import { processMonopolyTradePropose, processMonopolyTradeRespond } from '@/lib/monopoly'
-import { monopolyTradeProposeSchema, monopolyTradeRespondSchema } from '@/lib/validation'
+import {
+  processMonopolyTradeCancel,
+  processMonopolyTradePropose,
+  processMonopolyTradeRespond,
+  repairMonopolyStalePendingTrade,
+} from '@/lib/monopoly'
+import {
+  monopolyTradeCancelSchema,
+  monopolyTradeProposeSchema,
+  monopolyTradeRepairSchema,
+  monopolyTradeRespondSchema,
+} from '@/lib/validation'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -16,6 +26,28 @@ export async function POST(req: NextRequest) {
   if (!isMonopolyGame(parseGameType(game.game_type))) {
     return NextResponse.json({ error: 'Not a Monopoly game' }, { status: 400 })
   }
+
+  if (raw.repair === true) {
+    const parsed = monopolyTradeRepairSchema.safeParse(raw)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
+    }
+    await repairMonopolyStalePendingTrade(supabase, code)
+    return NextResponse.json({ success: true })
+  }
+
+  if (raw.cancel === true) {
+    const parsed = monopolyTradeCancelSchema.safeParse(raw)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
+    }
+    const { playerId } = parsed.data
+    const { error } = await processMonopolyTradeCancel(supabase, code, playerId)
+    if (error) return NextResponse.json({ error }, { status: 400 })
+    return NextResponse.json({ success: true })
+  }
+
+  await repairMonopolyStalePendingTrade(supabase, code)
 
   if (raw.accept !== undefined) {
     const parsed = monopolyTradeRespondSchema.safeParse(raw)

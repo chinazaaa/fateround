@@ -534,6 +534,10 @@ export const monopolyTradeRespondSchema = monopolyActionSchema.extend({
   accept: z.boolean(),
 })
 
+export const monopolyTradeCancelSchema = monopolyActionSchema
+
+export const monopolyTradeRepairSchema = monopolyActionSchema
+
 export type MonopolyActionInput = z.infer<typeof monopolyActionSchema>
 export type MonopolyBuyInput = z.infer<typeof monopolyBuySchema>
 export type MonopolyJailInput = z.infer<typeof monopolyJailSchema>

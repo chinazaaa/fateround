@@ -1917,6 +1917,230 @@ export async function processMonopolyTradeRespond(
   return {}
 }
 
+function turnOrderAfterRemoval(
+  board: MonopolyBoard,
+  removedPlayerId: string
+): { turnOrder: string[]; currentTurnIndex: number } {
+  const order = [...(board.turn_order ?? [])]
+  const removedIndex = order.indexOf(removedPlayerId)
+  if (removedIndex < 0) {
+    return { turnOrder: order, currentTurnIndex: board.current_turn_index }
+  }
+
+  const turnOrder = order.filter((id) => id !== removedPlayerId)
+  if (turnOrder.length === 0) {
+    return { turnOrder, currentTurnIndex: 0 }
+  }
+
+  let currentTurnIndex = board.current_turn_index
+  if (removedIndex < currentTurnIndex) {
+    currentTurnIndex -= 1
+  } else if (removedIndex === currentTurnIndex) {
+    currentTurnIndex = currentTurnIndex % turnOrder.length
+  }
+
+  return { turnOrder, currentTurnIndex }
+}
+
+function auctionInvolvesPlayer(auction: MonopolyAuctionState, playerId: string): boolean {
+  return (
+    auction.initiator_id === playerId ||
+    auction.current_bidder_id === playerId ||
+    auction.high_bidder_id === playerId ||
+    auction.eligible.includes(playerId) ||
+    auction.passed.includes(playerId)
+  )
+}
+
+async function clearMonopolyPendingTrade(
+  supabase: SupabaseClient,
+  gameId: string,
+  board: MonopolyBoard,
+  trade: MonopolyPendingTrade,
+  statusMessage: string
+): Promise<void> {
+  const lastTradeEvent = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, 'declined')
+  await supabase
+    .from('monopoly_boards')
+    .update({
+      pending_trade: null,
+      status_message: statusMessage,
+      last_trade_event: lastTradeEvent,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('game_id', gameId)
+}
+
+export async function repairMonopolyStalePendingTrade(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ repaired: boolean }> {
+  const { data: boardRaw } = await supabase.from('monopoly_boards').select('*').eq('game_id', gameId).maybeSingle()
+  if (!boardRaw?.pending_trade) return { repaired: false }
+
+  const board = boardRaw as MonopolyBoard
+  if (!board.pending_trade) return { repaired: false }
+  const trade = normalizePendingTrade(board.pending_trade)
+  const { data: players } = await supabase
+    .from('players')
+    .select('id')
+    .eq('game_id', gameId)
+    .in('id', [trade.from_player_id, trade.to_player_id])
+
+  const activeIds = new Set((players ?? []).map((row) => row.id))
+  if (activeIds.has(trade.from_player_id) && activeIds.has(trade.to_player_id)) {
+    return { repaired: false }
+  }
+
+  await clearMonopolyPendingTrade(
+    supabase,
+    gameId,
+    board,
+    trade,
+    'Trade cancelled — a player left the game.'
+  )
+  return { repaired: true }
+}
+
+export async function processMonopolyTradeCancel(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string
+): Promise<{ error?: string }> {
+  const { data: boardRaw } = await supabase.from('monopoly_boards').select('*').eq('game_id', gameId).maybeSingle()
+  if (!boardRaw) return { error: 'Board not found' }
+  const board = boardRaw as MonopolyBoard
+  if (!board.pending_trade) return { error: 'No pending trade' }
+
+  const trade = normalizePendingTrade(board.pending_trade)
+  if (trade.from_player_id !== playerId) return { error: 'Only the player who sent the offer can cancel it' }
+
+  const names = await playerNamesById(supabase, gameId, [trade.from_player_id, trade.to_player_id])
+  const toName = names[trade.to_player_id] ?? 'player'
+  await clearMonopolyPendingTrade(
+    supabase,
+    gameId,
+    board,
+    trade,
+    `Trade offer to ${toName} was cancelled.`
+  )
+  return {}
+}
+
+export async function removeMonopolyPlayer(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  playerName?: string
+): Promise<{ error: string | null }> {
+  const { data: boardRaw } = await supabase.from('monopoly_boards').select('*').eq('game_id', gameId).maybeSingle()
+  if (!boardRaw) {
+    const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
+    return { error: error?.message ?? null }
+  }
+
+  const board = boardRaw as MonopolyBoard
+  const removedName = playerName ?? 'A player'
+
+  let owners = parsePropertyOwners(board.property_owners)
+  let buildings = parseBuildings(board.property_buildings)
+  let mortgaged = parseMortgaged(board.mortgaged_properties)
+  const returned = returnPlayerAssetsToBank(playerId, owners, buildings, mortgaged)
+  owners = returned.owners
+  buildings = returned.buildings
+  mortgaged = returned.mortgaged
+
+  const { data: statesRaw } = await supabase
+    .from('monopoly_player_state')
+    .select('*')
+    .eq('game_id', gameId)
+  const states = ((statesRaw ?? []) as MonopolyPlayerState[]).filter((s) => s.player_id !== playerId)
+
+  const { turnOrder, currentTurnIndex } = turnOrderAfterRemoval(board, playerId)
+  const removedWasCurrent = currentPlayerId(board) === playerId
+
+  let phase: MonopolyPhase = board.phase
+  let auctionState = board.auction_state
+  let pendingDebt = board.pending_debt
+  let pendingTrade = board.pending_trade ? normalizePendingTrade(board.pending_trade) : null
+  let statusMessage = `${removedName} was removed from the game. Their properties returned to the Bank.`
+
+  if (pendingTrade && (pendingTrade.from_player_id === playerId || pendingTrade.to_player_id === playerId)) {
+    pendingTrade = null
+    statusMessage = `${removedName} was removed — pending trade cancelled. Properties returned to the Bank.`
+  }
+
+  if (auctionState && auctionInvolvesPlayer(auctionState, playerId)) {
+    auctionState = null
+    if (phase === 'auction') phase = 'roll'
+  }
+
+  if (
+    pendingDebt &&
+    (pendingDebt.player_id === playerId || pendingDebt.creditor_player_id === playerId)
+  ) {
+    pendingDebt = null
+    if (phase === 'raise_funds') phase = 'roll'
+  }
+
+  if (removedWasCurrent && phase !== 'finished') {
+    phase = phaseForTurn({ ...board, turn_order: turnOrder, current_turn_index: currentTurnIndex }, states, currentTurnIndex)
+    if (phase === 'auction') {
+      phase = 'roll'
+      auctionState = null
+    }
+  }
+
+  const winner = checkWinner(states)
+  if (winner) {
+    phase = 'finished'
+    const winnerName = (await playerNamesById(supabase, gameId, [winner]))[winner] ?? 'A player'
+    statusMessage = `${removedName} was removed. ${winnerName} wins!`
+  }
+
+  const timerSeconds = await getMonopolyTimerSeconds(supabase, gameId)
+  const boardUpdate: Record<string, unknown> = {
+    turn_order: turnOrder,
+    current_turn_index: currentTurnIndex,
+    phase,
+    property_owners: owners,
+    property_buildings: buildings,
+    mortgaged_properties: mortgaged,
+    houses_in_bank: (board.houses_in_bank ?? MONOPOLY_HOUSES_IN_BANK) + returned.housesReturned,
+    hotels_in_bank: (board.hotels_in_bank ?? MONOPOLY_HOTELS_IN_BANK) + returned.hotelsReturned,
+    pending_trade: pendingTrade,
+    auction_state: auctionState,
+    pending_debt: pendingDebt,
+    pending_space: removedWasCurrent ? null : board.pending_space,
+    winner_player_id: winner ?? board.winner_player_id,
+    status_message: statusMessage,
+    turn_deadline_at: phase === 'finished' ? null : monopolyDeadlineForPhase(timerSeconds, phase),
+    updated_at: new Date().toISOString(),
+  }
+
+  if (pendingTrade === null && board.pending_trade) {
+    const trade = normalizePendingTrade(board.pending_trade)
+    boardUpdate.last_trade_event = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, 'declined')
+  }
+
+  const { error: boardError } = await supabase.from('monopoly_boards').update(boardUpdate).eq('game_id', gameId)
+  if (boardError) return { error: boardError.message }
+
+  const { error: stateError } = await supabase
+    .from('monopoly_player_state')
+    .delete()
+    .eq('game_id', gameId)
+    .eq('player_id', playerId)
+  if (stateError) return { error: stateError.message }
+
+  if (winner) {
+    await markGameFinished(supabase, gameId)
+  }
+
+  const { error: playerError } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
+  return { error: playerError?.message ?? null }
+}
+
 function returnPlayerAssetsToBank(
   playerId: string,
   owners: Record<string, string>,

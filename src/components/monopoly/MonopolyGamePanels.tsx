@@ -259,7 +259,8 @@ export function MonopolyTurnModals({
 }) {
   const trade = board?.pending_trade ? normalizePendingTrade(board.pending_trade) : null
   const tradeFrom = trade ? players.find((p) => p.id === trade.from_player_id) : null
-  const showTradeModal = !!(trade && trade.to_player_id === myPlayerId)
+  const tradeTo = trade ? players.find((p) => p.id === trade.to_player_id) : null
+  const showTradeModal = !!(trade && trade.to_player_id === myPlayerId && tradeFrom && tradeTo)
   const receiveCount = trade
     ? buildTradeSideItems(trade.offer_cash, trade.offer_properties, trade.offer_get_out_cards).length
     : 0
@@ -327,6 +328,23 @@ export function MonopolyManagePanel({
   const [tradeConfirmOpen, setTradeConfirmOpen] = useState(false)
   const [confirmOneWayGift, setConfirmOneWayGift] = useState(false)
 
+  const pendingTrade = board?.pending_trade ? normalizePendingTrade(board.pending_trade) : null
+  const pendingTradeKey = pendingTrade
+    ? `${pendingTrade.from_player_id}:${pendingTrade.to_player_id}`
+    : null
+  const stalePendingTrade =
+    !!pendingTrade &&
+    (!players.some((p) => p.id === pendingTrade.from_player_id) ||
+      !players.some((p) => p.id === pendingTrade.to_player_id))
+  const repairedTradeKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!stalePendingTrade || !pendingTradeKey || !myPlayerId) return
+    if (repairedTradeKeyRef.current === pendingTradeKey) return
+    repairedTradeKeyRef.current = pendingTradeKey
+    void postAction('/api/monopoly/trade', { repair: true })
+  }, [stalePendingTrade, pendingTradeKey, myPlayerId, postAction])
+
   if (!board || !myPlayerId || !myState || myState.bankrupt) {
     return (
       <div className="glass-card p-5 text-center space-y-2">
@@ -380,20 +398,26 @@ export function MonopolyManagePanel({
     resetTradeForm()
   }
 
-  const pendingTrade = board.pending_trade ? normalizePendingTrade(board.pending_trade) : null
+  const activePendingTrade = stalePendingTrade ? null : pendingTrade
   const pendingTradeBlocksOthers =
-    pendingTrade &&
-    pendingTrade.from_player_id !== myPlayerId &&
-    pendingTrade.to_player_id !== myPlayerId
+    activePendingTrade &&
+    activePendingTrade.from_player_id !== myPlayerId &&
+    activePendingTrade.to_player_id !== myPlayerId
 
   const tradeSection = (
     <div className="space-y-3">
-      {pendingTrade?.from_player_id === myPlayerId && (
+      {stalePendingTrade && (
+        <p className="text-xs text-muted leading-relaxed rounded-lg border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] px-3 py-2">
+          Clearing a stale trade — a player left the game.
+        </p>
+      )}
+
+      {activePendingTrade?.from_player_id === myPlayerId && (
         <div className="rounded-xl border border-[color-mix(in_srgb,var(--primary)_35%,var(--border-strong))] bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] p-3 space-y-2">
           <p className="text-sm text-muted">
             Waiting for{' '}
             <strong className="text-[var(--foreground)]">
-              {players.find((p) => p.id === pendingTrade.to_player_id)?.name ?? 'player'}
+              {players.find((p) => p.id === activePendingTrade.to_player_id)?.name ?? 'player'}
             </strong>{' '}
             to accept or decline:
           </p>
@@ -401,20 +425,26 @@ export function MonopolyManagePanel({
             compact
             giveLabel="You give"
             getLabel="You get"
-            giveCash={pendingTrade.offer_cash}
-            giveProps={pendingTrade.offer_properties}
-            getCash={pendingTrade.request_cash}
-            getProps={pendingTrade.request_properties}
+            giveCash={activePendingTrade.offer_cash}
+            giveProps={activePendingTrade.offer_properties}
+            getCash={activePendingTrade.request_cash}
+            getProps={activePendingTrade.request_properties}
           />
+          <MonopolySecondaryButton
+            onClick={() => postAction('/api/monopoly/trade', { cancel: true })}
+            disabled={acting}
+          >
+            Cancel offer
+          </MonopolySecondaryButton>
         </div>
       )}
 
-      {pendingTrade?.to_player_id === myPlayerId && (
+      {activePendingTrade?.to_player_id === myPlayerId && (
         <div className="rounded-xl border border-[color-mix(in_srgb,var(--marry)_35%,var(--border-strong))] bg-[color-mix(in_srgb,var(--marry)_8%,transparent)] p-3 space-y-2">
           <p className="text-sm text-muted">
             Trade from{' '}
             <strong className="text-[var(--foreground)]">
-              {players.find((p) => p.id === pendingTrade.from_player_id)?.name ?? 'player'}
+              {players.find((p) => p.id === activePendingTrade.from_player_id)?.name ?? 'player'}
             </strong>{' '}
             — review all items in the popup before accepting:
           </p>
@@ -422,30 +452,30 @@ export function MonopolyManagePanel({
             compact
             giveLabel="You pay"
             getLabel="You receive"
-            giveCash={pendingTrade.request_cash}
-            giveProps={pendingTrade.request_properties}
-            getCash={pendingTrade.offer_cash}
-            getProps={pendingTrade.offer_properties}
-            getJailCards={pendingTrade.offer_get_out_cards}
+            giveCash={activePendingTrade.request_cash}
+            giveProps={activePendingTrade.request_properties}
+            getCash={activePendingTrade.offer_cash}
+            getProps={activePendingTrade.offer_properties}
+            getJailCards={activePendingTrade.offer_get_out_cards}
           />
         </div>
       )}
 
-      {pendingTradeBlocksOthers && (
+      {pendingTradeBlocksOthers && activePendingTrade && (
         <p className="text-xs text-muted leading-relaxed rounded-lg border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] px-3 py-2">
           A trade between{' '}
           <strong className="text-body">
-            {players.find((p) => p.id === pendingTrade.from_player_id)?.name ?? 'player'}
+            {players.find((p) => p.id === activePendingTrade.from_player_id)?.name ?? 'player'}
           </strong>{' '}
           and{' '}
           <strong className="text-body">
-            {players.find((p) => p.id === pendingTrade.to_player_id)?.name ?? 'player'}
+            {players.find((p) => p.id === activePendingTrade.to_player_id)?.name ?? 'player'}
           </strong>{' '}
           is in progress — new offers are paused until it finishes.
         </p>
       )}
 
-      {!board.pending_trade && (
+      {!activePendingTrade && (
         <div className="space-y-3">
           <div className="space-y-1">
             <p className="text-xs font-semibold text-[var(--foreground)]">Propose a trade</p>
