@@ -87,28 +87,16 @@ export default async function GameLandingRoute({ params }: Props) {
       </header>
 
       <div className="page-wrap min-h-dvh pb-16">
-        {/* Hero — CTAs above the fold; SEO copy below */}
-        <section className="relative px-4 pt-20 pb-8 overflow-hidden">
+        {/* Hero — compact; CTAs + rules above the fold */}
+        <section className="relative px-4 pt-16 pb-6 overflow-hidden">
           <div
-            className="pointer-events-none absolute inset-0 opacity-50"
+            className="pointer-events-none absolute inset-0 opacity-40"
             style={{
               background: `radial-gradient(ellipse 80% 60% at 50% -10%, ${cfg.card.accentSoft} 0%, transparent 70%)`,
             }}
           />
-          <div
-            className="pointer-events-none absolute -top-8 left-[10%] text-6xl opacity-[0.07] select-none hidden sm:block"
-            aria-hidden
-          >
-            {cfg.card.emoji}
-          </div>
-          <div
-            className="pointer-events-none absolute top-24 right-[8%] text-5xl opacity-[0.05] select-none hidden sm:block"
-            aria-hidden
-          >
-            {cfg.headerEmoji}
-          </div>
 
-          <div className="relative z-10 mx-auto max-w-2xl text-center space-y-4">
+          <div className="relative z-10 mx-auto max-w-2xl text-center space-y-3">
             <div
               className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold"
               style={{
@@ -123,17 +111,13 @@ export default async function GameLandingRoute({ params }: Props) {
               <span className="opacity-80">{cfg.card.players}</span>
             </div>
 
-            <div className="hidden sm:block text-5xl tracking-tight" aria-hidden>
-              {cfg.headerEmoji}
-            </div>
-
-            <h1 className="text-2xl sm:text-5xl font-black tracking-tight gradient-title leading-[1.05]">
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight gradient-title leading-tight">
               {content.heroTitle}
             </h1>
 
-            <p className="text-muted text-sm sm:text-lg leading-relaxed max-w-lg mx-auto">{content.heroSubtitle}</p>
+            <p className="text-muted text-sm sm:text-base leading-relaxed max-w-md mx-auto">{content.heroSubtitle}</p>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2.5 sm:gap-3 pt-1 w-full sm:w-fit mx-auto">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 sm:gap-3 pt-0.5 w-full sm:w-fit mx-auto">
               <Link href={`/create?type=${content.gameType}`} className="btn-primary btn-fit">
                 Play free →
               </Link>
@@ -142,22 +126,24 @@ export default async function GameLandingRoute({ params }: Props) {
               </Link>
             </div>
 
-            <p className="text-faint text-xs tracking-wide">
-              Free forever · No sign-up · Real-time · Phone & desktop
-            </p>
-
-            <a
-              href="#rules"
-              className="inline-block text-xs font-medium hover:text-body transition-colors"
-              style={{ color: cfg.card.accent }}
-            >
-              Read game rules ↓
-            </a>
+            <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-faint text-xs tracking-wide">
+              <span>Free forever · No sign-up · Real-time · Phone &amp; desktop</span>
+              <span className="hidden sm:inline opacity-40" aria-hidden>
+                ·
+              </span>
+              <a
+                href="#rules"
+                className="font-medium hover:opacity-80 transition-opacity"
+                style={{ color: cfg.card.accent }}
+              >
+                Read game rules ↓
+              </a>
+            </div>
           </div>
         </section>
 
         {/* SEO body copy — below the fold */}
-        <section className="px-4 pb-10 border-t border-theme pt-8">
+        <section className="px-4 pb-8 border-t border-theme pt-6">
           <div className="mx-auto max-w-2xl text-center space-y-4">
             <p className="text-muted text-sm sm:text-base leading-relaxed">{bodyParagraph}</p>
             <div className="flex flex-wrap justify-center gap-2">

@@ -88,6 +88,7 @@ import { GameTypeModal } from '@/components/GameTypeModal'
 import { GameTypeCard } from '@/components/GameTypeCard'
 import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
 import { StepIndicator, SettingsGroup, StickyActionBar, SegmentedControl, ChipGrid } from '@/components/ui/CreateWizard'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { LateJoinPolicyToggle } from '@/components/AllowViewersToggle'
 import { gameSupportsViewerSetting, type LateJoinPolicy } from '@/lib/viewers'
 import { clampHotSeatMaxCap, hotSeatMaxCapUpperBound, HOT_SEAT_MIN_PLAYERS } from '@/lib/hot-seat'
@@ -830,7 +831,7 @@ function CreateGameInner() {
 
           {/* Essentials */}
           <div className="glass-card-strong p-5 space-y-4">
-            <Field label="Game name">
+            <Field label="Game name" action={<GameRulesLink gameType={settings.game_type} variant="subtle" />}>
               <input
                 value={settings.title}
                 onChange={(e) => setSettings({ ...settings, title: e.target.value })}

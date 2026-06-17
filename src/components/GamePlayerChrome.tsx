@@ -3,11 +3,14 @@
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { ShareGameLinkButton } from '@/components/ShareGameLinkButton'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { useGameRules } from '@/contexts/GameRulesContext'
 
 export function GamePlayerChrome() {
   const params = useParams()
+  const { gameType } = useGameRules()
   const code = typeof params?.code === 'string' ? params.code.toUpperCase() : null
 
   return (
@@ -16,6 +19,7 @@ export function GamePlayerChrome() {
         <FateRoundLogo className="h-8 w-auto max-w-[7.5rem] sm:max-w-[11rem]" />
       </Link>
       <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto shrink-0">
+        {gameType ? <GameRulesLink gameType={gameType} variant="header" /> : null}
         {code ? <ShareGameLinkButton gameCode={code} /> : null}
         <ThemeToggle variant="inline" />
       </div>

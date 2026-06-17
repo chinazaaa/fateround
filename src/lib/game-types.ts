@@ -816,7 +816,6 @@ export const HOMEPAGE_FEATURED_GAMES: GameType[] = [
   'bingo',
   'trivia',
   'anonymous_messages',
-  'yahtzee',
 ]
 
 export const GAME_TYPE_OPTIONS: GameType[] = [

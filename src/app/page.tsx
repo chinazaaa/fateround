@@ -6,7 +6,7 @@ export const metadata: Metadata = homeMetadata()
 
 function HomeSeoContent() {
   return (
-    <section className="page-wrap px-4 pb-16 pt-4 border-t border-theme">
+    <section className="relative z-10 px-4 pb-16 pt-6 border-t border-theme">
       <div className="mx-auto max-w-2xl space-y-8 text-muted text-sm sm:text-base leading-relaxed">
         <div className="space-y-3">
           <h2 className="text-lg font-bold text-body">What is Fate Round?</h2>

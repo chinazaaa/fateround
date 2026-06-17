@@ -24,10 +24,21 @@ export function BackBtn({ onClick, label = 'Back' }: { onClick: () => void; labe
   )
 }
 
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
+export function Field({
+  label,
+  children,
+  action,
+}: {
+  label: string
+  children: React.ReactNode
+  action?: React.ReactNode
+}) {
   return (
     <div>
-      <label className="text-muted text-sm font-medium block mb-2">{label}</label>
+      <div className={`mb-2 ${action ? 'flex items-center justify-between gap-3' : ''}`}>
+        <label className="text-muted text-sm font-medium">{label}</label>
+        {action}
+      </div>
       {children}
     </div>
   )

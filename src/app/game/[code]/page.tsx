@@ -165,6 +165,7 @@ import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { PlayerSessionBar } from '@/components/ui/PlayerSessionBar'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
@@ -1311,6 +1312,7 @@ export default function GamePage() {
         onChangeName={useFreeNameJoin ? undefined : openEditJoin}
         changeNameLabel={isNameOnlyJoin || !joinNeedsGender ? 'Change name' : 'Change name or gender'}
         inLobby={view === 'waiting'}
+        gameType={game?.game_type}
       />
     ) : viewerBanner ? (
       <div className="mb-4">{viewerBanner}</div>
@@ -1589,6 +1591,11 @@ export default function GamePage() {
             {game?.rounds_count} rounds · {game?.timer_seconds}s each
           </p>
           <p className="text-muted">Waiting for the host to start...</p>
+          {game ? (
+            <p>
+              <GameRulesLink gameType={game.game_type} variant="subtle" />
+            </p>
+          ) : null}
         </div>
 
         {isWst &&
@@ -3268,6 +3275,7 @@ function FinalResultsView({
           name={myPlayerName}
           onRenamed={onPlayerRenamed}
           onLeft={onPlayerLeft}
+          gameType={gameType}
         />
       ) : null}
       <div className="text-center">

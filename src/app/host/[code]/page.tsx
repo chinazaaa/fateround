@@ -149,6 +149,7 @@ import { AchievementsShareBlock } from '@/components/AchievementsShareBlock'
 import { ShareResults } from '@/components/ShareResults'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { HostPlayerManageList } from '@/components/host/HostPlayerManageList'
 import { computeAchievements } from '@/lib/achievements'
 import { useToast } from '@/components/ui/Toast'
@@ -1615,6 +1616,9 @@ export default function HostPage() {
                             ? 'Join & play — joiners are the names in the poll'
                             : 'Pre-set roster — players claim their name from the list'}
             </p>
+            <p className="mt-2">
+              <GameRulesLink gameType={gameType} />
+            </p>
           </div>
           <div className="text-right">
             <p className="text-muted text-xs uppercase tracking-wider">Code</p>
@@ -2698,7 +2702,7 @@ export default function HostPage() {
 
       return (
         <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-muted text-xs uppercase tracking-wider">Round</p>
               <p className="font-black text-body text-3xl">
@@ -2707,7 +2711,10 @@ export default function HostPage() {
               </p>
               <p className="label-teal text-sm mt-1">Guess who said it</p>
             </div>
-            <TimerDisplay seconds={timeLeft} total={game.timer_seconds} />
+            <div className="flex flex-col items-end gap-2">
+              <GameRulesLink gameType={gameType} variant="header" />
+              <TimerDisplay seconds={timeLeft} total={game.timer_seconds} />
+            </div>
           </div>
 
           <div className="glass-card p-5 space-y-3">

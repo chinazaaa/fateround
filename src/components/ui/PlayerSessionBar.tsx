@@ -1,7 +1,9 @@
 'use client'
 
 import { Avatar } from '@/components/Avatar'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import type { GameType } from '@/types'
 
 export function PlayerSessionBar({
   gameCode,
@@ -14,6 +16,7 @@ export function PlayerSessionBar({
   changeNameLabel,
   inLobby = false,
   showControls = true,
+  gameType,
 }: {
   gameCode: string
   playerId: string
@@ -25,6 +28,7 @@ export function PlayerSessionBar({
   changeNameLabel?: string
   inLobby?: boolean
   showControls?: boolean
+  gameType?: GameType | string | null
 }) {
   if (!name && !viewerBanner) return null
 
@@ -51,6 +55,11 @@ export function PlayerSessionBar({
           changeNameLabel={changeNameLabel}
           inLobby={inLobby}
         />
+      ) : null}
+      {gameType ? (
+        <p className="text-center">
+          <GameRulesLink gameType={gameType} variant="subtle" />
+        </p>
       ) : null}
     </div>
   )

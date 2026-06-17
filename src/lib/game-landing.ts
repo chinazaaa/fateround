@@ -59,6 +59,10 @@ export function gameLandingSlug(gameType: GameType): string {
   return GAME_TYPE_TO_SLUG[gameType]
 }
 
+export function gameRulesHref(gameType: GameType): string {
+  return `/games/${GAME_TYPE_TO_SLUG[gameType]}#rules`
+}
+
 export const ALL_GAME_LANDING_SLUGS = Object.values(GAME_TYPE_TO_SLUG)
 
 const SHARED_FEATURES = {
