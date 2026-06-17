@@ -27,25 +27,13 @@ import { LudoCard, LudoDice, LudoTurnBar } from '@/components/ludo/LudoChrome'
 
 const BOARD_BG = '#e8d4b0'
 
-const COLOR_CORNER: Record<LudoColor, string> = {
-  red: '#fca5a5',
-  green: '#86efac',
-  yellow: '#fde047',
-  blue: '#93c5fd',
-}
-
-const COLOR_CORNER_DARK: Record<LudoColor, string> = {
-  red: '#ef4444',
-  green: '#22c55e',
-  yellow: '#eab308',
-  blue: '#3b82f6',
-}
-
-const COLOR_HOME: Record<LudoColor, string> = {
-  red: '#f87171',
-  green: '#4ade80',
-  yellow: '#facc15',
-  blue: '#60a5fa',
+/** Vivid solid colours used across the board — corners, home lanes,
+ *  start/safe squares and the centre pinwheel — to match a classic board. */
+const COLOR_VIVID: Record<LudoColor, string> = {
+  red: '#e11d2e',
+  green: '#1faa3e',
+  yellow: '#f5c518',
+  blue: '#1f7fe0',
 }
 
 const ARROW_GLYPH: Record<string, string> = {
@@ -87,8 +75,9 @@ function PieceToken({
   )
 }
 
-/** The white "yard" circle decoration behind each colour's base. Pieces
- *  themselves are drawn in the absolutely-positioned overlay so they can
+/** The classic "yard" decoration behind each colour's base: a white rounded
+ *  square framing a colour-filled inner panel. The 4 home-slot circles and the
+ *  pieces themselves are drawn in the absolutely-positioned overlay so they can
  *  animate between the yard and the track. */
 function BaseCorner({ color }: { color: LudoColor }) {
   const bounds = CORNER_BOUNDS[color]
@@ -102,7 +91,9 @@ function BaseCorner({ color }: { color: LudoColor }) {
       className="pointer-events-none absolute z-[5] flex items-center justify-center"
       style={{ left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%` }}
     >
-      <div className="h-[76%] w-[76%] rounded-full" style={{ backgroundColor: '#ffffff' }} />
+      <div className="flex h-[82%] w-[82%] items-center justify-center rounded-[18%] bg-white shadow-md">
+        <div className="h-[78%] w-[78%] rounded-[14%]" style={{ backgroundColor: COLOR_VIVID[color] }} />
+      </div>
     </div>
   )
 }
@@ -118,14 +109,11 @@ function CenterTriangles() {
       style={{ left: `${left}%`, top: `${top}%`, width: `${size}%`, height: `${size}%` }}
     >
       <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full" aria-hidden>
-        <polygon points="50,50 0,0 100,0" fill={COLOR_CORNER_DARK.green} />
-        <polygon points="50,50 100,0 100,100" fill={COLOR_CORNER_DARK.yellow} />
-        <polygon points="50,50 0,100 100,100" fill={COLOR_CORNER_DARK.red} />
-        <polygon points="50,50 0,0 0,100" fill={COLOR_CORNER_DARK.blue} />
+        <polygon points="50,50 0,0 100,0" fill={COLOR_VIVID.green} stroke="#1e293b" strokeWidth="0.5" />
+        <polygon points="50,50 100,0 100,100" fill={COLOR_VIVID.yellow} stroke="#1e293b" strokeWidth="0.5" />
+        <polygon points="50,50 0,100 100,100" fill={COLOR_VIVID.red} stroke="#1e293b" strokeWidth="0.5" />
+        <polygon points="50,50 0,0 0,100" fill={COLOR_VIVID.blue} stroke="#1e293b" strokeWidth="0.5" />
       </svg>
-      <div className="relative z-10 flex h-[38%] w-[38%] items-center justify-center rounded-full border-2 border-slate-800 bg-white shadow-sm">
-        <span className="text-[7px] sm:text-[8px] font-black tracking-wider text-slate-900">KING</span>
-      </div>
     </div>
   )
 }
@@ -144,26 +132,26 @@ function cellStyle(
   }
 
   if (kind.kind === 'base' && kind.color) {
-    return { background: COLOR_CORNER[kind.color], border: 'none' }
+    return { background: COLOR_VIVID[kind.color], border: 'none' }
   }
 
   if (kind.kind === 'start' && kind.color) {
     return {
-      background: COLOR_CORNER_DARK[kind.color],
+      background: COLOR_VIVID[kind.color],
       borderColor: '#1e293b',
     }
   }
 
   if (kind.kind === 'safe' && kind.color) {
     return {
-      background: COLOR_HOME[kind.color],
+      background: COLOR_VIVID[kind.color],
       borderColor: '#1e293b',
       boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.7)',
     }
   }
 
   if (kind.kind === 'home' && kind.color) {
-    return { background: COLOR_HOME[kind.color], borderColor: '#1e293b' }
+    return { background: COLOR_VIVID[kind.color], borderColor: '#1e293b' }
   }
 
   return { background: '#ffffff', borderColor: '#1e293b' }
@@ -343,12 +331,11 @@ export function LudoBoard({
               BASE_SLOTS[color].map((slot, i) => (
                 <span
                   key={`yard-${color}-${i}`}
-                  className="absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full sm:h-6 sm:w-6"
+                  className="absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-inner sm:h-6 sm:w-6"
                   style={{
                     left: `${((slot.col + 0.5) / 15) * 100}%`,
                     top: `${((slot.row + 0.5) / 15) * 100}%`,
-                    backgroundColor: COLOR_CORNER_DARK[color],
-                    opacity: 0.85,
+                    boxShadow: 'inset 0 0 0 2px rgba(0,0,0,0.12)',
                   }}
                 />
               ))
