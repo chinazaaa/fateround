@@ -1,11 +1,10 @@
 'use client'
 
 import { useMemo } from 'react'
-import type { LudoColor, LudoPiece, LudoPlayerState, LudoSession, Player } from '@/types'
+import type { LudoColor, LudoPlayerState, LudoSession, Player } from '@/types'
 import {
   LUDO_COLOR_HEX,
   LUDO_COLOR_LABELS,
-  START_POS,
   finishedPieceCount,
   getLegalMoves,
   type LudoMoveOption,
@@ -14,16 +13,31 @@ import {
   BASE_SLOTS,
   HOME_GRID,
   TRACK_GRID,
+  boardCellKind,
   moveDestinationCell,
   pieceStatusLabel,
 } from '@/lib/ludo-board-layout'
 import { LudoCard, LudoDice, LudoTurnBar } from '@/components/ludo/LudoChrome'
 
-const BASE_BG: Record<LudoColor, string> = {
-  red: 'bg-red-500/25 border-red-500/50',
-  green: 'bg-green-500/25 border-green-500/50',
-  yellow: 'bg-yellow-500/25 border-yellow-500/50',
-  blue: 'bg-blue-500/25 border-blue-500/50',
+const COLOR_BG: Record<LudoColor, string> = {
+  red: '#fca5a5',
+  green: '#86efac',
+  yellow: '#fde047',
+  blue: '#93c5fd',
+}
+
+const COLOR_BG_STRONG: Record<LudoColor, string> = {
+  red: '#ef4444',
+  green: '#22c55e',
+  yellow: '#eab308',
+  blue: '#3b82f6',
+}
+
+const COLOR_BG_HOME: Record<LudoColor, string> = {
+  red: '#fecaca',
+  green: '#bbf7d0',
+  yellow: '#fef08a',
+  blue: '#bfdbfe',
 }
 
 function PieceToken({
@@ -31,33 +45,67 @@ function PieceToken({
   selected,
   onClick,
   small,
+  label,
 }: {
   color: LudoColor
   selected?: boolean
   onClick?: () => void
   small?: boolean
+  label?: number
 }) {
-  const size = small ? 'h-3 w-3' : 'h-4 w-4 sm:h-5 sm:w-5'
+  const size = small ? 'h-3.5 w-3.5 text-[7px]' : 'h-5 w-5 sm:h-6 sm:w-6 text-[9px]'
   const El = onClick ? 'button' : 'span'
   return (
     <El
       type={onClick ? 'button' : undefined}
       onClick={onClick}
       className={[
-        'rounded-full border-2 border-white/80 shadow-md transition-transform',
+        'relative rounded-full border-2 border-white font-bold text-white shadow-md transition-transform flex items-center justify-center',
         size,
-        selected ? 'ring-2 ring-white scale-125 z-10' : '',
-        onClick ? 'cursor-pointer hover:scale-110' : '',
+        selected ? 'ring-2 ring-[var(--primary)] ring-offset-1 scale-110 z-10' : '',
+        onClick ? 'cursor-pointer hover:scale-105' : '',
       ].join(' ')}
       style={{ backgroundColor: LUDO_COLOR_HEX[color] }}
-    />
+    >
+      {label != null ? label + 1 : null}
+    </El>
   )
 }
 
+function cellStyle(kind: ReturnType<typeof boardCellKind>, row: number, col: number): React.CSSProperties {
+  if (kind.kind === 'void') {
+    return { background: 'transparent', border: 'none' }
+  }
+
+  if (kind.kind === 'center') {
+    if (row === 7 && col === 7) {
+      return {
+        background: `conic-gradient(from 225deg, ${COLOR_BG_STRONG.red} 0deg 90deg, ${COLOR_BG_STRONG.green} 90deg 180deg, ${COLOR_BG_STRONG.yellow} 180deg 270deg, ${COLOR_BG_STRONG.blue} 270deg 360deg)`,
+      }
+    }
+    return { background: '#f8fafc' }
+  }
+
+  if (kind.kind === 'base' && kind.color) {
+    return { background: COLOR_BG[kind.color] }
+  }
+
+  if (kind.kind === 'start' && kind.color) {
+    return {
+      background: COLOR_BG_STRONG[kind.color],
+      boxShadow: `inset 0 0 0 2px rgba(255,255,255,0.85)`,
+    }
+  }
+
+  if (kind.kind === 'home' && kind.color) {
+    return { background: COLOR_BG_HOME[kind.color] }
+  }
+
+  return { background: '#ffffff' }
+}
+
 export function LudoBoard({
-  session,
   states,
-  players,
   myPlayerId,
   onMovePiece,
   selectablePieceIds,
@@ -71,6 +119,8 @@ export function LudoBoard({
   selectablePieceIds?: number[]
   highlightCells?: Set<string>
 }) {
+  const myColor = states.find((s) => s.player_id === myPlayerId)?.color
+
   const piecesOnBoard = useMemo(() => {
     const list: {
       color: LudoColor
@@ -102,49 +152,40 @@ export function LudoBoard({
   const cells: React.ReactNode[] = []
   for (let r = 0; r < 15; r += 1) {
     for (let c = 0; c < 15; c += 1) {
-      let bg = 'bg-[var(--surface-inset-bg)]/40'
-      let border = 'border-[var(--border)]/30'
-
-      const isRedBase = r >= 1 && r <= 5 && c >= 1 && c <= 5
-      const isGreenBase = r >= 1 && r <= 5 && c >= 9 && c <= 13
-      const isYellowBase = r >= 9 && r <= 13 && c >= 9 && c <= 13
-      const isBlueBase = r >= 9 && r <= 13 && c >= 1 && c <= 5
-      const isCenter = r >= 6 && r <= 8 && c >= 6 && c <= 8
-
-      if (isRedBase) bg = BASE_BG.red
-      else if (isGreenBase) bg = BASE_BG.green
-      else if (isYellowBase) bg = BASE_BG.yellow
-      else if (isBlueBase) bg = BASE_BG.blue
-      else if (isCenter) bg = 'bg-gradient-to-br from-red-500/20 via-green-500/20 to-blue-500/20'
-
-      const trackHere = Object.values(TRACK_GRID).some((g) => g.row === r && g.col === c)
-      const startHere = Object.entries(START_POS).some(([, pos]) => {
-        const g = TRACK_GRID[pos]
-        return g?.row === r && g?.col === c
-      })
-      if (trackHere) bg = startHere ? 'bg-white/20' : 'bg-white/10'
+      const kind = boardCellKind(r, c)
+      if (kind.kind === 'void') {
+        cells.push(<div key={`${r}-${c}`} className="aspect-square" />)
+        continue
+      }
 
       const herePieces = piecesOnBoard.filter((p) => p.row === r && p.col === c)
       const isHighlight = highlightCells?.has(`${r},${c}`)
+      const isStart = kind.kind === 'start'
+      const isMyBase = kind.kind === 'base' && kind.color === myColor
 
       cells.push(
         <div
           key={`${r}-${c}`}
           className={[
-            'relative border aspect-square flex items-center justify-center gap-0.5 flex-wrap p-0.5',
-            bg,
-            border,
-            isHighlight ? 'ring-2 ring-[var(--primary)]/70 bg-[var(--primary)]/20' : '',
+            'relative aspect-square flex items-center justify-center gap-0.5 flex-wrap p-0.5 border border-slate-300/80',
+            isHighlight ? 'ring-2 ring-[var(--primary)] z-10' : '',
+            isMyBase ? 'ring-1 ring-[var(--primary)]/40' : '',
           ].join(' ')}
+          style={cellStyle(kind, r, c)}
         >
+          {isStart && herePieces.length === 0 && (
+            <span className="absolute text-[8px] font-bold text-white/90 pointer-events-none">▶</span>
+          )}
           {herePieces.map((p) => {
             const selectable = selectablePieceIds?.includes(p.pieceId) && p.playerId === myPlayerId
+            const showLabel = p.playerId === myPlayerId && (selectable || kind.kind === 'base')
             return (
               <PieceToken
                 key={`${p.playerId}-${p.pieceId}`}
                 color={p.color}
                 selected={selectable}
                 small={herePieces.length > 1}
+                label={showLabel ? p.pieceId : undefined}
                 onClick={selectable && onMovePiece ? () => onMovePiece(p.pieceId) : undefined}
               />
             )
@@ -155,8 +196,17 @@ export function LudoBoard({
   }
 
   return (
-    <div className="w-full max-w-[min(100%,22rem)] mx-auto">
-      <div className="grid gap-0 rounded-xl overflow-hidden border-2 border-[var(--border-strong)] shadow-xl" style={{ gridTemplateColumns: 'repeat(15, minmax(0, 1fr))' }}>
+    <div className="w-full max-w-[min(100%,28rem)] mx-auto space-y-2">
+      {myColor && (
+        <p className="text-center text-xs text-muted">
+          You are <span className="font-bold" style={{ color: LUDO_COLOR_HEX[myColor] }}>{LUDO_COLOR_LABELS[myColor]}</span>
+          {' · '}▶ = start square · colored lane = path home
+        </p>
+      )}
+      <div
+        className="grid gap-0 rounded-2xl overflow-hidden border-4 border-slate-700/80 shadow-xl bg-[var(--background)] p-1"
+        style={{ gridTemplateColumns: 'repeat(15, minmax(0, 1fr))' }}
+      >
         {cells}
       </div>
     </div>
@@ -183,6 +233,8 @@ export function LudoPlayerStrip({
         const isTurn = row.player_id === turnId
         const isMe = row.player_id === myPlayerId
         const finished = finishedPieceCount(row.pieces)
+        const inBase = row.pieces.filter((p) => p.zone === 'base').length
+        const onPath = row.pieces.filter((p) => p.zone === 'track').length
         return (
           <div
             key={row.player_id}
@@ -195,7 +247,9 @@ export function LudoPlayerStrip({
               <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: LUDO_COLOR_HEX[row.color] }} />
               <span className="truncate">{player?.name ?? 'Player'}{isMe ? ' (you)' : ''}</span>
             </div>
-            <p className="text-faint mt-0.5">{finished}/4 home · {LUDO_COLOR_LABELS[row.color]}</p>
+            <p className="text-faint mt-0.5">
+              {finished}/4 finished · {inBase} in base · {onPath} on path
+            </p>
           </div>
         )
       })}
@@ -252,7 +306,8 @@ export function LudoGamePanel({
     return cells
   }, [legalMoves, myState])
 
-  const diceValue = displayDice ?? session.last_dice
+  const diceValue =
+    session.phase === 'move' ? session.last_dice : rolling ? null : (displayDice ?? session.last_dice)
 
   return (
     <LudoCard className="p-3 sm:p-4 space-y-3">
@@ -270,8 +325,11 @@ export function LudoGamePanel({
 
       <div className="flex items-center justify-center gap-4">
         <LudoDice value={diceValue} rolling={rolling} />
+        {session.last_dice && session.phase === 'move' && (
+          <span className="text-sm font-bold text-[var(--foreground)]">Rolled {session.last_dice}</span>
+        )}
         {session.consecutive_sixes > 0 && (
-          <span className="text-xs text-amber-400 font-semibold">6s: {session.consecutive_sixes}/3</span>
+          <span className="text-xs text-amber-500 font-semibold">6s: {session.consecutive_sixes}/3</span>
         )}
       </div>
 
@@ -300,18 +358,18 @@ export function LudoGamePanel({
 
       {isMyTurn && session.phase === 'move' && legalMoves.length > 0 && onMovePiece && (
         <div className="space-y-2">
-          <p className="text-center text-xs font-semibold text-muted">Choose a piece to move</p>
+          <p className="text-center text-xs font-semibold text-muted">Tap a piece below or on the board</p>
           <div className="grid grid-cols-2 gap-2">
             {legalMoves.map((move) => {
               const fromLabel = pieceStatusLabel(move.from)
               const toLabel =
                 move.to.zone === 'finished'
-                  ? 'Home!'
+                  ? 'Center — finished!'
                   : move.to.zone === 'home'
-                    ? `Home ${move.to.pos + 1}`
+                    ? `Home lane step ${move.to.pos + 1}`
                     : move.to.zone === 'track'
-                      ? `Square ${move.to.pos + 1}`
-                      : 'Start'
+                      ? 'Onto the path'
+                      : 'Leave base'
               return (
                 <button
                   key={move.pieceId}
@@ -322,9 +380,11 @@ export function LudoGamePanel({
                 >
                   <span className="flex items-center gap-1.5">
                     <span
-                      className="inline-block h-3 w-3 rounded-full border border-white/70"
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/70 text-[10px] font-bold text-white"
                       style={{ backgroundColor: myState ? LUDO_COLOR_HEX[myState.color] : undefined }}
-                    />
+                    >
+                      {move.pieceId + 1}
+                    </span>
                     Piece {move.pieceId + 1}
                   </span>
                   <span className="mt-0.5 block text-faint font-normal">
@@ -339,7 +399,7 @@ export function LudoGamePanel({
       )}
 
       {isMyTurn && session.phase === 'roll' && !rolling && (
-        <p className="text-center text-xs text-faint">You need a 6 to bring pieces onto the board</p>
+        <p className="text-center text-xs text-faint">Roll a 6 to move a piece from your colored corner onto ▶</p>
       )}
     </LudoCard>
   )

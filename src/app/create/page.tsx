@@ -212,6 +212,7 @@ function CreateGameInner() {
   const [wyrOptionA, setWyrOptionA] = useState('')
   const [wyrOptionB, setWyrOptionB] = useState('')
   const [mltQuestionInput, setMltQuestionInput] = useState('')
+  const [panRoundsInput, setPanRoundsInput] = useState('5')
   const [questionsBulkPaste, setQuestionsBulkPaste] = useState('')
   const [wstQuoteSource, setWstQuoteSource] = useState<WstQuoteSource>('player')
   const [customSlots, setCustomSlots] = useState<CustomSlotsConfig | null>(null)
@@ -356,6 +357,10 @@ function CreateGameInner() {
   const isWyr = isWouldYouRather(settings.game_type)
   const isNhie = isNeverHaveIEver(settings.game_type)
   const isPan = isPickANumber(settings.game_type)
+
+  useEffect(() => {
+    if (isPan) setPanRoundsInput(String(settings.rounds_count))
+  }, [settings.game_type]) // eslint-disable-line react-hooks/exhaustive-deps -- sync draft when switching game type
   const isTot = isThisOrThat(settings.game_type)
   const isBinaryLobby = isWyr || isTot || isNhie
   const isMlt = isMostLikelyTo(settings.game_type)
@@ -542,7 +547,13 @@ function CreateGameInner() {
             anonymous: true,
             participant_filter: 'joined' as const,
           }
-        : isHotSeat(type)
+        : isPickANumber(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 5,
+            }
+          : isHotSeat(type)
           ? {
               participant_mode: 'joiners' as const,
               anonymous: true,
@@ -1412,25 +1423,33 @@ function CreateGameInner() {
                         How many picking turns to play — pickers rotate through players (not capped by headcount).
                       </p>
                       <input
-                        type="number"
-                        min={1}
-                        max={PAN_MAX_ROUNDS}
-                        step={1}
-                        value={settings.rounds_count}
-                        onChange={(e) => {
-                          const n = Number.parseInt(e.target.value, 10)
-                          if (!Number.isNaN(n)) {
-                            setSettings((prev) => ({ ...prev, rounds_count: n }))
-                          }
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={panRoundsInput}
+                        onChange={(e) => setPanRoundsInput(e.target.value.replace(/\D/g, ''))}
+                        onBlur={() => {
+                          const n = clampPanRounds(panRoundsInput)
+                          setPanRoundsInput(String(n))
+                          setSettings((prev) => ({ ...prev, rounds_count: n }))
                         }}
-                        onBlur={(e) => {
-                          setSettings((prev) => ({
-                            ...prev,
-                            rounds_count: clampPanRounds(e.target.value),
-                          }))
-                        }}
-                        className="input-field w-28"
+                        className="input-field w-28 mb-2"
                       />
+                      <ChipGrid>
+                        {roundOptions.map((n) => (
+                          <Chip
+                            key={n}
+                            active={settings.rounds_count === n}
+                            onClick={() => {
+                              setPanRoundsInput(String(n))
+                              setSettings((prev) => ({ ...prev, rounds_count: n }))
+                            }}
+                            className="!px-0 w-full"
+                          >
+                            {n}
+                          </Chip>
+                        ))}
+                      </ChipGrid>
                     </Field>
                   ) : isHotSeatGame ? (
                     <Field label="Max rounds">
