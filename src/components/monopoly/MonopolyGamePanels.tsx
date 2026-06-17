@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  MonopolyGlassCard,
   MonopolyModal,
   MonopolyPrimaryButton,
   MonopolySecondaryButton,
 } from '@/components/monopoly/MonopolyChrome'
+import { formatCardAlertForPlayer } from '@/lib/monopoly-card-messages'
 import {
   canAddHotel,
   canAddHouse,
@@ -31,6 +31,37 @@ import {
 import type { MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
 
 type PostAction = (url: string, body?: Record<string, unknown>) => Promise<void>
+
+export function MonopolyCardAlertModal({
+  board,
+  myPlayerId,
+  players,
+}: {
+  board: MonopolyBoard | null
+  myPlayerId: string | null
+  players: Player[]
+}) {
+  const event = board?.last_card_event ?? null
+  const [dismissedSeq, setDismissedSeq] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (event && dismissedSeq != null && event.seq > dismissedSeq) {
+      setDismissedSeq(null)
+    }
+  }, [event, dismissedSeq])
+
+  if (!event || dismissedSeq === event.seq) return null
+
+  const alert = formatCardAlertForPlayer(event, myPlayerId, players)
+
+  return (
+    <MonopolyModal open subtitle={alert.subtitle} title={alert.title}>
+      <p className="text-4xl text-center">{alert.emoji}</p>
+      <p className="text-sm text-muted text-center leading-relaxed">{alert.body}</p>
+      <MonopolyPrimaryButton onClick={() => setDismissedSeq(event.seq)}>Got it</MonopolyPrimaryButton>
+    </MonopolyModal>
+  )
+}
 
 export function MonopolyTurnModals({
   board,
@@ -247,53 +278,83 @@ export function MonopolyManagePanel({
   const [offerProps, setOfferProps] = useState<number[]>([])
   const [requestProps, setRequestProps] = useState<number[]>([])
 
-  if (!board || !myPlayerId || !myState || myState.bankrupt) return null
+  if (!board || !myPlayerId || !myState || myState.bankrupt) {
+    return (
+      <div className="glass-card p-5 text-center space-y-2">
+        <p className="text-sm text-muted">You&apos;re out of this game.</p>
+      </div>
+    )
+  }
 
   const owners = parsePropertyOwners(board.property_owners)
   const buildings = parseBuildings(board.property_buildings)
   const mortgaged = parseMortgaged(board.mortgaged_properties)
   const mine = playerProperties(owners, myPlayerId)
   const theirs = tradeTarget ? playerProperties(owners, tradeTarget) : []
+  const housesInBank = board.houses_in_bank ?? 32
+  const hotelsInBank = board.hotels_in_bank ?? 12
 
   const toggleProp = (list: number[], setList: (v: number[]) => void, idx: number) => {
     setList(list.includes(idx) ? list.filter((i) => i !== idx) : [...list, idx])
   }
 
-  if (mine.length === 0) return null
+  if (mine.length === 0) {
+    return (
+      <div className="glass-card p-5 space-y-3">
+        <p className="label-caps">Build &amp; trade</p>
+        <p className="text-sm text-muted leading-relaxed">
+          Land on unowned properties and tap <strong className="text-body">Buy</strong> when prompted.
+          Once you own every street in a colour group, come back here to add{' '}
+          <strong className="text-body">houses</strong> and <strong className="text-body">hotels</strong>.
+        </p>
+        <p className="text-faint text-xs leading-relaxed">
+          Houses must be built evenly across the group. Mortgages and trades with other players also live here.
+        </p>
+      </div>
+    )
+  }
 
   return (
-    <MonopolyGlassCard className="p-4 space-y-3">
-      <p className="text-[11px] font-semibold uppercase tracking-widest text-faint">Manage properties</p>
-      <div className="space-y-2 max-h-64 overflow-y-auto">
+    <div className="glass-card p-4 space-y-3">
+      <div className="space-y-1">
+        <p className="label-caps">Build &amp; trade</p>
+        <p className="text-xs text-muted leading-relaxed">
+          Own a full colour set? Tap <strong className="text-body">+ House</strong> on any street in that group.
+          After four houses on every street in the set, tap <strong className="text-body">+ Hotel</strong>.
+        </p>
+      </div>
+      <div className="space-y-2">
         {mine.map((space) => {
           const level = buildingLevel(buildings, space.index)
           const isMortgaged = mortgaged[String(space.index)]
           const levelLabel = level === 5 ? '🏨 Hotel' : level > 0 ? `${level} 🏠` : 'Unimproved'
+          const canHouse = canAddHouse(space.index, myPlayerId, owners, buildings, mortgaged, housesInBank)
+          const canHotel = canAddHotel(space.index, myPlayerId, owners, buildings, mortgaged, hotelsInBank)
           return (
-            <div key={space.index} className="rounded-xl border border-[var(--border-strong)] p-3 space-y-2">
+            <div key={space.index} className="rounded-xl border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] p-3 space-y-2">
               <div className="flex justify-between gap-2">
                 <span className="font-semibold text-sm text-[var(--foreground)]">{space.name}</span>
-                <span className="text-xs text-muted">{isMortgaged ? 'Mortgaged' : levelLabel}</span>
+                <span className="text-xs text-muted shrink-0">{isMortgaged ? 'Mortgaged' : levelLabel}</span>
               </div>
-              <div className="flex flex-wrap gap-1">
-                {canAddHouse(space.index, myPlayerId, owners, buildings, mortgaged, board.houses_in_bank ?? 32) && (
+              <div className="flex flex-wrap gap-1.5">
+                {canHouse && (
                   <button
                     type="button"
                     disabled={acting}
                     onClick={() => postAction('/api/monopoly/build', { spaceIndex: space.index, action: 'buy_house' })}
-                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-[var(--primary)]/20 text-[var(--primary)]"
+                    className="btn-primary btn-fit px-3 py-1.5 text-xs"
                   >
-                    +House {formatMonopolyMoney(space.houseCost ?? 0)}
+                    + House {formatMonopolyMoney(space.houseCost ?? 0)}
                   </button>
                 )}
-                {canAddHotel(space.index, myPlayerId, owners, buildings, mortgaged, board.hotels_in_bank ?? 12) && (
+                {canHotel && (
                   <button
                     type="button"
                     disabled={acting}
                     onClick={() => postAction('/api/monopoly/build', { spaceIndex: space.index, action: 'buy_hotel' })}
-                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-[var(--marry)]/20 text-[var(--marry)]"
+                    className="btn-primary btn-fit px-3 py-1.5 text-xs"
                   >
-                    +Hotel
+                    + Hotel
                   </button>
                 )}
                 {canRemoveHouse(space.index, myPlayerId, owners, buildings) && (
@@ -301,7 +362,7 @@ export function MonopolyManagePanel({
                     type="button"
                     disabled={acting}
                     onClick={() => postAction('/api/monopoly/build', { spaceIndex: space.index, action: 'sell_house' })}
-                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-neutral-500/20"
+                    className="btn-secondary btn-fit px-2.5 py-1 text-[10px]"
                   >
                     Sell house
                   </button>
@@ -311,7 +372,7 @@ export function MonopolyManagePanel({
                     type="button"
                     disabled={acting}
                     onClick={() => postAction('/api/monopoly/build', { spaceIndex: space.index, action: 'sell_hotel' })}
-                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-neutral-500/20"
+                    className="btn-secondary btn-fit px-2.5 py-1 text-[10px]"
                   >
                     Sell hotel
                   </button>
@@ -321,7 +382,7 @@ export function MonopolyManagePanel({
                     type="button"
                     disabled={acting}
                     onClick={() => postAction('/api/monopoly/mortgage', { spaceIndex: space.index, action: 'mortgage' })}
-                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-500/20 text-amber-700"
+                    className="btn-secondary btn-fit px-2.5 py-1 text-[10px]"
                   >
                     Mortgage
                   </button>
@@ -331,7 +392,7 @@ export function MonopolyManagePanel({
                     type="button"
                     disabled={acting}
                     onClick={() => postAction('/api/monopoly/mortgage', { spaceIndex: space.index, action: 'unmortgage' })}
-                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-700"
+                    className="btn-secondary btn-fit px-2.5 py-1 text-[10px]"
                   >
                     Unmortgage
                   </button>
@@ -344,7 +405,7 @@ export function MonopolyManagePanel({
 
       {!board.pending_trade && (
         <div className="pt-2 border-t border-[var(--border-strong)] space-y-2">
-          <p className="text-xs font-semibold text-muted">Propose trade</p>
+          <p className="text-xs font-semibold text-muted">Propose a trade</p>
           <select
             value={tradeTarget}
             onChange={(e) => {
@@ -408,8 +469,10 @@ export function MonopolyManagePanel({
               ))}
             </div>
           )}
-          <MonopolySecondaryButton
+          <button
+            type="button"
             disabled={acting || !tradeTarget}
+            className="btn-secondary w-full py-2.5 text-sm"
             onClick={() =>
               postAction('/api/monopoly/trade', {
                 toPlayerId: tradeTarget,
@@ -421,9 +484,9 @@ export function MonopolyManagePanel({
             }
           >
             Send trade offer
-          </MonopolySecondaryButton>
+          </button>
         </div>
       )}
-    </MonopolyGlassCard>
+    </div>
   )
 }

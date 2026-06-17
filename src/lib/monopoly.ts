@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   MonopolyAuctionState,
   MonopolyBoard,
+  MonopolyLastCardEvent,
   MonopolyPendingTrade,
   MonopolyPhase,
   MonopolyPlayerState,
@@ -528,6 +529,7 @@ export async function processMonopolyRoll(
   let pendingSpace: number | null = null
   let auctionState: MonopolyAuctionState | null = null
   let statusMessage = ''
+  let lastCardEvent: MonopolyLastCardEvent | null = null
   let extraTurn = false
 
   if (board.phase === 'jail') {
@@ -622,7 +624,17 @@ export async function processMonopolyRoll(
     }
 
     const card = drawn.card
-    statusMessage += ` ${card.message}`
+    const otherCount = activePlayers(states).filter((s) => s.player_id !== playerId).length
+    lastCardEvent = {
+      seq: (board.last_card_event?.seq ?? 0) + 1,
+      kind,
+      drawn_by_player_id: playerId,
+      card_message: card.message,
+      effect: card.effect,
+      amount: card.amount,
+      other_player_count: otherCount,
+    }
+    statusMessage += ` Drew ${kind === 'chance' ? 'Chance' : 'Community Chest'}.`
 
     const effect = applyCardEffect(card, {
       playerId,
@@ -733,6 +745,7 @@ export async function processMonopolyRoll(
       community_deck: communityDeck,
       chance_discard: chanceDiscard,
       community_discard: communityDiscard,
+      ...(lastCardEvent ? { last_card_event: lastCardEvent } : {}),
     }
   )
 

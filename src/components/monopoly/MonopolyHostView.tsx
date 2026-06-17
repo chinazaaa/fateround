@@ -4,17 +4,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   MonopolyClassicBoard,
-  MonopolyCurrentSpace,
   MonopolyDiceRoll,
-  MonopolyMyProperties,
   MonopolyPlayerList,
 } from '@/components/monopoly/MonopolyBoard'
-import { MonopolyManagePanel, MonopolyTurnModals } from '@/components/monopoly/MonopolyGamePanels'
-import {
-  MonopolyCashBadge,
-  MonopolyStatusBanner,
-  MonopolyTurnStrip,
-} from '@/components/monopoly/MonopolyChrome'
+import { MonopolyActiveLayout } from '@/components/monopoly/MonopolyActiveLayout'
+import { MonopolyCardAlertModal } from '@/components/monopoly/MonopolyGamePanels'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -23,7 +17,6 @@ import {
   getMonopolyHostMode,
   MONOPOLY_COLOR_CLASSES,
   MONOPOLY_MIN_PLAYERS,
-  parsePropertyOwners,
   setMonopolyHostMode,
   type MonopolyColorGroup,
   type MonopolyHostMode,
@@ -43,6 +36,7 @@ import type { Game, MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
+import { useMonopolyNotifications } from '@/hooks/useMonopolyNotifications'
 
 type HostTab = 'play' | 'manage'
 
@@ -260,8 +254,15 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   const hostState = hostPlayerId ? states.find((s) => s.player_id === hostPlayerId) : null
   const isHostTurn = turnPlayerId === hostPlayerId && !hostState?.bankrupt
-  const owners = parsePropertyOwners(board?.property_owners)
-  const hostCurrentOwner = hostState != null ? players.find((p) => p.id === owners[String(hostState.position)])?.name : null
+
+  useMonopolyNotifications({
+    game,
+    board,
+    myPlayerId: hostPlayerId,
+    myState: hostState ?? undefined,
+    players,
+    enabled: game?.status === 'active',
+  })
 
   if (!game) {
     return (
@@ -273,7 +274,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   return (
     <div className="min-h-screen pb-24">
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
         <div className="text-center space-y-1">
           <div className="text-4xl">{cfg.headerEmoji}</div>
           <h1 className="text-2xl font-black tracking-tight gradient-title">{game.title}</h1>
@@ -367,27 +368,17 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
 
         {tab === 'play' && hostPlays && hostPlayerId && game.status === 'active' && (
           board ? (
-          <>
-            <div className="flex items-start justify-between gap-3">
-              <MonopolyTurnStrip
-                turnName={turnPlayer?.name ?? '—'}
-                isMyTurn={isHostTurn}
-                phase={board.phase}
-                myName={hostPlayerName}
-              />
-              {hostState && <MonopolyCashBadge amount={hostState.cash} />}
-            </div>
-
-            {board.status_message && board.phase !== 'buy' && board.phase !== 'pay_rent' && board.phase !== 'auction' && (
-              <MonopolyStatusBanner message={board.status_message} isMyTurn={isHostTurn} />
-            )}
-
-            <MonopolyClassicBoard
+            <MonopolyActiveLayout
+              board={board}
               states={states}
               players={players}
-              propertyOwners={owners}
-              highlightIndex={hostState?.position}
-              center={
+              myPlayerId={hostPlayerId}
+              myState={hostState ?? undefined}
+              myName={hostPlayerName}
+              acting={hostActing}
+              postAction={postHostAction}
+              colorBarClass={colorBarClass}
+              boardCenter={
                 <div className="flex flex-col items-center justify-center h-full gap-2 px-1">
                   <MonopolyDiceRoll dice={board.last_dice} rolling={hostActing} />
                   {isHostTurn && board.phase === 'roll' && !hostState?.in_jail && (
@@ -403,47 +394,13 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
                 </div>
               }
             />
-
-            {hostState && (
-              <MonopolyCurrentSpace index={hostState.position} ownerName={hostCurrentOwner} />
-            )}
-
-            <MonopolyMyProperties
-              playerId={hostPlayerId}
-              propertyOwners={owners}
-              players={players}
-            />
-
-            <MonopolyManagePanel
-              board={board}
-              myPlayerId={hostPlayerId}
-              myState={hostState ?? undefined}
-              players={players}
-              acting={hostActing}
-              postAction={postHostAction}
-            />
-
-            <MonopolyPlayerList
-              states={states}
-              players={players}
-              currentPlayerId={turnPlayerId}
-              propertyOwners={owners}
-              myPlayerId={hostPlayerId}
-            />
-
-            <MonopolyTurnModals
-              board={board}
-              myPlayerId={hostPlayerId}
-              myState={hostState ?? undefined}
-              players={players}
-              acting={hostActing}
-              postAction={postHostAction}
-              colorBarClass={colorBarClass}
-            />
-          </>
           ) : (
             <div className="glass-card p-8 text-center text-sm text-muted">Loading board…</div>
           )
+        )}
+
+        {game.status === 'active' && board && tab === 'manage' && (
+          <MonopolyCardAlertModal board={board} myPlayerId={hostPlayerId} players={players} />
         )}
 
         {(tab === 'manage' || !showPlayTab) && (

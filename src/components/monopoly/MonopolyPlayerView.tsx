@@ -4,26 +4,23 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   MonopolyClassicBoard,
-  MonopolyCurrentSpace,
   MonopolyDiceRoll,
-  MonopolyMyProperties,
   MonopolyPlayerList,
 } from '@/components/monopoly/MonopolyBoard'
-import { MonopolyManagePanel, MonopolyTurnModals } from '@/components/monopoly/MonopolyGamePanels'
+import { MonopolyActiveLayout } from '@/components/monopoly/MonopolyActiveLayout'
 import { MONOPOLY_COLOR_CLASSES } from '@/lib/monopoly'
 import type { MonopolyColorGroup } from '@/lib/monopoly'
+import { GameTypeBadge } from '@/components/GameTypeBadge'
 import {
   MonopolyCashBadge,
   MonopolyStatusBanner,
   MonopolyTurnStrip,
 } from '@/components/monopoly/MonopolyChrome'
-import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   currentPlayerId,
   MONOPOLY_MIN_PLAYERS,
   MONOPOLY_STARTING_CASH,
-  parsePropertyOwners,
 } from '@/lib/monopoly'
 import { supabase } from '@/lib/supabase'
 import {
@@ -43,6 +40,7 @@ import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
+import { useMonopolyNotifications } from '@/hooks/useMonopolyNotifications'
 import { preJoinScreen } from '@/lib/viewers'
 
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'waiting' | 'active' | 'finished' | 'not_found'
@@ -220,14 +218,15 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const myState = states.find((s) => s.player_id === myPlayerId)
   const turnPlayerId = board ? currentPlayerId(board) : null
   const isMyTurn = turnPlayerId === myPlayerId && !myState?.bankrupt
-  const turnPlayer = players.find((p) => p.id === turnPlayerId)
-  const owners = parsePropertyOwners(board?.property_owners)
 
-  const showStatusBanner =
-    board?.status_message &&
-    board.phase !== 'buy' &&
-    board.phase !== 'pay_rent' &&
-    board.phase !== 'auction'
+  useMonopolyNotifications({
+    game,
+    board,
+    myPlayerId,
+    myState,
+    players,
+    enabled: screen === 'active',
+  })
 
   if (screen === 'loading') {
     return (
@@ -377,51 +376,50 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   const sessionName = myPlayerName ?? players.find((p) => p.id === myPlayerId)?.name ?? ''
 
+  if (!board) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted">Loading board…</p>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen pb-24">
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
-        <div className="text-center space-y-1">
-          <div className="text-4xl">{cfg.headerEmoji}</div>
-          <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
-          <p className="text-muted text-sm">{cfg.label}</p>
+      <div className="max-w-5xl mx-auto px-4 py-4 sm:py-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-black tracking-tight gradient-title truncate">{game?.title}</h1>
+            <p className="text-faint text-xs">{cfg.label}</p>
+          </div>
+          {myPlayerId && sessionName && (
+            <PlayerSessionControls
+              gameCode={gameCode}
+              playerId={myPlayerId}
+              currentName={sessionName}
+              onRenamed={(name) => {
+                setMyPlayerName(name)
+                setPlayerSession(gameCode, myPlayerId, name, 'both')
+              }}
+              onLeft={handlePlayerLeft}
+            />
+          )}
         </div>
 
-        {myPlayerId && sessionName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={sessionName}
-            onRenamed={(name) => {
-              setMyPlayerName(name)
-              setPlayerSession(gameCode, myPlayerId, name, 'both')
-            }}
-            onLeft={handlePlayerLeft}
-          />
-        )}
-
-        <div className="flex items-start justify-between gap-3">
-          <MonopolyTurnStrip
-            turnName={turnPlayer?.name ?? '—'}
-            isMyTurn={isMyTurn}
-            phase={board?.phase}
-            myName={sessionName}
-          />
-          {myState && <MonopolyCashBadge amount={myState.cash} />}
-        </div>
-
-        {showStatusBanner && (
-          <MonopolyStatusBanner message={board!.status_message!} isMyTurn={isMyTurn} />
-        )}
-
-        <MonopolyClassicBoard
+        <MonopolyActiveLayout
+          board={board}
           states={states}
           players={players}
-          propertyOwners={owners}
-          highlightIndex={myState?.position}
-          center={
+          myPlayerId={myPlayerId}
+          myState={myState}
+          myName={sessionName}
+          acting={acting}
+          postAction={postAction}
+          colorBarClass={colorBarClass}
+          boardCenter={
             <div className="flex flex-col items-center justify-center h-full gap-2 px-1">
-              <MonopolyDiceRoll dice={board?.last_dice} rolling={acting} />
-              {isMyTurn && board?.phase === 'roll' && !myState?.in_jail && (
+              <MonopolyDiceRoll dice={board.last_dice} rolling={acting} />
+              {isMyTurn && board.phase === 'roll' && !myState?.in_jail && (
                 <button
                   type="button"
                   disabled={acting}
@@ -433,51 +431,6 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               )}
             </div>
           }
-        />
-
-        {myState && (
-          <MonopolyCurrentSpace
-            index={myState.position}
-            ownerName={players.find((p) => p.id === owners[String(myState.position)])?.name}
-          />
-        )}
-
-        <MonopolyManagePanel
-          board={board}
-          myPlayerId={myPlayerId}
-          myState={myState}
-          players={players}
-          acting={acting}
-          postAction={postAction}
-        />
-
-        {myPlayerId && (
-          <MonopolyMyProperties
-            playerId={myPlayerId}
-            propertyOwners={owners}
-            players={players}
-          />
-        )}
-
-        <div>
-          <p className="label-caps mb-2 px-1">All players</p>
-          <MonopolyPlayerList
-            states={states}
-            players={players}
-            currentPlayerId={turnPlayerId}
-            propertyOwners={owners}
-            myPlayerId={myPlayerId}
-          />
-        </div>
-
-        <MonopolyTurnModals
-          board={board}
-          myPlayerId={myPlayerId}
-          myState={myState}
-          players={players}
-          acting={acting}
-          postAction={postAction}
-          colorBarClass={colorBarClass}
         />
       </div>
     </div>
