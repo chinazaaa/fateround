@@ -52,6 +52,7 @@ import {
   parseJsonRecord,
   parseMortgaged,
 } from '@/lib/monopoly-rent'
+import { normalizePendingTrade, normalizeTradePropertyList } from '@/lib/monopoly-trade-messages'
 import { secondsUntilDeadline } from '@/lib/round-timing'
 
 export * from '@/lib/monopoly-board'
@@ -125,12 +126,13 @@ function applyPendingTradeToOwners(
   owners: Record<string, string>,
   trade: MonopolyPendingTrade
 ): Record<string, string> {
+  const normalized = normalizePendingTrade(trade)
   const next = { ...owners }
-  for (const idx of trade.offer_properties ?? []) {
-    next[String(idx)] = trade.to_player_id
+  for (const idx of normalized.offer_properties) {
+    next[String(idx)] = normalized.to_player_id
   }
-  for (const idx of trade.request_properties ?? []) {
-    next[String(idx)] = trade.from_player_id
+  for (const idx of normalized.request_properties) {
+    next[String(idx)] = normalized.from_player_id
   }
   return next
 }
@@ -1590,10 +1592,13 @@ export async function processMonopolyTradePropose(
   const { data: toState } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId).eq('player_id', toPlayerId).maybeSingle()
   if (!fromState || !toState || fromState.bankrupt || toState.bankrupt) return { error: 'Invalid players' }
 
+  const offerProperties = normalizeTradePropertyList(offer.properties)
+  const requestProperties = normalizeTradePropertyList(request.properties)
+
   const fromErr = validateTradeAssets(
     fromPlayerId,
     offer.cash,
-    offer.properties,
+    offerProperties,
     offer.getOutCards,
     owners,
     buildings,
@@ -1605,7 +1610,7 @@ export async function processMonopolyTradePropose(
   const toErr = validateTradeAssets(
     toPlayerId,
     request.cash,
-    request.properties,
+    requestProperties,
     0,
     owners,
     buildings,
@@ -1614,15 +1619,15 @@ export async function processMonopolyTradePropose(
   )
   if (toErr) return { error: `Counterparty: ${toErr}` }
 
-  const pending: MonopolyPendingTrade = {
+  const pending: MonopolyPendingTrade = normalizePendingTrade({
     from_player_id: fromPlayerId,
     to_player_id: toPlayerId,
     offer_cash: offer.cash,
-    offer_properties: offer.properties,
+    offer_properties: offerProperties,
     offer_get_out_cards: offer.getOutCards,
     request_cash: request.cash,
-    request_properties: request.properties,
-  }
+    request_properties: requestProperties,
+  })
 
   const names = await playerNamesById(supabase, gameId, [fromPlayerId, toPlayerId])
   const fromName = names[fromPlayerId] ?? 'A player'
@@ -1651,8 +1656,8 @@ export async function processMonopolyTradeRespond(
   const { data: boardRaw } = await supabase.from('monopoly_boards').select('*').eq('game_id', gameId).maybeSingle()
   if (!boardRaw) return { error: 'Board not found' }
   const board = boardRaw as MonopolyBoard
-  const trade = board.pending_trade
-  if (!trade) return { error: 'No pending trade' }
+  if (!board.pending_trade) return { error: 'No pending trade' }
+  const trade = normalizePendingTrade(board.pending_trade)
   if (trade.to_player_id !== playerId) return { error: 'Not your trade to accept' }
 
   if (!accept) {

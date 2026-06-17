@@ -47,6 +47,8 @@ import {
 } from '@/lib/monopoly'
 import {
   buildTradeSideItems,
+  normalizePendingTrade,
+  normalizeTradePropertyList,
   tradeSideHasValue,
 } from '@/lib/monopoly-trade-messages'
 import type { MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
@@ -60,7 +62,7 @@ function TradeSideItems({
   compact = false,
 }: {
   cash: number
-  propertyIndexes: number[]
+  propertyIndexes: unknown
   jailCards?: number
   compact?: boolean
 }) {
@@ -93,6 +95,16 @@ function TradeSideItems({
   )
 }
 
+function tradeSideCountLabel(cash: number, propertyIndexes: unknown, jailCards = 0): string | null {
+  const propertyCount = normalizeTradePropertyList(propertyIndexes).length
+  const parts: string[] = []
+  if (propertyCount > 0) parts.push(`${propertyCount} propert${propertyCount === 1 ? 'y' : 'ies'}`)
+  if (cash > 0) parts.push('cash')
+  if (jailCards > 0) parts.push(`${jailCards} jail card${jailCards === 1 ? '' : 's'}`)
+  if (parts.length === 0) return null
+  return parts.join(' · ')
+}
+
 function TradeExchangeReview({
   giveLabel,
   getLabel,
@@ -107,9 +119,9 @@ function TradeExchangeReview({
   giveLabel: string
   getLabel: string
   giveCash: number
-  giveProps: number[]
+  giveProps: unknown
   getCash: number
-  getProps: number[]
+  getProps: unknown
   giveJailCards?: number
   getJailCards?: number
   compact?: boolean
@@ -117,12 +129,19 @@ function TradeExchangeReview({
   const oneSidedGift = tradeSideHasValue(giveCash, giveProps, giveJailCards) && !tradeSideHasValue(getCash, getProps, getJailCards)
   const oneSidedReceive =
     tradeSideHasValue(getCash, getProps, getJailCards) && !tradeSideHasValue(giveCash, giveProps, giveJailCards)
+  const giveCountLabel = tradeSideCountLabel(giveCash, giveProps, giveJailCards)
+  const getCountLabel = tradeSideCountLabel(getCash, getProps, getJailCards)
 
   return (
     <div className={compact ? 'space-y-2' : 'space-y-3'}>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div className="rounded-xl border border-red-500/30 bg-red-500/8 p-2.5 sm:p-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-red-400/90">{giveLabel}</p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-red-400/90">{giveLabel}</p>
+            {giveCountLabel && (
+              <p className="text-[10px] font-semibold text-red-300/90 shrink-0">{giveCountLabel}</p>
+            )}
+          </div>
           <div className="mt-1">
             <TradeSideItems
               cash={giveCash}
@@ -133,9 +152,16 @@ function TradeExchangeReview({
           </div>
         </div>
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-2.5 sm:p-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-            {getLabel}
-          </p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+              {getLabel}
+            </p>
+            {getCountLabel && (
+              <p className="text-[10px] font-semibold text-emerald-600/90 dark:text-emerald-300/90 shrink-0">
+                {getCountLabel}
+              </p>
+            )}
+          </div>
           <div className="mt-1">
             <TradeSideItems
               cash={getCash}
@@ -231,18 +257,26 @@ export function MonopolyTurnModals({
   postAction: PostAction
   colorBarClass?: (color?: MonopolyColorGroup) => string
 }) {
-  const trade = board?.pending_trade
+  const trade = board?.pending_trade ? normalizePendingTrade(board.pending_trade) : null
   const tradeFrom = trade ? players.find((p) => p.id === trade.from_player_id) : null
   const showTradeModal = !!(trade && trade.to_player_id === myPlayerId)
+  const receiveCount = trade
+    ? buildTradeSideItems(trade.offer_cash, trade.offer_properties, trade.offer_get_out_cards).length
+    : 0
 
   return (
     <>
       {showTradeModal && trade && (
-        <MonopolyModal open subtitle="Review before you accept" title={`Trade from ${tradeFrom?.name ?? 'player'}`}>
+        <MonopolyModal open subtitle="Review every item before you accept" title={`Trade from ${tradeFrom?.name ?? 'player'}`}>
           <p className="text-sm text-muted leading-relaxed">
-            If you accept, the exchange below happens immediately. Decline if anything looks wrong.
+            If you accept, everything listed below happens immediately. Decline if the count or items look wrong.
           </p>
-          <div className="pt-2">
+          {receiveCount > 0 && (
+            <p className="text-sm font-semibold text-[var(--foreground)]">
+              You receive {receiveCount} item{receiveCount === 1 ? '' : 's'} in this trade.
+            </p>
+          )}
+          <div className="pt-2 max-h-[min(50vh,18rem)] overflow-y-auto">
             <TradeExchangeReview
               giveLabel="You pay"
               getLabel="You receive"
@@ -366,6 +400,7 @@ export function MonopolyManagePanel({
   const groupStatuses = buildColorGroupStatuses(owners, myPlayerId, playerNames)
   const statusByGroup = new Map(groupStatuses.map((s) => [s.group, s]))
   const myGroups = ownedColorGroups(owners, myPlayerId)
+  const pendingTrade = board.pending_trade ? normalizePendingTrade(board.pending_trade) : null
 
   const renderPropertyCard = (space: (typeof mine)[number]) => {
     const level = buildingLevel(buildings, space.index)
@@ -495,12 +530,12 @@ export function MonopolyManagePanel({
         })}
       </div>
 
-      {board.pending_trade?.from_player_id === myPlayerId && board.pending_trade && (
+      {pendingTrade?.from_player_id === myPlayerId && (
         <div className="rounded-xl border border-[color-mix(in_srgb,var(--primary)_35%,var(--border-strong))] bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] p-3 space-y-2">
           <p className="text-sm text-muted">
             Waiting for{' '}
             <strong className="text-[var(--foreground)]">
-              {players.find((p) => p.id === board.pending_trade?.to_player_id)?.name ?? 'player'}
+              {players.find((p) => p.id === pendingTrade.to_player_id)?.name ?? 'player'}
             </strong>{' '}
             to accept or decline:
           </p>
@@ -508,32 +543,32 @@ export function MonopolyManagePanel({
             compact
             giveLabel="You give"
             getLabel="You get"
-            giveCash={board.pending_trade.offer_cash}
-            giveProps={board.pending_trade.offer_properties}
-            getCash={board.pending_trade.request_cash}
-            getProps={board.pending_trade.request_properties}
+            giveCash={pendingTrade.offer_cash}
+            giveProps={pendingTrade.offer_properties}
+            getCash={pendingTrade.request_cash}
+            getProps={pendingTrade.request_properties}
           />
         </div>
       )}
 
-      {board.pending_trade?.to_player_id === myPlayerId && board.pending_trade && (
+      {pendingTrade?.to_player_id === myPlayerId && (
         <div className="rounded-xl border border-[color-mix(in_srgb,var(--marry)_35%,var(--border-strong))] bg-[color-mix(in_srgb,var(--marry)_8%,transparent)] p-3 space-y-2">
           <p className="text-sm text-muted">
             Trade from{' '}
             <strong className="text-[var(--foreground)]">
-              {players.find((p) => p.id === board.pending_trade?.from_player_id)?.name ?? 'player'}
+              {players.find((p) => p.id === pendingTrade.from_player_id)?.name ?? 'player'}
             </strong>{' '}
-            — accept or decline in the popup:
+            — review all items in the popup before accepting:
           </p>
           <TradeExchangeReview
             compact
             giveLabel="You pay"
             getLabel="You receive"
-            giveCash={board.pending_trade.request_cash}
-            giveProps={board.pending_trade.request_properties}
-            getCash={board.pending_trade.offer_cash}
-            getProps={board.pending_trade.offer_properties}
-            getJailCards={board.pending_trade.offer_get_out_cards}
+            giveCash={pendingTrade.request_cash}
+            giveProps={pendingTrade.request_properties}
+            getCash={pendingTrade.offer_cash}
+            getProps={pendingTrade.offer_properties}
+            getJailCards={pendingTrade.offer_get_out_cards}
           />
         </div>
       )}

@@ -515,13 +515,20 @@ export const monopolyMortgageSchema = monopolyActionSchema.extend({
   action: z.enum(['mortgage', 'unmortgage']),
 })
 
+import { normalizeTradePropertyList } from '@/lib/monopoly-trade-messages'
+
+const monopolyTradePropertyListSchema = z.preprocess(
+  (raw) => normalizeTradePropertyList(raw),
+  z.array(z.number().int().min(0).max(39))
+)
+
 export const monopolyTradeProposeSchema = monopolyActionSchema.extend({
   toPlayerId: uuidString('toPlayerId'),
   offerCash: z.number().int().min(0).default(0),
-  offerProperties: z.array(z.number().int().min(0).max(39)).default([]),
+  offerProperties: monopolyTradePropertyListSchema.default([]),
   offerGetOutCards: z.number().int().min(0).max(2).default(0),
   requestCash: z.number().int().min(0).default(0),
-  requestProperties: z.array(z.number().int().min(0).max(39)).default([]),
+  requestProperties: monopolyTradePropertyListSchema.default([]),
 })
 
 export const monopolyTradeRespondSchema = monopolyActionSchema.extend({

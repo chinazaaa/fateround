@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react'
 import { formatCardAlertForPlayer } from '@/lib/monopoly-card-messages'
 import { formatCashMessageForPlayer } from '@/lib/monopoly-cash-messages'
 import { formatRentMessageForPlayer } from '@/lib/monopoly-rent-messages'
-import { formatTradeMessageForPlayer } from '@/lib/monopoly-trade-messages'
+import { formatTradeMessageForPlayer, formatIncomingTradeAlert } from '@/lib/monopoly-trade-messages'
 import {
   playGameFinishedSound,
   playRoundEndSound,
@@ -129,12 +129,15 @@ export function useMonopolyNotifications({
       }
     }
 
-    if (
-      tradeKey &&
-      tradeKey !== prevTradeKeyRef.current &&
-      board?.pending_trade?.to_player_id === myPlayerId
-    ) {
-      info('Trade offer received')
+    const incomingTrade =
+      board?.pending_trade && board.pending_trade.to_player_id === myPlayerId
+        ? board.pending_trade
+        : null
+
+    if (tradeKey && tradeKey !== prevTradeKeyRef.current && incomingTrade) {
+      const fromName =
+        players.find((p) => p.id === incomingTrade.from_player_id)?.name ?? 'A player'
+      info(formatIncomingTradeAlert(incomingTrade, fromName))
       playVoteSubmittedSound()
     }
 

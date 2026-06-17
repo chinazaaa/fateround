@@ -366,7 +366,7 @@ export function MonopolyModal({
       />
       <div
         className={[
-          'relative w-full max-w-sm overflow-hidden rounded-2xl border border-[var(--border-strong)]',
+          'relative w-full max-w-sm max-h-[min(92vh,720px)] overflow-y-auto rounded-2xl border border-[var(--border-strong)]',
           'bg-[var(--card-strong)] shadow-[var(--card-shadow-strong)]',
           'animate-in fade-in slide-in-from-bottom-4 duration-200',
         ].join(' ')}
