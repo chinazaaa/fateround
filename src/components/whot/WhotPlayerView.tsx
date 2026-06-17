@@ -10,8 +10,9 @@ import {
   WhotShell,
 } from '@/components/whot/WhotChrome'
 import { WhotChoosePanel, WhotHand, WhotTable } from '@/components/whot/WhotBoard'
+import { WhotGameTimerBar } from '@/components/whot/WhotGameTimerBar'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId } from '@/lib/whot'
+import { currentPlayerId, hasPlayableCard, isDrawPileDepleted } from '@/lib/whot'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
@@ -25,6 +26,9 @@ import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { useWhotTurnTimer } from '@/hooks/useWhotTurnTimer'
+import { useWhotNotifications, playWhotActionSound } from '@/hooks/useWhotNotifications'
 
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'waiting' | 'active' | 'finished' | 'not_found'
 
@@ -166,7 +170,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       })
       const data = await res.json()
       if (!res.ok) toastError(data.error ?? 'Action failed')
-      else await load()
+      else {
+        playWhotActionSound()
+        await load()
+      }
     } finally {
       setActing(false)
     }
@@ -188,7 +195,34 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const cfg = gameTypeConfig('whot')
   const winner = players.find((p) => p.id === session?.winner_player_id)
   const turnPlayerId = session ? currentPlayerId(session) : null
+  const turnPlayer = players.find((p) => p.id === turnPlayerId)
   const isMyTurn = myPlayerId != null && turnPlayerId === myPlayerId
+  const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
+  const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
+
+  const { secondsLeft, hasTimer, urgent } = useWhotTurnTimer(
+    gameCode,
+    session,
+    game?.status === 'active' && screen === 'active'
+  )
+
+  useWhotNotifications({
+    game,
+    session,
+    myPlayerId,
+    enabled: game?.status === 'active' && screen === 'active',
+  })
+
+  const tableTimerProps = {
+    turnPlayerName: turnPlayer?.name,
+    isMyTurn: isMyTurn && !isViewer,
+    secondsLeft,
+    hasTimer,
+    urgent,
+  }
+
+  const drawDepleted = session ? isDrawPileDepleted(session) : false
+  const myCanPlay = session ? hasPlayableCard(myHand, session) : false
 
   if (screen === 'loading') return <WhotLoadingScreen />
 
@@ -232,6 +266,9 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
             {joiningAsViewer ? 'Join as viewer' : 'Join game'}
           </WhotPrimaryButton>
         </WhotCard>
+        <p className="text-center">
+          <GameRulesLink gameType="whot" variant="subtle" />
+        </p>
         <ShareGameLinkCard gameCode={gameCode} className="max-w-md mx-auto" />
       </WhotShell>
     )
@@ -257,6 +294,9 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
             inLobby
           />
         )}
+        <p className="text-center">
+          <GameRulesLink gameType="whot" variant="subtle" />
+        </p>
         <ShareGameLinkCard gameCode={gameCode} />
       </WhotShell>
     )
@@ -265,10 +305,13 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   if (screen === 'finished') {
     return (
       <WhotShell title="Game over!" subtitle={winner ? `${winner.name} wins` : undefined}>
-        <WhotCard className="py-10 text-center">
+        <WhotCard className="py-10 text-center space-y-2">
           <div className="text-6xl mb-3">🏆</div>
           {winner && <p className="text-2xl font-black text-[var(--marry)]">{winner.name}</p>}
-          <p className="text-sm text-muted mt-2">First to empty their hand wins</p>
+          {session?.status_message && (
+            <p className="text-sm text-muted max-w-sm mx-auto">{session.status_message}</p>
+          )}
+          <p className="text-sm text-muted mt-2">First to empty their hand wins — or lowest hand total when time runs out</p>
         </WhotCard>
         <WhotSecondaryButton onClick={() => router.push('/games')}>Create a new game</WhotSecondaryButton>
       </WhotShell>
@@ -277,8 +320,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
   if (!session) return <WhotLoadingScreen />
 
-  const myPlayer = players.find((p) => p.id === myPlayerId)
-  const isViewer = !!(game && myPlayer && playerIsViewer(myPlayer, game))
+  const myPlayer = activePlayer
   const myName = myPlayer?.name ?? ''
 
   if (isViewer) {
@@ -294,7 +336,15 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
             onLeft={handlePlayerLeft}
           />
         )}
-        <WhotTable session={session} players={players} myPlayerId={myPlayerId} handCounts={handCounts} />
+        <WhotGameTimerBar gameCode={gameCode} game={game} />
+        <WhotTable
+          session={session}
+          players={players}
+          myPlayerId={myPlayerId}
+          handCounts={handCounts}
+          {...tableTimerProps}
+          isMyTurn={false}
+        />
       </WhotShell>
     )
   }
@@ -311,7 +361,15 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         />
       )}
 
-      <WhotTable session={session} players={players} myPlayerId={myPlayerId} handCounts={handCounts} />
+      <WhotGameTimerBar gameCode={gameCode} game={game} />
+
+      <WhotTable
+        session={session}
+        players={players}
+        myPlayerId={myPlayerId}
+        handCounts={handCounts}
+        {...tableTimerProps}
+      />
 
       {isMyTurn && session.phase === 'choose_whot' && (
         <WhotChoosePanel
@@ -323,22 +381,37 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
       {session.phase === 'playing' && (
         <>
+          {isMyTurn && (
+            <p className="text-center text-xs text-muted px-2">
+              {drawDepleted && myCanPlay
+                ? 'Draw pile empty — play a highlighted card.'
+                : drawDepleted && !myCanPlay
+                  ? 'Draw pile empty — pass your turn if you cannot play.'
+                  : (session.pick_two_stack ?? 0) > 0
+                    ? 'Pick 2 active — play a 2, play WHOT, or draw the penalty.'
+                    : (session.pick_five_stack ?? 0) > 0
+                      ? 'Pick 3 active — play a 5, play WHOT, or draw the penalty.'
+                      : 'Tap a highlighted card to play, or draw from the pile.'}
+            </p>
+          )}
           <WhotHand
             cards={myHand}
             session={session}
             acting={acting}
             onPlay={(cardId) => void postAction('/api/whot/play', { cardId })}
           />
-          {isMyTurn && (
+          {isMyTurn && !(drawDepleted && myCanPlay) && (
             <WhotPrimaryButton
               onClick={() => void postAction('/api/whot/draw', {})}
               loading={acting}
             >
-              {(session.pick_two_stack ?? 0) > 0
-                ? `Draw ${session.pick_two_stack} (Pick 2)`
-                : (session.pick_five_stack ?? 0) > 0
-                  ? `Draw ${session.pick_five_stack} (Pick 3)`
-                  : 'Draw 1 card'}
+              {drawDepleted
+                ? 'Pass turn'
+                : (session.pick_two_stack ?? 0) > 0
+                  ? `Draw ${session.pick_two_stack} (Pick 2)`
+                  : (session.pick_five_stack ?? 0) > 0
+                    ? `Draw ${session.pick_five_stack} (Pick 3)`
+                    : 'Draw 1 card'}
             </WhotPrimaryButton>
           )}
         </>

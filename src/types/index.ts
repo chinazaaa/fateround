@@ -333,6 +333,7 @@ export interface WhotSession {
   current_turn_index: number
   phase: WhotPhase
   draw_pile: WhotCard[]
+  discard_pile: WhotCard[]
   top_card: WhotCard | null
   required_shape: WhotShape | null
   required_number: number | null

@@ -6,6 +6,8 @@ import { gameTypeConfig } from '@/lib/game-types'
 import {
   currentPlayerId,
   getWhotHostMode,
+  hasPlayableCard,
+  isDrawPileDepleted,
   setWhotHostMode,
   WHOT_MIN_PLAYERS,
   type WhotHostMode,
@@ -21,7 +23,11 @@ import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { useWhotTurnTimer } from '@/hooks/useWhotTurnTimer'
+import { useWhotNotifications, playWhotActionSound } from '@/hooks/useWhotNotifications'
 import { WhotChoosePanel, WhotHand, WhotTable } from '@/components/whot/WhotBoard'
+import { WhotGameTimerBar } from '@/components/whot/WhotGameTimerBar'
 import { WhotCard, WhotPrimaryButton } from '@/components/whot/WhotChrome'
 
 type HostTab = 'play' | 'manage'
@@ -140,6 +146,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Action failed')
+      playWhotActionSound()
       await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Action failed')
@@ -208,10 +215,32 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const joinUrl = `${appOrigin()}/game/${gameCode}`
   const canStart = players.filter((p) => p.spectator !== true).length >= WHOT_MIN_PLAYERS
   const turnPlayerId = session ? currentPlayerId(session) : null
+  const turnPlayer = players.find((p) => p.id === turnPlayerId)
   const winner = players.find((p) => p.id === session?.winner_player_id)
   const hostPlays = hostMode === 'player' && !!hostPlayerId
   const showPlayTab = hostPlays && game?.status !== 'waiting' && game?.status !== 'finished'
   const isHostTurn = turnPlayerId === hostPlayerId
+
+  const { secondsLeft, hasTimer, urgent } = useWhotTurnTimer(
+    gameCode,
+    session,
+    game?.status === 'active'
+  )
+
+  useWhotNotifications({
+    game,
+    session,
+    myPlayerId: hostPlayerId,
+    enabled: hostPlays && game?.status === 'active',
+  })
+
+  const tableTimerProps = {
+    turnPlayerName: turnPlayer?.name,
+    isMyTurn: isHostTurn,
+    secondsLeft,
+    hasTimer,
+    urgent,
+  }
 
   const myHand = useMemo(() => {
     const row = hands.find((h) => h.player_id === hostPlayerId)
@@ -225,6 +254,9 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     }
     return counts
   }, [hands])
+
+  const drawDepleted = session ? isDrawPileDepleted(session) : false
+  const hostCanPlay = session ? hasPlayableCard(myHand, session) : false
 
   if (!game) {
     return (
@@ -319,7 +351,14 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
         {tab === 'play' && session && hostPlayerId && (
           <div className="space-y-3">
-            <WhotTable session={session} players={players} myPlayerId={hostPlayerId} handCounts={handCounts} />
+            <WhotGameTimerBar gameCode={gameCode} game={game} />
+            <WhotTable
+              session={session}
+              players={players}
+              myPlayerId={hostPlayerId}
+              handCounts={handCounts}
+              {...tableTimerProps}
+            />
             {isHostTurn && session.phase === 'choose_whot' && (
               <WhotChoosePanel
                 acting={hostActing}
@@ -335,16 +374,18 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
                   acting={hostActing}
                   onPlay={(cardId) => void postHostAction('/api/whot/play', { cardId })}
                 />
-                {isHostTurn && (
+                {isHostTurn && !(drawDepleted && hostCanPlay) && (
                   <WhotPrimaryButton
                     onClick={() => void postHostAction('/api/whot/draw')}
                     loading={hostActing}
                   >
-                    {(session.pick_two_stack ?? 0) > 0
-                      ? `Draw ${session.pick_two_stack} (Pick 2)`
-                      : (session.pick_five_stack ?? 0) > 0
-                        ? `Draw ${session.pick_five_stack} (Pick 3)`
-                        : 'Draw 1 card'}
+                    {drawDepleted
+                      ? 'Pass turn'
+                      : (session.pick_two_stack ?? 0) > 0
+                        ? `Draw ${session.pick_two_stack} (Pick 2)`
+                        : (session.pick_five_stack ?? 0) > 0
+                          ? `Draw ${session.pick_five_stack} (Pick 3)`
+                          : 'Draw 1 card'}
                   </WhotPrimaryButton>
                 )}
               </>
@@ -364,8 +405,22 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
             <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
 
+            <p className="text-center">
+              <GameRulesLink gameType="whot" variant="subtle" />
+            </p>
+
             {session && (
-              <WhotTable session={session} players={players} myPlayerId={hostPlayerId} handCounts={handCounts} />
+              <>
+                <WhotGameTimerBar gameCode={gameCode} game={game} />
+                <WhotTable
+                session={session}
+                players={players}
+                myPlayerId={hostPlayerId}
+                handCounts={handCounts}
+                {...tableTimerProps}
+                isMyTurn={false}
+              />
+              </>
             )}
 
             {(game.status === 'waiting' || game.status === 'active') && (

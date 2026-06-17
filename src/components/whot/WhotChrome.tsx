@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
+import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 
 export function WhotShell({
   children,
@@ -116,5 +117,47 @@ export function WhotLoadingScreen() {
         <p className="text-sm text-muted">Loading Whot…</p>
       </WhotCard>
     </WhotShell>
+  )
+}
+
+export function WhotTurnBar({
+  isMyTurn,
+  turnName,
+  secondsLeft = 0,
+  hasTimer = false,
+  urgent = false,
+}: {
+  isMyTurn?: boolean
+  turnName?: string
+  secondsLeft?: number
+  hasTimer?: boolean
+  urgent?: boolean
+}) {
+  useTimerTickSound(secondsLeft, hasTimer)
+
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2 min-w-0">
+        <span
+          className={[
+            'h-2 w-2 rounded-full shrink-0',
+            isMyTurn ? 'bg-[var(--primary)] animate-pulse' : 'bg-[var(--border-strong)]',
+          ].join(' ')}
+        />
+        <p className="text-xs font-bold text-[var(--foreground)] truncate">
+          {isMyTurn ? 'Your turn' : `${turnName ?? 'Player'}'s turn`}
+        </p>
+      </div>
+      {hasTimer && (
+        <span
+          className={[
+            'text-xs font-black tabular-nums shrink-0',
+            urgent ? 'text-red-500 animate-pulse' : 'text-muted',
+          ].join(' ')}
+        >
+          {secondsLeft}s
+        </span>
+      )}
+    </div>
   )
 }

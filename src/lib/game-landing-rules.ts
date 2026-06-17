@@ -596,6 +596,8 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'On your turn, play a card that matches the top card\'s shape or number.',
         'If you cannot play, draw from the pile — or draw the full Pick 2 / Pick 3 penalty when those stacks are active.',
+        'When the draw pile runs out, played cards (except the current top card) are shuffled back in as a new draw pile.',
+        'If no cards can be drawn and nobody can play, the game ends — lowest hand total wins.',
         'WHOT (20) can always be played. After playing it, choose either a shape or a number for the next player to match.',
       ],
     },
@@ -607,6 +609,14 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         '5 — Pick 3: next player must play a 5 or draw 3 (stacks if they also play 5). Pick 2 and Pick 3 stacks are separate and cannot be mixed.',
         '8 — Suspension: skip the next player.',
         '14 — General Market: every other player draws 1 card.',
+      ],
+    },
+    {
+      title: 'Game length',
+      points: [
+        'The host can set a game length (10, 15, 30 minutes, etc.) or play with no limit.',
+        'First to empty their hand still wins during normal play.',
+        'If time runs out, add up the numbers on the cards left in each hand — lowest total wins (WHOT counts as 20).',
       ],
     },
   ],

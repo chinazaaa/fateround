@@ -62,6 +62,7 @@ import {
   type LobbyLimitGameType,
 } from '@/lib/game-limits'
 import { clampMonopolyGameDuration, clampMonopolyTurnTimer } from '@/lib/monopoly'
+import { clampWhotGameDuration } from '@/lib/whot'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, type LateJoinPolicy } from '@/lib/viewers'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -385,7 +386,9 @@ export async function POST(req: NextRequest) {
       : {}),
     ...(isMonopolyGame(game_type)
       ? { game_duration_seconds: clampMonopolyGameDuration(rawGameDurationSeconds) }
-      : {}),
+      : isWhotGame(game_type)
+        ? { game_duration_seconds: clampWhotGameDuration(rawGameDurationSeconds) }
+        : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {

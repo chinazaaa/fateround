@@ -129,7 +129,11 @@ import {
 import { MONOPOLY_DEFAULT_MAX_PLAYERS, MONOPOLY_GAME_DURATION_OPTIONS, formatMonopolyGameDuration } from '@/lib/monopoly'
 import { MONOPOLY_DEFAULT_TURN_TIMER } from '@/lib/supabase-selects'
 import { YAHTZEE_DEFAULT_MAX_PLAYERS } from '@/lib/yahtzee'
-import { WHOT_DEFAULT_MAX_PLAYERS } from '@/lib/whot'
+import {
+  WHOT_DEFAULT_MAX_PLAYERS,
+  WHOT_GAME_DURATION_OPTIONS,
+  formatWhotGameDuration,
+} from '@/lib/whot'
 import {
   getCodeDefaultLimits,
   playerCountOptions,
@@ -220,6 +224,7 @@ function CreateGameInner() {
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
   const [yahtzeeMaxPlayers, setYahtzeeMaxPlayers] = useState(YAHTZEE_DEFAULT_MAX_PLAYERS)
   const [whotMaxPlayers, setWhotMaxPlayers] = useState(WHOT_DEFAULT_MAX_PLAYERS)
+  const [whotGameDuration, setWhotGameDuration] = useState(0)
   const [customTriviaQuestions, setCustomTriviaQuestions] = useState<TriviaQuestion[]>([])
   const [lobbyLimits, setLobbyLimits] = useState<GamePlayerLimitsMap | null>(null)
   const effectiveLimits = lobbyLimits ?? getCodeDefaultLimits()
@@ -845,7 +850,11 @@ function CreateGameInner() {
           late_join_policy: gameSupportsViewerSetting(settings.game_type) ? lateJoinPolicy : undefined,
           bingo_call_mode: isBingo ? bingoCallMode : undefined,
           bingo_call_interval_seconds: isBingo ? bingoCallInterval : undefined,
-          game_duration_seconds: isMonopoly ? monopolyGameDuration : undefined,
+          game_duration_seconds: isMonopoly
+            ? monopolyGameDuration
+            : isWhot
+              ? whotGameDuration
+              : undefined,
         }),
       })
       const data = await res.json()
@@ -1169,12 +1178,26 @@ function CreateGameInner() {
                     <option value={120}>2 minutes</option>
                   </select>
                 </Field>
+                <Field label="Game length">
+                  <select
+                    value={whotGameDuration}
+                    onChange={(e) => setWhotGameDuration(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {WHOT_GAME_DURATION_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {formatWhotGameDuration(s)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
                 <Field label="Late joiners">
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="whot" />
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
                   Nigerian card classic — match shape or number, play WHOT to call the next match. Pick 2 and Pick 3
-                  stacks are separate. First to empty their hand wins!
+                  stacks are separate. First to empty their hand wins! With a game length set, time running out ends
+                  the game — whoever has the lowest total on the cards left in their hand wins.
                 </p>
               </SettingsGroup>
             ) : isCodewords ? (

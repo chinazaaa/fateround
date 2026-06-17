@@ -5,10 +5,10 @@ import {
   WHOT_SHAPE_EMOJI,
   WHOT_SHAPE_LABELS,
   canPlayCard,
-  specialCardMessage,
+  specialCardShortLabel,
 } from '@/lib/whot'
 import type { WhotSession } from '@/types'
-import { WhotCard as WhotCardShell } from '@/components/whot/WhotChrome'
+import { WhotCard as WhotCardShell, WhotTurnBar } from '@/components/whot/WhotChrome'
 
 const SHAPE_COLORS: Record<WhotShape, string> = {
   circle: 'from-blue-500/30 to-blue-600/20 border-blue-400/60',
@@ -33,9 +33,13 @@ export function WhotPlayingCard({
   size?: 'sm' | 'md' | 'lg'
 }) {
   const isWhot = card.number === 20
-  const special = specialCardMessage(card.number)
-  const sizeClass =
-    size === 'lg' ? 'w-20 h-28 text-lg' : size === 'sm' ? 'w-12 h-16 text-xs' : 'w-16 h-22 text-sm'
+  const label = specialCardShortLabel(card.number)
+  const sizeStyles =
+    size === 'lg'
+      ? { box: 'w-20 min-h-[7.25rem] py-2 px-1', emoji: 'text-2xl', num: 'text-lg', badge: 'text-[8px]' }
+      : size === 'sm'
+        ? { box: 'w-12 min-h-[4rem] py-1 px-0.5', emoji: 'text-base', num: 'text-xs', badge: 'text-[6px]' }
+        : { box: 'w-[4.25rem] min-h-[6rem] py-1.5 px-1', emoji: 'text-xl', num: 'text-sm', badge: 'text-[7px]' }
 
   return (
     <button
@@ -43,20 +47,26 @@ export function WhotPlayingCard({
       onClick={onClick}
       disabled={!onClick}
       className={[
-        'relative flex flex-col items-center justify-center rounded-xl border-2 bg-gradient-to-br font-black transition-all',
-        sizeClass,
+        'relative flex flex-col items-center justify-center gap-0.5 rounded-xl border-2 bg-gradient-to-br font-black transition-all overflow-hidden',
+        sizeStyles.box,
         SHAPE_COLORS[card.shape],
-        onClick && playable !== false ? 'cursor-pointer hover:scale-105 hover:shadow-lg active:scale-95' : '',
+        onClick && playable !== false ? 'cursor-pointer hover:scale-105 hover:shadow-lg active:scale-95 ring-2 ring-[var(--primary)]/70' : '',
         onClick && playable === false ? 'opacity-40 cursor-not-allowed' : '',
         selected ? 'ring-2 ring-[var(--primary)] scale-105' : '',
         !onClick ? 'cursor-default' : '',
       ].join(' ')}
     >
-      <span className="text-2xl leading-none">{WHOT_SHAPE_EMOJI[card.shape]}</span>
-      <span className="mt-1">{isWhot ? 'WHOT' : card.number}</span>
-      {special && size !== 'sm' && (
-        <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-semibold text-muted whitespace-nowrap max-w-[90%] truncate">
-          {card.number === 2 ? 'Pick 2' : card.number === 5 ? 'Pick 3' : card.number === 1 ? 'Hold' : card.number === 8 ? 'Skip' : card.number === 14 ? 'Market' : ''}
+      <span className={`leading-none ${sizeStyles.emoji}`}>{WHOT_SHAPE_EMOJI[card.shape]}</span>
+      <span className={`font-black leading-none ${sizeStyles.num}`}>{isWhot ? 'WHOT' : card.number}</span>
+      {label && size !== 'sm' && (
+        <span
+          className={[
+            'mt-0.5 max-w-full truncate rounded px-1 py-0.5 font-bold uppercase tracking-wide leading-tight',
+            'text-white/95 bg-black/30',
+            sizeStyles.badge,
+          ].join(' ')}
+        >
+          {label}
         </span>
       )}
     </button>
@@ -68,20 +78,43 @@ export function WhotTable({
   players,
   myPlayerId,
   handCounts,
+  turnPlayerName,
+  isMyTurn,
+  secondsLeft,
+  hasTimer,
+  urgent,
 }: {
   session: WhotSession
   players: { id: string; name: string }[]
   myPlayerId: string | null
   handCounts: Record<string, number>
+  turnPlayerName?: string
+  isMyTurn?: boolean
+  secondsLeft?: number
+  hasTimer?: boolean
+  urgent?: boolean
 }) {
   const top = session.top_card
   const drawCount = (session.draw_pile as unknown[])?.length ?? 0
+  const discardCount = (session.discard_pile as unknown[])?.length ?? 0
   const turnId = session.turn_order[session.current_turn_index]
 
   return (
     <WhotCardShell className="p-4 space-y-4">
+      {(turnPlayerName != null || isMyTurn != null || hasTimer) && (
+        <WhotTurnBar
+          isMyTurn={isMyTurn}
+          turnName={turnPlayerName}
+          secondsLeft={secondsLeft}
+          hasTimer={hasTimer}
+          urgent={urgent}
+        />
+      )}
       <div className="flex items-center justify-between gap-2 text-xs text-muted">
-        <span>Draw pile: {drawCount}</span>
+        <span>
+          Draw pile: {drawCount}
+          {drawCount === 0 && discardCount > 0 ? ' (reshuffles from played cards)' : ''}
+        </span>
         {(session.pick_two_stack ?? 0) > 0 && (
           <span className="font-bold text-orange-400">Pick 2 ×{session.pick_two_stack}</span>
         )}

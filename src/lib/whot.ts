@@ -1,10 +1,38 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { markGameFinished } from '@/lib/game-finish'
-import type { WhotCard, WhotPlayerHand, WhotSession, WhotShape } from '@/types'
+import { secondsUntilDeadline } from '@/lib/round-timing'
+import type { Game, WhotCard, WhotPlayerHand, WhotSession, WhotShape } from '@/types'
 
 export const WHOT_MIN_PLAYERS = 2
 export const WHOT_MAX_PLAYERS = 6
 export const WHOT_DEFAULT_MAX_PLAYERS = 6
+
+/** Whole-game session length (seconds). 0 = no limit. */
+export const WHOT_GAME_DURATION_OPTIONS = [0, 600, 900, 1800, 2700, 3600, 5400] as const
+
+export function clampWhotGameDuration(raw: unknown): number {
+  const n = Number(raw ?? 0)
+  return (WHOT_GAME_DURATION_OPTIONS as readonly number[]).includes(n) ? n : 0
+}
+
+export function formatWhotGameDuration(seconds: number): string {
+  if (!seconds || seconds <= 0) return 'No limit'
+  if (seconds % 3600 === 0) return `${seconds / 3600} hour${seconds / 3600 === 1 ? '' : 's'}`
+  return `${Math.round(seconds / 60)} minutes`
+}
+
+export function whotHandSum(cards: WhotCard[]): number {
+  return cards.reduce((sum, card) => sum + card.number, 0)
+}
+
+export function whotGameSessionExpired(
+  sessionStartedAt: string | null | undefined,
+  durationSeconds: number | null | undefined
+): boolean {
+  if (!durationSeconds || durationSeconds <= 0) return false
+  if (!sessionStartedAt) return false
+  return secondsUntilDeadline(sessionStartedAt, durationSeconds) <= 0
+}
 
 export const WHOT_SHAPES: WhotShape[] = ['circle', 'cross', 'triangle', 'square', 'star', 'whot']
 
@@ -100,6 +128,23 @@ export function specialCardMessage(number: number): string | null {
   }
 }
 
+export function specialCardShortLabel(number: number): string | null {
+  switch (number) {
+    case 1:
+      return 'Hold'
+    case 2:
+      return 'Pick 2'
+    case 5:
+      return 'Pick 3'
+    case 8:
+      return 'Skip'
+    case 14:
+      return 'Market'
+    default:
+      return null
+  }
+}
+
 export function canPlayCard(card: WhotCard, session: WhotSession): boolean {
   if (card.number === 20) return true
 
@@ -121,6 +166,26 @@ export function canPlayCard(card: WhotCard, session: WhotSession): boolean {
 
 export function hasPlayableCard(hand: WhotCard[], session: WhotSession): boolean {
   return hand.some((c) => canPlayCard(c, session))
+}
+
+export function isDrawPileDepleted(session: WhotSession): boolean {
+  const drawLen = ((session.draw_pile as WhotCard[]) ?? []).length
+  const discardLen = ((session.discard_pile as WhotCard[]) ?? []).length
+  return drawLen === 0 && discardLen === 0
+}
+
+export function anyPlayerCanPlay(hands: WhotPlayerHand[], session: WhotSession): boolean {
+  for (const row of hands) {
+    const cards = (row.cards as WhotCard[]) ?? []
+    if (hasPlayableCard(cards, session)) return true
+  }
+  return false
+}
+
+function pickAutoPlayCard(playable: WhotCard[]): WhotCard {
+  const nonWhot = playable.filter((c) => c.number !== 20)
+  const pool = nonWhot.length > 0 ? nonWhot : playable
+  return [...pool].sort((a, b) => a.number - b.number)[0]!
 }
 
 function dealCount(playerCount: number): number {
@@ -179,6 +244,7 @@ export async function initializeWhotGame(
     current_turn_index: 0,
     phase: 'playing',
     draw_pile: drawPile,
+    discard_pile: [],
     top_card: top,
     required_shape: null,
     required_number: null,
@@ -256,18 +322,95 @@ function updateHand(hands: WhotPlayerHand[], playerId: string, cards: WhotCard[]
   return hands.map((h) => (h.player_id === playerId ? { ...h, cards } : h))
 }
 
-function drawCards(pile: WhotCard[], count: number): { drawn: WhotCard[]; rest: WhotCard[] } {
+
+function discardPlayedTop(session: WhotSession): WhotCard[] {
+  const discard = [...((session.discard_pile as WhotCard[]) ?? [])]
+  if (session.top_card) discard.push(session.top_card)
+  return discard
+}
+
+function refillDrawPile(
+  drawPile: WhotCard[],
+  discardPile: WhotCard[]
+): { drawPile: WhotCard[]; discardPile: WhotCard[]; reshuffled: boolean } {
+  if (drawPile.length > 0) return { drawPile, discardPile, reshuffled: false }
+  if (discardPile.length === 0) return { drawPile, discardPile, reshuffled: false }
+  return { drawPile: shuffle(discardPile), discardPile: [], reshuffled: true }
+}
+
+function drawCardsWithRefill(
+  drawPile: WhotCard[],
+  discardPile: WhotCard[],
+  count: number
+): {
+  drawn: WhotCard[]
+  drawPile: WhotCard[]
+  discardPile: WhotCard[]
+  reshuffled: boolean
+} {
+  let pile = [...drawPile]
+  let discard = [...discardPile]
+  let reshuffled = false
   const drawn: WhotCard[] = []
-  const rest = [...pile]
-  for (let i = 0; i < count && rest.length > 0; i += 1) {
-    const card = rest.pop()
+
+  for (let i = 0; i < count; i += 1) {
+    if (pile.length === 0) {
+      const refilled = refillDrawPile(pile, discard)
+      pile = refilled.drawPile
+      discard = refilled.discardPile
+      if (refilled.reshuffled) reshuffled = true
+    }
+    if (pile.length === 0) break
+    const card = pile.pop()
     if (card) drawn.push(card)
   }
-  return { drawn, rest }
+
+  return { drawn, drawPile: pile, discardPile: discard, reshuffled }
 }
 
 function playerName(playerNames: Map<string, string>, playerId: string): string {
   return playerNames.get(playerId) ?? 'Player'
+}
+
+async function finishWhotByLowestHand(
+  supabase: SupabaseClient,
+  gameId: string,
+  session: WhotSession,
+  hands: WhotPlayerHand[],
+  playerNames: Map<string, string>,
+  reasonPrefix: string
+): Promise<void> {
+  const activeIds = new Set(session.turn_order ?? [])
+  let winnerId: string | null = null
+  let winnerSum = Infinity
+  let winnerCount = Infinity
+
+  for (const hand of hands) {
+    if (!activeIds.has(hand.player_id)) continue
+    const cards = (hand.cards as WhotCard[]) ?? []
+    const sum = whotHandSum(cards)
+    const count = cards.length
+    if (sum < winnerSum || (sum === winnerSum && count < winnerCount)) {
+      winnerSum = sum
+      winnerCount = count
+      winnerId = hand.player_id
+    }
+  }
+
+  const winnerName = winnerId ? playerName(playerNames, winnerId) : 'Nobody'
+
+  await supabase
+    .from('whot_sessions')
+    .update({
+      phase: 'finished',
+      winner_player_id: winnerId,
+      status_message: `${reasonPrefix} ${winnerName} wins — lowest hand total (${winnerSum}).`,
+      turn_deadline_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('game_id', gameId)
+
+  await markGameFinished(supabase, gameId)
 }
 
 async function finishIfEmptyHand(
@@ -319,17 +462,20 @@ async function applyGeneralMarket(
   gameId: string,
   currentPlayerId: string,
   drawPile: WhotCard[],
+  discardPile: WhotCard[],
   hands: WhotPlayerHand[]
-): Promise<{ drawPile: WhotCard[]; hands: WhotPlayerHand[] }> {
+): Promise<{ drawPile: WhotCard[]; discardPile: WhotCard[]; hands: WhotPlayerHand[] }> {
   let pile = [...drawPile]
+  let discard = [...discardPile]
   let nextHands = [...hands]
 
   for (const row of nextHands) {
     if (row.player_id === currentPlayerId) continue
-    const { drawn, rest } = drawCards(pile, 1)
-    pile = rest
-    if (drawn.length > 0) {
-      const cards = [...((row.cards as WhotCard[]) ?? []), ...drawn]
+    const result = drawCardsWithRefill(pile, discard, 1)
+    pile = result.drawPile
+    discard = result.discardPile
+    if (result.drawn.length > 0) {
+      const cards = [...((row.cards as WhotCard[]) ?? []), ...result.drawn]
       nextHands = updateHand(nextHands, row.player_id, cards)
       await supabase
         .from('whot_player_hands')
@@ -339,7 +485,7 @@ async function applyGeneralMarket(
     }
   }
 
-  return { drawPile: pile, hands: nextHands }
+  return { drawPile: pile, discardPile: discard, hands: nextHands }
 }
 
 async function persistSession(
@@ -408,6 +554,7 @@ export async function processWhotPlay(
       gameId,
       {
         top_card: card,
+        discard_pile: discardPlayedTop(session),
         required_shape: null,
         required_number: null,
         pick_two_stack: pickTwo,
@@ -425,11 +572,20 @@ export async function processWhotPlay(
   }
 
   let drawPile = (session.draw_pile as WhotCard[]) ?? []
+  let discardPile = discardPlayedTop(session)
   let nextHands = hands
 
   if (card.number === 14) {
-    const market = await applyGeneralMarket(supabase, gameId, playerId, drawPile, hands)
+    const market = await applyGeneralMarket(
+      supabase,
+      gameId,
+      playerId,
+      drawPile,
+      discardPile,
+      hands
+    )
     drawPile = market.drawPile
+    discardPile = market.discardPile
     nextHands = market.hands
   }
 
@@ -457,6 +613,7 @@ export async function processWhotPlay(
       pick_two_stack: pickTwo,
       pick_five_stack: pickFive,
       draw_pile: drawPile,
+      discard_pile: discardPile,
       current_turn_index: advance.nextIndex,
       phase: 'playing',
       status_message: status,
@@ -485,15 +642,61 @@ export async function processWhotDraw(
   if (currentId !== playerId) return { error: 'Not your turn' }
 
   let drawPile = (session.draw_pile as WhotCard[]) ?? []
+  let discardPile = (session.discard_pile as WhotCard[]) ?? []
   const pickTwo = session.pick_two_stack ?? 0
   const pickFive = session.pick_five_stack ?? 0
   const drawCount = pickTwo > 0 ? pickTwo : pickFive > 0 ? pickFive : 1
 
-  const { drawn, rest } = drawCards(drawPile, drawCount)
-  if (drawn.length === 0) return { error: 'Draw pile is empty' }
+  const { drawn, drawPile: nextDrawPile, discardPile: nextDiscardPile, reshuffled } = drawCardsWithRefill(
+    drawPile,
+    discardPile,
+    drawCount
+  )
+  drawPile = nextDrawPile
+  discardPile = nextDiscardPile
 
-  drawPile = rest
+  const len = session.turn_order.length
+  const nextIndex = (session.current_turn_index + 1) % len
+  const nextPlayerId = session.turn_order[nextIndex]
+
   const hand = handForPlayer(hands, playerId)
+
+  if (drawn.length === 0) {
+    if (hasPlayableCard(hand, session)) {
+      return { error: 'Draw pile is empty — play a card from your hand' }
+    }
+
+    if (!anyPlayerCanPlay(hands, session)) {
+      await finishWhotByLowestHand(
+        supabase,
+        gameId,
+        session,
+        hands,
+        playerNames,
+        'Nobody can play —'
+      )
+      return {}
+    }
+
+    const top = session.top_card
+    const matchHint = top ? ` — match ${cardLabel(top)}` : ''
+
+    await persistSession(
+      supabase,
+      gameId,
+      {
+        draw_pile: drawPile,
+        discard_pile: discardPile,
+        pick_two_stack: 0,
+        pick_five_stack: 0,
+        current_turn_index: nextIndex,
+        status_message: `${playerName(playerNames, nextPlayerId)}'s turn${matchHint} (draw pile empty)`,
+      },
+      timerSeconds
+    )
+    return {}
+  }
+
   const newHand = [...hand, ...drawn]
 
   await supabase
@@ -502,10 +705,6 @@ export async function processWhotDraw(
     .eq('game_id', gameId)
     .eq('player_id', playerId)
 
-  const len = session.turn_order.length
-  const nextIndex = (session.current_turn_index + 1) % len
-  const nextPlayerId = session.turn_order[nextIndex]
-
   const penaltyMsg =
     pickTwo > 0
       ? `${playerName(playerNames, playerId)} drew ${drawn.length} (Pick 2)`
@@ -513,15 +712,18 @@ export async function processWhotDraw(
         ? `${playerName(playerNames, playerId)} drew ${drawn.length} (Pick 3)`
         : `${playerName(playerNames, playerId)} drew 1 card`
 
+  const reshuffleNote = reshuffled ? 'Draw pile reshuffled. ' : ''
+
   await persistSession(
     supabase,
     gameId,
     {
       draw_pile: drawPile,
+      discard_pile: discardPile,
       pick_two_stack: 0,
       pick_five_stack: 0,
       current_turn_index: nextIndex,
-      status_message: `${penaltyMsg}. ${playerName(playerNames, nextPlayerId)}'s turn`,
+      status_message: `${reshuffleNote}${penaltyMsg}. ${playerName(playerNames, nextPlayerId)}'s turn`,
     },
     timerSeconds
   )
@@ -571,6 +773,65 @@ export async function processWhotChoose(
   )
 
   return {}
+}
+
+export async function processWhotExpireTurn(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error?: string; skipped?: boolean }> {
+  const { session, hands } = await loadGameState(supabase, gameId)
+  if (!session) return { error: 'Session not found' }
+  if (session.phase === 'finished') return { skipped: true }
+
+  if (!session.turn_deadline_at || new Date(session.turn_deadline_at as string) > new Date()) {
+    return { skipped: true }
+  }
+
+  const currentId = currentPlayerId(session)
+  if (!currentId) return { error: 'No current player' }
+
+  if (session.phase === 'choose_whot') {
+    return processWhotChoose(supabase, gameId, currentId, { shape: 'circle' })
+  }
+
+  const hand = handForPlayer(hands, currentId)
+  if (hasPlayableCard(hand, session)) {
+    const playable = hand.filter((c) => canPlayCard(c, session))
+    const card = pickAutoPlayCard(playable)
+    return processWhotPlay(supabase, gameId, currentId, card.id)
+  }
+
+  return processWhotDraw(supabase, gameId, currentId)
+}
+
+export async function finishExpiredWhotGame(
+  supabase: SupabaseClient,
+  game: Pick<Game, 'id' | 'status' | 'session_started_at' | 'game_duration_seconds'>
+): Promise<boolean> {
+  if (game.status !== 'active') return false
+  if (!whotGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return false
+
+  const gameId = game.id
+
+  const [sessionRes, handsRes, playersRes] = await Promise.all([
+    supabase.from('whot_sessions').select('*').eq('game_id', gameId).maybeSingle(),
+    supabase.from('whot_player_hands').select('player_id, cards, player_order').eq('game_id', gameId),
+    supabase.from('players').select('id, name').eq('game_id', gameId),
+  ])
+
+  const session = sessionRes.data as WhotSession | null
+  if (!session) return false
+
+  const playerNames = new Map<string, string>()
+  for (const p of playersRes.data ?? []) {
+    playerNames.set(p.id, p.name)
+  }
+
+  const hands = (handsRes.data as WhotPlayerHand[]) ?? []
+
+  await finishWhotByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!")
+
+  return true
 }
 
 export type WhotHostMode = 'spectator' | 'player'
