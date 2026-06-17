@@ -411,6 +411,13 @@ export async function clearWhotSessionData(
   const { error: handsError } = await supabase.from('whot_player_hands').delete().eq('game_id', gameId)
   if (handsError) return { error: handsError.message }
 
+  const { error: spectatorError } = await supabase
+    .from('players')
+    .update({ spectator: false })
+    .eq('game_id', gameId)
+    .eq('spectator', true)
+  if (spectatorError) return { error: spectatorError.message }
+
   return {}
 }
 
