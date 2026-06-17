@@ -11,33 +11,46 @@ import {
 } from '@/lib/ludo'
 import {
   BASE_SLOTS,
+  CORNER_BOUNDS,
+  FINISHED_DISPLAY,
   HOME_GRID,
+  TRACK_DIRECTION,
   TRACK_GRID,
   boardCellKind,
   moveDestinationCell,
   pieceStatusLabel,
+  trackIndexAt,
 } from '@/lib/ludo-board-layout'
 import { LudoCard, LudoDice, LudoTurnBar } from '@/components/ludo/LudoChrome'
 
-const COLOR_BG: Record<LudoColor, string> = {
+const BOARD_BG = '#e8d4b0'
+
+const COLOR_CORNER: Record<LudoColor, string> = {
   red: '#fca5a5',
   green: '#86efac',
   yellow: '#fde047',
   blue: '#93c5fd',
 }
 
-const COLOR_BG_STRONG: Record<LudoColor, string> = {
+const COLOR_CORNER_DARK: Record<LudoColor, string> = {
   red: '#ef4444',
   green: '#22c55e',
   yellow: '#eab308',
   blue: '#3b82f6',
 }
 
-const COLOR_BG_HOME: Record<LudoColor, string> = {
-  red: '#fecaca',
-  green: '#bbf7d0',
-  yellow: '#fef08a',
-  blue: '#bfdbfe',
+const COLOR_HOME: Record<LudoColor, string> = {
+  red: '#f87171',
+  green: '#4ade80',
+  yellow: '#facc15',
+  blue: '#60a5fa',
+}
+
+const ARROW_GLYPH: Record<string, string> = {
+  up: '↑',
+  down: '↓',
+  left: '←',
+  right: '→',
 }
 
 function PieceToken({
@@ -60,9 +73,9 @@ function PieceToken({
       type={onClick ? 'button' : undefined}
       onClick={onClick}
       className={[
-        'relative rounded-full border-2 border-white font-bold text-white shadow-md transition-transform flex items-center justify-center',
+        'relative z-20 rounded-full border-2 border-white font-bold text-white shadow-md transition-transform flex items-center justify-center',
         size,
-        selected ? 'ring-2 ring-[var(--primary)] ring-offset-1 scale-110 z-10' : '',
+        selected ? 'ring-2 ring-[var(--primary)] ring-offset-1 scale-110' : '',
         onClick ? 'cursor-pointer hover:scale-105' : '',
       ].join(' ')}
       style={{ backgroundColor: LUDO_COLOR_HEX[color] }}
@@ -72,36 +85,109 @@ function PieceToken({
   )
 }
 
-function cellStyle(kind: ReturnType<typeof boardCellKind>, row: number, col: number): React.CSSProperties {
+function BaseCorner({
+  color,
+  pieces,
+  myPlayerId,
+  selectablePieceIds,
+  onMovePiece,
+}: {
+  color: LudoColor
+  pieces: { color: LudoColor; pieceId: number; row: number; col: number; playerId: string }[]
+  myPlayerId: string | null
+  selectablePieceIds?: number[]
+  onMovePiece?: (pieceId: number) => void
+}) {
+  const bounds = CORNER_BOUNDS[color]
+  const left = (bounds.colStart / 15) * 100
+  const top = (bounds.rowStart / 15) * 100
+  const width = ((bounds.colEnd - bounds.colStart + 1) / 15) * 100
+  const height = ((bounds.rowEnd - bounds.rowStart + 1) / 15) * 100
+
+  const cornerPieces = pieces.filter((p) => p.color === color && BASE_SLOTS[color].some((s) => s.row === p.row && s.col === p.col))
+
+  return (
+    <div
+      className="pointer-events-none absolute z-[5] flex items-center justify-center"
+      style={{ left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%` }}
+    >
+      <div
+        className="flex h-[72%] w-[72%] items-center justify-center rounded-full border-[3px] border-white/90 shadow-inner"
+        style={{ backgroundColor: 'rgba(255,255,255,0.92)' }}
+      >
+        <div className="grid h-[68%] w-[68%] grid-cols-2 gap-[18%]">
+          {BASE_SLOTS[color].map((slot, index) => {
+            const here = cornerPieces.find((p) => p.row === slot.row && p.col === slot.col)
+            if (!here) {
+              return <div key={index} className="aspect-square rounded-full bg-slate-200/60" />
+            }
+            const selectable = selectablePieceIds?.includes(here.pieceId) && here.playerId === myPlayerId
+            return (
+              <div key={index} className="pointer-events-auto flex items-center justify-center">
+                <PieceToken
+                  color={here.color}
+                  selected={selectable}
+                  label={here.playerId === myPlayerId ? here.pieceId : undefined}
+                  onClick={selectable && onMovePiece ? () => onMovePiece(here.pieceId) : undefined}
+                />
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CenterTriangles() {
+  const left = (6 / 15) * 100
+  const top = (6 / 15) * 100
+  const size = (3 / 15) * 100
+
+  return (
+    <div
+      className="pointer-events-none absolute z-[4]"
+      style={{ left: `${left}%`, top: `${top}%`, width: `${size}%`, height: `${size}%` }}
+    >
+      <svg viewBox="0 0 100 100" className="h-full w-full" aria-hidden>
+        <polygon points="50,50 0,0 100,0" fill={COLOR_CORNER_DARK.red} />
+        <polygon points="50,50 0,0 0,100" fill={COLOR_CORNER_DARK.green} />
+        <polygon points="50,50 100,0 100,100" fill={COLOR_CORNER_DARK.blue} />
+        <polygon points="50,50 0,100 100,100" fill={COLOR_CORNER_DARK.yellow} />
+      </svg>
+    </div>
+  )
+}
+
+function cellStyle(
+  kind: ReturnType<typeof boardCellKind>,
+  row: number,
+  col: number
+): React.CSSProperties {
   if (kind.kind === 'void') {
-    return { background: 'transparent', border: 'none' }
+    return { background: BOARD_BG, borderColor: '#1e293b' }
   }
 
   if (kind.kind === 'center') {
-    if (row === 7 && col === 7) {
-      return {
-        background: `conic-gradient(from 225deg, ${COLOR_BG_STRONG.red} 0deg 90deg, ${COLOR_BG_STRONG.green} 90deg 180deg, ${COLOR_BG_STRONG.yellow} 180deg 270deg, ${COLOR_BG_STRONG.blue} 270deg 360deg)`,
-      }
-    }
-    return { background: '#f8fafc' }
+    return { background: 'transparent', borderColor: '#1e293b' }
   }
 
   if (kind.kind === 'base' && kind.color) {
-    return { background: COLOR_BG[kind.color] }
+    return { background: COLOR_CORNER[kind.color], borderColor: '#1e293b' }
   }
 
   if (kind.kind === 'start' && kind.color) {
     return {
-      background: COLOR_BG_STRONG[kind.color],
-      boxShadow: `inset 0 0 0 2px rgba(255,255,255,0.85)`,
+      background: COLOR_CORNER_DARK[kind.color],
+      borderColor: '#1e293b',
     }
   }
 
   if (kind.kind === 'home' && kind.color) {
-    return { background: COLOR_BG_HOME[kind.color] }
+    return { background: COLOR_HOME[kind.color], borderColor: '#1e293b' }
   }
 
-  return { background: '#ffffff' }
+  return { background: '#ffffff', borderColor: '#1e293b' }
 }
 
 export function LudoBoard({
@@ -120,6 +206,7 @@ export function LudoBoard({
   highlightCells?: Set<string>
 }) {
   const myColor = states.find((s) => s.player_id === myPlayerId)?.color
+  const activeColors = useMemo(() => new Set(states.map((s) => s.color)), [states])
 
   const piecesOnBoard = useMemo(() => {
     const list: {
@@ -128,57 +215,105 @@ export function LudoBoard({
       row: number
       col: number
       playerId: string
+      inBase: boolean
     }[] = []
 
     for (const row of states) {
       for (const piece of row.pieces) {
         if (piece.zone === 'base') {
           const slot = BASE_SLOTS[row.color][piece.id]
-          if (slot) list.push({ color: row.color, pieceId: piece.id, row: slot.row, col: slot.col, playerId: row.player_id })
+          if (slot) {
+            list.push({
+              color: row.color,
+              pieceId: piece.id,
+              row: slot.row,
+              col: slot.col,
+              playerId: row.player_id,
+              inBase: true,
+            })
+          }
         } else if (piece.zone === 'track') {
           const grid = TRACK_GRID[piece.pos]
-          if (grid) list.push({ color: row.color, pieceId: piece.id, row: grid.row, col: grid.col, playerId: row.player_id })
+          if (grid) {
+            list.push({
+              color: row.color,
+              pieceId: piece.id,
+              row: grid.row,
+              col: grid.col,
+              playerId: row.player_id,
+              inBase: false,
+            })
+          }
         } else if (piece.zone === 'home') {
           const grid = HOME_GRID[row.color][piece.pos]
-          if (grid) list.push({ color: row.color, pieceId: piece.id, row: grid.row, col: grid.col, playerId: row.player_id })
+          if (grid) {
+            list.push({
+              color: row.color,
+              pieceId: piece.id,
+              row: grid.row,
+              col: grid.col,
+              playerId: row.player_id,
+              inBase: false,
+            })
+          }
         } else if (piece.zone === 'finished') {
-          list.push({ color: row.color, pieceId: piece.id, row: 7, col: 7, playerId: row.player_id })
+          const display = FINISHED_DISPLAY[row.color]
+          list.push({
+            color: row.color,
+            pieceId: piece.id,
+            row: display.row,
+            col: display.col,
+            playerId: row.player_id,
+            inBase: false,
+          })
         }
       }
     }
     return list
   }, [states])
 
+  const pathPieces = piecesOnBoard.filter((p) => !p.inBase)
+
   const cells: React.ReactNode[] = []
   for (let r = 0; r < 15; r += 1) {
     for (let c = 0; c < 15; c += 1) {
       const kind = boardCellKind(r, c)
-      if (kind.kind === 'void') {
-        cells.push(<div key={`${r}-${c}`} className="aspect-square" />)
-        continue
-      }
-
-      const herePieces = piecesOnBoard.filter((p) => p.row === r && p.col === c)
       const isHighlight = highlightCells?.has(`${r},${c}`)
       const isStart = kind.kind === 'start'
-      const isMyBase = kind.kind === 'base' && kind.color === myColor
+      const isMyStart = isStart && kind.color === myColor
+      const trackIdx = trackIndexAt(r, c)
+      const direction = trackIdx != null ? TRACK_DIRECTION[trackIdx] : null
+      const herePieces = pathPieces.filter((p) => p.row === r && p.col === c)
 
       cells.push(
         <div
           key={`${r}-${c}`}
           className={[
-            'relative aspect-square flex items-center justify-center gap-0.5 flex-wrap p-0.5 border border-slate-300/80',
+            'relative aspect-square flex items-center justify-center gap-0.5 flex-wrap p-0.5 border border-slate-800',
             isHighlight ? 'ring-2 ring-[var(--primary)] z-10' : '',
-            isMyBase ? 'ring-1 ring-[var(--primary)]/40' : '',
+            isMyStart ? 'ring-2 ring-white ring-offset-1 ring-offset-slate-900 shadow-lg' : '',
+            kind.kind === 'base' ? 'z-0' : 'z-[6]',
           ].join(' ')}
           style={cellStyle(kind, r, c)}
         >
-          {isStart && herePieces.length === 0 && (
-            <span className="absolute text-[8px] font-bold text-white/90 pointer-events-none">▶</span>
+          {isStart && (
+            <span
+              className={[
+                'absolute font-black text-white drop-shadow pointer-events-none',
+                herePieces.length > 0 ? 'text-[7px] opacity-80' : 'text-[10px]',
+              ].join(' ')}
+            >
+              ▶
+            </span>
+          )}
+          {kind.kind === 'track' && direction && herePieces.length === 0 && (
+            <span className="absolute text-[7px] font-bold text-slate-300/90 pointer-events-none">
+              {ARROW_GLYPH[direction]}
+            </span>
           )}
           {herePieces.map((p) => {
             const selectable = selectablePieceIds?.includes(p.pieceId) && p.playerId === myPlayerId
-            const showLabel = p.playerId === myPlayerId && (selectable || kind.kind === 'base')
+            const showLabel = p.playerId === myPlayerId
             return (
               <PieceToken
                 key={`${p.playerId}-${p.pieceId}`}
@@ -198,16 +333,35 @@ export function LudoBoard({
   return (
     <div className="w-full max-w-[min(100%,28rem)] mx-auto space-y-2">
       {myColor && (
-        <p className="text-center text-xs text-muted">
-          You are <span className="font-bold" style={{ color: LUDO_COLOR_HEX[myColor] }}>{LUDO_COLOR_LABELS[myColor]}</span>
-          {' · '}▶ = start square · colored lane = path home
+        <p className="text-center text-xs text-muted leading-relaxed">
+          You are{' '}
+          <span className="font-bold" style={{ color: LUDO_COLOR_HEX[myColor] }}>
+            {LUDO_COLOR_LABELS[myColor]}
+          </span>
+          . Roll a 6 to move a piece from your corner circle to your{' '}
+          <span className="font-bold text-[var(--foreground)]">▶</span> square — then follow the arrows clockwise.
         </p>
       )}
       <div
-        className="grid gap-0 rounded-2xl overflow-hidden border-4 border-slate-700/80 shadow-xl bg-[var(--background)] p-1"
-        style={{ gridTemplateColumns: 'repeat(15, minmax(0, 1fr))' }}
+        className="relative rounded-lg overflow-hidden border-[5px] border-slate-900 shadow-xl"
+        style={{ background: BOARD_BG }}
       >
-        {cells}
+        <div className="grid gap-0" style={{ gridTemplateColumns: 'repeat(15, minmax(0, 1fr))' }}>
+          {cells}
+        </div>
+        <CenterTriangles />
+        {(['red', 'green', 'yellow', 'blue'] as LudoColor[])
+          .filter((color) => activeColors.has(color))
+          .map((color) => (
+            <BaseCorner
+              key={color}
+              color={color}
+              pieces={piecesOnBoard}
+              myPlayerId={myPlayerId}
+              selectablePieceIds={selectablePieceIds}
+              onMovePiece={onMovePiece}
+            />
+          ))}
       </div>
     </div>
   )
@@ -234,18 +388,26 @@ export function LudoPlayerStrip({
         const isMe = row.player_id === myPlayerId
         const finished = finishedPieceCount(row.pieces)
         const inBase = row.pieces.filter((p) => p.zone === 'base').length
-        const onPath = row.pieces.filter((p) => p.zone === 'track').length
+        const onPath = row.pieces.filter((p) => p.zone === 'track' || p.zone === 'home').length
         return (
           <div
             key={row.player_id}
             className={[
               'rounded-lg border px-2 py-1.5 text-xs',
-              isTurn ? 'border-[var(--primary)]/50 bg-[var(--primary)]/10' : 'border-[var(--border)] bg-[var(--surface-inset-bg)]/50',
+              isTurn
+                ? 'border-[var(--primary)]/50 bg-[var(--primary)]/10'
+                : 'border-[var(--border)] bg-[var(--surface-inset-bg)]/50',
             ].join(' ')}
           >
             <div className="flex items-center gap-1.5 font-semibold truncate">
-              <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: LUDO_COLOR_HEX[row.color] }} />
-              <span className="truncate">{player?.name ?? 'Player'}{isMe ? ' (you)' : ''}</span>
+              <span
+                className="h-2.5 w-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: LUDO_COLOR_HEX[row.color] }}
+              />
+              <span className="truncate">
+                {player?.name ?? 'Player'}
+                {isMe ? ' (you)' : ''}
+              </span>
             </div>
             <p className="text-faint mt-0.5">
               {finished}/4 finished · {inBase} in base · {onPath} on path
@@ -319,9 +481,7 @@ export function LudoGamePanel({
         urgent={urgent}
       />
 
-      {session.status_message && (
-        <p className="text-center text-sm text-muted">{session.status_message}</p>
-      )}
+      {session.status_message && <p className="text-center text-sm text-muted">{session.status_message}</p>}
 
       <div className="flex items-center justify-center gap-4">
         <LudoDice value={diceValue} rolling={rolling} />
@@ -399,7 +559,9 @@ export function LudoGamePanel({
       )}
 
       {isMyTurn && session.phase === 'roll' && !rolling && (
-        <p className="text-center text-xs text-faint">Roll a 6 to move a piece from your colored corner onto ▶</p>
+        <p className="text-center text-xs text-faint">
+          Roll a 6 — piece leaves your corner and lands on your highlighted ▶ square
+        </p>
       )}
     </LudoCard>
   )

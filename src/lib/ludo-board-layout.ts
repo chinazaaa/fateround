@@ -129,9 +129,16 @@ export const BASE_SLOTS: Record<LudoColor, { row: number; col: number }[]> = {
 }
 
 const START_CELL_MAP = new Map<string, LudoColor>()
+export const START_CELL: Record<LudoColor, { row: number; col: number }> = {} as Record<
+  LudoColor,
+  { row: number; col: number }
+>
 for (const [color, pos] of Object.entries(START_POS) as [LudoColor, number][]) {
   const cell = TRACK_GRID[pos]
-  if (cell) START_CELL_MAP.set(`${cell.row},${cell.col}`, color)
+  if (cell) {
+    START_CELL_MAP.set(`${cell.row},${cell.col}`, color)
+    START_CELL[color] = cell
+  }
 }
 
 export type BoardCellKind =
@@ -178,9 +185,50 @@ export function moveDestinationCell(
 ): { row: number; col: number } | null {
   if (to.zone === 'track') return TRACK_GRID[to.pos] ?? null
   if (to.zone === 'home') return HOME_GRID[color][to.pos] ?? null
-  if (to.zone === 'finished') return { row: 7, col: 7 }
+  if (to.zone === 'finished') return FINISHED_DISPLAY[color]
   if (to.zone === 'base') return BASE_SLOTS[color][0] ?? null
   return null
+}
+
+/** Finished pieces sit in each color's center triangle (classic layout). */
+export const FINISHED_DISPLAY: Record<LudoColor, { row: number; col: number }> = {
+  red: { row: 6, col: 7 },
+  green: { row: 7, col: 6 },
+  yellow: { row: 8, col: 7 },
+  blue: { row: 7, col: 8 },
+}
+
+export type TrackDirection = 'up' | 'down' | 'left' | 'right'
+
+/** Clockwise travel hint for each track cell. */
+export const TRACK_DIRECTION: Record<number, TrackDirection> = Object.fromEntries(
+  LUDO_TRACK_COORDS.map((coord, index) => {
+    const next = LUDO_TRACK_COORDS[(index + 1) % LUDO_TRACK_COORDS.length]
+    const [r, c] = coord
+    const [nr, nc] = next
+    if (nr < r) return [index, 'up']
+    if (nr > r) return [index, 'down']
+    if (nc < c) return [index, 'left']
+    return [index, 'right']
+  })
+) as Record<number, TrackDirection>
+
+const TRACK_POS_BY_COORD = new Map(
+  LUDO_TRACK_COORDS.map((coord, index) => [`${coord[0]},${coord[1]}`, index])
+)
+
+export function trackIndexAt(row: number, col: number): number | null {
+  return TRACK_POS_BY_COORD.get(`${row},${col}`) ?? null
+}
+
+export const CORNER_BOUNDS: Record<
+  LudoColor,
+  { rowStart: number; rowEnd: number; colStart: number; colEnd: number }
+> = {
+  red: { rowStart: 0, rowEnd: 5, colStart: 0, colEnd: 5 },
+  green: { rowStart: 0, rowEnd: 5, colStart: 9, colEnd: 14 },
+  yellow: { rowStart: 9, rowEnd: 14, colStart: 9, colEnd: 14 },
+  blue: { rowStart: 9, rowEnd: 14, colStart: 0, colEnd: 5 },
 }
 
 export function pieceStatusLabel(piece: { zone: string; pos: number }): string {
