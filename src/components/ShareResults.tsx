@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useRef, useState, type RefObject } from 'react'
-import type { Game, Participant, Player, Round, TriviaAnswer, Vote } from '@/types'
+import type { Game, Participant, Player, Round, TriviaAnswer, Vote, YahtzeePlayerScore } from '@/types'
 import {
   parseGameType,
   gameTypeConfig,
@@ -12,8 +12,10 @@ import {
   isCustomGame,
   isTriviaGame,
   isBingoGame,
+  isYahtzeeGame,
 } from '@/lib/game-types'
 import { tallyTriviaPlayerScores } from '@/lib/trivia'
+import { totalScore } from '@/lib/yahtzee'
 import { buildCustomLeaderboard } from '@/lib/custom-game'
 import { getCategoryMeta, getVoteCategories, flagForParticipant, tallyWyrVotes, tallyMltVotes } from '@/lib/vote-stats'
 import { isMltImportGame, mltVoteTargets } from '@/lib/mlt'
@@ -32,6 +34,8 @@ function buildShareText({
   players,
   triviaAnswers,
   bingoWinnerName,
+  yahtzeeScores,
+  yahtzeeWinnerName,
 }: {
   game: Game
   participants: Participant[]
@@ -40,6 +44,8 @@ function buildShareText({
   players: Player[]
   triviaAnswers?: TriviaAnswer[]
   bingoWinnerName?: string
+  yahtzeeScores?: YahtzeePlayerScore[]
+  yahtzeeWinnerName?: string
 }): string {
   const gameType = parseGameType(game.game_type)
   const config = gameTypeConfig(gameType)
@@ -57,6 +63,28 @@ function buildShareText({
       '',
       `Play at ${appDomain()}`,
     ].join('\n')
+  }
+
+  if (isYahtzeeGame(gameType) && yahtzeeScores && yahtzeeScores.length > 0) {
+    const sorted = [...yahtzeeScores]
+      .map((row) => ({
+        name: players.find((p) => p.id === row.player_id)?.name ?? 'Player',
+        score: totalScore(row.scores.categories),
+      }))
+      .sort((a, b) => b.score - a.score)
+
+    const lines = [
+      config.headerEmoji,
+      game.title,
+      '',
+      yahtzeeWinnerName ? `🏆 ${yahtzeeWinnerName} wins!` : 'Game over',
+      '',
+      'Final leaderboard:',
+      ...sorted.slice(0, 8).map((entry, i) => `  ${i + 1}. ${entry.name} (${entry.score} pts)`),
+      '',
+      `Play at ${appDomain()}`,
+    ]
+    return lines.join('\n')
   }
 
   const lines: string[] = []
@@ -181,6 +209,8 @@ export function ShareResults({
   players,
   triviaAnswers,
   bingoWinnerName,
+  yahtzeeScores,
+  yahtzeeWinnerName,
 }: {
   captureRef?: RefObject<HTMLElement | null>
   game: Game
@@ -190,6 +220,8 @@ export function ShareResults({
   players: Player[]
   triviaAnswers?: TriviaAnswer[]
   bingoWinnerName?: string
+  yahtzeeScores?: YahtzeePlayerScore[]
+  yahtzeeWinnerName?: string
 }) {
   const { success, error } = useToast()
   const [sharing, setSharing] = useState(false)
@@ -223,7 +255,17 @@ export function ShareResults({
         return
       }
 
-      const text = buildShareText({ game, participants, votes, rounds, players, triviaAnswers, bingoWinnerName })
+      const text = buildShareText({
+        game,
+        participants,
+        votes,
+        rounds,
+        players,
+        triviaAnswers,
+        bingoWinnerName,
+        yahtzeeScores,
+        yahtzeeWinnerName,
+      })
       if (typeof navigator !== 'undefined' && navigator.share) {
         try {
           await navigator.share({ text })
@@ -244,7 +286,17 @@ export function ShareResults({
       }
 
       try {
-        const text = buildShareText({ game, participants, votes, rounds, players, triviaAnswers, bingoWinnerName })
+        const text = buildShareText({
+        game,
+        participants,
+        votes,
+        rounds,
+        players,
+        triviaAnswers,
+        bingoWinnerName,
+        yahtzeeScores,
+        yahtzeeWinnerName,
+      })
         await navigator.clipboard.writeText(text)
         success('Results copied to clipboard!')
       } catch {
@@ -254,7 +306,7 @@ export function ShareResults({
       sharingLock.current = false
       setSharing(false)
     }
-  }, [captureRef, game, participants, votes, rounds, players, triviaAnswers, bingoWinnerName, success, error])
+  }, [captureRef, game, participants, votes, rounds, players, triviaAnswers, bingoWinnerName, yahtzeeScores, yahtzeeWinnerName, success, error])
 
   return (
     <button

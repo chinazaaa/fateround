@@ -45,6 +45,8 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { preJoinScreen } from '@/lib/viewers'
 
@@ -211,6 +213,14 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  const handlePlayerLeft = () => {
+    clearPlayerSession(gameCode)
+    setMyPlayerId(null)
+    setMyPlayerName(null)
+    setJoinName('')
+    setScreen('join')
+  }
+
   const cfg = gameTypeConfig('monopoly')
   const myState = states.find((s) => s.player_id === myPlayerId)
   const turnPlayerId = board ? currentPlayerId(board) : null
@@ -302,6 +312,19 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             </MonopolyGlassCard>
           ))}
         </div>
+        {myPlayerId && myPlayerName && (
+          <PlayerSessionControls
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            currentName={myPlayerName}
+            onRenamed={(name) => {
+              setMyPlayerName(name)
+              setPlayerSession(gameCode, myPlayerId, name, 'both')
+            }}
+            onLeft={handlePlayerLeft}
+            inLobby
+          />
+        )}
         <ShareGameLinkCard gameCode={gameCode} />
       </MonopolyShell>
     )
@@ -322,13 +345,27 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           propertyOwners={board?.property_owners}
           myPlayerId={myPlayerId}
         />
-        <MonopolySecondaryButton onClick={() => router.push('/')}>Back home</MonopolySecondaryButton>
+        <CreateNewGameButton className="w-full rounded-2xl border border-[var(--border-strong)] bg-[var(--card)] px-5 py-3.5 text-sm font-bold text-[var(--foreground)] hover:bg-[var(--card-hover)] transition-colors" />
       </MonopolyShell>
     )
   }
 
+  const sessionName = myPlayerName ?? players.find((p) => p.id === myPlayerId)?.name ?? ''
+
   return (
     <MonopolyShell title={game?.title}>
+      {myPlayerId && sessionName && (
+        <PlayerSessionControls
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={sessionName}
+          onRenamed={(name) => {
+            setMyPlayerName(name)
+            setPlayerSession(gameCode, myPlayerId, name, 'both')
+          }}
+          onLeft={handlePlayerLeft}
+        />
+      )}
       <div className="flex items-start justify-between gap-3">
         <MonopolyTurnStrip
           turnName={turnPlayer?.name ?? '—'}

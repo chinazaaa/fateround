@@ -38,6 +38,28 @@ async function assertWaitingGame(gameCode: string) {
   return { error: null, status: 200 as const, game, id }
 }
 
+async function assertPlayerSessionGame(gameCode: string) {
+  const id = gameCode.toUpperCase()
+  const { data: game } = await supabase
+    .from('games')
+    .select('status, participant_mode, game_type, custom_slots, gender_based, max_players')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (!game) return { error: 'Game not found', status: 404 as const, game: null, id }
+
+  const gameType = parseGameType(game.game_type)
+  if (isCodewordsGame(gameType)) {
+    if (!codewordsAllowsPlayerChanges(game.status)) {
+      return { error: 'This round has ended', status: 400 as const, game: null, id }
+    }
+  } else if (game.status !== 'waiting' && game.status !== 'active' && game.status !== 'finished') {
+    return { error: 'Game is not open', status: 400 as const, game: null, id }
+  }
+
+  return { error: null, status: 200 as const, game, id }
+}
+
 function playerJoinResponse(
   player: {
     id: string
@@ -747,10 +769,10 @@ export async function PATCH(req: NextRequest) {
     game = auth.game
     id = auth.id
   } else {
-    const waiting = await assertWaitingGame(gameCode)
-    if (waiting.error) return NextResponse.json({ error: waiting.error }, { status: waiting.status })
-    game = waiting.game
-    id = waiting.id
+    const session = await assertPlayerSessionGame(gameCode)
+    if (session.error) return NextResponse.json({ error: session.error }, { status: session.status })
+    game = session.game
+    id = session.id
   }
 
   const { data: player } = await supabase.from('players').select('*').eq('id', playerId).eq('game_id', id).maybeSingle()
@@ -1085,22 +1107,10 @@ export async function DELETE(req: NextRequest) {
       id = auth.id
     }
   } else {
-    const code = gameCode.toUpperCase()
-    const { data: leaveGame } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
-    if (!leaveGame) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-
-    if (isCodewordsGame(parseGameType(leaveGame.game_type))) {
-      if (!codewordsAllowsPlayerChanges(leaveGame.status)) {
-        return NextResponse.json({ error: 'This round has ended' }, { status: 400 })
-      }
-      game = leaveGame
-      id = code
-    } else {
-      const waiting = await assertWaitingGame(gameCode)
-      if (waiting.error) return NextResponse.json({ error: waiting.error }, { status: waiting.status })
-      game = waiting.game
-      id = waiting.id
-    }
+    const session = await assertPlayerSessionGame(gameCode)
+    if (session.error) return NextResponse.json({ error: session.error }, { status: session.status })
+    game = session.game
+    id = session.id
   }
 
   const { data: player } = await supabase

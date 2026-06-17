@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
+import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { BingoCardGrid, CalledNumbersBoard } from '@/components/bingo/BingoCardGrid'
 import { BingoFinalResultsShareBlock } from '@/components/bingo/BingoFinalResultsShareBlock'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
@@ -616,6 +618,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
                 <div className="glass-card p-5">
                   <CalledNumbersBoard calledNumbers={called} lastCalled={lastCalled} />
                 </div>
+                <HostEndGameButton gameCode={gameCode} hostToken={hostToken} onEnded={load} className="btn-secondary w-full" />
               </>
             )}
 
@@ -624,15 +627,18 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
             )}
 
             {game.status === 'finished' && (
-              <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-secondary w-full">
-                {playingAgain ? 'Resetting…' : 'Play again'}
-              </button>
+              <>
+                <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-secondary w-full">
+                  {playingAgain ? 'Resetting…' : 'Play again'}
+                </button>
+                <CreateNewGameButton />
+              </>
             )}
           </>
         )}
 
-        <button type="button" onClick={() => router.push('/')} className="btn-ghost w-full text-muted">
-          Back home
+        <button type="button" onClick={() => router.push('/games')} className="btn-ghost w-full text-muted">
+          Browse all games
         </button>
       </div>
     </div>

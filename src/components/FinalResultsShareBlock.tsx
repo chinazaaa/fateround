@@ -3,6 +3,7 @@
 import { useRef, type ReactNode } from 'react'
 import type { Game, Participant, Player, Round, TriviaAnswer, Vote } from '@/types'
 import { parseGameType, gameTypeConfig } from '@/lib/game-types'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { ShareResults } from '@/components/ShareResults'
 
 /** Wraps final leaderboard UI so Share Results captures a snapshot of what's on screen. */
@@ -14,6 +15,7 @@ export function FinalResultsShareBlock({
   rounds,
   players,
   triviaAnswers,
+  showCreateNewGame = true,
 }: {
   children: ReactNode
   game: Game
@@ -22,6 +24,7 @@ export function FinalResultsShareBlock({
   rounds: Round[]
   players: Player[]
   triviaAnswers?: TriviaAnswer[]
+  showCreateNewGame?: boolean
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
   const gameType = parseGameType(game.game_type)
@@ -46,6 +49,7 @@ export function FinalResultsShareBlock({
         players={players}
         triviaAnswers={triviaAnswers}
       />
+      {showCreateNewGame ? <CreateNewGameButton /> : null}
     </>
   )
 }

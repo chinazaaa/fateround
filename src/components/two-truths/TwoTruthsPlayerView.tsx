@@ -19,7 +19,7 @@ import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
-import { EditNameInline } from '@/components/ui/EditNameInline'
+import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
@@ -159,6 +159,14 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  const handlePlayerLeft = () => {
+    clearPlayerSession(gameCode)
+    setMyPlayerId(null)
+    setMyPlayerName('')
+    setJoinName('')
+    setScreen('join')
+  }
+
   const cfg = gameTypeConfig('two_truths')
   const myStatement = myPlayerId ? statements.find((s) => s.player_id === myPlayerId) : null
   const existingStatements = myStatement
@@ -224,15 +232,23 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         <div className="glass-card p-6 w-full max-w-lg space-y-5">
           <div className="text-center space-y-1">
             <h2 className="text-xl font-black">Lobby</h2>
-            <EditNameInline
+            <PlayerSessionControls
               gameCode={gameCode}
               playerId={myPlayerId}
               currentName={myPlayerName}
               onRenamed={(name) => { setMyPlayerName(name); void load() }}
+              onLeft={handlePlayerLeft}
+              inLobby
             />
           </div>
           {isViewer ? (
-            <ViewerModeBanner />
+            <ViewerModeBanner
+              gameCode={gameCode}
+              playerId={myPlayerId}
+              game={game}
+              player={me}
+              onPromoted={load}
+            />
           ) : myStatement && !editingStatements ? (
             <div className="space-y-4">
               <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-5 text-center space-y-1">
@@ -282,7 +298,22 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
             <div className="text-3xl">{cfg.headerEmoji}</div>
             <h1 className="text-xl font-black gradient-title">{game.title}</h1>
           </div>
-          {isViewer && <ViewerModeBanner />}
+          {isViewer && (
+            <ViewerModeBanner
+              gameCode={gameCode}
+              playerId={myPlayerId}
+              game={game}
+              player={me}
+              onPromoted={load}
+            />
+          )}
+          <PlayerSessionControls
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            currentName={myPlayerName}
+            onRenamed={(name) => { setMyPlayerName(name); void load() }}
+            onLeft={handlePlayerLeft}
+          />
           <TwoTruthsActiveRound
             gameCode={gameCode}
             game={game}

@@ -21,6 +21,8 @@ import {
   MonopolyTurnStrip,
 } from '@/components/monopoly/MonopolyChrome'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   computeRent,
@@ -65,7 +67,6 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [states, setStates] = useState<MonopolyPlayerState[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [ending, setEnding] = useState(false)
 
   // Host+play mode
   const [hostMode, setHostMode] = useState<MonopolyHostMode>('spectator')
@@ -188,24 +189,6 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
       toastError(err instanceof Error ? err.message : 'Failed to start')
     } finally {
       setStarting(false)
-    }
-  }
-
-  const finishGame = async () => {
-    setEnding(true)
-    try {
-      const res = await fetch(`/api/games/${gameCode}/finish-game`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to end game')
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to end game')
-    } finally {
-      setEnding(false)
     }
   }
 
@@ -548,9 +531,13 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
                 currentPlayerId={turnPlayerId}
                 propertyOwners={board.property_owners}
               />
-              <MonopolySecondaryButton onClick={finishGame} disabled={ending}>
-                {ending ? 'Ending…' : 'End game early'}
-              </MonopolySecondaryButton>
+              <HostEndGameButton
+                gameCode={gameCode}
+                hostToken={hostToken}
+                onEnded={load}
+                label="End game early"
+                className="w-full rounded-2xl border border-[var(--border-strong)] bg-[var(--card)] px-5 py-3.5 text-sm font-bold text-[var(--foreground)] hover:bg-[var(--card-hover)] disabled:opacity-40 transition-colors"
+              />
             </>
           )}
 
@@ -568,12 +555,11 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
               <MonopolyPrimaryButton onClick={playAgain} loading={playingAgain} variant="gold">
                 Play again
               </MonopolyPrimaryButton>
+              <CreateNewGameButton className="w-full rounded-2xl border border-[var(--border-strong)] bg-[var(--card)] px-5 py-3.5 text-sm font-bold text-[var(--foreground)] hover:bg-[var(--card-hover)] transition-colors" />
             </>
           )}
         </>
       )}
-
-      <MonopolySecondaryButton onClick={() => router.push('/create')}>Create another game</MonopolySecondaryButton>
     </MonopolyShell>
   )
 }

@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
+import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { CodewordsLeaveButton } from '@/components/codewords/CodewordsLeaveButton'
 import { CodewordsEndGameStats } from '@/components/codewords/CodewordsEndGameStats'
 import { CodewordsActiveRound } from '@/components/codewords/CodewordsActiveRound'
@@ -36,6 +38,7 @@ import type {
   Game,
   Player,
 } from '@/types'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { useToast } from '@/components/ui/Toast'
 
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'late_join_choice' | 'lobby' | 'active' | 'finished' | 'not_found'
@@ -305,6 +308,13 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   const cfg = gameTypeConfig('codewords')
+  const me = allPlayers.find((p) => p.id === myPlayerId)
+  const isViewer = !!(game && me && playerIsViewer(me, game))
+  const { context: viewerPromoteContext } = useLateJoinContext(
+    gameCode,
+    game,
+    isViewer && screen === 'active'
+  )
   const playersPickTeams = game ? codewordsPlayerPicks(game) : true
   const randomizeTeams = game ? codewordsRandomizeTeams(game) : false
   const lateJoinAllowed = game ? allowLateJoin(game) : false
@@ -429,6 +439,16 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
             </h2>
             <p className="text-muted text-sm">Playing as {myPlayerName}</p>
           </div>
+          {myPlayerId && (
+            <PlayerSessionControls
+              gameCode={gameCode}
+              playerId={myPlayerId}
+              currentName={myPlayerName}
+              onRenamed={(name) => setMyPlayerName(name)}
+              onLeft={leaveGame}
+              inLobby={game?.status === 'waiting'}
+            />
+          )}
 
           {playersPickTeams ? (
             <>
@@ -512,7 +532,6 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
               wins — but avoid the assassin!
             </p>
           </div>
-          {leaveButton}
         </div>
       </div>
     )
@@ -601,6 +620,36 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
               winner={board.winner}
             />
           </div>
+          <CreateNewGameButton />
+        </div>
+      </div>
+    )
+  }
+
+  if (isViewer && board && game && myPlayerId && screen === 'active') {
+    const playerNameById = new Map(allPlayers.map((p) => [p.id, p.name]))
+    const cellAttribution = guessAttributionMap(guesses, playerNameById)
+    return (
+      <div className="min-h-screen pb-24">
+        <div className="max-w-6xl mx-auto px-4 py-6 space-y-5">
+          <ViewerModeBanner
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            game={game}
+            player={me}
+            playerDetail={viewerPromoteContext?.playerDetail}
+            onPromoted={load}
+          />
+          <div className="text-center space-y-1">
+            <div className="text-3xl">{cfg.headerEmoji}</div>
+            <h1 className="text-xl font-black gradient-title">{game.title}</h1>
+            <p className="text-muted text-sm">Watching as {myPlayerName}</p>
+          </div>
+          <div className="glass-card p-4 space-y-4">
+            <CodewordsBoardGrid board={board} cellAttribution={cellAttribution} />
+            <CodewordsScoreboard board={board} players={allPlayers} roles={allRoles} />
+          </div>
+          {leaveButton && <div className="max-w-md mx-auto">{leaveButton}</div>}
         </div>
       </div>
     )

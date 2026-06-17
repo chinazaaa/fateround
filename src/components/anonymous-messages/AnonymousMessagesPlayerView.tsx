@@ -29,6 +29,8 @@ import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { allowLateJoin, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 
@@ -210,6 +212,13 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     }
   }
 
+  const handlePlayerLeft = () => {
+    clearPlayerSession(gameCode)
+    setMyPlayerId(null)
+    setMyPlayerName('')
+    setScreen('join')
+  }
+
   const sendGif = async (mediaUrl: string) => {
     if (!myPlayerId) return
     setSending(true)
@@ -297,6 +306,17 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         <PlayerBar name={myPlayerName} />
         <LobbyPlayers players={players} game={game} />
         <p className="text-muted text-sm text-center">Waiting for the host to start the session…</p>
+        {myPlayerId && (
+          <PlayerSessionControls
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            currentName={myPlayerName}
+            onRenamed={() => {}}
+            onLeft={handlePlayerLeft}
+            leaveOnly
+            inLobby
+          />
+        )}
         <ShareGameLinkCard gameCode={gameCode} />
       </CenteredShell>
     )
@@ -307,9 +327,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       <PageShell>
         <Header game={game} />
         <AnonymousRoomSessionSummary game={game!} playerCount={players.length} />
-        <button type="button" onClick={() => router.push('/')} className="btn-secondary w-full">
-          Back home
-        </button>
+        <CreateNewGameButton />
       </PageShell>
     )
   }
@@ -362,6 +380,16 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
           sending={sending}
           replyTo={replyTo}
           onClearReply={() => setReplyTo(null)}
+        />
+      )}
+      {myPlayerId && (
+        <PlayerSessionControls
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={myPlayerName}
+          onRenamed={() => {}}
+          onLeft={handlePlayerLeft}
+          leaveOnly
         />
       )}
     </PageShell>

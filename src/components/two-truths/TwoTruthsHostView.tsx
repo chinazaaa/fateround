@@ -434,6 +434,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
             playingAgain={playingAgain}
             onStartGame={startGame}
             onPlayAgain={playAgain}
+            onReload={load}
             timerSeconds={timerSeconds}
             onTimerChange={setTimerSeconds}
             savingTimer={savingTimer}

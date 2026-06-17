@@ -5,6 +5,8 @@ import { TwoTruthsSubmitterBadge } from '@/components/two-truths/TwoTruthsSubmit
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
+import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { TwoTruthsShareBlock } from '@/components/two-truths/TwoTruthsShareBlock'
 import {
   formatTtlChoiceLabel,
@@ -31,6 +33,7 @@ export function TwoTruthsHostManagePanel({
   playingAgain,
   onStartGame,
   onPlayAgain,
+  onReload,
   timerSeconds,
   onTimerChange,
   savingTimer,
@@ -51,6 +54,7 @@ export function TwoTruthsHostManagePanel({
   playingAgain: boolean
   onStartGame: () => void
   onPlayAgain: () => void
+  onReload?: () => void | Promise<unknown>
   timerSeconds: number
   onTimerChange: (seconds: number) => void
   savingTimer: boolean
@@ -243,13 +247,17 @@ export function TwoTruthsHostManagePanel({
           <button type="button" onClick={onPlayAgain} disabled={playingAgain} className="btn-secondary w-full">
             {playingAgain ? 'Resetting…' : 'Return to lobby'}
           </button>
+          <CreateNewGameButton />
         </div>
       )}
 
       {game.status === 'active' && (
-        <button type="button" onClick={onPlayAgain} disabled={playingAgain} className="btn-secondary w-full">
-          {playingAgain ? 'Resetting…' : 'End & return to lobby'}
-        </button>
+        <>
+          <HostEndGameButton gameCode={gameCode} hostToken={hostToken} onEnded={onReload} className="btn-secondary w-full" />
+          <button type="button" onClick={onPlayAgain} disabled={playingAgain} className="btn-secondary w-full">
+            {playingAgain ? 'Resetting…' : 'End & return to lobby'}
+          </button>
+        </>
       )}
     </div>
   )

@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { YahtzeeDiceTray } from '@/components/yahtzee/YahtzeeChrome'
-import { YahtzeeLeaderboard, YahtzeeScorecard } from '@/components/yahtzee/YahtzeeScorecard'
+import { YahtzeeScorecard } from '@/components/yahtzee/YahtzeeScorecard'
+import { YahtzeeFinalResultsShareBlock } from '@/components/yahtzee/YahtzeeFinalResultsShareBlock'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
@@ -471,13 +472,12 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
 
             {game.status === 'finished' && (
               <>
-                <div className="glass-card py-10 text-center">
-                  <div className="text-6xl mb-3">🏆</div>
-                  <p className="text-2xl font-black text-[var(--marry)]">
-                    {winner ? `${winner.name} wins!` : 'Game over'}
-                  </p>
-                </div>
-                <YahtzeeLeaderboard rows={scores} players={players} />
+                <YahtzeeFinalResultsShareBlock
+                  game={game}
+                  players={players}
+                  scores={scores}
+                  winnerName={winner?.name}
+                />
                 <button
                   type="button"
                   onClick={playAgain}

@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { AnonymousMessageFeed } from '@/components/anonymous-messages/AnonymousMessageFeed'
 import { AnonymousRoomSessionSummary } from '@/components/anonymous-messages/AnonymousRoomSessionSummary'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
@@ -29,16 +28,16 @@ import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
+import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 
 const LOBBY_PAGE_SIZE = 10
 
 export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
-  const router = useRouter()
   const { error: toastError, success } = useToast()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [starting, setStarting] = useState(false)
-  const [ending, setEnding] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [removingPlayerId, setRemovingPlayerId] = useState<string | null>(null)
@@ -125,24 +124,6 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
       toastError(err instanceof Error ? err.message : 'Failed to start')
     } finally {
       setStarting(false)
-    }
-  }
-
-  const endSession = async () => {
-    setEnding(true)
-    try {
-      const res = await fetch(`/api/games/${gameCode}/finish-game`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to end session')
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to end session')
-    } finally {
-      setEnding(false)
     }
   }
 
@@ -399,22 +380,26 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
             myPlayerName=""
             onReact={() => {}}
           />
-          <button type="button" onClick={endSession} disabled={ending} className="btn-secondary w-full">
-            {ending ? 'Ending…' : 'End session'}
-          </button>
+          <HostEndGameButton
+            gameCode={gameCode}
+            hostToken={hostToken}
+            onEnded={load}
+            label="End session"
+            confirmTitle="End this session?"
+            confirmMessage="Players will see the session summary. You can start a new session from the lobby afterward."
+            className="btn-secondary w-full"
+          />
         </>
       )}
 
       {game.status === 'finished' && (
         <>
           <AnonymousRoomSessionSummary game={game} playerCount={players.length} />
-          <div className="flex gap-3">
-            <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-primary flex-1">
+          <div className="flex flex-col gap-2">
+            <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-primary w-full">
               {playingAgain ? 'Resetting…' : 'Play again'}
             </button>
-            <button type="button" onClick={() => router.push('/')} className="btn-secondary px-5">
-              Home
-            </button>
+            <CreateNewGameButton />
           </div>
         </>
       )}

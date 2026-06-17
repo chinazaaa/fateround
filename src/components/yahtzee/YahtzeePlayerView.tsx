@@ -13,6 +13,7 @@ import {
   YahtzeeShell,
 } from '@/components/yahtzee/YahtzeeChrome'
 import { YahtzeeLeaderboard, YahtzeeScorecard } from '@/components/yahtzee/YahtzeeScorecard'
+import { YahtzeeFinalResultsShareBlock } from '@/components/yahtzee/YahtzeeFinalResultsShareBlock'
 import { gameTypeConfig } from '@/lib/game-types'
 import { currentPlayerId, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
 import { supabase } from '@/lib/supabase'
@@ -24,6 +25,7 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { preJoinScreen } from '@/lib/viewers'
 import { useYahtzeeNotifications, playYahtzeeScoreSound } from '@/hooks/useYahtzeeNotifications'
@@ -200,6 +202,13 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     })
   }
 
+  const handlePlayerLeft = () => {
+    clearPlayerSession(gameCode)
+    setMyPlayerId(null)
+    setJoinName('')
+    setScreen('join')
+  }
+
   const cfg = gameTypeConfig('yahtzee')
   const turnPlayerId = session ? currentPlayerId(session) : null
   const isMyTurn = turnPlayerId === myPlayerId
@@ -257,6 +266,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (screen === 'waiting') {
+    const myName = players.find((p) => p.id === myPlayerId)?.name ?? ''
     return (
       <YahtzeeShell title={game?.title} subtitle="Waiting for the host to start">
         <YahtzeeCard className="p-4 text-center">
@@ -265,20 +275,46 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
             player{players.length === 1 ? '' : 's'} joined · need {YAHTZEE_MIN_PLAYERS}+
           </p>
         </YahtzeeCard>
+        {myPlayerId && myName && (
+          <PlayerSessionControls
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            currentName={myName}
+            onRenamed={() => void load()}
+            onLeft={handlePlayerLeft}
+            inLobby
+          />
+        )}
         <ShareGameLinkCard gameCode={gameCode} />
       </YahtzeeShell>
     )
   }
 
   if (screen === 'finished') {
+    const myName = players.find((p) => p.id === myPlayerId)?.name
+    const iWon = myPlayerId != null && session?.winner_player_id === myPlayerId
+    const shareWinnerName = iWon ? myName : winner?.name
+
     return (
       <YahtzeeShell title="Game over!" subtitle={winner ? `${winner.name} wins` : undefined}>
-        <YahtzeeCard className="py-10 text-center">
-          <div className="text-6xl mb-3">🏆</div>
-          {winner && <p className="text-2xl font-black text-[var(--marry)]">{winner.name}</p>}
-        </YahtzeeCard>
-        <YahtzeeLeaderboard rows={scores} players={players} highlightPlayerId={myPlayerId} />
-        <YahtzeeSecondaryButton onClick={() => router.push('/')}>Back home</YahtzeeSecondaryButton>
+        {game && scores.length > 0 ? (
+          <YahtzeeFinalResultsShareBlock
+            game={game}
+            players={players}
+            scores={scores}
+            winnerName={shareWinnerName}
+            highlightPlayerId={myPlayerId}
+          />
+        ) : (
+          <>
+            <YahtzeeCard className="py-10 text-center">
+              <div className="text-6xl mb-3">🏆</div>
+              {winner && <p className="text-2xl font-black text-[var(--marry)]">{winner.name}</p>}
+            </YahtzeeCard>
+            <YahtzeeLeaderboard rows={scores} players={players} highlightPlayerId={myPlayerId} />
+          </>
+        )}
+        <YahtzeeSecondaryButton onClick={() => router.push('/games')}>Create a new game</YahtzeeSecondaryButton>
       </YahtzeeShell>
     )
   }
@@ -287,8 +323,19 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     return <YahtzeeLoadingScreen />
   }
 
+  const myName = players.find((p) => p.id === myPlayerId)?.name ?? ''
+
   return (
     <YahtzeeShell title={game?.title} wide compact>
+      {myPlayerId && myName && (
+        <PlayerSessionControls
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={myName}
+          onRenamed={() => void load()}
+          onLeft={handlePlayerLeft}
+        />
+      )}
       <div className="space-y-2">
         <YahtzeeScorecard
           players={players}

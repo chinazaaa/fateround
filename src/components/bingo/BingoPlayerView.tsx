@@ -25,6 +25,8 @@ import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { playerIsViewer, preJoinScreen, allowLatePlayers } from '@/lib/viewers'
@@ -212,6 +214,12 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     screen === 'late_join_choice',
     calledNumbers.length
   )
+  const { context: viewerPromoteContext } = useLateJoinContext(
+    gameCode,
+    game,
+    isViewer && screen === 'active',
+    calledNumbers.length
+  )
 
   useBingoAutoCall({
     gameCode,
@@ -288,6 +296,14 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     } finally {
       setClaiming(false)
     }
+  }
+
+  const handlePlayerLeft = () => {
+    clearPlayerSession(gameCode)
+    setMyPlayerId(null)
+    setMyPlayerName('')
+    setJoinName('')
+    setScreen('join')
   }
 
   const cfg = gameTypeConfig('bingo')
@@ -410,6 +426,16 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
           </p>
           <BingoCardLegend />
           <p className="text-faint text-xs">{players.length} player{players.length === 1 ? '' : 's'} in lobby</p>
+          {myPlayerId && (
+            <PlayerSessionControls
+              gameCode={gameCode}
+              playerId={myPlayerId}
+              currentName={myPlayerName}
+              onRenamed={(name) => setMyPlayerName(name)}
+              onLeft={handlePlayerLeft}
+              inLobby
+            />
+          )}
           <ShareGameLinkCard gameCode={gameCode} />
         </div>
       </div>
@@ -427,11 +453,14 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
               winnerName={iWon ? myPlayerName : winnerPlayer.name}
             />
           ) : (
-            <div className="glass-card p-6 text-center space-y-3">
-              <p className="text-4xl">🏁</p>
-              <h2 className="text-xl font-black">Round over</h2>
-              <p className="text-muted text-sm">Thanks for playing! The host can start a new round.</p>
-            </div>
+            <>
+              <div className="glass-card p-6 text-center space-y-3">
+                <p className="text-4xl">🏁</p>
+                <h2 className="text-xl font-black">Round over</h2>
+                <p className="text-muted text-sm">Thanks for playing! The host can start a new round.</p>
+              </div>
+              <CreateNewGameButton />
+            </>
           )}
           {card && (
             <div className="glass-card p-4">
@@ -452,12 +481,29 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <div className="min-h-screen pb-24">
       <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
-        {isViewer && <ViewerModeBanner />}
+        {isViewer && (
+          <ViewerModeBanner
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            game={game}
+            player={me}
+            playerDetail={viewerPromoteContext?.playerDetail}
+            onPromoted={load}
+          />
+        )}
         <div className="text-center space-y-1">
           <div className="text-3xl">{cfg.headerEmoji}</div>
           <h1 className="text-xl font-black gradient-title">{game?.title}</h1>
-          <p className="text-muted text-sm">Playing as {myPlayerName}</p>
         </div>
+        {myPlayerId && (
+          <PlayerSessionControls
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            currentName={myPlayerName}
+            onRenamed={(name) => setMyPlayerName(name)}
+            onLeft={handlePlayerLeft}
+          />
+        )}
 
         {lastCalled != null && (
           <div className="glass-card p-4 text-center">

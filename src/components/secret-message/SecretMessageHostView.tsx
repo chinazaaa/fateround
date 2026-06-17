@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { AnonymousMessageFeed } from '@/components/anonymous-messages/AnonymousMessageFeed'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { useAnonymousMessageTrim } from '@/hooks/useAnonymousMessageTrim'
@@ -13,10 +12,10 @@ import { appDomain, appOrigin } from '@/lib/site'
 import { shareImageBlob } from '@/lib/share-image'
 import type { AnonymousMessage, Game } from '@/types'
 import { useToast } from '@/components/ui/Toast'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 
 export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
-  const router = useRouter()
   const { error: toastError, success } = useToast()
   const [game, setGame] = useState<Game | null>(null)
   const [ending, setEnding] = useState(false)
@@ -212,10 +211,8 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
         />
       ) : null}
 
-      <div className="flex flex-wrap gap-2 justify-center pt-2">
-        <button type="button" onClick={() => router.push('/')} className="btn-secondary text-sm py-2 px-4">
-          Home
-        </button>
+      <div className="flex flex-col gap-2 pt-2">
+        <CreateNewGameButton />
       </div>
     </div>
   )

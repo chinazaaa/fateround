@@ -3,6 +3,7 @@
 import { useRef } from 'react'
 import type { Game, Player } from '@/types'
 import { gameTypeConfig } from '@/lib/game-types'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { ShareResults } from '@/components/ShareResults'
 
 export function BingoFinalResultsShareBlock({
@@ -35,6 +36,7 @@ export function BingoFinalResultsShareBlock({
         players={players}
         bingoWinnerName={winnerName}
       />
+      <CreateNewGameButton />
     </div>
   )
 }

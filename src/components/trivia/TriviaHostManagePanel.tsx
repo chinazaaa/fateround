@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
+import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import {
@@ -23,6 +25,8 @@ const COUNTDOWN_TEXT = 'text-[var(--primary-strong)] dark:text-rose-300 font-bol
 
 interface TriviaHostManagePanelProps {
   game: Game
+  gameCode: string
+  hostToken: string
   playerLink: string
   players: Player[]
   rounds: Round[]
@@ -34,6 +38,7 @@ interface TriviaHostManagePanelProps {
   onEndRound: () => void
   onPlayAgain: () => void
   onEditSettings: () => void
+  onReload?: () => void | Promise<unknown>
   activeRound?: Round | null
   betweenRounds?: boolean
   lastFinishedRound?: Round | null
@@ -44,6 +49,8 @@ interface TriviaHostManagePanelProps {
 
 export function TriviaHostManagePanel({
   game,
+  gameCode,
+  hostToken,
   playerLink,
   players,
   rounds,
@@ -55,6 +62,7 @@ export function TriviaHostManagePanel({
   onEndRound,
   onPlayAgain,
   onEditSettings,
+  onReload,
   activeRound: activeRoundProp,
   betweenRounds: betweenRoundsProp,
   lastFinishedRound: lastFinishedRoundProp,
@@ -170,6 +178,7 @@ export function TriviaHostManagePanel({
           >
             {advancing ? 'Ending…' : 'End round early'}
           </button>
+          <HostEndGameButton gameCode={gameCode} hostToken={hostToken} onEnded={onReload} className="btn-secondary w-full py-3 text-base" />
         </div>
       )}
 
@@ -218,10 +227,11 @@ export function TriviaHostManagePanel({
                 ? `Showing final leaderboard — ending in ${revealCountdown}s…`
                 : `Next question in ${revealCountdown}s…`}
           </p>
+          <HostEndGameButton gameCode={gameCode} hostToken={hostToken} onEnded={onReload} className="btn-secondary w-full py-3 text-base" />
         </div>
       )}
 
-      {game.status === 'active' && (
+      {game.status === 'active' && !activeRound && (
         <PaginatedLeaderboard
           title="Live leaderboard"
           rows={leaderboard.map((row, i) => ({ ...row, rank: i + 1 }))}
@@ -238,6 +248,7 @@ export function TriviaHostManagePanel({
             rounds={rounds}
             players={players}
             triviaAnswers={answers}
+            showCreateNewGame={false}
           >
             <PaginatedLeaderboard
               title="Final leaderboard"
@@ -253,6 +264,7 @@ export function TriviaHostManagePanel({
           <button type="button" onClick={onPlayAgain} disabled={playingAgain} className="btn-secondary w-full py-3.5 text-base">
             {playingAgain ? 'Resetting…' : 'Play again'}
           </button>
+          <CreateNewGameButton className="btn-primary w-full py-3.5 text-base" />
         </>
       )}
     </div>

@@ -376,6 +376,8 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
         {(tab === 'manage' || !showPlayTab) && (
           <TriviaHostManagePanel
             game={game}
+            gameCode={gameCode}
+            hostToken={hostToken}
             playerLink={playerLink}
             players={players}
             rounds={rounds}
@@ -387,6 +389,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
             onEndRound={endRound}
             onPlayAgain={() => setSettingsModal('play-again')}
             onEditSettings={() => setSettingsModal('lobby')}
+            onReload={load}
             activeRound={roundAutomation.activeRound}
             betweenRounds={roundAutomation.betweenRounds}
             lastFinishedRound={roundAutomation.lastFinishedRound}

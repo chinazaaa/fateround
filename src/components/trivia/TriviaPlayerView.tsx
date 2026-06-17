@@ -20,6 +20,7 @@ import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { playerIsViewer, preJoinScreen, allowLatePlayers } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'late_join_choice' | 'playing' | 'not_found'
 
@@ -121,6 +122,11 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
     game,
     screen === 'late_join_choice'
   )
+  const { context: viewerPromoteContext } = useLateJoinContext(
+    gameCode,
+    game,
+    isViewer && screen === 'playing'
+  )
 
   const joinGame = async (joinAsViewer?: boolean) => {
     const name = joinName.trim()
@@ -148,6 +154,14 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
     } finally {
       setJoining(false)
     }
+  }
+
+  const handlePlayerLeft = () => {
+    clearPlayerSession(gameCode)
+    setMyPlayerId(null)
+    setMyPlayerName('')
+    setJoinName('')
+    setScreen('join')
   }
 
   const cfg = gameTypeConfig('trivia')
@@ -241,7 +255,27 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           <p className="text-muted text-sm sm:text-base">{cfg.label}</p>
         </div>
 
-        {isViewer && <ViewerModeBanner />}
+        {isViewer && (
+          <ViewerModeBanner
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            game={game}
+            player={me}
+            playerDetail={viewerPromoteContext?.playerDetail}
+            onPromoted={load}
+          />
+        )}
+        <PlayerSessionControls
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          currentName={myPlayerName}
+          onRenamed={(name) => {
+            setMyPlayerName(name)
+            setPlayerSession(gameCode, myPlayerId, name, 'both')
+          }}
+          onLeft={handlePlayerLeft}
+          inLobby={game.status === 'waiting'}
+        />
         <TriviaActiveRound
           gameCode={gameCode}
           game={game}

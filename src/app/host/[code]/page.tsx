@@ -147,6 +147,8 @@ import { RoundResultsShareBlock } from '@/components/RoundResultsShareBlock'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { AchievementsShareBlock } from '@/components/AchievementsShareBlock'
 import { ShareResults } from '@/components/ShareResults'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
+import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { computeAchievements } from '@/lib/achievements'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -3069,6 +3071,12 @@ export default function HostPage() {
                 ? '✓ End Round & Show Results'
                 : `End Round (${eligibleVotes.length}/${eligible.length} voted)`}
         </button>
+        <HostEndGameButton
+          gameCode={gameCode}
+          hostToken={hostToken}
+          onEnded={syncGameState}
+          className="btn-secondary w-full text-muted"
+        />
       </div>
     )
   }
@@ -3274,6 +3282,12 @@ export default function HostPage() {
                 Auto-starting in {nextRoundCountdown}s unless you tap above
               </p>
             )}
+            <HostEndGameButton
+              gameCode={gameCode}
+              hostToken={hostToken}
+              onEnded={syncGameState}
+              className="btn-secondary w-full text-muted"
+            />
           </>
         )}
       </div>
@@ -3334,11 +3348,11 @@ export default function HostPage() {
             </button>
             <button
               type="button"
-              onClick={() => router.push(`/create?type=${gameType}`)}
+              onClick={() => router.push('/games')}
               className="btn-secondary py-3 flex flex-col items-center gap-0.5 min-h-[3.25rem]"
             >
-              <span>+ New Game</span>
-              <span className="text-[10px] font-normal text-faint leading-tight">Fresh code</span>
+              <span>Create a new game</span>
+              <span className="text-[10px] font-normal text-faint leading-tight">Browse all games</span>
             </button>
           </div>
         </div>
@@ -3350,6 +3364,7 @@ export default function HostPage() {
             votes={votes}
             rounds={allRounds}
             players={players}
+            showCreateNewGame={false}
           >
             {isWst && wstScores.length > 0 && (
               <PaginatedLeaderboard
@@ -3408,8 +3423,13 @@ export default function HostPage() {
             )}
           </FinalResultsShareBlock>
         ) : showFinalShareResults ? (
-          <ShareResults game={game} participants={participants} votes={votes} rounds={allRounds} players={players} />
-        ) : null}
+          <>
+            <ShareResults game={game} participants={participants} votes={votes} rounds={allRounds} players={players} />
+            <CreateNewGameButton />
+          </>
+        ) : (
+          <CreateNewGameButton />
+        )}
 
         <AchievementsShareBlock achievements={achievements} gameTitle={game.title} />
 

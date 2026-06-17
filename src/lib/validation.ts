@@ -290,6 +290,17 @@ export const deletePlayerSchema = z.object({
 export type DeletePlayerInput = z.infer<typeof deletePlayerSchema>
 
 // ---------------------------------------------------------------------------
+// Players (POST /api/players/promote)
+// ---------------------------------------------------------------------------
+
+export const promotePlayerSchema = z.object({
+  gameCode: gameCodeString(),
+  playerId: uuidString('playerId'),
+})
+
+export type PromotePlayerInput = z.infer<typeof promotePlayerSchema>
+
+// ---------------------------------------------------------------------------
 // Votes (POST /api/votes)
 // ---------------------------------------------------------------------------
 

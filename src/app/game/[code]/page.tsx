@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, clearPlayerSession, filterParticipantsInRounds } from '@/lib/utils'
@@ -164,6 +164,9 @@ import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { PlayerSessionBar } from '@/components/ui/PlayerSessionBar'
+import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { gameOffersLateJoinChoice, preJoinScreen, playerIsViewer, allowLatePlayers } from '@/lib/viewers'
@@ -385,6 +388,30 @@ export default function GamePage() {
 
   const myPlayer = useMemo(() => players.find((p) => p.id === myPlayerId) ?? null, [players, myPlayerId])
   const isViewer = !!(game && myPlayer && playerIsViewer(myPlayer, game))
+
+  const reloadPlayers = useCallback(async () => {
+    const { data: plrs } = await supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at')
+    if (plrs) setPlayers(plrs)
+  }, [gameCode])
+
+  const { context: viewerPromoteContext } = useLateJoinContext(
+    gameCode,
+    game,
+    isViewer && (view === 'round' || view === 'round_results' || view === 'waiting')
+  )
+
+  const viewerBanner =
+    isViewer && game && myPlayer && myPlayerId ? (
+      <ViewerModeBanner
+        className="mb-2"
+        gameCode={gameCode}
+        playerId={myPlayerId}
+        game={game}
+        player={myPlayer}
+        playerDetail={viewerPromoteContext?.playerDetail}
+        onPromoted={reloadPlayers}
+      />
+    ) : null
 
   // If someone else claims this name while you're still on the join screen, clear your pick
   useEffect(() => {
@@ -1252,44 +1279,42 @@ export default function GamePage() {
     if (myPlayerId) setView('waiting')
   }
 
-  const leaveGame = async () => {
-    if (!myPlayerId || joining) return
-    if (
-      !(await confirm({
-        title: 'Leave this game?',
-        message: 'You can rejoin with a new name or gender.',
-        confirmLabel: 'Leave',
-        destructive: true,
-      }))
-    )
-      return
-    setJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId: myPlayerId }),
-      })
-      if (res.ok) {
-        clearPlayerSession(gameCode)
-        setMyPlayerId(null)
-        setMyPlayerName(null)
-        setMyPlayerGender(null)
-        setNameInput('')
-        setSelectedParticipantId(null)
-        setJoinIdentityGender('female')
-        setVoteBothGenders(false)
-        joinGenderTouchedRef.current = false
-        setEditingJoin(false)
-        setView('join')
-      } else {
-        const data = await res.json()
-        toast.error(data.error || 'Failed to leave')
-      }
-    } finally {
-      setJoining(false)
-    }
+  const handlePlayerLeft = () => {
+    clearPlayerSession(gameCode)
+    setMyPlayerId(null)
+    setMyPlayerName(null)
+    setMyPlayerGender(null)
+    setNameInput('')
+    setSelectedParticipantId(null)
+    setJoinIdentityGender('female')
+    setVoteBothGenders(false)
+    joinGenderTouchedRef.current = false
+    setEditingJoin(false)
+    setView('join')
   }
+
+  const handlePlayerRenamed = (name: string) => {
+    setMyPlayerName(name)
+    const existing = getPlayerSession(gameCode)
+    if (existing) setPlayerSession(gameCode, existing.playerId, name, existing.playerGender ?? 'both')
+  }
+
+  const sessionBar =
+    myPlayerId && myPlayerName ? (
+      <PlayerSessionBar
+        gameCode={gameCode}
+        playerId={myPlayerId}
+        name={myPlayerName}
+        viewerBanner={viewerBanner}
+        onRenamed={handlePlayerRenamed}
+        onLeft={handlePlayerLeft}
+        onChangeName={useFreeNameJoin ? undefined : openEditJoin}
+        changeNameLabel={isNameOnlyJoin || !joinNeedsGender ? 'Change name' : 'Change name or gender'}
+        inLobby={view === 'waiting'}
+      />
+    ) : viewerBanner ? (
+      <div className="mb-4">{viewerBanner}</div>
+    ) : null
 
   const sendConfession = async () => {
     if (!confessionText.trim() || confessionSent) return
@@ -1554,8 +1579,7 @@ export default function GamePage() {
 
     return (
       <CenteredCard>
-        <PlayerNameBar name={myPlayerName} />
-        {isViewer && <ViewerModeBanner className="mb-2" />}
+        {sessionBar}
         <div className="text-center space-y-1">
           <div className="text-4xl">⏳</div>
           <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
@@ -2115,17 +2139,18 @@ export default function GamePage() {
         <ShareGameLinkCard gameCode={gameCode} />
 
         <div className="flex flex-col gap-2">
-          <button type="button" onClick={openEditJoin} className="btn-secondary text-sm py-2.5">
-            {isNameOnlyJoin || !joinNeedsGender ? 'Change name' : 'Change name or gender'}
-          </button>
-          <button
-            type="button"
-            onClick={leaveGame}
-            disabled={joining}
-            className="text-faint text-xs hover:text-red-300 transition-colors"
-          >
-            Leave game
-          </button>
+          {myPlayerId && myPlayerName && (
+            <PlayerSessionControls
+              gameCode={gameCode}
+              playerId={myPlayerId}
+              currentName={myPlayerName}
+              onRenamed={handlePlayerRenamed}
+              onLeft={handlePlayerLeft}
+              onChangeName={useFreeNameJoin ? undefined : openEditJoin}
+              changeNameLabel={isNameOnlyJoin || !joinNeedsGender ? 'Change name' : 'Change name or gender'}
+              inLobby
+            />
+          )}
         </div>
         <p className="text-faint text-xs text-center">Keep this tab open</p>
       </CenteredCard>
@@ -2144,7 +2169,7 @@ export default function GamePage() {
 
     return (
       <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full">
-        <PlayerNameBar name={myPlayerName} />
+        {sessionBar}
         <div className="flex items-center justify-between mb-6">
           <div>
             <p className="text-muted text-xs uppercase tracking-wider">{game?.title}</p>
@@ -2251,7 +2276,7 @@ export default function GamePage() {
 
     return (
       <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full">
-        <PlayerNameBar name={myPlayerName} />
+        {sessionBar}
         <div className="flex items-center justify-between mb-6">
           <div>
             <p className="text-muted text-xs uppercase tracking-wider">{game?.title}</p>
@@ -2316,7 +2341,7 @@ export default function GamePage() {
 
     return (
       <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full">
-        <PlayerNameBar name={myPlayerName} />
+        {sessionBar}
         <div className="flex items-center justify-between mb-6">
           <div>
             <p className="text-muted text-xs uppercase tracking-wider">{game?.title}</p>
@@ -2385,7 +2410,7 @@ export default function GamePage() {
 
     return (
       <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full">
-        <PlayerNameBar name={myPlayerName} />
+        {sessionBar}
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -2526,7 +2551,7 @@ export default function GamePage() {
 
     return (
       <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full">
-        <PlayerNameBar name={myPlayerName} />
+        {sessionBar}
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -2728,7 +2753,7 @@ export default function GamePage() {
 
       return (
         <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
-          <PlayerNameBar name={myPlayerName} />
+          {sessionBar}
           <div className="text-center">
             <p className="text-muted text-xs uppercase tracking-wider">
               Round {lastFinishedRound.round_number} of {game?.rounds_count}
@@ -2767,7 +2792,7 @@ export default function GamePage() {
 
       return (
         <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
-          <PlayerNameBar name={myPlayerName} />
+          {sessionBar}
           <div className="text-center">
             <p className="text-muted text-xs uppercase tracking-wider">
               Round {lastFinishedRound.round_number} of {game?.rounds_count}
@@ -2824,7 +2849,7 @@ export default function GamePage() {
         const animeTally = tallyAnimeWstVotes(lastRoundVotes, meta.choices, meta.correct_character)
         return (
           <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
-            <PlayerNameBar name={myPlayerName} />
+            {sessionBar}
             <div className="text-center">
               <p className="text-muted text-xs uppercase tracking-wider">
                 Round {lastFinishedRound.round_number} of {game?.rounds_count}
@@ -2870,7 +2895,7 @@ export default function GamePage() {
 
       return (
         <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
-          <PlayerNameBar name={myPlayerName} />
+          {sessionBar}
           <div className="text-center">
             <p className="text-muted text-xs uppercase tracking-wider">
               Round {lastFinishedRound.round_number} of {game?.rounds_count}
@@ -2921,7 +2946,7 @@ export default function GamePage() {
 
       return (
         <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
-          <PlayerNameBar name={myPlayerName} />
+          {sessionBar}
           <div className="text-center">
             <p className="text-muted text-xs uppercase tracking-wider">
               Round {lastFinishedRound.round_number} of {game?.rounds_count}
@@ -2976,7 +3001,7 @@ export default function GamePage() {
 
     return (
       <div className="page-wrap flex flex-col px-4 py-6 max-w-2xl mx-auto w-full space-y-5">
-        <PlayerNameBar name={myPlayerName} />
+        {sessionBar}
         {/* Header */}
         <div className="text-center">
           <p className="text-muted text-xs uppercase tracking-wider">
@@ -3150,6 +3175,7 @@ export default function GamePage() {
     return (
       <FinalResultsView
         game={game!}
+        gameCode={gameCode}
         participants={participants}
         rounds={allRounds}
         votes={allVotes}
@@ -3157,6 +3183,8 @@ export default function GamePage() {
         players={players}
         myPlayerId={myPlayerId}
         myPlayerName={myPlayerName}
+        onPlayerLeft={handlePlayerLeft}
+        onPlayerRenamed={handlePlayerRenamed}
         hotSeatSubmissions={allHotSeatSubmissions}
       />
     )
@@ -3183,6 +3211,7 @@ function TimerDisplay({ seconds, total }: { seconds: number; total: number }) {
 
 function FinalResultsView({
   game,
+  gameCode,
   participants,
   rounds,
   votes,
@@ -3190,9 +3219,12 @@ function FinalResultsView({
   players,
   myPlayerId,
   myPlayerName,
+  onPlayerLeft,
+  onPlayerRenamed,
   hotSeatSubmissions,
 }: {
   game: Game
+  gameCode: string
   participants: Participant[]
   rounds: Round[]
   votes: Vote[]
@@ -3200,6 +3232,8 @@ function FinalResultsView({
   players: Player[]
   myPlayerId: string | null
   myPlayerName: string | null
+  onPlayerLeft: () => void
+  onPlayerRenamed: (name: string) => void
   hotSeatSubmissions: { id: string; round_id: string; text: string; submission_type: string }[]
 }) {
   const gameType = parseGameType(game.game_type)
@@ -3227,7 +3261,15 @@ function FinalResultsView({
 
   return (
     <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-8">
-      <PlayerNameBar name={myPlayerName} />
+      {myPlayerId && myPlayerName ? (
+        <PlayerSessionBar
+          gameCode={gameCode}
+          playerId={myPlayerId}
+          name={myPlayerName}
+          onRenamed={onPlayerRenamed}
+          onLeft={onPlayerLeft}
+        />
+      ) : null}
       <div className="text-center">
         <div className="text-4xl mb-2">🎊</div>
         <h1 className="text-3xl font-black text-body">{game.title}</h1>
@@ -3315,8 +3357,13 @@ function FinalResultsView({
           )}
         </FinalResultsShareBlock>
       ) : showFinalShareResults ? (
-        <ShareResults game={game} participants={participants} votes={votes} rounds={rounds} players={players} />
-      ) : null}
+        <>
+          <ShareResults game={game} participants={participants} votes={votes} rounds={rounds} players={players} />
+          <CreateNewGameButton />
+        </>
+      ) : (
+        <CreateNewGameButton />
+      )}
 
       <AchievementsShareBlock achievements={achievements} gameTitle={game.title} />
 
@@ -3611,19 +3658,6 @@ function CenteredCard({ children }: { children: React.ReactNode }) {
   return (
     <div className="page-wrap flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm glass-card-strong p-6 space-y-6">{children}</div>
-    </div>
-  )
-}
-
-function PlayerNameBar({ name }: { name: string | null | undefined }) {
-  if (!name) return null
-  return (
-    <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl border border-[var(--primary)]/25 bg-[var(--primary)]/8 mb-4">
-      <Avatar name={name} size="sm" />
-      <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-faint leading-none">Playing as</p>
-        <p className="text-sm font-semibold truncate">{name}</p>
-      </div>
     </div>
   )
 }

@@ -98,6 +98,16 @@ export function playerCanParticipate(
   return !playerIsViewer(player, game)
 }
 
+/** True when a spectator can switch to an active player mid-game. */
+export function canSwitchViewerToPlayer(
+  player: Pick<Player, 'joined_at' | 'spectator'>,
+  game: Pick<Game, 'status' | 'session_started_at' | 'allow_viewers' | 'allow_late_players' | 'codewords_late_join' | 'game_type'>
+): boolean {
+  if (game.status !== 'active') return false
+  if (!playerIsViewer(player, game)) return false
+  return allowLatePlayers(game)
+}
+
 export function lateJoinBlockedMessage(gameType: GameType): string {
   if (isCodewordsGame(gameType)) return 'This game has already started.'
   return 'This game has already started. Wait here — you can join when the host opens the lobby again.'

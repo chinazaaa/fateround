@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState, type ReactNode } from 'react'
+import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { useToast } from '@/components/ui/Toast'
 import { captureElementAsImage } from '@/lib/capture-element-image'
 import { shareImageBlob } from '@/lib/share-image'
@@ -54,6 +55,7 @@ export function TwoTruthsShareBlock({
         </svg>
         {sharing ? 'Sharing…' : 'Share Results'}
       </button>
+      <CreateNewGameButton />
     </div>
   )
 }
