@@ -420,30 +420,98 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Objective',
       points: [
-        'Buy properties, collect rent, and bankrupt every opponent.',
-        'Last player with cash and assets wins.',
+        'Buy, rent, and sell properties to grow your wealth until every opponent is bankrupt.',
+        'The last player left in the game wins.',
       ],
     },
     {
       title: 'Setup',
       points: [
-        '2–6 players join a room. Everyone starts on GO with $1,500.',
-        'The host starts when all players are ready. Turn order is set at game start.',
+        '2–6 players join a room. Each player selects a token and starts on GO with £1,500.',
+        'The Bank holds all Title Deeds until purchased. The host starts when everyone is ready; turn order is set at game start.',
       ],
     },
     {
-      title: 'How a turn works',
+      title: 'Moving & GO',
       points: [
-        'Roll two dice and move around the 40-space board.',
-        'Land on an unowned property — buy it or pass. Land on an opponent’s property — pay rent.',
-        'Draw Chance or Community Chest cards when you land on those spaces. Go to Jail when sent.',
-        'Roll doubles up to three times in a row for an extra turn; three doubles in one turn sends you to Jail.',
+        'On your turn, roll two dice and move clockwise around the 40-space board.',
+        'Collect £200 from the Bank every time you land on or pass GO while moving forward.',
+        'Two or more tokens may occupy the same space.',
       ],
     },
     {
-      title: 'Winning',
+      title: 'Doubles',
       points: [
-        'Bankrupt opponents by charging rent they cannot pay.',
+        'If you roll doubles, move, resolve the space, then roll again for another turn.',
+        'If you roll doubles three times in a row on the same turn, go straight to Jail — your turn ends immediately.',
+      ],
+    },
+    {
+      title: 'Buying property',
+      points: [
+        'Landing on an unowned Property, Station, or Utility lets you buy it from the Bank at the listed price.',
+        'If you decline to buy, the property is auctioned to the highest bidder — including you.',
+        'Own all Sites in a colour-group (a monopoly) to charge double rent on unimproved properties in that group.',
+      ],
+    },
+    {
+      title: 'Rent',
+      points: [
+        'Landing on another player\'s property requires paying rent before the next player rolls.',
+        'Railroad rent increases with each Station owned: £25, £50, £100, or £200 for one through four.',
+        'Utility rent is 4× your dice roll if the owner has one Utility, or 10× if they own both.',
+        'Build houses and hotels on complete colour-groups (evenly) to increase rent. Mortgaged properties collect no rent.',
+      ],
+    },
+    {
+      title: 'Chance & Community Chest',
+      points: [
+        'Draw from the full UK 16-card Chance and 16-card Community Chest decks.',
+        'Cards may move you, pay or collect money, charge per house/hotel, or collect from every player.',
+        'If a card moves you forward past GO, collect £200. You do not collect GO salary when sent to Jail.',
+        'Get Out of Jail Free cards are kept until used or traded.',
+      ],
+    },
+    {
+      title: 'Taxes & Free Parking',
+      points: [
+        'Income Tax (space 4): pay £200 to the Bank.',
+        'Super Tax (space 38): pay £100 to the Bank.',
+        'Free Parking has no penalty — simply rest there until your next turn.',
+      ],
+    },
+    {
+      title: 'Houses, hotels & mortgages',
+      points: [
+        'Own all sites in a colour-group to build houses (evenly across the group) and then hotels.',
+        'Sell buildings back to the Bank at half price. Mortgaged properties cannot collect rent.',
+        'Mortgage a property for half its price; unmortgage by paying the mortgage value plus 10% interest.',
+      ],
+    },
+    {
+      title: 'Trading',
+      points: [
+        'Propose trades with other players at any time — cash, properties, and Get Out of Jail Free cards.',
+        'The other player must accept or decline. You cannot trade properties that still have buildings on the colour-group.',
+      ],
+    },
+    {
+      title: 'Jail',
+      points: [
+        'You are sent to Jail by landing on "Go To Jail", drawing a card, or rolling three doubles in one turn.',
+        'Landing on the Jail space while not sent there is "Just Visiting" — no penalty.',
+        'A "Get Out of Jail Free" card may be kept until used or traded.',
+        'To get out: pay a £50 fine before your next roll, use a Get Out of Jail Free card, or roll doubles on any of your next three turns.',
+        'After three turns in Jail without doubles, pay £50 and move according to your roll.',
+        'While in Jail you may still collect rent on properties you own (unless mortgaged).',
+      ],
+    },
+    {
+      title: 'Bankruptcy & winning',
+      points: [
+        'If you owe more than you can raise from cash and assets, you are bankrupt and out of the game.',
+        'If bankrupt to another player, they receive your cash, properties, and Get Out of Jail Free cards.',
+        'If bankrupt to the Bank, the Bank takes your assets and auctions each property.',
         'The game ends when only one solvent player remains.',
       ],
     },

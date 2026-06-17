@@ -29,7 +29,7 @@ export function spaceIcon(type: MonopolySpaceType): string {
       return '👮'
     case 'free_parking':
       return '🅿️'
-    case 'railroad':
+    case 'station':
       return '🚂'
     case 'utility':
       return '💡'
@@ -55,7 +55,7 @@ export function boardEdgeForSpace(index: number): BoardEdge {
   return 'right'
 }
 
-/** Compact multi-line labels that fit on board tiles. */
+/** Compact multi-line labels that fit on board tiles (UK edition). */
 export function boardSpaceLines(name: string, type: MonopolySpaceType): string[] {
   const known: Record<string, string[]> = {
     GO: ['GO', '→'],
@@ -63,46 +63,46 @@ export function boardSpaceLines(name: string, type: MonopolySpaceType): string[]
     'Free Parking': ['Free', 'Parking'],
     'Go To Jail': ['Go To', 'Jail'],
     'Income Tax': ['Income', 'Tax'],
-    'Luxury Tax': ['Luxury', 'Tax'],
+    'Super Tax': ['Super', 'Tax'],
     'Community Chest': ['Community', 'Chest'],
     Chance: ['Chance', '?'],
-    'Mediterranean Ave': ['Mediterr.', 'Ave'],
-    'Baltic Ave': ['Baltic', 'Ave'],
-    'Oriental Ave': ['Oriental', 'Ave'],
-    'Vermont Ave': ['Vermont', 'Ave'],
-    'Connecticut Ave': ['Connect.', 'Ave'],
-    'St. Charles Pl': ['St.', 'Charles'],
-    'States Ave': ['States', 'Ave'],
-    'Virginia Ave': ['Virginia', 'Ave'],
-    'St. James Pl': ['St.', 'James'],
-    'Tennessee Ave': ['Tennes.', 'Ave'],
-    'New York Ave': ['New York', 'Ave'],
-    'Kentucky Ave': ['Kentucky', 'Ave'],
-    'Indiana Ave': ['Indiana', 'Ave'],
-    'Illinois Ave': ['Illinois', 'Ave'],
-    'Atlantic Ave': ['Atlantic', 'Ave'],
-    'Ventnor Ave': ['Ventnor', 'Ave'],
-    'Marvin Gardens': ['Marvin', 'Gdns'],
-    'Pacific Ave': ['Pacific', 'Ave'],
-    'North Carolina Ave': ['N.', 'Carolina'],
-    'Pennsylvania Ave': ['Pennsyl.', 'Ave'],
-    'Park Place': ['Park', 'Place'],
-    Boardwalk: ['Board', 'walk'],
-    'Reading Railroad': ['Reading', 'RR'],
-    'Pennsylvania Railroad': ['Pennsyl.', 'RR'],
-    'B&O Railroad': ['B&O', 'RR'],
-    'Short Line Railroad': ['Short', 'Line'],
+    'Old Kent Road': ['Old Kent', 'Rd'],
+    'Whitechapel Road': ['White-', 'chapel'],
+    'The Angel Islington': ['Angel', 'Isling.'],
+    'Euston Road': ['Euston', 'Rd'],
+    'Pentonville Road': ['Penton-', 'ville'],
+    'Pall Mall': ['Pall', 'Mall'],
+    Whitehall: ['White-', 'hall'],
+    'Northumberland Avenue': ['Northum.', 'Ave'],
+    'Bow Street': ['Bow', 'St'],
+    'Marlborough Street': ['Marl-', 'borough'],
+    'Vine Street': ['Vine', 'St'],
+    'The Strand': ['The', 'Strand'],
+    'Fleet Street': ['Fleet', 'St'],
+    'Trafalgar Square': ['Trafalgar', 'Sq'],
+    'Leicester Square': ['Leicester', 'Sq'],
+    'Coventry Street': ['Coventry', 'St'],
+    Piccadilly: ['Picca-', 'dilly'],
+    'Regent Street': ['Regent', 'St'],
+    'Oxford Street': ['Oxford', 'St'],
+    'Bond Street': ['Bond', 'St'],
+    'Park Lane': ['Park', 'Lane'],
+    Mayfair: ['May-', 'fair'],
+    "King's Cross Station": ["King's", 'Cross'],
+    'Marylebone Station': ['Maryle-', 'bone'],
+    'Fenchurch Street Station': ['Fenchurch', 'St'],
+    'Liverpool Street Station': ['Liverpool', 'St'],
     'Electric Company': ['Electric', 'Co.'],
     'Water Works': ['Water', 'Works'],
   }
   if (known[name]) return known[name]
-  if (type === 'railroad') return [name.replace(' Railroad', ''), 'RR']
+  if (type === 'station') return [name.replace(' Station', ''), 'Stn']
   if (type === 'utility') {
     const parts = name.split(' ')
     return parts.length > 1 ? [parts[0]!, parts.slice(1).join(' ')] : [name]
   }
-  if (name.endsWith(' Ave')) return [name.replace(' Ave', ''), 'Ave']
-  if (name.endsWith(' Pl')) return [name.replace(' Pl', ''), 'Pl']
+  if (name.endsWith(' Road')) return [name.replace(' Road', ''), 'Rd']
+  if (name.endsWith(' Street')) return [name.replace(' Street', ''), 'St']
   const parts = name.split(' ')
   if (parts.length <= 2) return parts
   return [parts.slice(0, 2).join(' '), parts.slice(2).join(' ')]

@@ -9,27 +9,21 @@ import {
   MonopolyMyProperties,
   MonopolyPlayerList,
 } from '@/components/monopoly/MonopolyBoard'
+import { MonopolyManagePanel, MonopolyTurnModals } from '@/components/monopoly/MonopolyGamePanels'
 import { MONOPOLY_COLOR_CLASSES } from '@/lib/monopoly'
 import type { MonopolyColorGroup } from '@/lib/monopoly'
 import {
   MonopolyCashBadge,
-  MonopolyGlassCard,
-  MonopolyLoadingScreen,
-  MonopolyModal,
-  MonopolyPrimaryButton,
-  MonopolySecondaryButton,
-  MonopolyShell,
   MonopolyStatusBanner,
   MonopolyTurnStrip,
 } from '@/components/monopoly/MonopolyChrome'
+import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
-  computeRent,
   currentPlayerId,
-  MONOPOLY_JAIL_FINE,
   MONOPOLY_MIN_PLAYERS,
+  MONOPOLY_STARTING_CASH,
   parsePropertyOwners,
-  spaceAt,
 } from '@/lib/monopoly'
 import { supabase } from '@/lib/supabase'
 import {
@@ -47,6 +41,7 @@ import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { preJoinScreen } from '@/lib/viewers'
 
@@ -226,26 +221,21 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const turnPlayerId = board ? currentPlayerId(board) : null
   const isMyTurn = turnPlayerId === myPlayerId && !myState?.bankrupt
   const turnPlayer = players.find((p) => p.id === turnPlayerId)
-  const pendingSpace = board?.pending_space != null ? spaceAt(board.pending_space) : null
   const owners = parsePropertyOwners(board?.property_owners)
-  const currentOwner =
-    myState != null ? players.find((p) => p.id === owners[String(myState.position)])?.name : null
 
-  const rentOwnerId =
-    board?.phase === 'pay_rent' && board.pending_space != null
-      ? owners[String(board.pending_space)]
-      : null
-  const rentOwner = rentOwnerId ? players.find((p) => p.id === rentOwnerId) : null
-  const rentAmount =
-    pendingSpace && rentOwnerId
-      ? computeRent(pendingSpace, owners, rentOwnerId, board?.last_dice?.total ?? 2)
-      : 0
+  const showStatusBanner =
+    board?.status_message &&
+    board.phase !== 'buy' &&
+    board.phase !== 'pay_rent' &&
+    board.phase !== 'auction'
 
-  const showBuyModal = !!(isMyTurn && board?.phase === 'buy' && pendingSpace != null)
-  const showRentModal = !!(isMyTurn && board?.phase === 'pay_rent' && pendingSpace != null)
-  const showJailModal = !!(isMyTurn && board?.phase === 'jail' && myState?.in_jail)
-
-  if (screen === 'loading') return <MonopolyLoadingScreen />
+  if (screen === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted">Loading…</p>
+      </div>
+    )
+  }
 
   if (screen === 'game_started_waiting') {
     return (
@@ -259,244 +249,237 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'not_found') {
     return (
-      <MonopolyShell title="Game not found">
-        <MonopolyPrimaryButton onClick={() => router.push('/')}>Back home</MonopolyPrimaryButton>
-      </MonopolyShell>
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-4">
+        <p className="text-xl font-bold">Game not found</p>
+        <button type="button" onClick={() => router.push('/')} className="btn-secondary">
+          Go home
+        </button>
+      </div>
     )
   }
 
   if (screen === 'join') {
     return (
-      <MonopolyShell title={game?.title ?? cfg.label} subtitle="Enter your name to take a seat at the table">
-        <MonopolyGlassCard glow="primary" className="p-6 sm:p-8 space-y-5 max-w-md mx-auto">
-          <div className="text-center">
-            <div className="text-5xl mb-3">🎲</div>
-            <p className="text-sm text-muted">2–6 players · $1,500 starting cash</p>
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="glass-card p-6 w-full max-w-md space-y-5">
+          <div className="text-center space-y-1">
+            <div className="text-4xl">{cfg.headerEmoji}</div>
+            <h1 className="text-2xl font-black gradient-title">{game?.title}</h1>
+            <GameTypeBadge gameType="monopoly" />
           </div>
-          <input
-            value={joinName}
-            onChange={(e) => setJoinName(e.target.value)}
-            placeholder="Your name"
-            className="input-field w-full"
-            maxLength={40}
-            onKeyDown={(e) => e.key === 'Enter' && join()}
-          />
-          <MonopolyPrimaryButton onClick={() => void join()} disabled={!joinName.trim()} loading={joining}>
-            Take my seat
-          </MonopolyPrimaryButton>
-        </MonopolyGlassCard>
-        <ShareGameLinkCard gameCode={gameCode} className="max-w-md mx-auto" />
-      </MonopolyShell>
+          <div>
+            <label className="label-caps block mb-2">Your name</label>
+            <input
+              type="text"
+              value={joinName}
+              onChange={(e) => setJoinName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && join()}
+              placeholder="Enter your name"
+              className="input-field w-full"
+              maxLength={40}
+            />
+          </div>
+          <p className="text-faint text-xs leading-relaxed">
+            {MONOPOLY_MIN_PLAYERS}–6 players · £{MONOPOLY_STARTING_CASH.toLocaleString('en-GB')} starting cash. Roll, buy
+            properties, build houses, and trade your way to victory.
+          </p>
+          <button
+            type="button"
+            onClick={() => void join()}
+            disabled={!joinName.trim() || joining}
+            className="btn-primary w-full"
+          >
+            {joining ? 'Joining…' : 'Join Monopoly'}
+          </button>
+          <ShareGameLinkCard gameCode={gameCode} />
+        </div>
+      </div>
     )
   }
 
   if (screen === 'waiting') {
+    const displayName = myPlayerName ?? players.find((p) => p.id === myPlayerId)?.name ?? 'Player'
     return (
-      <MonopolyShell title={game?.title} subtitle="The host will start the game when everyone is ready">
-        <MonopolyGlassCard className="p-4 text-center">
-          <p className="text-3xl font-black text-[var(--primary)]">{players.length}</p>
-          <p className="text-sm text-muted">
-            player{players.length === 1 ? '' : 's'} joined · need {MONOPOLY_MIN_PLAYERS}+
-          </p>
-        </MonopolyGlassCard>
-        <div className="space-y-2">
-          {players.map((p) => (
-            <MonopolyGlassCard key={p.id} className="px-4 py-3 flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--primary)_25%,transparent)] text-sm font-bold text-[var(--foreground)]">
-                {p.name.charAt(0).toUpperCase()}
-              </span>
-              <span className="font-semibold text-[var(--foreground)]">{p.name}</span>
-              {p.id === myPlayerId && (
-                <span className="ml-auto text-[10px] font-bold uppercase text-[var(--primary)]">You</span>
-              )}
-            </MonopolyGlassCard>
-          ))}
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="glass-card p-6 w-full max-w-md space-y-4">
+          <div className="text-center space-y-1">
+            <div className="text-4xl">{cfg.headerEmoji}</div>
+            <h2 className="text-xl font-black">You&apos;re in, {displayName}!</h2>
+            <p className="text-muted text-sm leading-relaxed">
+              Waiting for the host to start. You&apos;ll begin with £{MONOPOLY_STARTING_CASH.toLocaleString('en-GB')} when
+              the game begins.
+            </p>
+          </div>
+          <div className="glass-card-strong p-4 text-center">
+            <p className="text-3xl font-black text-[var(--primary)]">{players.length}</p>
+            <p className="text-sm text-muted">
+              player{players.length === 1 ? '' : 's'} joined · need {MONOPOLY_MIN_PLAYERS}+
+            </p>
+          </div>
+          {players.length > 0 && (
+            <div className="space-y-2">
+              {players.map((p) => (
+                <div key={p.id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-[var(--surface-inset-bg)]">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--primary)_25%,transparent)] text-sm font-bold">
+                    {p.name.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="font-semibold text-sm">{p.name}</span>
+                  {p.id === myPlayerId && (
+                    <span className="ml-auto text-[10px] font-bold uppercase text-[var(--primary)]">You</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <GameRulesLink gameType="monopoly" variant="subtle" />
+          {myPlayerId && (
+            <PlayerSessionControls
+              gameCode={gameCode}
+              playerId={myPlayerId}
+              currentName={displayName}
+              onRenamed={(name) => {
+                setMyPlayerName(name)
+                setPlayerSession(gameCode, myPlayerId, name, 'both')
+              }}
+              onLeft={handlePlayerLeft}
+              inLobby
+            />
+          )}
+          <ShareGameLinkCard gameCode={gameCode} />
         </div>
-        {myPlayerId && myPlayerName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myPlayerName}
-            onRenamed={(name) => {
-              setMyPlayerName(name)
-              setPlayerSession(gameCode, myPlayerId, name, 'both')
-            }}
-            onLeft={handlePlayerLeft}
-            inLobby
-          />
-        )}
-        <ShareGameLinkCard gameCode={gameCode} />
-      </MonopolyShell>
+      </div>
     )
   }
 
   if (screen === 'finished') {
     const winner = players.find((p) => p.id === board?.winner_player_id)
     return (
-      <MonopolyShell title="Game over!" subtitle={winner ? `${winner.name} takes the crown` : undefined}>
-        <MonopolyGlassCard glow="accent" className="py-10 text-center">
-          <div className="text-6xl mb-3 drop-shadow-lg">🏆</div>
-          {winner && <p className="text-2xl font-black text-[var(--marry)]">{winner.name}</p>}
-          <p className="text-sm text-muted mt-1">Monopoly champion</p>
-        </MonopolyGlassCard>
-        <MonopolyPlayerList
-          states={states}
-          players={players}
-          propertyOwners={board?.property_owners}
-          myPlayerId={myPlayerId}
-        />
-        <CreateNewGameButton className="w-full rounded-2xl border border-[var(--border-strong)] bg-[var(--card)] px-5 py-3.5 text-sm font-bold text-[var(--foreground)] hover:bg-[var(--card-hover)] transition-colors" />
-      </MonopolyShell>
+      <div className="min-h-screen flex items-center justify-center px-4 py-8">
+        <div className="w-full max-w-md space-y-4">
+          <div className="glass-card p-8 text-center space-y-3">
+            <p className="text-4xl">🏆</p>
+            <h2 className="text-xl font-black gradient-title">
+              {winner ? `${winner.name} wins!` : 'Game over'}
+            </h2>
+            {winner && <p className="text-sm text-muted">Monopoly champion</p>}
+          </div>
+          <MonopolyPlayerList
+            states={states}
+            players={players}
+            propertyOwners={board?.property_owners}
+            myPlayerId={myPlayerId}
+          />
+          <CreateNewGameButton />
+        </div>
+      </div>
     )
   }
 
   const sessionName = myPlayerName ?? players.find((p) => p.id === myPlayerId)?.name ?? ''
 
   return (
-    <MonopolyShell title={game?.title}>
-      {myPlayerId && sessionName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={sessionName}
-          onRenamed={(name) => {
-            setMyPlayerName(name)
-            setPlayerSession(gameCode, myPlayerId, name, 'both')
-          }}
-          onLeft={handlePlayerLeft}
-        />
-      )}
-      <div className="flex items-start justify-between gap-3">
-        <MonopolyTurnStrip
-          turnName={turnPlayer?.name ?? '—'}
-          isMyTurn={isMyTurn}
-          phase={board?.phase}
-          myName={myPlayerName ?? players.find((p) => p.id === myPlayerId)?.name}
-        />
-        {myState && <MonopolyCashBadge amount={myState.cash} />}
-      </div>
+    <div className="min-h-screen pb-24">
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
+        <div className="text-center space-y-1">
+          <div className="text-4xl">{cfg.headerEmoji}</div>
+          <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
+          <p className="text-muted text-sm">{cfg.label}</p>
+        </div>
 
-      {board?.status_message && !showBuyModal && !showRentModal && (
-        <MonopolyStatusBanner message={board.status_message} isMyTurn={isMyTurn} />
-      )}
+        {myPlayerId && sessionName && (
+          <PlayerSessionControls
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            currentName={sessionName}
+            onRenamed={(name) => {
+              setMyPlayerName(name)
+              setPlayerSession(gameCode, myPlayerId, name, 'both')
+            }}
+            onLeft={handlePlayerLeft}
+          />
+        )}
 
-      <MonopolyClassicBoard
-        states={states}
-        players={players}
-        propertyOwners={owners}
-        highlightIndex={myState?.position}
-        center={
-          <div className="flex flex-col items-center justify-center h-full gap-2 px-1">
-            <MonopolyDiceRoll dice={board?.last_dice} rolling={acting} />
-            {isMyTurn && board?.phase === 'roll' && !myState?.in_jail && (
-              <button
-                type="button"
-                disabled={acting}
-                onClick={() => postAction('/api/monopoly/roll')}
-                className="rounded-xl bg-gradient-to-b from-[var(--marry)] to-[color-mix(in_srgb,var(--marry)_75%,#000)] px-4 py-2 text-xs font-black text-[var(--background)] shadow-md disabled:opacity-50"
-              >
-                {acting ? '…' : '🎲 Roll'}
-              </button>
-            )}
-          </div>
-        }
-      />
+        <div className="flex items-start justify-between gap-3">
+          <MonopolyTurnStrip
+            turnName={turnPlayer?.name ?? '—'}
+            isMyTurn={isMyTurn}
+            phase={board?.phase}
+            myName={sessionName}
+          />
+          {myState && <MonopolyCashBadge amount={myState.cash} />}
+        </div>
 
-      {myState && (
-        <MonopolyCurrentSpace index={myState.position} ownerName={currentOwner} />
-      )}
+        {showStatusBanner && (
+          <MonopolyStatusBanner message={board!.status_message!} isMyTurn={isMyTurn} />
+        )}
 
-      {myPlayerId && (
-        <MonopolyMyProperties
-          playerId={myPlayerId}
-          propertyOwners={owners}
-          players={players}
-        />
-      )}
-
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-faint mb-2 px-1">
-          All players
-        </p>
-        <MonopolyPlayerList
+        <MonopolyClassicBoard
           states={states}
           players={players}
-          currentPlayerId={turnPlayerId}
           propertyOwners={owners}
+          highlightIndex={myState?.position}
+          center={
+            <div className="flex flex-col items-center justify-center h-full gap-2 px-1">
+              <MonopolyDiceRoll dice={board?.last_dice} rolling={acting} />
+              {isMyTurn && board?.phase === 'roll' && !myState?.in_jail && (
+                <button
+                  type="button"
+                  disabled={acting}
+                  onClick={() => postAction('/api/monopoly/roll')}
+                  className="btn-primary btn-fit px-4 py-2 text-xs"
+                >
+                  {acting ? '…' : '🎲 Roll'}
+                </button>
+              )}
+            </div>
+          }
+        />
+
+        {myState && (
+          <MonopolyCurrentSpace
+            index={myState.position}
+            ownerName={players.find((p) => p.id === owners[String(myState.position)])?.name}
+          />
+        )}
+
+        <MonopolyManagePanel
+          board={board}
           myPlayerId={myPlayerId}
+          myState={myState}
+          players={players}
+          acting={acting}
+          postAction={postAction}
+        />
+
+        {myPlayerId && (
+          <MonopolyMyProperties
+            playerId={myPlayerId}
+            propertyOwners={owners}
+            players={players}
+          />
+        )}
+
+        <div>
+          <p className="label-caps mb-2 px-1">All players</p>
+          <MonopolyPlayerList
+            states={states}
+            players={players}
+            currentPlayerId={turnPlayerId}
+            propertyOwners={owners}
+            myPlayerId={myPlayerId}
+          />
+        </div>
+
+        <MonopolyTurnModals
+          board={board}
+          myPlayerId={myPlayerId}
+          myState={myState}
+          players={players}
+          acting={acting}
+          postAction={postAction}
+          colorBarClass={colorBarClass}
         />
       </div>
-
-      {/* Buy property modal */}
-      <MonopolyModal
-        open={showBuyModal}
-        subtitle="Property available"
-        title={pendingSpace?.name ?? ''}
-        colorBar={pendingSpace?.color ? colorBarClass(pendingSpace.color) : undefined}
-      >
-        <p className="text-center text-3xl font-black text-[var(--marry)]">${pendingSpace?.price}</p>
-        {pendingSpace?.rent != null && (
-          <p className="text-center text-sm text-muted">Rent ${pendingSpace.rent}</p>
-        )}
-        <div className="grid grid-cols-2 gap-2 pt-2">
-          <MonopolyPrimaryButton
-            onClick={() => postAction('/api/monopoly/buy', { buy: true })}
-            loading={acting}
-            disabled={(myState?.cash ?? 0) < (pendingSpace?.price ?? 0)}
-          >
-            Buy
-          </MonopolyPrimaryButton>
-          <MonopolySecondaryButton
-            onClick={() => postAction('/api/monopoly/buy', { buy: false })}
-            disabled={acting}
-          >
-            Pass
-          </MonopolySecondaryButton>
-        </div>
-      </MonopolyModal>
-
-      {/* Pay rent modal */}
-      <MonopolyModal
-        open={showRentModal}
-        subtitle="Rent due"
-        title={pendingSpace?.name ?? ''}
-        colorBar={pendingSpace?.color ? colorBarClass(pendingSpace.color) : undefined}
-      >
-        <p className="text-center text-sm text-muted">
-          Owned by <span className="font-bold text-[var(--foreground)]">{rentOwner?.name ?? 'another player'}</span>
-        </p>
-        <p className="text-center text-3xl font-black text-red-500">${rentAmount}</p>
-        <MonopolyPrimaryButton
-          onClick={() => postAction('/api/monopoly/rent')}
-          loading={acting}
-          disabled={(myState?.cash ?? 0) < rentAmount}
-        >
-          Pay ${rentAmount}
-        </MonopolyPrimaryButton>
-      </MonopolyModal>
-
-      {/* Jail modal */}
-      <MonopolyModal open={showJailModal} subtitle="In jail" title="🔒 Roll, pay, or use a card">
-        <div className="space-y-2">
-          <MonopolyPrimaryButton onClick={() => postAction('/api/monopoly/roll')} loading={acting}>
-            Roll for doubles
-          </MonopolyPrimaryButton>
-          <MonopolySecondaryButton
-            onClick={() => postAction('/api/monopoly/jail', { method: 'pay' })}
-            disabled={acting || (myState?.cash ?? 0) < MONOPOLY_JAIL_FINE}
-          >
-            Pay ${MONOPOLY_JAIL_FINE} fine
-          </MonopolySecondaryButton>
-          {(myState?.get_out_of_jail_free ?? 0) > 0 && (
-            <MonopolySecondaryButton
-              onClick={() => postAction('/api/monopoly/jail', { method: 'card' })}
-              disabled={acting}
-            >
-              Use Get Out of Jail Free card
-            </MonopolySecondaryButton>
-          )}
-        </div>
-      </MonopolyModal>
-    </MonopolyShell>
+    </div>
   )
 }

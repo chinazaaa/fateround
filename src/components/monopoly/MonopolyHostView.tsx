@@ -9,34 +9,25 @@ import {
   MonopolyMyProperties,
   MonopolyPlayerList,
 } from '@/components/monopoly/MonopolyBoard'
+import { MonopolyManagePanel, MonopolyTurnModals } from '@/components/monopoly/MonopolyGamePanels'
 import {
   MonopolyCashBadge,
-  MonopolyGlassCard,
-  MonopolyLoadingScreen,
-  MonopolyModal,
-  MonopolyPrimaryButton,
-  MonopolySecondaryButton,
-  MonopolyShell,
   MonopolyStatusBanner,
   MonopolyTurnStrip,
 } from '@/components/monopoly/MonopolyChrome'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
-import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
-  computeRent,
   currentPlayerId,
   getMonopolyHostMode,
   MONOPOLY_COLOR_CLASSES,
-  MONOPOLY_JAIL_FINE,
   MONOPOLY_MIN_PLAYERS,
   parsePropertyOwners,
   setMonopolyHostMode,
-  spaceAt,
+  type MonopolyColorGroup,
   type MonopolyHostMode,
 } from '@/lib/monopoly'
-import type { MonopolyColorGroup } from '@/lib/monopoly'
 import { supabase } from '@/lib/supabase'
 import {
   GAME_SELECT,
@@ -69,8 +60,8 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [states, setStates] = useState<MonopolyPlayerState[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
+  const [ending, setEnding] = useState(false)
 
-  // Host+play mode
   const [hostMode, setHostMode] = useState<MonopolyHostMode>('spectator')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
@@ -140,15 +131,15 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   const playerManageBlock =
     game && (game.status === 'waiting' || game.status === 'active') ? (
-      <MonopolyGlassCard className="p-4 space-y-3">
-        <p className="text-[11px] uppercase tracking-widest text-faint">Manage players — {players.length}</p>
+      <div className="glass-card p-4 space-y-3">
+        <p className="label-caps">Players — {players.length}</p>
         <HostPlayerManageList
           players={players}
           removingPlayerId={removingPlayerId}
           onRemovePlayer={removePlayer}
           highlightPlayerId={hostPlayerId}
         />
-      </MonopolyGlassCard>
+      </div>
     ) : null
 
   const changeHostMode = (mode: MonopolyHostMode) => {
@@ -214,11 +205,28 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
       if (!res.ok) throw new Error(data.error ?? 'Failed to start')
       success('Game started!')
       await load()
-      if (hostMode === 'player' && hostPlayerId) setTab('play')
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to start')
     } finally {
       setStarting(false)
+    }
+  }
+
+  const finishGame = async () => {
+    setEnding(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode}/finish-game`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to end game')
+      await load()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to end game')
+    } finally {
+      setEnding(false)
     }
   }
 
@@ -250,167 +258,171 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
   const hostPlays = hostMode === 'player' && !!hostPlayerId
   const showPlayTab = hostPlays && game?.status !== 'waiting' && game?.status !== 'finished'
 
-  // Host player-specific state
   const hostState = hostPlayerId ? states.find((s) => s.player_id === hostPlayerId) : null
   const isHostTurn = turnPlayerId === hostPlayerId && !hostState?.bankrupt
   const owners = parsePropertyOwners(board?.property_owners)
-  const pendingSpace = board?.pending_space != null ? spaceAt(board.pending_space) : null
   const hostCurrentOwner = hostState != null ? players.find((p) => p.id === owners[String(hostState.position)])?.name : null
-  const rentOwnerId = board?.phase === 'pay_rent' && board.pending_space != null ? owners[String(board.pending_space)] : null
-  const rentOwner = rentOwnerId ? players.find((p) => p.id === rentOwnerId) : null
-  const rentAmount = pendingSpace && rentOwnerId ? computeRent(pendingSpace, owners, rentOwnerId, board?.last_dice?.total ?? 2) : 0
-  const showBuyModal = !!(isHostTurn && board?.phase === 'buy' && pendingSpace != null)
-  const showRentModal = !!(isHostTurn && board?.phase === 'pay_rent' && pendingSpace != null)
-  const showJailModal = !!(isHostTurn && board?.phase === 'jail' && hostState?.in_jail)
 
-  if (!game) return <MonopolyLoadingScreen />
+  if (!game) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted">Loading…</p>
+      </div>
+    )
+  }
 
   return (
-    <MonopolyShell title={game.title} subtitle={`${cfg.label} · Room ${gameCode}`}>
-      <CopyLinkButton
-        value={joinUrl}
-        label="Copy player link"
-        className="w-full !rounded-2xl !border-[var(--border-strong)] !bg-[var(--card)] !text-[var(--foreground)] hover:!bg-[var(--card-hover)]"
-      />
+    <div className="min-h-screen pb-24">
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
+        <div className="text-center space-y-1">
+          <div className="text-4xl">{cfg.headerEmoji}</div>
+          <h1 className="text-2xl font-black tracking-tight gradient-title">{game.title}</h1>
+          <p className="text-muted text-sm">{cfg.label} · Host panel</p>
+        </div>
 
-      {/* Host mode selector — lobby only */}
-      {game.status === 'waiting' && (
-        <MonopolyGlassCard className="p-5 space-y-3">
-          <p className="text-[11px] uppercase tracking-widest text-faint font-semibold">Host mode</p>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => changeHostMode('spectator')}
-              className={[
-                'rounded-2xl border-2 px-4 py-4 text-left',
-                hostMode === 'spectator'
-                  ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
-                  : 'border-[var(--border-strong)] text-muted',
-              ].join(' ')}
-            >
-              <span className="font-bold block text-sm text-[var(--foreground)]">Host only</span>
-              <span className="text-faint text-xs">Spectate from Manage</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => changeHostMode('player')}
-              className={[
-                'rounded-2xl border-2 px-4 py-4 text-left',
-                hostMode === 'player'
-                  ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
-                  : 'border-[var(--border-strong)] text-muted',
-              ].join(' ')}
-            >
-              <span className="font-bold block text-sm text-[var(--foreground)]">Host + play</span>
-              <span className="text-faint text-xs">Play tab + Manage tab</span>
-            </button>
-          </div>
-          {hostMode === 'player' && !hostPlayerId && (
-            <div className="flex items-center gap-2 pt-1">
-              <input
-                type="text"
-                value={hostJoinName}
-                onChange={(e) => setHostJoinName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && hostJoinGame()}
-                placeholder="Your name"
-                className="input-field flex-1"
-                maxLength={40}
-              />
+        {game.status === 'waiting' && (
+          <div className="glass-card-strong p-5 space-y-3">
+            <p className="label-caps">Host mode</p>
+            <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={hostJoinGame}
-                disabled={!hostJoinName.trim() || hostJoining}
-                className="btn-primary btn-fit shrink-0 px-4 py-2.5 text-sm whitespace-nowrap"
+                onClick={() => changeHostMode('spectator')}
+                className={[
+                  'rounded-2xl border-2 px-4 py-4 text-left',
+                  hostMode === 'spectator'
+                    ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                    : 'border-[var(--border-strong)] text-muted',
+                ].join(' ')}
               >
-                {hostJoining ? 'Joining…' : 'Join'}
+                <span className="font-bold block text-base">Host only</span>
+                <span className="text-faint text-xs">Spectate from Manage</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => changeHostMode('player')}
+                className={[
+                  'rounded-2xl border-2 px-4 py-4 text-left',
+                  hostMode === 'player'
+                    ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                    : 'border-[var(--border-strong)] text-muted',
+                ].join(' ')}
+              >
+                <span className="font-bold block text-base">Host + play</span>
+                <span className="text-faint text-xs">Play tab + Manage tab</span>
               </button>
             </div>
-          )}
-          {hostMode === 'player' && hostPlayerId && (
-            <p className="text-sm text-muted">
-              Playing as <strong className="text-[var(--foreground)]">{hostPlayerName}</strong> — switch to Play after the game starts.
-            </p>
-          )}
-        </MonopolyGlassCard>
-      )}
-
-      {/* Play / Manage tab switcher */}
-      {showPlayTab && (
-        <div className="flex gap-2 p-1 rounded-xl bg-[var(--surface-inset-bg)] border border-[var(--border-strong)]">
-          <button
-            type="button"
-            onClick={() => setTab('play')}
-            className={[
-              'flex-1 rounded-lg py-2.5 text-sm font-bold transition-colors',
-              tab === 'play' ? 'bg-[var(--card-strong)] shadow-sm' : 'text-muted',
-            ].join(' ')}
-          >
-            Play
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('manage')}
-            className={[
-              'flex-1 rounded-lg py-2.5 text-sm font-bold transition-colors',
-              tab === 'manage' ? 'bg-[var(--card-strong)] shadow-sm' : 'text-muted',
-            ].join(' ')}
-          >
-            Manage
-          </button>
-        </div>
-      )}
-
-      {/* Play tab — host as Monopoly player */}
-      {tab === 'play' && hostPlays && hostPlayerId && game.status === 'active' && board && (
-        <>
-          <div className="flex items-start justify-between gap-3">
-            <MonopolyTurnStrip
-              turnName={turnPlayer?.name ?? '—'}
-              isMyTurn={isHostTurn}
-              phase={board.phase}
-              myName={hostPlayerName}
-            />
-            {hostState && <MonopolyCashBadge amount={hostState.cash} />}
-          </div>
-
-          {board.status_message && !showBuyModal && !showRentModal && (
-            <MonopolyStatusBanner message={board.status_message} isMyTurn={isHostTurn} />
-          )}
-
-          <MonopolyClassicBoard
-            states={states}
-            players={players}
-            propertyOwners={owners}
-            highlightIndex={hostState?.position}
-            center={
-              <div className="flex flex-col items-center justify-center h-full gap-2 px-1">
-                <MonopolyDiceRoll dice={board.last_dice} rolling={hostActing} />
-                {isHostTurn && board.phase === 'roll' && !hostState?.in_jail && (
-                  <button
-                    type="button"
-                    disabled={hostActing}
-                    onClick={() => postHostAction('/api/monopoly/roll')}
-                    className="rounded-xl bg-gradient-to-b from-[var(--marry)] to-[color-mix(in_srgb,var(--marry)_75%,#000)] px-4 py-2 text-xs font-black text-[var(--background)] shadow-md disabled:opacity-50"
-                  >
-                    {hostActing ? '…' : '🎲 Roll'}
-                  </button>
-                )}
+            {hostMode === 'player' && !hostPlayerId && (
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="text"
+                  value={hostJoinName}
+                  onChange={(e) => setHostJoinName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && hostJoinGame()}
+                  placeholder="Your name"
+                  className="input-field flex-1"
+                  maxLength={40}
+                />
+                <button
+                  type="button"
+                  onClick={hostJoinGame}
+                  disabled={!hostJoinName.trim() || hostJoining}
+                  className="btn-primary btn-fit shrink-0 px-4 py-2.5 text-sm whitespace-nowrap"
+                >
+                  {hostJoining ? 'Joining…' : 'Join'}
+                </button>
               </div>
-            }
-          />
+            )}
+            {hostMode === 'player' && hostPlayerId && (
+              <p className="text-sm text-muted">
+                Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
+              </p>
+            )}
+          </div>
+        )}
 
-          {hostState && (
-            <MonopolyCurrentSpace index={hostState.position} ownerName={hostCurrentOwner} />
-          )}
+        {showPlayTab && (
+          <div className="flex gap-2 p-1 rounded-xl bg-[var(--surface-inset-bg)] border border-[var(--border-strong)]">
+            <button
+              type="button"
+              onClick={() => setTab('play')}
+              className={[
+                'flex-1 rounded-lg py-2.5 text-sm font-bold transition-colors',
+                tab === 'play' ? 'bg-[var(--card-strong)] shadow-sm' : 'text-muted',
+              ].join(' ')}
+            >
+              Play
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('manage')}
+              className={[
+                'flex-1 rounded-lg py-2.5 text-sm font-bold transition-colors',
+                tab === 'manage' ? 'bg-[var(--card-strong)] shadow-sm' : 'text-muted',
+              ].join(' ')}
+            >
+              Manage
+            </button>
+          </div>
+        )}
 
-          <MonopolyMyProperties
-            playerId={hostPlayerId}
-            propertyOwners={owners}
-            players={players}
-          />
+        {tab === 'play' && hostPlays && hostPlayerId && game.status === 'active' && (
+          board ? (
+          <>
+            <div className="flex items-start justify-between gap-3">
+              <MonopolyTurnStrip
+                turnName={turnPlayer?.name ?? '—'}
+                isMyTurn={isHostTurn}
+                phase={board.phase}
+                myName={hostPlayerName}
+              />
+              {hostState && <MonopolyCashBadge amount={hostState.cash} />}
+            </div>
 
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-faint mb-2 px-1">All players</p>
+            {board.status_message && board.phase !== 'buy' && board.phase !== 'pay_rent' && board.phase !== 'auction' && (
+              <MonopolyStatusBanner message={board.status_message} isMyTurn={isHostTurn} />
+            )}
+
+            <MonopolyClassicBoard
+              states={states}
+              players={players}
+              propertyOwners={owners}
+              highlightIndex={hostState?.position}
+              center={
+                <div className="flex flex-col items-center justify-center h-full gap-2 px-1">
+                  <MonopolyDiceRoll dice={board.last_dice} rolling={hostActing} />
+                  {isHostTurn && board.phase === 'roll' && !hostState?.in_jail && (
+                    <button
+                      type="button"
+                      disabled={hostActing}
+                      onClick={() => postHostAction('/api/monopoly/roll')}
+                      className="btn-primary btn-fit px-4 py-2 text-xs"
+                    >
+                      {hostActing ? '…' : '🎲 Roll'}
+                    </button>
+                  )}
+                </div>
+              }
+            />
+
+            {hostState && (
+              <MonopolyCurrentSpace index={hostState.position} ownerName={hostCurrentOwner} />
+            )}
+
+            <MonopolyMyProperties
+              playerId={hostPlayerId}
+              propertyOwners={owners}
+              players={players}
+            />
+
+            <MonopolyManagePanel
+              board={board}
+              myPlayerId={hostPlayerId}
+              myState={hostState ?? undefined}
+              players={players}
+              acting={hostActing}
+              postAction={postHostAction}
+            />
+
             <MonopolyPlayerList
               states={states}
               players={players}
@@ -418,160 +430,132 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
               propertyOwners={owners}
               myPlayerId={hostPlayerId}
             />
-          </div>
 
-          {/* Buy property modal */}
-          <MonopolyModal
-            open={showBuyModal}
-            subtitle="Property available"
-            title={pendingSpace?.name ?? ''}
-            colorBar={pendingSpace?.color ? colorBarClass(pendingSpace.color) : undefined}
-          >
-            <p className="text-center text-3xl font-black text-[var(--marry)]">${pendingSpace?.price}</p>
-            {pendingSpace?.rent != null && (
-              <p className="text-center text-sm text-muted">Rent ${pendingSpace.rent}</p>
-            )}
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              <MonopolyPrimaryButton
-                onClick={() => postHostAction('/api/monopoly/buy', { buy: true })}
-                loading={hostActing}
-                disabled={(hostState?.cash ?? 0) < (pendingSpace?.price ?? 0)}
-              >
-                Buy
-              </MonopolyPrimaryButton>
-              <MonopolySecondaryButton
-                onClick={() => postHostAction('/api/monopoly/buy', { buy: false })}
-                disabled={hostActing}
-              >
-                Pass
-              </MonopolySecondaryButton>
+            <MonopolyTurnModals
+              board={board}
+              myPlayerId={hostPlayerId}
+              myState={hostState ?? undefined}
+              players={players}
+              acting={hostActing}
+              postAction={postHostAction}
+              colorBarClass={colorBarClass}
+            />
+          </>
+          ) : (
+            <div className="glass-card p-8 text-center text-sm text-muted">Loading board…</div>
+          )
+        )}
+
+        {(tab === 'manage' || !showPlayTab) && (
+          <>
+            <div className="glass-card p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-faint text-xs uppercase tracking-wider">Share with players</p>
+                <p className="font-mono font-bold text-lg">{gameCode}</p>
+              </div>
+              <CopyLinkButton value={joinUrl} label="Copy player link" />
             </div>
-          </MonopolyModal>
 
-          {/* Pay rent modal */}
-          <MonopolyModal
-            open={showRentModal}
-            subtitle="Rent due"
-            title={pendingSpace?.name ?? ''}
-            colorBar={pendingSpace?.color ? colorBarClass(pendingSpace.color) : undefined}
-          >
-            <p className="text-center text-sm text-muted">
-              Owned by <span className="font-bold text-[var(--foreground)]">{rentOwner?.name ?? 'another player'}</span>
-            </p>
-            <p className="text-center text-3xl font-black text-red-500">${rentAmount}</p>
-            <MonopolyPrimaryButton
-              onClick={() => postHostAction('/api/monopoly/rent')}
-              loading={hostActing}
-              disabled={(hostState?.cash ?? 0) < rentAmount}
-            >
-              Pay ${rentAmount}
-            </MonopolyPrimaryButton>
-          </MonopolyModal>
-
-          {/* Jail modal */}
-          <MonopolyModal open={showJailModal} subtitle="In jail" title="🔒 Roll, pay, or use a card">
-            <div className="space-y-2">
-              <MonopolyPrimaryButton onClick={() => postHostAction('/api/monopoly/roll')} loading={hostActing}>
-                Roll for doubles
-              </MonopolyPrimaryButton>
-              <MonopolySecondaryButton
-                onClick={() => postHostAction('/api/monopoly/jail', { method: 'pay' })}
-                disabled={hostActing || (hostState?.cash ?? 0) < MONOPOLY_JAIL_FINE}
-              >
-                Pay ${MONOPOLY_JAIL_FINE} fine
-              </MonopolySecondaryButton>
-              {(hostState?.get_out_of_jail_free ?? 0) > 0 && (
-                <MonopolySecondaryButton
-                  onClick={() => postHostAction('/api/monopoly/jail', { method: 'card' })}
-                  disabled={hostActing}
-                >
-                  Use Get Out of Jail Free card
-                </MonopolySecondaryButton>
-              )}
-            </div>
-          </MonopolyModal>
-        </>
-      )}
-
-      {/* Manage tab (or default when no Play tab) */}
-      {(tab === 'manage' || !showPlayTab) && (
-        <>
-          {game.status === 'waiting' && (
-            <>
-              <MonopolyGlassCard className="p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-widest text-faint">Lobby</p>
-                    <p className="text-2xl font-black text-[var(--foreground)]">
-                      {players.length} <span className="text-lg font-semibold text-muted">/ 6 players</span>
+            {game.status === 'waiting' && (
+              <>
+                {playerManageBlock}
+                <div className="glass-card p-5 space-y-4">
+                  {!canStart && (
+                    <p className="text-sm text-[var(--marry)]">
+                      Need at least {MONOPOLY_MIN_PLAYERS} players to start.
                     </p>
-                  </div>
-                  <div className="text-4xl">🎩</div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={startGame}
+                    disabled={!canStart || starting}
+                    className="btn-primary w-full"
+                  >
+                    {starting ? 'Starting…' : `Start Monopoly (${MONOPOLY_MIN_PLAYERS}+ players)`}
+                  </button>
                 </div>
-                {!canStart && (
-                  <p className="text-sm text-[var(--marry)] text-center">
-                    Need at least {MONOPOLY_MIN_PLAYERS} players to start
+              </>
+            )}
+
+            {game.status === 'active' && board && (
+              <>
+                {playerManageBlock}
+                <div className="glass-card p-4 space-y-3">
+                  <p className="label-caps">Live board (host view)</p>
+                  <p className="text-sm text-muted text-center">
+                    {turnPlayer ? (
+                      <>
+                        <strong className="text-body">{turnPlayer.name}</strong>
+                        {' · '}
+                        <span className="capitalize">{board.phase.replace('_', ' ')}</span>
+                      </>
+                    ) : (
+                      'Waiting for turn…'
+                    )}
                   </p>
-                )}
-              </MonopolyGlassCard>
-              {playerManageBlock}
-              <MonopolyPrimaryButton onClick={startGame} disabled={!canStart} loading={starting} variant="gold">
-                Start Monopoly
-              </MonopolyPrimaryButton>
-            </>
-          )}
+                  {board.status_message && (
+                    <p className="text-sm text-muted text-center leading-relaxed">{board.status_message}</p>
+                  )}
+                  <MonopolyClassicBoard
+                    states={states}
+                    players={players}
+                    propertyOwners={board.property_owners}
+                    center={
+                      <div className="flex flex-col items-center justify-center h-full gap-1">
+                        <MonopolyDiceRoll dice={board.last_dice} />
+                        <p className="text-[10px] uppercase tracking-widest text-faint mt-1">Host view</p>
+                      </div>
+                    }
+                  />
+                </div>
+                <MonopolyPlayerList
+                  states={states}
+                  players={players}
+                  currentPlayerId={turnPlayerId}
+                  propertyOwners={board.property_owners}
+                />
+                <button
+                  type="button"
+                  onClick={finishGame}
+                  disabled={ending}
+                  className="btn-secondary w-full py-3"
+                >
+                  {ending ? 'Ending…' : 'End game early'}
+                </button>
+              </>
+            )}
 
-          {game.status === 'active' && board && (
-            <>
-              {playerManageBlock}
-              <MonopolyTurnStrip turnName={turnPlayer?.name ?? '—'} phase={board.phase} />
-              {board.status_message && <MonopolyStatusBanner message={board.status_message} />}
-              <MonopolyClassicBoard
-                states={states}
-                players={players}
-                propertyOwners={board.property_owners}
-                center={
-                  <div className="flex flex-col items-center justify-center h-full gap-1">
-                    <MonopolyDiceRoll dice={board.last_dice} />
-                    <p className="text-[10px] uppercase tracking-widest text-faint mt-1">Host view</p>
-                  </div>
-                }
-              />
-              <MonopolyPlayerList
-                states={states}
-                players={players}
-                currentPlayerId={turnPlayerId}
-                propertyOwners={board.property_owners}
-              />
-              <HostEndGameButton
-                gameCode={gameCode}
-                hostToken={hostToken}
-                onEnded={load}
-                label="End game early"
-                className="w-full rounded-2xl border border-[var(--border-strong)] bg-[var(--card)] px-5 py-3.5 text-sm font-bold text-[var(--foreground)] hover:bg-[var(--card-hover)] disabled:opacity-40 transition-colors"
-              />
-            </>
-          )}
+            {game.status === 'finished' && (
+              <>
+                <div className="glass-card p-8 text-center space-y-3">
+                  <p className="text-4xl">🏆</p>
+                  <p className="text-xl font-black gradient-title">
+                    {winner ? `${winner.name} wins!` : 'Game over'}
+                  </p>
+                </div>
+                <MonopolyPlayerList
+                  states={states}
+                  players={players}
+                  propertyOwners={board?.property_owners}
+                />
+                <button
+                  type="button"
+                  onClick={playAgain}
+                  disabled={playingAgain}
+                  className="btn-secondary w-full py-3"
+                >
+                  {playingAgain ? 'Resetting…' : 'Play again'}
+                </button>
+                <CreateNewGameButton className="btn-ghost w-full text-muted" />
+              </>
+            )}
+          </>
+        )}
 
-          {game.status === 'finished' && (
-            <>
-              <MonopolyGlassCard glow="accent" className="py-10 text-center">
-                <div className="text-6xl mb-3">🏆</div>
-                <p className="text-2xl font-black text-[var(--marry)]">{winner ? `${winner.name} wins!` : 'Game over'}</p>
-              </MonopolyGlassCard>
-              <MonopolyPlayerList
-                states={states}
-                players={players}
-                propertyOwners={board?.property_owners}
-              />
-              <MonopolyPrimaryButton onClick={playAgain} loading={playingAgain} variant="gold">
-                Play again
-              </MonopolyPrimaryButton>
-              <CreateNewGameButton className="w-full rounded-2xl border border-[var(--border-strong)] bg-[var(--card)] px-5 py-3.5 text-sm font-bold text-[var(--foreground)] hover:bg-[var(--card-hover)] transition-colors" />
-            </>
-          )}
-        </>
-      )}
-    </MonopolyShell>
+        <button type="button" onClick={() => router.push('/')} className="btn-ghost w-full text-muted">
+          Back home
+        </button>
+      </div>
+    </div>
   )
 }

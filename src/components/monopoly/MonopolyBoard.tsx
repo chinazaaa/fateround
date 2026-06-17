@@ -135,7 +135,7 @@ function BoardSpaceCell({
       <div className="flex flex-1 min-w-0 min-h-0 flex-col items-center justify-center gap-px p-0.5">
         {isCorner && icon && <span className="text-base sm:text-lg leading-none">{icon}</span>}
         {!isCorner && space.price != null && !ownerId && (
-          <span className="text-[7px] sm:text-[8px] font-bold text-neutral-500 leading-none">${space.price}</span>
+          <span className="text-[7px] sm:text-[8px] font-bold text-neutral-500 leading-none">£{space.price}</span>
         )}
         <div className="flex flex-col items-center justify-center leading-[1.08] gap-px">
           {lines.map((line, i) => (
@@ -368,12 +368,12 @@ export function MonopolyCurrentSpace({
                 {ownerName ? (
                   <>
                     Owned by <span className="font-bold text-[var(--foreground)]">{ownerName}</span>
-                    {space.rent != null ? ` · Rent $${space.rent}` : ''}
+                    {space.rent != null ? ` · Rent £${space.rent}` : ''}
                   </>
                 ) : (
                   <>
-                    For sale · <span className="font-bold text-[var(--marry)]">${space.price}</span>
-                    {space.rent != null ? ` · Rent $${space.rent}` : ''}
+                    For sale · <span className="font-bold text-[var(--marry)]">£{space.price}</span>
+                    {space.rent != null ? ` · Rent £${space.rent}` : ''}
                   </>
                 )}
               </p>
@@ -417,7 +417,7 @@ export function MonopolyMyProperties({
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold text-[var(--foreground)] truncate">{space.name}</p>
                 <p className="text-[10px] text-faint">
-                  ${space.price}
+                  £{space.price}
                   {space.rent != null ? ` · Rent $${space.rent}` : ''}
                 </p>
               </div>
@@ -512,7 +512,7 @@ export function MonopolyPlayerList({
                 <p className="text-[10px] uppercase tracking-wide text-faint">
                   Cash
                 </p>
-                <p className="text-lg font-black tabular-nums text-[var(--primary)]">${state.cash.toLocaleString()}</p>
+                <p className="text-lg font-black tabular-nums text-[var(--primary)]">£{state.cash.toLocaleString('en-GB')}</p>
               </div>
             </div>
           )

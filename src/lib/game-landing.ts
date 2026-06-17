@@ -725,17 +725,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'Classic Monopoly on your phones. Join a room, roll the dice, buy properties, and be the last player standing.',
     bodyParagraph:
-      'Monopoly on Fate Round puts the full 40-space board on everyone’s phone — roll dice, buy properties, pay rent, draw Chance and Community Chest cards, and manage jail just like the tabletop game. Join a room with 2–6 players, share the link, and play turn-by-turn in real time without setting up a physical board.',
+      'Monopoly on Fate Round uses the UK edition board — London streets, Stations, £ currency, full Chance and Community Chest decks, property auctions, houses, hotels, mortgages, and player trading. Join 2–6 players and play turn-by-turn in real time.',
     highlights: ['Full 40-space board', '2–6 players', 'Real-time turns'],
     features: [
       {
         title: 'Classic board',
-        description: 'All the familiar spaces — properties, railroads, utilities, Chance, and Community Chest.',
+        description: 'All the familiar spaces — London properties, Stations, Utilities, Chance, and Community Chest.',
         emoji: '🏠',
       },
       {
         title: 'Turn-based play',
-        description: 'Roll dice, buy or pass on properties, pay rent, and manage jail — just like the board game.',
+        description: 'Roll dice, buy or pass on properties, pay rent, draw cards, and manage Jail — core Monopoly rules on your phones.',
         emoji: '🎲',
       },
       SHARED_FEATURES.realtime,

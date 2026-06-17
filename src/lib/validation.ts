@@ -498,6 +498,34 @@ export const monopolyJailSchema = monopolyActionSchema.extend({
   method: z.enum(['pay', 'card']),
 })
 
+export const monopolyAuctionSchema = monopolyActionSchema.extend({
+  action: z.enum(['pass', 'bid']),
+  amount: z.number().int().min(1).optional(),
+})
+
+export const monopolyBuildSchema = monopolyActionSchema.extend({
+  spaceIndex: z.number().int().min(0).max(39),
+  action: z.enum(['buy_house', 'sell_house', 'buy_hotel', 'sell_hotel']),
+})
+
+export const monopolyMortgageSchema = monopolyActionSchema.extend({
+  spaceIndex: z.number().int().min(0).max(39),
+  action: z.enum(['mortgage', 'unmortgage']),
+})
+
+export const monopolyTradeProposeSchema = monopolyActionSchema.extend({
+  toPlayerId: uuidString('toPlayerId'),
+  offerCash: z.number().int().min(0).default(0),
+  offerProperties: z.array(z.number().int().min(0).max(39)).default([]),
+  offerGetOutCards: z.number().int().min(0).max(2).default(0),
+  requestCash: z.number().int().min(0).default(0),
+  requestProperties: z.array(z.number().int().min(0).max(39)).default([]),
+})
+
+export const monopolyTradeRespondSchema = monopolyActionSchema.extend({
+  accept: z.boolean(),
+})
+
 export type MonopolyActionInput = z.infer<typeof monopolyActionSchema>
 export type MonopolyBuyInput = z.infer<typeof monopolyBuySchema>
 export type MonopolyJailInput = z.infer<typeof monopolyJailSchema>

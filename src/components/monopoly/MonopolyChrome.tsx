@@ -148,7 +148,7 @@ export function MonopolyCashBadge({ amount, label = 'Your cash' }: { amount: num
   return (
     <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_35%,var(--border-strong))] bg-[color-mix(in_srgb,var(--primary)_12%,var(--card))] px-4 py-2.5 text-right shadow-[var(--card-shadow)]">
       <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">{label}</p>
-      <p className="text-2xl font-black tabular-nums text-[var(--primary)]">${amount.toLocaleString()}</p>
+      <p className="text-2xl font-black tabular-nums text-[var(--primary)]">£{amount.toLocaleString('en-GB')}</p>
     </div>
   )
 }

@@ -166,7 +166,27 @@ export interface Game {
   bingo_call_interval_seconds?: number | null
 }
 
-export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'finished'
+export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'auction' | 'finished'
+
+export interface MonopolyAuctionState {
+  space_index: number
+  high_bid: number
+  high_bidder_id: string | null
+  current_bidder_id: string
+  passed: string[]
+  eligible: string[]
+  initiator_id: string
+}
+
+export interface MonopolyPendingTrade {
+  from_player_id: string
+  to_player_id: string
+  offer_cash: number
+  offer_properties: number[]
+  offer_get_out_cards: number
+  request_cash: number
+  request_properties: number[]
+}
 
 export interface MonopolyBoard {
   id: string
@@ -177,6 +197,16 @@ export interface MonopolyBoard {
   last_dice: { d1: number; d2: number; total: number; doubles: boolean } | null
   consecutive_doubles: number
   property_owners: Record<string, string>
+  property_buildings: Record<string, number>
+  mortgaged_properties: Record<string, boolean>
+  houses_in_bank: number
+  hotels_in_bank: number
+  chance_deck: number[]
+  community_deck: number[]
+  chance_discard: number[]
+  community_discard: number[]
+  auction_state: MonopolyAuctionState | null
+  pending_trade: MonopolyPendingTrade | null
   pending_space: number | null
   status_message: string | null
   winner_player_id: string | null

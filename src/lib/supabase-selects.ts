@@ -18,7 +18,7 @@ export const VOTE_SELECT =
 export const CONFESSION_SELECT = 'id,game_id,round_id,text,created_at'
 
 export const MONOPOLY_BOARD_SELECT =
-  'id,game_id,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,pending_space,status_message,winner_player_id,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,chance_deck,community_deck,chance_discard,community_discard,auction_state,pending_trade,pending_space,status_message,winner_player_id,created_at,updated_at'
 
 export const MONOPOLY_PLAYER_STATE_SELECT =
   'id,game_id,player_id,position,cash,in_jail,jail_turns,get_out_of_jail_free,bankrupt,player_order,created_at'

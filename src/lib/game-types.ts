@@ -896,7 +896,7 @@ export function gameHowItWorks(
     case 'two_truths':
       return 'Everyone joins with their name and submits two truths plus one lie in the lobby. Each round features one player — everyone else guesses which statement is the lie. Spot the fib for points; fool the room for bonus points.'
     case 'monopoly':
-      return 'Players join with their name. Everyone starts on GO with $1,500. Take turns rolling dice, buying properties, paying rent, and drawing cards. Last player standing wins!'
+      return 'Players join with their name. Everyone starts on GO with £1,500. UK board — roll, buy or auction, build houses, mortgage, trade, and draw full Chance & Community Chest decks. Last player standing wins!'
     case 'yahtzee':
       return 'Players roll, hold dice, and choose a score category each turn. Build the best total across all combos.'
     case 'most_likely_to':
