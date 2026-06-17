@@ -363,7 +363,9 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
           </div>
         )}
 
-        <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        {game.status === 'waiting' && (
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        )}
 
       {/* Play / Manage tab switcher */}
       {showPlayTab && (
@@ -431,6 +433,10 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
         {/* Manage tab (or default when no Play tab) */}
         {(tab === 'manage' || !showPlayTab) && (
           <>
+            {game.status === 'active' && (
+              <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+            )}
+
             <div className="glass-card p-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-faint text-xs uppercase tracking-wider">Share with players</p>

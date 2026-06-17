@@ -360,7 +360,9 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           </div>
         )}
 
-        <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        {game.status === 'waiting' && (
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        )}
 
         {showPlayTab && (
           <div className="flex gap-2 p-1 rounded-xl bg-[var(--surface-inset-bg)] border border-[var(--border-strong)]">
@@ -413,6 +415,10 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
 
         {(tab === 'manage' || !showPlayTab) && (
           <>
+            {game.status === 'active' && (
+              <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+            )}
+
             <div className="glass-card p-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-faint text-xs uppercase tracking-wider">Share with players</p>
