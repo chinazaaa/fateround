@@ -20,3 +20,15 @@ export function appOrigin(): string {
 export function playerGameUrl(gameCode: string): string {
   return `${appOrigin()}/game/${gameCode.trim().toUpperCase()}`
 }
+
+/** PayPal / Ko-fi / Buy Me a Coffee link. Override with NEXT_PUBLIC_SUPPORT_URL. */
+export function supportUrl(): string | null {
+  const raw = process.env.NEXT_PUBLIC_SUPPORT_URL?.trim()
+  if (!raw) return 'https://www.paypal.me/nazalistic'
+  try {
+    const url = raw.includes('://') ? new URL(raw) : new URL(`https://${raw}`)
+    return url.href
+  } catch {
+    return raw
+  }
+}
