@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   MonopolyClassicBoard,
   MonopolyCurrentSpace,
@@ -52,6 +52,15 @@ export function MonopolyActiveLayout({
   colorBarClass: (color?: MonopolyColorGroup) => string
 }) {
   const [panel, setPanel] = useState<SidePanel>('build')
+
+  const incomingTrade =
+    board.pending_trade && board.pending_trade.to_player_id === myPlayerId
+      ? board.pending_trade
+      : null
+
+  useEffect(() => {
+    if (incomingTrade) setPanel('build')
+  }, [incomingTrade?.from_player_id, incomingTrade?.to_player_id])
 
   const owners = parsePropertyOwners(board.property_owners)
   const turnPlayerId = currentPlayerId(board)
@@ -180,6 +189,16 @@ export function MonopolyActiveLayout({
           <div className="rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--surface-inset-bg)]/50 min-h-[3.25rem]" />
         )}
       </div>
+
+      {incomingTrade && panel !== 'build' && (
+        <button
+          type="button"
+          onClick={() => setPanel('build')}
+          className="w-full rounded-xl border border-[color-mix(in_srgb,var(--marry)_35%,var(--border-strong))] bg-[color-mix(in_srgb,var(--marry)_10%,transparent)] px-4 py-2.5 text-sm font-semibold text-[var(--marry)] text-left"
+        >
+          🤝 Trade offer waiting — open Build &amp; trade to review
+        </button>
+      )}
 
       {buildActions > 0 && panel !== 'build' && (
         <button
