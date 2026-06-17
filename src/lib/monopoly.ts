@@ -565,6 +565,10 @@ function resolveSpaceLanding(
   }
 
   if (landed.type === 'tax') {
+    if (!ctx.passedGoOnce) {
+      statusSuffix = ' Pass GO once before tax applies on your first lap.'
+      return { cash, position, inJail, jailTurns, getOutCards, phase: 'roll', pendingSpace: null, extraTurn, statusSuffix }
+    }
     const amount = landed.index === 4 ? 200 : 100
     if (cash < amount) {
       return {

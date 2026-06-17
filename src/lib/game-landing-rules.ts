@@ -500,7 +500,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Buying property',
       points: [
-        'You cannot buy from the Bank or draw Chance / Community Chest cards until you have passed GO at least once on your first lap.',
+        'You cannot buy from the Bank, pay Income Tax or Super Tax, or draw Chance / Community Chest cards until you have passed GO at least once on your first lap.',
         'Landing on an unowned Property, Station, or Utility after that lets you buy it at the listed price.',
         'If you decline to buy, the property is auctioned to the highest bidder — including you.',
         'Own all Sites in a colour-group (a monopoly) to charge double rent on unimproved properties in that group.',
@@ -528,8 +528,8 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Taxes & Free Parking',
       points: [
-        'Income Tax (space 4): pay £200 to the Bank.',
-        'Super Tax (space 38): pay £100 to the Bank.',
+        'Income Tax (space 4) and Super Tax (space 38) do not apply until you have passed GO once on your first lap.',
+        'After that: Income Tax is £200 and Super Tax is £100, paid to the Bank.',
         'Free Parking has no penalty — simply rest there until your next turn.',
       ],
     },
