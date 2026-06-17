@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AnonymousMessageFeed } from '@/components/anonymous-messages/AnonymousMessageFeed'
 import { AnonymousRoomSessionSummary } from '@/components/anonymous-messages/AnonymousRoomSessionSummary'
-import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { PlayerInviteCard } from '@/components/PlayerInviteCard'
 import { ResultsPagination, usePagination } from '@/components/ui/ResultsPagination'
 import { useAnonymousMessageTrim } from '@/hooks/useAnonymousMessageTrim'
 import { useAnonymousMessages } from '@/hooks/useAnonymousMessages'
@@ -238,10 +238,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         </div>
       </div>
 
-      <div className="glass-card p-4 space-y-3">
-        <p className="text-muted text-xs uppercase tracking-wider">Player link</p>
-        <CopyLinkButton value={playerLink} label="Copy player link" />
-      </div>
+      <PlayerInviteCard url={playerLink} gameCode={gameCode} title="Player link" />
 
       <div className="glass-card p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">

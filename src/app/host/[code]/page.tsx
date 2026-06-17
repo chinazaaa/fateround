@@ -136,6 +136,7 @@ import {
   FinalOverallLeaderboards,
   FinalOverallBreakdown,
 } from '@/components/FinalLeaderboard'
+import { PlayerInviteCard } from '@/components/PlayerInviteCard'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { PlayAgainSetup, playAgainNeedsSetup, hostPoolSetupLabels, type PlayAgainPayload, type PoolSetupVariant } from '@/components/PlayAgainSetup'
 import {
@@ -2158,11 +2159,12 @@ export default function HostPage() {
         )}
 
         {/* Share link */}
-        <div className="glass-card p-4 space-y-2">
-          <p className="text-muted text-xs uppercase tracking-wider">Player Link</p>
-          <p className="text-body font-mono text-sm break-all">{playerLinkUrl}</p>
-          <CopyLinkButton value={playerLinkUrl} successMessage="Player link copied" />
-        </div>
+        <PlayerInviteCard
+          url={playerLinkUrl}
+          gameCode={gameCode}
+          title="Player link"
+          showInlineQr
+        />
 
         {/* Players / in-the-game list */}
         <div className="glass-card p-4 space-y-3">

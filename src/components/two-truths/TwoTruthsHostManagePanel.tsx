@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import { TwoTruthsSubmitterBadge } from '@/components/two-truths/TwoTruthsSubmitterBadge'
-import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { PlayerInviteCard } from '@/components/PlayerInviteCard'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
@@ -91,10 +91,7 @@ export function TwoTruthsHostManagePanel({
 
   return (
     <div className="space-y-5">
-      <div className="glass-card p-5 space-y-3">
-        <p className="label-caps">Share link</p>
-        <CopyLinkButton value={playerLink} label="Copy player link" />
-      </div>
+      <PlayerInviteCard url={playerLink} gameCode={gameCode} title="Share link" />
 
       {inLobby && (
         <div className="glass-card p-5 space-y-4">

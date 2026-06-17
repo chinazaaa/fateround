@@ -5,7 +5,7 @@ import { CodewordsGuessLog, CodewordsGuessSummary } from '@/components/codewords
 import { CodewordsBoardGrid } from '@/components/codewords/CodewordsBoardGrid'
 import { CodewordsLobbyRoster } from '@/components/codewords/CodewordsLobbyRoster'
 import { CodewordsScoreboard } from '@/components/codewords/CodewordsScoreboard'
-import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { InviteLinkActions } from '@/components/InviteLinkActions'
 import {
   CODEWORDS_MIN_PLAYERS,
   CODEWORDS_TIMER_OPTIONS,
@@ -106,7 +106,7 @@ export function CodewordsHostManagePanel({
           <p className="text-faint text-xs uppercase tracking-wider">Share with players</p>
           <p className="font-mono font-bold text-lg">{gameCode}</p>
         </div>
-        <CopyLinkButton value={playerLink} label="Copy player link" />
+        <InviteLinkActions url={playerLink} copyLabel="Copy player link" successMessage="Player link copied" />
       </div>
 
       <div className="glass-card p-5 space-y-4">

@@ -12,7 +12,7 @@ import { MonopolyHostTimeExtension } from '@/components/monopoly/MonopolyHostTim
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { MonopolyCardAlertModal } from '@/components/monopoly/MonopolyGamePanels'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
-import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { InviteLinkActions } from '@/components/InviteLinkActions'
 import { gameTypeConfig } from '@/lib/game-types'
 import { formatRentMessageForPlayer } from '@/lib/monopoly-rent-messages'
 import {
@@ -360,7 +360,9 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           </div>
         )}
 
-        <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        {game.status === 'waiting' && (
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        )}
 
         {showPlayTab && (
           <div className="flex gap-2 p-1 rounded-xl bg-[var(--surface-inset-bg)] border border-[var(--border-strong)]">
@@ -413,12 +415,16 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
 
         {(tab === 'manage' || !showPlayTab) && (
           <>
+            {game.status === 'active' && (
+              <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+            )}
+
             <div className="glass-card p-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-faint text-xs uppercase tracking-wider">Share with players</p>
                 <p className="font-mono font-bold text-lg">{gameCode}</p>
               </div>
-              <CopyLinkButton value={joinUrl} label="Copy player link" />
+              <InviteLinkActions url={joinUrl} copyLabel="Copy player link" successMessage="Player link copied" />
             </div>
 
             {game.status === 'waiting' && (

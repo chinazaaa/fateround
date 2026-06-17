@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnonymousMessageFeed } from '@/components/anonymous-messages/AnonymousMessageFeed'
-import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { GameLinkQrCode } from '@/components/GameLinkQrCode'
+import { InviteLinkActions } from '@/components/InviteLinkActions'
 import { useAnonymousMessageTrim } from '@/hooks/useAnonymousMessageTrim'
 import { useAnonymousMessages } from '@/hooks/useAnonymousMessages'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -170,7 +171,11 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
         <p className="text-body-muted text-sm leading-relaxed">
           Post this anywhere — Instagram, WhatsApp, your bio. Anyone who opens it can send you a message.
         </p>
-        <CopyLinkButton value={shareUrl} label="Copy link" copiedLabel="Copied ✓" successMessage="Link copied" />
+        <div className="flex flex-col items-center gap-1.5 py-1">
+          <GameLinkQrCode url={shareUrl} />
+          <p className="text-faint text-xs">Scan to open</p>
+        </div>
+        <InviteLinkActions url={shareUrl} copyLabel="Copy link" successMessage="Link copied" />
         <p className="text-faint text-xs font-mono break-all">{shareUrl}</p>
       </div>
 

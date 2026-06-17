@@ -30,6 +30,14 @@ function colorBar(color?: MonopolyColorGroup): string {
   return MONOPOLY_COLOR_CLASSES[color] ?? 'bg-neutral-400'
 }
 
+function playerPosition(state: MonopolyPlayerState): number {
+  return Number(state.position)
+}
+
+function playersOnSpace(states: MonopolyPlayerState[], spaceIndex: number): MonopolyPlayerState[] {
+  return states.filter((s) => !s.bankrupt && playerPosition(s) === spaceIndex)
+}
+
 function playerOrderMap(states: MonopolyPlayerState[]): Map<string, number> {
   return new Map(states.map((s) => [s.player_id, s.player_order]))
 }
@@ -249,7 +257,7 @@ function BoardSpaceCell({
   const ownerId = owners[String(spaceIndex)]
   const ownerLabel = ownerId ? playerName(players, ownerId) : null
   const orderMap = playerOrderMap(states)
-  const tokens = states.filter((s) => !s.bankrupt && s.position === spaceIndex)
+  const tokens = playersOnSpace(states, spaceIndex)
   const highlighted = highlightIndex === spaceIndex
   const isCorner = edge === 'corner'
   const icon = spaceIcon(space.type)
@@ -431,7 +439,6 @@ export function MonopolyClassicBoard({
   const owners = effectivePropertyOwners(parsePropertyOwners(propertyOwners), states)
   const buildings = parseBuildings(propertyBuildings)
   const mortgaged = parseMortgaged(mortgagedProperties)
-  const myOrder = myPlayerId ? states.find((s) => s.player_id === myPlayerId)?.player_order : undefined
   const cellProps = {
     states,
     players,
@@ -452,16 +459,6 @@ export function MonopolyClassicBoard({
           'border-[3px] border-amber-700/90 shadow-[0_20px_60px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.12)]',
         ].join(' ')}
       >
-        {myPlayerId != null && myOrder != null && (
-          <div className="absolute top-2 left-2 z-20 pointer-events-none">
-            <MonopolyYourTokenChip
-              players={players}
-              playerId={myPlayerId}
-              playerOrder={myOrder}
-              compact
-            />
-          </div>
-        )}
         <div className="flex h-full w-full flex-col gap-0.5 sm:gap-1">
           {/* Top row: Free Parking — properties — Go To Jail */}
           <div className="flex h-[13%] min-h-[44px] gap-0.5 sm:gap-1">

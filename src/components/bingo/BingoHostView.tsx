@@ -6,7 +6,7 @@ import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { BingoCardGrid, CalledNumbersBoard } from '@/components/bingo/BingoCardGrid'
 import { BingoFinalResultsShareBlock } from '@/components/bingo/BingoFinalResultsShareBlock'
-import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { InviteLinkActions } from '@/components/InviteLinkActions'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   BINGO_CALL_INTERVAL_OPTIONS,
@@ -511,7 +511,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
                 <p className="text-faint text-xs uppercase tracking-wider">Share with players</p>
                 <p className="font-mono font-bold text-lg">{gameCode}</p>
               </div>
-              <CopyLinkButton value={playerLink} label="Copy player link" />
+              <InviteLinkActions url={playerLink} copyLabel="Copy player link" successMessage="Player link copied" />
             </div>
 
             {game.status === 'waiting' && (

@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { PlayerInviteCard } from '@/components/PlayerInviteCard'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { HostPlayerManageList } from '@/components/host/HostPlayerManageList'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
+import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import {
   formatTriviaChoiceLabel,
   parseTriviaMetadata,
@@ -41,6 +42,7 @@ interface TriviaHostManagePanelProps {
   onPlayAgain: () => void
   onEditSettings: () => void
   onReload?: () => void | Promise<unknown>
+  onGameUpdate?: (game: Game) => void
   onRemovePlayer?: (playerId: string, playerName: string) => void
   removingPlayerId?: string | null
   highlightPlayerId?: string | null
@@ -68,6 +70,7 @@ export function TriviaHostManagePanel({
   onPlayAgain,
   onEditSettings,
   onReload,
+  onGameUpdate,
   onRemovePlayer,
   removingPlayerId,
   highlightPlayerId,
@@ -129,7 +132,16 @@ export function TriviaHostManagePanel({
 
   return (
     <div className="space-y-5">
-      <CopyLinkButton value={playerLink} label="Copy player link" />
+      {game.status === 'active' && onGameUpdate && (
+        <HostLateJoinSettingsCard
+          gameCode={gameCode}
+          hostToken={hostToken}
+          game={game}
+          onGameUpdate={onGameUpdate}
+        />
+      )}
+
+      <PlayerInviteCard url={playerLink} gameCode={gameCode} title="Player link" />
 
       {canManagePlayers && (
         <div className="glass-card-strong p-5 sm:p-6 space-y-3">

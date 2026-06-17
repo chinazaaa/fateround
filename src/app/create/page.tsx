@@ -148,6 +148,7 @@ import {
 } from '@/lib/game-limits'
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
 import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
+import { PlayerInviteCard } from '@/components/PlayerInviteCard'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { useToast } from '@/components/ui/Toast'
 
@@ -2202,7 +2203,7 @@ function CreateGameInner() {
         />
       </div>
 
-      <CopyCard label="Player link" value={gameUrl} />
+      <PlayerInviteCard url={gameUrl} gameCode={result?.gameCode ?? ''} title="Player link" />
       <CopyCard label="Host link — save this" value={hostUrl} accent />
 
       <PrimaryBtn onClick={() => router.push(`/host/${result?.gameCode}?token=${result?.hostToken}`)}>

@@ -190,12 +190,16 @@ export function MonopolyBoardCenter({
   return (
     <div className="flex flex-col items-center justify-center h-full w-full min-w-0 px-1 sm:px-2 py-1 sm:py-2 text-center overflow-y-auto">
       {myPlayerId && myState && !myState.bankrupt && (
-        <div className="mb-1.5 sm:mb-2 shrink-0">
+        <div className="mb-1.5 sm:mb-2 shrink-0 space-y-1">
           <MonopolyYourTokenChip
             players={players}
             playerId={myPlayerId}
             playerOrder={myState.player_order}
           />
+          <p className="text-[10px] text-emerald-200/80 leading-snug">
+            Currently on{' '}
+            <span className="font-bold text-white">{spaceAt(Number(myState.position)).name}</span>
+          </p>
         </div>
       )}
 

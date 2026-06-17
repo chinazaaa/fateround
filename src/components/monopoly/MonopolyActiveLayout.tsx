@@ -237,7 +237,7 @@ export function MonopolyActiveLayout({
             propertyBuildings={board.property_buildings}
             mortgagedProperties={board.mortgaged_properties}
             lastDiceTotal={board.last_dice?.total ?? 2}
-            highlightIndex={myState?.position}
+            highlightIndex={myState != null ? Number(myState.position) : null}
             myPlayerId={myPlayerId}
             center={
               spectator ? (

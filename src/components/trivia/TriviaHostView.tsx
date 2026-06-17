@@ -347,7 +347,9 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
           </div>
         )}
 
-        <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        {game.status === 'waiting' && (
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        )}
 
         {showPlayTab && (
           <div className="flex gap-2 p-1 rounded-xl bg-[var(--surface-inset-bg)] border border-[var(--border-strong)]">
@@ -405,6 +407,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
             onPlayAgain={() => setSettingsModal('play-again')}
             onEditSettings={() => setSettingsModal('lobby')}
             onReload={load}
+            onGameUpdate={setGame}
             onRemovePlayer={removePlayer}
             removingPlayerId={removingPlayerId}
             highlightPlayerId={hostPlayerId}

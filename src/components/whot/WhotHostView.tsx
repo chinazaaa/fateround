@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { InviteLinkActions } from '@/components/InviteLinkActions'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   currentPlayerId,
@@ -406,7 +406,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             <div className="glass-card-strong p-5 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="label-caps">Share link</p>
-                <CopyLinkButton value={joinUrl} label="Copy player link" />
+                <InviteLinkActions url={joinUrl} copyLabel="Copy player link" successMessage="Player link copied" />
               </div>
               <p className="text-xs text-muted break-all">{joinUrl}</p>
             </div>
