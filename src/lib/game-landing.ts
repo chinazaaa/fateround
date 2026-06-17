@@ -33,6 +33,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   parent_approval: 'date-my-kid',
   would_you_rather: 'would-you-rather',
   never_have_i_ever: 'never-have-i-ever',
+  pick_a_number: 'pick-a-number',
   this_or_that: 'this-or-that',
   most_likely_to: 'most-likely-to',
   who_said_this: 'who-said-this',
@@ -322,6 +323,45 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Can I add my own Never Have I Ever prompts?',
         answer:
           'Yes. Fate Round includes a built-in prompt pool, and you can upload your own statements when creating a room. The "Never have I ever" prefix is added automatically — just upload the action (e.g. "been skydiving").',
+      },
+    ],
+  }),
+
+  pick_a_number: landing('pick_a_number', {
+    seoTitle: 'Pick a Number Game Online — Free Party Question Game',
+    seoDescription:
+      'Play Pick a Number online with friends. Choose a number from a hidden list — answer the question it reveals. Built-in or custom questions, free, no sign-up.',
+    keywords: ['pick a number game', 'pick a number questions', 'party question game', 'number question game'],
+    heroSubtitle:
+      'Pick a number between 1 and X — you won\'t know the question until after you choose. Then answer whatever gets revealed.',
+    bodyParagraph:
+      'Pick a Number is a classic party game: one person chooses a number from a hidden list, and that number maps to a question they have to answer out loud. Fate Round runs it online — upload your own numbered questions or use our built-in pool, rotate who picks each round, and reveal the question on every screen the moment they lock in their number.',
+    highlights: ['Hidden numbered list', 'Platform or custom questions', '2+ players, zero setup'],
+    features: [
+      {
+        title: 'Mystery until you pick',
+        description: 'The question list stays hidden — pickers only see numbers until they commit.',
+        emoji: '🔢',
+      },
+      {
+        title: 'Your questions or ours',
+        description: 'Upload a numbered CSV or use built-in party prompts.',
+        emoji: '❓',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Start a lobby', description: 'Choose your question source and max picking rounds.' },
+      { title: 'Friends join', description: 'Share the link. Everyone enters a display name.' },
+      { title: 'Pick & answer', description: 'Each round one player picks a number — then answers the revealed question.' },
+    ],
+    perfectFor: ['Pregames', 'Road trips', 'Icebreakers', 'Spicy question nights'],
+    extraFaqs: [
+      {
+        question: 'Can I use my own questions?',
+        answer:
+          'Yes. Upload one question per row in our CSV format — row 1 is question #1, row 2 is #2, and so on. Or use the built-in question pool.',
       },
     ],
   }),

@@ -3,8 +3,9 @@ import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import { WYR_QUESTION_COUNT, wyrQuestionKey } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import { NHIE_QUESTION_COUNT } from '@/lib/never-have-i-ever-questions'
+import { PAN_QUESTION_COUNT } from '@/lib/pick-a-number-questions'
 import { TRIVIA_QUESTION_COUNT, triviaQuestionKey } from '@/lib/trivia-questions'
-import { isWouldYouRather, isMostLikelyTo, isNeverHaveIEver, isThisOrThat, isBinaryChoiceGame, isTriviaGame, parseGameType } from '@/lib/game-types'
+import { isWouldYouRather, isMostLikelyTo, isNeverHaveIEver, isPickANumber, isThisOrThat, isBinaryChoiceGame, isTriviaGame, parseGameType } from '@/lib/game-types'
 import { pickLeastUsed } from '@/lib/question-picker'
 
 function splitCsvRow(line: string): string[] {
@@ -331,7 +332,7 @@ export function parseStoredTriviaQuestions(raw: unknown): TriviaQuestion[] {
 
 export function parseQuestionSource(raw: unknown, gameType?: GameType | string): QuestionSource {
   if (isThisOrThat(gameType)) return 'custom'
-  if (isTriviaGame(gameType) || isWouldYouRather(gameType) || isMostLikelyTo(gameType) || isNeverHaveIEver(gameType)) {
+  if (isTriviaGame(gameType) || isWouldYouRather(gameType) || isMostLikelyTo(gameType) || isNeverHaveIEver(gameType) || isPickANumber(gameType)) {
     return raw === 'custom' ? 'custom' : 'platform'
   }
   return 'platform'
@@ -339,7 +340,7 @@ export function parseQuestionSource(raw: unknown, gameType?: GameType | string):
 
 export function isLobbyQuestionGame(gameType?: GameType | string): boolean {
   const type = parseGameType(gameType)
-  return isWouldYouRather(type) || isNeverHaveIEver(type) || isThisOrThat(type) || isMostLikelyTo(type)
+  return isWouldYouRather(type) || isNeverHaveIEver(type) || isPickANumber(type) || isThisOrThat(type) || isMostLikelyTo(type)
 }
 
 export function parseWyrQuestionRows(text: string): WyrQuestion[] {
@@ -442,6 +443,9 @@ export function questionSampleFile(gameType?: GameType | string): { href: string
   if (isNeverHaveIEver(gameType)) {
     return { href: '/nhie-questions-sample.csv', download: 'nhie-questions-sample.csv' }
   }
+  if (isPickANumber(gameType)) {
+    return { href: '/pick-a-number-questions-sample.csv', download: 'pick-a-number-questions-sample.csv' }
+  }
   if (isMostLikelyTo(gameType)) {
     return { href: '/mlt-questions-sample.csv', download: 'mlt-questions-sample.csv' }
   }
@@ -457,6 +461,9 @@ export function questionUploadHint(gameType?: GameType | string): string {
   }
   if (isNeverHaveIEver(gameType)) {
     return '.csv or .xlsx — one prompt per row (e.g. been skydiving — the "Never have I ever" prefix is added automatically)'
+  }
+  if (isPickANumber(gameType)) {
+    return '.csv or .xlsx — one question per row (question column). Numbers 1, 2, 3… map to row order.'
   }
   if (isMostLikelyTo(gameType)) {
     return '.csv or .xlsx — one question per row (question column)'
@@ -495,7 +502,7 @@ export function parseStoredMltQuestions(raw: unknown): string[] {
 export function customQuestionCount(game: Pick<Game, 'game_type' | 'question_source' | 'custom_questions'>): number {
   if (parseQuestionSource(game.question_source, game.game_type) !== 'custom') return 0
   if (isBinaryChoiceGame(game.game_type)) return parseStoredWyrQuestions(game.custom_questions).length
-  if (isMostLikelyTo(game.game_type) || isNeverHaveIEver(game.game_type)) {
+  if (isMostLikelyTo(game.game_type) || isNeverHaveIEver(game.game_type) || isPickANumber(game.game_type)) {
     return parseStoredMltQuestions(game.custom_questions).length
   }
   if (isTriviaGame(game.game_type)) return parseStoredTriviaQuestions(game.custom_questions).length
@@ -526,6 +533,11 @@ export function questionPoolCap(
   if (isNeverHaveIEver(type)) {
     const custom = customQuestionCount(game)
     const base = custom > 0 ? custom : NHIE_QUESTION_COUNT
+    return capAt(base + playerCount)
+  }
+  if (isPickANumber(type)) {
+    const custom = customQuestionCount(game)
+    const base = custom > 0 ? custom : PAN_QUESTION_COUNT
     return capAt(base + playerCount)
   }
   if (isTriviaGame(type)) {
@@ -593,9 +605,11 @@ export function questionSourceOptions(gameType: GameType | string): {
     ? TRIVIA_QUESTION_COUNT
     : isNeverHaveIEver(gameType)
       ? NHIE_QUESTION_COUNT
-      : isMostLikelyTo(gameType)
-        ? MLT_QUESTION_COUNT
-        : WYR_QUESTION_COUNT
+      : isPickANumber(gameType)
+        ? PAN_QUESTION_COUNT
+        : isMostLikelyTo(gameType)
+          ? MLT_QUESTION_COUNT
+          : WYR_QUESTION_COUNT
   return [
     {
       value: 'platform',

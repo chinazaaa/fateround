@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
-import { parseGameType, isBinaryChoiceGame, isMostLikelyTo, isNeverHaveIEver } from '@/lib/game-types'
+import { parseGameType, isBinaryChoiceGame, isMostLikelyTo, isNeverHaveIEver, isPickANumber } from '@/lib/game-types'
 import { lobbyAllowsPlayerQuestions } from '@/lib/player-question-pool'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   if (questionType === 'wyr' && !isBinaryChoiceGame(gameType)) {
     return NextResponse.json({ error: 'This game type does not accept A/B questions' }, { status: 400 })
   }
-  if (questionType === 'mlt' && !isMostLikelyTo(gameType) && !isNeverHaveIEver(gameType)) {
+  if (questionType === 'mlt' && !isMostLikelyTo(gameType) && !isNeverHaveIEver(gameType) && !isPickANumber(gameType)) {
     return NextResponse.json({ error: 'This game type does not accept MLT questions' }, { status: 400 })
   }
 

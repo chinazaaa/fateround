@@ -10,6 +10,7 @@ import {
   isThreeChoiceGame,
   isBinaryChoiceGame,
   isNeverHaveIEver,
+  isPickANumber,
   isMostLikelyTo,
   isWhoSaidThis,
   isLobbyGame,
@@ -22,6 +23,7 @@ import {
 import { isGameGenderBased, supportsGenderToggle } from '@/lib/gender-based'
 import { parseCustomAssignments, isCustomAssignmentValid, customAssignmentMode } from '@/lib/custom-game'
 import { playerIsViewer } from '@/lib/viewers'
+import { parsePickANumberPool, pickANumberQuestionAt } from '@/lib/pick-a-number'
 import type { PairFlag, WyrChoice } from '@/types'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -53,6 +55,7 @@ export async function POST(req: NextRequest) {
     wyrChoice: rawWyrChoice,
     targetPlayerId: rawTargetPlayerId,
     targetParticipantId: rawTargetParticipantId,
+    pickedNumber: rawPickedNumber,
   } = parsed.data
 
   const [{ data: player }, { data: round }, { data: game }] = await Promise.all([
@@ -60,7 +63,7 @@ export async function POST(req: NextRequest) {
     supabase.from('rounds').select('participant_ids, submitter_player_id, quote_text').eq('id', roundId).maybeSingle(),
     supabase
       .from('games')
-      .select('game_type, participant_mode, pair_vote_mode, custom_slots, gender_based, status, session_started_at')
+      .select('game_type, participant_mode, pair_vote_mode, custom_slots, gender_based, status, session_started_at, custom_questions')
       .eq('id', gameId.toUpperCase())
       .maybeSingle(),
   ])
@@ -85,6 +88,7 @@ export async function POST(req: NextRequest) {
     target_player_id: string | null
     target_participant_id: string | null
     anime_choice?: string | null
+    picked_number?: number | null
   }
 
   if (isWhoSaidThis(gameType)) {
@@ -142,6 +146,42 @@ export async function POST(req: NextRequest) {
         target_player_id: null,
         target_participant_id: targetParticipantId,
       }
+    }
+  } else if (isPickANumber(gameType)) {
+    if (round.submitter_player_id !== playerId) {
+      return NextResponse.json({ error: 'Only the picker can choose a number this round' }, { status: 403 })
+    }
+    const pickedNumber =
+      typeof rawPickedNumber === 'number' && Number.isInteger(rawPickedNumber) ? rawPickedNumber : null
+    const pool = parsePickANumberPool(game.custom_questions)
+    if (!pickedNumber || pickedNumber < 1 || pickedNumber > pool.length) {
+      return NextResponse.json(
+        { error: `Pick a number between 1 and ${pool.length}` },
+        { status: 400 }
+      )
+    }
+    const revealedQuestion = pickANumberQuestionAt(pool, pickedNumber)
+    if (!revealedQuestion) {
+      return NextResponse.json({ error: 'Invalid number for this question list' }, { status: 400 })
+    }
+
+    row = {
+      kiss_participant_id: null,
+      marry_participant_id: null,
+      kill_participant_id: null,
+      pair_assignments: null,
+      wyr_choice: null,
+      target_player_id: null,
+      target_participant_id: null,
+      picked_number: pickedNumber,
+    }
+
+    const { error: revealError } = await supabase
+      .from('rounds')
+      .update({ mlt_question: revealedQuestion })
+      .eq('id', roundId)
+    if (revealError) {
+      return NextResponse.json({ error: revealError.message }, { status: 500 })
     }
   } else if (isNeverHaveIEver(gameType)) {
     const wyrChoice = rawWyrChoice === 'a' || rawWyrChoice === 'b' ? rawWyrChoice : null
@@ -372,6 +412,16 @@ export async function POST(req: NextRequest) {
   )
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (isPickANumber(gameType)) {
+    const pool = parsePickANumberPool(game.custom_questions)
+    const picked = row.picked_number ?? null
+    return NextResponse.json({
+      success: true,
+      pickedNumber: picked,
+      revealedQuestion: picked ? pickANumberQuestionAt(pool, picked) : null,
+    })
+  }
 
   return NextResponse.json({ success: true })
 }

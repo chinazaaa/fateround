@@ -23,8 +23,10 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useLudoTurnTimer } from '@/hooks/useLudoTurnTimer'
+import { useLudoNotifications, playLudoActionSound, playLudoRollSound } from '@/hooks/useLudoNotifications'
 import { LudoGamePanel } from '@/components/ludo/LudoBoard'
 import { LudoPrimaryButton } from '@/components/ludo/LudoChrome'
+import { SoundToggle } from '@/components/SoundToggle'
 
 type HostTab = 'play' | 'manage'
 
@@ -145,6 +147,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     if (path.includes('/roll')) {
       setRolling(true)
       setDisplayDice(null)
+      playLudoRollSound()
     }
     try {
       const res = await fetch(path, {
@@ -155,6 +158,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Action failed')
       if (typeof data.dice === 'number') setDisplayDice(data.dice)
+      if (path.includes('/roll') || path.includes('/move')) playLudoActionSound()
       await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Action failed')
@@ -236,6 +240,14 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     session,
     game?.status === 'active' && (tab === 'play' ? isHostTurn : true)
   )
+
+  useLudoNotifications({
+    game,
+    session,
+    myPlayerId: hostPlayerId,
+    players,
+    enabled: hostPlays && game?.status === 'active',
+  })
 
   if (!game) {
     return (
@@ -417,6 +429,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           </>
         )}
       </div>
+      <SoundToggle />
     </div>
   )
 }

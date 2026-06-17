@@ -129,6 +129,32 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  pick_a_number: [
+    {
+      title: 'Objective',
+      points: [
+        'Each round one player picks a number from a hidden list (1 to N). That number reveals a question they must answer out loud.',
+        'The picker does not know what any number means until after they choose.',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        'No participant list required — players join with a display name.',
+        'Use built-in questions or upload your own numbered list when creating the room.',
+        'Set how many picking turns you want — not limited by how many people join.',
+      ],
+    },
+    {
+      title: 'How a round works',
+      points: [
+        'The designated picker sees numbers only — the question list stays hidden.',
+        'They lock in a number and the question is revealed to everyone.',
+        'They answer out loud; the host advances when ready.',
+      ],
+    },
+  ],
+
   this_or_that: [
     {
       title: 'Objective',

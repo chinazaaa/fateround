@@ -11,6 +11,7 @@ import {
   isBinaryChoiceGame,
   isMostLikelyTo,
   isCodewordsGame,
+  isPickANumber,
 } from '@/lib/game-types'
 import { isCustomTwoSlotGame } from '@/lib/custom-game'
 import {
@@ -22,6 +23,7 @@ import {
 import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { supportsPlayerNameSubmissions } from '@/lib/player-participant-pool'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, gameAllowsLatePlayerJoin } from '@/lib/viewers'
+import { clampPanRounds } from '@/lib/pick-a-number'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -71,6 +73,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       ).length
       const upper = hotSeatMaxCapUpperBound(joinedCount, participantsData?.length ?? 0)
       rounds_count = clampHotSeatMaxCap(rawRoundsCount, upper)
+    } else if (isPickANumber(gameType)) {
+      rounds_count = clampPanRounds(rawRoundsCount)
     } else {
       let cap = questionPoolCap(auth.game!)
       if (isBinaryChoiceGame(gameType) || isMostLikelyTo(gameType)) {

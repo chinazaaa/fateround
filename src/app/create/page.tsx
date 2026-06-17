@@ -42,6 +42,7 @@ import {
   isMonopolyGame,
   isWouldYouRather,
   isNeverHaveIEver,
+  isPickANumber,
   isThisOrThat,
   isMostLikelyTo,
   isWhoSaidThis,
@@ -60,6 +61,8 @@ import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import { NHIE_QUESTION_COUNT } from '@/lib/never-have-i-ever-questions'
+import { PAN_MIN_POOL, PAN_QUESTION_COUNT } from '@/lib/pick-a-number-questions'
+import { clampPanRounds, PAN_MAX_ROUNDS, panRoundPickerOptions } from '@/lib/pick-a-number'
 import {
   parseWyrQuestionRows,
   parseThisOrThatQuestionRows,
@@ -352,6 +355,7 @@ function CreateGameInner() {
   const isJoinersMode = settings.participant_mode === 'joiners'
   const isWyr = isWouldYouRather(settings.game_type)
   const isNhie = isNeverHaveIEver(settings.game_type)
+  const isPan = isPickANumber(settings.game_type)
   const isTot = isThisOrThat(settings.game_type)
   const isBinaryLobby = isWyr || isTot || isNhie
   const isMlt = isMostLikelyTo(settings.game_type)
@@ -364,7 +368,9 @@ function CreateGameInner() {
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
   const isWst = isWhoSaidThis(settings.game_type)
   const isHotSeatGame = isHotSeat(settings.game_type)
+  const isPanGame = isPan
   const hotSeatCreateCapUpper = isHotSeatGame ? hotSeatMaxCapUpperBound(0, participants.length) : 20
+  const panRoundOptions = panRoundPickerOptions(PAN_MAX_ROUNDS)
   const isPair = isPairGame(settings.game_type)
   const isCustom = isCustomGame(settings.game_type)
   const isCustomTwoSlot = isCustom && (customSlots?.slots.length ?? 0) === 2
@@ -380,7 +386,7 @@ function CreateGameInner() {
   const canCreateImport =
     participants.length >= minPool && hasEnoughForRounds(participants, settings.game_type, participantOpts)
   const canCreateJoiners = !!settings.title.trim()
-  const isLobbyQuestions = isBinaryLobby || isMlt || isTrivia
+  const isLobbyQuestions = isBinaryLobby || isMlt || isTrivia || isPan
   const isPeoplePoll = isPeoplePollGame(settings.game_type)
   const isPeoplePollVoters = isPeoplePoll && settings.participant_mode === 'voters'
   const isPlayerSubmissions = (isLobbyQuestions && !isTrivia) || isPeoplePollVoters
@@ -388,7 +394,7 @@ function CreateGameInner() {
     ? customTriviaQuestions.length
     : isWyr || isTot
       ? customWyrQuestions.length
-      : isMlt || isNhie
+      : isMlt || isNhie || isPan
         ? customMltQuestions.length
         : 0
   const questionCap =
@@ -402,13 +408,17 @@ function CreateGameInner() {
             ? WYR_QUESTION_COUNT
             : isNhie
               ? NHIE_QUESTION_COUNT
+              : isPan
+                ? PAN_QUESTION_COUNT
             : isMlt
               ? MLT_QUESTION_COUNT
               : 10
   const mltRoundOptions = questionRoundPickerOptions(questionCap)
   const wyrRoundOptions = questionRoundPickerOptions(questionCap)
   const wstRoundOptions = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20].filter((n) => n <= Math.max(participants.length, 2))
-  const roundOptions = isBinaryLobby
+  const roundOptions = isPan
+    ? panRoundOptions
+    : isBinaryLobby
     ? wyrRoundOptions
     : isMlt
       ? mltRoundOptions
@@ -419,8 +429,10 @@ function CreateGameInner() {
           : [2, 3, 4, 5, 6, 8, 10]
   const hasEnoughCustomQuestions =
     (isTot && customQuestionCount >= settings.rounds_count && customQuestionCount > 0) ||
-    (questionSource === 'platform' && !isTot) ||
-    (isLobbyQuestions && !isTot && customQuestionCount >= settings.rounds_count && customQuestionCount > 0)
+    (questionSource === 'platform' && !isTot && !isPan) ||
+    (isPan && questionSource === 'platform') ||
+    (isPan && questionSource === 'custom' && customQuestionCount >= PAN_MIN_POOL && customQuestionCount > 0) ||
+    (isLobbyQuestions && !isTot && !isPan && customQuestionCount >= settings.rounds_count && customQuestionCount > 0)
   const canCreateQuickLobby = !!settings.title.trim() && hasEnoughCustomQuestions
 
   const customSlotsValid =
@@ -438,10 +450,11 @@ function CreateGameInner() {
   const stepIndex = step === 'participants' ? 2 : 1
 
   useEffect(() => {
+    if (isPan) return
     if (questionSource === 'custom' && customQuestionCount > 0 && settings.rounds_count > customQuestionCount) {
       setSettings((prev) => ({ ...prev, rounds_count: customQuestionCount }))
     }
-  }, [customQuestionCount, questionSource, settings.rounds_count])
+  }, [customQuestionCount, questionSource, settings.rounds_count, isPan])
 
   const selectGameType = (type: GameType) => {
     setCustomSlots(null)
@@ -648,7 +661,7 @@ function CreateGameInner() {
     if (isMlt && mltRows.length > 0) {
       setCustomMltQuestions((prev) => mergeMltQuestions(prev, mltRows))
     }
-    if (isNhie && mltRows.length > 0) {
+    if ((isNhie || isPan) && mltRows.length > 0) {
       setCustomMltQuestions((prev) => mergeMltQuestions(prev, mltRows))
     }
     if (isTrivia && triviaRows.length > 0) {
@@ -677,7 +690,7 @@ function CreateGameInner() {
       setMltQuestionInput('')
       return
     }
-    if (isMlt || isNhie) {
+    if (isMlt || isNhie || isPan) {
       const question = mltQuestionInput.trim()
       if (!question) return
       addCustomQuestionsFromRows([], [question])
@@ -702,7 +715,7 @@ function CreateGameInner() {
         return
       }
       addCustomQuestionsFromRows(rows, [])
-    } else if (isMlt || isNhie) {
+    } else if (isMlt || isNhie || isPan) {
       const rows = parseMltQuestionRows(questionsBulkPaste)
       if (rows.length === 0) {
         setQuestionsUploadError('Add one question per line')
@@ -745,7 +758,7 @@ function CreateGameInner() {
             return
           }
           addCustomQuestionsFromRows(rows, [])
-        } else if (isMlt || isNhie) {
+        } else if (isMlt || isNhie || isPan) {
           const rows = parseMltQuestionRows(text)
           if (rows.length === 0) {
             setQuestionsUploadError('No valid rows. Add one question per line.')
@@ -780,7 +793,7 @@ function CreateGameInner() {
             return
           }
           addCustomQuestionsFromRows(rows, [])
-        } else if (isMlt || isNhie) {
+        } else if (isMlt || isNhie || isPan) {
           const rows = await parseExcelMltQuestions(buffer)
           if (rows.length === 0) {
             setQuestionsUploadError('No valid rows. Add one question per line.')
@@ -807,7 +820,7 @@ function CreateGameInner() {
 
   const removeCustomQuestion = (index: number) => {
     if (isWyr || isTot) setCustomWyrQuestions((prev) => prev.filter((_, i) => i !== index))
-    if (isMlt || isNhie) setCustomMltQuestions((prev) => prev.filter((_, i) => i !== index))
+    if (isMlt || isNhie || isPan) setCustomMltQuestions((prev) => prev.filter((_, i) => i !== index))
     if (isTrivia) setCustomTriviaQuestions((prev) => prev.filter((_, i) => i !== index))
   }
 
@@ -1393,6 +1406,32 @@ function CreateGameInner() {
                             : 'Rounds are automatic — one turn per player who joins and claims their name. The count updates in the host lobby as people join.'}
                       </p>
                     </div>
+                  ) : isPanGame ? (
+                    <Field label="Rounds">
+                      <p className="text-faint text-xs mb-2">
+                        How many picking turns to play — pickers rotate through players (not capped by headcount).
+                      </p>
+                      <input
+                        type="number"
+                        min={1}
+                        max={PAN_MAX_ROUNDS}
+                        step={1}
+                        value={settings.rounds_count}
+                        onChange={(e) => {
+                          const n = Number.parseInt(e.target.value, 10)
+                          if (!Number.isNaN(n)) {
+                            setSettings((prev) => ({ ...prev, rounds_count: n }))
+                          }
+                        }}
+                        onBlur={(e) => {
+                          setSettings((prev) => ({
+                            ...prev,
+                            rounds_count: clampPanRounds(e.target.value),
+                          }))
+                        }}
+                        className="input-field w-28"
+                      />
+                    </Field>
                   ) : isHotSeatGame ? (
                     <Field label="Max rounds">
                       <p className="text-faint text-xs mb-2">
@@ -1774,7 +1813,7 @@ function CreateGameInner() {
                 )}
 
                 {!isAnonymousRoom &&
-                  ((!isBinaryLobby && !isWst && !isWhoSaidThis(settings.game_type) && !isTrivia) || isHotSeatGame ? (
+                  ((!isBinaryLobby && !isWst && !isWhoSaidThis(settings.game_type) && !isTrivia && !isPan) || isHotSeatGame ? (
                     <SettingsGroup title={isHotSeatGame ? "Who's in the game" : "Who's in the poll"}>
                       <SegmentedControl
                         value={settings.participant_mode}
@@ -1830,6 +1869,7 @@ function CreateGameInner() {
                   !isBinaryLobby &&
                   !isWst &&
                   !isHotSeatGame &&
+                  !isPan &&
                   !isTrivia && (
                     <SettingsGroup title="Who appears in rounds">
                       <SegmentedControl

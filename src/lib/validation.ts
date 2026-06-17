@@ -46,6 +46,7 @@ const gameTypeEnum = z.enum([
   'parent_approval',
   'would_you_rather',
   'never_have_i_ever',
+  'pick_a_number',
   'this_or_that',
   'most_likely_to',
   'who_said_this',
@@ -324,6 +325,7 @@ export const createVoteSchema = z.object({
   targetParticipantId: z.string().optional().nullable(),
   animeChoice: z.string().max(200).optional().nullable(),
   customAssignments: z.record(z.string(), z.string()).optional().nullable(),
+  pickedNumber: z.number().int().min(1).max(100).optional().nullable(),
 })
 
 export type CreateVoteInput = z.infer<typeof createVoteSchema>

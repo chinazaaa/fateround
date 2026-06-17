@@ -27,6 +27,7 @@ import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useLudoTurnTimer } from '@/hooks/useLudoTurnTimer'
+import { useLudoNotifications, playLudoActionSound, playLudoRollSound } from '@/hooks/useLudoNotifications'
 
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'waiting' | 'active' | 'finished' | 'not_found'
 
@@ -165,6 +166,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     if (path.includes('/roll')) {
       setRolling(true)
       setDisplayDice(null)
+      playLudoRollSound()
     }
     try {
       const res = await fetch(path, {
@@ -177,6 +179,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         toastError(data.error ?? 'Action failed')
       } else {
         if (typeof data.dice === 'number') setDisplayDice(data.dice)
+        if (path.includes('/roll') || path.includes('/move')) playLudoActionSound()
         await load()
       }
     } finally {
@@ -198,6 +201,14 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     session,
     game?.status === 'active' && !isViewer
   )
+
+  useLudoNotifications({
+    game,
+    session,
+    myPlayerId,
+    players,
+    enabled: screen === 'active' && !isViewer,
+  })
 
   if (screen === 'loading') return <LudoLoadingScreen />
 

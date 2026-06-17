@@ -256,7 +256,7 @@ export default function ReactionBar({ className = '', gameCode, playerId }: Reac
                 aria-pressed={isSelected}
                 className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
                   isSelected
-                    ? 'bg-violet-500/25 text-violet-200 border border-violet-400/50 scale-105'
+                    ? 'bg-violet-500/15 text-violet-900 dark:text-violet-100 border border-violet-500 dark:border-violet-400/50 scale-105'
                     : 'surface-inset border border-theme text-muted hover:text-body hover:border-violet-400/30'
                 }`}
               >

@@ -253,6 +253,48 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  pick_a_number: {
+    id: 'pick_a_number',
+    label: 'Pick a Number',
+    tagline: 'Pick a number — answer the hidden question it reveals',
+    headerEmoji: '🔢❓',
+    card: {
+      accent: '#8b5cf6',
+      accentSoft: 'rgba(139, 92, 246, 0.15)',
+      emoji: '🔢',
+      players: '2+ players',
+      vibe: 'Mystery questions',
+    },
+    slots: {
+      kiss: {
+        emoji: '🔢',
+        label: 'Pick',
+        color: '#8b5cf6',
+        leaderboardLabel: 'Picks',
+        activeClass: 'bg-violet-500/20 text-violet-100 border-violet-400',
+        borderClass: 'border-violet-500/50 bg-violet-500/10',
+        textColor: '#c4b5fd',
+      },
+      marry: {
+        emoji: '❓',
+        label: 'Question',
+        color: '#94a3b8',
+        leaderboardLabel: 'Questions',
+        activeClass: 'chip-active',
+        borderClass: 'border-[var(--border-strong)] bg-[var(--surface-inset-bg)]',
+        textColor: '#cbd5e1',
+      },
+      kill: {
+        emoji: '❓',
+        label: 'Question',
+        color: '#94a3b8',
+        leaderboardLabel: 'Questions',
+        activeClass: 'chip-active',
+        borderClass: 'border-[var(--border-strong)] bg-[var(--surface-inset-bg)]',
+        textColor: '#cbd5e1',
+      },
+    },
+  },
   would_you_rather: {
     id: 'would_you_rather',
     label: 'Would You Rather',
@@ -953,6 +995,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'parent_approval',
   'would_you_rather',
   'never_have_i_ever',
+  'pick_a_number',
   'this_or_that',
   'most_likely_to',
   'who_said_this',
@@ -976,6 +1019,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'parent_approval') return 'parent_approval'
   if (raw === 'would_you_rather') return 'would_you_rather'
   if (raw === 'never_have_i_ever') return 'never_have_i_ever'
+  if (raw === 'pick_a_number') return 'pick_a_number'
   if (raw === 'this_or_that') return 'this_or_that'
   if (raw === 'most_likely_to') return 'most_likely_to'
   if (raw === 'who_said_this') return 'who_said_this'
@@ -1013,6 +1057,8 @@ export function gameHowItWorks(
       return 'Players join with any name — no list to set up. Each round shows two options and everyone picks A or B. Votes stay anonymous.'
     case 'never_have_i_ever':
       return 'Players join with any name — no list to set up. Each round shows a "Never have I ever…" prompt. Tap I have or I haven\'t — votes stay anonymous until reveal.'
+    case 'pick_a_number':
+      return 'Players join with any name. Set how many picking turns you want — pickers rotate through the group, independent of headcount. Pick a number from the hidden list and answer the question it reveals.'
     case 'this_or_that':
       return 'Upload your own “Coffee or Tea?” style prompts. Players join with any name — each round shows two options and everyone picks A or B. Votes stay anonymous.'
     case 'hot_seat':
@@ -1228,6 +1274,10 @@ export function isNeverHaveIEver(gameType: GameType | string | undefined): boole
   return parseGameType(gameType) === 'never_have_i_ever'
 }
 
+export function isPickANumber(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'pick_a_number'
+}
+
 export function isThisOrThat(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'this_or_that'
 }
@@ -1257,6 +1307,7 @@ export function isNameOnlyPlayerJoin(gameType: GameType | string | undefined): b
   return (
     type === 'would_you_rather' ||
     type === 'never_have_i_ever' ||
+    type === 'pick_a_number' ||
     type === 'this_or_that' ||
     type === 'most_likely_to' ||
     type === 'trivia' ||
@@ -1298,6 +1349,7 @@ export function isLobbyGame(gameType: GameType | string | undefined): boolean {
   return (
     type === 'would_you_rather' ||
     type === 'never_have_i_ever' ||
+    type === 'pick_a_number' ||
     type === 'this_or_that' ||
     type === 'anonymous_messages' ||
     type === 'secret_message'
@@ -1370,6 +1422,7 @@ export function isAutoNameJoinGame(gameType: GameType | string | undefined): boo
 export function roundPoolSize(gameType: GameType | string | undefined): 1 | 2 | 3 {
   if (isUnaryPollGame(gameType)) return 1
   if (isNeverHaveIEver(gameType)) return 2
+  if (isPickANumber(gameType)) return 2
   if (isBinaryChoiceGame(gameType) || isMostLikelyTo(gameType) || isWhoSaidThis(gameType)) return 2
   return isPairGame(gameType) ? 2 : 3
 }

@@ -4,6 +4,7 @@ import {
   isHotSeat,
   isMostLikelyTo,
   isNeverHaveIEver,
+  isPickANumber,
   isThisOrThat,
   isTriviaGame,
   isWhoSaidThis,
@@ -30,6 +31,7 @@ export function supportsQuestionCustomContentHint(gameType: GameType): boolean {
     isThisOrThat(gameType) ||
     isMostLikelyTo(gameType) ||
     isNeverHaveIEver(gameType) ||
+    isPickANumber(gameType) ||
     isTriviaGame(gameType)
   )
 }

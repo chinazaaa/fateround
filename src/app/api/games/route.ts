@@ -13,6 +13,7 @@ import {
   isLobbyGame,
   isWouldYouRather,
   isNeverHaveIEver,
+  isPickANumber,
   isThisOrThat,
   isBinaryChoiceGame,
   isMostLikelyTo,
@@ -34,10 +35,12 @@ import {
   isLudoGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
-import { clampHotSeatMaxCap, hotSeatMaxCapUpperBound, HOT_SEAT_MIN_PLAYERS } from '@/lib/hot-seat'
+import { clampHotSeatMaxCap, hotSeatMaxCapUpperBound, HOT_SEAT_MIN_PLAYERS, HOT_SEAT_MAX_ROUNDS_CAP } from '@/lib/hot-seat'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import { NHIE_QUESTION_COUNT } from '@/lib/never-have-i-ever-questions'
+import { PAN_MIN_POOL, PAN_QUESTION_COUNT } from '@/lib/pick-a-number-questions'
+import { clampPanRounds, PAN_MAX_ROUNDS } from '@/lib/pick-a-number'
 import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
 import { parseQuestionSource, parseStoredWyrQuestions, parseStoredMltQuestions, parseStoredTriviaQuestions } from '@/lib/custom-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
@@ -102,12 +105,14 @@ function lobbyMaxRounds(
     if (isBinaryChoiceGame(gameType)) return parseStoredWyrQuestions(customQuestions).length
     if (isMostLikelyTo(gameType)) return parseStoredMltQuestions(customQuestions).length
     if (isNeverHaveIEver(gameType)) return parseStoredMltQuestions(customQuestions).length
+    if (isPickANumber(gameType)) return parseStoredMltQuestions(customQuestions).length
     if (isTriviaGame(gameType)) return parseStoredTriviaQuestions(customQuestions).length
     return 20
   }
   if (isBinaryChoiceGame(gameType)) return isThisOrThat(gameType) ? 0 : WYR_QUESTION_COUNT
   if (isMostLikelyTo(gameType)) return MLT_QUESTION_COUNT
   if (isNeverHaveIEver(gameType)) return NHIE_QUESTION_COUNT
+  if (isPickANumber(gameType)) return PAN_QUESTION_COUNT
   if (isTriviaGame(gameType)) return TRIVIA_QUESTION_COUNT
   return 20
 }
@@ -126,6 +131,10 @@ function parseCustomQuestionsBody(
     return parsed.length > 0 ? parsed : null
   }
   if (isNeverHaveIEver(gameType)) {
+    const parsed = parseStoredMltQuestions(raw)
+    return parsed.length > 0 ? parsed : null
+  }
+  if (isPickANumber(gameType)) {
     const parsed = parseStoredMltQuestions(raw)
     return parsed.length > 0 ? parsed : null
   }
@@ -186,7 +195,7 @@ export async function POST(req: NextRequest) {
   const question_source = parseQuestionSource(rawQuestionSource, game_type)
   let custom_questions: unknown[] | null = null
 
-  if (question_source === 'custom' && (isBinaryChoiceGame(game_type) || isMostLikelyTo(game_type) || isNeverHaveIEver(game_type) || isTriviaGame(game_type))) {
+  if (question_source === 'custom' && (isBinaryChoiceGame(game_type) || isMostLikelyTo(game_type) || isNeverHaveIEver(game_type) || isPickANumber(game_type) || isTriviaGame(game_type))) {
     const cqParsed = parseCustomQuestionsBody(rawCustomQuestions, game_type)
     if (!cqParsed) {
       return NextResponse.json({ error: 'Upload at least one custom question' }, { status: 400 })
@@ -250,13 +259,27 @@ export async function POST(req: NextRequest) {
       ? wstAutoRoundCount(participants.length)
       : isHotSeat(game_type)
         ? clampHotSeatMaxCap(rounds_count ?? HOT_SEAT_MIN_PLAYERS, hotSeatMaxCapUpperBound(0, participants.length))
-        : isTriviaGame(game_type)
+        : isPickANumber(game_type)
+          ? clampPanRounds(rounds_count ?? 5)
+          : isTriviaGame(game_type)
           ? Math.min(Math.max(Number(rounds_count) || TRIVIA_DEFAULT_ROUNDS, 1), maxRounds)
           : Math.min(Math.max(Number(rounds_count) || 3, 1), maxRounds)
 
-  if (question_source === 'custom' && custom_questions && roundsCount > custom_questions.length) {
+  if (
+    question_source === 'custom' &&
+    custom_questions &&
+    !isPickANumber(game_type) &&
+    roundsCount > custom_questions.length
+  ) {
     return NextResponse.json(
       { error: `Need at least ${roundsCount} custom questions for ${roundsCount} rounds` },
+      { status: 400 }
+    )
+  }
+
+  if (question_source === 'custom' && custom_questions && isPickANumber(game_type) && custom_questions.length < PAN_MIN_POOL) {
+    return NextResponse.json(
+      { error: `Need at least ${PAN_MIN_POOL} custom questions for the numbered list` },
       { status: 400 }
     )
   }
@@ -356,7 +379,7 @@ export async function POST(req: NextRequest) {
         ? parsePairVoteMode(rawPairVoteMode)
         : 'any',
     question_source:
-      isWouldYouRather(game_type) || isNeverHaveIEver(game_type) || isMostLikelyTo(game_type) || isTriviaGame(game_type) ? question_source : 'platform',
+      isWouldYouRather(game_type) || isNeverHaveIEver(game_type) || isPickANumber(game_type) || isMostLikelyTo(game_type) || isTriviaGame(game_type) ? question_source : 'platform',
     custom_questions,
     trivia_category: isTriviaGame(game_type)
       ? rawTriviaCategory === 'tech'
@@ -371,7 +394,7 @@ export async function POST(req: NextRequest) {
     wst_quote_source: parsed.data.wst_quote_source ?? 'player',
     gender_based: supportsGenderToggle(game_type) ? gender_based : true,
     player_questions_enabled:
-      isBinaryChoiceGame(game_type) || isMostLikelyTo(game_type) || isNeverHaveIEver(game_type)
+      isBinaryChoiceGame(game_type) || isMostLikelyTo(game_type) || isNeverHaveIEver(game_type) || isPickANumber(game_type)
         ? parsePlayerQuestionsEnabled(rawPlayerQuestionsEnabled)
         : supportsPlayerNameSubmissions({ game_type, participant_mode })
           ? parsePlayerQuestionsEnabled(rawPlayerQuestionsEnabled)
@@ -379,7 +402,7 @@ export async function POST(req: NextRequest) {
             ? false
             : true,
     player_questions_order:
-      isBinaryChoiceGame(game_type) || isMostLikelyTo(game_type) || isNeverHaveIEver(game_type)
+      isBinaryChoiceGame(game_type) || isMostLikelyTo(game_type) || isNeverHaveIEver(game_type) || isPickANumber(game_type)
         ? parsePlayerQuestionsOrder(rawPlayerQuestionsOrder)
         : supportsPlayerNameSubmissions({ game_type, participant_mode })
           ? parsePlayerQuestionsOrder(rawPlayerQuestionsOrder)

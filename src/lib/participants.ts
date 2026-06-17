@@ -4,8 +4,10 @@ import {
   isBinaryChoiceGame,
   isThisOrThat,
   isMostLikelyTo,
+  isNeverHaveIEver,
   isWhoSaidThis,
   isHotSeat,
+  isPickANumber,
   isLobbyGame,
   isNameOnlyPlayerJoin,
   isCustomGame,
@@ -306,6 +308,7 @@ export function hasEnoughForRounds(
   opts?: ParticipantGameOpts
 ): boolean {
   if (isBinaryChoiceGame(gameType)) return true
+  if (isNeverHaveIEver(gameType) || isPickANumber(gameType)) return true
   if (isHotSeat(gameType)) return participants.length >= HOT_SEAT_MIN_PLAYERS
   if (isMostLikelyTo(gameType)) return participants.length >= roundPoolSize(gameType)
   if (isWhoSaidThis(gameType)) return participants.length >= 2

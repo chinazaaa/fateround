@@ -14,6 +14,7 @@ export type GameType =
   | 'smash_or_pass'
   | 'would_you_rather'
   | 'never_have_i_ever'
+  | 'pick_a_number'
   | 'this_or_that'
   | 'most_likely_to'
   | 'who_said_this'
@@ -514,6 +515,7 @@ export interface Vote {
   target_player_id: string | null
   target_participant_id: string | null
   anime_choice?: string | null
+  picked_number?: number | null
   created_at: string
 }
 

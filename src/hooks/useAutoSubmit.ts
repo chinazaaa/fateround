@@ -6,6 +6,7 @@ import {
   parseGameType,
   isMostLikelyTo,
   isNeverHaveIEver,
+  isPickANumber,
   isWhoSaidThis,
   isPairGame,
   isBinaryPeoplePollGame,
@@ -25,6 +26,7 @@ import {
   customAssignmentMode,
 } from '@/lib/custom-game'
 import { isMltImportGame, mltVoteTargets } from '@/lib/mlt'
+import { pickANumberPoolSize } from '@/lib/pick-a-number'
 import { wstVoteTargets } from '@/lib/who-said-this'
 import type {
   Game,
@@ -60,6 +62,13 @@ export interface AutoSubmitRefs {
   myPlayerIdRef: React.RefObject<string | null>
   myPlayerGenderRef: React.RefObject<PlayerGender | null>
   submittedRef: React.RefObject<boolean>
+  pickedNumberRef: React.RefObject<number | null>
+}
+
+export type AutoSubmitResult = {
+  submitted: boolean
+  revealedQuestion?: string | null
+  pickedNumber?: number | null
 }
 
 export function useAutoSubmit(
@@ -67,7 +76,7 @@ export function useAutoSubmit(
   opts?: { onCustomAssignmentsChange?: (ca: Record<string, string>) => void }
 ): {
   refs: AutoSubmitRefs
-  triggerAutoSubmit: () => Promise<boolean>
+  triggerAutoSubmit: () => Promise<AutoSubmitResult>
 } {
   const onCustomAssignmentsChangeRef = useRef(opts?.onCustomAssignmentsChange)
   useEffect(() => {
@@ -86,6 +95,7 @@ export function useAutoSubmit(
   const myPlayerIdRef = useRef<string | null>(null)
   const myPlayerGenderRef = useRef<PlayerGender | null>(null)
   const submittedRef = useRef(false)
+  const pickedNumberRef = useRef<number | null>(null)
 
   const refs: AutoSubmitRefs = {
     assignmentRef,
@@ -101,9 +111,10 @@ export function useAutoSubmit(
     myPlayerIdRef,
     myPlayerGenderRef,
     submittedRef,
+    pickedNumberRef,
   }
 
-  async function triggerAutoSubmit(): Promise<boolean> {
+  async function triggerAutoSubmit(): Promise<AutoSubmitResult> {
     const a = { ...assignmentRef.current }
     const pa = { ...pairAssignmentRef.current }
     let wyr = wyrChoiceRef.current
@@ -115,10 +126,18 @@ export function useAutoSubmit(
     const parts = participantsRef.current
     const pid = myPlayerIdRef.current
     let animeCh = animeChoiceRef.current
+    let picked = pickedNumberRef.current
 
-    if (!r || !pid || !g) return false
+    if (!r || !pid || !g) return { submitted: false }
 
     const gameType = parseGameType(g.game_type)
+    const isPanPicker = isPickANumber(gameType) && r.submitter_player_id === pid
+
+    // Pick a Number: timer expiry must lock a number — random pick if the picker hasn't chosen yet.
+    if (isPanPicker && !picked) {
+      const poolSize = pickANumberPoolSize(g)
+      if (poolSize > 0) picked = Math.floor(Math.random() * poolSize) + 1
+    }
     const roundParts = parts.filter((p) => r.participant_ids.includes(p.id))
     const roundIds = roundParts.map((p) => p.id)
     const useRandom = g.auto_submit_behavior === 'random'
@@ -126,7 +145,9 @@ export function useAutoSubmit(
 
     // Only auto-fill random choices if the player has started voting
     // (picked at least one option). If they haven't touched anything, skip.
-    const hasStartedVoting = isBinaryChoiceGame(gameType) || isNeverHaveIEver(gameType)
+    const hasStartedVoting = isPickANumber(gameType)
+      ? !!picked
+      : isBinaryChoiceGame(gameType) || isNeverHaveIEver(gameType)
       ? !!wyr
       : isAnimeWst
         ? !!animeCh
@@ -183,30 +204,33 @@ export function useAutoSubmit(
 
     let voteBody: Record<string, unknown>
 
-    if (isBinaryChoiceGame(gameType) || isNeverHaveIEver(gameType)) {
-      if (!wyr) return false
+    if (isPickANumber(gameType)) {
+      if (!isPanPicker || !picked) return { submitted: false }
+      voteBody = { pickedNumber: picked }
+    } else if (isBinaryChoiceGame(gameType) || isNeverHaveIEver(gameType)) {
+      if (!wyr) return { submitted: false }
       voteBody = { wyrChoice: wyr }
     } else if (isMostLikelyTo(gameType)) {
-      if (!mltTarget) return false
+      if (!mltTarget) return { submitted: false }
       voteBody = isMltImportGame(g) ? { targetParticipantId: mltTarget } : { targetPlayerId: mltTarget }
     } else if (isWhoSaidThis(gameType)) {
-      if (r.submitter_player_id === pid) return false
-      if (!r.quote_text) return false
+      if (r.submitter_player_id === pid) return { submitted: false }
+      if (!r.quote_text) return { submitted: false }
       if (isAnimeWst) {
-        if (!animeCh) return false
+        if (!animeCh) return { submitted: false }
         voteBody = { animeChoice: animeCh }
       } else {
-        if (!mltTarget) return false
+        if (!mltTarget) return { submitted: false }
         voteBody = { targetParticipantId: mltTarget }
       }
     } else if (isCustomGame(gameType)) {
       const slotKeys = getCustomSlotKeys(g)
       const customMode = customAssignmentMode(g, roundIds.length, slotKeys)
-      if (!isCustomAssignmentValid(customCa, roundIds, slotKeys, customMode)) return false
+      if (!isCustomAssignmentValid(customCa, roundIds, slotKeys, customMode)) return { submitted: false }
       voteBody = { customAssignments: customCa }
     } else if (isBinaryPeoplePollGame(gameType)) {
       const pairMode = parsePairVoteMode(g.pair_vote_mode)
-      if (!isPairAssignmentValid(pa, roundIds, pairMode)) return false
+      if (!isPairAssignmentValid(pa, roundIds, pairMode)) return { submitted: false }
       voteBody = {
         pairAssignments: Object.fromEntries(
           roundIds
@@ -215,7 +239,7 @@ export function useAutoSubmit(
         ),
       }
     } else {
-      if (!isAssignmentComplete(a, gameType)) return false
+      if (!isAssignmentComplete(a, gameType)) return { submitted: false }
       voteBody = {
         kiss: a.kiss,
         marry: isThreeChoiceGame(gameType) ? a.marry : null,
@@ -234,9 +258,14 @@ export function useAutoSubmit(
           ...voteBody,
         }),
       })
-      return res.ok
+      const data = await res.json().catch(() => ({}))
+      return {
+        submitted: res.ok,
+        revealedQuestion: typeof data.revealedQuestion === 'string' ? data.revealedQuestion : null,
+        pickedNumber: typeof data.pickedNumber === 'number' ? data.pickedNumber : null,
+      }
     } catch {
-      return false
+      return { submitted: false }
     }
   }
 
