@@ -9,6 +9,7 @@ import {
   hasPlayableCard,
   getActivePickPenalty,
   isDrawPileDepleted,
+  parseWhotRules,
   setWhotHostMode,
   WHOT_MIN_PLAYERS,
   type WhotHostMode,
@@ -266,7 +267,8 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   }, [hands])
 
   const drawDepleted = session ? isDrawPileDepleted(session) : false
-  const hostCanPlay = session ? hasPlayableCard(myHand, session) : false
+  const whotRules = useMemo(() => parseWhotRules(game), [game])
+  const hostCanPlay = session ? hasPlayableCard(myHand, session, whotRules) : false
   const pickPenalty = session ? getActivePickPenalty(session) : { type: null, count: 0 }
 
   if (!game) {
@@ -373,6 +375,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             {isHostTurn && session.phase === 'choose_whot' && (
               <WhotChoosePanel
                 acting={hostActing}
+                allowNumberCalls={whotRules.numberCallsEnabled}
                 onChooseShape={(shape: WhotShape) => void postHostAction('/api/whot/choose', { shape })}
                 onChooseNumber={(number) => void postHostAction('/api/whot/choose', { number })}
               />
@@ -383,6 +386,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
                   cards={myHand}
                   session={session}
                   acting={hostActing}
+                  rules={whotRules}
                   onPlay={(cardId) => void postHostAction('/api/whot/play', { cardId })}
                 />
                 {isHostTurn && !(drawDepleted && hostCanPlay) && (

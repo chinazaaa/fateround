@@ -10,6 +10,22 @@ export const WHOT_DEFAULT_MAX_PLAYERS = 6
 /** Whole-game session length (seconds). 0 = no limit. */
 export const WHOT_GAME_DURATION_OPTIONS = [0, 600, 900, 1800, 2700, 3600, 5400] as const
 
+export type WhotRules = {
+  pick3Enabled: boolean
+  whotCardsEnabled: boolean
+  numberCallsEnabled: boolean
+}
+
+export function parseWhotRules(
+  game: Pick<Game, 'whot_pick3_enabled' | 'whot_cards_enabled' | 'whot_number_calls_enabled'> | null | undefined
+): WhotRules {
+  return {
+    pick3Enabled: game?.whot_pick3_enabled !== false,
+    whotCardsEnabled: game?.whot_cards_enabled !== false,
+    numberCallsEnabled: game?.whot_number_calls_enabled !== false,
+  }
+}
+
 export function clampWhotGameDuration(raw: unknown): number {
   const n = Number(raw ?? 0)
   return (WHOT_GAME_DURATION_OPTIONS as readonly number[]).includes(n) ? n : 0
@@ -88,17 +104,27 @@ const DECK_COMPOSITION: Record<Exclude<WhotShape, 'whot'>, number[]> = {
 }
 
 const WHOT_COUNT = 5
-const STARTER_SPECIALS = new Set([1, 2, 5, 8, 14, 20])
+const BASE_STARTER_SPECIALS = new Set([1, 2, 8, 14])
 
-export function buildWhotDeck(): WhotCard[] {
+function starterSpecials(rules: WhotRules): Set<number> {
+  const specials = new Set(BASE_STARTER_SPECIALS)
+  if (rules.pick3Enabled) specials.add(5)
+  if (rules.whotCardsEnabled) specials.add(20)
+  return specials
+}
+
+export function buildWhotDeck(rules: WhotRules = parseWhotRules(null)): WhotCard[] {
   const deck: WhotCard[] = []
   for (const [shape, numbers] of Object.entries(DECK_COMPOSITION) as [Exclude<WhotShape, 'whot'>, number[]][]) {
     for (const number of numbers) {
+      if (!rules.pick3Enabled && number === 5) continue
       deck.push({ id: `${shape}-${number}`, shape, number })
     }
   }
-  for (let i = 0; i < WHOT_COUNT; i += 1) {
-    deck.push({ id: `whot-20-${i}`, shape: 'whot', number: 20 })
+  if (rules.whotCardsEnabled) {
+    for (let i = 0; i < WHOT_COUNT; i += 1) {
+      deck.push({ id: `whot-20-${i}`, shape: 'whot', number: 20 })
+    }
   }
   return deck
 }
@@ -173,12 +199,14 @@ export function hasActiveWhotCall(session: WhotSession): boolean {
   return session.required_shape != null || session.required_number != null
 }
 
-export function canPlayCard(card: WhotCard, session: WhotSession): boolean {
+export function canPlayCard(card: WhotCard, session: WhotSession, rules: WhotRules = parseWhotRules(null)): boolean {
   const cardNumber = Number(card.number)
   const { pickTwo, pickFive } = getNormalizedPickStacks(session)
 
   if (pickTwo > 0) return cardNumber === 2
-  if (pickFive > 0) return cardNumber === 5
+  if (rules.pick3Enabled && pickFive > 0) return cardNumber === 5
+
+  if (!rules.whotCardsEnabled && cardNumber === 20) return false
 
   // WHOT beats an opponent's WHOT call (required shape/number) or any normal match rule.
   if (cardNumber === 20) return true
@@ -240,7 +268,8 @@ export function pickPenaltyDrawCount(session: WhotSession): number {
 export function applyPickStacksAfterPlay(
   cardNumberRaw: number,
   pickTwo: number,
-  pickFive: number
+  pickFive: number,
+  rules: WhotRules = parseWhotRules(null)
 ): { pickTwo: number; pickFive: number } {
   const cardNumber = Number(cardNumberRaw)
   const current = normalizePickStacks(pickTwo, pickFive)
@@ -248,26 +277,34 @@ export function applyPickStacksAfterPlay(
   if (cardNumber === 2) {
     return { pickTwo: current.pickTwo > 0 ? current.pickTwo + 2 : 2, pickFive: 0 }
   }
-  if (cardNumber === 5) {
+  if (cardNumber === 5 && rules.pick3Enabled) {
     return { pickTwo: 0, pickFive: current.pickFive > 0 ? current.pickFive + 3 : 3 }
   }
   return current
 }
 
-export function pickStackPlayError(card: WhotCard, session: WhotSession): string | null {
+export function pickStackPlayError(
+  card: WhotCard,
+  session: WhotSession,
+  rules: WhotRules = parseWhotRules(null)
+): string | null {
   const cardNumber = Number(card.number)
   const { pickTwo, pickFive } = getNormalizedPickStacks(session)
   if (pickTwo > 0 && cardNumber !== 2) {
     return 'Pick 2 active — play a 2 or draw the penalty'
   }
-  if (pickFive > 0 && cardNumber !== 5) {
+  if (rules.pick3Enabled && pickFive > 0 && cardNumber !== 5) {
     return 'Pick 3 active — play a 5 or draw the penalty'
   }
   return null
 }
 
-export function hasPlayableCard(hand: WhotCard[], session: WhotSession): boolean {
-  return hand.some((c) => canPlayCard(c, session))
+export function hasPlayableCard(
+  hand: WhotCard[],
+  session: WhotSession,
+  rules: WhotRules = parseWhotRules(null)
+): boolean {
+  return hand.some((c) => canPlayCard(c, session, rules))
 }
 
 export function isDrawPileDepleted(session: WhotSession): boolean {
@@ -310,11 +347,15 @@ export function whotNextTurnIndex(
   return idx
 }
 
-export function anyPlayerCanPlay(hands: WhotPlayerHand[], session: WhotSession): boolean {
+export function anyPlayerCanPlay(
+  hands: WhotPlayerHand[],
+  session: WhotSession,
+  rules: WhotRules = parseWhotRules(null)
+): boolean {
   for (const row of hands) {
     const cards = (row.cards as WhotCard[]) ?? []
     if (cards.length === 0) continue
-    if (hasPlayableCard(cards, session)) return true
+    if (hasPlayableCard(cards, session, rules)) return true
   }
   return false
 }
@@ -329,11 +370,12 @@ function dealCount(playerCount: number): number {
   return playerCount === 2 ? 6 : 5
 }
 
-function drawStarter(deck: WhotCard[]): { top: WhotCard; rest: WhotCard[] } {
+function drawStarter(deck: WhotCard[], rules: WhotRules): { top: WhotCard; rest: WhotCard[] } {
+  const specials = starterSpecials(rules)
   const pile = [...deck]
   while (pile.length > 0) {
     const top = pile.pop()!
-    if (!STARTER_SPECIALS.has(top.number)) {
+    if (!specials.has(top.number)) {
       return { top, rest: pile }
     }
     pile.unshift(top)
@@ -347,8 +389,16 @@ export async function initializeWhotGame(
   gameId: string,
   playerIds: string[]
 ): Promise<{ error?: string }> {
+  const { data: gameRow } = await supabase
+    .from('games')
+    .select('timer_seconds, whot_pick3_enabled, whot_cards_enabled, whot_number_calls_enabled')
+    .eq('id', gameId)
+    .maybeSingle()
+  const rules = parseWhotRules(gameRow)
+  const timerSeconds = gameRow?.timer_seconds ?? 0
+
   const turnOrder = shuffle(playerIds)
-  const deck = shuffle(buildWhotDeck())
+  const deck = shuffle(buildWhotDeck(rules))
   const cardsEach = dealCount(turnOrder.length)
 
   const hands: WhotCard[][] = turnOrder.map(() => [])
@@ -361,11 +411,8 @@ export async function initializeWhotGame(
     }
   }
 
-  const { top, rest } = drawStarter(drawPile)
+  const { top, rest } = drawStarter(drawPile, rules)
   drawPile = rest
-
-  const { data: gameRow } = await supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle()
-  const timerSeconds = gameRow?.timer_seconds ?? 0
 
   const { data: playerRows } = await supabase.from('players').select('id, name').eq('game_id', gameId)
   const initNames = new Map<string, string>()
@@ -436,12 +483,17 @@ async function loadGameState(
   hands: WhotPlayerHand[]
   timerSeconds: number
   gameDurationSeconds: number
+  rules: WhotRules
   playerNames: Map<string, string>
 }> {
   const [sessionRes, handsRes, gameRes, playersRes] = await Promise.all([
     supabase.from('whot_sessions').select('*').eq('game_id', gameId).maybeSingle(),
     supabase.from('whot_player_hands').select('*').eq('game_id', gameId).order('player_order'),
-    supabase.from('games').select('timer_seconds, game_duration_seconds').eq('id', gameId).maybeSingle(),
+    supabase
+      .from('games')
+      .select('timer_seconds, game_duration_seconds, whot_pick3_enabled, whot_cards_enabled, whot_number_calls_enabled')
+      .eq('id', gameId)
+      .maybeSingle(),
     supabase.from('players').select('id, name').eq('game_id', gameId),
   ])
 
@@ -455,6 +507,7 @@ async function loadGameState(
     hands: (handsRes.data as WhotPlayerHand[]) ?? [],
     timerSeconds: gameRes.data?.timer_seconds ?? 0,
     gameDurationSeconds: gameRes.data?.game_duration_seconds ?? 0,
+    rules: parseWhotRules(gameRes.data),
     playerNames,
   }
 }
@@ -720,7 +773,10 @@ export async function processWhotPlay(
   playerId: string,
   cardId: string
 ): Promise<{ error?: string }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, playerNames } = await loadGameState(supabase, gameId)
+  const { session, hands, timerSeconds, gameDurationSeconds, rules, playerNames } = await loadGameState(
+    supabase,
+    gameId
+  )
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
   if (session.phase === 'choose_whot') return { error: 'Choose WHOT shape or number first' }
@@ -734,9 +790,9 @@ export async function processWhotPlay(
   if (cardIndex < 0) return { error: 'Card not in hand' }
 
   const card = hand[cardIndex]
-  const pickStackError = pickStackPlayError(card, session)
+  const pickStackError = pickStackPlayError(card, session, rules)
   if (pickStackError) return { error: pickStackError }
-  if (!canPlayCard(card, session)) return { error: 'Cannot play that card' }
+  if (!canPlayCard(card, session, rules)) return { error: 'Cannot play that card' }
 
   const newHand = hand.filter((_, i) => i !== cardIndex)
   let nextHands = updateHand(hands, playerId, newHand)
@@ -749,13 +805,18 @@ export async function processWhotPlay(
   const stacks = applyPickStacksAfterPlay(
     card.number,
     session.pick_two_stack ?? 0,
-    session.pick_five_stack ?? 0
+    session.pick_five_stack ?? 0,
+    rules
   )
   const pickTwo = stacks.pickTwo
   const pickFive = stacks.pickFive
 
   if (card.number === 20) {
-    const whotStatus = `${playerName(playerNames, playerId)} played WHOT — choose shape or number`
+    if (!rules.whotCardsEnabled) return { error: 'WHOT cards are disabled in this game' }
+
+    const whotStatus = rules.numberCallsEnabled
+      ? `${playerName(playerNames, playerId)} played WHOT — choose shape or number`
+      : `${playerName(playerNames, playerId)} played WHOT — choose a shape`
 
     await persistSession(
       supabase,
@@ -858,7 +919,7 @@ export async function processWhotDraw(
   gameId: string,
   playerId: string
 ): Promise<{ error?: string }> {
-  const { session, hands, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
+  const { session, hands, timerSeconds, rules, playerNames } = await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
   if (session.phase === 'choose_whot') return { error: 'Choose WHOT shape or number first' }
@@ -886,11 +947,11 @@ export async function processWhotDraw(
   const hand = handForPlayer(hands, playerId)
 
   if (drawn.length === 0) {
-    if (hasPlayableCard(hand, session)) {
+    if (hasPlayableCard(hand, session, rules)) {
       return { error: 'Draw pile is empty — play a card from your hand' }
     }
 
-    if (!anyPlayerCanPlay(hands, session)) {
+    if (!anyPlayerCanPlay(hands, session, rules)) {
       await finishWhotByLowestHand(
         supabase,
         gameId,
@@ -965,7 +1026,7 @@ export async function processWhotChoose(
   playerId: string,
   choice: { shape?: WhotShape; number?: number }
 ): Promise<{ error?: string }> {
-  const { session, hands, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
+  const { session, hands, timerSeconds, rules, playerNames } = await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase !== 'choose_whot') return { error: 'Not choosing WHOT' }
 
@@ -977,6 +1038,7 @@ export async function processWhotChoose(
   const hasNumber = choice.number != null && choice.number >= 1 && choice.number <= 14
   if (!hasShape && !hasNumber) return { error: 'Choose a shape or number' }
   if (hasShape && hasNumber) return { error: 'Choose shape or number, not both' }
+  if (hasNumber && !rules.numberCallsEnabled) return { error: 'Number calls are disabled in this game' }
 
   const nextIndex = whotNextTurnIndex(session, hands, session.current_turn_index, 1)
   const nextPlayerId = session.turn_order[nextIndex]
@@ -1014,7 +1076,7 @@ export async function processWhotExpireTurn(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands } = await loadGameState(supabase, gameId)
+  const { session, hands, rules } = await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { skipped: true }
 
@@ -1030,8 +1092,8 @@ export async function processWhotExpireTurn(
   }
 
   const hand = handForPlayer(hands, currentId)
-  if (hasPlayableCard(hand, session)) {
-    const playable = hand.filter((c) => canPlayCard(c, session))
+  if (hasPlayableCard(hand, session, rules)) {
+    const playable = hand.filter((c) => canPlayCard(c, session, rules))
     const card = pickAutoPlayCard(playable)
     return processWhotPlay(supabase, gameId, currentId, card.id)
   }

@@ -183,6 +183,9 @@ export async function POST(req: NextRequest) {
     bingo_call_mode: rawBingoCallMode,
     bingo_call_interval_seconds: rawBingoCallInterval,
     game_duration_seconds: rawGameDurationSeconds,
+    whot_pick3_enabled: rawWhotPick3Enabled,
+    whot_cards_enabled: rawWhotCardsEnabled,
+    whot_number_calls_enabled: rawWhotNumberCallsEnabled,
   } = parsed.data
 
   const game_type = parseGameType(rawGameType)
@@ -417,7 +420,12 @@ export async function POST(req: NextRequest) {
     ...(isMonopolyGame(game_type)
       ? { game_duration_seconds: clampMonopolyGameDuration(rawGameDurationSeconds) }
       : isWhotGame(game_type)
-        ? { game_duration_seconds: clampWhotGameDuration(rawGameDurationSeconds) }
+        ? {
+            game_duration_seconds: clampWhotGameDuration(rawGameDurationSeconds),
+            whot_pick3_enabled: rawWhotPick3Enabled !== false,
+            whot_cards_enabled: rawWhotCardsEnabled !== false,
+            whot_number_calls_enabled: rawWhotNumberCallsEnabled !== false,
+          }
         : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {

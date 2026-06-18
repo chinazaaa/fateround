@@ -13,7 +13,7 @@ import { WhotChoosePanel, WhotHand, WhotTable } from '@/components/whot/WhotBoar
 import { WhotGameTimerBar } from '@/components/whot/WhotGameTimerBar'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId, getActivePickPenalty, hasActiveWhotCall, hasPlayableCard, isDrawPileDepleted } from '@/lib/whot'
+import { currentPlayerId, getActivePickPenalty, hasActiveWhotCall, hasPlayableCard, isDrawPileDepleted, parseWhotRules } from '@/lib/whot'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
@@ -225,7 +225,8 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const drawDepleted = session ? isDrawPileDepleted(session) : false
-  const myCanPlay = session ? hasPlayableCard(myHand, session) : false
+  const whotRules = useMemo(() => parseWhotRules(game), [game])
+  const myCanPlay = session ? hasPlayableCard(myHand, session, whotRules) : false
   const whotCallActive = session ? hasActiveWhotCall(session) : false
   const pickPenalty = session ? getActivePickPenalty(session) : { type: null, count: 0 }
 
@@ -392,6 +393,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       {isMyTurn && session.phase === 'choose_whot' && (
         <WhotChoosePanel
           acting={acting}
+          allowNumberCalls={whotRules.numberCallsEnabled}
           onChooseShape={(shape: WhotShape) => void postAction('/api/whot/choose', { shape })}
           onChooseNumber={(number) => void postAction('/api/whot/choose', { number })}
         />
@@ -410,7 +412,9 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
                     : pickPenalty.type === 'pick3'
                       ? 'Pick 3 active — play a 5 or draw the penalty.'
                       : whotCallActive
-                        ? 'Match the WHOT call, play WHOT to override it, or draw from the pile.'
+                        ? whotRules.whotCardsEnabled
+                          ? 'Match the WHOT call, play WHOT to override it, or draw from the pile.'
+                          : 'Match the WHOT call or draw from the pile.'
                         : 'Tap a highlighted card to play, or draw from the pile.'}
             </p>
           )}
@@ -418,6 +422,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
             cards={myHand}
             session={session}
             acting={acting}
+            rules={whotRules}
             onPlay={(cardId) => void postAction('/api/whot/play', { cardId })}
           />
           {isMyTurn && !(drawDepleted && myCanPlay) && (

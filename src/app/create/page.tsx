@@ -234,6 +234,9 @@ function CreateGameInner() {
   const [yahtzeeMaxPlayers, setYahtzeeMaxPlayers] = useState(YAHTZEE_DEFAULT_MAX_PLAYERS)
   const [whotMaxPlayers, setWhotMaxPlayers] = useState(WHOT_DEFAULT_MAX_PLAYERS)
   const [whotGameDuration, setWhotGameDuration] = useState(0)
+  const [whotPick3Enabled, setWhotPick3Enabled] = useState(true)
+  const [whotCardsEnabled, setWhotCardsEnabled] = useState(true)
+  const [whotNumberCallsEnabled, setWhotNumberCallsEnabled] = useState(true)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [customTriviaQuestions, setCustomTriviaQuestions] = useState<TriviaQuestion[]>([])
   const [lobbyLimits, setLobbyLimits] = useState<GamePlayerLimitsMap | null>(null)
@@ -370,6 +373,9 @@ function CreateGameInner() {
   const isMonopoly = isMonopolyGame(settings.game_type)
   const isYahtzee = isYahtzeeGame(settings.game_type)
   const isWhot = isWhotGame(settings.game_type)
+  useEffect(() => {
+    if (!whotCardsEnabled) setWhotNumberCallsEnabled(false)
+  }, [whotCardsEnabled])
   const isLudo = isLudoGame(settings.game_type)
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
   const isWst = isWhoSaidThis(settings.game_type)
@@ -904,6 +910,9 @@ function CreateGameInner() {
             : isWhot
               ? whotGameDuration
               : undefined,
+          whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
+          whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
+          whot_number_calls_enabled: isWhot ? whotNumberCallsEnabled : undefined,
         }),
       })
       const data = await res.json()
@@ -1243,10 +1252,36 @@ function CreateGameInner() {
                 <Field label="Late joiners">
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="whot" />
                 </Field>
+                <Field label="House rules">
+                  <div className="space-y-2">
+                    <Toggle
+                      label="Pick 3"
+                      description="Include 5 cards and the Pick 3 draw penalty"
+                      value={whotPick3Enabled}
+                      onChange={setWhotPick3Enabled}
+                    />
+                    <Toggle
+                      label="WHOT cards"
+                      description="Include WHOT wild cards in the deck"
+                      value={whotCardsEnabled}
+                      onChange={setWhotCardsEnabled}
+                    />
+                    <div className={whotCardsEnabled ? undefined : 'opacity-50 pointer-events-none'}>
+                      <Toggle
+                        label="Numbers on WHOT"
+                        description="Let players call a number (not just a shape) when playing WHOT"
+                        value={whotNumberCallsEnabled}
+                        onChange={setWhotNumberCallsEnabled}
+                      />
+                    </div>
+                  </div>
+                </Field>
                 <p className="text-faint text-sm leading-relaxed">
-                  Nigerian card classic — match shape or number, play WHOT to call the next match. Pick 2 and Pick 3
-                  stacks are separate. First to empty their hand wins! With a game length set, time running out ends
-                  the game — whoever has the lowest total on the cards left in their hand wins.
+                  Nigerian card classic — match shape or number
+                  {whotCardsEnabled ? ', play WHOT to call the next match' : ''}. Pick 2
+                  {whotPick3Enabled ? ' and Pick 3 stacks are separate' : ' is active'}. First to empty their hand
+                  wins! With a game length set, time running out ends the game — whoever has the lowest total on the
+                  cards left in their hand wins.
                 </p>
               </SettingsGroup>
             ) : isLudo ? (

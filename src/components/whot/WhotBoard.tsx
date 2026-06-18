@@ -6,7 +6,9 @@ import {
   canPlayCard,
   getActivePickPenalty,
   isWhotPlayerOut,
+  parseWhotRules,
   specialCardShortLabel,
+  type WhotRules,
 } from '@/lib/whot'
 import type { WhotSession } from '@/types'
 import { WhotCard as WhotCardShell, WhotTurnBar } from '@/components/whot/WhotChrome'
@@ -230,12 +232,15 @@ export function WhotHand({
   session,
   onPlay,
   acting,
+  rules,
 }: {
   cards: WhotCardType[]
   session: WhotSession
   onPlay: (cardId: string) => void
   acting: boolean
+  rules?: WhotRules
 }) {
+  const whotRules = rules ?? parseWhotRules(null)
   if (cards.length === 0) {
     return (
       <WhotCardShell className="p-4 text-center text-sm text-muted">
@@ -249,7 +254,7 @@ export function WhotHand({
       <p className="text-xs font-semibold text-muted mb-3 uppercase tracking-wide">Your hand</p>
       <div className="flex flex-wrap gap-2 justify-center">
         {cards.map((card) => {
-          const playable = canPlayCard(card, session) && session.phase === 'playing'
+          const playable = canPlayCard(card, session, whotRules) && session.phase === 'playing'
           return (
             <WhotPlayingCard
               key={card.id}
@@ -268,17 +273,22 @@ export function WhotChoosePanel({
   onChooseShape,
   onChooseNumber,
   acting,
+  allowNumberCalls = true,
 }: {
   onChooseShape: (shape: WhotShape) => void
   onChooseNumber: (number: number) => void
   acting: boolean
+  allowNumberCalls?: boolean
 }) {
   const shapes: WhotShape[] = ['circle', 'cross', 'triangle', 'square', 'star']
   const numbers = [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14]
 
   return (
     <WhotCardShell className="p-4 space-y-4">
-      <p className="text-center font-bold">You played WHOT — choose what opponents must match</p>
+      <p className="text-center font-bold">
+        You played WHOT — choose what opponents must match
+        {allowNumberCalls ? '' : ' (shape only)'}
+      </p>
       <div>
         <p className="text-xs text-muted mb-2 uppercase tracking-wide">Pick a shape</p>
         <div className="flex flex-wrap gap-2 justify-center">
@@ -296,22 +306,24 @@ export function WhotChoosePanel({
           ))}
         </div>
       </div>
-      <div>
-        <p className="text-xs text-muted mb-2 uppercase tracking-wide">Or pick a number</p>
-        <div className="flex flex-wrap gap-2 justify-center">
-          {numbers.map((n) => (
-            <button
-              key={n}
-              type="button"
-              disabled={acting}
-              onClick={() => onChooseNumber(n)}
-              className="w-10 h-10 rounded-lg border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] hover:bg-[var(--primary)]/10 font-bold text-sm"
-            >
-              {n}
-            </button>
-          ))}
+      {allowNumberCalls && (
+        <div>
+          <p className="text-xs text-muted mb-2 uppercase tracking-wide">Or pick a number</p>
+          <div className="flex flex-wrap gap-2 justify-center">
+            {numbers.map((n) => (
+              <button
+                key={n}
+                type="button"
+                disabled={acting}
+                onClick={() => onChooseNumber(n)}
+                className="w-10 h-10 rounded-lg border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] hover:bg-[var(--primary)]/10 font-bold text-sm"
+              >
+                {n}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </WhotCardShell>
   )
 }

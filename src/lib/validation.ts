@@ -121,6 +121,9 @@ export const createGameSchema = z.object({
   bingo_call_mode: z.enum(['manual', 'auto']).optional(),
   bingo_call_interval_seconds: z.coerce.number().optional(),
   game_duration_seconds: z.coerce.number().optional(),
+  whot_pick3_enabled: z.boolean().optional(),
+  whot_cards_enabled: z.boolean().optional(),
+  whot_number_calls_enabled: z.boolean().optional(),
   custom_slots: z
     .object({
       slots: z

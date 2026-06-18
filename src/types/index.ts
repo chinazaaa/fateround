@@ -182,6 +182,12 @@ export interface Game {
   bingo_call_interval_seconds?: number | null
   /** Monopoly — max active session length in seconds; 0 = unlimited. */
   game_duration_seconds?: number | null
+  /** Whot — include Pick 3 (5) cards and penalty stacking. */
+  whot_pick3_enabled?: boolean
+  /** Whot — include WHOT (20) wild cards in the deck. */
+  whot_cards_enabled?: boolean
+  /** Whot — allow calling a number when playing WHOT. */
+  whot_number_calls_enabled?: boolean
 }
 
 export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'auction' | 'raise_funds' | 'finished'
