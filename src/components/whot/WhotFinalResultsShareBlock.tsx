@@ -32,10 +32,15 @@ export function WhotFinalResultsShareBlock({
     [hands, players, session?.turn_order]
   )
 
+  const winnerPlayerId = session?.winner_player_id ?? null
   const displayWinner =
     winnerName ?? standings.find((row) => row.rank === 1)?.name ?? null
 
-  const winnerEmptyHand = standings.find((row) => row.rank === 1)?.cardCount === 0
+  const winnerStanding =
+    (winnerPlayerId ? standings.find((row) => row.playerId === winnerPlayerId) : null) ??
+    standings.find((row) => row.rank === 1) ??
+    null
+  const winnerEmptyHand = winnerStanding?.cardCount === 0
 
   return (
     <div className="space-y-4">
@@ -62,7 +67,9 @@ export function WhotFinalResultsShareBlock({
         {standings.length > 0 && (
           <div className="space-y-2 pt-2">
             {standings.map((row) => {
-              const isWinner = row.rank === 1
+              const isWinner = winnerPlayerId
+                ? row.playerId === winnerPlayerId
+                : row.rank === 1
               const isMe = row.playerId === highlightPlayerId
               return (
                 <div

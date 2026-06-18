@@ -51,8 +51,8 @@ export function buildWhotStandings(
       }
     })
     .sort((a, b) => {
-      if (a.cardCount !== b.cardCount) return a.cardCount - b.cardCount
-      return a.handSum - b.handSum
+      if (a.handSum !== b.handSum) return a.handSum - b.handSum
+      return a.cardCount - b.cardCount
     })
 
   return rows.map((row, index) => ({ ...row, rank: index + 1 }))
