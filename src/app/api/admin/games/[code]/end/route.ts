@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { assertAdminRequest } from '@/lib/admin-api'
-import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anonymous-messages'
-import { markGameFinished } from '@/lib/game-finish'
-import { isAnonymousMessagesGame, isSecretMessageGame, isBingoGame, isCodewordsGame, isMonopolyGame, isYahtzeeGame, isWhotGame, parseGameType } from '@/lib/game-types'
+import { adminEndGame } from '@/lib/admin-end-game'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -15,64 +13,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { data: game } = await supabase.from('games').select('id, status, game_type').eq('id', gameId).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.status !== 'active' && game.status !== 'waiting') {
-    return NextResponse.json({ error: 'Only waiting or active games can be ended' }, { status: 400 })
+
+  const { error } = await adminEndGame(supabase, game)
+  if (error) {
+    const status = error === 'Only waiting or active games can be ended' ? 400 : 500
+    return NextResponse.json({ error }, { status })
   }
-
-  const now = new Date().toISOString()
-
-  const { error: roundError } = await supabase
-    .from('rounds')
-    .update({ status: 'finished', ended_at: now })
-    .eq('game_id', gameId)
-    .eq('status', 'active')
-
-  if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
-
-  if (isAnonymousMessagesGame(parseGameType(game.game_type))) {
-    const { error } = await finishAnonymousRoomSession(supabase, gameId)
-    if (error) return NextResponse.json({ error }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isSecretMessageGame(parseGameType(game.game_type))) {
-    const { error } = await finishSecretMessageBoard(supabase, gameId)
-    if (error) return NextResponse.json({ error }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isBingoGame(parseGameType(game.game_type))) {
-    const { error } = await markGameFinished(supabase, gameId, now)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isCodewordsGame(parseGameType(game.game_type))) {
-    const { error } = await markGameFinished(supabase, gameId, now)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isMonopolyGame(parseGameType(game.game_type))) {
-    const { error } = await markGameFinished(supabase, gameId, now)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isYahtzeeGame(parseGameType(game.game_type))) {
-    const { error } = await markGameFinished(supabase, gameId, now)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isWhotGame(parseGameType(game.game_type))) {
-    const { error } = await markGameFinished(supabase, gameId, now)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  const { error: gameError } = await markGameFinished(supabase, gameId, now)
-  if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
 
   return NextResponse.json({ success: true })
 }

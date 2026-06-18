@@ -30,6 +30,7 @@ export default function AdminDashboardPage() {
   const [stats, setStats] = useState<StatsResponse | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [statsVersion, setStatsVersion] = useState(0)
 
   useEffect(() => {
     fetch('/api/admin/stats')
@@ -40,7 +41,7 @@ export default function AdminDashboardPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load stats'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [statsVersion])
 
   if (loading) return <p className="text-muted">Loading statistics…</p>
   if (error) return <p className="text-red-500">{error}</p>
@@ -96,7 +97,7 @@ export default function AdminDashboardPage() {
         <BreakdownCard title="Feedback by category" items={stats.feedbackByCategory} />
       </div>
 
-      <AdminGamesTable />
+      <AdminGamesTable onGamesChanged={() => setStatsVersion((version) => version + 1)} />
     </div>
   )
 }

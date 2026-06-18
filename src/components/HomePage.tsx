@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { HOMEPAGE_FEATURED_GAMES, gameTypeConfig } from '@/lib/game-types'
+import { GAME_TYPE_OPTIONS, HOMEPAGE_FEATURED_GAMES, gameTypeConfig } from '@/lib/game-types'
 import { gameLandingSlug } from '@/lib/game-landing'
 import { GameTypeModal } from '@/components/GameTypeModal'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
@@ -49,7 +49,7 @@ export function HomePage() {
             </h1>
 
             <p className="text-muted text-xs sm:text-sm leading-snug max-w-xs mx-auto">
-              Six game modes, one link. Create a room, share the code, and let the chaos begin.
+              {GAME_TYPE_OPTIONS.length} game modes, one link. Create a room, share the code, and let the chaos begin.
             </p>
           </div>
 

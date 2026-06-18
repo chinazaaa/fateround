@@ -1,6 +1,6 @@
 # Party Games (Kiss Marry Kill & More)
 
-A real-time multiplayer party game app with 6 game modes. Create a room, share the code, and play with friends.
+A real-time multiplayer party game app with 20+ game modes. Create a room, share the code, and play with friends.
 
 ## Game Modes
 
@@ -14,7 +14,7 @@ A real-time multiplayer party game app with 6 game modes. Create a room, share t
 ## Features
 
 - Real-time game updates via Supabase Realtime
-- 6 distinct game modes with unique voting mechanics
+- 20+ game modes — voting, trivia, board games, and more
 - Player photo uploads for avatars
 - Player-submitted questions in lobby
 - Anonymous confessions during gameplay
