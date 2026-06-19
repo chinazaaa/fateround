@@ -374,7 +374,7 @@ function BoardSpaceCell({
 }
 
 const BOTTOM_SPACES = [9, 8, 7, 6, 5, 4, 3, 2, 1] as const
-const LEFT_SPACES = [11, 12, 13, 14, 15, 16, 17, 18, 19] as const
+const LEFT_SPACES = [19, 18, 17, 16, 15, 14, 13, 12, 11] as const
 const TOP_SPACES = [21, 22, 23, 24, 25, 26, 27, 28, 29] as const
 const RIGHT_SPACES = [31, 32, 33, 34, 35, 36, 37, 38, 39] as const
 

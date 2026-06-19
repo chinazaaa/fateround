@@ -825,7 +825,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     steps: [
       { title: 'Create a room', description: 'Set the player cap and share the link — everyone joins with their name.' },
-      { title: 'Start the game', description: 'Everyone begins on GO with $1,500. The host starts when ready.' },
+      { title: 'Start the game', description: 'Everyone begins on GO with £1,500. The host starts when ready.' },
       { title: 'Last one wins', description: 'Buy properties, collect rent, and bankrupt opponents until one player remains.' },
     ],
     perfectFor: ['Game nights', 'Family gatherings', 'Friend groups', 'Remote hangouts'],
@@ -833,7 +833,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How many people can play Monopoly online?',
         answer:
-          'Monopoly on Fate Round supports 2–6 players in one room. Everyone joins with a display name, starts on GO with $1,500, and takes turns rolling dice until one player bankrupts the rest.',
+          'Monopoly on Fate Round supports 2–6 players in one room. Everyone joins with a display name, starts on GO with £1,500, and takes turns rolling dice until one player bankrupts the rest.',
       },
     ],
   }),
