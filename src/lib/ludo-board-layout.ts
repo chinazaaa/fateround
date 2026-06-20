@@ -277,6 +277,17 @@ export function trackIndexAt(row: number, col: number): number | null {
   return TRACK_POS_BY_COORD.get(`${row},${col}`) ?? null
 }
 
+/** Track squares where a piece cannot be captured (★ start + safe entry). */
+export const SAFE_TRACK_POSITIONS: ReadonlySet<number> = new Set(
+  (['red', 'green', 'yellow', 'blue'] as LudoColor[]).flatMap((color) => {
+    const indices: number[] = [START_POS[color]]
+    const entry = SAFE_ENTRY_CELL[color]
+    const entryIdx = trackIndexAt(entry.row, entry.col)
+    if (entryIdx != null) indices.push(entryIdx)
+    return indices
+  })
+)
+
 /** Arrow direction on any visible path cell (including junction fillers). */
 export function pathArrowAt(row: number, col: number): TrackDirection | null {
   const idx = trackIndexAt(row, col)

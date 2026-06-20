@@ -32,6 +32,18 @@ export const START_POS: Record<LudoColor, number> = {
   blue: 39,
 }
 
+/** ★ start + safe entry cells on the 52-cell track — pieces cannot be captured here. */
+const SAFE_TRACK_POSITIONS: ReadonlySet<number> = new Set([
+  START_POS.red,
+  START_POS.green,
+  START_POS.yellow,
+  START_POS.blue,
+  50, // red safe entry [7,0]
+  11, // green safe entry [0,7]
+  24, // yellow safe entry [7,14]
+  37, // blue safe entry [14,7]
+])
+
 /** Colors used for each player count (opposite corners for 2-player). */
 export function colorsForPlayerCount(count: number): LudoColor[] {
   if (count <= 2) return ['red', 'green']
@@ -126,6 +138,45 @@ function pieceAtSteps(color: LudoColor, steps: number): LudoPiece {
   return { id: 0, zone: 'track', pos: (START_POS[color] + steps) % TRACK_LENGTH }
 }
 
+function trackPos(pos: number): number {
+  return Number(pos)
+}
+
+function isCaptureAllowedAt(pos: number): boolean {
+  return !SAFE_TRACK_POSITIONS.has(trackPos(pos))
+}
+
+function wouldCaptureAt(
+  states: LudoPlayerState[],
+  destPos: number,
+  color: LudoColor,
+  movingPlayerId: string,
+  movingPieceId: number
+): boolean {
+  const pos = trackPos(destPos)
+  if (!isCaptureAllowedAt(pos)) return false
+  const occ = trackOccupants(states, movingPlayerId, movingPieceId).get(pos) ?? []
+  return occ.some((o) => o.color !== color && o.count === 1)
+}
+
+function victimsAtTrackPos(
+  states: LudoPlayerState[],
+  destPos: number,
+  capturingColor: LudoColor
+): { playerId: string; pieceId: number }[] {
+  const pos = trackPos(destPos)
+  const victims: { playerId: string; pieceId: number }[] = []
+  for (const row of states) {
+    if (row.color === capturingColor) continue
+    for (const piece of row.pieces) {
+      if (piece.zone === 'track' && trackPos(piece.pos) === pos) {
+        victims.push({ playerId: row.player_id, pieceId: piece.id })
+      }
+    }
+  }
+  return victims
+}
+
 function trackOccupants(
   states: LudoPlayerState[],
   excludePlayerId?: string,
@@ -137,14 +188,15 @@ function trackOccupants(
     for (const piece of row.pieces) {
       if (piece.zone !== 'track') continue
       if (row.player_id === excludePlayerId && piece.id === excludePieceId) continue
-      const list = map.get(piece.pos) ?? []
+      const pos = trackPos(piece.pos)
+      const list = map.get(pos) ?? []
       const existing = list.find((e) => e.color === row.color && e.playerId === row.player_id)
       if (existing) {
         existing.count += 1
       } else {
         list.push({ color: row.color, playerId: row.player_id, pieceId: piece.id, count: 1 })
       }
-      map.set(piece.pos, list)
+      map.set(pos, list)
     }
   }
 
@@ -170,7 +222,7 @@ function canPassTrackSquare(
   color: LudoColor,
   occupants: Map<number, { color: LudoColor; playerId: string; pieceId: number; count: number }[]>
 ): boolean {
-  const occ = occupants.get(pos) ?? []
+  const occ = occupants.get(trackPos(pos)) ?? []
   if (occ.length === 0) return true
   if (isOwnBlockade(occ, color)) return true
   if (isOpponentBlockade(occ, color)) return false
@@ -182,7 +234,7 @@ function canLandOnTrackSquare(
   color: LudoColor,
   occupants: Map<number, { color: LudoColor; playerId: string; pieceId: number; count: number }[]>
 ): boolean {
-  const occ = occupants.get(pos) ?? []
+  const occ = occupants.get(trackPos(pos)) ?? []
   if (occ.length === 0) return true
   if (isOpponentBlockade(occ, color)) return false
   if (occ.some((o) => o.color === color)) return true
@@ -223,11 +275,12 @@ export function getLegalMovesForSteps(
       const start = START_POS[color]
       const occ = occupants.get(start) ?? []
       if (isOpponentBlockade(occ, color)) continue
+      const captures = wouldCaptureAt(allStates, start, color, playerId, piece.id)
       moves.push({
         pieceId: piece.id,
         from: piece,
         to: { id: piece.id, zone: 'track', pos: start },
-        captures: occ.some((o) => o.color !== color && o.count === 1),
+        captures,
       })
       continue
     }
@@ -264,8 +317,7 @@ export function getLegalMovesForSteps(
     const dest = pieceAtSteps(color, newSteps)
     if (dest.zone === 'track') {
       if (!canLandOnTrackSquare(dest.pos, color, occupants)) continue
-      const occ = occupants.get(dest.pos) ?? []
-      const captures = occ.some((o) => o.color !== color && o.count === 1)
+      const captures = wouldCaptureAt(allStates, dest.pos, color, playerId, piece.id)
       moves.push({
         pieceId: piece.id,
         from: piece,
@@ -309,17 +361,32 @@ function applyMoveLocally(
   move: Omit<LudoMoveOption, 'diceIndex' | 'diceValue'>,
   color: LudoColor
 ): LudoPlayerState[] {
+  const captureVictims =
+    move.to.zone === 'track' && wouldCaptureAt(states, move.to.pos, color, playerId, move.pieceId)
+      ? victimsAtTrackPos(states, move.to.pos, color)
+      : []
+  const victimKeys = new Set(captureVictims.map((v) => `${v.playerId}:${v.pieceId}`))
+
   let nextStates = states.map((row) => {
     if (row.player_id !== playerId) return row
     return {
       ...row,
-      pieces: row.pieces.map((p) => (p.id === move.pieceId ? move.to : p)),
+      pieces: row.pieces.map((p) => (p.id === move.pieceId ? { ...move.to, id: p.id } : p)),
     }
   })
-  if (move.captures && move.to.zone === 'track') {
-    nextStates = applyCapture(nextStates, move.to.pos, color)
-  }
-  return nextStates
+
+  if (victimKeys.size === 0) return nextStates
+
+  return nextStates.map((row) => {
+    let changed = false
+    const nextPieces = row.pieces.map((piece) => {
+      const key = `${row.player_id}:${piece.id}`
+      if (!victimKeys.has(key)) return piece
+      changed = true
+      return returnPieceToHomeYard(piece)
+    })
+    return changed ? { ...row, pieces: nextPieces } : row
+  })
 }
 
 function canPlayRemainingDiceSequence(
@@ -426,24 +493,7 @@ export function buildLudoStandings(
 
 /** Send a captured piece back to its own yard circle (not the track start square). */
 function returnPieceToHomeYard(piece: LudoPiece): LudoPiece {
-  return { ...piece, zone: 'base', pos: piece.id }
-}
-
-function applyCapture(
-  states: LudoPlayerState[],
-  pos: number,
-  capturingColor: LudoColor
-): LudoPlayerState[] {
-  return states.map((row) => {
-    if (row.color === capturingColor) return row
-    const nextPieces = row.pieces.map((piece) => {
-      if (piece.zone === 'track' && piece.pos === pos) {
-        return returnPieceToHomeYard(piece)
-      }
-      return piece
-    })
-    return { ...row, pieces: nextPieces }
-  })
+  return { id: piece.id, zone: 'base', pos: piece.id }
 }
 
 function advanceTurnIndex(session: LudoSession): number {
@@ -604,9 +654,15 @@ async function persistMove(
   const remainingAfter = remainingBefore.filter((_, i) => i !== move.diceIndex)
 
   const movedFromBase = move.from.zone === 'base' && move.to.zone === 'track'
+  const didCapture =
+    move.to.zone === 'track' &&
+    victimsAtTrackPos(states, move.to.pos, playerRow.color).length > 0 &&
+    wouldCaptureAt(states, move.to.pos, playerRow.color, playerId, move.pieceId)
   const moveNote = movedFromBase
-    ? 'brought a piece onto the board'
-    : move.captures
+    ? didCapture
+      ? 'brought a piece onto the board and sent an opponent home'
+      : 'brought a piece onto the board'
+    : didCapture
       ? 'moved and sent an opponent home'
       : move.to.zone === 'finished'
         ? 'finished a piece'
