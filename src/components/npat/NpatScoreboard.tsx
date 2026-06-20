@@ -37,6 +37,7 @@ export function NpatScoreboard({
   marks,
   metadata,
   showScores,
+  maskAnswers = false,
   hostReview = false,
   hostOverrides,
   onSetValid,
@@ -47,12 +48,13 @@ export function NpatScoreboard({
   marks: NpatMark[]
   metadata: NpatMetadata | null
   showScores: boolean
+  maskAnswers?: boolean
   hostReview?: boolean
   hostOverrides?: NpatMetadata['host_overrides']
   onSetValid?: (playerId: string, category: NpatCategory, answerText: string, valid: boolean) => void
 }) {
-  const roundAnswers = answers
-  const dupes = duplicateKeysByCategory(roundAnswers)
+  const answersByPlayer = new Map(answers.map((a) => [a.player_id, a]))
+  const dupes = duplicateKeysByCategory(answers)
   const marksByTarget = new Map(marks.map((m) => [m.target_player_id, m]))
   const markerNameByTarget = new Map<string, string>()
   if (metadata) {
@@ -61,12 +63,16 @@ export function NpatScoreboard({
     }
   }
 
-  if (roundAnswers.length === 0) return null
+  if (players.length === 0) return null
+
+  const lockedInCount = players.filter((p) => answersByPlayer.get(p.id)?.submitted_at).length
 
   return (
     <div className="glass-card p-4 space-y-3 overflow-x-auto">
       <div className="flex items-center justify-between gap-2">
-        <p className="label-caps text-xs">{hostReview ? 'Review board' : 'Live scoreboard'}</p>
+        <p className="label-caps text-xs">
+          {hostReview ? 'Review board' : maskAnswers ? 'Submission status' : 'Live scoreboard'}
+        </p>
         {letter && (
           <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500 text-white font-black">
             {letter}
@@ -76,7 +82,9 @@ export function NpatScoreboard({
       <p className="text-faint text-xs">
         {hostReview
           ? 'Tap valid or invalid for answers you want to override. Empty, wrong-letter, and duplicate answers are locked invalid.'
-          : 'Duplicates score 5 automatically. Reviewers mark whether each answer fits its category — everyone can see the marks.'}
+          : maskAnswers
+            ? `${lockedInCount}/${players.length} locked in — answers stay hidden until marking starts.`
+            : 'Duplicates score 5 automatically. Reviewers mark whether each answer fits its category — everyone can see the marks.'}
       </p>
 
       <table className="w-full min-w-[640px] text-sm border-collapse">
@@ -93,9 +101,10 @@ export function NpatScoreboard({
         </thead>
         <tbody>
           {players.map((player) => {
-            const answer = roundAnswers.find((a) => a.player_id === player.id)
+            const answer = answersByPlayer.get(player.id)
             const mark = marksByTarget.get(player.id)
             const reviewer = markerNameByTarget.get(player.id)
+            const isLockedIn = !!answer?.submitted_at
             const roundTotal =
               showScores && answer?.score_name != null ? answerTotal(answer) : null
 
@@ -103,11 +112,29 @@ export function NpatScoreboard({
               <tr key={player.id} className="border-b border-[var(--border-strong)]/60 align-top">
                 <td className="py-3 pr-2">
                   <p className="font-semibold">{player.name}</p>
-                  {reviewer && !hostReview && (
+                  {maskAnswers && (
+                    <p
+                      className={[
+                        'text-[11px] mt-0.5 font-semibold',
+                        isLockedIn ? 'text-emerald-600 dark:text-emerald-300' : 'text-muted',
+                      ].join(' ')}
+                    >
+                      {isLockedIn ? 'Locked in ✓' : 'Still writing…'}
+                    </p>
+                  )}
+                  {reviewer && !hostReview && !maskAnswers && (
                     <p className="text-faint text-[11px] mt-0.5">Marked by {reviewer}</p>
                   )}
                 </td>
                 {NPAT_CATEGORIES.map((category) => {
+                  if (maskAnswers) {
+                    return (
+                      <td key={category} className="py-3 px-2 text-muted text-center">
+                        {isLockedIn ? '✓' : '…'}
+                      </td>
+                    )
+                  }
+
                   const text = answer?.[category] ?? ''
                   const normalized = normalizeAnswer(text)
                   const isDuplicate = normalized ? dupes[category].has(normalized) : false

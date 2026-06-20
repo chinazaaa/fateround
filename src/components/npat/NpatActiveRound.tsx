@@ -372,13 +372,16 @@ export function NpatActiveRound({
   if (!currentRound || !metadata) return null
 
   const showTransparency =
+    metadata?.phase === 'writing' ||
     metadata?.phase === 'marking' ||
     metadata?.phase === 'host_review' ||
     screen === 'revealed' ||
     screen === 'marking_locked' ||
+    screen === 'writing_locked' ||
     screen === 'caller_review' ||
     screen === 'approval_wait'
   const showFinalScores = screen === 'revealed' || !!(metadata?.scores_computed && currentRound.status === 'finished')
+  const maskScoreboardAnswers = metadata?.phase === 'writing'
   const lettersLeft = npatLettersRemaining(metadata)
   const availableLetters = availableLettersForPick(rounds)
   const usedLetters = LETTERS.filter((letter) => !availableLetters.includes(letter))
@@ -391,6 +394,7 @@ export function NpatActiveRound({
       marks={roundMarks}
       metadata={metadata}
       showScores={showFinalScores}
+      maskAnswers={maskScoreboardAnswers}
     />
   ) : null
 

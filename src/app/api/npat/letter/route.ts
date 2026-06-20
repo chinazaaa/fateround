@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { isICallOnGame, parseGameType } from '@/lib/game-types'
-import { parseNpatMetadata, availableLettersForPick } from '@/lib/npat'
+import { parseNpatMetadata, availableLettersForPick, ensureBlankAnswers } from '@/lib/npat'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -59,5 +59,9 @@ export async function POST(req: NextRequest) {
     .eq('status', 'active')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const { data: players } = await supabase.from('players').select('id').eq('game_id', gameId)
+  await ensureBlankAnswers(supabase, gameId, roundId, (players ?? []).map((p) => p.id))
+
   return NextResponse.json({ success: true, letter })
 }

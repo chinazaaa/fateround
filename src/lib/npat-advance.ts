@@ -8,6 +8,7 @@ import {
   availableLettersForPick,
   computeRoundScores,
   ensureDefaultMarks,
+  ensureBlankAnswers,
   finalizeUnsubmittedAnswers,
   NPAT_LETTER_PICK_SECONDS,
   NPAT_REVEAL_SECONDS,
@@ -94,18 +95,22 @@ async function updateRoundMetadata(
 
 async function pickLetterAndStartWriting(
   supabase: SupabaseClient,
+  gameId: string,
   round: Round,
-  letter: string
+  letter: string,
+  playerIds: string[]
 ): Promise<boolean> {
   const metadata = parseNpatMetadata(round.npat_metadata)
   if (!metadata || metadata.phase !== 'letter_pick') return false
   const now = new Date().toISOString()
-  return updateRoundMetadata(supabase, round.id, {
+  const ok = await updateRoundMetadata(supabase, round.id, {
     ...metadata,
     letter: letter.toUpperCase().slice(0, 1),
     phase: 'writing',
     phase_started_at: now,
   })
+  if (ok) await ensureBlankAnswers(supabase, gameId, round.id, playerIds)
+  return ok
 }
 
 async function startMarkingPhase(
@@ -230,7 +235,7 @@ async function advanceActiveRoundPhase(
       const { data: allRounds } = await supabase.from('rounds').select('npat_metadata').eq('game_id', game.id)
       const remaining = availableLettersForPick(allRounds ?? [])
       const letter = remaining.length > 0 ? remaining[Math.floor(Math.random() * remaining.length)] : randomUnusedLetter(metadata.used_letters)
-      await pickLetterAndStartWriting(supabase, round, letter)
+      await pickLetterAndStartWriting(supabase, game.id, round, letter, playerIds)
       return 'phase_advanced'
     }
     return 'round_active'
