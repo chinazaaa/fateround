@@ -448,6 +448,14 @@ export function pickLudoMoveForPiece(moves: LudoMoveOption[], pieceId: number): 
   if (pieceMoves.length === 0) return null
   if (pieceMoves.length === 1) return pieceMoves[0]!
 
+  // Prefer a capturing move: tapping a piece that can eat an opponent should
+  // send it onto that square (and the victim home), rather than silently
+  // playing the other die and missing the capture.
+  const capturing = pieceMoves.filter((m) => m.captures)
+  if (capturing.length > 0) {
+    return [...capturing].sort((a, b) => a.diceIndex - b.diceIndex)[0]!
+  }
+
   const leavingBase = pieceMoves.filter((m) => m.from.zone === 'base')
   const pool = leavingBase.length > 0 ? leavingBase : pieceMoves
   return [...pool].sort((a, b) => a.diceIndex - b.diceIndex)[0]!
