@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { ShareGameLinkButton } from '@/components/ShareGameLinkButton'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { SoundToggle } from '@/components/SoundToggle'
 
 export function GamePlayerChrome() {
   const params = useParams()
@@ -17,6 +18,7 @@ export function GamePlayerChrome() {
       </Link>
       <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto shrink-0">
         {code ? <ShareGameLinkButton gameCode={code} /> : null}
+        <SoundToggle variant="inline" />
         <ThemeToggle variant="inline" />
       </div>
     </header>

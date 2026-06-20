@@ -6,7 +6,6 @@ import type { LudoDiceRoll } from '@/types'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
-import { SoundToggle } from '@/components/SoundToggle'
 
 export function LudoShell({
   children,
@@ -57,7 +56,6 @@ export function LudoShell({
             </div>
           )}
           {children}
-          <SoundToggle />
         </div>
       </div>
     </div>

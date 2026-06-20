@@ -3,10 +3,13 @@ let audioCtx: AudioContext | null = null
 /** Play tick-tock during the last N seconds of a round timer. */
 export const TIMER_TICK_THRESHOLD = 5
 
+/** localStorage key for the global sound mute preference. */
+export const SOUND_MUTED_STORAGE_KEY = 'kmk-sound-muted'
+
 /** Check whether the user has muted all game sounds via the toggle. */
 export function isSoundMuted(): boolean {
   if (typeof window === 'undefined') return false
-  return localStorage.getItem('kmk-sound-muted') === 'true'
+  return localStorage.getItem(SOUND_MUTED_STORAGE_KEY) === 'true'
 }
 
 export function unlockAudio() {
@@ -177,7 +180,7 @@ export function playGameFinishedSound() {
 
 /** Subtle whoosh when a confession is sent. */
 export function playConfessionSound() {
-  if (typeof window === 'undefined') return
+  if (typeof window === 'undefined' || isSoundMuted()) return
 
   try {
     unlockAudio()

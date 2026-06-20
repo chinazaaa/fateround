@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { SoundToggle } from '@/components/SoundToggle'
 import { FeedbackButton } from '@/components/FeedbackButton'
 import { SupportButton } from '@/components/SupportButton'
 import { ToastProvider } from '@/components/ui/Toast'
@@ -36,6 +37,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <QueryProvider>
                 <AppBackground />
                 <ThemeToggle />
+                <SoundToggle />
                 <SupportButton />
                 <FeedbackButton />
                 {children}

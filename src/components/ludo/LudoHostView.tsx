@@ -30,7 +30,6 @@ import { useLudoNotifications, playLudoActionSound, playLudoRollSound } from '@/
 import { LudoGamePanel } from '@/components/ludo/LudoBoard'
 import { LudoFinalResultsShareBlock } from '@/components/ludo/LudoFinalResultsShareBlock'
 import { LudoPrimaryButton } from '@/components/ludo/LudoChrome'
-import { SoundToggle } from '@/components/SoundToggle'
 
 const ROLL_MIN_MS = 700
 
@@ -470,7 +469,6 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           </>
         )}
       </div>
-      <SoundToggle />
     </div>
   )
 }

@@ -7,6 +7,7 @@ import { ShareGameLinkButton } from '@/components/ShareGameLinkButton'
 import { ShareHostLinkButton } from '@/components/ShareHostLinkButton'
 import { ShareHostPlayerLinkButton } from '@/components/ShareHostPlayerLinkButton'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { SoundToggle } from '@/components/SoundToggle'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
 
 export function GameHostChrome() {
@@ -29,6 +30,7 @@ export function GameHostChrome() {
           <ShareHostLinkButton gameCode={code} hostToken={hostToken} />
         ) : null}
         {code ? <ShareGameLinkButton gameCode={code} qrLabel="QR invite" /> : null}
+        <SoundToggle variant="inline" />
         <ThemeToggle variant="inline" />
       </div>
     </header>
