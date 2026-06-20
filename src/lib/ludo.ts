@@ -113,11 +113,12 @@ export function ludoCanLeaveBase(dice: LudoDiceRoll): boolean {
 }
 
 export function ludoGrantsExtraRoll(dice: LudoDiceRoll): boolean {
-  return dice.doubles
+  // Only a double six grants the bonus roll — not every double.
+  return dice.d1 === 6 && dice.d2 === 6
 }
 
-function ludoExtraRollReason(dice: LudoDiceRoll): string {
-  return 'rolled doubles'
+function ludoExtraRollReason(): string {
+  return 'rolled double six'
 }
 
 export function formatLudoDiceRoll(dice: LudoDiceRoll): string {
@@ -419,9 +420,7 @@ export function parseRemainingDice(raw: number[] | null | undefined): number[] {
 }
 
 /** Prefer stored remaining_dice; fall back to last roll for older sessions. */
-export function resolveRemainingDice(
-  session: Pick<LudoSession, 'remaining_dice' | 'last_dice'>
-): number[] {
+export function resolveRemainingDice(session: Pick<LudoSession, 'remaining_dice' | 'last_dice'>): number[] {
   const stored = parseRemainingDice(session.remaining_dice)
   if (stored.length > 0) return stored
   const roll = parseLudoDice(session.last_dice)
@@ -446,6 +445,14 @@ export function pickLudoMoveForPiece(moves: LudoMoveOption[], pieceId: number): 
   const pieceMoves = moves.filter((m) => m.pieceId === pieceId)
   if (pieceMoves.length === 0) return null
   if (pieceMoves.length === 1) return pieceMoves[0]!
+
+  // Prefer a capturing move: tapping a piece that can eat an opponent should
+  // send it onto that square (and the victim home), rather than silently
+  // playing the other die and missing the capture.
+  const capturing = pieceMoves.filter((m) => m.captures)
+  if (capturing.length > 0) {
+    return [...capturing].sort((a, b) => a.diceIndex - b.diceIndex)[0]!
+  }
 
   const leavingBase = pieceMoves.filter((m) => m.from.zone === 'base')
   const pool = leavingBase.length > 0 ? leavingBase : pieceMoves
@@ -580,10 +587,7 @@ export async function initializeLudoGame(
   return {}
 }
 
-export async function clearLudoSessionData(
-  supabase: SupabaseClient,
-  gameId: string
-): Promise<{ error?: string }> {
+export async function clearLudoSessionData(supabase: SupabaseClient, gameId: string): Promise<{ error?: string }> {
   const { error: sessionError } = await supabase.from('ludo_sessions').delete().eq('game_id', gameId)
   if (sessionError) return { error: sessionError.message }
 
@@ -613,11 +617,7 @@ function pickAutoMove(moves: LudoMoveOption[]): LudoMoveOption | null {
 
   // Rolling a 6 with every piece still in base — all moves go to the same start square.
   const dest = moves[0]!.to
-  if (
-    moves.every(
-      (m) => m.from.zone === 'base' && m.to.zone === 'track' && m.to.pos === dest.pos
-    )
-  ) {
+  if (moves.every((m) => m.from.zone === 'base' && m.to.zone === 'track' && m.to.pos === dest.pos)) {
     return [...moves].sort((a, b) => a.pieceId - b.pieceId)[0]!
   }
 
@@ -681,13 +681,7 @@ async function persistMove(
     statusMessage = `${name} wins!`
     await markGameFinished(supabase, gameId)
   } else if (remainingAfter.length > 0) {
-    const nextMoves = getLegalMovesFromRemaining(
-      playerRow.color,
-      myPieces,
-      remainingAfter,
-      nextStates,
-      playerId
-    )
+    const nextMoves = getLegalMovesFromRemaining(playerRow.color, myPieces, remainingAfter, nextStates, playerId)
     if (nextMoves.length > 0) {
       phase = 'move'
       lastDice = roll
@@ -701,12 +695,12 @@ async function persistMove(
 
       if (grantsExtra && consecutiveSixes < 3) {
         extraTurn = true
-        statusMessage = `${name} ${moveNote} — ${roll ? ludoExtraRollReason(roll) : 'bonus roll'}, roll again!`
+        statusMessage = `${name} ${moveNote} — ${roll ? ludoExtraRollReason() : 'bonus roll'}, roll again!`
       } else if (consecutiveSixes >= 3) {
         currentTurnIndex = advanceTurnIndex(session)
         consecutiveSixes = 0
         const nextId = session.turn_order[currentTurnIndex]
-        statusMessage = `Three doubles in a row — turn lost. ${playerNames.get(nextId ?? '') ?? 'Next player'}'s turn`
+        statusMessage = `Three double sixes in a row — turn lost. ${playerNames.get(nextId ?? '') ?? 'Next player'}'s turn`
       } else {
         currentTurnIndex = advanceTurnIndex(session)
         const nextId = session.turn_order[currentTurnIndex]
@@ -720,12 +714,12 @@ async function persistMove(
 
     if (grantsExtra && consecutiveSixes < 3) {
       extraTurn = true
-      statusMessage = `${name} ${moveNote} — ${roll ? ludoExtraRollReason(roll) : 'bonus roll'}, roll again!`
+      statusMessage = `${name} ${moveNote} — ${roll ? ludoExtraRollReason() : 'bonus roll'}, roll again!`
     } else if (consecutiveSixes >= 3) {
       currentTurnIndex = advanceTurnIndex(session)
       consecutiveSixes = 0
       const nextId = session.turn_order[currentTurnIndex]
-      statusMessage = `Three doubles in a row — turn lost. ${playerNames.get(nextId ?? '') ?? 'Next player'}'s turn`
+      statusMessage = `Three double sixes in a row — turn lost. ${playerNames.get(nextId ?? '') ?? 'Next player'}'s turn`
     } else {
       currentTurnIndex = advanceTurnIndex(session)
       const nextId = session.turn_order[currentTurnIndex]
@@ -785,13 +779,7 @@ export async function processLudoRoll(
   if (!playerRow) return { error: 'Player state not found' }
 
   const remainingDice = [dice.d1, dice.d2]
-  const canPlay = canPlayRemainingDiceSequence(
-    playerRow.color,
-    playerRow.pieces,
-    remainingDice,
-    states,
-    playerId
-  )
+  const canPlay = canPlayRemainingDiceSequence(playerRow.color, playerRow.pieces, remainingDice, states, playerId)
   const name = playerNames.get(playerId) ?? 'Player'
   const rollLabel = formatLudoDiceRoll(dice)
 
@@ -828,7 +816,7 @@ export async function processLudoRoll(
           consecutive_sixes: 0,
           current_turn_index: nextIndex,
           phase: 'roll',
-          status_message: `Three doubles in a row — turn lost. ${playerNames.get(nextId ?? '') ?? 'Next player'}'s turn`,
+          status_message: `Three double sixes in a row — turn lost. ${playerNames.get(nextId ?? '') ?? 'Next player'}'s turn`,
           turn_deadline_at: ludoTurnDeadline(timerSeconds),
           updated_at: new Date().toISOString(),
         })
@@ -891,18 +879,9 @@ export async function processLudoMove(
   const remaining = resolveRemainingDice(session)
   if (remaining.length === 0) return { error: 'No dice left to play' }
 
-  const moves = getLegalMovesFromRemaining(
-    playerRow.color,
-    playerRow.pieces,
-    remaining,
-    states,
-    playerId
-  )
+  const moves = getLegalMovesFromRemaining(playerRow.color, playerRow.pieces, remaining, states, playerId)
 
-  let move =
-    diceIndex != null
-      ? moves.find((m) => m.pieceId === pieceId && m.diceIndex === diceIndex)
-      : undefined
+  let move = diceIndex != null ? moves.find((m) => m.pieceId === pieceId && m.diceIndex === diceIndex) : undefined
 
   if (!move) {
     move = pickLudoMoveForPiece(moves, pieceId) ?? undefined
@@ -913,10 +892,7 @@ export async function processLudoMove(
   return persistMove(supabase, gameId, session, states, playerId, move, timerSeconds, playerNames)
 }
 
-export async function processLudoExpireTurn(
-  supabase: SupabaseClient,
-  gameId: string
-): Promise<{ error?: string }> {
+export async function processLudoExpireTurn(supabase: SupabaseClient, gameId: string): Promise<{ error?: string }> {
   const { session, states, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
   if (!session || session.phase === 'finished') return {}
 
@@ -931,13 +907,7 @@ export async function processLudoExpireTurn(
   if (!playerRow || !session.last_dice) return { error: 'Invalid state' }
 
   const remaining = resolveRemainingDice(session)
-  const moves = getLegalMovesFromRemaining(
-    playerRow.color,
-    playerRow.pieces,
-    remaining,
-    states,
-    playerId
-  )
+  const moves = getLegalMovesFromRemaining(playerRow.color, playerRow.pieces, remaining, states, playerId)
   const auto = pickAutoMove(moves)
   if (!auto) {
     const nextIndex = advanceTurnIndex(session)

@@ -32,11 +32,9 @@ export function LudoShell({
         ].join(' ')}
       >
         <div
-          className={[
-            'w-full',
-            compact ? 'space-y-2' : 'space-y-5 sm:space-y-6',
-            wide ? 'max-w-3xl' : 'max-w-lg',
-          ].join(' ')}
+          className={['w-full', compact ? 'space-y-2' : 'space-y-5 sm:space-y-6', wide ? 'max-w-3xl' : 'max-w-lg'].join(
+            ' '
+          )}
         >
           {(title || subtitle) && !compact && (
             <header className="text-center space-y-2">
@@ -161,9 +159,7 @@ export function LudoTurnBar({
         urgent ? 'animate-pulse border-amber-400/60 bg-amber-500/10' : '',
       ].join(' ')}
     >
-      <span>
-        {isMyTurn ? 'Your turn' : turnPlayerName ? `${turnPlayerName}'s turn` : 'Waiting…'}
-      </span>
+      <span>{isMyTurn ? 'Your turn' : turnPlayerName ? `${turnPlayerName}'s turn` : 'Waiting…'}</span>
       {hasTimer && secondsLeft != null && secondsLeft > 0 && (
         <span className={urgent ? 'text-amber-400 font-black tabular-nums' : 'tabular-nums'}>{secondsLeft}s</span>
       )}
@@ -231,8 +227,8 @@ export function LudoDicePair({
     return () => clearInterval(id)
   }, [rolling])
 
-  const d1 = rolling ? cycle1 : dice?.d1 ?? 1
-  const d2 = rolling ? cycle2 : dice?.d2 ?? 1
+  const d1 = rolling ? cycle1 : (dice?.d1 ?? 1)
+  const d2 = rolling ? cycle2 : (dice?.d2 ?? 1)
   const gapClass = compact ? 'gap-1' : 'gap-2'
 
   return (
@@ -244,7 +240,7 @@ export function LudoDicePair({
       {dice && !rolling && (
         <p className="text-[8px] sm:text-[10px] font-bold text-slate-900 tabular-nums leading-none">
           {dice.total}
-          {dice.doubles ? ' · Doubles!' : ''}
+          {dice.d1 === 6 && dice.d2 === 6 ? ' · Double six!' : ''}
         </p>
       )}
     </div>

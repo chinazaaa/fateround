@@ -1,12 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import {
-  playRoundStartSound,
-  playRoundEndSound,
-  playVoteSubmittedSound,
-  playGameFinishedSound,
-} from '@/lib/sounds'
+import { playRoundStartSound, playRoundEndSound, playVoteSubmittedSound, playGameFinishedSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, LudoSession } from '@/types'
 import { currentPlayerId } from '@/lib/ludo'
@@ -93,6 +88,7 @@ export function useLudoNotifications({
       myPlayerId &&
       message.includes('roll again') &&
       (message.toLowerCase().includes('rolled a 6') ||
+        message.toLowerCase().includes('double six') ||
         message.toLowerCase().includes('doubles') ||
         message.toLowerCase().includes('bonus roll'))
     ) {
