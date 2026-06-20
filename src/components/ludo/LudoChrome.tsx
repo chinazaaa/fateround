@@ -1,6 +1,7 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { DICE_PIPS } from '@/components/monopoly/monopoly-ui'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
@@ -169,24 +170,62 @@ export function LudoTurnBar({
   )
 }
 
-export function LudoDice({ value, rolling }: { value: number | null; rolling?: boolean }) {
-  const faces: Record<number, string> = {
-    1: '⚀',
-    2: '⚁',
-    3: '⚂',
-    4: '⚃',
-    5: '⚄',
-    6: '⚅',
-  }
+export function LudoDiceFace({
+  value,
+  rolling,
+  compact = false,
+}: {
+  value: number
+  rolling?: boolean
+  compact?: boolean
+}) {
+  const pips = DICE_PIPS[value] ?? DICE_PIPS[1]!
+  const sizeClass = compact ? 'h-8 w-8 rounded-md sm:h-10 sm:w-10 sm:rounded-lg' : 'h-14 w-14 rounded-xl'
+  const pipGridClass = compact ? 'h-5 w-5 gap-px sm:h-6 sm:w-6' : 'h-9 w-9 gap-0.5'
+  const pipDotClass = compact ? 'h-1 w-1' : 'h-2 w-2'
 
   return (
     <div
       className={[
-        'flex h-16 w-16 items-center justify-center rounded-xl border-2 border-[var(--border-strong)] bg-white text-4xl shadow-lg',
-        rolling ? 'animate-bounce' : '',
+        'relative flex items-center justify-center border-2 border-neutral-200 bg-gradient-to-br from-white to-neutral-100 shadow-lg',
+        sizeClass,
+        rolling ? 'animate-pulse scale-105' : '',
       ].join(' ')}
+      aria-label={`Die showing ${value}`}
     >
-      {value ? faces[value] ?? value : '🎲'}
+      <div className={['grid grid-cols-3 grid-rows-3', pipGridClass].join(' ')}>
+        {Array.from({ length: 9 }, (_, i) => {
+          const row = Math.floor(i / 3)
+          const col = i % 3
+          const show = pips.some(([r, c]) => r === row && c === col)
+          return (
+            <div key={i} className="flex items-center justify-center">
+              {show ? <div className={['rounded-full bg-neutral-900 shadow-sm', pipDotClass].join(' ')} /> : null}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
+}
+
+export function LudoDice({
+  value,
+  rolling,
+  compact = false,
+}: {
+  value: number | null
+  rolling?: boolean
+  compact?: boolean
+}) {
+  const [cycle, setCycle] = useState(1)
+
+  useEffect(() => {
+    if (!rolling) return
+    const id = setInterval(() => setCycle((v) => (v % 6) + 1), 80)
+    return () => clearInterval(id)
+  }, [rolling])
+
+  const display = rolling ? cycle : value ?? 1
+  return <LudoDiceFace value={display} rolling={rolling} compact={compact} />
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import type { LudoColor, LudoPlayerState, LudoSession, Player } from '@/types'
 import {
   LUDO_COLOR_HEX,
@@ -23,7 +23,8 @@ import {
   pieceStatusLabel,
   trackCellsAlongSteps,
 } from '@/lib/ludo-board-layout'
-import { LudoCard, LudoDice, LudoTurnBar } from '@/components/ludo/LudoChrome'
+import { LudoCard, LudoTurnBar } from '@/components/ludo/LudoChrome'
+import { LudoBoardCenter } from '@/components/ludo/LudoBoardCenter'
 
 const BOARD_BG = '#e8d4b0'
 
@@ -163,6 +164,7 @@ export function LudoBoard({
   onMovePiece,
   selectablePieceIds,
   highlightCells,
+  center,
 }: {
   session: LudoSession
   states: LudoPlayerState[]
@@ -171,6 +173,7 @@ export function LudoBoard({
   onMovePiece?: (pieceId: number) => void
   selectablePieceIds?: number[]
   highlightCells?: Set<string>
+  center?: ReactNode
 }) {
   const myColor = states.find((s) => s.player_id === myPlayerId)?.color
   const activeColors = useMemo(() => new Set(states.map((s) => s.color)), [states])
@@ -317,6 +320,19 @@ export function LudoBoard({
           {cells}
         </div>
         <CenterTriangles />
+        {center && (
+          <div
+            className="absolute z-[15] flex items-center justify-center pointer-events-auto"
+            style={{
+              left: `${(6 / 15) * 100}%`,
+              top: `${(6 / 15) * 100}%`,
+              width: `${(3 / 15) * 100}%`,
+              height: `${(3 / 15) * 100}%`,
+            }}
+          >
+            {center}
+          </div>
+        )}
         {(['red', 'green', 'yellow', 'blue'] as LudoColor[])
           .filter((color) => activeColors.has(color))
           .map((color) => (
@@ -497,16 +513,6 @@ export function LudoGamePanel({
 
       {session.status_message && <p className="text-center text-sm text-muted">{session.status_message}</p>}
 
-      <div className="flex items-center justify-center gap-4">
-        <LudoDice value={diceValue} rolling={rolling} />
-        {session.last_dice && session.phase === 'move' && (
-          <span className="text-sm font-bold text-[var(--foreground)]">Rolled {session.last_dice}</span>
-        )}
-        {session.consecutive_sixes > 0 && (
-          <span className="text-xs text-amber-500 font-semibold">6s: {session.consecutive_sixes}/3</span>
-        )}
-      </div>
-
       <LudoBoard
         session={session}
         states={states}
@@ -515,20 +521,21 @@ export function LudoGamePanel({
         onMovePiece={isMyTurn && session.phase === 'move' ? onMovePiece : undefined}
         selectablePieceIds={selectablePieceIds}
         highlightCells={highlightCells}
+        center={
+          <LudoBoardCenter
+            diceValue={diceValue}
+            rolling={rolling}
+            showRoll={isMyTurn && session.phase === 'roll' && !!onRoll}
+            onRoll={onRoll}
+            acting={acting}
+            consecutiveSixes={session.consecutive_sixes}
+            phase={session.phase}
+            lastDice={session.last_dice}
+          />
+        }
       />
 
       <LudoPlayerStrip states={states} players={players} session={session} myPlayerId={myPlayerId} />
-
-      {isMyTurn && session.phase === 'roll' && onRoll && (
-        <button
-          type="button"
-          onClick={onRoll}
-          disabled={acting || rolling}
-          className="btn-primary w-full py-3 font-bold text-base"
-        >
-          {acting || rolling ? 'Rolling…' : 'Roll die'}
-        </button>
-      )}
 
       {isMyTurn && session.phase === 'move' && legalMoves.length > 0 && onMovePiece && (
         <div className="space-y-2">
@@ -585,7 +592,7 @@ export function LudoGamePanel({
 
       {isMyTurn && session.phase === 'roll' && !rolling && (
         <p className="text-center text-xs text-faint">
-          Roll a 6 — your piece jumps from the corner circle to your highlighted ★ square
+          Tap 🎲 Roll in the board centre — roll a 6 to leave your yard onto your ★ square
         </p>
       )}
     </LudoCard>

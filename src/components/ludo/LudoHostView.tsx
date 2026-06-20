@@ -30,6 +30,8 @@ import { LudoGamePanel } from '@/components/ludo/LudoBoard'
 import { LudoPrimaryButton } from '@/components/ludo/LudoChrome'
 import { SoundToggle } from '@/components/SoundToggle'
 
+const ROLL_MIN_MS = 700
+
 type HostTab = 'play' | 'manage'
 
 export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
@@ -49,6 +51,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [hostActing, setHostActing] = useState(false)
   const [rolling, setRolling] = useState(false)
   const [displayDice, setDisplayDice] = useState<number | null>(null)
+  const rollStartedRef = useRef(0)
   const [tab, setTab] = useState<HostTab>('manage')
 
   useApplyGameTheme(game?.theme)
@@ -157,6 +160,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     if (!hostPlayerId) return
     setHostActing(true)
     if (path.includes('/roll')) {
+      rollStartedRef.current = Date.now()
       setRolling(true)
       setDisplayDice(null)
       playLudoRollSound()
@@ -176,6 +180,10 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       toastError(err instanceof Error ? err.message : 'Action failed')
     } finally {
       setHostActing(false)
+      if (path.includes('/roll')) {
+        const wait = Math.max(0, ROLL_MIN_MS - (Date.now() - rollStartedRef.current))
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait))
+      }
       setRolling(false)
     }
   }

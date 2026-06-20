@@ -31,6 +31,8 @@ import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
 import { useLudoTurnTimer } from '@/hooks/useLudoTurnTimer'
 import { useLudoNotifications, playLudoActionSound, playLudoRollSound } from '@/hooks/useLudoNotifications'
 
+const ROLL_MIN_MS = 700
+
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 export function LudoPlayerView({ gameCode }: { gameCode: string }) {
@@ -47,6 +49,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   const [acting, setActing] = useState(false)
   const [rolling, setRolling] = useState(false)
   const [displayDice, setDisplayDice] = useState<number | null>(null)
+  const rollStartedRef = useRef(0)
 
   useApplyGameTheme(game?.theme)
 
@@ -174,6 +177,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     if (!myPlayerId) return
     setActing(true)
     if (path.includes('/roll')) {
+      rollStartedRef.current = Date.now()
       setRolling(true)
       setDisplayDice(null)
       playLudoRollSound()
@@ -194,6 +198,10 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
       }
     } finally {
       setActing(false)
+      if (path.includes('/roll')) {
+        const wait = Math.max(0, ROLL_MIN_MS - (Date.now() - rollStartedRef.current))
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait))
+      }
       setRolling(false)
     }
   }
