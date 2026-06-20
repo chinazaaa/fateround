@@ -55,7 +55,20 @@ export function boardEdgeForSpace(index: number): BoardEdge {
   return 'right'
 }
 
-/** Compact multi-line labels that fit on board tiles (UK edition). */
+/** Grid cell (1–11) for the 11×11 classic board layout. */
+export function boardGridCell(index: number): { col: number; row: number } {
+  if (index === 20) return { col: 1, row: 1 }
+  if (index === 30) return { col: 11, row: 1 }
+  if (index === 10) return { col: 1, row: 11 }
+  if (index === 0) return { col: 11, row: 11 }
+  if (index >= 21 && index <= 29) return { col: index - 19, row: 1 }
+  if (index >= 11 && index <= 19) return { col: 1, row: 21 - index }
+  if (index >= 31 && index <= 39) return { col: 11, row: index - 29 }
+  if (index >= 1 && index <= 9) return { col: 11 - index, row: 11 }
+  return { col: 1, row: 1 }
+}
+
+/** Multi-line labels for board tiles — full words, split across lines (UK edition). */
 export function boardSpaceLines(name: string, type: MonopolySpaceType): string[] {
   const known: Record<string, string[]> = {
     GO: ['GO', '→'],
@@ -66,43 +79,52 @@ export function boardSpaceLines(name: string, type: MonopolySpaceType): string[]
     'Super Tax': ['Super', 'Tax'],
     'Community Chest': ['Community', 'Chest'],
     Chance: ['Chance', '?'],
-    'Old Kent Road': ['Old Kent', 'Rd'],
-    'Whitechapel Road': ['White-', 'chapel'],
-    'The Angel Islington': ['Angel', 'Isling.'],
-    'Euston Road': ['Euston', 'Rd'],
-    'Pentonville Road': ['Penton-', 'ville'],
+    'Old Kent Road': ['Old Kent', 'Road'],
+    'Whitechapel Road': ['Whitechapel', 'Road'],
+    'The Angel Islington': ['Angel', 'Islington'],
+    'Euston Road': ['Euston', 'Road'],
+    'Pentonville Road': ['Pentonville', 'Road'],
     'Pall Mall': ['Pall', 'Mall'],
-    Whitehall: ['White-', 'hall'],
-    'Northumberland Avenue': ['Northum.', 'Ave'],
-    'Bow Street': ['Bow', 'St'],
-    'Marlborough Street': ['Marl-', 'borough'],
-    'Vine Street': ['Vine', 'St'],
+    Whitehall: ['Whitehall'],
+    'Northumberland Avenue': ['Northumberland', 'Avenue'],
+    'Bow Street': ['Bow', 'Street'],
+    'Marlborough Street': ['Marlborough', 'Street'],
+    'Vine Street': ['Vine', 'Street'],
     'The Strand': ['The', 'Strand'],
-    'Fleet Street': ['Fleet', 'St'],
-    'Trafalgar Square': ['Trafalgar', 'Sq'],
-    'Leicester Square': ['Leicester', 'Sq'],
-    'Coventry Street': ['Coventry', 'St'],
-    Piccadilly: ['Picca-', 'dilly'],
-    'Regent Street': ['Regent', 'St'],
-    'Oxford Street': ['Oxford', 'St'],
-    'Bond Street': ['Bond', 'St'],
+    'Fleet Street': ['Fleet', 'Street'],
+    'Trafalgar Square': ['Trafalgar', 'Square'],
+    'Leicester Square': ['Leicester', 'Square'],
+    'Coventry Street': ['Coventry', 'Street'],
+    Piccadilly: ['Piccadilly'],
+    'Regent Street': ['Regent', 'Street'],
+    'Oxford Street': ['Oxford', 'Street'],
+    'Bond Street': ['Bond', 'Street'],
     'Park Lane': ['Park', 'Lane'],
-    Mayfair: ['May-', 'fair'],
-    "King's Cross Station": ["King's", 'Cross'],
-    'Marylebone Station': ['Maryle-', 'bone'],
-    'Fenchurch Street Station': ['Fenchurch', 'St'],
-    'Liverpool Street Station': ['Liverpool', 'St'],
-    'Electric Company': ['Electric', 'Co.'],
+    Mayfair: ['Mayfair'],
+    "King's Cross Station": ["King's Cross", 'Station'],
+    'Marylebone Station': ['Marylebone', 'Station'],
+    'Fenchurch Street Station': ['Fenchurch St', 'Station'],
+    'Liverpool Street Station': ['Liverpool', 'Station'],
+    'Electric Company': ['Electric', 'Company'],
     'Water Works': ['Water', 'Works'],
   }
   if (known[name]) return known[name]
-  if (type === 'station') return [name.replace(' Station', ''), 'Stn']
+  if (type === 'station') {
+    const label = name.replace(' Station', '')
+    const words = label.split(' ')
+    if (words.length >= 2) {
+      return [`${words.slice(0, -1).join(' ')}`, 'Station']
+    }
+    return [label, 'Station']
+  }
   if (type === 'utility') {
     const parts = name.split(' ')
     return parts.length > 1 ? [parts[0]!, parts.slice(1).join(' ')] : [name]
   }
-  if (name.endsWith(' Road')) return [name.replace(' Road', ''), 'Rd']
-  if (name.endsWith(' Street')) return [name.replace(' Street', ''), 'St']
+  if (name.endsWith(' Road')) return [name.replace(' Road', ''), 'Road']
+  if (name.endsWith(' Street')) return [name.replace(' Street', ''), 'Street']
+  if (name.endsWith(' Square')) return [name.replace(' Square', ''), 'Square']
+  if (name.endsWith(' Avenue')) return [name.replace(' Avenue', ''), 'Avenue']
   const parts = name.split(' ')
   if (parts.length <= 2) return parts
   return [parts.slice(0, 2).join(' '), parts.slice(2).join(' ')]

@@ -310,7 +310,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   return (
     <div className="min-h-screen pb-24">
-      <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
+      <div className="max-w-5xl mx-auto px-2 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-5 overflow-x-hidden">
         <div className="text-center space-y-1">
           <div className="text-4xl">{cfg.headerEmoji}</div>
           <h1 className="text-2xl font-black tracking-tight gradient-title">{game.title}</h1>

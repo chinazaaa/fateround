@@ -84,6 +84,7 @@ export function MonopolyBoardCenter({
   acting,
   postAction,
   colorBarClass,
+  layout = 'board',
 }: {
   board: MonopolyBoard
   myPlayerId: string | null
@@ -92,6 +93,7 @@ export function MonopolyBoardCenter({
   acting: boolean
   postAction: PostAction
   colorBarClass: (color?: MonopolyColorGroup) => string
+  layout?: 'board' | 'dock'
 }) {
   const turnPlayerId = currentPlayerId(board)
   const isMyTurn = turnPlayerId === myPlayerId && !myState?.bankrupt
@@ -188,30 +190,56 @@ export function MonopolyBoardCenter({
           ? colorBarClass(auctionSpace.color)
           : null
 
+  const isDock = layout === 'dock'
+  const shellClass = isDock
+    ? 'glass-card rounded-2xl p-4 space-y-3 text-center w-full'
+    : 'flex flex-col items-center justify-center h-full w-full min-w-0 px-0.5 sm:px-2 py-0.5 sm:py-2 text-center overflow-y-auto overflow-x-hidden'
+  const panelClass = isDock ? 'w-full space-y-2' : 'mt-1.5 w-full max-w-[11rem] sm:max-w-[12rem] space-y-1.5'
+  const widePanelClass = isDock ? 'w-full space-y-2' : 'mt-1.5 w-full max-w-[12rem] sm:max-w-[13rem] space-y-1.5'
+  const rollPanelClass = isDock ? 'w-full space-y-1.5' : 'mt-2 w-full max-w-[9rem] sm:max-w-[10rem] space-y-1'
+  const labelClass = isDock
+    ? 'text-[10px] uppercase tracking-wider text-muted'
+    : 'text-[10px] uppercase tracking-wider text-emerald-200/80'
+  const titleClass = isDock
+    ? 'text-sm font-bold text-[var(--foreground)] leading-tight truncate'
+    : 'text-xs sm:text-sm font-bold text-white leading-tight truncate'
+  const subtleClass = isDock ? 'text-xs text-muted leading-snug' : 'text-[10px] text-emerald-200/70 leading-snug'
+  const priceClass = isDock
+    ? 'text-lg font-black text-[var(--primary)] tabular-nums'
+    : 'text-lg sm:text-xl font-black text-amber-300 tabular-nums'
+  const debtPriceClass = isDock
+    ? 'text-lg font-black text-red-500 tabular-nums'
+    : 'text-lg sm:text-xl font-black text-red-300 tabular-nums'
+
   return (
-    <div className="flex flex-col items-center justify-center h-full w-full min-w-0 px-1 sm:px-2 py-1 sm:py-2 text-center overflow-y-auto">
-      {myPlayerId && myState && !myState.bankrupt && (
-        <div className="mb-1.5 sm:mb-2 shrink-0 space-y-1">
+    <div className={shellClass}>
+      {isDock && myState && (myState.get_out_of_jail_free ?? 0) > 0 && (
+        <MonopolyJailCardInventory count={myState.get_out_of_jail_free} />
+      )}
+
+      {myPlayerId && myState && !myState.bankrupt && !isDock && (
+        <div className="mb-1 sm:mb-2 shrink-0 space-y-1 max-w-full">
           <MonopolyYourTokenChip
             players={players}
             playerId={myPlayerId}
             playerOrder={myState.player_order}
+            compact
           />
-          <p className="text-[10px] text-emerald-200/80 leading-snug">
+          <p className="hidden sm:block text-[10px] text-emerald-200/80 leading-snug">
             Currently on{' '}
             <span className="font-bold text-white">{spaceAt(Number(myState.position)).name}</span>
           </p>
         </div>
       )}
 
-      {myState && (
-        <div className="mb-1 sm:mb-1.5 shrink-0">
-          <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-widest text-emerald-200/70 leading-none">
+      {myState && !isDock && (
+        <div className="mb-1 sm:mb-1.5 shrink-0 max-w-full">
+          <p className="text-[8px] sm:text-[10px] font-semibold uppercase tracking-widest text-emerald-200/70 leading-none">
             {myState.bankrupt ? 'Bankrupt' : 'Your cash'}
           </p>
           <p
             className={[
-              'text-base sm:text-xl font-black tabular-nums leading-tight mt-0.5',
+              'text-sm sm:text-xl font-black tabular-nums leading-tight mt-0.5',
               myState.bankrupt ? 'text-red-300' : 'text-amber-300',
             ].join(' ')}
           >
@@ -225,10 +253,10 @@ export function MonopolyBoardCenter({
         </div>
       )}
 
-      {phaseColorBar && <div className={['h-1 w-12 sm:w-16 rounded-full mb-1', phaseColorBar].join(' ')} />}
+      {phaseColorBar && !isDock && <div className={['h-1 w-10 sm:w-16 rounded-full mb-1', phaseColorBar].join(' ')} />}
 
       {!showBuy && !showRent && !showRaiseFunds && !showJail && !showAuction && (
-        <MonopolyDiceRoll dice={board.last_dice} rolling={acting} />
+        <MonopolyDiceRoll dice={board.last_dice} rolling={acting} compact={!isDock} />
       )}
 
       {actionSeconds > 0 && (
@@ -238,12 +266,12 @@ export function MonopolyBoardCenter({
       )}
 
       {showRoll && (
-        <div className="mt-2 w-full max-w-[9rem] sm:max-w-[10rem] space-y-1">
+        <div className={rollPanelClass}>
           <BoardPrimaryButton onClick={() => postAction('/api/monopoly/roll')} loading={acting}>
             🎲 Roll
           </BoardPrimaryButton>
           {myState && !(myState.passed_go_once ?? false) && (
-            <p className="text-[9px] text-emerald-200/65 leading-snug text-center">
+            <p className={['text-emerald-200/65 leading-snug text-center', isDock ? 'text-xs text-muted' : 'text-[9px]'].join(' ')}>
               Pass GO once before buying, paying tax, drawing cards, or collecting GO salary
             </p>
           )}
@@ -251,14 +279,12 @@ export function MonopolyBoardCenter({
       )}
 
       {showBuy && pendingSpace && (
-        <div className="mt-1.5 w-full max-w-[11rem] sm:max-w-[12rem] space-y-1.5">
-          <p className="text-[10px] uppercase tracking-wider text-emerald-200/80">For sale</p>
-          <p className="text-xs sm:text-sm font-bold text-white leading-tight truncate">{pendingSpace.name}</p>
-          <p className="text-lg sm:text-xl font-black text-amber-300 tabular-nums">
-            {formatMonopolyMoney(pendingSpace.price ?? 0)}
-          </p>
+        <div className={panelClass}>
+          <p className={labelClass}>For sale</p>
+          <p className={titleClass}>{pendingSpace.name}</p>
+          <p className={priceClass}>{formatMonopolyMoney(pendingSpace.price ?? 0)}</p>
           {pendingSpace.rent != null && (
-            <p className="text-[10px] text-emerald-200/70">Rent {formatMonopolyMoney(pendingSpace.rent)}</p>
+            <p className={subtleClass}>Rent {formatMonopolyMoney(pendingSpace.rent)}</p>
           )}
           <div className="grid grid-cols-2 gap-1.5 pt-0.5">
             <BoardPrimaryButton
@@ -279,18 +305,14 @@ export function MonopolyBoardCenter({
       )}
 
       {showRaiseFunds && debt && (
-        <div className="mt-1.5 w-full max-w-[12rem] sm:max-w-[13rem] space-y-1.5">
-          <p className="text-[10px] uppercase tracking-wider text-red-200/90">Need to pay</p>
-          <p className="text-xs sm:text-sm font-bold text-white leading-tight">{debt.reason}</p>
-          {debtCreditor && (
-            <p className="text-[10px] text-emerald-200/70 truncate">To {debtCreditor.name}</p>
-          )}
-          <p className="text-lg sm:text-xl font-black text-red-300 tabular-nums">
-            {formatMonopolyMoney(debtAmount)}
+        <div className={widePanelClass}>
+          <p className={isDock ? 'text-[10px] uppercase tracking-wider text-red-500' : 'text-[10px] uppercase tracking-wider text-red-200/90'}>
+            Need to pay
           </p>
-          <p className="text-[9px] text-emerald-200/60 leading-snug">
-            Mortgage or sell houses in Build &amp; trade, then pay — or forfeit.
-          </p>
+          <p className={titleClass}>{debt.reason}</p>
+          {debtCreditor && <p className={`${subtleClass} truncate`}>To {debtCreditor.name}</p>}
+          <p className={debtPriceClass}>{formatMonopolyMoney(debtAmount)}</p>
+          <p className={subtleClass}>Mortgage or sell houses in Build &amp; trade, then pay — or forfeit.</p>
           <BoardPrimaryButton
             onClick={() => postAction('/api/monopoly/settle-debt')}
             loading={acting}
@@ -305,15 +327,11 @@ export function MonopolyBoardCenter({
       )}
 
       {showRent && pendingSpace && (
-        <div className="mt-1.5 w-full max-w-[11rem] sm:max-w-[12rem] space-y-1.5">
-          <p className="text-[10px] uppercase tracking-wider text-emerald-200/80">Rent due</p>
-          <p className="text-xs sm:text-sm font-bold text-white leading-tight truncate">{pendingSpace.name}</p>
-          <p className="text-[10px] text-emerald-200/70 truncate">
-            To {rentOwner?.name ?? 'owner'}
-          </p>
-          <p className="text-lg sm:text-xl font-black text-red-300 tabular-nums">
-            {formatMonopolyMoney(rentAmount)}
-          </p>
+        <div className={panelClass}>
+          <p className={labelClass}>Rent due</p>
+          <p className={titleClass}>{pendingSpace.name}</p>
+          <p className={`${subtleClass} truncate`}>To {rentOwner?.name ?? 'owner'}</p>
+          <p className={debtPriceClass}>{formatMonopolyMoney(rentAmount)}</p>
           <BoardPrimaryButton
             onClick={() => postAction('/api/monopoly/rent')}
             loading={acting}
@@ -325,10 +343,10 @@ export function MonopolyBoardCenter({
       )}
 
       {showJail && (
-        <div className="mt-1.5 w-full max-w-[11rem] sm:max-w-[12rem] space-y-1.5">
+        <div className={panelClass}>
           <p className="text-lg leading-none">🔒</p>
-          <p className="text-xs font-bold text-white">In jail</p>
-          <p className="text-[10px] text-emerald-200/70 leading-snug">
+          <p className={isDock ? 'text-sm font-bold text-[var(--foreground)]' : 'text-xs font-bold text-white'}>In jail</p>
+          <p className={subtleClass}>
             Attempt {(myState?.jail_turns ?? 0) + 1}/3 — roll once for doubles, or pay £50 before rolling.
           </p>
           <div className="space-y-1">
@@ -354,12 +372,11 @@ export function MonopolyBoardCenter({
       )}
 
       {showAuction && auction && auctionSpace && (
-        <div className="mt-1.5 w-full max-w-[11rem] sm:max-w-[12rem] space-y-1.5">
-          <p className="text-[10px] uppercase tracking-wider text-emerald-200/80">Auction</p>
-          <p className="text-xs sm:text-sm font-bold text-white leading-tight truncate">{auctionSpace.name}</p>
-          <p className="text-[10px] text-emerald-200/70">
-            High:{' '}
-            {auction.high_bid > 0 ? formatMonopolyMoney(auction.high_bid) : 'None'}
+        <div className={panelClass}>
+          <p className={labelClass}>Auction</p>
+          <p className={titleClass}>{auctionSpace.name}</p>
+          <p className={subtleClass}>
+            High: {auction.high_bid > 0 ? formatMonopolyMoney(auction.high_bid) : 'None'}
           </p>
           <input
             type="number"
@@ -390,9 +407,9 @@ export function MonopolyBoardCenter({
       )}
 
       {board.phase === 'auction' && auction && !isMyAuctionTurn && (
-        <div className="mt-1.5 space-y-0.5">
-          <p className="text-[10px] uppercase tracking-wider text-emerald-200/70">Auction</p>
-          <p className="text-[11px] text-emerald-100/90 leading-snug">
+        <div className={isDock ? 'space-y-1' : 'mt-1.5 space-y-0.5'}>
+          <p className={labelClass}>Auction</p>
+          <p className={isDock ? 'text-xs text-muted leading-snug' : 'text-[11px] text-emerald-100/90 leading-snug'}>
             {auctionSpace?.name}
             <br />
             {players.find((p) => p.id === auction.current_bidder_id)?.name ?? 'Someone'}&apos;s bid

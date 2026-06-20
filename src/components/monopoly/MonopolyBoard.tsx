@@ -20,6 +20,7 @@ import type { MonopolyPlayerState, Player } from '@/types'
 import {
   DICE_PIPS,
   boardEdgeForSpace,
+  boardGridCell,
   boardSpaceLines,
   spaceIcon,
   tokenColorForOrder,
@@ -153,25 +154,29 @@ function BoardBuildingBadge({
   )
 }
 
-export function MonopolyDiceFace({ value, rolling }: { value: number; rolling?: boolean }) {
+export function MonopolyDiceFace({ value, rolling, compact = false }: { value: number; rolling?: boolean; compact?: boolean }) {
   const pips = DICE_PIPS[value] ?? DICE_PIPS[1]!
+  const sizeClass = compact ? 'h-9 w-9 rounded-lg' : 'h-14 w-14 rounded-xl'
+  const pipGridClass = compact ? 'h-5 w-5 gap-px' : 'h-9 w-9 gap-0.5'
+  const pipDotClass = compact ? 'h-1 w-1' : 'h-2 w-2'
   return (
     <div
       className={[
-        'relative h-14 w-14 rounded-xl bg-gradient-to-br from-white to-neutral-100 shadow-lg',
+        'relative bg-gradient-to-br from-white to-neutral-100 shadow-lg',
         'border-2 border-neutral-200 flex items-center justify-center',
+        sizeClass,
         rolling ? 'animate-pulse scale-105' : '',
       ].join(' ')}
       aria-label={`Die showing ${value}`}
     >
-      <div className="grid grid-cols-3 grid-rows-3 gap-0.5 h-9 w-9">
+      <div className={['grid grid-cols-3 grid-rows-3', pipGridClass].join(' ')}>
         {Array.from({ length: 9 }, (_, i) => {
           const row = Math.floor(i / 3)
           const col = i % 3
           const show = pips.some(([r, c]) => r === row && c === col)
           return (
             <div key={i} className="flex items-center justify-center">
-              {show ? <div className="h-2 w-2 rounded-full bg-neutral-900 shadow-sm" /> : null}
+              {show ? <div className={['rounded-full bg-neutral-900 shadow-sm', pipDotClass].join(' ')} /> : null}
             </div>
           )
         })}
@@ -183,25 +188,28 @@ export function MonopolyDiceFace({ value, rolling }: { value: number; rolling?: 
 export function MonopolyDiceRoll({
   dice,
   rolling,
+  compact = false,
 }: {
   dice: { d1: number; d2: number; doubles?: boolean } | null | undefined
   rolling?: boolean
+  compact?: boolean
 }) {
+  const gapClass = compact ? 'gap-2' : 'gap-3'
   if (!dice) {
     return (
-      <div className="flex items-center justify-center gap-3">
-        <MonopolyDiceFace value={1} rolling={rolling} />
-        <MonopolyDiceFace value={1} rolling={rolling} />
+      <div className={['flex items-center justify-center', gapClass].join(' ')}>
+        <MonopolyDiceFace value={1} rolling={rolling} compact={compact} />
+        <MonopolyDiceFace value={1} rolling={rolling} compact={compact} />
       </div>
     )
   }
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="flex items-center justify-center gap-3">
-        <MonopolyDiceFace value={dice.d1} rolling={rolling} />
-        <MonopolyDiceFace value={dice.d2} rolling={rolling} />
+    <div className={['flex flex-col items-center', compact ? 'gap-1' : 'gap-2'].join(' ')}>
+      <div className={['flex items-center justify-center', gapClass].join(' ')}>
+        <MonopolyDiceFace value={dice.d1} rolling={rolling} compact={compact} />
+        <MonopolyDiceFace value={dice.d2} rolling={rolling} compact={compact} />
       </div>
-      <p className="text-sm font-bold text-muted tabular-nums">
+      <p className={['font-bold text-muted tabular-nums', compact ? 'text-[10px]' : 'text-sm'].join(' ')}>
         {dice.d1 + dice.d2}
         {dice.doubles ? ' · Doubles!' : ''}
       </p>
@@ -263,29 +271,42 @@ function BoardSpaceCell({
   const icon = spaceIcon(space.type)
   const lines = boardSpaceLines(space.name, space.type)
   const rentLabel = boardTileRentLabel(space, ownerId, owners, buildings, mortgaged, diceTotal)
+  const sideEdge = edge === 'left' || edge === 'right'
+  const lineClass = [
+    'font-bold text-neutral-800 leading-[1.05]',
+    isCorner ? 'text-[6px] sm:text-[10px]' : 'text-[5.5px] sm:text-[8px]',
+  ].join(' ')
 
   return (
     <div
       title={space.name}
       className={[
-        'relative flex overflow-hidden rounded-[3px] border bg-[#faf8f2] text-neutral-900 shadow-sm',
+        'relative flex overflow-hidden rounded-[2px] sm:rounded-[3px] border bg-[#faf8f2] text-neutral-900 shadow-sm',
         'transition-all duration-200 h-full w-full',
         highlighted
-          ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-emerald-900 z-10'
+          ? 'ring-1 sm:ring-2 ring-amber-400 ring-offset-0 ring-offset-emerald-900 z-10'
           : 'border-neutral-300/80',
         isCorner ? 'flex-col' : edge === 'bottom' || edge === 'top' ? 'flex-col' : 'flex-row',
       ].join(' ')}
     >
-      {edge === 'bottom' && space.color && <div className={['h-2 w-full shrink-0', colorBar(space.color)].join(' ')} />}
-      {edge === 'top' && space.color && <div className={['order-last h-2 w-full shrink-0', colorBar(space.color)].join(' ')} />}
-      {edge === 'left' && space.color && <div className={['w-2 h-full shrink-0', colorBar(space.color)].join(' ')} />}
-      {edge === 'right' && space.color && <div className={['order-last w-2 h-full shrink-0', colorBar(space.color)].join(' ')} />}
-      {isCorner && !space.color && <div className="h-1 shrink-0 bg-neutral-200" />}
+      {edge === 'bottom' && space.color && (
+        <div className={['h-1 sm:h-2 w-full shrink-0', colorBar(space.color)].join(' ')} />
+      )}
+      {edge === 'top' && space.color && (
+        <div className={['order-last h-1 sm:h-2 w-full shrink-0', colorBar(space.color)].join(' ')} />
+      )}
+      {edge === 'left' && space.color && (
+        <div className={['w-1 sm:w-2 h-full shrink-0', colorBar(space.color)].join(' ')} />
+      )}
+      {edge === 'right' && space.color && (
+        <div className={['order-last w-1 sm:w-2 h-full shrink-0', colorBar(space.color)].join(' ')} />
+      )}
+      {isCorner && !space.color && <div className="h-0.5 sm:h-1 shrink-0 bg-neutral-200" />}
 
-      <div className="flex flex-1 min-w-0 min-h-0 flex-col items-center justify-center gap-px p-0.5">
-        {isCorner && icon && <span className="text-base sm:text-lg leading-none">{icon}</span>}
+      <div className="flex flex-1 min-w-0 min-h-0 flex-col items-center justify-center gap-px p-px sm:p-0.5">
+        {isCorner && icon && <span className="text-[10px] sm:text-lg leading-none">{icon}</span>}
         {!isCorner && (space.price != null || rentLabel) && (
-          <div className="flex flex-col items-center gap-px leading-none">
+          <div className="hidden sm:flex flex-col items-center gap-px leading-none">
             {space.price != null && !ownerId && (
               <span className="text-[7px] sm:text-[8px] font-bold text-neutral-500">£{space.price}</span>
             )}
@@ -301,35 +322,46 @@ function BoardSpaceCell({
             )}
           </div>
         )}
-        <div className="flex flex-col items-center justify-center leading-[1.08] gap-px">
-          {lines.map((line, i) => (
-            <span
-              key={i}
-              className={[
-                'font-bold text-neutral-800 text-center',
-                isCorner ? 'text-[9px] sm:text-[10px]' : 'text-[7px] sm:text-[8px]',
-              ].join(' ')}
-            >
-              {line}
-            </span>
-          ))}
-        </div>
+        {sideEdge ? (
+          <div className="flex h-full flex-row items-center justify-center gap-px px-px sm:gap-0.5 sm:flex-col sm:px-0">
+            {lines.map((line, i) => (
+              <span
+                key={i}
+                className={[
+                  lineClass,
+                  'max-h-full text-center sm:max-h-none',
+                  'max-sm:[writing-mode:vertical-rl] max-sm:rotate-180',
+                ].join(' ')}
+              >
+                {line}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-px min-w-0 max-w-full px-px text-center">
+            {lines.map((line, i) => (
+              <span key={i} className={[lineClass, 'max-w-full'].join(' ')}>
+                {line}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {ownerId && ownerLabel && (
         <div
           title={`Owned by ${ownerLabel}`}
           className={[
-            'absolute z-[1] rounded-sm px-0.5 py-px text-[6px] font-bold text-white leading-none max-w-[90%] truncate',
+            'absolute z-[1] rounded-sm px-px py-px text-[5px] sm:text-[6px] font-bold text-white leading-none max-w-[90%] truncate',
             tokenColorForOrder(orderMap.get(ownerId) ?? 0).bg,
-            edge === 'bottom' ? 'bottom-0.5 left-0.5 right-0.5' : '',
-            edge === 'top' ? 'top-0.5 left-0.5 right-0.5' : '',
-            edge === 'left' ? 'left-1 bottom-0.5' : '',
-            edge === 'right' ? 'right-1 bottom-0.5' : '',
-            isCorner ? 'bottom-0.5 left-0.5 right-0.5' : '',
+            edge === 'bottom' ? 'bottom-px left-px right-px sm:bottom-0.5 sm:left-0.5 sm:right-0.5' : '',
+            edge === 'top' ? 'top-px left-px right-px sm:top-0.5 sm:left-0.5 sm:right-0.5' : '',
+            edge === 'left' ? 'left-0.5 bottom-px sm:left-1 sm:bottom-0.5' : '',
+            edge === 'right' ? 'right-0.5 bottom-px sm:right-1 sm:bottom-0.5' : '',
+            isCorner ? 'bottom-px left-px right-px sm:bottom-0.5 sm:left-0.5 sm:right-0.5' : '',
           ].join(' ')}
         >
-          {ownerLabel.slice(0, 6)}
+          {ownerLabel.slice(0, 4)}
         </div>
       )}
 
@@ -356,8 +388,8 @@ function BoardSpaceCell({
                 className={[
                   'flex items-center justify-center rounded-full shadow-md',
                   isMe
-                    ? 'h-5 w-5 sm:h-6 sm:w-6 text-xs sm:text-sm ring-2 ring-amber-300 ring-offset-1 ring-offset-emerald-900 z-10 scale-110'
-                    : 'h-4 w-4 sm:h-5 sm:w-5 text-[10px] sm:text-xs ring-1',
+                    ? 'h-4 w-4 sm:h-6 sm:w-6 text-[9px] sm:text-sm ring-1 sm:ring-2 ring-amber-300 ring-offset-0 sm:ring-offset-1 ring-offset-emerald-900 z-10 scale-110'
+                    : 'h-3.5 w-3.5 sm:h-5 sm:w-5 text-[8px] sm:text-xs ring-1',
                   c.bg,
                   c.ring,
                 ].join(' ')}
@@ -372,11 +404,6 @@ function BoardSpaceCell({
     </div>
   )
 }
-
-const BOTTOM_SPACES = [9, 8, 7, 6, 5, 4, 3, 2, 1] as const
-const LEFT_SPACES = [19, 18, 17, 16, 15, 14, 13, 12, 11] as const
-const TOP_SPACES = [21, 22, 23, 24, 25, 26, 27, 28, 29] as const
-const RIGHT_SPACES = [31, 32, 33, 34, 35, 36, 37, 38, 39] as const
 
 function BoardCellWrapper({
   spaceIndex,
@@ -415,6 +442,8 @@ function BoardCellWrapper({
   )
 }
 
+const BOARD_SPACE_INDICES = Array.from({ length: 40 }, (_, index) => index)
+
 export function MonopolyClassicBoard({
   states,
   players,
@@ -425,6 +454,7 @@ export function MonopolyClassicBoard({
   highlightIndex,
   myPlayerId,
   center,
+  mobileCenter,
 }: {
   states: MonopolyPlayerState[]
   players: Player[]
@@ -435,6 +465,7 @@ export function MonopolyClassicBoard({
   highlightIndex?: number | null
   myPlayerId?: string | null
   center?: React.ReactNode
+  mobileCenter?: React.ReactNode
 }) {
   const owners = effectivePropertyOwners(parsePropertyOwners(propertyOwners), states)
   const buildings = parseBuildings(propertyBuildings)
@@ -450,87 +481,64 @@ export function MonopolyClassicBoard({
     myPlayerId,
   }
 
+  const defaultMobileCenter = (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center">
+      <p className="text-[11px] font-black tracking-[0.18em] text-amber-300/90">MONOPOLY</p>
+      <p className="text-[8px] uppercase tracking-widest text-emerald-200/60">UK Edition</p>
+    </div>
+  )
+
+  const defaultDesktopCenter = center ?? (
+    <>
+      <p className="text-xl sm:text-2xl font-black tracking-tight text-amber-300 drop-shadow-sm">MONOPOLY</p>
+      <p className="text-[9px] sm:text-[10px] text-emerald-200/70 mt-0.5 uppercase tracking-[0.15em]">
+        Property Trading Game
+      </p>
+    </>
+  )
+
   return (
-    <div className="mx-auto w-full max-w-[min(100vw-1rem,580px)]">
+    <div className="mx-auto w-full min-w-0 max-w-[580px]">
       <div
         className={[
-          'relative aspect-square rounded-2xl p-1.5 sm:p-2.5',
+          'relative w-full aspect-square overflow-hidden rounded-xl sm:rounded-2xl',
           'bg-gradient-to-br from-emerald-800 via-emerald-900 to-teal-950',
-          'border-[3px] border-amber-700/90 shadow-[0_20px_60px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.12)]',
+          'border-2 sm:border-[3px] border-amber-700/90 shadow-[0_20px_60px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.12)]',
         ].join(' ')}
       >
-        <div className="flex h-full w-full flex-col gap-0.5 sm:gap-1">
-          {/* Top row: Free Parking — properties — Go To Jail */}
-          <div className="flex h-[13%] min-h-[44px] gap-0.5 sm:gap-1">
-            <div className="aspect-square h-full shrink-0">
-              <BoardCellWrapper spaceIndex={20} {...cellProps} />
-            </div>
-            <div className="flex flex-1 gap-0.5 sm:gap-1">
-              {TOP_SPACES.map((idx) => (
-                <div key={idx} className="flex-1 min-w-0">
-                  <BoardCellWrapper spaceIndex={idx} {...cellProps} />
-                </div>
-              ))}
-            </div>
-            <div className="aspect-square h-full shrink-0">
-              <BoardCellWrapper spaceIndex={30} {...cellProps} />
-            </div>
-          </div>
-
-          {/* Middle: left column — center — right column */}
-          <div className="flex min-h-0 flex-1 gap-0.5 sm:gap-1">
-            <div className="flex w-[13%] min-w-[36px] shrink-0 flex-col gap-0.5 sm:gap-1">
-              {LEFT_SPACES.map((idx) => (
-                <div key={idx} className="flex-1 min-h-0">
-                  <BoardCellWrapper spaceIndex={idx} {...cellProps} />
-                </div>
-              ))}
-            </div>
-
-            <div
-              className={[
-                'flex flex-1 flex-col items-center justify-center rounded-xl min-w-0',
-                'bg-gradient-to-br from-emerald-700/90 to-emerald-950/95',
-                'border border-emerald-600/40 shadow-inner p-2 sm:p-4 text-center',
-              ].join(' ')}
-            >
-              {center ?? (
-                <>
-                  <p className="text-xl sm:text-2xl font-black tracking-tight text-amber-300 drop-shadow-sm">
-                    MONOPOLY
-                  </p>
-                  <p className="text-[9px] sm:text-[10px] text-emerald-200/70 mt-0.5 uppercase tracking-[0.15em]">
-                    Property Trading Game
-                  </p>
-                </>
-              )}
-            </div>
-
-            <div className="flex w-[13%] min-w-[36px] shrink-0 flex-col gap-0.5 sm:gap-1">
-              {RIGHT_SPACES.map((idx) => (
-                <div key={idx} className="flex-1 min-h-0">
-                  <BoardCellWrapper spaceIndex={idx} {...cellProps} />
-                </div>
-              ))}
+        <div
+          className="absolute inset-1 sm:inset-2.5 grid gap-px sm:gap-1"
+          style={{
+            gridTemplateColumns: 'repeat(11, minmax(0, 1fr))',
+            gridTemplateRows: 'repeat(11, minmax(0, 1fr))',
+          }}
+        >
+          <div
+            className={[
+              'z-0 flex min-h-0 min-w-0 flex-col items-center justify-center overflow-hidden rounded-md sm:rounded-xl',
+              'bg-gradient-to-br from-emerald-700/90 to-emerald-950/95',
+              'border border-emerald-600/40 shadow-inner p-1 sm:p-4 text-center',
+            ].join(' ')}
+            style={{ gridColumn: '2 / 11', gridRow: '2 / 11' }}
+          >
+            <div className="flex sm:hidden h-full w-full min-h-0 min-w-0">{mobileCenter ?? defaultMobileCenter}</div>
+            <div className="hidden sm:flex h-full w-full min-h-0 min-w-0 flex-col items-center justify-center">
+              {defaultDesktopCenter}
             </div>
           </div>
 
-          {/* Bottom row: Jail — properties — GO */}
-          <div className="flex h-[13%] min-h-[44px] gap-0.5 sm:gap-1">
-            <div className="aspect-square h-full shrink-0">
-              <BoardCellWrapper spaceIndex={10} {...cellProps} />
-            </div>
-            <div className="flex flex-1 gap-0.5 sm:gap-1">
-              {BOTTOM_SPACES.map((idx) => (
-                <div key={idx} className="flex-1 min-w-0">
-                  <BoardCellWrapper spaceIndex={idx} {...cellProps} />
-                </div>
-              ))}
-            </div>
-            <div className="aspect-square h-full shrink-0">
-              <BoardCellWrapper spaceIndex={0} {...cellProps} />
-            </div>
-          </div>
+          {BOARD_SPACE_INDICES.map((spaceIndex) => {
+            const { col, row } = boardGridCell(spaceIndex)
+            return (
+              <div
+                key={spaceIndex}
+                className="relative z-[1] min-h-0 min-w-0"
+                style={{ gridColumn: col, gridRow: row }}
+              >
+                <BoardCellWrapper spaceIndex={spaceIndex} {...cellProps} />
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>
