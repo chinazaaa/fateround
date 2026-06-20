@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { NpatScoreboard } from '@/components/npat/NpatScoreboard'
 import {
   duplicateKeysByCategory,
   isForcedInvalidAnswer,
+  NPAT_CATEGORIES,
   suggestedHostReviewValidity,
 } from '@/lib/npat'
 import type { NpatAnswer, NpatCategory, NpatMark, NpatMetadata, Player, Round } from '@/types'
@@ -17,29 +18,33 @@ function overridesToValidity(
 ): ValidityMap {
   const map: ValidityMap = {}
   for (const [playerId, flags] of Object.entries(overrides)) {
-    map[playerId] = {
-      name: flags.name ?? false,
-      animal: flags.animal ?? false,
-      place: flags.place ?? false,
-      thing: flags.thing ?? false,
-    }
+    map[playerId] = Object.fromEntries(
+      NPAT_CATEGORIES.map((category) => [category, flags[category] ?? false])
+    ) as Record<NpatCategory, boolean>
   }
   return map
+}
+
+const OVERRIDE_PAYLOAD_KEYS: Record<NpatCategory, string> = {
+  name: 'validName',
+  animal: 'validAnimal',
+  place: 'validPlace',
+  thing: 'validThing',
+  food: 'validFood',
 }
 
 function validityToPayload(validity: ValidityMap) {
   return Object.entries(validity).map(([playerId, flags]) => ({
     playerId,
-    validName: flags.name,
-    validAnimal: flags.animal,
-    validPlace: flags.place,
-    validThing: flags.thing,
+    ...Object.fromEntries(
+      NPAT_CATEGORIES.map((category) => [OVERRIDE_PAYLOAD_KEYS[category], flags[category]])
+    ),
   }))
 }
 
-export function NpatHostReviewPanel({
+export function NpatCallerReviewPanel({
   gameCode,
-  hostToken,
+  playerId,
   round,
   players,
   answers,
@@ -47,7 +52,7 @@ export function NpatHostReviewPanel({
   onApproved,
 }: {
   gameCode: string
-  hostToken: string
+  playerId: string
   round: Round
   players: Player[]
   answers: NpatAnswer[]
@@ -61,24 +66,27 @@ export function NpatHostReviewPanel({
   const roundMarks = useMemo(() => marks.filter((m) => m.round_id === round.id), [marks, round.id])
   const dupes = useMemo(() => duplicateKeysByCategory(roundAnswers), [roundAnswers])
 
-  const [validity, setValidity] = useState<ValidityMap>(() =>
-    overridesToValidity(suggestedHostReviewValidity(roundAnswers, roundMarks, letter) ?? {})
-  )
+  const [validity, setValidity] = useState<ValidityMap>({})
   const [approving, setApproving] = useState(false)
+  const seededRoundIdRef = useRef<string | null>(null)
 
   useEffect(() => {
+    if (seededRoundIdRef.current === round.id) return
+    if (roundAnswers.length === 0) return
+
+    seededRoundIdRef.current = round.id
     setValidity(overridesToValidity(suggestedHostReviewValidity(roundAnswers, roundMarks, letter) ?? {}))
   }, [round.id, roundAnswers, roundMarks, letter])
 
-  const setValid = (playerId: string, category: NpatCategory, answerText: string, valid: boolean) => {
+  const setValid = (targetPlayerId: string, category: NpatCategory, answerText: string, valid: boolean) => {
     const normalized = answerText.trim()
     const isDuplicate = normalized ? dupes[category].has(normalized.toLowerCase()) : false
     if (isForcedInvalidAnswer(answerText, letter, isDuplicate)) return
 
     setValidity((prev) => ({
       ...prev,
-      [playerId]: {
-        ...prev[playerId],
+      [targetPlayerId]: {
+        ...prev[targetPlayerId],
         [category]: valid,
       },
     }))
@@ -87,12 +95,12 @@ export function NpatHostReviewPanel({
   const approveRound = async () => {
     setApproving(true)
     try {
-      const res = await fetch('/api/npat/host-approve', {
+      const res = await fetch('/api/npat/caller-approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          hostToken,
+          playerId,
           roundId: round.id,
           overrides: validityToPayload(validity),
         }),
@@ -108,10 +116,10 @@ export function NpatHostReviewPanel({
     }
   }
 
-  const hostOverrides = useMemo(() => {
+  const reviewOverrides = useMemo(() => {
     const result: NonNullable<NpatMetadata['host_overrides']> = {}
-    for (const [playerId, flags] of Object.entries(validity)) {
-      result[playerId] = flags
+    for (const [targetPlayerId, flags] of Object.entries(validity)) {
+      result[targetPlayerId] = flags
     }
     return result
   }, [validity])
@@ -119,11 +127,12 @@ export function NpatHostReviewPanel({
   return (
     <div className="space-y-4">
       <div className="glass-card p-5 space-y-3">
-        <p className="label-caps">Host review</p>
+        <p className="label-caps">Your approval</p>
         <p className="text-sm text-muted leading-relaxed">
-          Review everyone&apos;s answers for letter{' '}
-          <strong className="text-body">{letter ?? '?'}</strong>. Empty answers, wrong starting letters, and duplicates
-          are invalid automatically. Toggle anything else, then approve to reveal scores.
+          You called letter{' '}
+          <strong className="text-body">{letter ?? '?'}</strong> — review everyone&apos;s answers before scores are
+          revealed. Empty answers, wrong starting letters, and duplicates are invalid automatically. Toggle anything
+          else, then approve.
         </p>
         <button type="button" onClick={() => void approveRound()} disabled={approving} className="btn-primary w-full">
           {approving ? 'Approving…' : 'Approve & reveal scores'}
@@ -138,7 +147,7 @@ export function NpatHostReviewPanel({
         metadata={metadata ?? null}
         showScores={false}
         hostReview
-        hostOverrides={hostOverrides}
+        hostOverrides={reviewOverrides}
         onSetValid={setValid}
       />
     </div>

@@ -1427,8 +1427,8 @@ function CreateGameInner() {
                   </select>
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
-                  Players take turns calling a letter, then fill Name, Animal, Place, and Thing. Reviewers mark answers,
-                  the host approves each round, and unique valid answers score points. Play until time runs out or all
+                  Players take turns calling a letter, then fill Name, Animal, Place, Thing, and Food. Reviewers mark answers,
+                  the letter caller approves each round, and unique valid answers score points. Play until time runs out or all
                   26 letters are used.
                 </p>
               </SettingsGroup>

@@ -2,6 +2,7 @@
 
 import {
   answerStartsWithLetter,
+  answerTotal,
   computeCategoryScore,
   duplicateKeysByCategory,
   isForcedInvalidAnswer,
@@ -96,12 +97,7 @@ export function NpatScoreboard({
             const mark = marksByTarget.get(player.id)
             const reviewer = markerNameByTarget.get(player.id)
             const roundTotal =
-              showScores && answer?.score_name != null
-                ? (answer.score_name ?? 0) +
-                  (answer.score_animal ?? 0) +
-                  (answer.score_place ?? 0) +
-                  (answer.score_thing ?? 0)
-                : null
+              showScores && answer?.score_name != null ? answerTotal(answer) : null
 
             return (
               <tr key={player.id} className="border-b border-[var(--border-strong)]/60 align-top">

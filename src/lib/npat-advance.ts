@@ -166,6 +166,7 @@ async function computeAndFinishRound(
         score_animal: row.score_animal,
         score_place: row.score_place,
         score_thing: row.score_thing,
+        score_food: row.score_food,
       })
       .eq('round_id', round.id)
       .eq('player_id', row.player_id)

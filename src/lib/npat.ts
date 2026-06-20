@@ -34,13 +34,14 @@ export const NPAT_MAX_LETTERS = 26
 export const NPAT_DEFAULT_GAME_DURATION = 1800
 export const NPAT_GAME_DURATION_OPTIONS = [0, 600, 900, 1200, 1800, 2700, 3600] as const
 
-export const NPAT_CATEGORIES: NpatCategory[] = ['name', 'animal', 'place', 'thing']
+export const NPAT_CATEGORIES: NpatCategory[] = ['name', 'animal', 'place', 'thing', 'food']
 
 export const NPAT_CATEGORY_LABELS: Record<NpatCategory, string> = {
   name: 'Name',
   animal: 'Animal',
   place: 'Place',
   thing: 'Thing',
+  food: 'Food',
 }
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
@@ -282,13 +283,14 @@ export function isForcedInvalidAnswer(answer: string, letter: string | null, isD
 }
 
 export function duplicateKeysByCategory(
-  answers: Pick<NpatAnswer, 'name' | 'animal' | 'place' | 'thing'>[]
+  answers: Pick<NpatAnswer, 'name' | 'animal' | 'place' | 'thing' | 'food'>[]
 ): Record<NpatCategory, Set<string>> {
   const result: Record<NpatCategory, Set<string>> = {
     name: new Set(),
     animal: new Set(),
     place: new Set(),
     thing: new Set(),
+    food: new Set(),
   }
 
   for (const category of NPAT_CATEGORIES) {
@@ -346,6 +348,7 @@ export function computeRoundScores(
   score_animal: number
   score_place: number
   score_thing: number
+  score_food: number
 }> {
   const letter = opts?.letter ?? null
   const hostOverrides = opts?.hostOverrides
@@ -384,6 +387,7 @@ export function computeRoundScores(
       score_animal: scores.animal,
       score_place: scores.place,
       score_thing: scores.thing,
+      score_food: scores.food,
     }
   })
 }
@@ -419,8 +423,16 @@ export function suggestedHostReviewValidity(
   return result
 }
 
-export function answerTotal(answer: Pick<NpatAnswer, 'score_name' | 'score_animal' | 'score_place' | 'score_thing'>) {
-  return (answer.score_name ?? 0) + (answer.score_animal ?? 0) + (answer.score_place ?? 0) + (answer.score_thing ?? 0)
+export function answerTotal(
+  answer: Pick<NpatAnswer, 'score_name' | 'score_animal' | 'score_place' | 'score_thing' | 'score_food'>
+) {
+  return (
+    (answer.score_name ?? 0) +
+    (answer.score_animal ?? 0) +
+    (answer.score_place ?? 0) +
+    (answer.score_thing ?? 0) +
+    (answer.score_food ?? 0)
+  )
 }
 
 export function tallyNpatScores(answers: NpatAnswer[], players: Player[]): { id: string; name: string; score: number }[] {
@@ -540,6 +552,7 @@ export async function ensureDefaultMarks(
         valid_animal: validFor('animal'),
         valid_place: validFor('place'),
         valid_thing: validFor('thing'),
+        valid_food: validFor('food'),
         marked_at: null,
       }
     })

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { NpatActiveRound } from '@/components/npat/NpatActiveRound'
-import { NpatHostReviewPanel } from '@/components/npat/NpatHostReviewPanel'
 import { NpatFinalResultsShareBlock } from '@/components/npat/NpatFinalResultsShareBlock'
 import { NpatScoreboard } from '@/components/npat/NpatScoreboard'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
@@ -163,14 +162,10 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   }, [game?.status])
 
   useEffect(() => {
-    if (hostMode === 'player' && hostPlayerId && game?.status === 'active' && currentMetadata?.phase !== 'host_review') {
+    if (hostMode === 'player' && hostPlayerId && game?.status === 'active') {
       setTab('play')
     }
-  }, [hostMode, hostPlayerId, game?.status, currentMetadata?.phase])
-
-  useEffect(() => {
-    if (currentMetadata?.phase === 'host_review') setTab('manage')
-  }, [currentMetadata?.phase])
+  }, [hostMode, hostPlayerId, game?.status])
 
   const changeHostMode = (mode: NpatHostMode) => {
     if (game?.status !== 'waiting') return
@@ -470,17 +465,6 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
             {game.status === 'active' && (
               <>
-                {currentMetadata?.phase === 'host_review' && currentRound && (
-                  <NpatHostReviewPanel
-                    gameCode={gameCode}
-                    hostToken={hostToken}
-                    round={currentRound}
-                    players={players}
-                    answers={answers}
-                    marks={marks}
-                    onApproved={load}
-                  />
-                )}
                 {playerManageBlock}
                 {!hostPlayerId && (
                   <div className="glass-card p-6 text-center text-muted">
@@ -500,7 +484,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
                   highlightId={hostPlayerId}
                   scoreLabel={(score) => `${score} pts`}
                 />
-                {showManageScoreboard && currentMetadata && currentMetadata.phase !== 'host_review' && (
+                {showManageScoreboard && currentMetadata && (
                   <NpatScoreboard
                     letter={currentMetadata.letter}
                     players={players}

@@ -34,7 +34,7 @@ export type GameType =
   | 'i_call_on'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
-export type NpatCategory = 'name' | 'animal' | 'place' | 'thing'
+export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
 
 export type NpatHostOverrides = Record<
   string,
@@ -62,11 +62,13 @@ export interface NpatAnswer {
   animal: string
   place: string
   thing: string
+  food: string
   submitted_at: string | null
   score_name: number | null
   score_animal: number | null
   score_place: number | null
   score_thing: number | null
+  score_food: number | null
 }
 
 export interface NpatMark {
@@ -79,6 +81,7 @@ export interface NpatMark {
   valid_animal: boolean
   valid_place: boolean
   valid_thing: boolean
+  valid_food: boolean
   marked_at: string | null
 }
 

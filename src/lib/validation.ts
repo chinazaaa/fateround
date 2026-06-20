@@ -498,6 +498,7 @@ export const npatSubmitSchema = z.object({
   animal: z.string().max(80),
   place: z.string().max(80),
   thing: z.string().max(80),
+  food: z.string().max(80),
 })
 
 export type NpatSubmitInput = z.infer<typeof npatSubmitSchema>
@@ -510,6 +511,7 @@ export const npatMarkSchema = z.object({
   validAnimal: z.boolean(),
   validPlace: z.boolean(),
   validThing: z.boolean(),
+  validFood: z.boolean(),
 })
 
 export type NpatMarkInput = z.infer<typeof npatMarkSchema>
@@ -520,16 +522,17 @@ const npatHostOverrideEntrySchema = z.object({
   validAnimal: z.boolean(),
   validPlace: z.boolean(),
   validThing: z.boolean(),
+  validFood: z.boolean(),
 })
 
-export const npatHostApproveSchema = z.object({
+export const npatCallerApproveSchema = z.object({
   gameId: gameCodeString(),
-  hostToken: z.string().min(1),
+  playerId: uuidString('playerId'),
   roundId: uuidString('roundId'),
   overrides: z.array(npatHostOverrideEntrySchema),
 })
 
-export type NpatHostApproveInput = z.infer<typeof npatHostApproveSchema>
+export type NpatCallerApproveInput = z.infer<typeof npatCallerApproveSchema>
 
 export const npatAdvanceSchema = z.object({
   gameId: gameCodeString(),

@@ -64,10 +64,10 @@ export const TTL_GUESS_SELECT =
   'id,game_id,round_id,player_id,guessed_index,is_correct,points,guessed_at'
 
 export const NPAT_ANSWER_SELECT =
-  'id,game_id,round_id,player_id,name,animal,place,thing,submitted_at,score_name,score_animal,score_place,score_thing'
+  'id,game_id,round_id,player_id,name,animal,place,thing,food,submitted_at,score_name,score_animal,score_place,score_thing,score_food'
 
 export const NPAT_MARK_SELECT =
-  'id,game_id,round_id,marker_player_id,target_player_id,valid_name,valid_animal,valid_place,valid_thing,marked_at'
+  'id,game_id,round_id,marker_player_id,target_player_id,valid_name,valid_animal,valid_place,valid_thing,valid_food,marked_at'
 
 export const WST_QUOTE_POOL_SELECT =
   'id,game_id,player_id,quote_text,author_participant_id,created_at,updated_at'

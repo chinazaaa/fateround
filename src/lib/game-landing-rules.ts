@@ -705,7 +705,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'Objective',
       points: [
         'Score the most points across all rounds by writing unique, valid answers for each category.',
-        'Each category can earn up to 10 points per round (40 max).',
+        'Each category can earn up to 10 points per round (50 max).',
       ],
     },
     {
@@ -719,7 +719,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'How a letter works',
       points: [
-        'The letter caller picks A–Z. Everyone fills Name, Animal, Place, and Thing starting with that letter.',
+        'The letter caller picks A–Z. Everyone fills Name, Animal, Place, Thing, and Food starting with that letter.',
         'When time runs out, papers pass — you mark the next player’s answers valid or invalid.',
         'Duplicates are detected automatically: if two or more players wrote the same answer in a category, everyone with that duplicate scores 0 for it.',
         'Everyone sees all answers, marks, and scores live so marking stays fair.',

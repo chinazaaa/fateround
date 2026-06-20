@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId, roundId, name, animal, place, thing } = parsed.data
+  const { gameId, playerId, roundId, name, animal, place, thing, food } = parsed.data
   const code = gameId.toUpperCase()
 
   const { data: game } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   }
 
   const letter = metadata.letter
-  const fields = { name, animal, place, thing }
+  const fields = { name, animal, place, thing, food }
   for (const [label, value] of Object.entries(fields)) {
     const trimmed = trimField(value)
     if (trimmed && letter && !answerStartsWithLetter(trimmed, letter)) {
@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
     animal: trimField(animal),
     place: trimField(place),
     thing: trimField(thing),
+    food: trimField(food),
     submitted_at: now,
   }
 

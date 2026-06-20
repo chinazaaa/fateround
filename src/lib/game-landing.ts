@@ -961,7 +961,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'Play I Call On online. Call a letter, fill four categories, mark answers together — duplicates score zero, unique answers earn points.',
     keywords: ['i call on', 'stop game', 'categories game', 'party game online'],
     heroSubtitle:
-      'The classic A–Z categories game. Someone calls a letter — everyone fills Name, Animal, Place, and Thing before time runs out.',
+      'The classic A–Z categories game. Someone calls a letter — everyone fills Name, Animal, Place, Thing, and Food before time runs out.',
     highlights: ['Rotating letter caller', 'Live transparent scoring', 'Duplicate detection'],
     features: [
       {

@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { isICallOnGame, parseGameType } from '@/lib/game-types'
 import { parseNpatMetadata, reviewTargetForMarker, answerStartsWithLetter, normalizeAnswer, duplicateKeysByCategory } from '@/lib/npat'
 import { npatMarkSchema } from '@/lib/validation'
+import type { NpatCategory } from '@/types'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -13,7 +14,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId, roundId, validName, validAnimal, validPlace, validThing } = parsed.data
+  const { gameId, playerId, roundId, validName, validAnimal, validPlace, validThing, validFood } = parsed.data
   const code = gameId.toUpperCase()
 
   const { data: game } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
@@ -38,19 +39,19 @@ export async function POST(req: NextRequest) {
 
   const { data: targetAnswer } = await supabase
     .from('npat_answers')
-    .select('name, animal, place, thing')
+    .select('name, animal, place, thing, food')
     .eq('round_id', roundId)
     .eq('player_id', targetId)
     .maybeSingle()
 
   const { data: allAnswers } = await supabase
     .from('npat_answers')
-    .select('name, animal, place, thing')
+    .select('name, animal, place, thing, food')
     .eq('round_id', roundId)
 
   const letter = metadata.letter
   const dupes = duplicateKeysByCategory(allAnswers ?? [])
-  const clampValid = (category: 'name' | 'animal' | 'place' | 'thing', requested: boolean) => {
+  const clampValid = (category: NpatCategory, requested: boolean) => {
     if (!targetAnswer) return false
     const text = targetAnswer[category]
     const normalized = normalizeAnswer(text)
@@ -75,6 +76,7 @@ export async function POST(req: NextRequest) {
       valid_animal: clampValid('animal', validAnimal),
       valid_place: clampValid('place', validPlace),
       valid_thing: clampValid('thing', validThing),
+      valid_food: clampValid('food', validFood),
       marked_at: now,
     },
     { onConflict: 'marker_player_id,round_id' }

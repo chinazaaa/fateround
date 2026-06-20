@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { NpatCallerReviewPanel } from '@/components/npat/NpatCallerReviewPanel'
 import { NpatFinalResultsShareBlock } from '@/components/npat/NpatFinalResultsShareBlock'
 import { NpatScoreboard } from '@/components/npat/NpatScoreboard'
 import { NpatGameTimerBar } from '@/components/npat/NpatGameTimerBar'
 import {
+  answerTotal,
   availableLettersForPick,
   clampNpatMarkingTimer,
   clampNpatTimer,
@@ -38,7 +40,8 @@ type PlayScreen =
   | 'writing_locked'
   | 'marking'
   | 'marking_locked'
-  | 'host_review'
+  | 'caller_review'
+  | 'approval_wait'
   | 'revealed'
   | 'finished'
 
@@ -84,13 +87,16 @@ export function NpatActiveRound({
   const { error: toastError } = useToast()
   const [submitting, setSubmitting] = useState(false)
   const [pickingLetter, setPickingLetter] = useState(false)
-  const [form, setForm] = useState({ name: '', animal: '', place: '', thing: '' })
-  const [validFlags, setValidFlags] = useState<Record<NpatCategory, boolean>>({
-    name: true,
-    animal: true,
-    place: true,
-    thing: true,
-  })
+  const emptyForm = useMemo(
+    () => Object.fromEntries(NPAT_CATEGORIES.map((c) => [c, ''])) as Record<NpatCategory, string>,
+    []
+  )
+  const defaultValidFlags = useMemo(
+    () => Object.fromEntries(NPAT_CATEGORIES.map((c) => [c, true])) as Record<NpatCategory, boolean>,
+    []
+  )
+  const [form, setForm] = useState<Record<NpatCategory, string>>(emptyForm)
+  const [validFlags, setValidFlags] = useState<Record<NpatCategory, boolean>>(defaultValidFlags)
   const [tick, setTick] = useState(0)
 
   const currentRound = useMemo(() => {
@@ -133,10 +139,10 @@ export function NpatActiveRound({
   }, [metadata?.phase, currentRound?.id])
 
   useEffect(() => {
-    setForm({ name: '', animal: '', place: '', thing: '' })
-    setValidFlags({ name: true, animal: true, place: true, thing: true })
+    setForm(emptyForm)
+    setValidFlags(defaultValidFlags)
     setSubmitting(false)
-  }, [currentRound?.id])
+  }, [currentRound?.id, emptyForm, defaultValidFlags])
 
   useEffect(() => {
     if (!myMark || !reviewTargetId) return
@@ -150,18 +156,21 @@ export function NpatActiveRound({
       const isDuplicate = normalized ? dupes[category].has(normalized) : false
       return isForcedInvalidAnswer(text, letter, isDuplicate) ? false : value
     }
-    setValidFlags({
-      name: clamp('name', myMark.valid_name),
-      animal: clamp('animal', myMark.valid_animal),
-      place: clamp('place', myMark.valid_place),
-      thing: clamp('thing', myMark.valid_thing),
-    })
+    setValidFlags(
+      Object.fromEntries(
+        NPAT_CATEGORIES.map((category) => [
+          category,
+          clamp(category, myMark[`valid_${category}` as keyof NpatMark] as boolean),
+        ])
+      ) as Record<NpatCategory, boolean>
+    )
   }, [
     myMark?.id,
     myMark?.valid_name,
     myMark?.valid_animal,
     myMark?.valid_place,
     myMark?.valid_thing,
+    myMark?.valid_food,
     currentRound?.id,
     reviewTargetId,
     roundAnswers,
@@ -188,7 +197,7 @@ export function NpatActiveRound({
     if (phase === 'letter_pick') return isCaller ? 'letter_pick' : 'letter_wait'
     if (phase === 'writing') return myAnswer?.submitted_at ? 'writing_locked' : 'writing'
     if (phase === 'marking') return myMark?.marked_at ? 'marking_locked' : 'marking'
-    if (phase === 'host_review') return 'host_review'
+    if (phase === 'host_review') return isCaller ? 'caller_review' : 'approval_wait'
     return 'waiting'
   }, [game.status, currentRound, metadata, isCaller, myAnswer, myMark])
 
@@ -256,10 +265,12 @@ export function NpatActiveRound({
           gameId: gameCode,
           playerId: myPlayerId,
           roundId: currentRound.id,
-          validName: clamp('name', validFlags.name),
-          validAnimal: clamp('animal', validFlags.animal),
-          validPlace: clamp('place', validFlags.place),
-          validThing: clamp('thing', validFlags.thing),
+          ...Object.fromEntries(
+            NPAT_CATEGORIES.map((category) => [
+              `valid${category.charAt(0).toUpperCase()}${category.slice(1)}`,
+              clamp(category, validFlags[category]),
+            ])
+          ),
         }),
       })
       const data = await res.json()
@@ -306,7 +317,8 @@ export function NpatActiveRound({
     metadata?.phase === 'host_review' ||
     screen === 'revealed' ||
     screen === 'marking_locked' ||
-    screen === 'host_review'
+    screen === 'caller_review' ||
+    screen === 'approval_wait'
   const showFinalScores = screen === 'revealed' || !!(metadata?.scores_computed && currentRound.status === 'finished')
   const lettersLeft = npatLettersRemaining(metadata)
   const availableLetters = availableLettersForPick(rounds)
@@ -417,11 +429,25 @@ export function NpatActiveRound({
           </div>
         )}
 
-        {screen === 'host_review' && (
+        {screen === 'caller_review' && (
+          <NpatCallerReviewPanel
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            round={currentRound}
+            players={players}
+            answers={answers}
+            marks={marks}
+            onApproved={onReload}
+          />
+        )}
+
+        {screen === 'approval_wait' && (
           <div className="glass-card p-6 text-center space-y-2">
             <p className="text-2xl">👀</p>
-            <p className="font-bold">Waiting for host approval</p>
-            <p className="text-sm text-muted">The host is reviewing everyone&apos;s answers before scores are revealed.</p>
+            <p className="font-bold">Waiting for {callerName}&apos;s approval</p>
+            <p className="text-sm text-muted">
+              The letter caller is reviewing everyone&apos;s answers before scores are revealed.
+            </p>
           </div>
         )}
 
@@ -501,12 +527,7 @@ export function NpatActiveRound({
 
         {screen === 'revealed' && myAnswer && myAnswer.score_name != null && (
           <div className="glass-card p-4 text-center font-semibold">
-            You scored{' '}
-            {(myAnswer.score_name ?? 0) +
-              (myAnswer.score_animal ?? 0) +
-              (myAnswer.score_place ?? 0) +
-              (myAnswer.score_thing ?? 0)}{' '}
-            pts this round
+            You scored {answerTotal(myAnswer)} pts this round
           </div>
         )}
       </div>
