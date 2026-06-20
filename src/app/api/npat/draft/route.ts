@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { isICallOnGame, parseGameType } from '@/lib/game-types'
 import { parseNpatMetadata, trimNpatAnswerFields, validateNpatAnswerFields } from '@/lib/npat'
-import { npatSubmitSchema } from '@/lib/validation'
+import { npatDraftSchema } from '@/lib/validation'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
-  const parsed = npatSubmitSchema.safeParse(raw)
+  const parsed = npatDraftSchema.safeParse(raw)
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
@@ -40,13 +40,20 @@ export async function POST(req: NextRequest) {
   const { data: player } = await supabase.from('players').select('id').eq('id', playerId).eq('game_id', code).maybeSingle()
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
 
-  const now = new Date().toISOString()
+  const { data: existing } = await supabase
+    .from('npat_answers')
+    .select('submitted_at')
+    .eq('round_id', roundId)
+    .eq('player_id', playerId)
+    .maybeSingle()
+
+  if (existing?.submitted_at) return NextResponse.json({ success: true })
+
   const payload = {
     game_id: code,
     round_id: roundId,
     player_id: playerId,
     ...trimmed,
-    submitted_at: now,
   }
 
   const { error } = await supabase.from('npat_answers').upsert(payload, { onConflict: 'player_id,round_id' })

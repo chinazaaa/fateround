@@ -7,8 +7,8 @@ import {
   clampNpatTimer,
   availableLettersForPick,
   computeRoundScores,
-  ensureBlankAnswers,
   ensureDefaultMarks,
+  finalizeUnsubmittedAnswers,
   NPAT_LETTER_PICK_SECONDS,
   NPAT_REVEAL_SECONDS,
   npatSessionShouldEnd,
@@ -116,7 +116,7 @@ async function startMarkingPhase(
 ): Promise<boolean> {
   const metadata = parseNpatMetadata(round.npat_metadata)
   if (!metadata || metadata.phase !== 'writing') return false
-  await ensureBlankAnswers(supabase, gameId, round.id, playerIds)
+  await finalizeUnsubmittedAnswers(supabase, gameId, round.id, playerIds)
   await ensureDefaultMarks(supabase, gameId, round, playerIds)
   const now = new Date().toISOString()
   return updateRoundMetadata(supabase, round.id, {

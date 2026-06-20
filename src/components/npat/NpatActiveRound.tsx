@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { NpatCallerReviewPanel } from '@/components/npat/NpatCallerReviewPanel'
 import { NpatFinalResultsShareBlock } from '@/components/npat/NpatFinalResultsShareBlock'
@@ -24,6 +24,7 @@ import {
   revealCountdownSeconds,
   reviewTargetForMarker,
   tallyNpatScores,
+  trimNpatAnswerFields,
 } from '@/lib/npat'
 import { useNpatAdvance } from '@/hooks/useNpatAdvance'
 import { playVoteSubmittedSound } from '@/lib/sounds'
@@ -98,6 +99,9 @@ export function NpatActiveRound({
   const [form, setForm] = useState<Record<NpatCategory, string>>(emptyForm)
   const [validFlags, setValidFlags] = useState<Record<NpatCategory, boolean>>(defaultValidFlags)
   const [tick, setTick] = useState(0)
+  const formRef = useRef(form)
+  formRef.current = form
+  const autoSubmittedRoundRef = useRef<string | null>(null)
 
   const currentRound = useMemo(() => {
     const byPointer = rounds.find((r) => r.round_number === game.current_round_number) ?? null
@@ -142,7 +146,36 @@ export function NpatActiveRound({
     setForm(emptyForm)
     setValidFlags(defaultValidFlags)
     setSubmitting(false)
+    autoSubmittedRoundRef.current = null
   }, [currentRound?.id, emptyForm, defaultValidFlags])
+
+  useEffect(() => {
+    if (!myAnswer || myAnswer.submitted_at || metadata?.phase !== 'writing') return
+    const hasDraft = NPAT_CATEGORIES.some((category) => myAnswer[category]?.trim())
+    if (!hasDraft) return
+    setForm(trimNpatAnswerFields(myAnswer))
+  }, [myAnswer, metadata?.phase])
+
+  useEffect(() => {
+    if (readOnly || !currentRound || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
+    const hasContent = NPAT_CATEGORIES.some((category) => form[category]?.trim())
+    if (!hasContent) return
+
+    const handle = window.setTimeout(() => {
+      void fetch('/api/npat/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameId: gameCode,
+          playerId: myPlayerId,
+          roundId: currentRound.id,
+          ...formRef.current,
+        }),
+      })
+    }, 1500)
+
+    return () => window.clearTimeout(handle)
+  }, [form, readOnly, currentRound, metadata?.phase, myAnswer?.submitted_at, gameCode, myPlayerId])
 
   useEffect(() => {
     if (!myMark || !reviewTargetId) return
@@ -221,7 +254,10 @@ export function NpatActiveRound({
     }
   }
 
-  const submitAnswers = async () => {
+  const submitAnswersWithForm = async (
+    values: Record<NpatCategory, string>,
+    opts?: { silent?: boolean }
+  ) => {
     if (!currentRound || readOnly || submitting) return
     setSubmitting(true)
     try {
@@ -232,18 +268,41 @@ export function NpatActiveRound({
           gameId: gameCode,
           playerId: myPlayerId,
           roundId: currentRound.id,
-          ...form,
+          ...values,
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to submit')
-      playVoteSubmittedSound()
+      if (!opts?.silent) playVoteSubmittedSound()
       await onReload?.()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to submit')
+      if (!opts?.silent) {
+        toastError(err instanceof Error ? err.message : 'Failed to submit')
+      }
     } finally {
       setSubmitting(false)
     }
+  }
+
+  useEffect(() => {
+    if (!currentRound || readOnly || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
+    if (secondsLeft == null || secondsLeft > 0) return
+    if (autoSubmittedRoundRef.current === currentRound.id) return
+
+    autoSubmittedRoundRef.current = currentRound.id
+    void submitAnswersWithForm(formRef.current, { silent: true })
+  }, [
+    secondsLeft,
+    currentRound,
+    readOnly,
+    metadata?.phase,
+    myAnswer?.submitted_at,
+    gameCode,
+    myPlayerId,
+  ])
+
+  const submitAnswers = async () => {
+    await submitAnswersWithForm(form)
   }
 
   const submitMarks = async () => {
@@ -425,6 +484,11 @@ export function NpatActiveRound({
               </button>
             ) : (
               <p className="text-center text-sm text-muted">Answers locked in — waiting for everyone…</p>
+            )}
+            {screen === 'writing' && secondsLeft != null && secondsLeft <= 10 && (
+              <p className="text-center text-xs text-muted">
+                Unsubmitted answers are sent automatically when time runs out.
+              </p>
             )}
           </div>
         )}

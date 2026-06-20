@@ -503,6 +503,10 @@ export const npatSubmitSchema = z.object({
 
 export type NpatSubmitInput = z.infer<typeof npatSubmitSchema>
 
+export const npatDraftSchema = npatSubmitSchema
+
+export type NpatDraftInput = z.infer<typeof npatDraftSchema>
+
 export const npatMarkSchema = z.object({
   gameId: gameCodeString(),
   playerId: uuidString('playerId'),

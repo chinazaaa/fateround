@@ -498,6 +498,41 @@ export function revealCountdownSeconds(endedAt: string | null | undefined, revea
   return Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
 }
 
+export function trimNpatAnswerFields(
+  fields: Partial<Record<NpatCategory, string>>
+): Record<NpatCategory, string> {
+  return Object.fromEntries(
+    NPAT_CATEGORIES.map((category) => [
+      category,
+      (fields[category] ?? '').trim().slice(0, NPAT_MAX_ANSWER_LENGTH),
+    ])
+  ) as Record<NpatCategory, string>
+}
+
+export function validateNpatAnswerFields(
+  letter: string | null,
+  fields: Record<NpatCategory, string>
+): string | null {
+  for (const category of NPAT_CATEGORIES) {
+    const trimmed = fields[category]
+    if (trimmed && letter && !answerStartsWithLetter(trimmed, letter)) {
+      return `${NPAT_CATEGORY_LABELS[category]} must start with the letter ${letter}`
+    }
+  }
+  return null
+}
+
+export async function finalizeUnsubmittedAnswers(
+  supabase: SupabaseClient,
+  gameId: string,
+  roundId: string,
+  playerIds: string[]
+): Promise<void> {
+  await ensureBlankAnswers(supabase, gameId, roundId, playerIds)
+  const now = new Date().toISOString()
+  await supabase.from('npat_answers').update({ submitted_at: now }).eq('round_id', roundId).is('submitted_at', null)
+}
+
 export async function ensureBlankAnswers(
   supabase: SupabaseClient,
   gameId: string,
