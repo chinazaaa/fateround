@@ -83,12 +83,14 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isLudoGame,
+  isNamePlaceAnimalThingGame,
 } from '@/lib/game-types'
 import { AnonymousMessagesPlayerView } from '@/components/anonymous-messages/AnonymousMessagesPlayerView'
 import { SecretMessageSenderView } from '@/components/secret-message/SecretMessageSenderView'
 import { BingoPlayerView } from '@/components/bingo/BingoPlayerView'
 import { TriviaPlayerView } from '@/components/trivia/TriviaPlayerView'
 import { TwoTruthsPlayerView } from '@/components/two-truths/TwoTruthsPlayerView'
+import { NpatPlayerView } from '@/components/npat/NpatPlayerView'
 import { CodewordsPlayerView } from '@/components/codewords/CodewordsPlayerView'
 import { MonopolyPlayerView } from '@/components/monopoly/MonopolyPlayerView'
 import { YahtzeePlayerView } from '@/components/yahtzee/YahtzeePlayerView'
@@ -1461,6 +1463,9 @@ export function PollGamePlayerExperience({
 
   if (game && isTwoTruthsGame(game.game_type)) {
     return <TwoTruthsPlayerView gameCode={gameCode} />
+  }
+  if (game && isNamePlaceAnimalThingGame(game.game_type)) {
+    return <NpatPlayerView gameCode={gameCode} />
   }
   if (game && isMonopolyGame(game.game_type)) {
     return <MonopolyPlayerView gameCode={gameCode} />

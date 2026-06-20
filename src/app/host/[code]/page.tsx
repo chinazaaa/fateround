@@ -63,6 +63,7 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isLudoGame,
+  isNamePlaceAnimalThingGame,
   pairVoteModeOptions,
   parsePairVoteMode,
 } from '@/lib/game-types'
@@ -76,6 +77,7 @@ import { MonopolyHostView } from '@/components/monopoly/MonopolyHostView'
 import { YahtzeeHostView } from '@/components/yahtzee/YahtzeeHostView'
 import { WhotHostView } from '@/components/whot/WhotHostView'
 import { LudoHostView } from '@/components/ludo/LudoHostView'
+import { NpatHostView } from '@/components/npat/NpatHostView'
 import {
   getCustomSlots,
   tallyCustomVotes,
@@ -1437,6 +1439,10 @@ export default function HostPage() {
 
   if (game && isTwoTruthsGame(game.game_type)) {
     return <TwoTruthsHostView gameCode={gameCode} hostToken={hostToken} />
+  }
+
+  if (game && isNamePlaceAnimalThingGame(game.game_type)) {
+    return <NpatHostView gameCode={gameCode} hostToken={hostToken} />
   }
 
   if (game && isMonopolyGame(game.game_type)) {

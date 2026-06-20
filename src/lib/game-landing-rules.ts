@@ -699,4 +699,40 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
   ],
+
+  name_place_animal_thing: [
+    {
+      title: 'Objective',
+      points: [
+        'Score the most points across all rounds by writing unique, valid answers for each category.',
+        'Each category can earn up to 10 points per round (40 max).',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        '3–20 players join with their name. The host sets game length, writing time, and marking time.',
+        'Game length can be 10–60 minutes, or play until all 26 letters are used.',
+        'Letter callers rotate — not one round per player, but as many letters as time allows.',
+      ],
+    },
+    {
+      title: 'How a letter works',
+      points: [
+        'The letter caller picks A–Z. Everyone fills Name, Animal, Place, and Thing starting with that letter.',
+        'When time runs out, papers pass — you mark the next player’s answers valid or invalid.',
+        'Duplicates are detected automatically: if two or more players wrote the same answer in a category, everyone with that duplicate scores 0 for it.',
+        'Everyone sees all answers, marks, and scores live so marking stays fair.',
+      ],
+    },
+    {
+      title: 'Scoring',
+      points: [
+        'Empty answer = 0.',
+        'Duplicate answer = 0 (automatic).',
+        'Marked invalid = 0 (e.g. wrong category like “cat” under Name).',
+        'Unique + marked valid = 10 points.',
+      ],
+    },
+  ],
 }

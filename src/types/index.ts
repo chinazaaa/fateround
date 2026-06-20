@@ -31,6 +31,50 @@ export type GameType =
   | 'yahtzee'
   | 'whot'
   | 'ludo'
+  | 'name_place_animal_thing'
+
+export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'reveal'
+export type NpatCategory = 'name' | 'animal' | 'place' | 'thing'
+
+export interface NpatMetadata {
+  letter: string | null
+  phase: NpatPhase
+  phase_started_at: string | null
+  reviewer_assignments: Record<string, string>
+  scores_computed?: boolean
+  used_letters: string[]
+  caller_order: string[]
+  caller_index: number
+}
+
+export interface NpatAnswer {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  name: string
+  animal: string
+  place: string
+  thing: string
+  submitted_at: string | null
+  score_name: number | null
+  score_animal: number | null
+  score_place: number | null
+  score_thing: number | null
+}
+
+export interface NpatMark {
+  id: string
+  game_id: string
+  round_id: string
+  marker_player_id: string
+  target_player_id: string
+  valid_name: boolean
+  valid_animal: boolean
+  valid_place: boolean
+  valid_thing: boolean
+  marked_at: string | null
+}
 
 export type YahtzeeCategory =
   | 'ones'
@@ -525,6 +569,7 @@ export interface Round {
   anime_metadata?: AnimeMetadata | null
   trivia_metadata?: TriviaMetadata | null
   ttl_metadata?: TtlMetadata | null
+  npat_metadata?: NpatMetadata | null
 }
 
 export type PairFlag = 'kiss' | 'kill'

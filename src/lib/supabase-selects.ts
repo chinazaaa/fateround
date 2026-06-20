@@ -10,7 +10,7 @@ export const PARTICIPANT_SELECT =
   'id,game_id,name,gender,photo_url,description,display_order,in_mlt_poll,submitted_by_player_id'
 
 export const ROUND_SELECT =
-  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,quote_submitted_at,status,started_at,ended_at,anime_metadata,trivia_metadata,ttl_metadata'
+  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,quote_submitted_at,status,started_at,ended_at,anime_metadata,trivia_metadata,ttl_metadata,npat_metadata'
 
 export const VOTE_SELECT =
   'id,player_id,round_id,game_id,kiss_participant_id,marry_participant_id,kill_participant_id,pair_assignments,wyr_choice,target_player_id,target_participant_id,anime_choice,picked_number,created_at'
@@ -62,6 +62,12 @@ export const TTL_STATEMENT_SELECT =
 
 export const TTL_GUESS_SELECT =
   'id,game_id,round_id,player_id,guessed_index,is_correct,points,guessed_at'
+
+export const NPAT_ANSWER_SELECT =
+  'id,game_id,round_id,player_id,name,animal,place,thing,submitted_at,score_name,score_animal,score_place,score_thing'
+
+export const NPAT_MARK_SELECT =
+  'id,game_id,round_id,marker_player_id,target_player_id,valid_name,valid_animal,valid_place,valid_thing,marked_at'
 
 export const WST_QUOTE_POOL_SELECT =
   'id,game_id,player_id,quote_text,author_participant_id,created_at,updated_at'

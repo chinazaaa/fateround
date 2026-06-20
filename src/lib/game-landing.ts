@@ -49,6 +49,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   yahtzee: 'yahtzee',
   whot: 'whot',
   ludo: 'ludo',
+  name_place_animal_thing: 'name-place-animal-thing',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -950,6 +951,43 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Do I need an exact roll to finish?',
         answer: 'Yes. A piece can only enter the home triangle with an exact roll — overshooting is not allowed.',
+      },
+    ],
+  }),
+
+  name_place_animal_thing: landing('name_place_animal_thing', {
+    seoTitle: 'Name Place Animal Thing — Free Online Party Game',
+    seoDescription:
+      'Play Name Place Animal Thing online. Call a letter, fill four categories, mark answers together — duplicates score zero, unique answers earn points.',
+    keywords: ['name place animal thing', 'stop game', 'categories game', 'party game online'],
+    heroSubtitle:
+      'The classic A–Z categories game. Someone calls a letter — everyone fills Name, Animal, Place, and Thing before time runs out.',
+    highlights: ['Rotating letter caller', 'Live transparent scoring', 'Duplicate detection'],
+    features: [
+      {
+        title: 'Call the letter',
+        description: 'Players take turns picking A–Z for the whole room.',
+        emoji: '🔤',
+      },
+      {
+        title: 'Mark together',
+        description: 'Everyone sees who marked what — reviewers decide if answers fit the category.',
+        emoji: '👀',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join the room', description: 'Enter your name and wait for the host to start.' },
+      { title: 'Play letters', description: 'While time lasts, callers pick unused A–Z letters and everyone fills the four categories.' },
+      { title: 'Score together', description: 'Mark the next player\'s sheet — duplicates auto-zero, everyone sees marks live.' },
+    ],
+    perfectFor: ['Classrooms', 'Road trips', 'Family game night', 'Friend groups'],
+    extraFaqs: [
+      {
+        question: 'How does scoring work?',
+        answer:
+          'Each unique valid answer earns 10 points per category (40 max per round). If two or more players write the same answer in a category, everyone with that duplicate gets zero for it. Reviewers mark whether an answer actually fits its category.',
       },
     ],
   }),

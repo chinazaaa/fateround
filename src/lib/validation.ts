@@ -62,6 +62,7 @@ const gameTypeEnum = z.enum([
   'yahtzee',
   'whot',
   'ludo',
+  'name_place_animal_thing',
 ])
 
 const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
@@ -488,6 +489,37 @@ export const ttlAdvanceSchema = z.object({
 })
 
 export type TtlAdvanceInput = z.infer<typeof ttlAdvanceSchema>
+
+export const npatSubmitSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  roundId: uuidString('roundId'),
+  name: z.string().max(80),
+  animal: z.string().max(80),
+  place: z.string().max(80),
+  thing: z.string().max(80),
+})
+
+export type NpatSubmitInput = z.infer<typeof npatSubmitSchema>
+
+export const npatMarkSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  roundId: uuidString('roundId'),
+  validName: z.boolean(),
+  validAnimal: z.boolean(),
+  validPlace: z.boolean(),
+  validThing: z.boolean(),
+})
+
+export type NpatMarkInput = z.infer<typeof npatMarkSchema>
+
+export const npatAdvanceSchema = z.object({
+  gameId: gameCodeString(),
+  force: z.boolean().optional(),
+})
+
+export type NpatAdvanceInput = z.infer<typeof npatAdvanceSchema>
 
 export const monopolyActionSchema = z.object({
   gameId: gameCodeString(),

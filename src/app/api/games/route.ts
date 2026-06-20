@@ -33,6 +33,7 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isLudoGame,
+  isNamePlaceAnimalThingGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { clampHotSeatMaxCap, hotSeatMaxCapUpperBound, HOT_SEAT_MIN_PLAYERS, HOT_SEAT_MAX_ROUNDS_CAP } from '@/lib/hot-seat'
@@ -54,6 +55,7 @@ import { isPeoplePollGame, supportsPlayerNameSubmissions } from '@/lib/player-pa
 import { parseBingoCallMode, clampBingoCallInterval } from '@/lib/bingo'
 import { TRIVIA_DEFAULT_ROUNDS, clampTriviaTimer } from '@/lib/trivia'
 import { clampTtlTimer, TTL_DEFAULT_TIMER } from '@/lib/two-truths'
+import { clampNpatMarkingTimer, clampNpatTimer, clampNpatGameDuration, NPAT_DEFAULT_GAME_DURATION, NPAT_DEFAULT_MARKING_TIMER, NPAT_DEFAULT_TIMER } from '@/lib/npat'
 import {
   clampCodewordsTimer,
   CODEWORDS_DEFAULT_OPERATIVE_TIMER,
@@ -207,7 +209,7 @@ export async function POST(req: NextRequest) {
   }
 
   const participant_mode: ParticipantMode =
-    isLobbyGame(game_type) || isTriviaGame(game_type) || isTwoTruthsGame(game_type) || isMonopolyGame(game_type) || isYahtzeeGame(game_type) || isWhotGame(game_type) || isLudoGame(game_type)
+    isLobbyGame(game_type) || isTriviaGame(game_type) || isTwoTruthsGame(game_type) || isNamePlaceAnimalThingGame(game_type) || isMonopolyGame(game_type) || isYahtzeeGame(game_type) || isWhotGame(game_type) || isLudoGame(game_type)
     ? 'joiners'
     : isWhoSaidThis(game_type)
       ? 'import'
@@ -253,6 +255,7 @@ export async function POST(req: NextRequest) {
     isBingoGame(game_type) ||
     isCodewordsGame(game_type) ||
     isTwoTruthsGame(game_type) ||
+    isNamePlaceAnimalThingGame(game_type) ||
     isMonopolyGame(game_type) ||
     isYahtzeeGame(game_type) ||
     isWhotGame(game_type) ||
@@ -323,6 +326,12 @@ export async function POST(req: NextRequest) {
                   ? resolveMaxPlayers('whot', rawMaxPlayers, lobbyDefaultMaxPlayers('whot', lobbyLimits))
                   : isLudoGame(game_type)
                     ? resolveMaxPlayers('ludo', rawMaxPlayers, lobbyDefaultMaxPlayers('ludo', lobbyLimits))
+                    : isNamePlaceAnimalThingGame(game_type)
+                      ? resolveMaxPlayers(
+                          'name_place_animal_thing',
+                          rawMaxPlayers,
+                          lobbyDefaultMaxPlayers('name_place_animal_thing', lobbyLimits)
+                        )
             : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
@@ -347,7 +356,9 @@ export async function POST(req: NextRequest) {
         ? clampTriviaTimer(timer_seconds)
         : isTwoTruthsGame(game_type)
           ? clampTtlTimer(timer_seconds)
-          : isMonopolyGame(game_type)
+          : isNamePlaceAnimalThingGame(game_type)
+            ? clampNpatTimer(timer_seconds)
+            : isMonopolyGame(game_type)
             ? clampMonopolyTurnTimer(timer_seconds)
             : [15, 30, 60].includes(Number(timer_seconds))
               ? Number(timer_seconds)
@@ -361,6 +372,15 @@ export async function POST(req: NextRequest) {
           codewords_late_join: latePlayersAllowed,
           codewords_randomize_teams: rawCodewordsRandomizeTeams === true,
         }
+      : isNamePlaceAnimalThingGame(game_type)
+        ? {
+            operative_timer_seconds: clampNpatMarkingTimer(
+              Number(rawOperativeTimerSeconds) || NPAT_DEFAULT_MARKING_TIMER
+            ),
+            game_duration_seconds: clampNpatGameDuration(
+              rawGameDurationSeconds ?? NPAT_DEFAULT_GAME_DURATION
+            ),
+          }
       : {}),
     ...(gameSupportsViewerSetting(game_type)
       ? { allow_viewers: viewersAllowed, allow_late_players: latePlayersAllowed }
