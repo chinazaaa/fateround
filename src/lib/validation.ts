@@ -616,6 +616,7 @@ export const ludoActionSchema = z.object({
 
 export const ludoMoveSchema = ludoActionSchema.extend({
   pieceId: z.coerce.number().int().min(0).max(3),
+  diceIndex: z.coerce.number().int().min(0).max(1).optional(),
 })
 
 export const ludoExpireSchema = z.object({

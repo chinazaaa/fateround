@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { DICE_PIPS } from '@/components/monopoly/monopoly-ui'
+import type { LudoDiceRoll } from '@/types'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
@@ -209,23 +210,43 @@ export function LudoDiceFace({
   )
 }
 
-export function LudoDice({
-  value,
+export function LudoDicePair({
+  dice,
   rolling,
   compact = false,
 }: {
-  value: number | null
+  dice: LudoDiceRoll | null | undefined
   rolling?: boolean
   compact?: boolean
 }) {
-  const [cycle, setCycle] = useState(1)
+  const [cycle1, setCycle1] = useState(1)
+  const [cycle2, setCycle2] = useState(2)
 
   useEffect(() => {
     if (!rolling) return
-    const id = setInterval(() => setCycle((v) => (v % 6) + 1), 80)
+    const id = setInterval(() => {
+      setCycle1((v) => (v % 6) + 1)
+      setCycle2((v) => ((v + 2) % 6) + 1)
+    }, 80)
     return () => clearInterval(id)
   }, [rolling])
 
-  const display = rolling ? cycle : value ?? 1
-  return <LudoDiceFace value={display} rolling={rolling} compact={compact} />
+  const d1 = rolling ? cycle1 : dice?.d1 ?? 1
+  const d2 = rolling ? cycle2 : dice?.d2 ?? 1
+  const gapClass = compact ? 'gap-1' : 'gap-2'
+
+  return (
+    <div className={['flex flex-col items-center', compact ? 'gap-0.5' : 'gap-1'].join(' ')}>
+      <div className={['flex items-center justify-center', gapClass].join(' ')}>
+        <LudoDiceFace value={d1} rolling={rolling} compact={compact} />
+        <LudoDiceFace value={d2} rolling={rolling} compact={compact} />
+      </div>
+      {dice && !rolling && (
+        <p className="text-[8px] sm:text-[10px] font-bold text-slate-900 tabular-nums leading-none">
+          {dice.total}
+          {dice.doubles ? ' · Doubles!' : ''}
+        </p>
+      )}
+    </div>
+  )
 }

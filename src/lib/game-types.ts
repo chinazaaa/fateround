@@ -936,7 +936,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   ludo: {
     id: 'ludo',
     label: 'Ludo',
-    tagline: 'Roll the die, race your pieces home — captures, blockades & extra turns on 6',
+    tagline: 'Roll two dice, race your pieces home — captures, blockades & bonus rolls',
     headerEmoji: '🎲🔴',
     card: {
       accent: '#dc2626',
@@ -1084,7 +1084,7 @@ export function gameHowItWorks(
     case 'whot':
       return 'Players join with their name. Match the top card by shape or number — WHOT lets you call the next match. Pick 2 and Pick 3 stacks are separate. First to empty their hand wins — or lowest hand total when the game clock runs out.'
     case 'ludo':
-      return 'Players join with their name. Roll a 6 to bring pieces onto the board, race clockwise around the track, capture opponents, and block with pairs. Exact rolls needed to enter home — first to finish all four pieces wins!'
+      return 'Players join with their name. Roll two dice each turn and use each die separately — a 6 brings pieces out; doubles earn another roll after both dice are played. Capture opponents, block with pairs — first to finish all four pieces wins!'
     case 'most_likely_to':
       return joiners
         ? 'Players add their name to the poll when joining. Each round shows a "most likely to…" prompt — vote for who fits best. Votes stay anonymous.'

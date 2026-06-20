@@ -7,6 +7,7 @@ import {
   currentPlayerId,
   getLudoHostMode,
   LUDO_MIN_PLAYERS,
+  parseLudoDice,
   setLudoHostMode,
   type LudoHostMode,
 } from '@/lib/ludo'
@@ -16,7 +17,7 @@ import { appOrigin } from '@/lib/site'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { HostPlayerManageList } from '@/components/host/HostPlayerManageList'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
-import type { Game, LudoPlayerState, LudoSession, Player } from '@/types'
+import type { Game, LudoDiceRoll, LudoPlayerState, LudoSession, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
@@ -51,7 +52,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [hostJoining, setHostJoining] = useState(false)
   const [hostActing, setHostActing] = useState(false)
   const [rolling, setRolling] = useState(false)
-  const [displayDice, setDisplayDice] = useState<number | null>(null)
+  const [displayDice, setDisplayDice] = useState<LudoDiceRoll | null>(null)
   const rollStartedRef = useRef(0)
   const [tab, setTab] = useState<HostTab>('manage')
 
@@ -174,7 +175,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Action failed')
-      if (typeof data.dice === 'number') setDisplayDice(data.dice)
+      if (data.dice) setDisplayDice(parseLudoDice(data.dice))
       if (path.includes('/roll') || path.includes('/move')) playLudoActionSound()
       await load()
     } catch (err) {
@@ -377,7 +378,9 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             hasTimer={hasTimer}
             urgent={urgent}
             onRoll={() => void postHostAction('/api/ludo/roll')}
-            onMovePiece={(pieceId) => void postHostAction('/api/ludo/move', { pieceId })}
+            onMovePiece={(pieceId, diceIndex) =>
+              void postHostAction('/api/ludo/move', { pieceId, diceIndex })
+            }
             acting={hostActing}
             rolling={rolling}
             displayDice={displayDice}

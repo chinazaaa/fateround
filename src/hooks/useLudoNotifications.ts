@@ -79,7 +79,7 @@ export function useLudoNotifications({
     ) {
       const nowMyTurn = myPlayerId && currentPlayerId(session) === myPlayerId
       if (nowMyTurn) {
-        info('Your turn! 🎲 Roll the die')
+        info('Your turn! 🎲 Roll the dice')
         playRoundStartSound()
       } else {
         playRoundEndSound()
@@ -92,9 +92,11 @@ export function useLudoNotifications({
       game.status === 'active' &&
       myPlayerId &&
       message.includes('roll again') &&
-      message.toLowerCase().includes('rolled a 6')
+      (message.toLowerCase().includes('rolled a 6') ||
+        message.toLowerCase().includes('doubles') ||
+        message.toLowerCase().includes('bonus roll'))
     ) {
-      info('You rolled a 6 — roll again!')
+      info('Bonus roll — roll again!')
       playRoundStartSound()
     }
 
@@ -102,7 +104,7 @@ export function useLudoNotifications({
       message &&
       message !== prevMessage &&
       game.status === 'active' &&
-      message.includes('captured') &&
+      message.includes('sent an opponent home') &&
       myPlayerId
     ) {
       const myName = players.find((p) => p.id === myPlayerId)?.name

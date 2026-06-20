@@ -662,21 +662,23 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         '2–4 players join a room. Each player is assigned a color (red, green, yellow, or blue) with four pieces in their corner base.',
         'Turn order is set when the host starts. Optional per-turn timer keeps the game moving.',
+        'Roll two dice each turn. You use each die as its own move — not the combined total.',
       ],
     },
     {
       title: 'Getting pieces into play',
       points: [
-        'You must roll a 6 to move a piece from your base onto your start position.',
-        'Until at least one piece is in play, you cannot make other moves.',
-        'When you roll a 6, you may bring a piece out of base or move a piece already in play.',
+        'You need a 6 on a die to move a piece from your home yard onto your start square.',
+        'Until at least one piece is in play, you cannot use non-6 dice (e.g. on a 6+3 roll, use the 6 first, then the 3).',
+        'Example: 6+3 lets you bring one piece out on the 6, then move it (or another piece) 3 spaces.',
+        'Example: 6+6 (doubles) lets you bring out two pieces, or bring one out on the first 6 and move it 6 on the second.',
       ],
     },
     {
-      title: 'Rolling a six',
+      title: 'Doubles',
       points: [
-        'Any time you roll a 6, you get an extra roll after completing your move.',
-        'If you roll three 6s in a row, your turn ends immediately — play passes to the next player.',
+        'Rolling doubles (e.g. 4+4 or 6+6) means you use each die separately, then roll again after both are played.',
+        'Three doubles in a row without finishing your turn ends that turn immediately.',
       ],
     },
     {

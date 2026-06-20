@@ -12,12 +12,12 @@ import {
 import { LudoGamePanel } from '@/components/ludo/LudoBoard'
 import { LudoFinalResultsShareBlock } from '@/components/ludo/LudoFinalResultsShareBlock'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId } from '@/lib/ludo'
+import { currentPlayerId, parseLudoDice } from '@/lib/ludo'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import { resolvePlayerSession } from '@/lib/player-resume'
-import type { Game, LudoPlayerState, LudoSession, Player } from '@/types'
+import type { Game, LudoDiceRoll, LudoPlayerState, LudoSession, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -49,7 +49,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   const [joining, setJoining] = useState(false)
   const [acting, setActing] = useState(false)
   const [rolling, setRolling] = useState(false)
-  const [displayDice, setDisplayDice] = useState<number | null>(null)
+  const [displayDice, setDisplayDice] = useState<LudoDiceRoll | null>(null)
   const rollStartedRef = useRef(0)
 
   useApplyGameTheme(game?.theme)
@@ -193,7 +193,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
       if (!res.ok) {
         toastError(data.error ?? 'Action failed')
       } else {
-        if (typeof data.dice === 'number') setDisplayDice(data.dice)
+        if (data.dice) setDisplayDice(parseLudoDice(data.dice))
         if (path.includes('/roll') || path.includes('/move')) playLudoActionSound()
         await load()
       }
@@ -343,7 +343,11 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
           hasTimer={hasTimer}
           urgent={urgent}
           onRoll={isMyTurn && !isViewer ? () => postAction('/api/ludo/roll') : undefined}
-          onMovePiece={isMyTurn && !isViewer ? (pieceId) => postAction('/api/ludo/move', { pieceId }) : undefined}
+          onMovePiece={
+            isMyTurn && !isViewer
+              ? (pieceId, diceIndex) => postAction('/api/ludo/move', { pieceId, diceIndex })
+              : undefined
+          }
           acting={acting}
           rolling={rolling}
           displayDice={displayDice}

@@ -1319,7 +1319,7 @@ function CreateGameInner() {
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ludo" />
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
-                  Classic Ludo — roll a 6 to enter, race around the board, capture opponents, and block with pairs.
+                  Classic Ludo — roll two dice to enter, race around the board, capture opponents, and block with pairs.
                   Exact rolls needed to finish. First to get all four pieces home wins!
                 </p>
               </SettingsGroup>

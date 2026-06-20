@@ -378,6 +378,13 @@ export type LudoColor = 'red' | 'green' | 'yellow' | 'blue'
 export type LudoPieceZone = 'base' | 'track' | 'home' | 'finished'
 export type LudoPhase = 'roll' | 'move' | 'finished'
 
+export interface LudoDiceRoll {
+  d1: number
+  d2: number
+  total: number
+  doubles: boolean
+}
+
 export interface LudoPiece {
   id: number
   zone: LudoPieceZone
@@ -391,7 +398,9 @@ export interface LudoSession {
   turn_order: string[]
   current_turn_index: number
   phase: LudoPhase
-  last_dice: number | null
+  last_dice: LudoDiceRoll | null
+  /** Die values still to play this turn, e.g. [6, 3] after rolling 6+3. */
+  remaining_dice: number[] | null
   consecutive_sixes: number
   extra_turn: boolean
   status_message: string | null

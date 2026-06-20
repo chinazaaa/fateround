@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId, pieceId } = parsed.data
+  const { gameId, playerId, pieceId, diceIndex } = parsed.data
   const code = gameId.toUpperCase()
 
   const { data: game } = await supabase.from('games').select('status, game_type').eq('id', code).maybeSingle()
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not a Ludo game' }, { status: 400 })
   }
 
-  const { error } = await processLudoMove(supabase, code, playerId, pieceId)
+  const { error } = await processLudoMove(supabase, code, playerId, pieceId, diceIndex)
   if (error) return NextResponse.json({ error }, { status: 400 })
 
   return NextResponse.json({ success: true })
