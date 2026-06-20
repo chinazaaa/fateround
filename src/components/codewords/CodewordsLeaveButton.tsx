@@ -1,12 +1,12 @@
 'use client'
 
-import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
+import { LeaveGameButton, leaveButtonClassName } from '@/components/ui/LeaveGameButton'
 
 export function CodewordsLeaveButton({
   gameCode,
   playerId,
   onLeft,
-  className = 'btn-secondary w-full',
+  className = leaveButtonClassName,
 }: {
   gameCode: string
   playerId: string

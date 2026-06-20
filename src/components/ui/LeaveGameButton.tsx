@@ -4,11 +4,14 @@ import { useState } from 'react'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 
+export const leaveButtonClassName =
+  'w-full rounded-[0.875rem] border border-red-500/50 bg-red-500 py-3.5 text-[0.9375rem] font-bold text-white shadow-[0_4px_14px_rgba(239,68,68,0.35)] transition-[background-color,transform,box-shadow] duration-150 hover:bg-red-600 hover:shadow-[0_6px_22px_rgba(239,68,68,0.45)] hover:-translate-y-px active:translate-y-0 active:scale-[0.99] disabled:opacity-35 disabled:cursor-not-allowed'
+
 export function LeaveGameButton({
   gameCode,
   playerId,
   onLeft,
-  className = 'text-faint text-xs hover:text-red-300 transition-colors',
+  className = leaveButtonClassName,
   label = 'Leave game',
   confirmTitle = 'Leave this game?',
   confirmMessage = 'You can rejoin with the same name if there is room.',

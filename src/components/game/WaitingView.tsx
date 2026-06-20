@@ -11,6 +11,7 @@ import { wstVoteTargets } from '@/lib/who-said-this'
 import type { Game, Participant, Player, WstQuotePoolEntry } from '@/types'
 import type { PlayerQuestion } from '@/hooks/queries/usePlayerQuestions'
 import type { UseMutationResult } from '@tanstack/react-query'
+import { leaveButtonClassName } from '@/components/ui/LeaveGameButton'
 
 interface WaitingViewProps {
   game: Game | null
@@ -526,7 +527,7 @@ export function WaitingView({
           type="button"
           onClick={leaveGame}
           disabled={joining}
-          className="text-faint text-xs hover:text-red-300 transition-colors"
+          className={leaveButtonClassName}
         >
           Leave game
         </button>
