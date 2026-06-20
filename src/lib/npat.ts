@@ -225,7 +225,8 @@ export function buildNpatNextRound(opts: {
   if (opts.previousMetadata.letter) used_letters.push(opts.previousMetadata.letter)
   if (used_letters.length >= NPAT_MAX_LETTERS) return null
 
-  const caller_order = opts.previousMetadata.caller_order
+  const caller_order =
+    opts.previousMetadata.caller_order.length > 0 ? opts.previousMetadata.caller_order : opts.playerIds
   if (caller_order.length === 0) return null
 
   const caller_index = (opts.previousMetadata.caller_index + 1) % caller_order.length
@@ -507,6 +508,25 @@ export function trimNpatAnswerFields(
       (fields[category] ?? '').trim().slice(0, NPAT_MAX_ANSWER_LENGTH),
     ])
   ) as Record<NpatCategory, string>
+}
+
+export function npatAnswerRequestPayload(opts: {
+  gameId: string
+  playerId: string
+  roundId: string
+  answers: Partial<Record<NpatCategory, string>>
+}) {
+  const fields = trimNpatAnswerFields(opts.answers)
+  return {
+    gameId: opts.gameId,
+    playerId: opts.playerId,
+    roundId: opts.roundId,
+    name: fields.name,
+    animal: fields.animal,
+    place: fields.place,
+    thing: fields.thing,
+    food: fields.food,
+  }
 }
 
 export function validateNpatAnswerFields(

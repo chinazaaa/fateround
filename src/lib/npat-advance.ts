@@ -278,8 +278,11 @@ async function startNextLetterCycle(
   const metadata = parseNpatMetadata(finishedRound.npat_metadata)
   if (!metadata) return { ok: false, code: 'not_finished' }
 
+  const { data: freshGame } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
+  const liveGame = freshGame ?? game
+
   const usedCount = usedLettersAfterRound(metadata)
-  if (npatSessionShouldEnd(game, usedCount)) {
+  if (npatSessionShouldEnd(liveGame, usedCount)) {
     await markGameFinished(supabase, code)
     return { ok: true, code: 'advanced_finish' }
   }
@@ -294,8 +297,11 @@ async function startNextLetterCycle(
   })
 
   if (!nextRow) {
-    await markGameFinished(supabase, code)
-    return { ok: true, code: 'advanced_finish' }
+    if (playerIds.length === 0) {
+      await markGameFinished(supabase, code)
+      return { ok: true, code: 'advanced_finish' }
+    }
+    return { ok: false, code: 'not_finished' }
   }
 
   const { data: inserted, error: insertError } = await supabase

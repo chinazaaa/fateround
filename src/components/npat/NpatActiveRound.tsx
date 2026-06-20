@@ -18,13 +18,14 @@ import {
   NPAT_CATEGORY_LABELS,
   NPAT_MAX_ANSWER_LENGTH,
   npatLettersRemaining,
+  npatAnswerRequestPayload,
   parseNpatMetadata,
+  phaseDeadlineMs,
   phaseSecondsLeft,
   playerDisplayName,
   revealCountdownSeconds,
   reviewTargetForMarker,
   tallyNpatScores,
-  trimNpatAnswerFields,
 } from '@/lib/npat'
 import { useNpatAdvance } from '@/hooks/useNpatAdvance'
 import { playVoteSubmittedSound } from '@/lib/sounds'
@@ -88,7 +89,7 @@ export function NpatActiveRound({
   const { error: toastError } = useToast()
   const [submitting, setSubmitting] = useState(false)
   const [pickingLetter, setPickingLetter] = useState(false)
-  const emptyForm = useMemo(
+  const emptyAnswerForm = useMemo(
     () => Object.fromEntries(NPAT_CATEGORIES.map((c) => [c, ''])) as Record<NpatCategory, string>,
     []
   )
@@ -96,13 +97,14 @@ export function NpatActiveRound({
     () => Object.fromEntries(NPAT_CATEGORIES.map((c) => [c, true])) as Record<NpatCategory, boolean>,
     []
   )
-  const [form, setForm] = useState<Record<NpatCategory, string>>(emptyForm)
+  const [answerForm, setAnswerForm] = useState<Record<NpatCategory, string>>(emptyAnswerForm)
   const [validFlags, setValidFlags] = useState<Record<NpatCategory, boolean>>(defaultValidFlags)
   const [tick, setTick] = useState(0)
-  const formRef = useRef(form)
-  formRef.current = form
+  const answerFormRef = useRef(answerForm)
+  answerFormRef.current = answerForm
   const autoSubmittedRoundRef = useRef<string | null>(null)
-  const hydratedRoundRef = useRef<string | null>(null)
+  const draftTimerRef = useRef<number | null>(null)
+  const submittingRef = useRef(false)
 
   const currentRound = useMemo(() => {
     const byPointer = rounds.find((r) => r.round_number === game.current_round_number) ?? null
@@ -137,6 +139,36 @@ export function NpatActiveRound({
     return metadata ? phaseSecondsLeft(metadata, writingTimer, markingTimer) : null
   }, [metadata, tick, writingTimer, markingTimer])
 
+  const queueDraftSave = () => {
+    if (draftTimerRef.current != null) window.clearTimeout(draftTimerRef.current)
+    draftTimerRef.current = window.setTimeout(() => {
+      draftTimerRef.current = null
+      if (readOnly || !currentRound || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
+      void fetch('/api/npat/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          npatAnswerRequestPayload({
+            gameId: gameCode,
+            playerId: myPlayerId,
+            roundId: currentRound.id,
+            answers: answerFormRef.current,
+          })
+        ),
+      })
+    }, 1500)
+  }
+
+  const updateAnswerFormField = (category: NpatCategory, value: string) => {
+    let changed = false
+    setAnswerForm((prev) => {
+      const next = updateAnswerField(category, value, metadata?.letter ?? null, prev)
+      changed = next !== prev
+      return next
+    })
+    if (changed) queueDraftSave()
+  }
+
   useEffect(() => {
     if (!metadata || metadata.phase === 'reveal') return
     const id = window.setInterval(() => setTick((t) => t + 1), 1000)
@@ -144,53 +176,16 @@ export function NpatActiveRound({
   }, [metadata?.phase, currentRound?.id])
 
   useEffect(() => {
-    setForm(emptyForm)
+    setAnswerForm(emptyAnswerForm)
     setValidFlags(defaultValidFlags)
     setSubmitting(false)
+    submittingRef.current = false
     autoSubmittedRoundRef.current = null
-    hydratedRoundRef.current = null
-  }, [currentRound?.id, emptyForm, defaultValidFlags])
-
-  // Restore a saved draft once per round (e.g. after refresh). Never overwrite active typing —
-  // draft saves trigger realtime reloads that would otherwise reset the form.
-  useEffect(() => {
-    if (!currentRound || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
-    if (hydratedRoundRef.current === currentRound.id) return
-
-    const formHasContent = NPAT_CATEGORIES.some((category) => formRef.current[category]?.trim())
-    if (formHasContent) {
-      hydratedRoundRef.current = currentRound.id
-      return
+    if (draftTimerRef.current != null) {
+      window.clearTimeout(draftTimerRef.current)
+      draftTimerRef.current = null
     }
-
-    if (!myAnswer) return
-    const hasDraft = NPAT_CATEGORIES.some((category) => myAnswer[category]?.trim())
-    if (!hasDraft) return
-
-    hydratedRoundRef.current = currentRound.id
-    setForm(trimNpatAnswerFields(myAnswer))
-  }, [currentRound, metadata?.phase, myAnswer])
-
-  useEffect(() => {
-    if (readOnly || !currentRound || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
-    const hasContent = NPAT_CATEGORIES.some((category) => form[category]?.trim())
-    if (!hasContent) return
-
-    const handle = window.setTimeout(() => {
-      void fetch('/api/npat/draft', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gameId: gameCode,
-          playerId: myPlayerId,
-          roundId: currentRound.id,
-          ...formRef.current,
-        }),
-      })
-    }, 1500)
-
-    return () => window.clearTimeout(handle)
-  }, [form, readOnly, currentRound, metadata?.phase, myAnswer?.submitted_at, gameCode, myPlayerId])
+  }, [currentRound?.id, emptyAnswerForm, defaultValidFlags])
 
   useEffect(() => {
     if (!myMark || !reviewTargetId) return
@@ -273,18 +268,21 @@ export function NpatActiveRound({
     values: Record<NpatCategory, string>,
     opts?: { silent?: boolean }
   ) => {
-    if (!currentRound || readOnly || submitting) return
+    if (!currentRound || readOnly || submittingRef.current) return
+    submittingRef.current = true
     setSubmitting(true)
     try {
       const res = await fetch('/api/npat/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gameId: gameCode,
-          playerId: myPlayerId,
-          roundId: currentRound.id,
-          ...values,
-        }),
+        body: JSON.stringify(
+          npatAnswerRequestPayload({
+            gameId: gameCode,
+            playerId: myPlayerId,
+            roundId: currentRound.id,
+            answers: values,
+          })
+        ),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to submit')
@@ -295,29 +293,39 @@ export function NpatActiveRound({
         toastError(err instanceof Error ? err.message : 'Failed to submit')
       }
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
 
   useEffect(() => {
     if (!currentRound || readOnly || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
-    if (secondsLeft == null || secondsLeft > 0) return
-    if (autoSubmittedRoundRef.current === currentRound.id) return
 
-    autoSubmittedRoundRef.current = currentRound.id
-    void submitAnswersWithForm(formRef.current, { silent: true })
+    const deadline = phaseDeadlineMs(metadata, writingTimer, markingTimer)
+    if (deadline == null) return
+
+    const msLeft = Math.max(0, deadline - Date.now())
+    const handle = window.setTimeout(() => {
+      if (autoSubmittedRoundRef.current === currentRound.id) return
+      autoSubmittedRoundRef.current = currentRound.id
+      void submitAnswersWithForm(answerFormRef.current, { silent: true })
+    }, msLeft)
+
+    return () => window.clearTimeout(handle)
   }, [
-    secondsLeft,
-    currentRound,
-    readOnly,
+    currentRound?.id,
     metadata?.phase,
+    metadata?.phase_started_at,
+    writingTimer,
+    markingTimer,
     myAnswer?.submitted_at,
+    readOnly,
     gameCode,
     myPlayerId,
   ])
 
   const submitAnswers = async () => {
-    await submitAnswersWithForm(form)
+    await submitAnswersWithForm(answerForm)
   }
 
   const submitMarks = async () => {
@@ -481,12 +489,11 @@ export function NpatActiveRound({
                 <span className="text-sm font-semibold">{NPAT_CATEGORY_LABELS[category]}</span>
                 <input
                   type="text"
-                  value={form[category]}
+                  autoComplete="off"
+                  value={answerForm[category]}
                   maxLength={NPAT_MAX_ANSWER_LENGTH}
                   disabled={screen !== 'writing' || readOnly || submitting}
-                  onChange={(e) =>
-                    setForm((prev) => updateAnswerField(category, e.target.value, metadata.letter, prev))
-                  }
+                  onChange={(e) => updateAnswerFormField(category, e.target.value)}
                   className="w-full rounded-lg border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] px-3 py-2"
                   placeholder={`${metadata.letter}…`}
                 />
