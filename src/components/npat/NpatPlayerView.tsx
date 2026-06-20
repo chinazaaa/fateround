@@ -258,12 +258,14 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
   if (screen === 'playing' && game && myPlayerId) {
     return (
       <div className="min-h-screen pb-16">
-        <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
-          <div className="text-center space-y-1">
-            <div className="text-3xl">{cfg.headerEmoji}</div>
-            <h1 className="text-xl font-black gradient-title">{game.title}</h1>
-          </div>
-          {isViewer && (
+        <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
+          {game.status !== 'finished' && (
+            <div className="text-center space-y-1">
+              <div className="text-3xl">{cfg.headerEmoji}</div>
+              <h1 className="text-xl font-black gradient-title">{game.title}</h1>
+            </div>
+          )}
+          {isViewer && game.status !== 'finished' && (
             <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={me} onPromoted={load} />
           )}
           <NpatActiveRound

@@ -1,7 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { NpatActiveRound } from '@/components/npat/NpatActiveRound'
+import { NpatHostReviewPanel } from '@/components/npat/NpatHostReviewPanel'
+import { NpatFinalResultsShareBlock } from '@/components/npat/NpatFinalResultsShareBlock'
+import { NpatScoreboard } from '@/components/npat/NpatScoreboard'
+import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { HostModePanel } from '@/components/host/HostModePanel'
+import { HostPlayManageTabs } from '@/components/host/HostPlayManageTabs'
+import { InviteLinkActions } from '@/components/InviteLinkActions'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useNpatAdvance } from '@/hooks/useNpatAdvance'
 import {
@@ -13,7 +20,9 @@ import {
   NPAT_MARKING_TIMER_OPTIONS,
   NPAT_MIN_PLAYERS,
   NPAT_TIMER_OPTIONS,
+  parseNpatMetadata,
   setNpatHostMode,
+  tallyNpatScores,
   type NpatHostMode,
 } from '@/lib/npat'
 import { supabase } from '@/lib/supabase'
@@ -32,7 +41,6 @@ import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
-import { PlayerInviteCard } from '@/components/PlayerInviteCard'
 import { HostPlayerManageList } from '@/components/host/HostPlayerManageList'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 
@@ -140,9 +148,29 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     onAdvanced: load,
   })
 
+  const currentRound = useMemo(() => {
+    if (!game) return null
+    const byPointer = rounds.find((r) => r.round_number === game.current_round_number) ?? null
+    const active = rounds.find((r) => r.status === 'active') ?? null
+    if (active && byPointer && active.id !== byPointer.id && byPointer.status === 'finished') return active
+    return byPointer ?? active
+  }, [rounds, game])
+
+  const currentMetadata = currentRound ? parseNpatMetadata(currentRound.npat_metadata) : null
+
   useEffect(() => {
     if (game?.status === 'finished') setTab('manage')
   }, [game?.status])
+
+  useEffect(() => {
+    if (hostMode === 'player' && hostPlayerId && game?.status === 'active' && currentMetadata?.phase !== 'host_review') {
+      setTab('play')
+    }
+  }, [hostMode, hostPlayerId, game?.status, currentMetadata?.phase])
+
+  useEffect(() => {
+    if (currentMetadata?.phase === 'host_review') setTab('manage')
+  }, [currentMetadata?.phase])
 
   const changeHostMode = (mode: NpatHostMode) => {
     if (game?.status !== 'waiting') return
@@ -246,8 +274,22 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   }
 
   const hostPlays = hostMode === 'player' && !!hostPlayerId
-  const showPlayTab = hostPlays && game?.status !== 'finished'
+  const showPlayTab = hostPlays && game?.status !== 'waiting' && game?.status !== 'finished'
   const canStart = players.length >= NPAT_MIN_PLAYERS
+
+  const currentRoundAnswers = useMemo(
+    () => (currentRound ? answers.filter((a) => a.round_id === currentRound.id) : []),
+    [answers, currentRound]
+  )
+  const currentRoundMarks = useMemo(
+    () => (currentRound ? marks.filter((m) => m.round_id === currentRound.id) : []),
+    [marks, currentRound]
+  )
+  const leaderboard = useMemo(() => tallyNpatScores(answers, players), [answers, players])
+  const showManageScoreboard =
+    game?.status === 'active' &&
+    currentMetadata != null &&
+    (currentMetadata.phase === 'marking' || currentMetadata.phase === 'host_review' || currentMetadata.phase === 'reveal')
 
   if (!game) {
     return (
@@ -260,71 +302,72 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const cfg = gameTypeConfig('name_place_animal_thing')
   const playerLink = `${appOrigin()}/game/${gameCode}`
 
+  const playerManageBlock =
+    game.status === 'waiting' || game.status === 'active' ? (
+      <div className="glass-card p-4 space-y-3">
+        <p className="label-caps">Players — {players.length}</p>
+        <HostPlayerManageList
+          players={players}
+          onRemovePlayer={removePlayer}
+          removingPlayerId={removingPlayerId}
+          highlightPlayerId={hostPlayerId}
+        />
+      </div>
+    ) : null
+
   return (
-    <div className="min-h-screen pb-16">
-      <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
-        <div className="text-center space-y-1">
-          <div className="text-4xl">{cfg.headerEmoji}</div>
-          <h1 className="text-2xl font-black gradient-title">{game.title}</h1>
-          <p className="text-muted text-sm">{cfg.label} · Host</p>
-        </div>
+    <div className="min-h-screen pb-24">
+      <div className="max-w-5xl mx-auto px-2 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-5 overflow-x-hidden">
+        {game.status !== 'finished' && (
+          <div className="text-center space-y-1">
+            <div className="text-4xl">{cfg.headerEmoji}</div>
+            <h1 className="text-2xl font-black tracking-tight gradient-title">{game.title}</h1>
+            <p className="text-muted text-sm">{cfg.label} · Host panel</p>
+          </div>
+        )}
 
         {game.status === 'waiting' && (
-          <div className="glass-card p-4 space-y-3">
-            <p className="label-caps">Host mode</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => changeHostMode('spectator')}
-                className={hostMode === 'spectator' ? 'btn-primary' : 'btn-secondary'}
-              >
-                Spectate
-              </button>
-              <button
-                type="button"
-                onClick={() => changeHostMode('player')}
-                className={hostMode === 'player' ? 'btn-primary' : 'btn-secondary'}
-              >
-                Play too
-              </button>
-            </div>
-            {hostMode === 'player' && !hostPlayerId && (
-              <div className="space-y-2 pt-2">
-                <input
-                  type="text"
-                  value={hostJoinName}
-                  onChange={(e) => setHostJoinName(e.target.value)}
-                  placeholder="Your name"
-                  className="input-field w-full"
-                  maxLength={40}
-                />
-                <button
-                  type="button"
-                  onClick={hostJoinGame}
-                  disabled={!hostJoinName.trim() || hostJoining}
-                  className="btn-secondary w-full"
-                >
-                  {hostJoining ? 'Joining…' : 'Join as player'}
-                </button>
-              </div>
-            )}
-          </div>
+          <HostModePanel
+            hostMode={hostMode}
+            onModeChange={changeHostMode}
+            joinBlock={
+              !hostPlayerId ? (
+                <div className="flex items-center gap-2 pt-1">
+                  <div className="w-36 sm:w-44 shrink-0">
+                    <input
+                      type="text"
+                      value={hostJoinName}
+                      onChange={(e) => setHostJoinName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && hostJoinGame()}
+                      placeholder="Your name"
+                      className="input-field w-full"
+                      maxLength={40}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={hostJoinGame}
+                    disabled={!hostJoinName.trim() || hostJoining}
+                    className="btn-primary btn-fit shrink-0 px-4 py-2.5 text-sm whitespace-nowrap"
+                  >
+                    {hostJoining ? 'Joining…' : 'Join'}
+                  </button>
+                </div>
+              ) : undefined
+            }
+            joinedHint={
+              hostPlayerId ? (
+                <p className="text-sm text-muted">
+                  Playing as <strong className="text-body">{hostPlayerName}</strong> — switch to Play after you start.
+                </p>
+              ) : undefined
+            }
+          />
         )}
 
-        {(showPlayTab || game.status === 'active') && (
-          <div className="flex gap-2">
-            {showPlayTab && (
-              <button type="button" onClick={() => setTab('play')} className={tab === 'play' ? 'btn-primary flex-1' : 'btn-secondary flex-1'}>
-                Play
-              </button>
-            )}
-            <button type="button" onClick={() => setTab('manage')} className={tab === 'manage' ? 'btn-primary flex-1' : 'btn-secondary flex-1'}>
-              Manage
-            </button>
-          </div>
-        )}
+        {showPlayTab && <HostPlayManageTabs tab={tab} onTabChange={setTab} />}
 
-        {tab === 'play' && hostPlayerId && game.status === 'active' && (
+        {tab === 'play' && hostPlays && hostPlayerId && game.status === 'active' && (
           <NpatActiveRound
             gameCode={gameCode}
             game={game}
@@ -339,8 +382,16 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           />
         )}
 
-        {tab === 'manage' && (
+        {(tab === 'manage' || !showPlayTab) && (
           <div className="space-y-4">
+            <div className="glass-card p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-faint text-xs uppercase tracking-wider">Share with players</p>
+                <p className="font-mono font-bold text-lg">{gameCode}</p>
+              </div>
+              <InviteLinkActions url={playerLink} copyLabel="Copy player link" successMessage="Player link copied" />
+            </div>
+
             {game.status === 'waiting' && (
               <>
                 <div className="glass-card p-4 space-y-3">
@@ -400,13 +451,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
                   maxCapacity={game.max_players}
                 />
 
-                <HostPlayerManageList
-                  players={players}
-                  onRemovePlayer={removePlayer}
-                  removingPlayerId={removingPlayerId}
-                />
-
-                <PlayerInviteCard url={playerLink} gameCode={gameCode} />
+                {playerManageBlock}
 
                 <button
                   type="button"
@@ -423,34 +468,60 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
               </>
             )}
 
-            {game.status === 'active' && hostPlayerId && (
-              <NpatActiveRound
-                gameCode={gameCode}
-                game={game}
-                players={players}
-                rounds={rounds}
-                answers={answers}
-                marks={marks}
-                myPlayerId={hostPlayerId}
-                playerName={hostPlayerName}
-                onReload={load}
-                skipGameSync
-                readOnly={hostMode !== 'player'}
-              />
-            )}
-
-            {game.status === 'active' && !hostPlayerId && (
-              <div className="glass-card p-6 text-center text-muted">
-                Game in progress — choose Play too in Host mode and join as a player to call letters and submit answers.
-              </div>
+            {game.status === 'active' && (
+              <>
+                {currentMetadata?.phase === 'host_review' && currentRound && (
+                  <NpatHostReviewPanel
+                    gameCode={gameCode}
+                    hostToken={hostToken}
+                    round={currentRound}
+                    players={players}
+                    answers={answers}
+                    marks={marks}
+                    onApproved={load}
+                  />
+                )}
+                {playerManageBlock}
+                {!hostPlayerId && (
+                  <div className="glass-card p-6 text-center text-muted">
+                    Game in progress — choose Host + play in Host mode and join as a player to call letters and submit
+                    answers.
+                  </div>
+                )}
+                {hostPlayerId && tab === 'manage' && (
+                  <div className="glass-card p-4 text-center text-sm text-muted">
+                    You&apos;re playing as <strong className="text-body">{hostPlayerName}</strong> — switch to the Play
+                    tab to pick letters and submit answers.
+                  </div>
+                )}
+                <PaginatedLeaderboard
+                  title="Leaderboard"
+                  rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
+                  highlightId={hostPlayerId}
+                  scoreLabel={(score) => `${score} pts`}
+                />
+                {showManageScoreboard && currentMetadata && currentMetadata.phase !== 'host_review' && (
+                  <NpatScoreboard
+                    letter={currentMetadata.letter}
+                    players={players}
+                    answers={currentRoundAnswers}
+                    marks={currentRoundMarks}
+                    metadata={currentMetadata}
+                    showScores={currentMetadata.scores_computed || currentMetadata.phase === 'reveal'}
+                  />
+                )}
+              </>
             )}
 
             {game.status === 'finished' && (
               <div className="space-y-3">
-                <div className="glass-card p-6 text-center space-y-2">
-                  <p className="text-3xl">🏆</p>
-                  <p className="text-xl font-black">Game finished</p>
-                </div>
+                <NpatFinalResultsShareBlock
+                  game={game}
+                  players={players}
+                  leaderboard={leaderboard}
+                  highlightPlayerId={hostPlayerId}
+                  showCreateNewGame={false}
+                />
                 <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-primary w-full">
                   {playingAgain ? 'Resetting…' : 'Play again'}
                 </button>

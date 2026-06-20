@@ -16,6 +16,7 @@ import {
   isMonopolyGame,
   isWhotGame,
   isLudoGame,
+  isNamePlaceAnimalThingGame,
 } from '@/lib/game-types'
 import { tallyTriviaPlayerScores } from '@/lib/trivia'
 import { totalScore } from '@/lib/yahtzee'
@@ -50,6 +51,8 @@ function buildShareText({
   ludoStandings,
   ludoWinnerName,
   ludoEndedEarly,
+  npatLeaderboard,
+  npatWinnerLabel,
 }: {
   game: Game
   participants: Participant[]
@@ -67,9 +70,26 @@ function buildShareText({
   ludoStandings?: LudoStanding[]
   ludoWinnerName?: string
   ludoEndedEarly?: boolean
+  npatLeaderboard?: { name: string; score: number }[]
+  npatWinnerLabel?: string
 }): string {
   const gameType = parseGameType(game.game_type)
   const config = gameTypeConfig(gameType)
+
+  if (isNamePlaceAnimalThingGame(gameType) && npatLeaderboard && npatLeaderboard.length > 0) {
+    const lines = [
+      config.headerEmoji,
+      game.title,
+      '',
+      npatWinnerLabel ?? '🏆 Game over',
+      '',
+      'Final leaderboard:',
+      ...npatLeaderboard.slice(0, 8).map((row, i) => `  ${i + 1}. ${row.name} (${row.score} pts)`),
+      '',
+      `Play at ${appDomain()}`,
+    ]
+    return lines.join('\n')
+  }
 
   if (isLudoGame(gameType) && ludoStandings && ludoStandings.length > 0) {
     const lines = [
@@ -291,6 +311,8 @@ export function ShareResults({
   ludoStandings,
   ludoWinnerName,
   ludoEndedEarly,
+  npatLeaderboard,
+  npatWinnerLabel,
 }: {
   captureRef?: RefObject<HTMLElement | null>
   game: Game
@@ -309,6 +331,8 @@ export function ShareResults({
   ludoStandings?: LudoStanding[]
   ludoWinnerName?: string
   ludoEndedEarly?: boolean
+  npatLeaderboard?: { name: string; score: number }[]
+  npatWinnerLabel?: string
 }) {
   const { success, error } = useToast()
   const [sharing, setSharing] = useState(false)
@@ -359,6 +383,8 @@ export function ShareResults({
         ludoStandings,
         ludoWinnerName,
         ludoEndedEarly,
+        npatLeaderboard,
+        npatWinnerLabel,
       })
       if (typeof navigator !== 'undefined' && navigator.share) {
         try {
@@ -397,6 +423,8 @@ export function ShareResults({
           ludoStandings,
           ludoWinnerName,
           ludoEndedEarly,
+          npatLeaderboard,
+          npatWinnerLabel,
         })
         await navigator.clipboard.writeText(text)
         success('Results copied to clipboard!')

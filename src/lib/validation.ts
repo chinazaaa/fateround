@@ -514,6 +514,23 @@ export const npatMarkSchema = z.object({
 
 export type NpatMarkInput = z.infer<typeof npatMarkSchema>
 
+const npatHostOverrideEntrySchema = z.object({
+  playerId: uuidString('playerId'),
+  validName: z.boolean(),
+  validAnimal: z.boolean(),
+  validPlace: z.boolean(),
+  validThing: z.boolean(),
+})
+
+export const npatHostApproveSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: z.string().min(1),
+  roundId: uuidString('roundId'),
+  overrides: z.array(npatHostOverrideEntrySchema),
+})
+
+export type NpatHostApproveInput = z.infer<typeof npatHostApproveSchema>
+
 export const npatAdvanceSchema = z.object({
   gameId: gameCodeString(),
   force: z.boolean().optional(),

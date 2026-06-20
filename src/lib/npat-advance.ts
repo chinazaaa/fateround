@@ -5,6 +5,7 @@ import {
   buildNpatNextRound,
   clampNpatMarkingTimer,
   clampNpatTimer,
+  availableLettersForPick,
   computeRoundScores,
   ensureBlankAnswers,
   ensureDefaultMarks,
@@ -125,20 +126,38 @@ async function startMarkingPhase(
   })
 }
 
+async function startHostReviewPhase(
+  supabase: SupabaseClient,
+  round: Round
+): Promise<boolean> {
+  const metadata = parseNpatMetadata(round.npat_metadata)
+  if (!metadata || metadata.phase !== 'marking') return false
+  const now = new Date().toISOString()
+  return updateRoundMetadata(supabase, round.id, {
+    ...metadata,
+    phase: 'host_review',
+    phase_started_at: now,
+  })
+}
+
 async function computeAndFinishRound(
   supabase: SupabaseClient,
   gameId: string,
   round: Round
 ): Promise<boolean> {
   const metadata = parseNpatMetadata(round.npat_metadata)
-  if (!metadata || metadata.phase !== 'marking' || metadata.scores_computed) return false
+  if (!metadata || metadata.scores_computed) return false
+  if (metadata.phase !== 'marking' && metadata.phase !== 'host_review') return false
 
   const [{ data: answers }, { data: marks }] = await Promise.all([
     supabase.from('npat_answers').select('*').eq('round_id', round.id),
     supabase.from('npat_marks').select('*').eq('round_id', round.id),
   ])
 
-  const scores = computeRoundScores(answers ?? [], marks ?? [])
+  const scores = computeRoundScores(answers ?? [], marks ?? [], {
+    letter: metadata.letter,
+    hostOverrides: metadata.host_overrides,
+  })
   for (const row of scores) {
     await supabase
       .from('npat_answers')
@@ -207,7 +226,10 @@ async function advanceActiveRoundPhase(
   if (metadata.phase === 'letter_pick') {
     const letterChosen = metadata.letter != null
     if (!letterChosen && phaseExpired(metadata, game)) {
-      await pickLetterAndStartWriting(supabase, round, randomUnusedLetter(metadata.used_letters))
+      const { data: allRounds } = await supabase.from('rounds').select('npat_metadata').eq('game_id', game.id)
+      const remaining = availableLettersForPick(allRounds ?? [])
+      const letter = remaining.length > 0 ? remaining[Math.floor(Math.random() * remaining.length)] : randomUnusedLetter(metadata.used_letters)
+      await pickLetterAndStartWriting(supabase, round, letter)
       return 'phase_advanced'
     }
     return 'round_active'
@@ -227,9 +249,13 @@ async function advanceActiveRoundPhase(
     const marked = await countRoundMarks(supabase, round.id)
     const allMarked = playerIds.length > 0 && marked >= playerIds.length
     if (allMarked || phaseExpired(metadata, game)) {
-      const ok = await computeAndFinishRound(supabase, game.id, round)
-      return ok ? 'ended_round' : 'round_active'
+      const ok = await startHostReviewPhase(supabase, round)
+      return ok ? 'phase_advanced' : 'round_active'
     }
+    return 'round_active'
+  }
+
+  if (metadata.phase === 'host_review') {
     return 'round_active'
   }
 
@@ -281,6 +307,28 @@ async function startNextLetterCycle(
   await supabase.from('games').update({ rounds_count: nextRoundNumber }).eq('id', code)
 
   return { ok: true, code: 'advanced_next', nextRound: nextRoundNumber }
+}
+
+export async function approveNpatRound(
+  supabase: SupabaseClient,
+  gameId: string,
+  roundId: string,
+  hostOverrides: NonNullable<NpatMetadata['host_overrides']>
+): Promise<boolean> {
+  const { data: round } = await supabase.from('rounds').select('*').eq('id', roundId).eq('game_id', gameId).maybeSingle()
+  if (!round || round.status !== 'active') return false
+  const metadata = parseNpatMetadata(round.npat_metadata)
+  if (!metadata || metadata.phase !== 'host_review') return false
+
+  const saved = await updateRoundMetadata(supabase, round.id, {
+    ...metadata,
+    host_overrides: hostOverrides,
+  })
+  if (!saved) return false
+
+  const { data: refreshed } = await supabase.from('rounds').select('*').eq('id', roundId).maybeSingle()
+  if (!refreshed) return false
+  return computeAndFinishRound(supabase, gameId, refreshed)
 }
 
 export async function syncNpatGameState(

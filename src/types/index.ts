@@ -33,8 +33,13 @@ export type GameType =
   | 'ludo'
   | 'name_place_animal_thing'
 
-export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'reveal'
+export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing'
+
+export type NpatHostOverrides = Record<
+  string,
+  Partial<Record<NpatCategory, boolean>>
+>
 
 export interface NpatMetadata {
   letter: string | null
@@ -45,6 +50,7 @@ export interface NpatMetadata {
   used_letters: string[]
   caller_order: string[]
   caller_index: number
+  host_overrides?: NpatHostOverrides
 }
 
 export interface NpatAnswer {

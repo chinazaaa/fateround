@@ -1,8 +1,10 @@
 'use client'
 
 import {
+  answerStartsWithLetter,
   computeCategoryScore,
   duplicateKeysByCategory,
+  isForcedInvalidAnswer,
   NPAT_CATEGORIES,
   NPAT_CATEGORY_LABELS,
   NPAT_CATEGORY_POINTS,
@@ -14,6 +16,7 @@ import type { NpatAnswer, NpatCategory, NpatMark, NpatMetadata, Player } from '@
 
 function scoreReasonLabel(reason: NpatScoreReason): string {
   if (reason === 'duplicate') return 'Duplicate'
+  if (reason === 'wrong_letter') return 'Wrong letter'
   if (reason === 'invalid') return 'Marked invalid'
   if (reason === 'empty') return 'Empty'
   return 'Valid'
@@ -22,7 +25,7 @@ function scoreReasonLabel(reason: NpatScoreReason): string {
 function scoreReasonClass(reason: NpatScoreReason, points: number): string {
   if (points > 0) return 'text-emerald-600 dark:text-emerald-300'
   if (reason === 'duplicate') return 'text-red-600 dark:text-red-300'
-  if (reason === 'invalid') return 'text-amber-600 dark:text-amber-300'
+  if (reason === 'wrong_letter' || reason === 'invalid') return 'text-amber-600 dark:text-amber-300'
   return 'text-muted'
 }
 
@@ -33,6 +36,9 @@ export function NpatScoreboard({
   marks,
   metadata,
   showScores,
+  hostReview = false,
+  hostOverrides,
+  onSetValid,
 }: {
   letter: string | null
   players: Player[]
@@ -40,6 +46,9 @@ export function NpatScoreboard({
   marks: NpatMark[]
   metadata: NpatMetadata | null
   showScores: boolean
+  hostReview?: boolean
+  hostOverrides?: NpatMetadata['host_overrides']
+  onSetValid?: (playerId: string, category: NpatCategory, answerText: string, valid: boolean) => void
 }) {
   const roundAnswers = answers
   const dupes = duplicateKeysByCategory(roundAnswers)
@@ -56,7 +65,7 @@ export function NpatScoreboard({
   return (
     <div className="glass-card p-4 space-y-3 overflow-x-auto">
       <div className="flex items-center justify-between gap-2">
-        <p className="label-caps text-xs">Live scoreboard</p>
+        <p className="label-caps text-xs">{hostReview ? 'Review board' : 'Live scoreboard'}</p>
         {letter && (
           <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500 text-white font-black">
             {letter}
@@ -64,8 +73,9 @@ export function NpatScoreboard({
         )}
       </div>
       <p className="text-faint text-xs">
-        Duplicates are detected automatically. Reviewers mark whether each answer fits its category — everyone can see
-        the marks.
+        {hostReview
+          ? 'Tap valid or invalid for answers you want to override. Empty, wrong-letter, and duplicate answers are locked invalid.'
+          : 'Duplicates are detected automatically. Reviewers mark whether each answer fits its category — everyone can see the marks.'}
       </p>
 
       <table className="w-full min-w-[640px] text-sm border-collapse">
@@ -97,7 +107,7 @@ export function NpatScoreboard({
               <tr key={player.id} className="border-b border-[var(--border-strong)]/60 align-top">
                 <td className="py-3 pr-2">
                   <p className="font-semibold">{player.name}</p>
-                  {reviewer && (
+                  {reviewer && !hostReview && (
                     <p className="text-faint text-[11px] mt-0.5">Marked by {reviewer}</p>
                   )}
                 </td>
@@ -107,6 +117,14 @@ export function NpatScoreboard({
                   const isDuplicate = normalized ? dupes[category].has(normalized) : false
                   const markedValid = mark?.[`valid_${category}` as keyof NpatMark]
                   const hasMark = mark?.marked_at != null
+                  const forcedInvalid = isForcedInvalidAnswer(text, letter, isDuplicate)
+                  const hostValid = hostReview
+                    ? hostOverrides?.[player.id]?.[category]
+                    : undefined
+                  const effectiveValid =
+                    hostReview && typeof hostValid === 'boolean'
+                      ? hostValid
+                      : markedValid !== false
 
                   let reason: NpatScoreReason = 'empty'
                   let points = 0
@@ -114,34 +132,69 @@ export function NpatScoreboard({
                     const scoreKey = `score_${category}` as keyof NpatAnswer
                     points = (answer[scoreKey] as number | null) ?? 0
                     if (!normalized) reason = 'empty'
+                    else if (letter && !answerStartsWithLetter(text, letter)) reason = 'wrong_letter'
                     else if (isDuplicate) reason = 'duplicate'
                     else if (markedValid === false) reason = 'invalid'
                     else reason = 'valid'
-                  } else if (normalized) {
+                  } else {
                     const preview = computeCategoryScore({
                       answer: text,
-                      markedValid: markedValid !== false,
+                      letter,
+                      markedValid: hostReview ? effectiveValid : markedValid !== false,
                       isDuplicate,
                     })
                     points = preview.points
                     reason = preview.reason
                   }
 
-                  const validFlag = mark?.[`valid_${category}` as keyof NpatMark]
                   return (
                     <td key={category} className="py-3 px-2">
                       <p className="font-medium">{text || '—'}</p>
                       <div className="mt-1 space-y-0.5">
+                        {!normalized && <p className="text-[11px] text-muted font-semibold">Empty</p>}
+                        {normalized && letter && !answerStartsWithLetter(text, letter) && (
+                          <p className="text-[11px] text-amber-600 dark:text-amber-300 font-semibold">
+                            Must start with {letter}
+                          </p>
+                        )}
                         {isDuplicate && normalized && (
                           <p className="text-[11px] text-red-500 font-semibold">Duplicate</p>
                         )}
-                        {hasMark && validFlag === false && (
+                        {hostReview && !forcedInvalid && (
+                          <div className="grid grid-cols-2 gap-1 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => onSetValid?.(player.id, category, text, true)}
+                              className={[
+                                'rounded-md py-1 text-[11px] font-bold border',
+                                effectiveValid
+                                  ? 'border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-200'
+                                  : 'border-[var(--border-strong)] text-muted',
+                              ].join(' ')}
+                            >
+                              Valid
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onSetValid?.(player.id, category, text, false)}
+                              className={[
+                                'rounded-md py-1 text-[11px] font-bold border',
+                                !effectiveValid
+                                  ? 'border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-200'
+                                  : 'border-[var(--border-strong)] text-muted',
+                              ].join(' ')}
+                            >
+                              Invalid
+                            </button>
+                          </div>
+                        )}
+                        {!hostReview && hasMark && markedValid === false && (
                           <p className="text-[11px] text-amber-600 dark:text-amber-300 font-semibold">Invalid</p>
                         )}
-                        {hasMark && validFlag === true && normalized && !isDuplicate && (
+                        {!hostReview && hasMark && markedValid === true && normalized && !isDuplicate && (
                           <p className="text-[11px] text-emerald-600 dark:text-emerald-300">Valid</p>
                         )}
-                        {!hasMark && metadata?.phase === 'marking' && normalized && (
+                        {!hostReview && !hasMark && metadata?.phase === 'marking' && normalized && (
                           <p className="text-[11px] text-faint">Awaiting mark…</p>
                         )}
                         {showScores && (

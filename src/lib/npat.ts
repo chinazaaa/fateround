@@ -101,6 +101,23 @@ export function unusedLetters(usedLetters: string[]): string[] {
   return ALPHABET.filter((l) => !used.has(l))
 }
 
+/** All letters already picked across every round in the game. */
+export function collectUsedLetters(rounds: Pick<Round, 'npat_metadata'>[]): string[] {
+  const used = new Set<string>()
+  for (const round of rounds) {
+    const meta = parseNpatMetadata(round.npat_metadata)
+    if (!meta) continue
+    for (const letter of meta.used_letters) used.add(letter.toUpperCase())
+    if (meta.letter) used.add(meta.letter.toUpperCase())
+  }
+  return ALPHABET.filter((l) => used.has(l))
+}
+
+export function availableLettersForPick(rounds: Pick<Round, 'npat_metadata'>[]): string[] {
+  const used = new Set(collectUsedLetters(rounds))
+  return ALPHABET.filter((l) => !used.has(l))
+}
+
 export function randomUnusedLetter(usedLetters: string[]): string {
   const remaining = unusedLetters(usedLetters)
   if (remaining.length === 0) return randomLetter()
@@ -111,7 +128,15 @@ export function parseNpatMetadata(raw: unknown): NpatMetadata | null {
   if (!raw || typeof raw !== 'object') return null
   const m = raw as Record<string, unknown>
   const phase = m.phase
-  if (phase !== 'letter_pick' && phase !== 'writing' && phase !== 'marking' && phase !== 'reveal') return null
+  if (
+    phase !== 'letter_pick' &&
+    phase !== 'writing' &&
+    phase !== 'marking' &&
+    phase !== 'host_review' &&
+    phase !== 'reveal'
+  ) {
+    return null
+  }
   const assignments = m.reviewer_assignments
   if (!assignments || typeof assignments !== 'object') return null
   const reviewer_assignments: Record<string, string> = {}
@@ -125,6 +150,20 @@ export function parseNpatMetadata(raw: unknown): NpatMetadata | null {
     ? m.caller_order.filter((id): id is string => typeof id === 'string')
     : []
 
+  const host_overrides: NpatMetadata['host_overrides'] = {}
+  if (m.host_overrides && typeof m.host_overrides === 'object') {
+    for (const [playerId, rawFlags] of Object.entries(m.host_overrides as Record<string, unknown>)) {
+      if (!rawFlags || typeof rawFlags !== 'object') continue
+      const flags = rawFlags as Record<string, unknown>
+      const entry: Partial<Record<NpatCategory, boolean>> = {}
+      for (const category of NPAT_CATEGORIES) {
+        const value = flags[category]
+        if (typeof value === 'boolean') entry[category] = value
+      }
+      if (Object.keys(entry).length > 0) host_overrides[playerId] = entry
+    }
+  }
+
   return {
     letter: typeof m.letter === 'string' ? m.letter.toUpperCase().slice(0, 1) : null,
     phase,
@@ -134,6 +173,7 @@ export function parseNpatMetadata(raw: unknown): NpatMetadata | null {
     used_letters,
     caller_order,
     caller_index: typeof m.caller_index === 'number' ? m.caller_index : 0,
+    host_overrides: Object.keys(host_overrides).length > 0 ? host_overrides : undefined,
   }
 }
 
@@ -228,6 +268,19 @@ export function normalizeAnswer(text: string): string {
   return text.trim().toLowerCase()
 }
 
+export function answerStartsWithLetter(answer: string, letter: string): boolean {
+  const trimmed = answer.trim()
+  if (!trimmed || !letter) return false
+  return trimmed[0].toUpperCase() === letter.toUpperCase().slice(0, 1)
+}
+
+export function isForcedInvalidAnswer(answer: string, letter: string | null, isDuplicate: boolean): boolean {
+  if (!normalizeAnswer(answer)) return true
+  if (letter && !answerStartsWithLetter(answer, letter)) return true
+  if (isDuplicate) return true
+  return false
+}
+
 export function duplicateKeysByCategory(
   answers: Pick<NpatAnswer, 'name' | 'animal' | 'place' | 'thing'>[]
 ): Record<NpatCategory, Set<string>> {
@@ -253,22 +306,40 @@ export function duplicateKeysByCategory(
   return result
 }
 
-export type NpatScoreReason = 'empty' | 'duplicate' | 'invalid' | 'valid'
+export type NpatScoreReason = 'empty' | 'duplicate' | 'invalid' | 'wrong_letter' | 'valid'
 
 export function computeCategoryScore(opts: {
   answer: string
+  letter: string | null
   markedValid: boolean
   isDuplicate: boolean
 }): { points: number; reason: NpatScoreReason } {
   if (!normalizeAnswer(opts.answer)) return { points: 0, reason: 'empty' }
+  if (opts.letter && !answerStartsWithLetter(opts.answer, opts.letter)) {
+    return { points: 0, reason: 'wrong_letter' }
+  }
   if (opts.isDuplicate) return { points: 0, reason: 'duplicate' }
   if (!opts.markedValid) return { points: 0, reason: 'invalid' }
   return { points: NPAT_CATEGORY_POINTS, reason: 'valid' }
 }
 
+function resolveCategoryValid(opts: {
+  answer: string
+  category: NpatCategory
+  letter: string | null
+  markedValid: boolean
+  isDuplicate: boolean
+  hostOverride?: boolean
+}): boolean {
+  if (isForcedInvalidAnswer(opts.answer, opts.letter, opts.isDuplicate)) return false
+  if (typeof opts.hostOverride === 'boolean') return opts.hostOverride
+  return opts.markedValid
+}
+
 export function computeRoundScores(
   answers: NpatAnswer[],
-  marks: NpatMark[]
+  marks: NpatMark[],
+  opts?: { letter?: string | null; hostOverrides?: NpatMetadata['host_overrides'] }
 ): Array<{
   player_id: string
   score_name: number
@@ -276,25 +347,33 @@ export function computeRoundScores(
   score_place: number
   score_thing: number
 }> {
+  const letter = opts?.letter ?? null
+  const hostOverrides = opts?.hostOverrides
   const dupes = duplicateKeysByCategory(answers)
   const marksByTarget = new Map(marks.map((m) => [m.target_player_id, m]))
 
   return answers.map((answer) => {
     const mark = marksByTarget.get(answer.player_id)
-    const validFlags: Record<NpatCategory, boolean> = {
-      name: mark?.valid_name ?? true,
-      animal: mark?.valid_animal ?? true,
-      place: mark?.valid_place ?? true,
-      thing: mark?.valid_thing ?? true,
-    }
+    const playerOverrides = hostOverrides?.[answer.player_id]
 
     const scores = {} as Record<NpatCategory, number>
     for (const category of NPAT_CATEGORIES) {
       const normalized = normalizeAnswer(answer[category])
       const isDuplicate = normalized ? dupes[category].has(normalized) : false
+      const markedValid = mark?.[`valid_${category}` as keyof NpatMark] ?? true
+      const hostOverride = playerOverrides?.[category]
+      const valid = resolveCategoryValid({
+        answer: answer[category],
+        category,
+        letter,
+        markedValid: markedValid !== false,
+        isDuplicate,
+        hostOverride,
+      })
       scores[category] = computeCategoryScore({
         answer: answer[category],
-        markedValid: validFlags[category],
+        letter,
+        markedValid: valid,
         isDuplicate,
       }).points
     }
@@ -307,6 +386,37 @@ export function computeRoundScores(
       score_thing: scores.thing,
     }
   })
+}
+
+export function suggestedHostReviewValidity(
+  answers: NpatAnswer[],
+  marks: NpatMark[],
+  letter: string | null
+): NpatMetadata['host_overrides'] {
+  const dupes = duplicateKeysByCategory(answers)
+  const marksByTarget = new Map(marks.map((m) => [m.target_player_id, m]))
+  const result: NonNullable<NpatMetadata['host_overrides']> = {}
+
+  for (const answer of answers) {
+    const mark = marksByTarget.get(answer.player_id)
+    const entry: Partial<Record<NpatCategory, boolean>> = {}
+    for (const category of NPAT_CATEGORIES) {
+      const text = answer[category]
+      const normalized = normalizeAnswer(text)
+      const isDuplicate = normalized ? dupes[category].has(normalized) : false
+      const markedValid = mark?.[`valid_${category}` as keyof NpatMark] ?? true
+      entry[category] = resolveCategoryValid({
+        answer: text,
+        category,
+        letter,
+        markedValid: markedValid !== false,
+        isDuplicate,
+      })
+    }
+    result[answer.player_id] = entry
+  }
+
+  return result
 }
 
 export function answerTotal(answer: Pick<NpatAnswer, 'score_name' | 'score_animal' | 'score_place' | 'score_thing'>) {
@@ -323,6 +433,14 @@ export function tallyNpatScores(answers: NpatAnswer[], players: Player[]): { id:
   return players
     .map((p) => ({ id: p.id, name: p.name, score: totals.get(p.id) ?? 0 }))
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+}
+
+export function npatWinnerLabel(leaderboard: { name: string; score: number }[]): string {
+  if (leaderboard.length === 0) return 'Game over'
+  const topScore = leaderboard[0].score
+  const winners = leaderboard.filter((row) => row.score === topScore)
+  if (winners.length === 1) return `${winners[0].name} wins!`
+  return `${winners.map((row) => row.name).join(' & ')} tie for first!`
 }
 
 export function playerDisplayName(playerId: string | null | undefined, players: Player[]): string {
@@ -394,22 +512,37 @@ export async function ensureDefaultMarks(
 ): Promise<void> {
   const metadata = parseNpatMetadata(round.npat_metadata)
   if (!metadata) return
+  const letter = metadata.letter
+  const { data: answers } = await supabase.from('npat_answers').select('*').eq('round_id', round.id)
+  const answersByPlayer = new Map((answers ?? []).map((a) => [a.player_id, a]))
+  const dupes = duplicateKeysByCategory(answers ?? [])
   const { data: existing } = await supabase.from('npat_marks').select('marker_player_id').eq('round_id', round.id)
   const have = new Set((existing ?? []).map((r) => r.marker_player_id))
 
   const inserts = playerIds
     .filter((id) => !have.has(id))
-    .map((markerId) => ({
-      game_id: gameId,
-      round_id: round.id,
-      marker_player_id: markerId,
-      target_player_id: metadata.reviewer_assignments[markerId] ?? markerId,
-      valid_name: true,
-      valid_animal: true,
-      valid_place: true,
-      valid_thing: true,
-      marked_at: null,
-    }))
+    .map((markerId) => {
+      const targetId = metadata.reviewer_assignments[markerId] ?? markerId
+      const targetAnswer = answersByPlayer.get(targetId)
+      const validFor = (category: NpatCategory) => {
+        if (!targetAnswer) return false
+        const text = targetAnswer[category]
+        const normalized = normalizeAnswer(text)
+        const isDuplicate = normalized ? dupes[category].has(normalized) : false
+        return !isForcedInvalidAnswer(text, letter, isDuplicate)
+      }
+      return {
+        game_id: gameId,
+        round_id: round.id,
+        marker_player_id: markerId,
+        target_player_id: targetId,
+        valid_name: validFor('name'),
+        valid_animal: validFor('animal'),
+        valid_place: validFor('place'),
+        valid_thing: validFor('thing'),
+        marked_at: null,
+      }
+    })
     .filter((row) => row.target_player_id !== row.marker_player_id)
 
   if (inserts.length > 0) await supabase.from('npat_marks').insert(inserts)

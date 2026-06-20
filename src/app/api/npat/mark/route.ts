@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { isNamePlaceAnimalThingGame, parseGameType } from '@/lib/game-types'
-import { parseNpatMetadata, reviewTargetForMarker } from '@/lib/npat'
+import { parseNpatMetadata, reviewTargetForMarker, answerStartsWithLetter, normalizeAnswer, duplicateKeysByCategory } from '@/lib/npat'
 import { npatMarkSchema } from '@/lib/validation'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -36,6 +36,26 @@ export async function POST(req: NextRequest) {
   const targetId = reviewTargetForMarker(metadata, playerId)
   if (!targetId) return NextResponse.json({ error: 'No review assignment for this player' }, { status: 400 })
 
+  const { data: targetAnswer } = await supabase
+    .from('npat_answers')
+    .select('name, animal, place, thing')
+    .eq('round_id', roundId)
+    .eq('player_id', targetId)
+    .maybeSingle()
+
+  const letter = metadata.letter
+  const dupes = duplicateKeysByCategory(targetAnswer ? [targetAnswer] : [])
+  const clampValid = (category: 'name' | 'animal' | 'place' | 'thing', requested: boolean) => {
+    if (!targetAnswer) return false
+    const text = targetAnswer[category]
+    const normalized = normalizeAnswer(text)
+    const isDuplicate = normalized ? dupes[category].has(normalized) : false
+    if (!normalized) return false
+    if (letter && !answerStartsWithLetter(text, letter)) return false
+    if (isDuplicate) return false
+    return requested
+  }
+
   const { data: player } = await supabase.from('players').select('id').eq('id', playerId).eq('game_id', code).maybeSingle()
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
 
@@ -46,10 +66,10 @@ export async function POST(req: NextRequest) {
       round_id: roundId,
       marker_player_id: playerId,
       target_player_id: targetId,
-      valid_name: validName,
-      valid_animal: validAnimal,
-      valid_place: validPlace,
-      valid_thing: validThing,
+      valid_name: clampValid('name', validName),
+      valid_animal: clampValid('animal', validAnimal),
+      valid_place: clampValid('place', validPlace),
+      valid_thing: clampValid('thing', validThing),
       marked_at: now,
     },
     { onConflict: 'marker_player_id,round_id' }

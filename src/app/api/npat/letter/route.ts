@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { isNamePlaceAnimalThingGame, parseGameType } from '@/lib/game-types'
-import { parseNpatMetadata, unusedLetters } from '@/lib/npat'
+import { parseNpatMetadata, availableLettersForPick } from '@/lib/npat'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -38,7 +38,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not in letter pick phase' }, { status: 400 })
   }
 
-  const available = unusedLetters(metadata.used_letters)
+  const { data: allRounds } = await supabase.from('rounds').select('npat_metadata').eq('game_id', gameId)
+  const available = availableLettersForPick(allRounds ?? [])
   if (!available.includes(letter)) {
     return NextResponse.json({ error: 'That letter was already used' }, { status: 400 })
   }

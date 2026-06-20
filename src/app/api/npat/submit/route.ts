@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { isNamePlaceAnimalThingGame, parseGameType } from '@/lib/game-types'
-import { NPAT_MAX_ANSWER_LENGTH, parseNpatMetadata } from '@/lib/npat'
+import { answerStartsWithLetter, availableLettersForPick, NPAT_MAX_ANSWER_LENGTH, parseNpatMetadata } from '@/lib/npat'
 import { npatSubmitSchema } from '@/lib/validation'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -35,6 +35,18 @@ export async function POST(req: NextRequest) {
   const metadata = parseNpatMetadata(round.npat_metadata)
   if (!metadata || metadata.phase !== 'writing') {
     return NextResponse.json({ error: 'Not in writing phase' }, { status: 400 })
+  }
+
+  const letter = metadata.letter
+  const fields = { name, animal, place, thing }
+  for (const [label, value] of Object.entries(fields)) {
+    const trimmed = trimField(value)
+    if (trimmed && letter && !answerStartsWithLetter(trimmed, letter)) {
+      return NextResponse.json(
+        { error: `${label} must start with the letter ${letter}` },
+        { status: 400 }
+      )
+    }
   }
 
   const { data: player } = await supabase.from('players').select('id').eq('id', playerId).eq('game_id', code).maybeSingle()

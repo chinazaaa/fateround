@@ -2,12 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
+import { NpatFinalResultsShareBlock } from '@/components/npat/NpatFinalResultsShareBlock'
 import { NpatScoreboard } from '@/components/npat/NpatScoreboard'
 import { NpatGameTimerBar } from '@/components/npat/NpatGameTimerBar'
 import {
+  availableLettersForPick,
   clampNpatMarkingTimer,
   clampNpatTimer,
+  duplicateKeysByCategory,
+  isForcedInvalidAnswer,
   NPAT_CATEGORIES,
   NPAT_CATEGORY_LABELS,
   NPAT_MAX_ANSWER_LENGTH,
@@ -18,7 +21,6 @@ import {
   revealCountdownSeconds,
   reviewTargetForMarker,
   tallyNpatScores,
-  unusedLetters,
 } from '@/lib/npat'
 import { useNpatAdvance } from '@/hooks/useNpatAdvance'
 import { playVoteSubmittedSound } from '@/lib/sounds'
@@ -35,8 +37,23 @@ type PlayScreen =
   | 'writing_locked'
   | 'marking'
   | 'marking_locked'
+  | 'host_review'
   | 'revealed'
   | 'finished'
+
+function updateAnswerField(
+  category: NpatCategory,
+  value: string,
+  letter: string | null,
+  prev: Record<NpatCategory, string>
+): Record<NpatCategory, string> {
+  if (!value) return { ...prev, [category]: '' }
+  const trimmed = value.trimStart()
+  if (trimmed.length > 0 && letter && trimmed[0].toUpperCase() !== letter.toUpperCase()) {
+    return prev
+  }
+  return { ...prev, [category]: value }
+}
 
 export function NpatActiveRound({
   gameCode,
@@ -151,6 +168,7 @@ export function NpatActiveRound({
     if (phase === 'letter_pick') return isCaller ? 'letter_pick' : 'letter_wait'
     if (phase === 'writing') return myAnswer?.submitted_at ? 'writing_locked' : 'writing'
     if (phase === 'marking') return myMark?.marked_at ? 'marking_locked' : 'marking'
+    if (phase === 'host_review') return 'host_review'
     return 'waiting'
   }, [game.status, currentRound, metadata, isCaller, myAnswer, myMark])
 
@@ -229,19 +247,12 @@ export function NpatActiveRound({
 
   if (screen === 'finished') {
     return (
-      <div className="space-y-4">
-        <div className="glass-card p-8 text-center space-y-2">
-          <p className="text-4xl">🏆</p>
-          <p className="text-2xl font-black">Game over!</p>
-          <p className="text-muted text-sm">Final standings for {playerName}</p>
-        </div>
-        <PaginatedLeaderboard
-          title="Final leaderboard"
-          rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
-          highlightId={myPlayerId}
-          scoreLabel={(score) => `${score} pts`}
-        />
-      </div>
+      <NpatFinalResultsShareBlock
+        game={game}
+        players={players}
+        leaderboard={leaderboard}
+        highlightPlayerId={myPlayerId}
+      />
     )
   }
 
@@ -262,23 +273,31 @@ export function NpatActiveRound({
 
   if (!currentRound || !metadata) return null
 
-  const showTransparency = metadata.phase === 'marking' || screen === 'revealed' || screen === 'marking_locked'
-  const showFinalScores = screen === 'revealed' || !!(metadata.scores_computed && currentRound.status === 'finished')
+  const showTransparency =
+    metadata?.phase === 'marking' ||
+    metadata?.phase === 'host_review' ||
+    screen === 'revealed' ||
+    screen === 'marking_locked' ||
+    screen === 'host_review'
+  const showFinalScores = screen === 'revealed' || !!(metadata?.scores_computed && currentRound.status === 'finished')
   const lettersLeft = npatLettersRemaining(metadata)
-  const availableLetters = unusedLetters(metadata.used_letters)
+  const availableLetters = availableLettersForPick(rounds)
+  const usedLetters = LETTERS.filter((letter) => !availableLetters.includes(letter))
+
+  const scoreboard = showTransparency ? (
+    <NpatScoreboard
+      letter={metadata.letter}
+      players={players}
+      answers={roundAnswers}
+      marks={roundMarks}
+      metadata={metadata}
+      showScores={showFinalScores}
+    />
+  ) : null
 
   return (
-    <LiveLeaderboardLayout
-      sidebar={
-        <PaginatedLeaderboard
-          title="Leaderboard"
-          rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
-          highlightId={myPlayerId}
-          scoreLabel={(score) => `${score} pts`}
-        />
-      }
-    >
-      <div className="space-y-4">
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(280px,420px)] gap-4 items-start">
+      <div className="min-w-0 space-y-4 order-1">
         <NpatGameTimerBar game={game} />
 
         <div className="glass-card p-5 text-center space-y-2">
@@ -302,7 +321,10 @@ export function NpatActiveRound({
         {screen === 'letter_pick' && (
           <div className="glass-card p-4 space-y-3">
             <p className="font-bold text-center">Pick a letter for everyone</p>
-            <p className="text-faint text-xs text-center">{availableLetters.length} letters still available</p>
+            <p className="text-faint text-xs text-center">
+              {availableLetters.length} letters still available
+              {usedLetters.length > 0 ? ` · ${usedLetters.join(', ')} already used` : ''}
+            </p>
             <div className="grid grid-cols-7 gap-2">
               {LETTERS.map((letter) => {
                 const used = !availableLetters.includes(letter)
@@ -313,9 +335,9 @@ export function NpatActiveRound({
                     disabled={pickingLetter || readOnly || used}
                     onClick={() => void pickLetter(letter)}
                     className={[
-                      'h-10 rounded-lg border font-bold',
+                      'h-10 rounded-lg border font-bold transition-colors',
                       used
-                        ? 'border-[var(--border-strong)]/40 text-faint line-through opacity-40 cursor-not-allowed'
+                        ? 'border-[var(--border-strong)]/30 bg-[var(--surface-inset-bg)] text-faint line-through opacity-50 cursor-not-allowed'
                         : 'border-[var(--border-strong)] hover:border-sky-400 hover:bg-sky-500/10',
                     ].join(' ')}
                   >
@@ -344,7 +366,9 @@ export function NpatActiveRound({
                   value={form[category]}
                   maxLength={NPAT_MAX_ANSWER_LENGTH}
                   disabled={screen !== 'writing' || readOnly || submitting}
-                  onChange={(e) => setForm((prev) => ({ ...prev, [category]: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((prev) => updateAnswerField(category, e.target.value, metadata.letter, prev))
+                  }
                   className="w-full rounded-lg border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] px-3 py-2"
                   placeholder={`${metadata.letter}…`}
                 />
@@ -365,6 +389,14 @@ export function NpatActiveRound({
           </div>
         )}
 
+        {screen === 'host_review' && (
+          <div className="glass-card p-6 text-center space-y-2">
+            <p className="text-2xl">👀</p>
+            <p className="font-bold">Waiting for host approval</p>
+            <p className="text-sm text-muted">The host is reviewing everyone&apos;s answers before scores are revealed.</p>
+          </div>
+        )}
+
         {(screen === 'marking' || screen === 'marking_locked') && reviewTargetAnswer && (
           <div className="glass-card p-4 space-y-3">
             <p className="font-bold">
@@ -374,14 +406,25 @@ export function NpatActiveRound({
               Tap valid or invalid for each category. Wrong category (e.g. &quot;cat&quot; under Name) should be invalid.
               Duplicates are handled automatically.
             </p>
-            {NPAT_CATEGORIES.map((category) => (
+            {NPAT_CATEGORIES.map((category) => {
+              const text = reviewTargetAnswer[category]
+              const dupes = duplicateKeysByCategory([reviewTargetAnswer])
+              const normalized = text.trim().toLowerCase()
+              const isDuplicate = normalized ? dupes[category].has(normalized) : false
+              const forcedInvalid = isForcedInvalidAnswer(text, metadata.letter, isDuplicate)
+              return (
               <div key={category} className="rounded-lg border border-[var(--border-strong)] p-3 space-y-2">
                 <p className="text-sm font-semibold">{NPAT_CATEGORY_LABELS[category]}</p>
-                <p className="font-medium">{reviewTargetAnswer[category] || '—'}</p>
+                <p className="font-medium">{text || '—'}</p>
+                {forcedInvalid && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-300 font-semibold">
+                    {!text.trim() ? 'Empty — invalid automatically' : isDuplicate ? 'Duplicate — invalid automatically' : `Must start with ${metadata.letter}`}
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    disabled={screen !== 'marking' || readOnly || submitting}
+                    disabled={screen !== 'marking' || readOnly || submitting || forcedInvalid}
                     onClick={() => setValidFlags((prev) => ({ ...prev, [category]: true }))}
                     className={[
                       'rounded-lg py-2 text-sm font-bold border',
@@ -394,7 +437,7 @@ export function NpatActiveRound({
                   </button>
                   <button
                     type="button"
-                    disabled={screen !== 'marking' || readOnly || submitting}
+                    disabled={screen !== 'marking' || readOnly || submitting || forcedInvalid}
                     onClick={() => setValidFlags((prev) => ({ ...prev, [category]: false }))}
                     className={[
                       'rounded-lg py-2 text-sm font-bold border',
@@ -407,7 +450,7 @@ export function NpatActiveRound({
                   </button>
                 </div>
               </div>
-            ))}
+            )})}
             {screen === 'marking' ? (
               <button
                 type="button"
@@ -423,16 +466,7 @@ export function NpatActiveRound({
           </div>
         )}
 
-        {showTransparency && (
-          <NpatScoreboard
-            letter={metadata.letter}
-            players={players}
-            answers={roundAnswers}
-            marks={roundMarks}
-            metadata={metadata}
-            showScores={showFinalScores}
-          />
-        )}
+        {showTransparency && <div className="lg:hidden">{scoreboard}</div>}
 
         {screen === 'revealed' && myAnswer && myAnswer.score_name != null && (
           <div className="glass-card p-4 text-center font-semibold">
@@ -445,6 +479,16 @@ export function NpatActiveRound({
           </div>
         )}
       </div>
-    </LiveLeaderboardLayout>
+
+      <aside className="min-w-0 space-y-4 order-2">
+        <PaginatedLeaderboard
+          title="Leaderboard"
+          rows={leaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
+          highlightId={myPlayerId}
+          scoreLabel={(score) => `${score} pts`}
+        />
+        {scoreboard && <div className="hidden lg:block">{scoreboard}</div>}
+      </aside>
+    </div>
   )
 }

@@ -56,6 +56,7 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isLudoGame,
+  isNamePlaceAnimalThingGame,
 } from '@/lib/game-types'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
@@ -141,6 +142,16 @@ import {
 import {
   LUDO_DEFAULT_MAX_PLAYERS,
 } from '@/lib/ludo'
+import {
+  formatNpatGameDuration,
+  NPAT_DEFAULT_GAME_DURATION,
+  NPAT_DEFAULT_MARKING_TIMER,
+  NPAT_DEFAULT_MAX_PLAYERS,
+  NPAT_DEFAULT_TIMER,
+  NPAT_GAME_DURATION_OPTIONS,
+  NPAT_MARKING_TIMER_OPTIONS,
+  NPAT_TIMER_OPTIONS,
+} from '@/lib/npat'
 import {
   getCodeDefaultLimits,
   playerCountOptions,
@@ -238,6 +249,9 @@ function CreateGameInner() {
   const [whotCardsEnabled, setWhotCardsEnabled] = useState(true)
   const [whotNumberCallsEnabled, setWhotNumberCallsEnabled] = useState(true)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
+  const [npatMaxPlayers, setNpatMaxPlayers] = useState(NPAT_DEFAULT_MAX_PLAYERS)
+  const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
+  const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
   const [customTriviaQuestions, setCustomTriviaQuestions] = useState<TriviaQuestion[]>([])
   const [lobbyLimits, setLobbyLimits] = useState<GamePlayerLimitsMap | null>(null)
   const effectiveLimits = lobbyLimits ?? getCodeDefaultLimits()
@@ -264,6 +278,7 @@ function CreateGameInner() {
     setYahtzeeMaxPlayers((v) => clamp('yahtzee', v))
     setWhotMaxPlayers((v) => clamp('whot', v))
     setLudoMaxPlayers((v) => clamp('ludo', v))
+    setNpatMaxPlayers((v) => clamp('name_place_animal_thing', v))
   }, [lobbyLimits])
 
   useEffect(() => {
@@ -381,6 +396,7 @@ function CreateGameInner() {
     if (!whotCardsEnabled) setWhotNumberCallsEnabled(false)
   }, [whotCardsEnabled])
   const isLudo = isLudoGame(settings.game_type)
+  const isNpat = isNamePlaceAnimalThingGame(settings.game_type)
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
   const isWst = isWhoSaidThis(settings.game_type)
   const isHotSeatGame = isHotSeat(settings.game_type)
@@ -459,7 +475,7 @@ function CreateGameInner() {
   const isBingo = isBingoGame(settings.game_type)
   const isCodewords = isCodewordsGame(settings.game_type)
   const isMessageBoard = isAnonymousRoom || isSecretMessage
-  const isQuickLobby = isMessageBoard || isBingo || isCodewords || isTwoTruths || isMonopoly || isYahtzee || isWhot || isLudo
+  const isQuickLobby = isMessageBoard || isBingo || isCodewords || isTwoTruths || isMonopoly || isYahtzee || isWhot || isLudo || isNpat
   const isTriviaQuickCreate = isTrivia
   const needsParticipantStep = !isQuickLobby && !isTriviaQuickCreate && !isBinaryLobby && !(isMlt && isJoinersMode) && !isJoinersMode
   const wizardSteps = needsParticipantStep ? ['Setup', 'People'] : ['Setup']
@@ -483,6 +499,10 @@ function CreateGameInner() {
     setCustomTriviaQuestions([])
     setTriviaCategory('general')
     setQuestionsUploadError(null)
+    if (isNamePlaceAnimalThingGame(type)) {
+      setNpatGameDuration(NPAT_DEFAULT_GAME_DURATION)
+      setNpatMarkingTimer(NPAT_DEFAULT_MARKING_TIMER)
+    }
     setSettings({
       ...settings,
       game_type: type,
@@ -552,6 +572,22 @@ function CreateGameInner() {
             timer_seconds: 60,
           }
         : {}),
+      ...(isNamePlaceAnimalThingGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: NPAT_DEFAULT_TIMER,
+          }
+        : {}),
+        ...(isNamePlaceAnimalThingGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              timer_seconds: NPAT_DEFAULT_TIMER,
+            }
+          : {}),
       ...(isWhoSaidThis(type)
         ? {
             participant_mode: 'import' as const,
@@ -895,8 +931,14 @@ function CreateGameInner() {
                             ? whotMaxPlayers
                             : isLudo
                               ? ludoMaxPlayers
+                              : isNpat
+                                ? npatMaxPlayers
                           : undefined,
-          operative_timer_seconds: isCodewords ? codewordsOperativeTimer : undefined,
+          operative_timer_seconds: isCodewords
+            ? codewordsOperativeTimer
+            : isNpat
+              ? npatMarkingTimer
+              : undefined,
           codewords_player_picks: isCodewords ? codewordsPlayerPicks : undefined,
           codewords_late_join: isCodewords ? lateJoinPolicy === 'viewers_and_players' : undefined,
           codewords_randomize_teams: isCodewords ? codewordsRandomizeTeams : undefined,
@@ -913,6 +955,8 @@ function CreateGameInner() {
             ? monopolyGameDuration
             : isWhot
               ? whotGameDuration
+              : isNpat
+                ? npatGameDuration
               : undefined,
           whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
@@ -1321,6 +1365,71 @@ function CreateGameInner() {
                 <p className="text-faint text-sm leading-relaxed">
                   Classic Ludo — roll two dice to enter, race around the board, capture opponents, and block with pairs.
                   Exact rolls needed to finish. First to get all four pieces home wins!
+                </p>
+              </SettingsGroup>
+            ) : isNpat ? (
+              <SettingsGroup title="Name Place Animal Thing room">
+                <Field
+                  label={`Max players (${effectiveLimits.name_place_animal_thing.min}–${effectiveLimits.name_place_animal_thing.max})`}
+                >
+                  <select
+                    value={npatMaxPlayers}
+                    onChange={(e) => setNpatMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(
+                      effectiveLimits.name_place_animal_thing.min,
+                      effectiveLimits.name_place_animal_thing.max
+                    ).map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Game length">
+                  <select
+                    value={npatGameDuration}
+                    onChange={(e) => setNpatGameDuration(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {NPAT_GAME_DURATION_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {formatNpatGameDuration(s)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Writing time (per letter)">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {NPAT_TIMER_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s} seconds
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Marking time (per letter)">
+                  <select
+                    value={npatMarkingTimer}
+                    onChange={(e) => setNpatMarkingTimer(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {NPAT_MARKING_TIMER_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s} seconds
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <p className="text-faint text-sm leading-relaxed">
+                  Players take turns calling a letter, then fill Name, Animal, Place, and Thing. Reviewers mark answers,
+                  the host approves each round, and unique valid answers score points. Play until time runs out or all
+                  26 letters are used.
                 </p>
               </SettingsGroup>
             ) : isCodewords ? (
@@ -1872,7 +1981,13 @@ function CreateGameInner() {
                 )}
 
                 {!isAnonymousRoom &&
-                  ((!isBinaryLobby && !isWst && !isWhoSaidThis(settings.game_type) && !isTrivia && !isPan) || isHotSeatGame ? (
+                  ((!isBinaryLobby &&
+                    !isWst &&
+                    !isWhoSaidThis(settings.game_type) &&
+                    !isTrivia &&
+                    !isPan &&
+                    !isNpat) ||
+                    isHotSeatGame ? (
                     <SettingsGroup title={isHotSeatGame ? "Who's in the game" : "Who's in the poll"}>
                       <SegmentedControl
                         value={settings.participant_mode}
@@ -1929,7 +2044,8 @@ function CreateGameInner() {
                   !isWst &&
                   !isHotSeatGame &&
                   !isPan &&
-                  !isTrivia && (
+                  !isTrivia &&
+                  !isNpat && (
                     <SettingsGroup title="Who appears in rounds">
                       <SegmentedControl
                         value={settings.participant_filter}
