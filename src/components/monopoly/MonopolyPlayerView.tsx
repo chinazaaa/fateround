@@ -319,6 +319,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               the game begins.
             </p>
           </div>
+          <GameRulesLink gameType="monopoly" variant="subtle" />
           <div className="glass-card-strong p-4 text-center">
             <p className="text-3xl font-black text-[var(--primary)]">{players.length}</p>
             <p className="text-sm text-muted">
@@ -346,7 +347,6 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               ))}
             </div>
           )}
-          <GameRulesLink gameType="monopoly" variant="subtle" />
           {myPlayerId && (
             <PlayerSessionControls
               gameCode={gameCode}

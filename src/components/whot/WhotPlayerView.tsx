@@ -285,6 +285,9 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     const myName = players.find((p) => p.id === myPlayerId)?.name ?? ''
     return (
       <WhotShell title={game?.title} subtitle="Waiting for the host to start">
+        <p className="text-center">
+          <GameRulesLink gameType="whot" variant="subtle" />
+        </p>
         <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
         {myPlayerId && myName && (
           <PlayerSessionControls
@@ -296,9 +299,6 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
             inLobby
           />
         )}
-        <p className="text-center">
-          <GameRulesLink gameType="whot" variant="subtle" />
-        </p>
         <ShareGameLinkCard gameCode={gameCode} />
       </WhotShell>
     )

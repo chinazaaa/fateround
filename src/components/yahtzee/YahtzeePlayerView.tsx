@@ -31,6 +31,7 @@ import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useYahtzeeNotifications, playYahtzeeScoreSound } from '@/hooks/useYahtzeeNotifications'
 import { useYahtzeeTurnTimer } from '@/hooks/useYahtzeeTurnTimer'
 
@@ -280,6 +281,9 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     const myName = players.find((p) => p.id === myPlayerId)?.name ?? ''
     return (
       <YahtzeeShell title={game?.title} subtitle="Waiting for the host to start">
+        <p className="text-center">
+          <GameRulesLink gameType="yahtzee" variant="subtle" />
+        </p>
         <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
         {myPlayerId && myName && (
           <PlayerSessionControls

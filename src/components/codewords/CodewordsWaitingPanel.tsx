@@ -2,6 +2,7 @@
 
 import { CodewordsTeamBadge } from '@/components/codewords/CodewordsBoardGrid'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { roleLabel, teamLabel } from '@/lib/codewords'
 import type { CodewordsPlayerRole, Player } from '@/types'
 
@@ -51,7 +52,12 @@ export function CodewordsWaitingPanel({
       </div>
 
       {variant !== 'starting' && (
-        <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
+        <>
+          <p className="text-center">
+            <GameRulesLink gameType="codewords" variant="subtle" />
+          </p>
+          <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
+        </>
       )}
 
       <div className="rounded-xl border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] p-4 space-y-3">

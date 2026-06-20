@@ -424,8 +424,8 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
             green, then hit BINGO when you complete a line.
           </p>
           <BingoCardLegend />
-          <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
           <GameRulesLink gameType="bingo" variant="subtle" />
+          <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
           {myPlayerId && (
             <PlayerSessionControls
               gameCode={gameCode}

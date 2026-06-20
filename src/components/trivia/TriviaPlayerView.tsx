@@ -22,6 +22,7 @@ import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { playerIsViewer, preJoinScreen, allowLatePlayers } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'late_join_choice' | 'playing' | 'not_found'
@@ -277,7 +278,12 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           inLobby={game.status === 'waiting'}
         />
         {game.status === 'waiting' && (
-          <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
+          <>
+            <p className="text-center">
+              <GameRulesLink gameType="trivia" variant="subtle" />
+            </p>
+            <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
+          </>
         )}
         <TriviaActiveRound
           gameCode={gameCode}

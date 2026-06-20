@@ -25,6 +25,7 @@ import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'lobby' | 'playing' | 'not_found'
 
@@ -241,6 +242,9 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
               inLobby
             />
           </div>
+          <p className="text-center">
+            <GameRulesLink gameType="two_truths" variant="subtle" />
+          </p>
           <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
           {isViewer ? (
             <ViewerModeBanner

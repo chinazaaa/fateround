@@ -10,6 +10,7 @@ import { CodewordsScoreboard } from '@/components/codewords/CodewordsScoreboard'
 import { CodewordsBoardGrid, CodewordsTeamBadge } from '@/components/codewords/CodewordsBoardGrid'
 import { CodewordsWaitingPanel } from '@/components/codewords/CodewordsWaitingPanel'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
@@ -450,6 +451,9 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
             />
           )}
 
+          <p className="text-center">
+            <GameRulesLink gameType="codewords" variant="subtle" />
+          </p>
           <GameLobbyPlayerList players={allPlayers} myPlayerId={myPlayerId} label="In lobby" />
 
           {playersPickTeams ? (

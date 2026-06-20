@@ -274,6 +274,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
               inLobby
             />
           )}
+          <GameRulesLink gameType="ludo" className="block text-center" variant="subtle" />
           <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
         </LudoCard>
       </LudoShell>
