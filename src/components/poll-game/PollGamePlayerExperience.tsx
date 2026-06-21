@@ -2,6 +2,7 @@
 import { useRoundResults } from '@/hooks/useRoundResults'
 import { useWstQuotePool } from '@/hooks/useWstQuotePool'
 import { usePlayerQuestions } from '@/hooks/usePlayerQuestions'
+import { usePlayerNameSubmissions } from '@/hooks/usePlayerNameSubmissions'
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -307,11 +308,11 @@ export function PollGamePlayerExperience({
   } = usePlayerQuestions()
 
   // Player name submission (people poll games — RFGF, SMK, etc.)
-  const [pnNameInput, setPnNameInput] = useState('')
-  const [pnGender, setPnGender] = useState<ParticipantGender>('female')
-  const [pnSubmitting, setPnSubmitting] = useState(false)
-  const [pnList, setPnList] = useState<Participant[]>([])
-  const [pnOpen, setPnOpen] = useState(false)
+  const {
+    pnNameInput, pnGender, pnSubmitting, pnList, pnOpen,
+    setPnNameInput, setPnGender, setPnSubmitting, setPnOpen, setPnList,
+    resetPlayerNameSubmissionsState,
+  } = usePlayerNameSubmissions()
 
   // Photo upload (people-based modes)
   const [photoUploading, setPhotoUploading] = useState(false)
