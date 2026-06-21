@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { AnonymousMessageFeed } from '@/components/anonymous-messages/AnonymousMessageFeed'
 import { AnonymousRoomSessionSummary } from '@/components/anonymous-messages/AnonymousRoomSessionSummary'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
+import { HostPageShell } from '@/components/host/HostPageShell'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
 import { ResultsPagination, usePagination } from '@/components/ui/ResultsPagination'
 import { useAnonymousMessageTrim } from '@/hooks/useAnonymousMessageTrim'
@@ -226,7 +227,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
   const presence = countAnonymousRoomPresence(players, game)
 
   return (
-    <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
+    <HostPageShell gameCode={gameCode}>
       <HostGameHeader
         game={game}
         subtitle={
@@ -401,6 +402,6 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
           </div>
         </>
       )}
-    </div>
+    </HostPageShell>
   )
 }

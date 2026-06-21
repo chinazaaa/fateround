@@ -6,7 +6,7 @@ import { filterParticipantsInRounds } from '@/lib/utils'
 import { hexToRgba } from '@/lib/color'
 import { useGameRealtime } from '@/hooks/useGameRealtime'
 import { LOAD_TIMEOUT_MS, POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
-import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
+import { useScrollHostViewToTop, scrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import {
   CONFESSION_SELECT,
   GAME_SELECT,
@@ -162,6 +162,8 @@ import { ShareResults } from '@/components/ShareResults'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { HostPlayerManageList } from '@/components/host/HostPlayerManageList'
+import { HostGameHeader } from '@/components/host/HostGameHeader'
+import { HostPageShell } from '@/components/host/HostPageShell'
 import { PollHostPlayShell } from '@/components/host/PollHostPlayShell'
 import { computeAchievements } from '@/lib/achievements'
 import { useToast } from '@/components/ui/Toast'
@@ -216,6 +218,10 @@ export default function HostPage() {
   const [confessions, setConfessions] = useState<Confession[]>([])
 
   useScrollHostViewToTop({ gameStatus: game?.status })
+
+  useEffect(() => {
+    if (!loading && game) scrollHostViewToTop()
+  }, [loading, game, gameCode])
 
   const [starting, setStarting] = useState(false)
   const [savingPairVoteMode, setSavingPairVoteMode] = useState(false)
@@ -1673,17 +1679,15 @@ export default function HostPage() {
       : null
 
     return (
-      <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
+      <HostPageShell gameCode={gameCode}>
         <PollHostPlayShell
           gameCode={gameCode}
           game={game}
           playerCount={players.length}
           onHostPlayerId={setHostPlayerId}
         >
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-muted text-xs uppercase tracking-wider">Host Panel</p>
-            <h1 className="text-2xl font-black text-body mt-1">{game.title}</h1>
+        <HostGameHeader game={game} />
+        <div className="text-center space-y-2 -mt-2">
             <p className="text-muted text-sm">
               {hotSeatLobby && hotSeatEffective > 0
                 ? `${hotSeatEffective} rounds · ${game.timer_seconds}s each`
@@ -1692,13 +1696,13 @@ export default function HostPage() {
             {(isBinaryLobby || isMlt || isNhie || isPan) &&
               ((parseQuestionSource(game.question_source, gameType) === 'custom' && customQuestionCount(game) > 0) ||
                 (isTot && playerQuestionCount > 0)) && (
-                <p className="text-faint text-xs mt-1">
+                <p className="text-faint text-xs">
                   {isTot && playerQuestionCount > 0
                     ? `${customQuestionCount(game)} uploaded · ${playerQuestionCount} from players`
                     : `${customQuestionCount(game)} custom questions loaded`}
                 </p>
               )}
-            <p className="text-[var(--primary)] text-xs mt-1 font-medium">
+            <p className="text-[var(--primary)] text-xs font-medium">
               {isVoterOnly
                 ? 'Import list — everyone on the list is in the poll; players join to vote'
                 : isMlt
@@ -1717,14 +1721,7 @@ export default function HostPage() {
                             ? 'Join & play — joiners are the names in the poll'
                             : 'Pre-set roster — players claim their name from the list'}
             </p>
-            <p className="mt-2">
-              <GameRulesLink gameType={gameType} />
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-muted text-xs uppercase tracking-wider">Code</p>
-            <p className="text-body font-mono font-black text-2xl tracking-[0.2em]">{gameCode}</p>
-          </div>
+            <GameRulesLink gameType={gameType} />
         </div>
 
         <div className="glass-card p-4 space-y-3">
@@ -2770,7 +2767,7 @@ export default function HostPage() {
             variant={poolSetup.variant}
           />
         )}
-      </div>
+      </HostPageShell>
     )
   }
 
@@ -2806,7 +2803,7 @@ export default function HostPage() {
       const allVotedWst = voterVotes.length >= voterTotal && voterTotal > 0
 
       return (
-        <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
+        <HostPageShell gameCode={gameCode}>
           <PollHostPlayShell
             gameCode={gameCode}
             game={game}
@@ -2879,13 +2876,13 @@ export default function HostPage() {
                   : 'End Round Early'}
           </button>
           </PollHostPlayShell>
-        </div>
+        </HostPageShell>
       )
     }
 
     if (isNhie) {
       return (
-        <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
+        <HostPageShell gameCode={gameCode}>
           <PollHostPlayShell
             gameCode={gameCode}
             game={game}
@@ -2931,7 +2928,7 @@ export default function HostPage() {
             {ending ? 'Ending...' : 'End Round Early'}
           </button>
           </PollHostPlayShell>
-        </div>
+        </HostPageShell>
       )
     }
 
@@ -2946,7 +2943,7 @@ export default function HostPage() {
       const panAvailableCount = poolSize - panUsedNumbers.size
 
       return (
-        <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
+        <HostPageShell gameCode={gameCode}>
           <PollHostPlayShell
             gameCode={gameCode}
             game={game}
@@ -2994,13 +2991,13 @@ export default function HostPage() {
               {ending ? 'Ending...' : revealed ? 'Next picker' : timedOut ? 'Skip round' : 'End Round Early'}
             </button>
           </PollHostPlayShell>
-        </div>
+        </HostPageShell>
       )
     }
 
     if (isMlt) {
       return (
-        <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
+        <HostPageShell gameCode={gameCode}>
           <PollHostPlayShell
             gameCode={gameCode}
             game={game}
@@ -3046,13 +3043,13 @@ export default function HostPage() {
             {ending ? 'Ending...' : 'End Round Early'}
           </button>
           </PollHostPlayShell>
-        </div>
+        </HostPageShell>
       )
     }
 
     if (isBinaryGame) {
       return (
-        <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
+        <HostPageShell gameCode={gameCode}>
           <PollHostPlayShell
             gameCode={gameCode}
             game={game}
@@ -3105,7 +3102,7 @@ export default function HostPage() {
             {ending ? 'Ending...' : 'End Round Early'}
           </button>
           </PollHostPlayShell>
-        </div>
+        </HostPageShell>
       )
     }
 
@@ -3121,7 +3118,7 @@ export default function HostPage() {
       const allSubmitted = submissionCount >= submitters.length && submitters.length > 0
 
       return (
-        <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
+        <HostPageShell gameCode={gameCode}>
           <PollHostPlayShell
             gameCode={gameCode}
             game={game}
@@ -3197,12 +3194,12 @@ export default function HostPage() {
                   : 'End Round Early'}
           </button>
           </PollHostPlayShell>
-        </div>
+        </HostPageShell>
       )
     }
 
     return (
-      <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
+      <HostPageShell gameCode={gameCode}>
         <PollHostPlayShell
           gameCode={gameCode}
           game={game}
@@ -3362,7 +3359,7 @@ export default function HostPage() {
           className="btn-secondary w-full text-muted"
         />
         </PollHostPlayShell>
-      </div>
+      </HostPageShell>
     )
   }
 
@@ -3391,7 +3388,7 @@ export default function HostPage() {
     const mltTally = tallyMltVotes(roundVotes, mltTargets, mltKind)
 
     return (
-      <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-6">
+      <HostPageShell gameCode={gameCode}>
         <PollHostPlayShell
           gameCode={gameCode}
           game={game}
@@ -3610,7 +3607,7 @@ export default function HostPage() {
           </>
         )}
         </PollHostPlayShell>
-      </div>
+      </HostPageShell>
     )
   }
 
@@ -3640,7 +3637,7 @@ export default function HostPage() {
     const showFinalShareResults = !isTot && !isWyr && !isNhie && !isMlt && !isHotSeatGame
 
     return (
-      <div className="page-wrap px-4 py-8 max-w-2xl mx-auto w-full space-y-8">
+      <HostPageShell gameCode={gameCode}>
         <PollHostPlayShell
           gameCode={gameCode}
           game={game}
@@ -3933,7 +3930,7 @@ export default function HostPage() {
             variant={poolSetup.variant}
           />
         )}
-      </div>
+      </HostPageShell>
     )
   }
 

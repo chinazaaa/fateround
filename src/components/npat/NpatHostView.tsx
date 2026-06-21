@@ -8,6 +8,7 @@ import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { HostModePanel } from '@/components/host/HostModePanel'
 import { HostPlayManageTabs } from '@/components/host/HostPlayManageTabs'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
+import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -321,9 +322,10 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       />
     ) : null
 
+  const layout = hostPlayLayoutFlags(tab, showPlayTab, game.status)
+
   return (
-    <div className="min-h-screen pb-24">
-      <div className="max-w-5xl mx-auto px-2 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-5 overflow-x-hidden">
+    <HostPageShell gameCode={gameCode} {...layout}>
         <HostGameHeader game={game} />
 
         {game.status === 'waiting' && (
@@ -505,7 +507,6 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             )}
           </div>
         )}
-      </div>
-    </div>
+    </HostPageShell>
   )
 }

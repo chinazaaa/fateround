@@ -5,6 +5,7 @@ import { TriviaActiveRound } from '@/components/trivia/TriviaActiveRound'
 import { TriviaHostManagePanel } from '@/components/trivia/TriviaHostManagePanel'
 import { TriviaPlayAgainSetup, type TriviaSettingsPayload } from '@/components/trivia/TriviaPlayAgainSetup'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
+import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
 import { gameTypeConfig } from '@/lib/game-types'
 import { getTriviaHostMode, setTriviaHostMode, type TriviaHostMode } from '@/lib/trivia'
 import { useTriviaHostRoundAutomation } from '@/hooks/useTriviaHostRoundAutomation'
@@ -280,9 +281,10 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
     )
   }
 
+  const layout = hostPlayLayoutFlags(tab, showPlayTab, game.status)
+
   return (
-    <div className="min-h-screen pb-24">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+    <HostPageShell gameCode={gameCode} {...layout}>
         <HostGameHeader game={game} />
 
         {game.status === 'waiting' && (
@@ -428,7 +430,6 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
           loading={settingsModal === 'lobby' ? savingLobbySettings : playingAgain}
           onConfirm={settingsModal === 'lobby' ? saveLobbySettings : playAgain}
         />
-      </div>
-    </div>
+    </HostPageShell>
   )
 }

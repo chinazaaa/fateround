@@ -5,6 +5,7 @@ import { TwoTruthsActiveRound } from '@/components/two-truths/TwoTruthsActiveRou
 import { TwoTruthsHostManagePanel } from '@/components/two-truths/TwoTruthsHostManagePanel'
 import { TwoTruthsLobbySubmit } from '@/components/two-truths/TwoTruthsLobbySubmit'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
+import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useTwoTruthsAdvance } from '@/hooks/useTwoTruthsAdvance'
@@ -254,9 +255,10 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
   const cfg = gameTypeConfig('two_truths')
   const playerLink = `${appOrigin()}/game/${gameCode}`
 
+  const layout = hostPlayLayoutFlags(tab, showPlayTab, game.status)
+
   return (
-    <div className="min-h-screen pb-16">
-      <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <HostPageShell gameCode={gameCode} {...layout}>
         <HostGameHeader game={game} />
 
         {game.status === 'waiting' && (
@@ -435,7 +437,6 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
             onGameUpdate={setGame}
           />
         )}
-      </div>
-    </div>
+    </HostPageShell>
   )
 }

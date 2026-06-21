@@ -8,6 +8,7 @@ export function scrollHostViewToTop() {
     document.documentElement.scrollTop = 0
     document.body.scrollTop = 0
   }
+  run()
   requestAnimationFrame(() => {
     requestAnimationFrame(run)
   })

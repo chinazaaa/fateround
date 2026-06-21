@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { GameHostChrome } from '@/components/GameHostChrome'
+import { HostScrollToTop } from '@/components/host/HostScrollToTop'
 import { HostPlayerSessionBootstrap } from '@/components/HostPlayerSessionBootstrap'
 import { GameRulesLoader } from '@/components/GameRulesLoader'
 import { GameRulesProvider } from '@/contexts/GameRulesContext'
@@ -13,6 +14,7 @@ export default function HostLayout({ children }: { children: React.ReactNode }) 
     <GameRulesProvider>
       <GameRulesLoader />
       <Suspense fallback={null}>
+        <HostScrollToTop />
         <HostPlayerSessionBootstrap />
         <GameHostChrome />
       </Suspense>

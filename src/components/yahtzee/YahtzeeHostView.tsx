@@ -6,6 +6,7 @@ import { YahtzeeDiceTray } from '@/components/yahtzee/YahtzeeChrome'
 import { YahtzeeScorecard } from '@/components/yahtzee/YahtzeeScorecard'
 import { YahtzeeFinalResultsShareBlock } from '@/components/yahtzee/YahtzeeFinalResultsShareBlock'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
+import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
@@ -295,9 +296,10 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
     )
   }
 
+  const layout = hostPlayLayoutFlags(tab, showPlayTab, game.status)
+
   return (
-    <div className="min-h-screen pb-24">
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
+    <HostPageShell gameCode={gameCode} {...layout}>
         <HostGameHeader game={game} />
 
         {/* Host mode selector — lobby only */}
@@ -521,7 +523,6 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
             Back home
           </button>
         )}
-      </div>
-    </div>
+    </HostPageShell>
   )
 }

@@ -5,6 +5,7 @@ import { CodewordsActiveRound } from '@/components/codewords/CodewordsActiveRoun
 import { CodewordsHostManagePanel } from '@/components/codewords/CodewordsHostManagePanel'
 import { CodewordsWaitingPanel } from '@/components/codewords/CodewordsWaitingPanel'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
+import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   CODEWORDS_DEFAULT_OPERATIVE_TIMER,
@@ -370,9 +371,10 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     )
   }
 
+  const layout = hostPlayLayoutFlags(tab, showPlayTab, game.status)
+
   return (
-    <div className="min-h-screen pb-24">
-      <div className="max-w-6xl mx-auto px-4 py-6 space-y-5">
+    <HostPageShell gameCode={gameCode} {...layout}>
         <HostGameHeader game={game} />
 
         {game.status === 'waiting' && (
@@ -532,7 +534,6 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
           />
         )}
 
-      </div>
-    </div>
+    </HostPageShell>
   )
 }

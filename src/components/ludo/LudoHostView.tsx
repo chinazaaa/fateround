@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
+import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
@@ -280,9 +281,10 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     )
   }
 
+  const layout = hostPlayLayoutFlags(tab, showPlayTab, game.status)
+
   return (
-    <div className="min-h-screen pb-24">
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
+    <HostPageShell gameCode={gameCode} {...layout}>
         <HostGameHeader game={game} />
 
         {game.status === 'waiting' && (
@@ -464,7 +466,6 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             )}
           </>
         )}
-      </div>
-    </div>
+    </HostPageShell>
   )
 }

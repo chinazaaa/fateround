@@ -7,6 +7,7 @@ import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { BingoCardGrid, CalledNumbersBoard } from '@/components/bingo/BingoCardGrid'
 import { BingoFinalResultsShareBlock } from '@/components/bingo/BingoFinalResultsShareBlock'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
+import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -369,9 +370,10 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
     )
   }
 
+  const layout = hostPlayLayoutFlags(tab, showPlayTab, game.status)
+
   return (
-    <div className="min-h-screen pb-24">
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
+    <HostPageShell gameCode={gameCode} {...layout}>
         <HostGameHeader game={game} />
 
         {/* Host mode selector — lobby only */}
@@ -660,7 +662,6 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
         <button type="button" onClick={() => router.push('/games')} className="btn-ghost w-full text-muted">
           Browse all games
         </button>
-      </div>
-    </div>
+    </HostPageShell>
   )
 }
