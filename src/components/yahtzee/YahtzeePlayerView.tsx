@@ -26,12 +26,14 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
-import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
+import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
-import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useYahtzeeNotifications, playYahtzeeScoreSound } from '@/hooks/useYahtzeeNotifications'
 import { useYahtzeeTurnTimer } from '@/hooks/useYahtzeeTurnTimer'
@@ -259,53 +261,48 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   if (screen === 'join') {
     const joiningAsViewer = game?.status === 'active'
     return (
-      <YahtzeeShell title={game?.title ?? cfg.label} subtitle="Enter your name to join">
-        <YahtzeeCard className="p-6 space-y-5 max-w-md mx-auto">
-          <div className="text-center">
-            <div className="text-5xl mb-3">🎲</div>
-            <p className="text-sm text-muted">
-              {joiningAsViewer
+      <GameJoinLobbyShell
+        gameCode={gameCode}
+        header={
+          <GameJoinHeader
+            emoji="🎲"
+            title={game?.title ?? cfg.label}
+            gameType="yahtzee"
+            subtitle={
+              joiningAsViewer
                 ? 'Game in progress — join as a viewer and watch live (read-only).'
-                : '1–6 players · roll, hold, score'}
-            </p>
-          </div>
-          <input
-            value={joinName}
-            onChange={(e) => setJoinName(e.target.value)}
-            placeholder="Your name"
-            className="input-field w-full"
-            maxLength={40}
-            onKeyDown={(e) => e.key === 'Enter' && join()}
+                : '1–6 players · roll, hold, score'
+            }
           />
-          <YahtzeePrimaryButton onClick={() => void join()} disabled={!joinName.trim()} loading={joining}>
-            {joiningAsViewer ? 'Join as viewer' : 'Join game'}
-          </YahtzeePrimaryButton>
-        </YahtzeeCard>
-        <ShareGameLinkCard gameCode={gameCode} className="max-w-md mx-auto" />
-      </YahtzeeShell>
+        }
+      >
+        <NameJoinForm
+          value={joinName}
+          onChange={setJoinName}
+          onSubmit={() => void join()}
+          joining={joining}
+          submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
+          label=""
+        />
+      </GameJoinLobbyShell>
     )
   }
 
   if (screen === 'waiting') {
     const myName = players.find((p) => p.id === myPlayerId)?.name ?? ''
     return (
-      <YahtzeeShell title={game?.title} subtitle="Waiting for the host to start">
-        <p className="text-center">
-          <GameRulesLink gameType="yahtzee" variant="subtle" />
-        </p>
-        <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            inLobby
-          />
-        )}
-        <ShareGameLinkCard gameCode={gameCode} />
-      </YahtzeeShell>
+      <GameJoinLobbyShell gameCode={gameCode}>
+        <GameLobbyWaitingPanel
+          gameCode={gameCode}
+          players={players}
+          myPlayerId={myPlayerId}
+          myPlayerName={myName}
+          onRenamed={() => void load()}
+          onLeft={handlePlayerLeft}
+          title="Waiting for the host to start"
+          rulesLink={<GameRulesLink gameType="yahtzee" variant="subtle" />}
+        />
+      </GameJoinLobbyShell>
     )
   }
 

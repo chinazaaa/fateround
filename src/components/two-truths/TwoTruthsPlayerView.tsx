@@ -1,7 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useState, useRef } from 'react'
-import { GameTypeBadge } from '@/components/GameTypeBadge'
+import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
+import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { TwoTruthsActiveRound } from '@/components/two-truths/TwoTruthsActiveRound'
 import { TwoTruthsLobbySubmit } from '@/components/two-truths/TwoTruthsLobbySubmit'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -20,12 +23,10 @@ import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
-import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
-import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
+import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'lobby' | 'playing' | 'not_found'
@@ -209,96 +210,81 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'join') {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="glass-card p-6 w-full max-w-md space-y-5">
-          <div className="text-center space-y-1">
-            <div className="text-4xl">{cfg.headerEmoji}</div>
-            <h1 className="text-2xl font-black gradient-title">{game?.title}</h1>
-            <GameTypeBadge gameType="two_truths" />
-          </div>
-          <input
-            type="text"
-            value={joinName}
-            onChange={(e) => setJoinName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && joinGame()}
-            placeholder="Your name"
-            className="input-field w-full"
-            maxLength={40}
-          />
-          <button type="button" onClick={joinGame} disabled={!joinName.trim() || joining} className="btn-primary w-full">
-            {joining ? 'Joining…' : 'Join game'}
-          </button>
-          <ShareGameLinkCard gameCode={gameCode} />
-        </div>
-      </div>
+      <GameJoinLobbyShell
+        gameCode={gameCode}
+        header={<GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="two_truths" />}
+      >
+        <NameJoinForm
+          value={joinName}
+          onChange={setJoinName}
+          onSubmit={joinGame}
+          joining={joining}
+        />
+      </GameJoinLobbyShell>
     )
   }
 
   if (screen === 'lobby' && myPlayerId) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 py-8">
-        <div className="glass-card p-6 w-full max-w-lg space-y-5">
-          <div className="text-center space-y-1">
-            <h2 className="text-xl font-black">Lobby</h2>
-            <PlayerSessionControls
-              gameCode={gameCode}
-              playerId={myPlayerId}
-              currentName={myPlayerName}
-              onRenamed={(name) => { setMyPlayerName(name); void load() }}
-              onLeft={handlePlayerLeft}
-              inLobby
-            />
-          </div>
-          <p className="text-center">
-            <GameRulesLink gameType="two_truths" variant="subtle" />
-          </p>
-          <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
-          {isViewer ? (
-            <ViewerModeBanner
-              gameCode={gameCode}
-              playerId={myPlayerId}
-              game={game}
-              player={me}
-              onPromoted={load}
-            />
-          ) : myStatement && !editingStatements ? (
-            <div className="space-y-4">
-              <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-5 text-center space-y-1">
-                <p className="text-2xl">✓</p>
-                <p className="font-semibold text-emerald-800 dark:text-emerald-200">Statements submitted</p>
-                <p className="text-sm text-emerald-700 dark:text-emerald-300">Waiting for the host to start the game…</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingStatements(true)}
-                className="btn-secondary w-full"
-              >
-                Edit my statements
-              </button>
-            </div>
-          ) : myStatement && editingStatements ? (
-            <div className="space-y-4">
-              <TwoTruthsLobbySubmit
+      <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
+        <GameLobbyWaitingPanel
+          gameCode={gameCode}
+          players={players}
+          myPlayerId={myPlayerId}
+          myPlayerName={myPlayerName}
+          onRenamed={(name) => {
+            setMyPlayerName(name)
+            void load()
+          }}
+          onLeft={handlePlayerLeft}
+          title="Lobby"
+          rulesLink={<GameRulesLink gameType="two_truths" variant="subtle" />}
+          activity={
+            isViewer ? (
+              <ViewerModeBanner
                 gameCode={gameCode}
                 playerId={myPlayerId}
-                existingLieIndex={myStatement.lie_index}
-                existingStatements={existingStatements}
-                onSaved={() => { setEditingStatements(false); load() }}
+                game={game}
+                player={me}
+                onPromoted={load}
               />
-              <button
-                type="button"
-                onClick={() => setEditingStatements(false)}
-                className="btn-secondary w-full"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <TwoTruthsLobbySubmit gameCode={gameCode} playerId={myPlayerId} onSaved={load} />
-          )}
-          <ShareGameLinkCard gameCode={gameCode} />
-        </div>
-      </div>
+            ) : myStatement && !editingStatements ? (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-5 text-center space-y-1">
+                  <p className="text-2xl">✓</p>
+                  <p className="font-semibold text-emerald-800 dark:text-emerald-200">Statements submitted</p>
+                  <p className="text-sm text-emerald-700 dark:text-emerald-300">Waiting for the host to start the game…</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingStatements(true)}
+                  className="btn-secondary w-full"
+                >
+                  Edit my statements
+                </button>
+              </div>
+            ) : myStatement && editingStatements ? (
+              <div className="space-y-4">
+                <TwoTruthsLobbySubmit
+                  gameCode={gameCode}
+                  playerId={myPlayerId}
+                  existingLieIndex={myStatement.lie_index}
+                  existingStatements={existingStatements}
+                  onSaved={() => {
+                    setEditingStatements(false)
+                    load()
+                  }}
+                />
+                <button type="button" onClick={() => setEditingStatements(false)} className="btn-secondary w-full">
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <TwoTruthsLobbySubmit gameCode={gameCode} playerId={myPlayerId} onSaved={load} />
+            )
+          }
+        />
+      </GameJoinLobbyShell>
     )
   }
 

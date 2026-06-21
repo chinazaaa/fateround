@@ -23,13 +23,15 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
-import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
+import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
 import { useLudoTurnTimer } from '@/hooks/useLudoTurnTimer'
 import { useLudoNotifications, playLudoActionSound, playLudoRollSound } from '@/hooks/useLudoNotifications'
 
@@ -249,23 +251,24 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'join') {
     return (
-      <LudoShell title={game?.title ?? cfg.label} subtitle={cfg.tagline}>
-        <LudoCard className="p-5 space-y-4">
-          <GameRulesLink gameType="ludo" className="block text-center" />
-          <input
-            type="text"
-            value={joinName}
-            onChange={(e) => setJoinName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && join()}
-            placeholder="Your name"
-            className="input-field w-full"
-            maxLength={40}
-          />
-          <LudoPrimaryButton onClick={join} loading={joining} disabled={!joinName.trim()}>
-            Join game
-          </LudoPrimaryButton>
-        </LudoCard>
-      </LudoShell>
+      <GameJoinLobbyShell
+        gameCode={gameCode}
+        header={
+          <GameJoinHeader emoji={cfg.headerEmoji} title={game?.title ?? cfg.label} gameType="ludo" subtitle={cfg.tagline} />
+        }
+      >
+        <NameJoinForm
+          value={joinName}
+          onChange={setJoinName}
+          onSubmit={join}
+          joining={joining}
+          footer={
+            <p className="text-center pt-1">
+              <GameRulesLink gameType="ludo" variant="subtle" />
+            </p>
+          }
+        />
+      </GameJoinLobbyShell>
     )
   }
 
@@ -279,23 +282,18 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'waiting') {
     return (
-      <LudoShell title={game?.title ?? cfg.label} subtitle="Waiting for host to start…" compact>
-        <LudoCard className="p-4 space-y-3">
-          <ShareGameLinkCard gameCode={gameCode} />
-          {myPlayerId && myName && (
-            <PlayerSessionControls
-              gameCode={gameCode}
-              playerId={myPlayerId}
-              currentName={myName}
-              onRenamed={() => void load()}
-              onLeft={handlePlayerLeft}
-              inLobby
-            />
-          )}
-          <GameRulesLink gameType="ludo" className="block text-center" variant="subtle" />
-          <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
-        </LudoCard>
-      </LudoShell>
+      <GameJoinLobbyShell gameCode={gameCode}>
+        <GameLobbyWaitingPanel
+          gameCode={gameCode}
+          players={players}
+          myPlayerId={myPlayerId}
+          myPlayerName={myName}
+          onRenamed={() => void load()}
+          onLeft={handlePlayerLeft}
+          title="Waiting for host to start"
+          rulesLink={<GameRulesLink gameType="ludo" variant="subtle" />}
+        />
+      </GameJoinLobbyShell>
     )
   }
 

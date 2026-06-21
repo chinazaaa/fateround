@@ -11,7 +11,9 @@ import { CodewordsBoardGrid, CodewordsTeamBadge } from '@/components/codewords/C
 import { CodewordsWaitingPanel } from '@/components/codewords/CodewordsWaitingPanel'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { GameTypeBadge } from '@/components/GameTypeBadge'
+import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   codewordsPlayerPicks,
@@ -26,7 +28,6 @@ import { useCodewordsNotifications } from '@/hooks/useCodewordsNotifications'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
-import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { allowLateJoin, allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
@@ -389,27 +390,17 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'join') {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="glass-card p-6 w-full max-w-md space-y-5">
-          <div className="text-center space-y-1">
-            <div className="text-4xl">{cfg.headerEmoji}</div>
-            <h1 className="text-2xl font-black gradient-title">{game?.title}</h1>
-            <GameTypeBadge gameType="codewords" />
-          </div>
-          <div>
-            <label className="label-caps block mb-2">Your name</label>
-            <input
-              type="text"
-              value={joinName}
-              onChange={(e) => setJoinName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && joinGame()}
-              placeholder="Enter your name"
-              className="input-field w-full"
-              maxLength={40}
-            />
-          </div>
-          <p className="text-faint text-xs">
-            {game?.status === 'active'
+      <GameJoinLobbyShell
+        gameCode={gameCode}
+        header={<GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="codewords" />}
+      >
+        <NameJoinForm
+          value={joinName}
+          onChange={setJoinName}
+          onSubmit={() => void joinGame()}
+          joining={joining}
+          hint={
+            game?.status === 'active'
               ? lateJoinAllowed
                 ? 'This game is in progress — join as a player (auto-assigned to a team) or watch as a viewer.'
                 : 'This game has already started.'
@@ -417,14 +408,10 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
                 ? "You'll pick a team and role in the lobby before the host starts."
                 : randomizeTeams
                   ? 'The host picks spymasters — your team is shuffled when the game starts.'
-                  : 'The host will assign your team and role in the lobby.'}
-          </p>
-          <button type="button" onClick={() => void joinGame()} disabled={!joinName.trim() || joining} className="btn-primary w-full">
-            {joining ? 'Joining…' : 'Join game'}
-          </button>
-          <ShareGameLinkCard gameCode={gameCode} />
-        </div>
-      </div>
+                  : 'The host will assign your team and role in the lobby.'
+          }
+        />
+      </GameJoinLobbyShell>
     )
   }
 
@@ -435,8 +422,8 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (needsTeamPick || waitingInLobby) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 py-8">
-        <div className="glass-card p-6 w-full max-w-md space-y-5">
+      <GameJoinLobbyShell gameCode={gameCode}>
+        <div className="space-y-5">
           <div className="text-center space-y-1">
             <h2 className="text-xl font-black">
               {game?.status === 'active'
@@ -548,24 +535,23 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
             </p>
           </div>
         </div>
-      </div>
+      </GameJoinLobbyShell>
     )
   }
 
   if (screen === 'lobby' && myPlayerId && myRole) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 py-8">
-        <div className="w-full max-w-lg space-y-3">
+      <GameJoinLobbyShell gameCode={gameCode}>
+        <div className="space-y-3">
           <CodewordsWaitingPanel
             playerName={myPlayerName}
             myRole={myRole}
             players={allPlayers}
             myPlayerId={myPlayerId}
           />
-          <ShareGameLinkCard gameCode={gameCode} />
           {leaveButton}
         </div>
-      </div>
+      </GameJoinLobbyShell>
     )
   }
 

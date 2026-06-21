@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { BingoCardGrid, BingoCardLegend, CalledNumbersBoard } from '@/components/bingo/BingoCardGrid'
 import { BingoFinalResultsShareBlock } from '@/components/bingo/BingoFinalResultsShareBlock'
-import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
 import { formatBingoNumber, hasBingoWin } from '@/lib/bingo'
 import { supabase } from '@/lib/supabase'
@@ -25,11 +24,13 @@ import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
-import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
+import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
@@ -380,74 +381,59 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'join') {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="glass-card p-6 w-full max-w-md space-y-5">
-          <div className="text-center space-y-1">
-            <div className="text-4xl">{cfg.headerEmoji}</div>
-            <h1 className="text-2xl font-black gradient-title">{game?.title}</h1>
-            <GameTypeBadge gameType="bingo" />
-          </div>
-          <div>
-            <label className="label-caps block mb-2">Your name</label>
-            <input
-              type="text"
-              value={joinName}
-              onChange={(e) => setJoinName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && joinGame()}
-              placeholder="Enter your name"
-              className="input-field w-full"
-              maxLength={40}
-            />
-          </div>
-          <p className="text-faint text-xs leading-relaxed">
-            You&apos;ll get a random card when the host starts. Called numbers turn <strong className="text-blue-400">blue</strong>{' '}
-            on your card — tap them to mark <strong className="text-emerald-400">green</strong>.
-          </p>
-          <BingoCardLegend />
-          <button
-            type="button"
-            onClick={() => void joinGame()}
-            disabled={!joinName.trim() || joining}
-            className="btn-primary w-full"
-          >
-            {joining ? 'Joining…' : 'Join Bingo'}
-          </button>
-          <ShareGameLinkCard gameCode={gameCode} />
-        </div>
-      </div>
+      <GameJoinLobbyShell
+        gameCode={gameCode}
+        header={
+          <GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="bingo" />
+        }
+      >
+        <NameJoinForm
+          value={joinName}
+          onChange={setJoinName}
+          onSubmit={() => void joinGame()}
+          joining={joining}
+          submitLabel="Join Bingo"
+          hint={
+            <>
+              You&apos;ll get a random card when the host starts. Called numbers turn{' '}
+              <strong className="text-blue-400">blue</strong> on your card — tap them to mark{' '}
+              <strong className="text-emerald-400">green</strong>.
+            </>
+          }
+          footer={
+            <>
+              <BingoCardLegend />
+              <p className="text-center pt-1">
+                <GameRulesLink gameType="bingo" variant="subtle" />
+              </p>
+            </>
+          }
+        />
+      </GameJoinLobbyShell>
     )
   }
 
   if (screen === 'waiting') {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="glass-card p-6 w-full max-w-md text-center space-y-4">
-          <div className="text-4xl">🎱</div>
-          <h2 className="text-xl font-black">You&apos;re in, {myPlayerName}!</h2>
-          <p className="text-muted text-sm leading-relaxed">
-            Waiting for the host to start. You&apos;ll get a <strong className="text-[var(--text)]">random bingo card</strong>{' '}
-            automatically — you don&apos;t pick the numbers on your card.
-          </p>
-          <p className="text-faint text-xs leading-relaxed">
-            When the host calls a number (B1–O75), matching squares on your card turn blue. Tap blue squares to mark them
-            green, then hit BINGO when you complete a line.
-          </p>
-          <BingoCardLegend />
-          <GameRulesLink gameType="bingo" variant="subtle" />
-          <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
-          {myPlayerId && (
-            <PlayerSessionControls
-              gameCode={gameCode}
-              playerId={myPlayerId}
-              currentName={myPlayerName}
-              onRenamed={(name) => setMyPlayerName(name)}
-              onLeft={handlePlayerLeft}
-              inLobby
-            />
-          )}
-          <ShareGameLinkCard gameCode={gameCode} />
-        </div>
-      </div>
+      <GameJoinLobbyShell gameCode={gameCode}>
+        <GameLobbyWaitingPanel
+          gameCode={gameCode}
+          players={players}
+          myPlayerId={myPlayerId}
+          myPlayerName={myPlayerName}
+          onRenamed={(name) => setMyPlayerName(name)}
+          onLeft={handlePlayerLeft}
+          title={`You're in, ${myPlayerName}!`}
+          description={
+            <>
+              Waiting for the host to start. You&apos;ll get a random bingo card automatically — you don&apos;t pick the
+              numbers on your card.
+            </>
+          }
+          rulesLink={<GameRulesLink gameType="bingo" variant="subtle" />}
+          activity={<BingoCardLegend />}
+        />
+      </GameJoinLobbyShell>
     )
   }
 

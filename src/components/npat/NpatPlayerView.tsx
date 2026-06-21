@@ -1,7 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { GameTypeBadge } from '@/components/GameTypeBadge'
+import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
+import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { NpatActiveRound } from '@/components/npat/NpatActiveRound'
 import { gameTypeConfig } from '@/lib/game-types'
 import { supabase } from '@/lib/supabase'
@@ -19,12 +22,9 @@ import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
-import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
-import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'lobby' | 'playing' | 'not_found'
@@ -192,66 +192,51 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'join') {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="glass-card p-6 w-full max-w-md space-y-5">
-          <div className="text-center space-y-1">
-            <div className="text-4xl">{cfg.headerEmoji}</div>
-            <h1 className="text-2xl font-black gradient-title">{game?.title}</h1>
-            <GameTypeBadge gameType="i_call_on" />
-          </div>
-          <input
-            type="text"
-            value={joinName}
-            onChange={(e) => setJoinName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && joinGame()}
-            placeholder="Your name"
-            className="input-field w-full"
-            maxLength={40}
-          />
-          <button type="button" onClick={joinGame} disabled={!joinName.trim() || joining} className="btn-primary w-full">
-            {joining ? 'Joining…' : 'Join game'}
-          </button>
-          <ShareGameLinkCard gameCode={gameCode} />
-        </div>
-      </div>
+      <GameJoinLobbyShell
+        gameCode={gameCode}
+        header={<GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="i_call_on" />}
+      >
+        <NameJoinForm
+          value={joinName}
+          onChange={setJoinName}
+          onSubmit={joinGame}
+          joining={joining}
+        />
+      </GameJoinLobbyShell>
     )
   }
 
   if (screen === 'lobby' && myPlayerId) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 py-8">
-        <div className="glass-card p-6 w-full max-w-lg space-y-5">
-          <div className="text-center space-y-1">
-            <h2 className="text-xl font-black">Lobby</h2>
-            <PlayerSessionControls
-              gameCode={gameCode}
-              playerId={myPlayerId}
-              currentName={myPlayerName}
-              onRenamed={(name) => {
-                setMyPlayerName(name)
-                void load()
-              }}
-              onLeft={handlePlayerLeft}
-              inLobby
-            />
-          </div>
-          <p className="text-center">
-            <GameRulesLink gameType="i_call_on" variant="subtle" />
-          </p>
-          <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label="In lobby" />
-          {isViewer && (
-            <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={me} onPromoted={load} />
-          )}
-          {!isViewer && (
-            <div className="rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 py-5 text-center space-y-1">
-              <p className="text-2xl">🔤</p>
-              <p className="font-semibold">Ready to play</p>
-              <p className="text-sm text-muted">Waiting for the host to start…</p>
-            </div>
-          )}
-          <ShareGameLinkCard gameCode={gameCode} />
-        </div>
-      </div>
+      <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
+        <GameLobbyWaitingPanel
+          gameCode={gameCode}
+          players={players}
+          myPlayerId={myPlayerId}
+          myPlayerName={myPlayerName}
+          onRenamed={(name) => {
+            setMyPlayerName(name)
+            void load()
+          }}
+          onLeft={handlePlayerLeft}
+          title="Lobby"
+          rulesLink={<GameRulesLink gameType="i_call_on" variant="subtle" />}
+          activity={
+            <>
+              {isViewer && (
+                <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={me} onPromoted={load} />
+              )}
+              {!isViewer && (
+                <div className="rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 py-5 text-center space-y-1">
+                  <p className="text-2xl">🔤</p>
+                  <p className="font-semibold">Ready to play</p>
+                  <p className="text-sm text-muted">Waiting for the host to start…</p>
+                </div>
+              )}
+            </>
+          }
+        />
+      </GameJoinLobbyShell>
     )
   }
 

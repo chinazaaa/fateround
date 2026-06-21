@@ -8,7 +8,8 @@ import { tokenColorForOrder } from '@/components/monopoly/monopoly-ui'
 import { monopolyTokenEmoji, type MonopolyTokenId } from '@/lib/monopoly-tokens'
 import { MONOPOLY_COLOR_CLASSES } from '@/lib/monopoly'
 import type { MonopolyColorGroup } from '@/lib/monopoly'
-import { GameTypeBadge } from '@/components/GameTypeBadge'
+import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
+import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { MonopolyPageHeader } from '@/components/monopoly/MonopolyChrome'
 import { gameTypeConfig } from '@/lib/game-types'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
@@ -38,7 +39,6 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
-import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
@@ -286,43 +286,39 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   if (screen === 'join') {
     const joiningAsViewer = game?.status === 'active'
     return (
-      <div className="min-h-screen overflow-y-auto py-6 px-4 flex justify-center">
-        <div className="glass-card p-6 w-full max-w-xl space-y-5 my-auto">
-          <div className="text-center space-y-1">
-            <div className="text-4xl">{cfg.headerEmoji}</div>
-            <h1 className="text-2xl font-black gradient-title">{game?.title}</h1>
-            <GameTypeBadge gameType="monopoly" />
-          </div>
-          <MonopolyJoinForm
-            name={joinName}
-            onNameChange={setJoinName}
-            tokenId={joinToken}
-            onTokenChange={setJoinToken}
-            players={players}
-            joining={joining}
-            joiningAsViewer={joiningAsViewer}
-            submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join Monopoly'}
-            onSubmit={() => void join()}
-          />
-          <p className="text-faint text-xs leading-relaxed text-center">
-            {joiningAsViewer
-              ? 'This game is in progress — you will join as a viewer and watch live (read-only).'
-              : `${MONOPOLY_MIN_PLAYERS}–6 players · £${MONOPOLY_STARTING_CASH.toLocaleString('en-GB')} starting cash.`}
-          </p>
-          <ShareGameLinkCard gameCode={gameCode} />
-        </div>
-      </div>
+      <GameJoinLobbyShell
+        gameCode={gameCode}
+        wide
+        header={<GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="monopoly" />}
+      >
+        <MonopolyJoinForm
+          name={joinName}
+          onNameChange={setJoinName}
+          tokenId={joinToken}
+          onTokenChange={setJoinToken}
+          players={players}
+          joining={joining}
+          joiningAsViewer={joiningAsViewer}
+          submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join Monopoly'}
+          onSubmit={() => void join()}
+        />
+        <p className="text-faint text-xs leading-relaxed text-center">
+          {joiningAsViewer
+            ? 'This game is in progress — you will join as a viewer and watch live (read-only).'
+            : `${MONOPOLY_MIN_PLAYERS}–6 players · £${MONOPOLY_STARTING_CASH.toLocaleString('en-GB')} starting cash.`}
+        </p>
+      </GameJoinLobbyShell>
     )
   }
 
   if (screen === 'waiting') {
     const displayName = myPlayerName ?? players.find((p) => p.id === myPlayerId)?.name ?? 'Player'
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="glass-card p-6 w-full max-w-md space-y-4">
-          <div className="text-center space-y-1">
-            <div className="text-4xl">{cfg.headerEmoji}</div>
-            <h2 className="text-xl font-black">You&apos;re in, {displayName}!</h2>
+      <GameJoinLobbyShell gameCode={gameCode}>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-[color-mix(in_srgb,var(--primary)_18%,var(--border))] bg-[color-mix(in_srgb,var(--primary)_6%,transparent)] px-4 py-4 text-center space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--primary)]">You&apos;re in</p>
+            <h2 className="text-xl sm:text-2xl font-black">You&apos;re in, {displayName}!</h2>
             <p className="text-muted text-sm leading-relaxed">
               Waiting for the host to start. You&apos;ll begin with £{MONOPOLY_STARTING_CASH.toLocaleString('en-GB')} when
               the game begins.
@@ -369,9 +365,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               inLobby
             />
           )}
-          <ShareGameLinkCard gameCode={gameCode} />
         </div>
-      </div>
+      </GameJoinLobbyShell>
     )
   }
 

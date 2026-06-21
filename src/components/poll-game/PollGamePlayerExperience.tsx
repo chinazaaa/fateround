@@ -171,7 +171,7 @@ import { useGameChannel } from '@/hooks/useGameChannel'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
-import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
+import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { PlayerSessionBar } from '@/components/ui/PlayerSessionBar'
@@ -1518,7 +1518,7 @@ export function PollGamePlayerExperience({
   // JOIN
   if (view === 'join') {
     return (
-      <CenteredCard>
+      <CenteredCard gameCode={gameCode}>
         <div className="text-center space-y-1">
           <div className="text-4xl">{gameTypeConfig(game?.game_type).headerEmoji}</div>
           <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
@@ -1636,7 +1636,6 @@ export function PollGamePlayerExperience({
               <GameRulesLink gameType={game.game_type} variant="subtle" />
             </p>
           ) : null}
-          <ShareGameLinkCard gameCode={gameCode} />
         </div>
       </CenteredCard>
     )
@@ -1715,7 +1714,7 @@ export function PollGamePlayerExperience({
     }
 
     return (
-      <CenteredCard>
+      <CenteredCard gameCode={gameCode} wide>
         <div className="text-center space-y-1">
           <div className="text-4xl">⏳</div>
           <h1 className="text-2xl font-black tracking-tight gradient-title">{game?.title}</h1>
@@ -2278,8 +2277,6 @@ export function PollGamePlayerExperience({
         )}
 
         {sessionBar}
-
-        <ShareGameLinkCard gameCode={gameCode} />
 
         <p className="text-faint text-xs text-center">Keep this tab open</p>
       </CenteredCard>
@@ -4118,11 +4115,19 @@ function LeaderCard({
   )
 }
 
-function CenteredCard({ children }: { children: React.ReactNode }) {
+function CenteredCard({
+  children,
+  gameCode,
+  wide = false,
+}: {
+  children: React.ReactNode
+  gameCode: string
+  wide?: boolean
+}) {
   return (
-    <div className="page-wrap flex items-center justify-center px-4 py-10">
-      <div className="w-full max-w-sm glass-card-strong p-6 space-y-6">{children}</div>
-    </div>
+    <GameJoinLobbyShell gameCode={gameCode} wide={wide}>
+      {children}
+    </GameJoinLobbyShell>
   )
 }
 
