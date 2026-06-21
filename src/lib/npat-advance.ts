@@ -228,13 +228,17 @@ async function activateRound(supabase: SupabaseClient, roundId: string): Promise
   const now = new Date().toISOString()
   const { data: round } = await supabase
     .from('rounds')
-    .select('submitter_player_id, npat_metadata')
+    .select('submitter_player_id, npat_metadata, status')
     .eq('id', roundId)
     .maybeSingle()
-  const metadata = parseNpatMetadata(round?.npat_metadata)
+  if (!round) return false
+  if (round.status === 'active') return true
+  if (round.status !== 'pending') return false
+
+  const metadata = parseNpatMetadata(round.npat_metadata)
   if (!metadata) return false
 
-  const synced = syncCallerIndexInMetadata(metadata, round?.submitter_player_id ?? null)
+  const synced = syncCallerIndexInMetadata(metadata, round.submitter_player_id ?? null)
   const { data, error } = await supabase
     .from('rounds')
     .update({
@@ -248,6 +252,36 @@ async function activateRound(supabase: SupabaseClient, roundId: string): Promise
     .select('id')
     .maybeSingle()
   return !error && !!data
+}
+
+async function findExistingNextRound(
+  supabase: SupabaseClient,
+  gameId: string,
+  nextRoundNumber: number
+): Promise<{ active: Round | null; pending: Round | null }> {
+  const { data } = await supabase
+    .from('rounds')
+    .select('*')
+    .eq('game_id', gameId)
+    .eq('round_number', nextRoundNumber)
+  const rows = (data ?? []) as Round[]
+  return {
+    active: rows.find((r) => r.status === 'active') ?? null,
+    pending: rows.find((r) => r.status === 'pending') ?? null,
+  }
+}
+
+async function activateNextRound(
+  supabase: SupabaseClient,
+  gameId: string,
+  roundNumber: number,
+  roundId: string
+): Promise<NpatAdvanceResult | null> {
+  const activated = await activateRound(supabase, roundId)
+  if (!activated) return null
+  await syncGamePointer(supabase, gameId, roundNumber)
+  await supabase.from('games').update({ rounds_count: roundNumber }).eq('id', gameId)
+  return { ok: true, code: 'advanced_next', nextRound: roundNumber }
 }
 
 async function advanceActiveRoundPhase(
@@ -350,10 +384,22 @@ async function startNextLetterCycle(
     const lettersPlayed = await countPlayedLetters(supabase, code)
     const duration = liveGame.game_duration_seconds ?? 0
     const timedOut = duration > 0 && npatSessionExpired(liveGame.session_started_at, duration)
-    if (lettersPlayed >= NPAT_MAX_LETTERS || timedOut || playerIds.length === 0) {
+    const callerOrderEmpty = metadata.caller_order.length === 0
+    if (lettersPlayed >= NPAT_MAX_LETTERS || timedOut || (playerIds.length === 0 && callerOrderEmpty)) {
       await markGameFinished(supabase, code)
       return { ok: true, code: 'advanced_finish' }
     }
+    return { ok: false, code: 'not_finished' }
+  }
+
+  const existing = await findExistingNextRound(supabase, code, nextRoundNumber)
+  if (existing.active) {
+    await syncGamePointer(supabase, code, nextRoundNumber)
+    return { ok: true, code: 'advanced_next', nextRound: nextRoundNumber }
+  }
+  if (existing.pending) {
+    const advanced = await activateNextRound(supabase, code, nextRoundNumber, existing.pending.id)
+    if (advanced) return advanced
     return { ok: false, code: 'not_finished' }
   }
 
@@ -363,15 +409,22 @@ async function startNextLetterCycle(
     .select('id')
     .maybeSingle()
 
-  if (insertError || !inserted) return { ok: false, code: 'not_finished' }
+  if (insertError || !inserted) {
+    const retry = await findExistingNextRound(supabase, code, nextRoundNumber)
+    if (retry.pending) {
+      const advanced = await activateNextRound(supabase, code, nextRoundNumber, retry.pending.id)
+      if (advanced) return advanced
+    }
+    if (retry.active) {
+      await syncGamePointer(supabase, code, nextRoundNumber)
+      return { ok: true, code: 'advanced_next', nextRound: nextRoundNumber }
+    }
+    return { ok: false, code: 'not_finished' }
+  }
 
-  const activated = await activateRound(supabase, inserted.id)
-  if (!activated) return { ok: false, code: 'not_finished' }
-
-  await syncGamePointer(supabase, code, nextRoundNumber)
-  await supabase.from('games').update({ rounds_count: nextRoundNumber }).eq('id', code)
-
-  return { ok: true, code: 'advanced_next', nextRound: nextRoundNumber }
+  const advanced = await activateNextRound(supabase, code, nextRoundNumber, inserted.id)
+  if (advanced) return advanced
+  return { ok: false, code: 'not_finished' }
 }
 
 export async function approveNpatRound(
@@ -430,13 +483,37 @@ export async function syncNpatGameState(
     return { ok: true, code: 'reveal_pending' }
   }
 
-  if (pointerRound && pointerRound.status === 'finished') {
-    return startNextLetterCycle(supabase, game, pointerRound, playerIds)
+  const pendingAhead = roundList
+    .filter((r) => r.status === 'pending')
+    .sort((a, b) => a.round_number - b.round_number)
+  const orphanedPending =
+    lastFinished != null
+      ? (pendingAhead.find((r) => r.round_number === lastFinished.round_number + 1) ??
+        pendingAhead.find((r) => r.round_number > lastFinished.round_number))
+      : pendingAhead[0]
+
+  if (!activeRound && orphanedPending) {
+    const advanced = await activateNextRound(supabase, code, orphanedPending.round_number, orphanedPending.id)
+    if (advanced) return { ok: true, code: 'synced_pointer', nextRound: orphanedPending.round_number }
+  }
+
+  const cycleAnchor =
+    pointerRound?.status === 'finished'
+      ? pointerRound
+      : lastFinished
+  if (cycleAnchor && !revealPending(cycleAnchor)) {
+    if (game.current_round_number !== cycleAnchor.round_number) {
+      await syncGamePointer(supabase, code, cycleAnchor.round_number)
+    }
+    return startNextLetterCycle(supabase, game, cycleAnchor, playerIds)
   }
 
   if (pointerRound && pointerRound.status === 'pending') {
     const activated = await activateRound(supabase, pointerRound.id)
-    if (activated) return { ok: true, code: 'synced_pointer' }
+    if (activated) {
+      await syncGamePointer(supabase, code, pointerRound.round_number)
+      return { ok: true, code: 'synced_pointer', nextRound: pointerRound.round_number }
+    }
   }
 
   return { ok: true, code: 'not_finished' }

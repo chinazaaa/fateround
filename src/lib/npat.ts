@@ -210,6 +210,14 @@ export function resolveActiveNpatRound(rounds: Round[], currentRoundNumber: numb
 
   const byPointer = rounds.find((r) => r.round_number === currentRoundNumber) ?? null
   if (active && byPointer && active.id !== byPointer.id && byPointer.status === 'finished') return active
+
+  if (byPointer?.status === 'finished') {
+    const pendingNext = rounds.find(
+      (r) => r.status === 'pending' && r.round_number === byPointer.round_number + 1
+    )
+    if (pendingNext) return pendingNext
+  }
+
   return byPointer ?? active
 }
 

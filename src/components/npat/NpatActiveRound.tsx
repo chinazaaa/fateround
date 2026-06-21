@@ -217,6 +217,46 @@ export function NpatActiveRound({
     onAdvanced: onReload,
   })
 
+  useEffect(() => {
+    if (skipGameSync || game.status !== 'active') return
+    const betweenRounds =
+      !currentRound ||
+      currentRound.status === 'pending' ||
+      (currentRound.status === 'finished' &&
+        currentRound.ended_at != null &&
+        revealCountdownSeconds(currentRound.ended_at) <= 0)
+    if (!betweenRounds) return
+
+    let cancelled = false
+    const sync = async () => {
+      try {
+        const res = await fetch('/api/npat/advance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, force: true }),
+        })
+        if (!res.ok || cancelled) return
+        await onReload?.()
+      } catch {
+        /* ignore transient sync errors */
+      }
+    }
+    void sync()
+    const interval = window.setInterval(sync, 2000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [
+    skipGameSync,
+    game.status,
+    gameCode,
+    currentRound?.id,
+    currentRound?.status,
+    currentRound?.ended_at,
+    onReload,
+  ])
+
   const screen: PlayScreen = useMemo(() => {
     if (game.status === 'finished') return 'finished'
     if (!currentRound || currentRound.status === 'pending') return 'waiting'
