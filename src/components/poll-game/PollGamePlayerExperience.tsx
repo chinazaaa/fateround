@@ -1,4 +1,5 @@
 'use client'
+import { useRoundResults } from '@/hooks/useRoundResults'
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -243,6 +244,14 @@ export function PollGamePlayerExperience({
     gameCodeProp ?? (Array.isArray(params.code) ? params.code[0] : params.code)
   ).toUpperCase()
 
+  const {
+    lastFinishedRound, lastRoundVotes,
+    allVotes, allRounds, allConfessions, allHotSeatSubmissions,
+    setLastFinishedRound, setLastRoundVotes,
+    setAllVotes, setAllRounds, setAllConfessions, setAllHotSeatSubmissions,
+    resetRoundResultsState,
+  } = useRoundResults()
+
   const [view, setView] = useState<View>('loading')
   const [game, setGame] = useState<Game | null>(null)
   const [participants, setParticipants] = useState<Participant[]>([])
@@ -275,17 +284,6 @@ export function PollGamePlayerExperience({
     []
   )
 
-  // Between-rounds results
-  const [lastFinishedRound, setLastFinishedRound] = useState<Round | null>(null)
-  const [lastRoundVotes, setLastRoundVotes] = useState<Vote[]>([])
-
-  // All-game accumulation (for final results)
-  const [allVotes, setAllVotes] = useState<Vote[]>([])
-  const [allRounds, setAllRounds] = useState<Round[]>([])
-  const [allHotSeatSubmissions, setAllHotSeatSubmissions] = useState<
-    { id: string; round_id: string; text: string; submission_type: string }[]
-  >([])
-  const [allConfessions, setAllConfessions] = useState<Confession[]>([])
 
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [myPlayerName, setMyPlayerName] = useState<string | null>(null)
@@ -683,11 +681,7 @@ export function PollGamePlayerExperience({
 
   function resetPlayerForLobby(hasSession: boolean) {
     setCurrentRound(null)
-    setLastFinishedRound(null)
-    setAllRounds([])
-    setAllVotes([])
-    setAllConfessions([])
-    setLastRoundVotes([])
+    resetRoundResultsState()
     roundFormIdRef.current = null
     resetRoundPlayerState()
     setWstPool([])
