@@ -339,18 +339,6 @@ export function PollGamePlayerExperience({
     roundResultsActive && roundResultsIsLast && !!game?.auto_reveal
   )
 
-  // Apply theme CSS variables
-  useEffect(() => {
-    const themeId = parseThemeId(game?.theme)
-    const vars = THEME_MAP[themeId]?.cssVars ?? {}
-    const root = document.documentElement
-    const keys = Object.keys(vars)
-    keys.forEach((k) => root.style.setProperty(k, vars[k]))
-    return () => {
-      keys.forEach((k) => root.style.removeProperty(k))
-    }
-  }, [game?.theme])
-
   const isJoinersMode = game?.participant_mode === 'joiners'
   const isVoterOnly = game ? isVoterOnlyMode(game) : false
   const isImportClaim = game ? isImportClaimMode(game) : false
