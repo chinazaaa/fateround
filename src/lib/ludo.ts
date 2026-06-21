@@ -367,16 +367,24 @@ function applyMoveLocally(
       ? victimsAtTrackPos(states, move.to.pos, color)
       : []
   const victimKeys = new Set(captureVictims.map((v) => `${v.playerId}:${v.pieceId}`))
+  const isCapture = victimKeys.size > 0
 
-  let nextStates = states.map((row) => {
+  // House rule: eating an opponent sends the capturing piece straight to its
+  // own finished home (its respective colour's final base) as the reward,
+  // instead of leaving it on the square it captured on.
+  const moverDest: LudoPiece = isCapture
+    ? { id: move.pieceId, zone: 'finished', pos: 0 }
+    : { ...move.to, id: move.pieceId }
+
+  const nextStates = states.map((row) => {
     if (row.player_id !== playerId) return row
     return {
       ...row,
-      pieces: row.pieces.map((p) => (p.id === move.pieceId ? { ...move.to, id: p.id } : p)),
+      pieces: row.pieces.map((p) => (p.id === move.pieceId ? moverDest : p)),
     }
   })
 
-  if (victimKeys.size === 0) return nextStates
+  if (!isCapture) return nextStates
 
   return nextStates.map((row) => {
     let changed = false
@@ -658,12 +666,10 @@ async function persistMove(
     move.to.zone === 'track' &&
     victimsAtTrackPos(states, move.to.pos, playerRow.color).length > 0 &&
     wouldCaptureAt(states, move.to.pos, playerRow.color, playerId, move.pieceId)
-  const moveNote = movedFromBase
-    ? didCapture
-      ? 'brought a piece onto the board and sent an opponent home'
-      : 'brought a piece onto the board'
-    : didCapture
-      ? 'moved and sent an opponent home'
+  const moveNote = didCapture
+    ? 'ate an opponent and sent it home, racing their own piece home!'
+    : movedFromBase
+      ? 'brought a piece onto the board'
       : move.to.zone === 'finished'
         ? 'finished a piece'
         : `moved a piece ${move.diceValue}`
