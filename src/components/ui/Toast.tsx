@@ -11,10 +11,10 @@ type ToastItem = {
 }
 
 type ToastApi = {
-  toast: (message: string, kind?: ToastKind) => void
-  success: (message: string) => void
-  error: (message: string) => void
-  info: (message: string) => void
+  toast: (message: string, kind?: ToastKind, durationMs?: number) => void
+  success: (message: string, durationMs?: number) => void
+  error: (message: string, durationMs?: number) => void
+  info: (message: string, durationMs?: number) => void
 }
 
 const ToastContext = createContext<ToastApi | null>(null)
@@ -45,10 +45,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const toast = useCallback(
-    (message: string, kind: ToastKind = 'info') => {
+    (message: string, kind: ToastKind = 'info', durationMs = 3200) => {
       const id = Date.now() + Math.floor(Math.random() * 1000)
       setToasts((prev) => [...prev.slice(-2), { id, message, kind }])
-      window.setTimeout(() => dismiss(id), 3200)
+      window.setTimeout(() => dismiss(id), durationMs)
     },
     [dismiss]
   )
@@ -56,9 +56,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const api = useMemo<ToastApi>(
     () => ({
       toast,
-      success: (message) => toast(message, 'success'),
-      error: (message) => toast(message, 'error'),
-      info: (message) => toast(message, 'info'),
+      success: (message, durationMs) => toast(message, 'success', durationMs),
+      error: (message, durationMs) => toast(message, 'error', durationMs),
+      info: (message, durationMs) => toast(message, 'info', durationMs),
     }),
     [toast]
   )

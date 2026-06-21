@@ -12,6 +12,7 @@ import {
   playVoteSubmittedSound,
 } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
+import { MONOPOLY_CARD_MODAL_SECONDS } from '@/lib/supabase-selects'
 import { currentPlayerId } from '@/lib/monopoly'
 import type { Game, MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
 
@@ -157,7 +158,7 @@ export function useMonopolyNotifications({
       cardSeq !== prevCardSeqRef.current
     ) {
       const alert = formatCardAlertForPlayer(board.last_card_event, myPlayerId, players)
-      info(alert.body.length > 80 ? `${alert.subtitle} — ${alert.title}` : alert.body)
+      info(`${alert.emoji} ${alert.title} — ${alert.body}`, MONOPOLY_CARD_MODAL_SECONDS * 1000)
       playVoteSubmittedSound()
     }
 

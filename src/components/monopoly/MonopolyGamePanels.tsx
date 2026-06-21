@@ -1,17 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   MonopolyModal,
   MonopolyPrimaryButton,
   MonopolySecondaryButton,
   MonopolyJailCardInventory,
 } from '@/components/monopoly/MonopolyChrome'
-import { formatCardAlertForPlayer } from '@/lib/monopoly-card-messages'
-import {
-  useMonopolyFixedTimer,
-} from '@/hooks/useMonopolyModalTimer'
-import { MONOPOLY_CARD_MODAL_SECONDS } from '@/lib/supabase-selects'
 import {
   canAddHotel,
   canAddHouse,
@@ -184,62 +179,6 @@ function TradeExchangeReview({
         </p>
       )}
     </div>
-  )
-}
-
-export function MonopolyCardAlertModal({
-  board,
-  myPlayerId,
-  players,
-}: {
-  board: MonopolyBoard | null
-  myPlayerId: string | null
-  players: Player[]
-}) {
-  const event = board?.last_card_event ?? null
-  const [dismissedSeq, setDismissedSeq] = useState<number | null>(null)
-  const readyRef = useRef(false)
-  const prevSeqRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    if (!board) return
-    const seq = board.last_card_event?.seq ?? null
-
-    if (!readyRef.current) {
-      readyRef.current = true
-      prevSeqRef.current = seq
-      if (seq != null) setDismissedSeq(seq)
-      return
-    }
-
-    if (seq != null && seq !== prevSeqRef.current) {
-      prevSeqRef.current = seq
-      setDismissedSeq(null)
-    }
-  }, [board, board?.last_card_event?.seq])
-
-  const isOpen = !!(event && dismissedSeq !== event.seq)
-  const dismiss = useCallback(() => {
-    if (event?.seq != null) setDismissedSeq(event.seq)
-  }, [event?.seq])
-
-  const cardSecondsLeft = useMonopolyFixedTimer(MONOPOLY_CARD_MODAL_SECONDS, isOpen, dismiss)
-
-  if (!isOpen || !event) return null
-
-  const alert = formatCardAlertForPlayer(event, myPlayerId, players)
-
-  return (
-    <MonopolyModal
-      open
-      subtitle={alert.subtitle}
-      title={alert.title}
-      timerSecondsLeft={cardSecondsLeft}
-    >
-      <p className="text-4xl text-center">{alert.emoji}</p>
-      <p className="text-sm text-muted text-center leading-relaxed">{alert.body}</p>
-      <MonopolyPrimaryButton onClick={dismiss}>Got it</MonopolyPrimaryButton>
-    </MonopolyModal>
   )
 }
 

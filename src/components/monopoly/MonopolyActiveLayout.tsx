@@ -9,7 +9,7 @@ import {
 } from '@/components/monopoly/MonopolyBoard'
 import { MonopolyBoardCenter } from '@/components/monopoly/MonopolyBoardCenter'
 import { MonopolyGameTimerBar } from '@/components/monopoly/MonopolyGameTimerBar'
-import { MonopolyManagePanel, MonopolyTurnModals, MonopolyCardAlertModal } from '@/components/monopoly/MonopolyGamePanels'
+import { MonopolyManagePanel, MonopolyTurnModals } from '@/components/monopoly/MonopolyGamePanels'
 import { getMonopolyBuildActionCount } from '@/components/monopoly/monopoly-manage-utils'
 import {
   MonopolyCashBadge,
@@ -264,21 +264,6 @@ export function MonopolyActiveLayout({
               )
             }
           />
-
-          {!spectator && (
-            <div className="sm:hidden">
-              <MonopolyBoardCenter
-                board={board}
-                myPlayerId={myPlayerId}
-                myState={myState}
-                players={players}
-                acting={acting}
-                postAction={postAction}
-                colorBarClass={colorBarClass}
-                layout="dock"
-              />
-            </div>
-          )}
         </div>
 
         <div className="mt-4 lg:mt-0 space-y-3">
@@ -315,10 +300,6 @@ export function MonopolyActiveLayout({
         </div>
       </div>
       </div>
-
-      {!spectator && (
-        <MonopolyCardAlertModal board={board} myPlayerId={myPlayerId} players={players} />
-      )}
 
       {!spectator && (
       <MonopolyTurnModals

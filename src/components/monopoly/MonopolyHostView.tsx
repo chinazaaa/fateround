@@ -11,7 +11,6 @@ import { MonopolyActiveLayout } from '@/components/monopoly/MonopolyActiveLayout
 import { MonopolyHostTimeExtension } from '@/components/monopoly/MonopolyHostTimeExtension'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
-import { MonopolyCardAlertModal } from '@/components/monopoly/MonopolyGamePanels'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
 import { InviteLinkActions } from '@/components/InviteLinkActions'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -419,10 +418,6 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           ) : (
             <div className="glass-card p-8 text-center text-sm text-muted">Loading board…</div>
           )
-        )}
-
-        {game.status === 'active' && board && tab === 'manage' && (
-          <MonopolyCardAlertModal board={board} myPlayerId={hostPlayerId} players={players} />
         )}
 
         {(tab === 'manage' || !showPlayTab) && (

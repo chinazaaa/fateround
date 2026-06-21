@@ -521,7 +521,9 @@ export function MonopolyClassicBoard({
             ].join(' ')}
             style={{ gridColumn: '2 / 11', gridRow: '2 / 11' }}
           >
-            <div className="flex sm:hidden h-full w-full min-h-0 min-w-0">{mobileCenter ?? defaultMobileCenter}</div>
+            <div className="flex sm:hidden h-full w-full min-h-0 min-w-0 flex-col items-center justify-center overflow-hidden">
+              {mobileCenter ?? center ?? defaultMobileCenter}
+            </div>
             <div className="hidden sm:flex h-full w-full min-h-0 min-w-0 flex-col items-center justify-center">
               {defaultDesktopCenter}
             </div>
