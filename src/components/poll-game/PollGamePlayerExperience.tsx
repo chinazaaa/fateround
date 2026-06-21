@@ -4,6 +4,7 @@ import { useWstQuotePool } from '@/hooks/useWstQuotePool'
 import { usePlayerQuestions } from '@/hooks/usePlayerQuestions'
 import { usePlayerNameSubmissions } from '@/hooks/usePlayerNameSubmissions'
 import { useHotSeat } from '@/hooks/useHotSeat'
+import { usePhotoUpload } from '@/hooks/usePhotoUpload'
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -312,10 +313,6 @@ export function PollGamePlayerExperience({
     resetPlayerNameSubmissionsState,
   } = usePlayerNameSubmissions()
 
-  // Photo upload (people-based modes)
-  const [photoUploading, setPhotoUploading] = useState(false)
-  const photoInputRef = useRef<HTMLInputElement>(null)
-
   const roundResultsActive = view === 'round_results' && !!lastFinishedRound
   const roundResultsIsLast = roundResultsActive && (lastFinishedRound?.round_number ?? 0) >= (game?.rounds_count ?? 0)
   const nextRoundCountdown = useDeadlineCountdown(
@@ -387,6 +384,17 @@ export function PollGamePlayerExperience({
 
   const myPlayer = useMemo(() => players.find((p) => p.id === myPlayerId) ?? null, [players, myPlayerId])
   const isViewer = !!(game && myPlayer && playerIsViewer(myPlayer, game))
+
+  // Photo upload (people-based modes)
+  const {
+    photoUploading, photoInputRef,
+    handlePhotoUpload, handlePhotoDelete,
+  } = usePhotoUpload({
+    gameCode,
+    participantId: myPlayer?.participant_id ?? null,
+    playerId: myPlayerId,
+    setParticipants,
+  })
 
   const reloadPlayers = useCallback(async () => {
     const { data: plrs } = await supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at')
@@ -1514,65 +1522,6 @@ export function PollGamePlayerExperience({
       !isBinaryChoiceGame(game?.game_type) && !isNeverHaveIEver(game?.game_type) && !isMostLikelyTo(game?.game_type) && !isWst && !isVoterOnly
     const myParticipant = me?.participant_id ? participants.find((p) => p.id === me.participant_id) : null
     const canUploadPhoto = isPeopleMode && !!me?.participant_id
-
-    const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
-      if (!file || !me?.participant_id || photoUploading) return
-      e.target.value = ''
-
-      if (file.size > 2 * 1024 * 1024) {
-        toast.error('Photo must be under 2MB')
-        return
-      }
-
-      setPhotoUploading(true)
-      try {
-        const fd = new FormData()
-        fd.append('file', file)
-        fd.append('gameId', gameCode)
-        fd.append('participantId', me.participant_id)
-        fd.append('playerId', me.id)
-
-        const res = await fetch('/api/photos', { method: 'POST', body: fd })
-        const data = await res.json()
-        if (!res.ok) {
-          toast.error(data.error || 'Failed to upload photo')
-          return
-        }
-        const url = data.photoUrl + '?t=' + Date.now()
-        setParticipants((prev) => prev.map((p) => (p.id === me.participant_id ? { ...p, photo_url: url } : p)))
-      } catch {
-        toast.error('Upload failed — try again')
-      } finally {
-        setPhotoUploading(false)
-      }
-    }
-
-    const handlePhotoDelete = async () => {
-      if (!me?.participant_id || photoUploading) return
-      setPhotoUploading(true)
-      try {
-        const res = await fetch('/api/photos', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameId: gameCode,
-            participantId: me.participant_id,
-            playerId: me.id,
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-          toast.error(data.error || 'Failed to remove photo')
-          return
-        }
-        setParticipants((prev) => prev.map((p) => (p.id === me.participant_id ? { ...p, photo_url: null } : p)))
-      } catch {
-        toast.error('Could not remove photo — try again')
-      } finally {
-        setPhotoUploading(false)
-      }
-    }
 
     return (
       <CenteredCard>
