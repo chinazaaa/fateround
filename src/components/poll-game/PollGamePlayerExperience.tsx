@@ -6,6 +6,7 @@ import { usePlayerQuestions } from '@/hooks/usePlayerQuestions'
 import { usePlayerNameSubmissions } from '@/hooks/usePlayerNameSubmissions'
 import { useHotSeat } from '@/hooks/useHotSeat'
 import { usePhotoUpload } from '@/hooks/usePhotoUpload'
+import { useVoteState } from '@/hooks/useVoteState'
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -54,7 +55,6 @@ import {
   gameTypeConfig,
   slotMeta,
   voteSlots,
-  emptyAssignment,
   isAssignmentComplete,
   assignedCount,
   parseGameType,
@@ -77,7 +77,6 @@ import {
   isPairOneEachMode,
   isPairAssignmentValid,
   pairDisabledSlots,
-  assignPairSlot,
   isHotSeat,
   isCustomGame,
   isAnonymousMessagesGame,
@@ -196,7 +195,7 @@ import {
 import { useRoundTimer } from '@/hooks/useRoundTimer'
 import { useAutoSubmit } from '@/hooks/useAutoSubmit'
 import { HOT_SEAT_SUBMISSION_TYPES, hotSeatPlayerDisplayName } from '@/lib/hot-seat'
-import { panUsedNumbersFromVotes, pickANumberPoolSize, panRoundRevealed } from '@/lib/pick-a-number'
+import { pickANumberPoolSize, panRoundRevealed } from '@/lib/pick-a-number'
 import { PanRoundResults } from '@/components/game/PanRoundResults'
 import { SegmentedControl } from '@/components/ui/CreateWizard'
 import {
@@ -265,17 +264,6 @@ export function PollGamePlayerExperience({
 
   // Active round state
   const [currentRound, setCurrentRound] = useState<Round | null>(null)
-  const [assignment, setAssignment] = useState<VoteAssignment>(emptyAssignment())
-  const [pairAssignment, setPairAssignment] = useState<PairAssignmentMap>({})
-  const [wyrChoice, setWyrChoice] = useState<WyrChoice | null>(null)
-  const [pickedNumber, setPickedNumber] = useState<number | null>(null)
-  const [panUsedNumbers, setPanUsedNumbers] = useState<ReadonlySet<number>>(new Set())
-  const [mltTargetPlayerId, setMltTargetPlayerId] = useState<string | null>(null)
-  const [animeChoice, setAnimeChoice] = useState<string | null>(null)
-  const [submitted, setSubmitted] = useState(false)
-  const [customAssignments, setCustomAssignments] = useState<Record<string, string>>({})
-  const [confessionText, setConfessionText] = useState('')
-  const [confessionSent, setConfessionSent] = useState(false)
 
   const {
     hotSeatText, hotSeatType, hotSeatSubmitted, hotSeatSubmissions,
@@ -375,42 +363,35 @@ export function PollGamePlayerExperience({
       />
     ) : null
 
+  const customAssignmentsCallbackRef = useRef<((ca: Record<string, string>) => void) | undefined>(undefined)
   const { refs: autoSubmitRefs, triggerAutoSubmit } = useAutoSubmit(gameCode, {
-    onCustomAssignmentsChange: setCustomAssignments,
+    onCustomAssignmentsChange: (...args) => customAssignmentsCallbackRef.current?.(...args),
   })
   const {
-    assignmentRef,
-    pairAssignmentRef,
-    customAssignmentsRef,
-    wyrChoiceRef,
-    mltTargetPlayerIdRef: autoMltRef,
-    animeChoiceRef,
-    playersRef,
     currentRoundRef,
     gameRef,
     participantsRef,
     myPlayerIdRef,
     myPlayerGenderRef,
-    submittedRef,
-    pickedNumberRef,
-    panUsedNumbersRef,
   } = autoSubmitRefs
 
-  // Sync state → refs so auto-submit reads current values
-  assignmentRef.current = assignment
-  pairAssignmentRef.current = pairAssignment
-  customAssignmentsRef.current = customAssignments
-  wyrChoiceRef.current = wyrChoice
-  autoMltRef.current = mltTargetPlayerId
-  animeChoiceRef.current = animeChoice
-  pickedNumberRef.current = pickedNumber
-  panUsedNumbersRef.current = panUsedNumbers
-  playersRef.current = players
-  currentRoundRef.current = currentRound
-  gameRef.current = game
-  participantsRef.current = participants
-  myPlayerIdRef.current = myPlayerId
-  myPlayerGenderRef.current = myPlayerGender
+  const patchCurrentRound = (patch: Partial<Round>) => {
+    setCurrentRound((prev) => prev ? { ...prev, ...patch } : prev)
+  }
+
+  const {
+    assignment, pairAssignment, wyrChoice, pickedNumber, panUsedNumbers,
+    mltTargetPlayerId, animeChoice, customAssignments, submitted,
+    confessionText, confessionSent,
+    setAssignment, setPairAssignment, setWyrChoice, setPickedNumber,
+    setMltTargetPlayerId, setAnimeChoice, setCustomAssignments,
+    setSubmitted, setConfessionText, setPanUsedNumbers,
+    assign, handleSubmit, sendConfession, resetVoteState,
+  } = useVoteState({
+    gameCode, game, currentRound, myPlayerId, myPlayerGender, isViewer, view,
+    players, participants, autoSubmitRefs, patchCurrentRound,
+  })
+  customAssignmentsCallbackRef.current = setCustomAssignments
 
   const announcedRoundIdRef = useRef<string | null>(null)
   const suppressRoundSoundRef = useRef(true)
@@ -489,7 +470,7 @@ export function PollGamePlayerExperience({
                     kill: existingVote.kill_participant_id,
                   })
                 }
-                submittedRef.current = true
+                autoSubmitRefs.submittedRef.current = true
                 setSubmitted(true)
               }
             }
@@ -582,19 +563,9 @@ export function PollGamePlayerExperience({
   }
 
   function resetRoundPlayerState() {
-    submittedRef.current = false
-    setSubmitted(false)
-    setAssignment(emptyAssignment())
-    setPairAssignment({})
-    setWyrChoice(null)
-    setPickedNumber(null)
-    setMltTargetPlayerId(null)
-    setCustomAssignments({})
-    setAnimeChoice(null)
+    resetVoteState()
     setQuoteInput('')
     setQuoteAuthorParticipantId(null)
-    setConfessionText('')
-    setConfessionSent(false)
     resetHotSeatState()
   }
 
@@ -924,7 +895,7 @@ export function PollGamePlayerExperience({
     currentRound,
     active: view === 'round' && !!currentRound?.started_at && !!game,
     onExpire: () => {
-      if (submittedRef.current) return
+      if (autoSubmitRefs.submittedRef.current) return
 
       const roundGender = getRoundParticipantGender(
         currentRoundRef.current?.participant_ids ?? [],
@@ -947,7 +918,7 @@ export function PollGamePlayerExperience({
       if (canVote && (!isPanRound || isPanPicker)) {
         void triggerAutoSubmit().then((result) => {
           if (result.submitted) {
-            submittedRef.current = true
+            autoSubmitRefs.submittedRef.current = true
             setSubmitted(true)
             if (result.revealedQuestion && currentRoundRef.current) {
               setCurrentRound({ ...currentRoundRef.current, mlt_question: result.revealedQuestion })
@@ -961,47 +932,6 @@ export function PollGamePlayerExperience({
   })
 
   useTimerTickSound(timeLeft, view === 'round')
-
-  useEffect(() => {
-    if (!isPanGame || view !== 'round' || !currentRound?.id || !panRoundRevealed(currentRound)) return
-    const pickerId = currentRound.submitter_player_id
-    if (!pickerId || pickedNumber !== null) return
-    let cancelled = false
-    void supabase
-      .from('votes')
-      .select('picked_number')
-      .eq('round_id', currentRound.id)
-      .eq('player_id', pickerId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!cancelled && data?.picked_number) setPickedNumber(data.picked_number)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [isPanGame, view, currentRound?.id, currentRound?.mlt_question, currentRound?.submitter_player_id, pickedNumber])
-
-  useEffect(() => {
-    if (!isPanGame || view !== 'round' || !currentRound) {
-      setPanUsedNumbers(new Set())
-      return
-    }
-
-    let cancelled = false
-    ;(async () => {
-      const { data } = await supabase
-        .from('votes')
-        .select('picked_number, round_id')
-        .eq('game_id', gameCode)
-        .not('picked_number', 'is', null)
-      if (cancelled) return
-      setPanUsedNumbers(panUsedNumbersFromVotes(data ?? [], currentRound.id))
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [isPanGame, view, currentRound?.id, gameCode])
 
   // ── Apply theme CSS variables (same as host page) ─────────────────────────
   useEffect(() => {
@@ -1019,109 +949,6 @@ export function PollGamePlayerExperience({
     }
   }, [game?.theme])
 
-  // ── Actions ───────────────────────────────────────────────────────────────
-  const assign = (action: keyof VoteAssignment, participantId: string) => {
-    const gameType = parseGameType(game?.game_type)
-    if (isBinaryPeoplePollGame(gameType) && (action === 'kiss' || action === 'kill')) {
-      setPairAssignment((prev) => {
-        if (!game || !currentRound) return { ...prev, [participantId]: action }
-        return assignPairSlot(
-          prev,
-          participantId,
-          action,
-          currentRound.participant_ids,
-          parsePairVoteMode(game.pair_vote_mode)
-        )
-      })
-      return
-    }
-    setAssignment((prev) => {
-      const next = { ...prev }
-      // Clear this participant from any existing slot
-      ;(Object.keys(next) as (keyof VoteAssignment)[]).forEach((k) => {
-        if (next[k] === participantId) next[k] = null
-      })
-      next[action] = participantId
-      return next
-    })
-  }
-
-  const handleSubmit = async () => {
-    if (submittedRef.current || !currentRound || !myPlayerId || !game || isViewer) return
-    const submitGameType = parseGameType(game.game_type)
-    const roundIds = currentRound.participant_ids
-    if (
-      isBinaryPeoplePollGame(submitGameType) &&
-      !isPairAssignmentValid(pairAssignment, roundIds, parsePairVoteMode(game.pair_vote_mode))
-    ) {
-      return
-    }
-    if (isCustomGame(submitGameType)) {
-      const slotKeys = getCustomSlotKeys(game)
-      const customMode = customAssignmentMode(game, roundIds.length, slotKeys)
-      if (!isCustomAssignmentValid(customAssignments, roundIds, slotKeys, customMode)) return
-    }
-    if (isPickANumber(submitGameType)) {
-      if (!pickedNumber || panUsedNumbers.has(pickedNumber)) {
-        toast.error('Pick a number that has not been used yet')
-        return
-      }
-    }
-    const voteBody = isBinaryChoiceGame(submitGameType) || isNeverHaveIEver(submitGameType)
-      ? { wyrChoice }
-      : isPickANumber(submitGameType)
-        ? { pickedNumber }
-        : isMostLikelyTo(submitGameType)
-        ? isMltImportGame(game!)
-          ? { targetParticipantId: mltTargetPlayerId }
-          : { targetPlayerId: mltTargetPlayerId }
-        : isWhoSaidThis(submitGameType)
-          ? currentRound?.anime_metadata
-            ? { animeChoice: animeChoiceRef.current }
-            : { targetParticipantId: mltTargetPlayerId }
-          : isCustomGame(submitGameType)
-            ? { customAssignments }
-            : isBinaryPeoplePollGame(submitGameType)
-              ? {
-                  pairAssignments: Object.fromEntries(
-                    roundIds
-                      .map((id) => [id, pairAssignment[id]] as const)
-                      .filter((entry): entry is [string, 'kiss' | 'kill'] => entry[1] === 'kiss' || entry[1] === 'kill')
-                  ),
-                }
-              : {
-                  kiss: assignment.kiss,
-                  marry: isThreeChoiceGame(submitGameType) ? assignment.marry : null,
-                  kill: assignment.kill,
-                }
-    try {
-      const res = await fetch('/api/votes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playerId: myPlayerId,
-          roundId: currentRound.id,
-          gameId: gameCode,
-          ...voteBody,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast.error(typeof data.error === 'string' ? data.error : 'Failed to submit vote')
-        return
-      }
-      if (isPickANumber(submitGameType) && data.revealedQuestion && currentRound) {
-        setCurrentRound({ ...currentRound, mlt_question: data.revealedQuestion })
-        if (typeof data.pickedNumber === 'number') setPickedNumber(data.pickedNumber)
-      }
-      submittedRef.current = true
-      setSubmitted(true)
-      playVoteSubmittedSound()
-    } catch {
-      toast.error('Could not submit — try again')
-    }
-  }
-
   const sessionBar =
     myPlayerId && myPlayerName ? (
       <PlayerSessionBar
@@ -1138,17 +965,6 @@ export function PollGamePlayerExperience({
     ) : viewerBanner ? (
       <div className="mb-4">{viewerBanner}</div>
     ) : null
-
-  const sendConfession = async () => {
-    if (!confessionText.trim() || confessionSent) return
-    setConfessionSent(true)
-    const res = await fetch('/api/confessions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId: gameCode, roundId: currentRound?.id, text: confessionText }),
-    })
-    if (res.ok) playConfessionSound()
-  }
 
   // ── Render ────────────────────────────────────────────────────────────────
   if (view === 'loading') return <FullLoader />
