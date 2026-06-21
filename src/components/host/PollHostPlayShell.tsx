@@ -62,7 +62,7 @@ export function PollHostPlayShell({
             hostMode === 'player' ? (
               <p className="text-sm text-muted">
                 Open the <strong>Play</strong> tab to join and claim your spot before starting. After you join, use{' '}
-                <strong>Copy host+play link</strong> in the header to manage and play on another device.
+                <strong>Share</strong> in the header to manage and play on another device.
               </p>
             ) : undefined
           }

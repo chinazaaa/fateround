@@ -3,9 +3,7 @@
 import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
-import { ShareGameLinkButton } from '@/components/ShareGameLinkButton'
-import { ShareHostLinkButton } from '@/components/ShareHostLinkButton'
-import { ShareHostPlayerLinkButton } from '@/components/ShareHostPlayerLinkButton'
+import { GameShareMenu } from '@/components/GameShareMenu'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { SoundToggle } from '@/components/SoundToggle'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
@@ -24,12 +22,13 @@ export function GameHostChrome() {
         <FateRoundLogo className="h-8 w-auto max-w-[7.5rem] sm:max-w-[11rem]" />
       </Link>
       <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto shrink-0">
-        {hasHostPlayer ? (
-          <ShareHostPlayerLinkButton gameCode={code} hostToken={hostToken} resumeToken={resumeToken} />
-        ) : hostToken && code ? (
-          <ShareHostLinkButton gameCode={code} hostToken={hostToken} />
+        {code ? (
+          <GameShareMenu
+            gameCode={code}
+            hostToken={hostToken || undefined}
+            resumeToken={hasHostPlayer ? resumeToken : null}
+          />
         ) : null}
-        {code ? <ShareGameLinkButton gameCode={code} qrLabel="QR invite" /> : null}
         <SoundToggle variant="inline" />
         <ThemeToggle variant="inline" />
       </div>
