@@ -2,6 +2,7 @@
 
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
 import type { Player } from '@/types'
 
 type Props = {
@@ -53,6 +54,9 @@ export function GameLobbyWaitingPanel({
       {rulesLink ? <div className="text-center">{rulesLink}</div> : null}
       <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label={playerListLabel} />
       {activity}
+      <div className="flex justify-center pt-1">
+        <WhatsAppChannelLink />
+      </div>
     </div>
   )
 }

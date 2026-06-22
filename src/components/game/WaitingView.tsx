@@ -12,6 +12,7 @@ import type { Game, Participant, Player, WstQuotePoolEntry } from '@/types'
 import type { PlayerQuestion } from '@/hooks/queries/usePlayerQuestions'
 import type { UseMutationResult } from '@tanstack/react-query'
 import { leaveButtonClassName } from '@/components/ui/LeaveGameButton'
+import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
 
 interface WaitingViewProps {
   game: Game | null
@@ -532,7 +533,10 @@ export function WaitingView({
           Leave game
         </button>
       </div>
-      <p className="text-faint text-xs text-center">Keep this tab open</p>
+      <div className="flex flex-col items-center gap-2">
+        <WhatsAppChannelLink />
+        <p className="text-faint text-xs text-center">Keep this tab open</p>
+      </div>
     </CenteredCard>
   )
 }

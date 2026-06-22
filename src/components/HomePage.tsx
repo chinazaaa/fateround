@@ -7,6 +7,7 @@ import { GAME_TYPE_OPTIONS, HOMEPAGE_FEATURED_GAMES, gameTypeConfig } from '@/li
 import { gameLandingSlug } from '@/lib/game-landing'
 import { GameTypeModal } from '@/components/GameTypeModal'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
+import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
 import type { GameType } from '@/types'
 
 export function HomePage() {
@@ -128,6 +129,10 @@ export function HomePage() {
             </Link>
             <span aria-hidden>·</span>
             <span>No sign-up required</span>
+          </div>
+
+          <div className="shrink-0 flex justify-center pt-1">
+            <WhatsAppChannelLink />
           </div>
         </div>
       </div>
