@@ -38,6 +38,9 @@ export function GameLobbyWaitingPanel({
         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--primary)]">You&apos;re in</p>
         <h2 className="text-xl sm:text-2xl font-black">{title}</h2>
         {description ? <div className="text-muted text-sm leading-relaxed">{description}</div> : null}
+        <div className="flex justify-center pt-2">
+          <WhatsAppChannelLink />
+        </div>
       </div>
 
       {myPlayerId ? (
@@ -54,9 +57,6 @@ export function GameLobbyWaitingPanel({
       {rulesLink ? <div className="text-center">{rulesLink}</div> : null}
       <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label={playerListLabel} />
       {activity}
-      <div className="flex justify-center pt-1">
-        <WhatsAppChannelLink />
-      </div>
     </div>
   )
 }

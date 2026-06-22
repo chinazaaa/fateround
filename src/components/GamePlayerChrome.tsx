@@ -7,6 +7,7 @@ import { GameShareMenu } from '@/components/GameShareMenu'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { SoundToggle } from '@/components/SoundToggle'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
+import { WhatsAppHeaderIcon } from '@/components/WhatsAppChannelLink'
 
 export function GamePlayerChrome() {
   const params = useParams()
@@ -19,6 +20,7 @@ export function GamePlayerChrome() {
         <FateRoundLogo className="h-8 w-auto max-w-[7.5rem] sm:max-w-[11rem]" />
       </Link>
       <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto shrink-0">
+        <WhatsAppHeaderIcon />
         {code ? <GameShareMenu gameCode={code} resumeToken={resumeToken} /> : null}
         <SoundToggle variant="inline" />
         <ThemeToggle variant="inline" />
