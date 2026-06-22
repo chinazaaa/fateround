@@ -55,6 +55,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const {
     hostToken,
+    hostPlayerId,
     custom_questions: rawCustomQuestions,
     participants: rawParticipants,
     question_source,
@@ -255,6 +256,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { error: spectatorResetError } = await resetSpectatorsForLobby(supabase, gameId)
   if (spectatorResetError) return NextResponse.json({ error: spectatorResetError }, { status: 500 })
+
+  // Host-player is always auto-ready — they're already at the controls
+  if (hostPlayerId) {
+    await supabase
+      .from('players')
+      .update({ spectator: false })
+      .eq('id', hostPlayerId)
+      .eq('game_id', gameId)
+  }
 
   const { data: updated, error: gameError } = await supabase
     .from('games')

@@ -193,6 +193,7 @@ export const monopolyExtendTimeSchema = hostActionSchema.extend({
 })
 
 export const playAgainSchema = hostActionSchema.extend({
+  hostPlayerId: uuidString('hostPlayerId').optional(),
   custom_questions: z.array(z.unknown()).optional(),
   participants: z
     .array(

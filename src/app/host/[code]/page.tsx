@@ -913,7 +913,7 @@ export default function HostPage() {
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken, ...payload }),
+        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, ...payload }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -2454,15 +2454,24 @@ export default function HostPage() {
               <p className="text-faint text-sm">Waiting for people to join...</p>
             ) : (
               <div className="space-y-2 max-h-80 overflow-y-auto">
-                {filteredPlayers.map((player) => (
-                  <div
-                    key={player.id}
-                    className="surface-inset border border-theme rounded-xl px-3 py-2 flex items-center gap-2"
-                  >
-                    <Avatar name={player.name} size="sm" />
-                    <span className="text-body text-sm font-medium truncate flex-1">{player.name}</span>
-                  </div>
-                ))}
+                {filteredPlayers.map((player) => {
+                  const ready = player.spectator !== true
+                  const showReady = players.some((p) => p.spectator === true)
+                  return (
+                    <div
+                      key={player.id}
+                      className="surface-inset border border-theme rounded-xl px-3 py-2 flex items-center gap-2"
+                    >
+                      <Avatar name={player.name} size="sm" />
+                      <span className="text-body text-sm font-medium truncate flex-1">{player.name}</span>
+                      {showReady && (
+                        <span className={`text-sm font-bold shrink-0 ${ready ? 'text-emerald-500' : 'text-red-400'}`}>
+                          {ready ? '✓' : '✗'}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )
           ) : isJoinersMode ? (
@@ -2477,11 +2486,18 @@ export default function HostPage() {
                   if (!player) return null
                   const busy = adminBusy === part.id || adminBusy === player.id
                   const identity = resolvePlayerIdentity(player, participants)
+                  const ready = player.spectator !== true
+                  const showReady = players.some((pl) => pl.spectator === true)
                   return (
                     <div key={part.id} className="surface-inset border border-theme rounded-xl p-3 space-y-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <Avatar name={part.name} photoUrl={part.photo_url} size="sm" />
                         <span className="text-body text-sm font-medium truncate flex-1">{part.name}</span>
+                        {showReady && (
+                          <span className={`text-sm font-bold shrink-0 ${ready ? 'text-emerald-500' : 'text-red-400'}`}>
+                            {ready ? '✓' : '✗'}
+                          </span>
+                        )}
                         <button
                           type="button"
                           disabled={busy}
@@ -2540,6 +2556,8 @@ export default function HostPage() {
             <div className="space-y-2 max-h-52 overflow-y-auto">
               {filteredPlayers.map((p) => {
                 const identity = resolvePlayerIdentity(p, participants)
+                const ready = p.spectator !== true
+                const showReady = players.some((pl) => pl.spectator === true)
                 return (
                   <div
                     key={p.id}
@@ -2547,6 +2565,11 @@ export default function HostPage() {
                   >
                     <Avatar name={p.name} size="sm" />
                     <span className="text-body-muted text-sm truncate flex-1">{p.name}</span>
+                    {showReady && (
+                      <span className={`text-sm font-bold shrink-0 ${ready ? 'text-emerald-500' : 'text-red-400'}`}>
+                        {ready ? '✓' : '✗'}
+                      </span>
+                    )}
                     {gameGenderBased && (
                       <div className="flex gap-1 shrink-0">
                         {(['female', 'male'] as const).map((g) => (
