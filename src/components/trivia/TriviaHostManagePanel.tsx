@@ -281,17 +281,17 @@ export function TriviaHostManagePanel({
               </button>
             }
           >
+            <div className="glass-card-strong p-8 text-center space-y-2">
+              <p className="text-4xl">🏆</p>
+              <p className="text-2xl font-black">{leaderboard[0]?.name ?? 'Someone'} wins!</p>
+              <p className="text-muted text-base">{leaderboard[0]?.score ?? 0} points total</p>
+            </div>
             <PaginatedLeaderboard
               title="Final leaderboard"
               rows={leaderboard.map((row, i) => ({ ...row, rank: i + 1 }))}
               scoreLabel={(n) => `${n} pts`}
               totalQuestions={game.rounds_count ?? undefined}
             />
-            <div className="glass-card-strong p-8 text-center space-y-2">
-              <p className="text-4xl">🏆</p>
-              <p className="text-2xl font-black">{leaderboard[0]?.name ?? 'Someone'} wins!</p>
-              <p className="text-muted text-base">{leaderboard[0]?.score ?? 0} points total</p>
-            </div>
           </FinalResultsShareBlock>
         </>
       )}
