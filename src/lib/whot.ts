@@ -1017,7 +1017,7 @@ export async function processWhotExpireTurn(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands, rules } = await loadGameState(supabase, gameId)
+  const { session, hands, rules, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { skipped: true }
 
@@ -1028,11 +1028,30 @@ export async function processWhotExpireTurn(
   const currentId = currentPlayerId(session)
   if (!currentId) return { error: 'No current player' }
 
+  // If the current player has no cards (e.g., went out but session wasn't advanced due to a
+  // race condition or DB inconsistency), skip them and advance to the next active player.
+  const hand = handForPlayer(hands, currentId)
+  if (hand.length === 0) {
+    const nextIndex = whotNextTurnIndex(session, hands, session.current_turn_index, 1)
+    const nextId = session.turn_order[nextIndex]
+    if (!nextId || whotHandCount(hands, nextId) === 0) {
+      await finishWhotByLowestHand(supabase, gameId, session, hands, playerNames, 'Nobody left —')
+      return {}
+    }
+    const top = session.top_card
+    const matchHint = top ? ` — match ${cardLabel(top)}` : ''
+    await persistSession(supabase, gameId, {
+      current_turn_index: nextIndex,
+      phase: 'playing',
+      status_message: `${playerName(playerNames, nextId)}'s turn${matchHint}`,
+    }, timerSeconds)
+    return {}
+  }
+
   if (session.phase === 'choose_whot') {
     return processWhotChoose(supabase, gameId, currentId, { shape: 'circle' })
   }
 
-  const hand = handForPlayer(hands, currentId)
   if (hasPlayableCard(hand, session, rules)) {
     const playable = hand.filter((c) => canPlayCard(c, session, rules))
     const card = pickAutoPlayCard(playable)
