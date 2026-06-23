@@ -154,25 +154,28 @@ export function playerCanBuyProperty(state: Pick<MonopolyPlayerState, 'passed_go
 }
 
 export function movePosition(from: number, steps: number): { to: number; passedGo: boolean } {
-  const to = (from + steps) % MONOPOLY_BOARD_SIZE
-  const passedGo = from + steps >= MONOPOLY_BOARD_SIZE
+  const start = Number(from)
+  const delta = Number(steps)
+  const total = start + delta
+  const to = ((total % MONOPOLY_BOARD_SIZE) + MONOPOLY_BOARD_SIZE) % MONOPOLY_BOARD_SIZE
+  const passedGo = total >= MONOPOLY_BOARD_SIZE
   return { to, passedGo }
 }
 
-/** First time passing GO unlocks buying/cards but pays no salary; £200 from the second lap onward. */
+/** Passing or landing on GO while moving forward — collect salary and unlock buying/cards. */
 export function applyGoPass(
   cash: number,
-  passedGoOnce: boolean
+  _passedGoOnce: boolean
 ): { cash: number; passedGoOnce: boolean; collected: number } {
-  if (passedGoOnce) {
-    return { cash: cash + MONOPOLY_GO_SALARY, passedGoOnce: true, collected: MONOPOLY_GO_SALARY }
+  return {
+    cash: cash + MONOPOLY_GO_SALARY,
+    passedGoOnce: true,
+    collected: MONOPOLY_GO_SALARY,
   }
-  return { cash, passedGoOnce: true, collected: 0 }
 }
 
 function goPassStatusSuffix(collected: number): string {
-  if (collected > 0) return `Passed GO — collected ${formatMonopolyMoney(collected)}. `
-  return 'Passed GO — no salary on your first lap. '
+  return `Passed GO — collected ${formatMonopolyMoney(collected)}. `
 }
 
 export function nextTurnIndex(board: MonopolyBoard, states: MonopolyPlayerState[]): number {
@@ -1052,6 +1055,7 @@ export async function processMonopolyRoll(
         const goPass = applyGoPass(cash, passedGoOnce)
         cash = goPass.cash
         passedGoOnce = goPass.passedGoOnce
+        statusMessage += goPassStatusSuffix(goPass.collected)
       }
     } else if (jailTurns >= 3) {
       if (cash < MONOPOLY_JAIL_FINE) {
@@ -1094,6 +1098,7 @@ export async function processMonopolyRoll(
         const goPass = applyGoPass(cash, passedGoOnce)
         cash = goPass.cash
         passedGoOnce = goPass.passedGoOnce
+        statusMessage += goPassStatusSuffix(goPass.collected)
       }
     } else {
       const turnIndex = nextTurnIndex(board, states)
@@ -1287,14 +1292,11 @@ export async function processMonopolyRoll(
 
         if (effect.moveTo !== undefined) {
           position = effect.moveTo
-          const hadPassedGoOnce = passedGoOnce
           if (effect.passedGo) passedGoOnce = true
-          const salary = goSalaryForCard(card, effect.passedGo ?? false, hadPassedGoOnce)
+          const salary = goSalaryForCard(card, effect.passedGo ?? false)
           if (salary > 0) {
             cash += salary
             statusMessage += ` Collected ${formatMonopolyMoney(salary)}.`
-          } else if (effect.passedGo && !hadPassedGoOnce) {
-            statusMessage += ' Passed GO — no salary on your first lap.'
           }
           statusMessage += ` Now on ${spaceAt(position).name}.`
           const afterCard = resolveSpaceLanding(spaceAt(position), {
