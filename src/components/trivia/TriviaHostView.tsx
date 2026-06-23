@@ -234,7 +234,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
         const res = await fetch(`/api/games/${gameCode}/play-again`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ hostToken, ...payload }),
+          body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, ...payload }),
         })
         const data = await res.json()
         if (!res.ok) {
@@ -257,7 +257,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
         setPlayingAgain(false)
       }
     },
-    [gameCode, hostToken, load, success, toastError]
+    [gameCode, hostToken, hostPlayerId, load, success, toastError]
   )
 
   const saveLobbySettings = useCallback(

@@ -225,7 +225,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken }),
+        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to reset')
