@@ -38,7 +38,8 @@ export function effectivePlayerQuestionCount(
 export function lobbyPoolSourceLabel(game: Pick<Game, 'game_type' | 'question_source'>): string {
   const type = parseGameType(game.game_type)
   if (isPairGame(type) || isUnaryPollGame(type) || isThreeChoiceGame(type) || isCustomGame(type)) return 'Host list'
-  if (parseQuestionSource(game.question_source, type) === 'custom' || type === 'this_or_that') {
+  const src = parseQuestionSource(game.question_source, type)
+  if (src === 'custom' || src === 'library' || type === 'this_or_that') {
     return 'Uploaded'
   }
   return 'Platform'

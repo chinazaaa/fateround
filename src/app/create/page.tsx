@@ -256,6 +256,10 @@ function CreateGameInner() {
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
   const [customTriviaQuestions, setCustomTriviaQuestions] = useState<TriviaQuestion[]>([])
+  const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
+  const [libraryPackQuestions, setLibraryPackQuestions] = useState<unknown[]>([])
+  const [libraryPacks, setLibraryPacks] = useState<{ id: string; title: string; author_name: string; question_count: number }[]>([])
+  const [libraryPacksLoading, setLibraryPacksLoading] = useState(false)
   const [lobbyLimits, setLobbyLimits] = useState<GamePlayerLimitsMap | null>(null)
   const effectiveLimits = lobbyLimits ?? getCodeDefaultLimits()
 
@@ -267,6 +271,34 @@ function CreateGameInner() {
       })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (questionSource !== 'library') return
+    const gameTypeMap: Record<string, string> = {
+      would_you_rather: 'would_you_rather',
+      most_likely_to: 'most_likely_to',
+      trivia: 'trivia',
+    }
+    const gt = gameTypeMap[settings.game_type]
+    if (!gt) return
+    setLibraryPacksLoading(true)
+    fetch(`/api/library?game_type=${gt}`)
+      .then((r) => r.json())
+      .then((d) => setLibraryPacks(d.packs ?? []))
+      .finally(() => setLibraryPacksLoading(false))
+  }, [questionSource, settings.game_type])
+
+  const selectLibraryPack = async (id: string) => {
+    setSelectedPackId(id)
+    const res = await fetch(`/api/library/${id}`)
+    const data = await res.json()
+    if (data.pack?.questions) {
+      setLibraryPackQuestions(data.pack.questions)
+      if (isTriviaGame(settings.game_type)) setCustomTriviaQuestions(data.pack.questions as TriviaQuestion[])
+      else if (isWouldYouRather(settings.game_type)) setCustomWyrQuestions(data.pack.questions as WyrQuestion[])
+      else setCustomMltQuestions(data.pack.questions as string[])
+    }
+  }
 
   useEffect(() => {
     if (!lobbyLimits) return
@@ -376,6 +408,22 @@ function CreateGameInner() {
               : {}),
       }))
     }
+    const packParam = searchParams.get('pack')
+    if (packParam) {
+      setQuestionSource('library')
+      setSelectedPackId(packParam)
+      fetch(`/api/library/${packParam}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (!d.pack?.questions) return
+          const gt = d.pack.game_type
+          if (gt === 'trivia') setCustomTriviaQuestions(d.pack.questions as TriviaQuestion[])
+          else if (gt === 'would_you_rather') setCustomWyrQuestions(d.pack.questions as WyrQuestion[])
+          else setCustomMltQuestions(d.pack.questions as string[])
+          setLibraryPackQuestions(d.pack.questions)
+        })
+        .catch(() => {})
+    }
   }, [searchParams])
 
   const genderCounts = countByGender(participants)
@@ -434,7 +482,7 @@ function CreateGameInner() {
         ? customMltQuestions.length
         : 0
   const questionCap =
-    questionSource === 'custom' && customQuestionCount > 0
+    (questionSource === 'custom' || questionSource === 'library') && customQuestionCount > 0
       ? customQuestionCount
       : isTot
         ? customQuestionCount
@@ -468,7 +516,8 @@ function CreateGameInner() {
     (questionSource === 'platform' && !isTot && !isPan) ||
     (isPan && questionSource === 'platform') ||
     (isPan && questionSource === 'custom' && customQuestionCount >= PAN_MIN_POOL && customQuestionCount > 0) ||
-    (isLobbyQuestions && !isTot && !isPan && customQuestionCount >= settings.rounds_count && customQuestionCount > 0)
+    (isLobbyQuestions && !isTot && !isPan && customQuestionCount >= settings.rounds_count && customQuestionCount > 0) ||
+    (questionSource === 'library' && libraryPackQuestions.length >= settings.rounds_count && libraryPackQuestions.length > 0)
   const canCreateQuickLobby = !!settings.title.trim() && hasEnoughCustomQuestions
 
   const customSlotsValid =
@@ -491,7 +540,7 @@ function CreateGameInner() {
 
   useEffect(() => {
     if (isPan) return
-    if (questionSource === 'custom' && customQuestionCount > 0 && settings.rounds_count > customQuestionCount) {
+    if ((questionSource === 'custom' || questionSource === 'library') && customQuestionCount > 0 && settings.rounds_count > customQuestionCount) {
       setSettings((prev) => ({ ...prev, rounds_count: customQuestionCount }))
     }
   }, [customQuestionCount, questionSource, settings.rounds_count, isPan])
@@ -505,6 +554,8 @@ function CreateGameInner() {
     setCustomWyrQuestions([])
     setCustomMltQuestions([])
     setCustomTriviaQuestions([])
+    setSelectedPackId(null)
+    setLibraryPackQuestions([])
     setTriviaCategory('general')
     setQuestionsUploadError(null)
     if (isICallOnGame(type)) {
@@ -912,9 +963,9 @@ function CreateGameInner() {
         body: JSON.stringify({
           ...settings,
           rounds_count: isWst ? Math.max(participants.length, 2) : settings.rounds_count,
-          question_source: isTot ? 'custom' : isLobbyQuestions ? questionSource : 'platform',
+          question_source: isTot ? 'custom' : isLobbyQuestions ? (questionSource === 'library' ? 'custom' : questionSource) : 'platform',
           custom_questions:
-            isLobbyQuestions && (isTot || questionSource === 'custom')
+            isLobbyQuestions && (isTot || questionSource === 'custom' || questionSource === 'library')
               ? isWyr || isTot
                 ? customWyrQuestions
                 : isTrivia
@@ -1676,6 +1727,16 @@ function CreateGameInner() {
                           {customQuestionCount} custom questions loaded — up to {customQuestionCount} rounds.
                         </p>
                       )}
+                      {isLobbyQuestions && questionSource === 'library' && libraryPackQuestions.length === 0 && (
+                        <p className="text-faint text-xs mb-2">
+                          Select a library pack below to set how many rounds you can play.
+                        </p>
+                      )}
+                      {isLobbyQuestions && questionSource === 'library' && libraryPackQuestions.length > 0 && (
+                        <p className="text-faint text-xs mb-2">
+                          {libraryPackQuestions.length} library questions loaded — up to {libraryPackQuestions.length} rounds.
+                        </p>
+                      )}
                       {isLobbyQuestions && questionCap > 0 && (
                         <input
                           type="number"
@@ -1825,11 +1886,20 @@ function CreateGameInner() {
                         value={questionSource}
                         onChange={(v) => {
                           setQuestionSource(v)
+                          if (v === 'platform' || v === 'custom') {
+                            setSelectedPackId(null)
+                            setLibraryPackQuestions([])
+                          }
                           if (v === 'platform') {
                             setCustomWyrQuestions([])
                             setCustomMltQuestions([])
                             setCustomTriviaQuestions([])
                             setQuestionsUploadError(null)
+                          }
+                          if (v === 'library') {
+                            setCustomWyrQuestions([])
+                            setCustomMltQuestions([])
+                            setCustomTriviaQuestions([])
                           }
                         }}
                         options={questionSourceOptions(settings.game_type)}
@@ -1838,6 +1908,31 @@ function CreateGameInner() {
 
                     {questionCustomHint && (
                       <CustomContentAiTip hint={questionCustomHint} />
+                    )}
+
+                    {isLobbyQuestions && questionSource === 'library' && (
+                      <div className="space-y-3 pt-1">
+                        {libraryPacksLoading ? (
+                          <p className="text-muted text-sm">Loading packs…</p>
+                        ) : libraryPacks.length === 0 ? (
+                          <p className="text-muted text-sm">No approved packs for this game type yet.</p>
+                        ) : (
+                          libraryPacks.map((pack) => (
+                            <button
+                              key={pack.id}
+                              type="button"
+                              onClick={() => selectLibraryPack(pack.id)}
+                              className={`glass-card w-full p-4 text-left transition-all ${selectedPackId === pack.id ? 'border-[var(--primary)]' : ''}`}
+                            >
+                              <p className="font-medium text-sm">{pack.title}</p>
+                              <p className="text-muted text-xs mt-0.5">by {pack.author_name} · {pack.question_count} questions</p>
+                            </button>
+                          ))
+                        )}
+                        {selectedPackId && libraryPackQuestions.length > 0 && (
+                          <p className="text-xs text-muted">{libraryPackQuestions.length} questions loaded.</p>
+                        )}
+                      </div>
                     )}
 
                     {isLobbyQuestions && (isTot || questionSource === 'custom') && (

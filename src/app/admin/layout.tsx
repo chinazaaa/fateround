@@ -39,6 +39,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <AdminNavLink href="/admin/settings" active={pathname === '/admin/settings'}>
                 Game limits
               </AdminNavLink>
+              <AdminNavLink href="/admin/library" active={pathname === '/admin/library'}>
+                Library
+              </AdminNavLink>
             </nav>
           </div>
           <div className="flex items-center gap-3">
