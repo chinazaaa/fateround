@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { CodewordsMessage, CodewordsTeam, Player } from '@/types'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { stripBidiControls } from '@/lib/validation'
 
 type RawCodewordsMessage = Omit<CodewordsMessage, 'player_name'> & {
   players?: { name: string } | { name: string }[] | null
@@ -22,7 +23,8 @@ function normalizeMessage(row: RawCodewordsMessage, nameById: Map<string, string
   const { players: _players, ...rest } = row
   return {
     ...rest,
-    player_name: playerNameFromRow(row, nameById),
+    text: stripBidiControls(rest.text ?? ''),
+    player_name: stripBidiControls(playerNameFromRow(row, nameById)),
   }
 }
 

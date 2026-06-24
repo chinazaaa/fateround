@@ -11,6 +11,11 @@ function stripHtml(s: string): string {
   return s.replace(/<[^>]*>/g, '')
 }
 
+/** Strip Unicode bidi control characters that can mirror adjacent text in inline layouts. */
+export function stripBidiControls(s: string): string {
+  return s.replace(/[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
+}
+
 /** Zod transform: trim + strip HTML. */
 const sanitizedString = (min: number, max: number) =>
   z
@@ -740,7 +745,10 @@ export const codewordsEndTurnSchema = z.object({
 export const codewordsChatSchema = z.object({
   gameId: gameCodeString(),
   playerId: uuidString('playerId'),
-  text: sanitizedString(1, 200),
+  text: z
+    .string()
+    .transform((s) => stripBidiControls(stripHtml(s.trim())))
+    .pipe(z.string().min(1, 'Must be at least 1 character(s)').max(200, 'Must be at most 200 characters')),
 })
 
 // ---------------------------------------------------------------------------
@@ -890,4 +898,5 @@ export {
   themeEnum,
   timerSecondsEnum,
   stripHtml,
+  stripBidiControls,
 }

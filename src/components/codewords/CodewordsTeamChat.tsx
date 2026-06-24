@@ -61,6 +61,7 @@ export function CodewordsTeamChat({
 
       <div
         ref={feedRef}
+        dir="ltr"
         className="max-h-48 overflow-y-auto rounded-xl border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] p-3 space-y-2"
       >
         {loading ? (
@@ -68,13 +69,21 @@ export function CodewordsTeamChat({
         ) : messages.length === 0 ? (
           <p className="text-faint text-xs text-center py-4">Coordinate with your operatives here.</p>
         ) : (
-          messages.map((message) => (
-            <div key={message.id} className="text-sm leading-snug">
-              <span className="font-semibold text-[var(--foreground)]">{message.player_name}</span>
-              <span className="text-muted">: </span>
-              <span className="text-body-muted">{message.text}</span>
-            </div>
-          ))
+          messages.map((message) => {
+            const isMe = message.player_id === playerId
+            return (
+              <div
+                key={message.id}
+                dir="ltr"
+                className={`rounded-lg px-2.5 py-2 text-sm leading-snug [unicode-bidi:isolate] ${
+                  isMe ? 'bg-[var(--card-strong)]' : 'bg-transparent'
+                }`}
+              >
+                <p className="font-semibold text-[var(--foreground)] text-xs mb-0.5">{message.player_name}</p>
+                <p className="text-body-muted break-words">{message.text}</p>
+              </div>
+            )
+          })
         )}
       </div>
 
@@ -87,11 +96,13 @@ export function CodewordsTeamChat({
       >
         <input
           type="text"
+          dir="ltr"
+          autoComplete="off"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Message your team…"
           maxLength={200}
-          className="input-field flex-1 min-w-0 w-0 py-2.5 text-sm"
+          className="input-field flex-1 min-w-0 w-0 py-2.5 text-sm text-left"
         />
         <button
           type="submit"

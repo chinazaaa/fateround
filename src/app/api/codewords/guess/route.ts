@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { codewordsGuessSchema } from '@/lib/validation'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
-import { cluePhaseUpdate, effectiveTurnPhase, finishCodewordsGame, otherTeam, teamWon } from '@/lib/codewords'
+import { cluePhaseUpdate, effectiveTurnPhase, finishCodewordsGame, otherTeam, winnerFromRevealedBoard } from '@/lib/codewords'
 import type { CodewordsBoard, CodewordsCellType, CodewordsTeam } from '@/types'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -74,27 +74,27 @@ export async function POST(req: NextRequest) {
       current_clue_number: null,
     }
     gameStatus = 'finished'
-  } else if (cellType === team) {
-    const won = teamWon(key, revealed, team)
-    if (won) {
+  } else {
+    const completedWinner = winnerFromRevealedBoard(key, revealed)
+    if (completedWinner) {
       update = {
         ...update,
-        winner: team,
+        winner: completedWinner,
         guesses_remaining: null,
         current_clue_word: null,
         current_clue_number: null,
       }
       gameStatus = 'finished'
-    } else {
+    } else if (cellType === team) {
       const remaining = typedBoard.guesses_remaining - 1
       if (remaining <= 0) {
         update = { ...update, ...endTeamTurn(typedBoard) }
       } else {
         update = { ...update, guesses_remaining: remaining }
       }
+    } else {
+      update = { ...update, ...endTeamTurn(typedBoard) }
     }
-  } else {
-    update = { ...update, ...endTeamTurn(typedBoard) }
   }
 
   const { data: updated, error } = await supabase

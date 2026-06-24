@@ -121,6 +121,13 @@ export function teamWon(key: CodewordsCellType[], revealed: number[], team: Code
   return countRevealedTeamCells(key, revealed, team) >= countTeamCells(key, team)
 }
 
+/** First team with all words revealed wins — regardless of who revealed the last word. */
+export function winnerFromRevealedBoard(key: CodewordsCellType[], revealed: number[]): CodewordsTeam | null {
+  if (teamWon(key, revealed, 'red')) return 'red'
+  if (teamWon(key, revealed, 'blue')) return 'blue'
+  return null
+}
+
 export function otherTeam(team: CodewordsTeam): CodewordsTeam {
   return team === 'red' ? 'blue' : 'red'
 }
