@@ -39,9 +39,9 @@ export function HomePage() {
       </header>
 
       <div className="relative z-10 flex flex-col items-center px-4 pt-11 sm:pt-12 lg:pt-14 pb-2 lg:pb-6 lg:min-h-[calc(100dvh-3.75rem)] lg:justify-center">
-        <div className="w-full max-w-sm lg:max-w-4xl flex flex-col gap-2 sm:gap-2.5 lg:grid lg:grid-cols-2 lg:gap-x-10 lg:gap-y-3 lg:items-start">
-          <div className="text-center lg:text-left space-y-1 shrink-0 lg:col-start-1 lg:row-start-1">
-            <h1 className="text-[1.875rem] sm:text-[2.25rem] lg:text-[2.5rem] font-black tracking-tighter leading-[0.92] gradient-title">
+        <div className="w-full max-w-sm lg:max-w-4xl flex flex-col gap-2 sm:gap-2.5 lg:grid lg:grid-cols-2 lg:gap-x-10 lg:gap-y-5 lg:items-start">
+          <div className="text-center lg:text-left space-y-2.5 lg:space-y-4 shrink-0 lg:col-start-1 lg:row-start-1 lg:pb-2">
+            <h1 className="text-[1.875rem] sm:text-[2.25rem] lg:text-[2.5rem] font-black tracking-tighter leading-[0.95] lg:leading-[1.02] gradient-title">
               Vote.
               <br />
               Laugh.
@@ -49,12 +49,12 @@ export function HomePage() {
               Reveal.
             </h1>
 
-            <p className="text-muted text-xs sm:text-sm leading-snug max-w-xs mx-auto lg:mx-0">
+            <p className="text-muted text-xs sm:text-sm lg:text-[0.9375rem] leading-relaxed max-w-xs mx-auto lg:mx-0">
               {GAME_TYPE_OPTIONS.length} game modes, one link. Create a room, share the code, and let the chaos begin.
             </p>
           </div>
 
-          <div className="glass-card-strong p-3 sm:p-4 space-y-2 shrink-0 lg:col-start-1 lg:row-start-2">
+          <div className="glass-card-strong p-3.5 sm:p-4 lg:p-5 space-y-2.5 lg:space-y-3.5 shrink-0 lg:col-start-1 lg:row-start-2 lg:mt-1">
             <button type="button" onClick={() => startCreate()} className="btn-primary">
               Create a Game
             </button>
