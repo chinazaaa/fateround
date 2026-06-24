@@ -898,5 +898,4 @@ export {
   themeEnum,
   timerSecondsEnum,
   stripHtml,
-  stripBidiControls,
 }
