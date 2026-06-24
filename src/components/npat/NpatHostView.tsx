@@ -33,6 +33,7 @@ import { GAME_SELECT, NPAT_ANSWER_SELECT, NPAT_MARK_SELECT, PLAYER_SELECT, ROUND
 import { appOrigin } from '@/lib/site'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import type { Game, NpatAnswer, NpatMark, Player, Round } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'

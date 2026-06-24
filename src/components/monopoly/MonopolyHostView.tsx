@@ -30,6 +30,7 @@ import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import {
   clearPlayerSession,
   getPlayerSession,

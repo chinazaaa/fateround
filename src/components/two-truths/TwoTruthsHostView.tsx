@@ -21,6 +21,7 @@ import {
 import { appOrigin } from '@/lib/site'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import type { Game, Player, Round, TtlGuess, TtlStatement } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
