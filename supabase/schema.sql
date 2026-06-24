@@ -298,3 +298,105 @@ ALTER TABLE games ADD COLUMN IF NOT EXISTS gender_based boolean NOT NULL DEFAULT
 -- alter table games add column if not exists gender_based boolean not null default true;
 -- alter table games drop constraint if exists games_game_type_check;
 -- alter table games add constraint games_game_type_check check (game_type in ('smash_marry_kill', 'red_flag_green_flag', 'smash_or_pass', 'would_you_rather', 'most_likely_to', 'who_said_this', 'hot_seat', 'custom'));
+
+-- ============================================================================
+-- Game Rooms — schema additions
+-- ============================================================================
+
+-- Persistent friend group rooms
+create table if not exists rooms (
+  id text primary key,
+  name text not null,
+  creator_token text not null default '',
+  max_members integer,
+  is_public boolean not null default false,
+  is_locked boolean not null default false,
+  description text,
+  timezone text,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_rooms_public on rooms(is_public, created_at desc) where is_public = true and is_locked = false;
+
+-- Room members with persistent identity (no auth — member_code is their key)
+create table if not exists room_members (
+  id uuid primary key default gen_random_uuid(),
+  room_id text not null references rooms(id) on delete cascade,
+  member_code text not null unique,
+  display_name text not null,
+  joined_at timestamptz not null default now(),
+  times_kissed integer not null default 0,
+  times_married integer not null default 0,
+  times_killed integer not null default 0,
+  games_played integer not null default 0,
+  room_points integer not null default 0
+);
+create index if not exists idx_room_members_room_id on room_members(room_id);
+create unique index if not exists idx_room_members_code on room_members(member_code);
+
+-- Links a game session to a room (for history + stat tracking)
+create table if not exists room_games (
+  id uuid primary key default gen_random_uuid(),
+  room_id text not null references rooms(id) on delete cascade,
+  game_id text not null references games(id) on delete cascade,
+  started_by_member_id uuid references room_members(id) on delete set null,
+  created_at timestamptz not null default now(),
+  points_awarded_at timestamptz
+);
+create index if not exists idx_room_games_room_id on room_games(room_id);
+create unique index if not exists idx_room_games_game_id on room_games(game_id);
+
+-- Room chat messages (last 50 shown; older rows can be pruned)
+create table if not exists room_messages (
+  id uuid primary key default gen_random_uuid(),
+  room_id text not null references rooms(id) on delete cascade,
+  member_id uuid references room_members(id) on delete set null,
+  display_name text not null,
+  text text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_room_messages_room_id_created on room_messages(room_id, created_at desc);
+
+-- Row Level Security
+alter table rooms enable row level security;
+alter table room_members enable row level security;
+alter table room_games enable row level security;
+alter table room_messages enable row level security;
+
+create policy "public_rooms"         on rooms         for all to anon using (true) with check (true);
+create policy "public_room_members"  on room_members  for all to anon using (true) with check (true);
+create policy "public_room_games"    on room_games    for all to anon using (true) with check (true);
+create policy "public_room_messages" on room_messages for all to anon using (true) with check (true);
+
+-- Enable Realtime
+alter publication supabase_realtime add table rooms;
+alter publication supabase_realtime add table room_members;
+alter publication supabase_realtime add table room_games;
+alter publication supabase_realtime add table room_messages;
+
+-- If upgrading an existing database, run the following:
+-- create table if not exists rooms ( id text primary key, name text not null, created_at timestamptz not null default now() );
+-- create table if not exists room_members ( id uuid primary key default gen_random_uuid(), room_id text not null references rooms(id) on delete cascade, member_code text not null unique, display_name text not null, joined_at timestamptz not null default now(), times_kissed integer not null default 0, times_married integer not null default 0, times_killed integer not null default 0, games_played integer not null default 0, room_points integer not null default 0 );
+-- alter table room_members add column if not exists room_points integer not null default 0;
+-- alter table room_games add column if not exists points_awarded_at timestamptz;
+-- alter table players add column if not exists room_member_id uuid references room_members(id) on delete set null;
+-- create index if not exists idx_room_members_room_id on room_members(room_id);
+-- create unique index if not exists idx_room_members_code on room_members(member_code);
+-- create table if not exists room_games ( id uuid primary key default gen_random_uuid(), room_id text not null references rooms(id) on delete cascade, game_id text not null references games(id) on delete cascade, started_by_member_id uuid references room_members(id) on delete set null, created_at timestamptz not null default now() );
+-- create index if not exists idx_room_games_room_id on room_games(room_id);
+-- create unique index if not exists idx_room_games_game_id on room_games(game_id);
+-- create table if not exists room_messages ( id uuid primary key default gen_random_uuid(), room_id text not null references rooms(id) on delete cascade, member_id uuid references room_members(id) on delete set null, display_name text not null, text text not null, created_at timestamptz not null default now() );
+-- create index if not exists idx_room_messages_room_id_created on room_messages(room_id, created_at desc);
+-- alter table rooms enable row level security;
+-- alter table room_members enable row level security;
+-- alter table room_games enable row level security;
+-- alter table room_messages enable row level security;
+-- create policy "public_rooms" on rooms for all to anon using (true) with check (true);
+-- create policy "public_room_members" on room_members for all to anon using (true) with check (true);
+-- create policy "public_room_games" on room_games for all to anon using (true) with check (true);
+-- create policy "public_room_messages" on room_messages for all to anon using (true) with check (true);
+-- alter publication supabase_realtime add table rooms;
+-- alter publication supabase_realtime add table room_members;
+-- alter publication supabase_realtime add table room_games;
+-- alter publication supabase_realtime add table room_messages;
+-- alter table rooms add column if not exists creator_token text not null default '';
+-- alter table rooms add column if not exists max_members integer;

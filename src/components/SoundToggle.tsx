@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
+import { isRoomLobbyPath } from '@/lib/room-routes'
 import { isSoundMuted, SOUND_MUTED_STORAGE_KEY, stopTimerMusic, unlockAudio } from '@/lib/sounds'
 
 type SoundToggleProps = {
@@ -18,7 +19,8 @@ export function SoundToggle({ variant = 'fixed', className = '' }: SoundTogglePr
   }, [])
 
   const onGamePage = /^\/(game|host)\/[^/]+/.test(pathname ?? '')
-  if (variant === 'fixed' && onGamePage) return null
+  const onRoomPage = isRoomLobbyPath(pathname)
+  if (variant === 'fixed' && (onGamePage || onRoomPage)) return null
 
   const toggle = () => {
     const next = !muted

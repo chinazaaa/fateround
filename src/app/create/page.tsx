@@ -1033,6 +1033,15 @@ function CreateGameInner() {
       if (data.gameCode) {
         setResult(data)
         setStep('done')
+        const roomParam = searchParams.get('room')
+        const memberParam = searchParams.get('member')
+        if (roomParam) {
+          fetch(`/api/rooms/${roomParam}/games`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gameCode: data.gameCode, memberCode: memberParam ?? '' }),
+          }).catch(() => {})
+        }
       } else {
         toast.error(data.error || 'Failed to create game')
       }
@@ -2541,6 +2550,16 @@ function CreateGameInner() {
       <PrimaryBtn onClick={() => router.push(`/host/${result?.gameCode}?token=${result?.hostToken}`)}>
         Open Host Panel →
       </PrimaryBtn>
+
+      {searchParams.get('room') && (
+        <button
+          type="button"
+          onClick={() => router.push(`/room/${searchParams.get('room')}`)}
+          className="btn-secondary w-full"
+        >
+          ← Back to Room
+        </button>
+      )}
 
       <p className="text-faint text-xs text-center">The host link won&apos;t be shown again</p>
     </GameJoinLobbyShell>

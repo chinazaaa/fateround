@@ -272,6 +272,7 @@ export const createPlayerSchema = z.object({
   participantId: uuidString('participantId').nullish(),
   joinAsViewer: z.boolean().optional(),
   monopolyToken: z.enum(MONOPOLY_TOKEN_ID_LIST as [string, ...string[]]).optional(),
+  roomMemberCode: z.string().trim().toUpperCase().max(12).optional(),
 })
 
 export type CreatePlayerInput = z.infer<typeof createPlayerSchema>

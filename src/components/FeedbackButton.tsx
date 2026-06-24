@@ -1,6 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { isRoomLobbyPath } from '@/lib/room-routes'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Chip, Field, PrimaryBtn } from '@/components/ui/PageShell'
@@ -192,7 +193,7 @@ export function FeedbackButton() {
     e.currentTarget.releasePointerCapture(e.pointerId)
   }
 
-  if (pathname.startsWith('/admin')) return null
+  if (pathname.startsWith('/admin') || isRoomLobbyPath(pathname)) return null
 
   return (
     <>

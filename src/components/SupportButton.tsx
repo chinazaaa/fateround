@@ -1,6 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { isRoomLobbyPath } from '@/lib/room-routes'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { PrimaryBtn } from '@/components/ui/PageShell'
@@ -125,7 +126,7 @@ export function SupportButton() {
     e.currentTarget.releasePointerCapture(e.pointerId)
   }
 
-  if (!url || pathname.startsWith('/admin')) return null
+  if (!url || pathname.startsWith('/admin') || isRoomLobbyPath(pathname)) return null
 
   return (
     <>

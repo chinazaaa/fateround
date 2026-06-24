@@ -38,10 +38,10 @@ export function HomePage() {
         </Link>
       </header>
 
-      <div className="relative z-10 flex flex-col items-center px-4 pt-11 sm:pt-12 pb-2">
-        <div className="w-full max-w-sm flex flex-col gap-2 sm:gap-2.5">
-          <div className="text-center space-y-1 shrink-0">
-            <h1 className="text-[1.875rem] sm:text-[2.25rem] font-black tracking-tighter leading-[0.92] gradient-title">
+      <div className="relative z-10 flex flex-col items-center px-4 pt-11 sm:pt-12 lg:pt-14 pb-2 lg:pb-6 lg:min-h-[calc(100dvh-3.75rem)] lg:justify-center">
+        <div className="w-full max-w-sm lg:max-w-4xl flex flex-col gap-2 sm:gap-2.5 lg:grid lg:grid-cols-2 lg:gap-x-10 lg:gap-y-5 lg:items-start">
+          <div className="text-center lg:text-left space-y-2.5 lg:space-y-4 shrink-0 lg:col-start-1 lg:row-start-1 lg:pb-2">
+            <h1 className="text-[1.875rem] sm:text-[2.25rem] lg:text-[2.5rem] font-black tracking-tighter leading-[0.95] lg:leading-[1.02] gradient-title">
               Vote.
               <br />
               Laugh.
@@ -49,12 +49,12 @@ export function HomePage() {
               Reveal.
             </h1>
 
-            <p className="text-muted text-xs sm:text-sm leading-snug max-w-xs mx-auto">
+            <p className="text-muted text-xs sm:text-sm lg:text-[0.9375rem] leading-relaxed max-w-xs mx-auto lg:mx-0">
               {GAME_TYPE_OPTIONS.length} game modes, one link. Create a room, share the code, and let the chaos begin.
             </p>
           </div>
 
-          <div className="glass-card-strong p-3 sm:p-4 space-y-2 shrink-0">
+          <div className="glass-card-strong p-3.5 sm:p-4 lg:p-5 space-y-2.5 lg:space-y-3.5 shrink-0 lg:col-start-1 lg:row-start-2 lg:mt-1">
             <button type="button" onClick={() => startCreate()} className="btn-primary">
               Create a Game
             </button>
@@ -88,8 +88,20 @@ export function HomePage() {
             </div>
           </div>
 
-          <div className="space-y-1.5 shrink-0">
-            <p className="label-caps text-center text-[10px] sm:text-xs">Popular games</p>
+          <Link
+            href="/rooms"
+            className="glass-card glass-card-interactive flex items-center gap-3 p-3 sm:p-3.5 no-underline shrink-0 lg:col-start-2 lg:row-start-1"
+          >
+            <span className="text-2xl shrink-0">🏠</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-body">Game Rooms</p>
+              <p className="text-[11px] sm:text-xs text-faint leading-snug">Permanent space for your crew — chat, leaderboard &amp; multiple games</p>
+            </div>
+            <span className="text-faint text-sm shrink-0">→</span>
+          </Link>
+
+          <div className="space-y-1.5 shrink-0 lg:col-start-2 lg:row-start-2">
+            <p className="label-caps text-center lg:text-left text-[10px] sm:text-xs">Popular games</p>
             <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
               {featuredTypes.map((type) => {
                 const cfg = gameTypeConfig(type)
@@ -122,7 +134,7 @@ export function HomePage() {
             </Link>
           </div>
 
-          <div className="shrink-0 flex flex-wrap items-center justify-center gap-x-3 sm:gap-x-4 gap-y-1 text-[11px] sm:text-xs text-faint pt-0.5">
+          <div className="shrink-0 flex flex-wrap items-center justify-center lg:justify-start gap-x-3 sm:gap-x-4 gap-y-1 text-[11px] sm:text-xs text-faint pt-0.5 lg:col-start-1 lg:row-start-3">
             <button
               type="button"
               onClick={() => router.push('/history')}
@@ -131,6 +143,10 @@ export function HomePage() {
               Game history
             </button>
             <span aria-hidden>·</span>
+            <Link href="/rooms" className="hover:text-[var(--foreground)] transition-colors">
+              Game Rooms
+            </Link>
+            <span aria-hidden>·</span>
             <Link href="/updates" className="hover:text-[var(--foreground)] transition-colors">
               What&apos;s new
             </Link>
@@ -138,7 +154,7 @@ export function HomePage() {
             <span>No sign-up required</span>
           </div>
 
-          <div className="shrink-0 flex justify-center pt-1">
+          <div className="shrink-0 flex justify-center lg:justify-start pt-1 lg:col-start-1 lg:row-start-4">
             <WhatsAppChannelLink />
           </div>
         </div>
