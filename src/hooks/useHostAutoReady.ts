@@ -10,7 +10,7 @@ export function useHostAutoReady(
   gameStatus: GameStatus | undefined,
   hostPlayerId: string | null,
   players: Pick<Player, 'id' | 'spectator'>[],
-  onReload?: () => void | Promise<void>
+  onReload?: () => void | Promise<unknown>
 ): void {
   const onReloadRef = useRef(onReload)
   onReloadRef.current = onReload
