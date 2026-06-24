@@ -18,6 +18,7 @@ import {
   type RoomGame,
 } from '@/components/rooms/room-game-display'
 import { gamePathWithRoomMember } from '@/lib/room-member-join'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 
 type Room = { id: string; name: string; created_at: string }
 
@@ -152,10 +153,8 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
   const [newGameBanner, setNewGameBanner] = useState<RoomGame | null>(null)
   const [copySuccess, setCopySuccess] = useState<'room' | 'member' | null>(null)
   const [creatorToken, setCreatorToken] = useState<string | null>(null)
-  const [confirm, setConfirm] = useState<
-    { type: 'end' } | { type: 'remove'; memberId: string; name: string } | null
-  >(null)
   const router = useRouter()
+  const { confirm } = useConfirm()
 
   const refreshGames = useCallback(() => {
     fetch(`/api/rooms/${roomCode}/games`)
@@ -316,28 +315,44 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
     })
   }, [roomCode, identity])
 
-  const confirmAction = useCallback(async () => {
-    if (!confirm || !creatorToken) return
-    if (confirm.type === 'remove') {
-      await fetch(`/api/rooms/${roomCode}/members/${confirm.memberId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creatorToken }),
-      })
-    } else {
-      const res = await fetch(`/api/rooms/${roomCode}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creatorToken }),
-      })
-      if (res.ok) {
-        localStorage.removeItem(CREATOR_KEY(roomCode))
-        localStorage.removeItem(MEMBER_KEY(roomCode))
-        router.push('/rooms')
-      }
+  const endRoom = useCallback(async () => {
+    if (!creatorToken) return
+    const ok = await confirm({
+      title: 'End this room?',
+      message: 'This will permanently delete the room, all chat messages, and the leaderboard for everyone.',
+      confirmLabel: 'End room',
+      destructive: true,
+    })
+    if (!ok) return
+
+    const res = await fetch(`/api/rooms/${roomCode}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creatorToken }),
+    })
+    if (res.ok) {
+      localStorage.removeItem(CREATOR_KEY(roomCode))
+      localStorage.removeItem(MEMBER_KEY(roomCode))
+      router.push('/rooms')
     }
-    setConfirm(null)
   }, [confirm, creatorToken, roomCode, router])
+
+  const removeMember = useCallback(async (memberId: string, name: string) => {
+    if (!creatorToken) return
+    const ok = await confirm({
+      title: `Remove ${name}?`,
+      message: 'They will be removed from the room and their stats will be deleted.',
+      confirmLabel: 'Remove',
+      destructive: true,
+    })
+    if (!ok) return
+
+    await fetch(`/api/rooms/${roomCode}/members/${memberId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creatorToken }),
+    })
+  }, [confirm, creatorToken, roomCode])
 
   const copyText = (text: string, which: 'room' | 'member') => {
     navigator.clipboard.writeText(text)
@@ -476,7 +491,7 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
                 name={m.display_name}
                 online
                 isYou={m.id === identity?.memberId}
-                onRemove={creatorToken ? () => setConfirm({ type: 'remove', memberId: m.id, name: m.display_name }) : undefined}
+                onRemove={creatorToken ? () => void removeMember(m.id, m.display_name) : undefined}
               />
             ))}
             {offlineMembers.map((m) => (
@@ -485,20 +500,24 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
                 name={m.display_name}
                 online={false}
                 isYou={m.id === identity?.memberId}
-                onRemove={creatorToken ? () => setConfirm({ type: 'remove', memberId: m.id, name: m.display_name }) : undefined}
+                onRemove={creatorToken ? () => void removeMember(m.id, m.display_name) : undefined}
               />
             ))}
           </div>
 
-          <div className="p-4 border-t border-[var(--border)] space-y-2">
-            <Link href={startGameHref} className="btn-primary text-sm py-2.5" {...OPEN_IN_NEW_TAB}>
+          <div className="p-4 border-t border-[var(--border)] flex flex-col gap-2">
+            <Link
+              href={startGameHref}
+              className="btn-primary w-full text-sm py-2.5 text-center !flex justify-center"
+              {...OPEN_IN_NEW_TAB}
+            >
               Start a Game
             </Link>
             {creatorToken && (
               <button
                 type="button"
-                onClick={() => setConfirm({ type: 'end' })}
-                className="w-full text-xs text-faint hover:text-red-400 transition-colors py-1"
+                onClick={() => void endRoom()}
+                className="w-full rounded-xl border border-red-500/30 bg-red-500/5 text-red-400 text-sm font-semibold py-2.5 hover:bg-red-500/10 transition-colors"
               >
                 End room
               </button>
@@ -509,15 +528,28 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
         {/* Main area */}
         <main className="flex-1 flex flex-col min-h-0 min-w-0">
           {/* Mobile room bar */}
-          <div className="lg:hidden shrink-0 border-b border-[var(--border)] bg-[var(--surface)]/40 px-4 py-3 space-y-2.5">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <h1 className="font-black text-base text-body truncate">{room?.name}</h1>
-                <p className="text-xs text-faint mt-0.5">{memberCountLabel}</p>
-              </div>
-              <Link href={startGameHref} className="btn-primary btn-fit shrink-0 px-4 py-2 text-sm" {...OPEN_IN_NEW_TAB}>
+          <div className="lg:hidden shrink-0 border-b border-[var(--border)] bg-[var(--surface)]/40 px-4 py-3 space-y-3">
+            <div className="min-w-0">
+              <h1 className="font-black text-base text-body truncate">{room?.name}</h1>
+              <p className="text-xs text-faint mt-0.5">{memberCountLabel}</p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Link
+                href={startGameHref}
+                className="btn-primary w-full text-sm py-2.5 text-center !flex justify-center"
+                {...OPEN_IN_NEW_TAB}
+              >
                 Start a Game
               </Link>
+              {creatorToken && (
+                <button
+                  type="button"
+                  onClick={() => void endRoom()}
+                  className="w-full rounded-xl border border-red-500/30 bg-red-500/5 text-red-400 text-sm font-semibold py-2.5 hover:bg-red-500/10 transition-colors"
+                >
+                  End room
+                </button>
+              )}
             </div>
             {members.length > 0 && (
               <div className="flex gap-2 overflow-x-auto pb-0.5 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -588,46 +620,6 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
       {/* Member code reminder — shown once */}
       {identity && status === 'ready' && (
         <MemberCodeReminder memberCode={identity.memberCode} displayName={identity.displayName} />
-      )}
-
-      {/* Confirm dialog */}
-      {confirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-          onClick={() => setConfirm(null)}
-        >
-          <div
-            className="glass-card-strong w-full max-w-xs p-5 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="space-y-1">
-              <p className="font-bold text-body">
-                {confirm.type === 'end' ? 'End this room?' : `Remove ${confirm.name}?`}
-              </p>
-              <p className="text-sm text-muted">
-                {confirm.type === 'end'
-                  ? 'This will permanently delete the room, all chat messages, and the leaderboard for everyone.'
-                  : 'They will be removed from the room and their stats will be deleted.'}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={confirmAction}
-                className="flex-1 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-semibold py-2.5 hover:bg-red-500/20 transition-colors"
-              >
-                {confirm.type === 'end' ? 'End room' : 'Remove'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirm(null)}
-                className="flex-1 btn-secondary text-sm py-2.5"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </>
   )

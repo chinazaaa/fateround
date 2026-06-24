@@ -1,6 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { isRoomLobbyPath } from '@/lib/room-routes'
 import { useTheme } from './ThemeProvider'
 
 type ThemeToggleProps = {
@@ -14,7 +15,7 @@ export function ThemeToggle({ variant = 'fixed', className = '' }: ThemeTogglePr
   const isDark = theme === 'dark'
 
   const onGamePlayerPage = /^\/game\/[^/]+/.test(pathname ?? '')
-  const onRoomPage = /^\/room\/[^/]+/.test(pathname ?? '')
+  const onRoomPage = isRoomLobbyPath(pathname)
   if (variant === 'fixed' && (onGamePlayerPage || onRoomPage)) return null
 
   const positionClass = variant === 'fixed' ? 'fixed top-4 right-4 z-50' : 'shrink-0'
