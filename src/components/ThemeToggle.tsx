@@ -14,7 +14,8 @@ export function ThemeToggle({ variant = 'fixed', className = '' }: ThemeTogglePr
   const isDark = theme === 'dark'
 
   const onGamePlayerPage = /^\/game\/[^/]+/.test(pathname ?? '')
-  if (variant === 'fixed' && onGamePlayerPage) return null
+  const onRoomPage = /^\/room\/[^/]+/.test(pathname ?? '')
+  if (variant === 'fixed' && (onGamePlayerPage || onRoomPage)) return null
 
   const positionClass = variant === 'fixed' ? 'fixed top-4 right-4 z-50' : 'shrink-0'
 

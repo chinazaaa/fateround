@@ -9,17 +9,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
 
   const { data: members, error } = await supabase
     .from('room_members')
-    .select('id, display_name, times_kissed, times_married, times_killed, games_played')
+    .select('id, display_name, games_played')
     .eq('room_id', roomCode)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const leaderboard = (members ?? [])
-    .map((m) => ({
-      ...m,
-      total: m.times_kissed + m.times_married + m.times_killed,
-    }))
-    .sort((a, b) => b.total - a.total || b.games_played - a.games_played)
+  const leaderboard = (members ?? []).sort((a, b) => b.games_played - a.games_played)
 
   return NextResponse.json({ leaderboard })
 }

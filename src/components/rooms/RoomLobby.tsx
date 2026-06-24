@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { RoomJoinGate } from '@/components/rooms/RoomJoinGate'
 import { RoomChat } from '@/components/rooms/RoomChat'
 import { RoomLeaderboard } from '@/components/rooms/RoomLeaderboard'
@@ -65,7 +66,7 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set())
   const [tab, setTab] = useState<Tab>('chat')
   const [newGameBanner, setNewGameBanner] = useState<RoomGame | null>(null)
-  const [copySuccess, setCopySuccess] = useState(false)
+  const [copySuccess, setCopySuccess] = useState<'room' | 'member' | null>(null)
 
   // Initial load
   useEffect(() => {
@@ -196,10 +197,10 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
     })
   }, [roomCode, identity])
 
-  const copyCode = () => {
-    navigator.clipboard.writeText(roomCode)
-    setCopySuccess(true)
-    setTimeout(() => setCopySuccess(false), 2000)
+  const copyText = (text: string, which: 'room' | 'member') => {
+    navigator.clipboard.writeText(text)
+    setCopySuccess(which)
+    setTimeout(() => setCopySuccess(null), 2000)
   }
 
   if (status === 'loading') {
@@ -232,15 +233,30 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
         <Link href="/" className="pointer-events-auto">
           <FateRoundLogo className="h-7 w-auto max-w-[8rem]" />
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             type="button"
-            onClick={copyCode}
-            className="flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-mono font-bold tracking-widest hover:border-[var(--border-strong)] transition-colors"
+            onClick={() => copyText(roomCode, 'room')}
+            aria-label="Copy room code"
+            className="flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-2.5 sm:px-3 py-1.5 text-xs font-mono font-bold tracking-widest hover:border-[var(--border-strong)] transition-colors"
           >
+            <span className="hidden sm:inline text-[10px] uppercase tracking-wider text-faint font-sans font-semibold">Room</span>
             {roomCode}
-            <span className="text-faint">{copySuccess ? '✓' : '⎘'}</span>
+            <span className="text-faint">{copySuccess === 'room' ? '✓' : '⎘'}</span>
           </button>
+          {identity && (
+            <button
+              type="button"
+              onClick={() => copyText(identity.memberCode, 'member')}
+              aria-label="Copy your player code"
+              className="flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-2.5 sm:px-3 py-1.5 text-xs font-mono font-bold tracking-widest hover:border-[var(--border-strong)] transition-colors"
+            >
+              <span className="hidden sm:inline text-[10px] uppercase tracking-wider text-faint font-sans font-semibold">Player</span>
+              {identity.memberCode}
+              <span className="text-faint">{copySuccess === 'member' ? '✓' : '⎘'}</span>
+            </button>
+          )}
+          <ThemeToggle variant="inline" />
         </div>
       </header>
 
