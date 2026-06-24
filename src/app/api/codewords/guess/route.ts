@@ -2,14 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { codewordsGuessSchema } from '@/lib/validation'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
-import { cluePhaseUpdate, effectiveTurnPhase, finishCodewordsGame, otherTeam, winnerFromRevealedBoard } from '@/lib/codewords'
-import type { CodewordsBoard, CodewordsCellType, CodewordsTeam } from '@/types'
+import { finishCodewordsGame } from '@/lib/codewords'
+import type { CodewordsBoard, CodewordsCellType } from '@/types'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-
-function endTeamTurn(board: CodewordsBoard) {
-  return cluePhaseUpdate(otherTeam(board.current_turn), board.spymaster_timer_seconds)
-}
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -38,6 +34,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Only operatives can guess' }, { status: 403 })
   }
 
+  // Read the board for context we need (words, current clue) before the atomic update.
+  // The RPC re-reads + locks the row atomically — this pre-read is only for metadata.
   const { data: board } = await supabase.from('codewords_boards').select('*').eq('game_id', code).maybeSingle()
   if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
 
@@ -46,9 +44,6 @@ export async function POST(req: NextRequest) {
   if (typedBoard.current_turn !== role.team) {
     return NextResponse.json({ error: "Not your team's turn" }, { status: 400 })
   }
-  if (effectiveTurnPhase(typedBoard) !== 'guess') {
-    return NextResponse.json({ error: 'Wait for your spymaster to give a clue' }, { status: 400 })
-  }
   if (!typedBoard.current_clue_word || typedBoard.guesses_remaining == null) {
     return NextResponse.json({ error: 'Wait for your spymaster to give a clue' }, { status: 400 })
   }
@@ -56,55 +51,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'That word is already revealed' }, { status: 400 })
   }
 
-  const key = typedBoard.key as CodewordsCellType[]
-  const revealed = [...typedBoard.revealed_indices, cellIndex]
-  const cellType = key[cellIndex]
-  const team = role.team as CodewordsTeam
+  // Atomic update via RPC — locks the row to prevent concurrent guess race conditions
+  const { data: rpcRows, error: rpcError } = await supabase.rpc('codewords_process_guess', {
+    p_board_id: typedBoard.id,
+    p_cell_index: cellIndex,
+    p_player_team: role.team,
+  })
 
-  let update: Record<string, unknown> = { revealed_indices: revealed }
-  let gameStatus: 'active' | 'finished' = 'active'
-
-  if (cellType === 'assassin') {
-    update = {
-      ...update,
-      winner: otherTeam(team),
-      assassin_team: team,
-      guesses_remaining: null,
-      current_clue_word: null,
-      current_clue_number: null,
+  if (rpcError) {
+    if (rpcError.message?.includes('ALREADY_REVEALED')) {
+      return NextResponse.json({ error: 'That word is already revealed' }, { status: 400 })
     }
-    gameStatus = 'finished'
-  } else {
-    const completedWinner = winnerFromRevealedBoard(key, revealed)
-    if (completedWinner) {
-      update = {
-        ...update,
-        winner: completedWinner,
-        guesses_remaining: null,
-        current_clue_word: null,
-        current_clue_number: null,
-      }
-      gameStatus = 'finished'
-    } else if (cellType === team) {
-      const remaining = typedBoard.guesses_remaining - 1
-      if (remaining <= 0) {
-        update = { ...update, ...endTeamTurn(typedBoard) }
-      } else {
-        update = { ...update, guesses_remaining: remaining }
-      }
-    } else {
-      update = { ...update, ...endTeamTurn(typedBoard) }
-    }
+    return NextResponse.json({ error: rpcError.message }, { status: 500 })
   }
 
-  const { data: updated, error } = await supabase
-    .from('codewords_boards')
-    .update(update)
-    .eq('id', typedBoard.id)
-    .select()
-    .single()
+  const updated = (Array.isArray(rpcRows) ? rpcRows[0] : rpcRows) as CodewordsBoard | undefined
+  if (!updated) return NextResponse.json({ error: 'Guess failed' }, { status: 500 })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const cellType = (typedBoard.key as CodewordsCellType[])[cellIndex]
 
   await supabase.from('codewords_guesses').insert({
     game_id: code,
@@ -115,10 +79,10 @@ export async function POST(req: NextRequest) {
     cell_type: cellType,
     clue_word: typedBoard.current_clue_word,
     clue_number: typedBoard.current_clue_number,
-    team,
+    team: role.team,
   })
 
-  if (gameStatus === 'finished') {
+  if (updated.winner) {
     await finishCodewordsGame(supabase, code)
   }
 

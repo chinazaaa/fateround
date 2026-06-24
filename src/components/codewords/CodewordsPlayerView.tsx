@@ -737,8 +737,12 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
           onBoardChange={setBoard}
           onReload={load}
         />
-        {leaveButton && <div className="mt-4 max-w-md mx-auto">{leaveButton}</div>}
       </div>
+      {leaveButton && (
+        <div className="fixed bottom-0 inset-x-0 z-30 p-4 bg-[var(--background)]/90 backdrop-blur-sm border-t border-[var(--border)]">
+          <div className="max-w-xs mx-auto">{leaveButton}</div>
+        </div>
+      )}
     </div>
   )
 }
