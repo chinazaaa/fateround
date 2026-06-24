@@ -6,10 +6,10 @@ import { CodewordsFinalResultsShareBlock } from '@/components/codewords/Codeword
 import { CodewordsBoardGrid } from '@/components/codewords/CodewordsBoardGrid'
 import { CodewordsLobbyRoster } from '@/components/codewords/CodewordsLobbyRoster'
 import { CodewordsScoreboard } from '@/components/codewords/CodewordsScoreboard'
-import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
+import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { useToast } from '@/components/ui/Toast'
 import {
   CODEWORDS_MIN_PLAYERS,
@@ -265,15 +265,6 @@ export function CodewordsHostManagePanel({
               disabled={savingMaxPlayers}
             />
           </HostLobbySettingBlock>
-          <HostLobbyWaitingFooter
-            gameCode={gameCode}
-            hostToken={hostToken}
-            onStart={onStartGame}
-            onEnded={onReload}
-            starting={starting}
-            startDisabled={startDisabled}
-            startDisabledHint={startDisabledHint}
-          />
         </div>
       )}
 
@@ -400,12 +391,23 @@ export function CodewordsHostManagePanel({
           )}
 
           {inLobby && (
-            <HostLobbyStartButton
-              onClick={onStartGame}
-              disabled={startDisabled}
-              starting={starting}
-              disabledHint={startDisabledHint}
-            />
+            <>
+              <HostLobbyStartButton
+                onClick={onStartGame}
+                disabled={startDisabled}
+                starting={starting}
+                disabledHint={startDisabledHint}
+              />
+              <HostEndGameButton
+                gameCode={gameCode}
+                hostToken={hostToken}
+                onEnded={onReload}
+                label="End lobby"
+                confirmTitle="Close this lobby?"
+                confirmMessage="Players will be disconnected. You can start a new game from Play again afterward."
+                className="btn-secondary w-full"
+              />
+            </>
           )}
         </div>
       )}
