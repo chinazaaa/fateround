@@ -78,10 +78,14 @@ export async function canTicTacToePlayAgain(
 
 export function isTicTacToeResultsPhase(
   gameStatus: string | undefined,
-  sessionStatus: string | undefined | null
+  session: Pick<TicTacToeSession, 'status' | 'is_draw' | 'winner_player_id' | 'board'> | null | undefined
 ): boolean {
   if (!gameStatus || gameStatus === 'waiting') return false
-  return gameStatus === 'finished' || sessionStatus === 'finished'
+  if (gameStatus === 'finished') return true
+  if (!session) return false
+  if (session.status === 'finished' || session.is_draw || session.winner_player_id) return true
+  if (session.board?.length === 9 && (checkWinner(session.board) || isBoardFull(session.board))) return true
+  return false
 }
 
 export async function initializeTicTacToeGame(
@@ -206,8 +210,7 @@ export async function processTicTacToeMove(
   if (updateError) return { error: updateError.message }
 
   if (win || draw) {
-    const { error: finishError } = await markGameFinished(supabase, gameId)
-    if (finishError) return { error: finishError }
+    await markGameFinished(supabase, gameId)
   }
 
   return {}

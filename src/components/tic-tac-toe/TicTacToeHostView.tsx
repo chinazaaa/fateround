@@ -90,8 +90,8 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
   }, [gameCode, load])
 
   useEffect(() => {
-    if (isTicTacToeResultsPhase(game?.status, session?.status)) setTab('manage')
-  }, [game?.status, session?.status])
+    if (isTicTacToeResultsPhase(game?.status, session)) setTab('manage')
+  }, [game?.status, session])
 
   useEffect(() => {
     if (hostMode === 'player' && hostPlayerId && game?.status === 'active') {
@@ -253,7 +253,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
   const turnPlayerId = session ? currentTurnPlayerId(session) : null
   const winner = players.find((p) => p.id === session?.winner_player_id)
   const hostPlays = hostMode === 'player' && !!hostPlayerId
-  const gameFinished = isTicTacToeResultsPhase(game?.status, session?.status)
+  const gameFinished = isTicTacToeResultsPhase(game?.status, session)
   const showPlayTab = hostPlays && game?.status !== 'waiting' && !gameFinished
   const isHostTurn = turnPlayerId === hostPlayerId
 
@@ -364,7 +364,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
         </div>
       )}
 
-      {tab === 'play' && session && hostPlayerId && game.status === 'active' && (
+      {tab === 'play' && session && hostPlayerId && game.status === 'active' && !gameFinished && (
         <TicTacToeGamePanel
           session={session}
           players={players}
@@ -413,7 +413,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
             />
           )}
 
-          {(game.status === 'waiting' || game.status === 'active') && (
+          {(game.status === 'waiting' || (game.status === 'active' && !gameFinished)) && (
             <HostLobbyPlayersSection
               players={players}
               removingPlayerId={removingPlayerId}
@@ -441,7 +441,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
             />
           )}
 
-          {game.status === 'active' && (
+          {game.status === 'active' && !gameFinished && (
             <button type="button" onClick={endGame} disabled={ending} className="btn-secondary w-full py-3">
               {ending ? 'Ending…' : 'End game early'}
             </button>

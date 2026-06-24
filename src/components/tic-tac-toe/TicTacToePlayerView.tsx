@@ -79,7 +79,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
       setScreen('active')
       return
     }
-    if (isTicTacToeResultsPhase(gameData.status, sessionData?.status)) {
+    if (isTicTacToeResultsPhase(gameData.status, sessionData)) {
       setScreen('finished')
       return
     }
