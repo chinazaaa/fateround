@@ -86,6 +86,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         status: 'waiting',
         current_round_number: 0,
         session_started_at: null,
+        finished_at: null,
         anonymous_messages_trimmed_at: null,
       })
       .eq('id', gameId)
@@ -111,6 +112,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     status: 'waiting',
     current_round_number: 0,
     session_started_at: null,
+    finished_at: null,
     anonymous_messages_trimmed_at: null,
   }
 

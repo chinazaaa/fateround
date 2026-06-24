@@ -63,8 +63,24 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
+  const suppressRoundDataUntilRef = useRef(0)
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
+
+  const isReopeningLobby = useCallback(() => Date.now() < suppressRoundDataUntilRef.current, [])
+
+  const applyLobbyReopenState = useCallback((gameData: Game | null) => {
+    if (!gameData) return
+    setGame({
+      ...gameData,
+      status: 'waiting',
+      current_round_number: 0,
+      session_started_at: null,
+      finished_at: null,
+    })
+    setBoard(null)
+    setGuesses([])
+  }, [])
 
   const load = useCallback(async () => {
     const [{ data: gameData }, { data: plrs }, { data: roleRows }, { data: boardData }, { data: guessRows }] =
@@ -75,16 +91,28 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
         supabase.from('codewords_boards').select('*').eq('game_id', gameCode).maybeSingle(),
         supabase.from('codewords_guesses').select('*').eq('game_id', gameCode).order('created_at', { ascending: true }),
       ])
+
+    const reopening = Date.now() < suppressRoundDataUntilRef.current
+
     if (gameData) {
-      setGame(gameData)
+      if (reopening || gameData.status === 'waiting') {
+        applyLobbyReopenState(gameData)
+      } else {
+        setGame(gameData)
+      }
       setSpymasterTimer(gameData.timer_seconds ?? CODEWORDS_DEFAULT_SPYMASTER_TIMER)
       setOperativeTimer(gameData.operative_timer_seconds ?? CODEWORDS_DEFAULT_OPERATIVE_TIMER)
     }
     setPlayers(plrs ?? [])
     setRoles(roleRows ?? [])
-    setBoard(boardData as CodewordsBoard | null)
-    setGuesses(mergeCodewordsGuesses([], (guessRows as CodewordsGuess[]) ?? []))
-  }, [gameCode])
+    if (reopening) {
+      setBoard(null)
+      setGuesses([])
+    } else {
+      setBoard(boardData as CodewordsBoard | null)
+      setGuesses(mergeCodewordsGuesses([], (guessRows as CodewordsGuess[]) ?? []))
+    }
+  }, [applyLobbyReopenState, gameCode])
 
   useEffect(() => {
     load()
@@ -97,11 +125,26 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   }, [gameCode, load])
 
   useCodewordsRealtime(gameCode, 'host', {
-    onGame: setGame,
+    onGame: (nextGame) => {
+      if (isReopeningLobby() || nextGame.status === 'waiting') {
+        applyLobbyReopenState(nextGame)
+        return
+      }
+      setGame(nextGame)
+    },
     onPlayers: (updater) => setPlayers(updater),
     onRoles: (updater) => setRoles(updater),
-    onBoard: setBoard,
-    onGuesses: (updater) => setGuesses(updater),
+    onBoard: (nextBoard) => {
+      if (isReopeningLobby() && nextBoard) return
+      setBoard(nextBoard)
+    },
+    onGuesses: (updater) => {
+      if (isReopeningLobby()) {
+        setGuesses([])
+        return
+      }
+      setGuesses(updater)
+    },
     onReload: load,
   })
 
@@ -309,6 +352,21 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
 
   const playAgain = async () => {
     setPlayingAgain(true)
+    suppressRoundDataUntilRef.current = Date.now() + 8000
+    setBoard(null)
+    setGuesses([])
+    setGame((current) =>
+      current
+        ? {
+            ...current,
+            status: 'waiting',
+            current_round_number: 0,
+            session_started_at: null,
+            finished_at: null,
+          }
+        : current
+    )
+    setTab('manage')
     try {
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
@@ -317,24 +375,12 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to reset')
-      setBoard(null)
-      setGuesses([])
-      setGame((current) =>
-        data.game
-          ? (data.game as Game)
-          : current
-            ? {
-                ...current,
-                status: 'waiting',
-                current_round_number: 0,
-                session_started_at: null,
-              }
-            : current
-      )
+      if (data.game) applyLobbyReopenState(data.game as Game)
       await load()
       success('Lobby reopened!')
       setTab('manage')
     } catch (err) {
+      suppressRoundDataUntilRef.current = 0
       toastError(err instanceof Error ? err.message : 'Failed to reset')
     } finally {
       setPlayingAgain(false)
@@ -368,8 +414,8 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   const hostMyRole = hostPlayerId ? roles.find((r) => r.player_id === hostPlayerId) : undefined
   const hostPlays = hostMode === 'player' && !!hostPlayerId
   const inLobby = game ? codewordsInLobby(game.status, board) : false
-  const showPlayTab = hostPlays && !!hostMyRole && game?.status === 'active' && !!board
-  const inActivePlay = showPlayTab && !!board
+  const showPlayTab = hostPlays && !!hostMyRole && game?.status !== 'finished'
+  const inActivePlay = game?.status === 'active' && !!board
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
@@ -520,45 +566,43 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
             players={players}
             myPlayerId={hostPlayerId}
             variant={game.status === 'active' ? 'starting' : 'lobby'}
-            manageHint="Head to Manage → Teams to assign players, then start the game when ready."
+            manageHint="Use Manage below to assign teams and start the game."
           />
         ))}
 
-      {(tab === 'manage' || !showPlayTab) && (
-        <CodewordsHostManagePanel
-          game={game}
-          gameCode={gameCode}
-          hostToken={hostToken}
-          playerLink={playerLink}
-          players={players}
-          roles={roles}
-          board={board}
-          guesses={guesses}
-          spymasterTimer={spymasterTimer}
-          operativeTimer={operativeTimer}
-          savingTimers={savingTimers}
-          savingRoleFor={savingRoleFor}
-          starting={starting}
-          playingAgain={playingAgain}
-          ending={ending}
-          onSpymasterTimerChange={setSpymasterTimer}
-          onOperativeTimerChange={setOperativeTimer}
-          onSaveTimers={saveTimers}
-          onSetSpymaster={setSpymaster}
-          onMoveTeam={moveTeam}
-          onStartGame={startGame}
-          onRandomizeTeams={shuffleTeams}
-          randomizingTeams={randomizingTeams}
-          onPlayAgain={playAgain}
-          onEndSession={endSession}
-          onReload={load}
-          onBenchPlayer={benchPlayer}
-          onRemovePlayer={removePlayer}
-          benchingPlayerId={benchingPlayerId}
-          removingPlayerId={removingPlayerId}
-          showSpectatorBoard={hostMode === 'spectator'}
-        />
-      )}
+      <CodewordsHostManagePanel
+        game={game}
+        gameCode={gameCode}
+        hostToken={hostToken}
+        playerLink={playerLink}
+        players={players}
+        roles={roles}
+        board={board}
+        guesses={guesses}
+        spymasterTimer={spymasterTimer}
+        operativeTimer={operativeTimer}
+        savingTimers={savingTimers}
+        savingRoleFor={savingRoleFor}
+        starting={starting}
+        playingAgain={playingAgain}
+        ending={ending}
+        onSpymasterTimerChange={setSpymasterTimer}
+        onOperativeTimerChange={setOperativeTimer}
+        onSaveTimers={saveTimers}
+        onSetSpymaster={setSpymaster}
+        onMoveTeam={moveTeam}
+        onStartGame={startGame}
+        onRandomizeTeams={shuffleTeams}
+        randomizingTeams={randomizingTeams}
+        onPlayAgain={playAgain}
+        onEndSession={endSession}
+        onReload={load}
+        onBenchPlayer={benchPlayer}
+        onRemovePlayer={removePlayer}
+        benchingPlayerId={benchingPlayerId}
+        removingPlayerId={removingPlayerId}
+        showSpectatorBoard={hostMode === 'spectator'}
+      />
     </HostPageShell>
   )
 }

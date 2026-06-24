@@ -6,6 +6,7 @@ import { CodewordsBoardGrid } from '@/components/codewords/CodewordsBoardGrid'
 import { CodewordsLobbyRoster } from '@/components/codewords/CodewordsLobbyRoster'
 import { CodewordsScoreboard } from '@/components/codewords/CodewordsScoreboard'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
 import {
   CODEWORDS_MIN_PLAYERS,
   CODEWORDS_TIMER_OPTIONS,
@@ -253,6 +254,15 @@ export function CodewordsHostManagePanel({
             >
               {randomizingTeams ? 'Shuffling…' : 'Shuffle teams'}
             </button>
+          )}
+
+          {inLobby && (
+            <HostLobbyStartButton
+              onClick={onStartGame}
+              disabled={startDisabled}
+              starting={starting}
+              disabledHint={startDisabledHint}
+            />
           )}
         </div>
       )}

@@ -554,7 +554,9 @@ export function codewordsInLobby(
   status: string,
   board: Pick<CodewordsBoard, 'id'> | null | undefined
 ): boolean {
-  return status === 'waiting' || (status === 'active' && !board)
+  if (status === 'waiting') return true
+  if (!board) return status === 'active'
+  return false
 }
 
 export async function removeCodewordsPlayerRole(
