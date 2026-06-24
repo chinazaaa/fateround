@@ -5,12 +5,19 @@ import {
   roomGameStatusLabel,
   type RoomGame,
 } from '@/components/rooms/room-game-display'
+import { gamePathWithRoomMember } from '@/lib/room-member-join'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-export function RoomGameHistory({ games }: { games: RoomGame[] }) {
+export function RoomGameHistory({
+  games,
+  memberCode,
+}: {
+  games: RoomGame[]
+  memberCode?: string | null
+}) {
   if (games.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -39,7 +46,7 @@ export function RoomGameHistory({ games }: { games: RoomGame[] }) {
             </div>
             {info.isFinished ? (
               <Link
-                href={`/game/${g.game_id}`}
+                href={gamePathWithRoomMember(g.game_id, memberCode)}
                 className="btn-secondary btn-fit shrink-0 px-3 py-1.5 text-xs"
                 {...OPEN_IN_NEW_TAB}
               >
@@ -47,7 +54,7 @@ export function RoomGameHistory({ games }: { games: RoomGame[] }) {
               </Link>
             ) : (
               <Link
-                href={`/game/${g.game_id}`}
+                href={gamePathWithRoomMember(g.game_id, memberCode)}
                 className="btn-primary btn-fit shrink-0 px-3 py-1.5 text-xs"
                 {...OPEN_IN_NEW_TAB}
               >

@@ -16,6 +16,7 @@ import {
   roomGameDisplay,
   type RoomGame,
 } from '@/components/rooms/room-game-display'
+import { gamePathWithRoomMember } from '@/lib/room-member-join'
 
 type Room = { id: string; name: string; created_at: string }
 
@@ -28,6 +29,7 @@ type Member = {
   times_married: number
   times_killed: number
   games_played: number
+  room_points: number
 }
 
 type Message = {
@@ -365,7 +367,7 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
               )}
             </div>
             <Link
-              href={`/game/${newGameBanner.game_id}`}
+              href={gamePathWithRoomMember(newGameBanner.game_id, identity?.memberCode)}
               className="btn-primary btn-fit px-4 py-1.5 text-sm"
               onClick={() => setNewGameBanner(null)}
               {...OPEN_IN_NEW_TAB}
@@ -454,7 +456,7 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
             )}
           </div>
 
-          <RoomLiveGames games={games} />
+          <RoomLiveGames games={games} memberCode={identity?.memberCode} />
 
           {/* Tab bar */}
           <div className="flex shrink-0 border-b border-[var(--border)] bg-[var(--background)]/50">
@@ -492,7 +494,7 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
               <RoomLeaderboard members={members} />
             )}
             {tab === 'history' && (
-              <RoomGameHistory games={games} />
+              <RoomGameHistory games={games} memberCode={identity?.memberCode} />
             )}
           </div>
         </main>

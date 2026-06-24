@@ -15,6 +15,7 @@ import { isImportClaimMode, isVoterOnlyMode } from '@/lib/participant-mode'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { gameOffersLateJoinChoice, allowLatePlayers } from '@/lib/viewers'
 import { unlockAudio } from '@/lib/sounds'
+import { roomMemberCodeFromSearch } from '@/lib/room-member-join'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, Participant, Player, Round, ParticipantGender, PlayerGender } from '@/types'
 
@@ -153,11 +154,15 @@ export function useJoinFlow(deps: JoinFlowDeps) {
               : { joinAsViewer: true }
           : {}
 
+      const roomMemberCode = roomMemberCodeFromSearch(window.location.search)
+
       const res = await fetch('/api/players', {
         method: editingJoin && myPlayerId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
-          editingJoin && myPlayerId ? { ...body, playerId: myPlayerId } : { ...body, ...activeJoinExtras }
+          editingJoin && myPlayerId
+            ? { ...body, playerId: myPlayerId }
+            : { ...body, ...activeJoinExtras, ...(roomMemberCode ? { roomMemberCode } : {}) }
         ),
       })
       const data = await res.json()

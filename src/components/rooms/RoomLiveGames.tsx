@@ -5,8 +5,15 @@ import {
   roomGameStatusLabel,
   type RoomGame,
 } from '@/components/rooms/room-game-display'
+import { gamePathWithRoomMember } from '@/lib/room-member-join'
 
-export function RoomLiveGames({ games }: { games: RoomGame[] }) {
+export function RoomLiveGames({
+  games,
+  memberCode,
+}: {
+  games: RoomGame[]
+  memberCode?: string | null
+}) {
   const liveGames = games.filter((g) => roomGameDisplay(g).isLive)
 
   if (liveGames.length === 0) return null
@@ -38,7 +45,7 @@ export function RoomLiveGames({ games }: { games: RoomGame[] }) {
                 </p>
               </div>
               <Link
-                href={`/game/${g.game_id}`}
+                href={gamePathWithRoomMember(g.game_id, memberCode)}
                 className="btn-primary btn-fit shrink-0 px-3 py-1.5 text-xs"
                 {...OPEN_IN_NEW_TAB}
               >

@@ -13,7 +13,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
   const [{ data: members }, { data: recentGames }] = await Promise.all([
     supabase
       .from('room_members')
-      .select('id, display_name, member_code, joined_at, times_kissed, times_married, times_killed, games_played')
+      .select('id, display_name, member_code, joined_at, times_kissed, times_married, times_killed, games_played, room_points')
       .eq('room_id', roomCode)
       .order('joined_at', { ascending: true }),
     supabase

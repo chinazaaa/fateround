@@ -320,7 +320,8 @@ create table if not exists room_members (
   times_kissed integer not null default 0,
   times_married integer not null default 0,
   times_killed integer not null default 0,
-  games_played integer not null default 0
+  games_played integer not null default 0,
+  room_points integer not null default 0
 );
 create index if not exists idx_room_members_room_id on room_members(room_id);
 create unique index if not exists idx_room_members_code on room_members(member_code);
@@ -331,7 +332,8 @@ create table if not exists room_games (
   room_id text not null references rooms(id) on delete cascade,
   game_id text not null references games(id) on delete cascade,
   started_by_member_id uuid references room_members(id) on delete set null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  points_awarded_at timestamptz
 );
 create index if not exists idx_room_games_room_id on room_games(room_id);
 create unique index if not exists idx_room_games_game_id on room_games(game_id);
@@ -366,7 +368,10 @@ alter publication supabase_realtime add table room_messages;
 
 -- If upgrading an existing database, run the following:
 -- create table if not exists rooms ( id text primary key, name text not null, created_at timestamptz not null default now() );
--- create table if not exists room_members ( id uuid primary key default gen_random_uuid(), room_id text not null references rooms(id) on delete cascade, member_code text not null unique, display_name text not null, joined_at timestamptz not null default now(), times_kissed integer not null default 0, times_married integer not null default 0, times_killed integer not null default 0, games_played integer not null default 0 );
+-- create table if not exists room_members ( id uuid primary key default gen_random_uuid(), room_id text not null references rooms(id) on delete cascade, member_code text not null unique, display_name text not null, joined_at timestamptz not null default now(), times_kissed integer not null default 0, times_married integer not null default 0, times_killed integer not null default 0, games_played integer not null default 0, room_points integer not null default 0 );
+-- alter table room_members add column if not exists room_points integer not null default 0;
+-- alter table room_games add column if not exists points_awarded_at timestamptz;
+-- alter table players add column if not exists room_member_id uuid references room_members(id) on delete set null;
 -- create index if not exists idx_room_members_room_id on room_members(room_id);
 -- create unique index if not exists idx_room_members_code on room_members(member_code);
 -- create table if not exists room_games ( id uuid primary key default gen_random_uuid(), room_id text not null references rooms(id) on delete cascade, game_id text not null references games(id) on delete cascade, started_by_member_id uuid references room_members(id) on delete set null, created_at timestamptz not null default now() );
