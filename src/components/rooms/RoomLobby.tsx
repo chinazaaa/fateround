@@ -9,6 +9,13 @@ import { RoomJoinGate } from '@/components/rooms/RoomJoinGate'
 import { RoomChat } from '@/components/rooms/RoomChat'
 import { RoomLeaderboard } from '@/components/rooms/RoomLeaderboard'
 import { RoomGameHistory } from '@/components/rooms/RoomGameHistory'
+import { RoomLiveGames } from '@/components/rooms/RoomLiveGames'
+import {
+  OPEN_IN_NEW_TAB,
+  roomGameBannerDetails,
+  roomGameDisplay,
+  type RoomGame,
+} from '@/components/rooms/room-game-display'
 
 type Room = { id: string; name: string; created_at: string }
 
@@ -31,15 +38,6 @@ type Message = {
   member_id: string | null
 }
 
-type RoomGame = {
-  id: string
-  game_id: string
-  created_at: string
-  started_by_member_id: string | null
-  room_members: { display_name: string } | null
-  games: { title: string; game_type: string; status: string } | null
-}
-
 type Identity = { memberId: string; memberCode: string; displayName: string }
 
 const MEMBER_KEY = (code: string) => `kmk_room_${code}_member`
@@ -56,6 +54,71 @@ function getSavedIdentity(roomCode: string): Identity | null {
 
 type Tab = 'chat' | 'leaderboard' | 'history'
 
+function memberInitial(name: string) {
+  return name.trim().charAt(0).toUpperCase() || '?'
+}
+
+function MemberAvatar({ name, online }: { name: string; online: boolean }) {
+  return (
+    <span
+      className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+        online ? 'bg-[var(--primary)]/15 text-[var(--primary)]' : 'bg-[var(--surface)] text-muted'
+      }`}
+    >
+      {memberInitial(name)}
+      <span
+        className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--background)] ${
+          online ? 'bg-green-400' : 'bg-[var(--muted)]'
+        }`}
+      />
+    </span>
+  )
+}
+
+function MemberRow({
+  name,
+  online,
+  isYou,
+}: {
+  name: string
+  online: boolean
+  isYou: boolean
+}) {
+  return (
+    <div
+      className={`flex items-center gap-2.5 rounded-xl px-2 py-2 ${
+        online ? 'bg-[var(--surface)]/80' : 'opacity-60'
+      }`}
+    >
+      <MemberAvatar name={name} online={online} />
+      <span className="min-w-0 flex-1 truncate text-sm text-body">
+        {name}
+        {isYou && <span className="ml-1 text-xs text-faint">(you)</span>}
+      </span>
+    </div>
+  )
+}
+
+function MemberChip({
+  name,
+  online,
+  isYou,
+}: {
+  name: string
+  online: boolean
+  isYou: boolean
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1">
+      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${online ? 'bg-green-400' : 'bg-[var(--muted)]'}`} />
+      <span className="whitespace-nowrap text-xs text-body">
+        {name}
+        {isYou && <span className="text-faint"> (you)</span>}
+      </span>
+    </div>
+  )
+}
+
 export function RoomLobby({ roomCode }: { roomCode: string }) {
   const [status, setStatus] = useState<'loading' | 'unauthenticated' | 'ready'>('loading')
   const [room, setRoom] = useState<Room | null>(null)
@@ -67,6 +130,15 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
   const [tab, setTab] = useState<Tab>('chat')
   const [newGameBanner, setNewGameBanner] = useState<RoomGame | null>(null)
   const [copySuccess, setCopySuccess] = useState<'room' | 'member' | null>(null)
+
+  const refreshGames = useCallback(() => {
+    fetch(`/api/rooms/${roomCode}/games`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.games) setGames(d.games)
+      })
+      .catch(() => { /* noop */ })
+  }, [roomCode])
 
   // Initial load
   useEffect(() => {
@@ -165,6 +237,22 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
     return () => { supabase.removeChannel(channel) }
   }, [roomCode])
 
+  // Refresh game list when returning to the tab or while games are live
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshGames()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [refreshGames])
+
+  useEffect(() => {
+    const hasLive = games.some((g) => roomGameDisplay(g).isLive)
+    if (!hasLive) return
+    const id = window.setInterval(refreshGames, 30_000)
+    return () => window.clearInterval(id)
+  }, [games, refreshGames])
+
   // Presence — who's online
   useEffect(() => {
     if (!identity) return
@@ -226,14 +314,19 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
 
   const onlineMembers = members.filter((m) => onlineIds.has(m.id))
   const offlineMembers = members.filter((m) => !onlineIds.has(m.id))
+  const memberCountLabel = `${members.length} member${members.length !== 1 ? 's' : ''}${
+    onlineMembers.length > 0 ? ` · ${onlineMembers.length} online` : ''
+  }`
+  const startGameHref = `/create?room=${roomCode}&member=${identity?.memberCode ?? ''}`
+  const newGameBannerDetails = newGameBanner ? roomGameBannerDetails(newGameBanner) : null
 
   return (
     <>
-      <header className="fixed top-0 inset-x-0 z-40 flex items-center justify-between px-4 py-3 bg-[var(--background)]/80 backdrop-blur border-b border-[var(--border)]">
-        <Link href="/" className="pointer-events-auto">
-          <FateRoundLogo className="h-7 w-auto max-w-[8rem]" />
+      <header className="fixed top-0 inset-x-0 z-40 flex items-center justify-between gap-3 px-4 py-3 bg-[var(--background)]/90 backdrop-blur-md border-b border-[var(--border)]">
+        <Link href="/" className="pointer-events-auto shrink-0 min-w-0">
+          <FateRoundLogo className="h-7 w-auto max-w-[7rem] sm:max-w-[8rem]" />
         </Link>
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             type="button"
             onClick={() => copyText(roomCode, 'room')}
@@ -261,18 +354,21 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
       </header>
 
       {/* New game banner */}
-      {newGameBanner && (
+      {newGameBanner && newGameBannerDetails && (
         <div className="fixed top-16 inset-x-0 z-30 flex justify-center px-4 pointer-events-none">
           <div className="glass-card-strong flex items-center gap-3 px-4 py-3 pointer-events-auto shadow-lg animate-in slide-in-from-top-2 duration-300">
-            <span className="text-xl">🎮</span>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-body">Game starting!</p>
-              <p className="text-xs text-faint">{newGameBanner.games?.title ?? 'A new game'}</p>
+            <span className="text-xl">{newGameBannerDetails.emoji}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-body">{newGameBannerDetails.headline}</p>
+              {newGameBannerDetails.subtitle && (
+                <p className="text-xs text-faint truncate">{newGameBannerDetails.subtitle}</p>
+              )}
             </div>
             <Link
               href={`/game/${newGameBanner.game_id}`}
               className="btn-primary btn-fit px-4 py-1.5 text-sm"
               onClick={() => setNewGameBanner(null)}
+              {...OPEN_IN_NEW_TAB}
             >
               Join
             </Link>
@@ -287,40 +383,37 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
         </div>
       )}
 
-      <div className="pt-14 flex flex-col lg:flex-row h-screen overflow-hidden">
-        {/* Sidebar — members */}
-        <aside className="lg:w-60 xl:w-64 shrink-0 border-b lg:border-b-0 lg:border-r border-[var(--border)] flex flex-col">
+      <div className="pt-14 flex flex-col lg:flex-row h-dvh overflow-hidden">
+        {/* Desktop sidebar */}
+        <aside className="hidden lg:flex lg:w-64 xl:w-72 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)]/30">
           <div className="p-4 border-b border-[var(--border)]">
-            <h1 className="font-black text-lg text-body leading-tight">{room?.name}</h1>
-            <p className="text-xs text-faint mt-0.5">
-              {members.length} member{members.length !== 1 ? 's' : ''}
-              {onlineMembers.length > 0 && ` · ${onlineMembers.length} online`}
-            </p>
+            <p className="label-caps">Room</p>
+            <h1 className="font-black text-xl text-body leading-tight mt-1">{room?.name}</h1>
+            <p className="text-xs text-faint mt-1">{memberCountLabel}</p>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+          <div className="flex-1 overflow-y-auto p-3 space-y-1 min-h-0">
+            <p className="label-caps px-2 pb-1">Members</p>
             {onlineMembers.map((m) => (
-              <div key={m.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg">
-                <span className="h-2 w-2 rounded-full bg-green-400 shrink-0" />
-                <span className="text-sm text-body truncate">
-                  {m.display_name}
-                  {m.id === identity?.memberId && <span className="text-faint text-xs ml-1">(you)</span>}
-                </span>
-              </div>
+              <MemberRow
+                key={m.id}
+                name={m.display_name}
+                online
+                isYou={m.id === identity?.memberId}
+              />
             ))}
             {offlineMembers.map((m) => (
-              <div key={m.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg opacity-50">
-                <span className="h-2 w-2 rounded-full bg-[var(--muted)] shrink-0" />
-                <span className="text-sm text-muted truncate">{m.display_name}</span>
-              </div>
+              <MemberRow
+                key={m.id}
+                name={m.display_name}
+                online={false}
+                isYou={m.id === identity?.memberId}
+              />
             ))}
           </div>
 
-          <div className="p-3 border-t border-[var(--border)]">
-            <Link
-              href={`/create?room=${roomCode}&member=${identity?.memberCode ?? ''}`}
-              className="btn-primary text-sm py-2.5"
-            >
+          <div className="p-4 border-t border-[var(--border)]">
+            <Link href={startGameHref} className="btn-primary text-sm py-2.5" {...OPEN_IN_NEW_TAB}>
               Start a Game
             </Link>
           </div>
@@ -328,14 +421,49 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
 
         {/* Main area */}
         <main className="flex-1 flex flex-col min-h-0 min-w-0">
+          {/* Mobile room bar */}
+          <div className="lg:hidden shrink-0 border-b border-[var(--border)] bg-[var(--surface)]/40 px-4 py-3 space-y-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h1 className="font-black text-base text-body truncate">{room?.name}</h1>
+                <p className="text-xs text-faint mt-0.5">{memberCountLabel}</p>
+              </div>
+              <Link href={startGameHref} className="btn-primary btn-fit shrink-0 px-4 py-2 text-sm" {...OPEN_IN_NEW_TAB}>
+                Start a Game
+              </Link>
+            </div>
+            {members.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto pb-0.5 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {onlineMembers.map((m) => (
+                  <MemberChip
+                    key={m.id}
+                    name={m.display_name}
+                    online
+                    isYou={m.id === identity?.memberId}
+                  />
+                ))}
+                {offlineMembers.map((m) => (
+                  <MemberChip
+                    key={m.id}
+                    name={m.display_name}
+                    online={false}
+                    isYou={m.id === identity?.memberId}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <RoomLiveGames games={games} />
+
           {/* Tab bar */}
-          <div className="flex border-b border-[var(--border)] shrink-0">
+          <div className="flex shrink-0 border-b border-[var(--border)] bg-[var(--background)]/50">
             {(['chat', 'leaderboard', 'history'] as Tab[]).map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => setTab(t)}
-                className={`flex-1 py-3 text-sm font-semibold capitalize transition-colors border-b-2 ${
+                className={`flex-1 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold capitalize transition-colors border-b-2 ${
                   tab === t
                     ? 'border-[var(--primary)] text-[var(--primary)]'
                     : 'border-transparent text-muted hover:text-body'
@@ -350,7 +478,7 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
           </div>
 
           {/* Tab content */}
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="flex-1 overflow-y-auto min-h-0 bg-[var(--background)]">
             {tab === 'chat' && identity && (
               <div className="h-full flex flex-col">
                 <RoomChat

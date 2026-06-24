@@ -18,7 +18,8 @@ export function SoundToggle({ variant = 'fixed', className = '' }: SoundTogglePr
   }, [])
 
   const onGamePage = /^\/(game|host)\/[^/]+/.test(pathname ?? '')
-  if (variant === 'fixed' && onGamePage) return null
+  const onRoomPage = /^\/room\/[^/]+/.test(pathname ?? '')
+  if (variant === 'fixed' && (onGamePage || onRoomPage)) return null
 
   const toggle = () => {
     const next = !muted
