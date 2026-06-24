@@ -9,7 +9,7 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { WordHuntBoard } from '@/components/word-hunt/WordHuntBoard'
+import { WordHuntPlaySurface } from '@/components/word-hunt/WordHuntPlaySurface'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -415,86 +415,58 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-[var(--background)]">
       <GamePlayerChrome />
       {toast && (
         <div
-          className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-sm font-semibold shadow-lg ${toast.ok ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}
+          className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-sm font-semibold shadow-lg ${toast.ok ? 'bg-[var(--primary)] text-white' : 'bg-[var(--kill)] text-white'}`}
         >
           {toast.msg}
         </div>
       )}
-      <main className="pt-16 flex-1 px-3 py-6 max-w-lg mx-auto w-full space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Your score</p>
-            <p className="text-2xl font-black">{myPoints} pts</p>
-            <p className="text-xs text-muted">{myFoundWords.length} words found</p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Time left</p>
-            <p
-              className={`text-2xl font-black tabular-nums ${timeUp ? 'text-red-400' : secondsLeft <= 10 ? 'text-amber-400' : 'text-emerald-400'}`}
-            >
-              {game?.status === 'active' ? (timeUp ? '0:00' : timeLabel) : '—'}
-            </p>
-          </div>
-        </div>
-
+      <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">
         {grid && (
-          <WordHuntBoard
+          <WordHuntPlaySurface
             grid={grid}
             selectedPath={selectedPath}
             onPathChange={setSelectedPath}
             foundWords={myFoundWords}
+            myPoints={myPoints}
+            timeLabel={timeLabel}
+            timeUp={timeUp}
+            secondsLeft={secondsLeft}
+            onClear={() => setSelectedPath([])}
+            onSubmit={() => void handleSubmitWord()}
+            submitting={submitting}
             disabled={timeUp || isSpectator}
           />
         )}
 
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setSelectedPath([])}
-            disabled={selectedPath.length === 0 || timeUp}
-            className="btn-secondary flex-1 py-3 font-bold disabled:opacity-50"
-          >
-            Clear
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSubmitWord()}
-            disabled={
-              submitting ||
-              timeUp ||
-              isSpectator ||
-              selectedPath.length < WORD_HUNT_MIN_WORD_LENGTH
-            }
-            className="btn-primary flex-[2] py-3 font-bold disabled:opacity-50"
-          >
-            {submitting ? 'Checking…' : timeUp ? "Time's up" : 'Submit word'}
-          </button>
-        </div>
-
-        <div className="glass-card p-4 space-y-2">
-          <p className="label-caps text-xs">Live leaderboard</p>
-          {leaderboard.slice(0, 5).map((row, i) => (
-            <div
-              key={row.player_id}
-              className={`flex items-center justify-between text-sm ${row.player_id === myPlayerId ? 'font-bold' : ''}`}
-            >
-              <span>
-                {i + 1}. {row.name}
-              </span>
-              <span className="text-muted">
-                {row.points} pts · {row.word_count}w
-              </span>
+        <details className="glass-card p-4 group open:pb-4">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3">
+            <div>
+              <p className="label-caps text-xs">Live standings</p>
+              <p className="text-faint text-[11px] mt-0.5 group-open:hidden">See who&apos;s ahead</p>
             </div>
-          ))}
-        </div>
-
-        <p className="text-center text-xs text-muted">
-          3 letters = 100 pts · 4 = 400 · 5 = 800 · longer words score even more
-        </p>
+            <span className="text-muted text-lg leading-none group-open:rotate-180 transition-transform">▾</span>
+          </summary>
+          <div className="mt-3 space-y-2 border-t border-[var(--border-strong)] pt-3">
+            {leaderboard.slice(0, 8).map((row, i) => (
+              <div
+                key={row.player_id}
+                className={`flex items-center justify-between text-sm ${row.player_id === myPlayerId ? 'font-bold text-[var(--foreground)]' : 'text-muted'}`}
+              >
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="w-5 text-faint tabular-nums shrink-0">{i + 1}</span>
+                  <span className="truncate">{row.name}</span>
+                </span>
+                <span className="shrink-0 tabular-nums text-xs">
+                  {row.points} pts · {row.word_count}w
+                </span>
+              </div>
+            ))}
+          </div>
+        </details>
       </main>
     </div>
   )

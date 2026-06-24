@@ -65,7 +65,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [playingAgain, setPlayingAgain] = useState(false)
   const [starting, setStarting] = useState(false)
 
-  const { label: timeLabel } = useWordHuntGameTimer(gameCode, game)
+  const { label: timeLabel, timeUp, secondsLeft } = useWordHuntGameTimer(gameCode, game)
 
   const [hostMode, setHostModeState] = useState<WordHuntHostMode>('spectator')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
@@ -394,7 +394,11 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
                 </div>
                 <div className="text-center">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Time left</p>
-                  <p className="text-xl font-black tabular-nums text-emerald-400">{timeLabel}</p>
+                  <p
+                    className={`text-xl font-black tabular-nums ${timeUp ? 'text-[var(--kill)]' : secondsLeft <= 10 ? 'text-[var(--marry)]' : 'text-[var(--primary)]'}`}
+                  >
+                    {timeLabel}
+                  </p>
                 </div>
               </div>
 
