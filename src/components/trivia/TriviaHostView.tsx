@@ -9,7 +9,7 @@ import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageSh
 import { gameTypeConfig } from '@/lib/game-types'
 import { getTriviaHostMode, setTriviaHostMode, type TriviaHostMode } from '@/lib/trivia'
 import { useTriviaHostRoundAutomation } from '@/hooks/useTriviaHostRoundAutomation'
-import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, TRIVIA_ANSWER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
@@ -296,6 +296,8 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
   useEffect(() => {
     if (showPlayTab && game?.status === 'active') setTab('play')
   }, [showPlayTab, game?.status])
+
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   if (!game) {
     return (

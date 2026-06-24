@@ -35,6 +35,7 @@ import type {
 } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 
 type HostTab = 'play' | 'manage'
@@ -237,16 +238,6 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     }
   }
 
-  const markHostReady = useCallback(async () => {
-    if (!hostPlayerId) return
-    await fetch('/api/players/ready', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId: gameCode, playerId: hostPlayerId }),
-    })
-    await load()
-  }, [gameCode, hostPlayerId, load])
-
   const shuffleTeams = async () => {
     setRandomizingTeams(true)
     try {
@@ -363,9 +354,10 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   const randomizeTeams = game ? codewordsRandomizeTeams(game) : false
   const hostMyRole = hostPlayerId ? roles.find((r) => r.player_id === hostPlayerId) : undefined
   const hostPlays = hostMode === 'player' && !!hostPlayerId
-  const hostPlayer = hostPlayerId ? players.find((p) => p.id === hostPlayerId) : undefined
   const showPlayTab = hostPlays && !!hostMyRole
   const inActivePlay = showPlayTab && game?.status === 'active' && !!board
+
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   useCodewordsNotifications({
     game,
@@ -381,11 +373,6 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   useEffect(() => {
     if (inActivePlay) setTab('play')
   }, [inActivePlay])
-
-  useEffect(() => {
-    if (game?.status !== 'waiting' || !hostPlayerId || hostPlayer?.spectator !== true) return
-    void markHostReady()
-  }, [game?.status, hostPlayerId, hostPlayer?.spectator, markHostReady])
 
   if (!game) {
     return (

@@ -33,6 +33,7 @@ import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
+import { markPlayerReady } from '@/lib/player-ready'
 import { useMonopolyNotifications } from '@/hooks/useMonopolyNotifications'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
@@ -245,6 +246,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   const cfg = gameTypeConfig('monopoly')
   const myState = states.find((s) => s.player_id === myPlayerId)
+  const me = myPlayerId ? players.find((p) => p.id === myPlayerId) : null
 
   useMonopolyNotifications({
     game,
@@ -312,16 +314,40 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'waiting') {
     const displayName = myPlayerName ?? players.find((p) => p.id === myPlayerId)?.name ?? 'Player'
+    const isSpectator = me?.spectator === true
     return (
       <GameJoinLobbyShell gameCode={gameCode}>
         <div className="space-y-4">
           <div className="rounded-xl border border-[color-mix(in_srgb,var(--primary)_18%,var(--border))] bg-[color-mix(in_srgb,var(--primary)_6%,transparent)] px-4 py-4 text-center space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--primary)]">You&apos;re in</p>
-            <h2 className="text-xl sm:text-2xl font-black">You&apos;re in, {displayName}!</h2>
-            <p className="text-muted text-sm leading-relaxed">
-              Waiting for the host to start. You&apos;ll begin with £{MONOPOLY_STARTING_CASH.toLocaleString('en-GB')}{' '}
-              when the game begins.
-            </p>
+            {isSpectator ? (
+              <>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--primary)]">New round</p>
+                <h2 className="text-xl sm:text-2xl font-black">Ready for another game?</h2>
+                <p className="text-muted text-sm">Tap below to join the next round</p>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!myPlayerId) return
+                      await markPlayerReady(gameCode, myPlayerId)
+                      await load()
+                    }}
+                    className="btn-primary w-full py-3 text-base font-bold"
+                  >
+                    I&apos;m in — ready to play
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--primary)]">You&apos;re in</p>
+                <h2 className="text-xl sm:text-2xl font-black">You&apos;re in, {displayName}!</h2>
+                <p className="text-muted text-sm leading-relaxed">
+                  Waiting for the host to start. You&apos;ll begin with £{MONOPOLY_STARTING_CASH.toLocaleString('en-GB')}{' '}
+                  when the game begins.
+                </p>
+              </>
+            )}
           </div>
           <GameRulesLink gameType="monopoly" variant="subtle" />
           <div className="glass-card-strong p-4 text-center">

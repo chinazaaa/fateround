@@ -20,7 +20,7 @@ import {
 } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
-import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import type { Game, Player, Round, TtlGuess, TtlStatement } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -255,6 +255,8 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
 
   const hostPlays = hostMode === 'player' && !!hostPlayerId
   const showPlayTab = hostPlays && game?.status !== 'finished'
+
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   if (!game) {
     return (

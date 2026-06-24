@@ -35,7 +35,7 @@ import {
 import { appOrigin } from '@/lib/site'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
-import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import type { BingoCallMode, BingoCalledNumber, BingoClaim, BingoCard, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useBingoNotifications'
@@ -390,6 +390,8 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
     winnerName: winnerPlayer?.name ?? null,
     enabled: game?.status === 'active' || game?.status === 'finished',
   })
+
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   if (!game) {
     return (

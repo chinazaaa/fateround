@@ -32,7 +32,7 @@ import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, NPAT_ANSWER_SELECT, NPAT_MARK_SELECT, PLAYER_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
-import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import type { Game, NpatAnswer, NpatMark, Player, Round } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -302,6 +302,8 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       currentMetadata.phase === 'marking' ||
       currentMetadata.phase === 'host_review' ||
       currentMetadata.phase === 'reveal')
+
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   if (!game) {
     return (

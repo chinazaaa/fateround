@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { filterParticipantsInRounds } from '@/lib/utils'
@@ -7,6 +7,7 @@ import { hexToRgba } from '@/lib/color'
 import { useGameRealtime } from '@/hooks/useGameRealtime'
 import { LOAD_TIMEOUT_MS, POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useScrollHostViewToTop, scrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import {
   CONFESSION_SELECT,
   GAME_SELECT,
@@ -717,6 +718,13 @@ export default function HostPage() {
     [gameCode, game?.game_type, game?.participant_mode],
     { intervalMs: POLL_INTERVALS.lobby, enabled: game?.status === 'waiting' }
   )
+
+  const reloadHostPlayers = useCallback(async () => {
+    const { data: plrs } = await supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at')
+    if (plrs) setPlayers(plrs)
+  }, [gameCode])
+
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, reloadHostPlayers)
 
   // Poll during active game — slow fallback when realtime misses updates
   usePolling(() => syncGameState(), [gameCode, currentRound?.id, lastFinishedRound?.id], {

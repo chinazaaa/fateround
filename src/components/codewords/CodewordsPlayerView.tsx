@@ -33,7 +33,7 @@ import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { allowLateJoin, allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
-import { resolvePlayerSession } from '@/lib/player-resume'
+import { markPlayerReady } from '@/lib/player-ready'
 import type {
   CodewordsBoard,
   CodewordsGuess,
@@ -321,11 +321,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
   const markReady = useCallback(async () => {
     if (!myPlayerId) return
-    await fetch('/api/players/ready', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
-    })
+    await markPlayerReady(gameCode, myPlayerId)
     await load()
   }, [gameCode, load, myPlayerId])
 

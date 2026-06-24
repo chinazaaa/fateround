@@ -18,7 +18,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
-import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, LudoDiceRoll, LudoPlayerState, LudoSession, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -284,6 +284,8 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     players,
     enabled: hostPlays && game?.status === 'active',
   })
+
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   if (!game) {
     return (

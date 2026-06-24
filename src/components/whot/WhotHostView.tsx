@@ -21,7 +21,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
-import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player, WhotPlayerHand, WhotSession, WhotShape } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -265,6 +265,8 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const whotRules = useMemo(() => parseWhotRules(game), [game])
   const hostCanPlay = session ? hasPlayableCard(myHand, session, whotRules) : false
   const pickPenalty = session ? getActivePickPenalty(session) : { type: null, count: 0 }
+
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   if (!game) {
     return (

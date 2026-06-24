@@ -29,7 +29,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
-import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import {
   clearPlayerSession,
   getPlayerSession,
@@ -319,6 +319,8 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
     players,
     enabled: game?.status === 'active',
   })
+
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   if (!game) {
     return (

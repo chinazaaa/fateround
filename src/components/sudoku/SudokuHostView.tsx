@@ -12,6 +12,7 @@ import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } fr
 import { markGameFinished } from '@/lib/game-finish'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player } from '@/types'
+import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useToast } from '@/components/ui/Toast'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -119,6 +120,8 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
       setTab('play')
     }
   }, [hostMode, hostPlayerId, game?.status])
+
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
   // Real-time: game changes
   useEffect(() => {

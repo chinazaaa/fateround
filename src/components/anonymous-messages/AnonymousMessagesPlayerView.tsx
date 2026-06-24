@@ -34,6 +34,7 @@ import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
+import { markPlayerReady } from '@/lib/player-ready'
 import { allowLateJoin, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 
 type Screen =
@@ -317,13 +318,31 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   }
 
   if (screen === 'waiting') {
+    const me = myPlayerId ? players.find((p) => p.id === myPlayerId) : null
     return (
       <CenteredShell>
         <Header game={game} />
         {game && <AnonymousRoomHeadcount game={game} players={players} />}
         <PlayerBar name={myPlayerName} />
         <LobbyPlayers players={players} game={game} />
-        <p className="text-muted text-sm text-center">Waiting for the host to start the session…</p>
+        {me?.spectator === true ? (
+          <div className="space-y-2 text-center">
+            <p className="text-muted text-sm">Tap below to join the next session</p>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!myPlayerId) return
+                await markPlayerReady(gameCode, myPlayerId)
+                await load()
+              }}
+              className="btn-primary w-full py-3 text-base font-bold"
+            >
+              I&apos;m in — ready to play
+            </button>
+          </div>
+        ) : (
+          <p className="text-muted text-sm text-center">Waiting for the host to start the session…</p>
+        )}
         {myPlayerId && (
           <PlayerSessionControls
             gameCode={gameCode}
