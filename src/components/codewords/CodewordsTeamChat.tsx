@@ -78,30 +78,29 @@ export function CodewordsTeamChat({
         )}
       </div>
 
-      <div className="flex gap-2">
+      <form
+        className="flex items-center gap-2 min-w-0"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void sendMessage()
+        }}
+      >
         <input
           type="text"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              void sendMessage()
-            }
-          }}
           placeholder="Message your team…"
           maxLength={200}
-          className="input-field flex-1 min-w-0"
+          className="input-field flex-1 min-w-0 w-0 py-2.5 text-sm"
         />
         <button
-          type="button"
-          onClick={() => void sendMessage()}
+          type="submit"
           disabled={sending || !draft.trim()}
-          className="btn-primary shrink-0"
+          className="btn-primary btn-fit shrink-0 px-4 py-2.5 text-sm whitespace-nowrap"
         >
           {sending ? '…' : 'Send'}
         </button>
-      </div>
+      </form>
     </div>
   )
 }
