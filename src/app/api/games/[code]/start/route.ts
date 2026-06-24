@@ -455,7 +455,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return NextResponse.json({ error: finalReady.error ?? 'Teams are not ready' }, { status: 400 })
     }
 
-    const startingTeam = Math.random() < 0.5 ? 'red' : 'blue'
+    const firstTeamPref = raw.firstTeam
+    const startingTeam: 'red' | 'blue' =
+      firstTeamPref === 'red' || firstTeamPref === 'blue'
+        ? firstTeamPref
+        : Math.random() < 0.5 ? 'red' : 'blue'
     const words = pickBoardWords()
     const key = generateKey(startingTeam)
     const spymasterTimer = clampCodewordsTimer(game.timer_seconds ?? CODEWORDS_DEFAULT_SPYMASTER_TIMER)

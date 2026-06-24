@@ -61,6 +61,8 @@ export function CodewordsHostManagePanel({
   removingPlayerId,
   randomizingTeams = false,
   showSpectatorBoard = true,
+  firstTeam = 'random' as 'random' | 'red' | 'blue',
+  onFirstTeamChange,
 }: {
   game: Game
   gameCode: string
@@ -94,6 +96,8 @@ export function CodewordsHostManagePanel({
   removingPlayerId?: string | null
   randomizingTeams?: boolean
   showSpectatorBoard?: boolean
+  firstTeam?: 'random' | 'red' | 'blue'
+  onFirstTeamChange?: (team: 'random' | 'red' | 'blue') => void
 }) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
@@ -392,6 +396,25 @@ export function CodewordsHostManagePanel({
 
           {inLobby && (
             <>
+              {onFirstTeamChange && (
+                <div className="space-y-1.5">
+                  <p className="label-caps">Goes first</p>
+                  <div className="flex rounded-xl border border-[var(--border)] overflow-hidden text-sm">
+                    {(['random', 'red', 'blue'] as const).map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => onFirstTeamChange(opt)}
+                        className={`flex-1 py-1.5 font-semibold capitalize transition-colors ${
+                          firstTeam === opt ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
+                        }`}
+                      >
+                        {opt === 'random' ? '🎲 Random' : opt === 'red' ? '🔴 Red' : '🔵 Blue'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <HostLobbyStartButton
                 onClick={onStartGame}
                 disabled={startDisabled}

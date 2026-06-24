@@ -49,6 +49,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   const [board, setBoard] = useState<CodewordsBoard | null>(null)
   const [guesses, setGuesses] = useState<CodewordsGuess[]>([])
   const [starting, setStarting] = useState(false)
+  const [firstTeam, setFirstTeam] = useState<'random' | 'red' | 'blue'>('random')
   const [playingAgain, setPlayingAgain] = useState(false)
   const [ending, setEnding] = useState(false)
   const [randomizingTeams, setRandomizingTeams] = useState(false)
@@ -268,7 +269,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       const res = await fetch(`/api/games/${gameCode}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken }),
+        body: JSON.stringify({ hostToken, firstTeam: firstTeam === 'random' ? undefined : firstTeam }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to start')
@@ -591,6 +592,8 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
         onSaveTimers={saveTimers}
         onSetSpymaster={setSpymaster}
         onMoveTeam={moveTeam}
+        firstTeam={firstTeam}
+        onFirstTeamChange={setFirstTeam}
         onStartGame={startGame}
         onRandomizeTeams={shuffleTeams}
         randomizingTeams={randomizingTeams}
