@@ -18,9 +18,12 @@ import {
   type RoomGame,
 } from '@/components/rooms/room-game-display'
 import { gamePathWithRoomMember } from '@/lib/room-member-join'
+import { RoomSettings } from '@/components/rooms/RoomSettings'
+import { formatRoomTimezone } from '@/lib/room-timezones'
+import type { RoomRow } from '@/lib/room-api'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 
-type Room = { id: string; name: string; created_at: string }
+type Room = RoomRow
 
 type Member = {
   id: string
@@ -141,6 +144,30 @@ function MemberChip({
   )
 }
 
+function RoomMeta({ room }: { room: Room }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span
+          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+            room.is_public
+              ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+              : 'bg-[var(--surface)] text-faint border border-[var(--border)]'
+          }`}
+        >
+          {room.is_public ? '🌐 Public' : '🔒 Private'}
+        </span>
+        {room.timezone && (
+          <span className="text-[10px] text-faint">🕐 {formatRoomTimezone(room.timezone)}</span>
+        )}
+      </div>
+      {room.description && (
+        <p className="text-xs text-muted leading-relaxed">{room.description}</p>
+      )}
+    </div>
+  )
+}
+
 export function RoomLobby({ roomCode }: { roomCode: string }) {
   const [status, setStatus] = useState<Status>('loading')
   const [room, setRoom] = useState<Room | null>(null)
@@ -153,6 +180,7 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
   const [newGameBanner, setNewGameBanner] = useState<RoomGame | null>(null)
   const [copySuccess, setCopySuccess] = useState<'room' | 'member' | null>(null)
   const [creatorToken, setCreatorToken] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const router = useRouter()
   const { confirm } = useConfirm()
 
@@ -221,6 +249,22 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
             if (prev.some((m) => m.id === (payload.new as Message).id)) return prev
             return [...prev, payload.new as Message]
           })
+        }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [roomCode])
+
+  // Realtime — room settings
+  useEffect(() => {
+    const channel = supabase
+      .channel(`room_meta:${roomCode}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomCode}` },
+        (payload) => {
+          const next = payload.new as Room
+          setRoom((prev) => (prev ? { ...prev, ...next } : next))
         }
       )
       .subscribe()
@@ -398,6 +442,8 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
       <RoomJoinGate
         roomCode={roomCode}
         roomName={room?.name ?? roomCode}
+        description={room?.description}
+        timezone={room?.timezone}
         onJoined={handleJoined}
       />
     )
@@ -478,9 +524,24 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
         {/* Desktop sidebar */}
         <aside className="hidden lg:flex lg:w-64 xl:w-72 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)]/30">
           <div className="p-4 border-b border-[var(--border)]">
-            <p className="label-caps">Room</p>
-            <h1 className="font-black text-xl text-body leading-tight mt-1">{room?.name}</h1>
-            <p className="text-xs text-faint mt-1">{memberCountLabel}</p>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="label-caps">Room</p>
+                <h1 className="font-black text-xl text-body leading-tight mt-1">{room?.name}</h1>
+                <p className="text-xs text-faint mt-1">{memberCountLabel}</p>
+              </div>
+              {creatorToken && room && (
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
+                  title="Room settings"
+                  className="shrink-0 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs font-semibold text-muted hover:text-body transition-colors"
+                >
+                  ⚙️
+                </button>
+              )}
+            </div>
+            {room && <div className="mt-3"><RoomMeta room={room} /></div>}
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-1 min-h-0">
@@ -529,10 +590,23 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
         <main className="flex-1 flex flex-col min-h-0 min-w-0">
           {/* Mobile room bar */}
           <div className="lg:hidden shrink-0 border-b border-[var(--border)] bg-[var(--surface)]/40 px-4 py-3 space-y-3">
-            <div className="min-w-0">
-              <h1 className="font-black text-base text-body truncate">{room?.name}</h1>
-              <p className="text-xs text-faint mt-0.5">{memberCountLabel}</p>
+            <div className="flex items-start justify-between gap-2 min-w-0">
+              <div className="min-w-0">
+                <h1 className="font-black text-base text-body truncate">{room?.name}</h1>
+                <p className="text-xs text-faint mt-0.5">{memberCountLabel}</p>
+              </div>
+              {creatorToken && room && (
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
+                  title="Room settings"
+                  className="shrink-0 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs font-semibold text-muted hover:text-body transition-colors"
+                >
+                  ⚙️
+                </button>
+              )}
             </div>
+            {room && <RoomMeta room={room} />}
             <div className="flex flex-col gap-2">
               <Link
                 href={startGameHref}
@@ -620,6 +694,17 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
       {/* Member code reminder — shown once */}
       {identity && status === 'ready' && (
         <MemberCodeReminder memberCode={identity.memberCode} displayName={identity.displayName} />
+      )}
+
+      {creatorToken && room && (
+        <RoomSettings
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          roomCode={roomCode}
+          creatorToken={creatorToken}
+          room={room}
+          onUpdated={setRoom}
+        />
       )}
     </>
   )

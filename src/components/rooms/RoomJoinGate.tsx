@@ -1,14 +1,17 @@
 'use client'
 
 import { useState } from 'react'
+import { formatRoomTimezone } from '@/lib/room-timezones'
 
 type Props = {
   roomCode: string
   roomName: string
+  description?: string | null
+  timezone?: string | null
   onJoined: (identity: { memberId: string; memberCode: string; displayName: string }) => void
 }
 
-export function RoomJoinGate({ roomCode, roomName, onJoined }: Props) {
+export function RoomJoinGate({ roomCode, roomName, description, timezone, onJoined }: Props) {
   const [mode, setMode] = useState<'new' | 'returning'>('new')
   const [displayName, setDisplayName] = useState('')
   const [memberCode, setMemberCode] = useState('')
@@ -52,6 +55,12 @@ export function RoomJoinGate({ roomCode, roomName, onJoined }: Props) {
           <p className="label-caps">Joining room</p>
           <h1 className="text-2xl font-black gradient-title">{roomName}</h1>
           <p className="font-mono text-sm text-faint tracking-widest">{roomCode}</p>
+          {description && (
+            <p className="text-sm text-muted pt-1 leading-relaxed">{description}</p>
+          )}
+          {timezone && (
+            <p className="text-xs text-faint">🕐 Plays in {formatRoomTimezone(timezone)}</p>
+          )}
         </div>
 
         <div className="glass-card-strong p-4 space-y-4">

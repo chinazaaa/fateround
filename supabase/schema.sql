@@ -309,8 +309,12 @@ create table if not exists rooms (
   name text not null,
   creator_token text not null default '',
   max_members integer,
+  is_public boolean not null default false,
+  description text,
+  timezone text,
   created_at timestamptz not null default now()
 );
+create index if not exists idx_rooms_public on rooms(is_public, created_at desc) where is_public = true;
 
 -- Room members with persistent identity (no auth — member_code is their key)
 create table if not exists room_members (
