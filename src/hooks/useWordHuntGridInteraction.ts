@@ -8,6 +8,9 @@ import {
 } from '@/lib/word-hunt'
 import { canExtendWordHuntPath } from '@/lib/word-hunt-client'
 
+/** Pixels before a pointer sequence counts as a drag (not a tap). */
+const DRAG_THRESHOLD_PX = 10
+
 /** Nearest cell under the pointer — works across gaps for diagonal drags. */
 function cellIndexFromPoint(x: number, y: number, gridRoot: HTMLElement | null): number | null {
   if (!gridRoot) return null
@@ -33,7 +36,6 @@ function cellIndexFromPoint(x: number, y: number, gridRoot: HTMLElement | null):
     const dx = x - cx
     const dy = y - cy
     const dist = Math.hypot(dx, dy)
-    // Extend hit area into gaps so diagonal strokes don't skip cells.
     const pad = Math.min(rect.width, rect.height) * 0.42
     if (
       Math.abs(dx) <= rect.width / 2 + pad &&
@@ -76,6 +78,7 @@ export function useWordHuntGridInteraction(
   const movedRef = useRef(false)
   const lastCellRef = useRef<number | null>(null)
   const activePointerRef = useRef<number | null>(null)
+  const pointerStartRef = useRef({ x: 0, y: 0 })
   const optionsRef = useRef(options)
   optionsRef.current = options
 
@@ -89,9 +92,7 @@ export function useWordHuntGridInteraction(
 
       const existingIdx = current.indexOf(index)
       if (existingIdx >= 0) {
-        // During a drag, ignore cells already in the path.
         if (draggingRef.current && movedRef.current) return
-        // Tap a highlighted letter to undo (last) or rewind (earlier).
         if (existingIdx === current.length - 1) {
           const next = current.slice(0, -1)
           onPathChange(next)
@@ -137,6 +138,7 @@ export function useWordHuntGridInteraction(
   const endStroke = useCallback(
     (target: HTMLElement, pointerId: number) => {
       const path = selectedPathRef.current
+      const wasDrag = movedRef.current
       draggingRef.current = false
       movedRef.current = false
       lastCellRef.current = null
@@ -147,7 +149,8 @@ export function useWordHuntGridInteraction(
       if (path.length >= WORD_HUNT_MIN_WORD_LENGTH && onStrokeEnd) {
         onStrokeEnd([...path])
       }
-      if (path.length > 0) {
+      // Only drags reset the path — taps keep letters selected for the next tap.
+      if (wasDrag && path.length > 0) {
         onPathChange([])
       }
     },
@@ -162,6 +165,7 @@ export function useWordHuntGridInteraction(
       movedRef.current = false
       lastCellRef.current = null
       activePointerRef.current = e.pointerId
+      pointerStartRef.current = { x: e.clientX, y: e.clientY }
       e.currentTarget.setPointerCapture(e.pointerId)
       const index = cellIndexFromPoint(e.clientX, e.clientY, gridRef.current)
       if (index !== null) applyCell(index)
@@ -172,6 +176,11 @@ export function useWordHuntGridInteraction(
   const onPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!draggingRef.current || disabled || activePointerRef.current !== e.pointerId) return
+      const dist = Math.hypot(
+        e.clientX - pointerStartRef.current.x,
+        e.clientY - pointerStartRef.current.y
+      )
+      if (dist < DRAG_THRESHOLD_PX) return
       e.preventDefault()
       movedRef.current = true
       const index = cellIndexFromPoint(e.clientX, e.clientY, gridRef.current)
