@@ -139,11 +139,26 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     }
 
     if (gameData.status === 'finished' && playerId) {
-      const { data: subs } = await supabase
-        .from('word_hunt_submissions')
-        .select(WORD_HUNT_SUBMISSION_SELECT)
-        .eq('game_id', gameCode)
+      const [{ data: subs }, { data: roundData }] = await Promise.all([
+        supabase
+          .from('word_hunt_submissions')
+          .select(WORD_HUNT_SUBMISSION_SELECT)
+          .eq('game_id', gameCode),
+        supabase
+          .from('rounds')
+          .select(ROUND_SELECT)
+          .eq('game_id', gameCode)
+          .eq('round_number', 1)
+          .maybeSingle(),
+      ])
       setSubmissions((subs ?? []) as WordHuntSubmission[])
+      if (roundData) {
+        const meta = parseWordHuntMetadata((roundData as Record<string, unknown>).word_hunt_metadata)
+        if (meta) {
+          setGrid(meta.grid)
+          setValidWords(validWordsSetFromMetadata(meta.valid_words))
+        }
+      }
       setView('finished')
       return
     }
@@ -311,10 +326,10 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     void load()
   }
 
-  function handleSubmitWord() {
-    if (!myPlayerId || !roundId || !grid || timeUp || selectedPath.length < WORD_HUNT_MIN_WORD_LENGTH) return
+  const handleSubmitWord = useCallback((pathOverride?: number[]) => {
+    const path = pathOverride ?? selectedPath
+    if (!myPlayerId || !roundId || !grid || timeUp || path.length < WORD_HUNT_MIN_WORD_LENGTH) return
 
-    const path = [...selectedPath]
     setSelectedPath([])
 
     const foundSet = new Set(
@@ -353,7 +368,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
       .finally(() => {
         inFlightWordsRef.current.delete(validation.normalized)
       })
-  }
+  }, [gameCode, grid, myPlayerId, roundId, selectedPath, submissions, timeUp, validWords])
 
   const mySubmissions = myPlayerId ? submissions.filter((s) => s.player_id === myPlayerId) : []
   const myFoundWords = mySubmissions.map((s) => s.word)
@@ -480,6 +495,8 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
             players={players}
             leaderboard={leaderboard}
             highlightPlayerId={myPlayerId}
+            mySubmissions={mySubmissions}
+            validWords={validWords.size > 0 ? Array.from(validWords) : undefined}
             showCreateNewGame
           />
         </main>
@@ -514,13 +531,12 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
             grid={grid}
             selectedPath={selectedPath}
             onPathChange={setSelectedPath}
+            onStrokeEnd={handleSubmitWord}
             foundWords={myFoundWords}
             myPoints={myPoints}
             timeLabel={timeLabel}
             timeUp={timeUp}
             secondsLeft={secondsLeft}
-            onClear={() => setSelectedPath([])}
-            onSubmit={handleSubmitWord}
             disabled={timeUp || isViewer}
           />
         )}

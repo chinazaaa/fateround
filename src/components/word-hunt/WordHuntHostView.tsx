@@ -19,6 +19,7 @@ import {
   tallyWordHuntScores,
   WORD_HUNT_MIN_PLAYERS,
 } from '@/lib/word-hunt'
+import { validWordsSetFromMetadata } from '@/lib/word-hunt-client'
 import { useWordHuntGameTimer } from '@/hooks/useWordHuntGameTimer'
 import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
@@ -62,6 +63,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [players, setPlayers] = useState<Player[]>([])
   const [roundId, setRoundId] = useState<string | null>(null)
   const [grid, setGrid] = useState<string[][] | null>(null)
+  const [validWords, setValidWords] = useState<string[]>([])
   const [submissions, setSubmissions] = useState<WordHuntSubmission[]>([])
   const [playingAgain, setPlayingAgain] = useState(false)
   const [starting, setStarting] = useState(false)
@@ -92,7 +94,10 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
         .maybeSingle()
       if (roundData) {
         const meta = parseWordHuntMetadata((roundData as Record<string, unknown>).word_hunt_metadata)
-        if (meta) setGrid(meta.grid)
+        if (meta) {
+          setGrid(meta.grid)
+          setValidWords(Array.from(validWordsSetFromMetadata(meta.valid_words)))
+        }
         setRoundId(roundData.id as string)
 
         const { data: subs } = await supabase
@@ -102,11 +107,26 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
         setSubmissions((subs ?? []) as WordHuntSubmission[])
       }
     } else if (gameData.status === 'finished') {
-      const { data: subs } = await supabase
-        .from('word_hunt_submissions')
-        .select(WORD_HUNT_SUBMISSION_SELECT)
-        .eq('game_id', gameCode)
+      const [{ data: subs }, { data: roundData }] = await Promise.all([
+        supabase
+          .from('word_hunt_submissions')
+          .select(WORD_HUNT_SUBMISSION_SELECT)
+          .eq('game_id', gameCode),
+        supabase
+          .from('rounds')
+          .select(ROUND_SELECT)
+          .eq('game_id', gameCode)
+          .eq('round_number', 1)
+          .maybeSingle(),
+      ])
       setSubmissions((subs ?? []) as WordHuntSubmission[])
+      if (roundData) {
+        const meta = parseWordHuntMetadata((roundData as Record<string, unknown>).word_hunt_metadata)
+        if (meta) {
+          setGrid(meta.grid)
+          setValidWords(Array.from(validWordsSetFromMetadata(meta.valid_words)))
+        }
+      }
     }
   }, [gameCode])
 
@@ -302,6 +322,9 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
   }
 
   const leaderboard = tallyWordHuntScores(submissions, players)
+  const hostMySubmissions = hostPlayerId
+    ? submissions.filter((submission) => submission.player_id === hostPlayerId)
+    : undefined
   const readyPlayers = players.filter((p) => p.spectator !== true)
   const canStart = readyPlayers.length >= WORD_HUNT_MIN_PLAYERS
   const hostPlays = hostMode === 'player' && !!hostPlayerId
@@ -436,6 +459,8 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
               players={players}
               leaderboard={leaderboard}
               highlightPlayerId={hostPlayerId}
+              mySubmissions={hostMySubmissions}
+              validWords={validWords.length > 0 ? validWords : undefined}
               playAgainButton={
                 <button
                   type="button"

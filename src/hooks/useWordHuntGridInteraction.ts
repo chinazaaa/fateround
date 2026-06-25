@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useRef } from 'react'
-import { rowColToIndex } from '@/lib/word-hunt'
+import { WORD_HUNT_MIN_WORD_LENGTH } from '@/lib/word-hunt'
 
 function cellIndexFromPoint(x: number, y: number, gridRoot: HTMLElement | null): number | null {
   if (!gridRoot) return null
@@ -17,7 +17,8 @@ function cellIndexFromPoint(x: number, y: number, gridRoot: HTMLElement | null):
 export function useWordHuntGridInteraction(
   selectedPath: number[],
   onPathChange: (path: number[]) => void,
-  disabled: boolean
+  disabled: boolean,
+  onStrokeEnd?: (path: number[]) => void
 ) {
   const gridRef = useRef<HTMLDivElement>(null)
   const selectedPathRef = useRef(selectedPath)
@@ -63,15 +64,23 @@ export function useWordHuntGridInteraction(
     [disabled, onPathChange]
   )
 
-  const endStroke = useCallback((target: HTMLElement, pointerId: number) => {
-    draggingRef.current = false
-    movedRef.current = false
-    lastCellRef.current = null
-    activePointerRef.current = null
-    if (target.hasPointerCapture(pointerId)) {
-      target.releasePointerCapture(pointerId)
-    }
-  }, [])
+  const endStroke = useCallback(
+    (target: HTMLElement, pointerId: number) => {
+      const path = selectedPathRef.current
+      const didMove = movedRef.current
+      draggingRef.current = false
+      movedRef.current = false
+      lastCellRef.current = null
+      activePointerRef.current = null
+      if (target.hasPointerCapture(pointerId)) {
+        target.releasePointerCapture(pointerId)
+      }
+      if (didMove && path.length >= WORD_HUNT_MIN_WORD_LENGTH && onStrokeEnd) {
+        onStrokeEnd([...path])
+      }
+    },
+    [onStrokeEnd]
+  )
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {

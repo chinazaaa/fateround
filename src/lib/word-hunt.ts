@@ -176,6 +176,33 @@ export function wordHuntPoints(wordLength: number): number {
   return 800 + (wordLength - 5) * 400
 }
 
+export interface WordHuntWordEntry {
+  word: string
+  points: number
+  found: boolean
+}
+
+export function sortWordHuntSubmissions(
+  submissions: Pick<WordHuntSubmission, 'word' | 'points_awarded'>[]
+): Pick<WordHuntSubmission, 'word' | 'points_awarded'>[] {
+  return [...submissions].sort(
+    (a, b) => b.points_awarded - a.points_awarded || a.word.localeCompare(b.word)
+  )
+}
+
+export function buildWordHuntWordList(
+  validWords: string[],
+  foundWords: ReadonlySet<string>
+): WordHuntWordEntry[] {
+  return validWords
+    .map((word) => ({
+      word,
+      points: wordHuntPoints(word.length),
+      found: foundWords.has(word),
+    }))
+    .sort((a, b) => b.points - a.points || a.word.localeCompare(b.word))
+}
+
 export function wordHuntDeadlineMs(sessionStartedAt: string | null | undefined, timerSeconds: number): number | null {
   if (!sessionStartedAt) return null
   const seconds = timerSeconds > 0 ? timerSeconds : WORD_HUNT_DEFAULT_TIMER

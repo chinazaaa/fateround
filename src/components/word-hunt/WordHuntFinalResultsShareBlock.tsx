@@ -4,14 +4,17 @@ import { useRef, type ReactNode } from 'react'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
+import { WordHuntPersonalResults } from '@/components/word-hunt/WordHuntPersonalResults'
 import type { Game, Player } from '@/types'
-import type { WordHuntPlayerScore } from '@/lib/word-hunt'
+import type { WordHuntPlayerScore, WordHuntSubmission } from '@/lib/word-hunt'
 
 export function WordHuntFinalResultsShareBlock({
   game,
   players,
   leaderboard,
   highlightPlayerId,
+  mySubmissions,
+  validWords,
   playAgainButton,
   showCreateNewGame = true,
 }: {
@@ -19,6 +22,8 @@ export function WordHuntFinalResultsShareBlock({
   players: Player[]
   leaderboard: WordHuntPlayerScore[]
   highlightPlayerId?: string | null
+  mySubmissions?: Pick<WordHuntSubmission, 'word' | 'points_awarded'>[]
+  validWords?: string[]
   playAgainButton?: ReactNode
   showCreateNewGame?: boolean
 }) {
@@ -28,6 +33,10 @@ export function WordHuntFinalResultsShareBlock({
 
   return (
     <div className="space-y-4">
+      {mySubmissions && (
+        <WordHuntPersonalResults submissions={mySubmissions} validWords={validWords} />
+      )}
+
       <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-4">
         <ShareResultsCaptureHeader game={game} />
         <p className="text-5xl sm:text-6xl leading-none text-center pt-1">🏆</p>
