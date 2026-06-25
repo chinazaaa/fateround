@@ -1,7 +1,9 @@
 'use client'
 
-import { wordFromPath, wordHuntPoints, WORD_HUNT_MIN_WORD_LENGTH } from '@/lib/word-hunt'
+import { useMemo } from 'react'
+import { WORD_HUNT_MIN_WORD_LENGTH } from '@/lib/word-hunt'
 import { WordHuntGrid } from '@/components/word-hunt/WordHuntGrid'
+import { buildWordHuntPrefixSet, previewWordHuntDrag } from '@/lib/word-hunt-client'
 
 type Props = {
   grid: string[][]
@@ -9,6 +11,7 @@ type Props = {
   onPathChange: (path: number[]) => void
   onStrokeEnd: (path: number[]) => void
   foundWords: string[]
+  validWords: ReadonlySet<string>
   myPoints: number
   timeLabel: string
   timeUp: boolean
@@ -22,16 +25,25 @@ export function WordHuntPlaySurface({
   onPathChange,
   onStrokeEnd,
   foundWords,
+  validWords,
   myPoints,
   timeLabel,
   timeUp,
   secondsLeft,
   disabled = false,
 }: Props) {
-  const currentWord = wordFromPath(grid, selectedPath)
-  const currentPoints =
-    currentWord.length >= WORD_HUNT_MIN_WORD_LENGTH ? wordHuntPoints(currentWord.length) : 0
+  const validPrefixes = useMemo(() => buildWordHuntPrefixSet(validWords), [validWords])
+  const foundSet = useMemo(() => new Set(foundWords.map((w) => w.toLowerCase())), [foundWords])
+  const preview = previewWordHuntDrag(grid, selectedPath, validWords, validPrefixes, foundSet)
   const timerUrgent = !timeUp && secondsLeft <= 10
+
+  const wordChipClass = preview.isValidWord && !preview.alreadyFound
+    ? 'bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-strong)_100%)] text-white shadow-[0_4px_14px_-4px_var(--primary-glow)]'
+    : preview.prefixValid && preview.word.length >= WORD_HUNT_MIN_WORD_LENGTH
+      ? 'bg-[color-mix(in_srgb,var(--primary)_12%,var(--card-strong))] text-[var(--foreground)] border border-[color-mix(in_srgb,var(--primary)_25%,var(--border))]'
+      : preview.word
+        ? 'bg-[var(--surface-inset-bg)] text-muted border border-[var(--border-strong)]'
+        : ''
 
   return (
     <div className="glass-card-strong overflow-hidden border border-[color-mix(in_srgb,var(--primary)_18%,var(--border))] shadow-[var(--card-shadow-glow)]">
@@ -65,10 +77,18 @@ export function WordHuntPlaySurface({
       </div>
 
       <div className="px-4 pt-3 pb-1 min-h-[2.5rem] flex items-center justify-center">
-        {currentWord ? (
-          <div className="px-4 py-1.5 rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-strong)_100%)] text-white font-black text-sm sm:text-base tracking-[0.12em] uppercase shadow-[0_4px_14px_-4px_var(--primary-glow)]">
-            {currentWord}
-            {currentPoints > 0 && <span className="opacity-90"> (+{currentPoints})</span>}
+        {preview.word ? (
+          <div
+            className={[
+              'px-4 py-1.5 rounded-full font-black text-sm sm:text-base tracking-[0.12em] uppercase',
+              wordChipClass,
+            ].join(' ')}
+          >
+            {preview.word}
+            {preview.points != null && <span className="opacity-90"> (+{preview.points})</span>}
+            {preview.alreadyFound && preview.word.length >= WORD_HUNT_MIN_WORD_LENGTH && (
+              <span className="opacity-75 normal-case tracking-normal text-xs font-semibold"> · already found</span>
+            )}
           </div>
         ) : (
           <p className="text-sm text-muted font-medium">Drag through adjacent letters</p>
@@ -83,6 +103,7 @@ export function WordHuntPlaySurface({
           onStrokeEnd={onStrokeEnd}
           disabled={disabled}
           variant="play"
+          validPrefixes={validPrefixes}
         />
       </div>
 

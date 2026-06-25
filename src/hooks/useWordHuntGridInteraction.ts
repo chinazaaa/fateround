@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useRef } from 'react'
-import { WORD_HUNT_MIN_WORD_LENGTH } from '@/lib/word-hunt'
+import { WORD_HUNT_MIN_WORD_LENGTH, wordFromPath } from '@/lib/word-hunt'
+import { canExtendWordHuntPath } from '@/lib/word-hunt-client'
 
 function cellIndexFromPoint(x: number, y: number, gridRoot: HTMLElement | null): number | null {
   if (!gridRoot) return null
@@ -14,11 +15,17 @@ function cellIndexFromPoint(x: number, y: number, gridRoot: HTMLElement | null):
   return Number.isFinite(index) ? index : null
 }
 
+type GridInteractionOptions = {
+  grid?: string[][]
+  validPrefixes?: ReadonlySet<string>
+}
+
 export function useWordHuntGridInteraction(
   selectedPath: number[],
   onPathChange: (path: number[]) => void,
   disabled: boolean,
-  onStrokeEnd?: (path: number[]) => void
+  onStrokeEnd?: (path: number[]) => void,
+  options?: GridInteractionOptions
 ) {
   const gridRef = useRef<HTMLDivElement>(null)
   const selectedPathRef = useRef(selectedPath)
@@ -27,27 +34,33 @@ export function useWordHuntGridInteraction(
   const movedRef = useRef(false)
   const lastCellRef = useRef<number | null>(null)
   const activePointerRef = useRef<number | null>(null)
+  const optionsRef = useRef(options)
+  optionsRef.current = options
 
   const applyCell = useCallback(
-    (index: number, fromMove: boolean) => {
+    (index: number) => {
       if (disabled) return
       if (lastCellRef.current === index) return
 
       const current = selectedPathRef.current
-      const existingIdx = current.indexOf(index)
+      if (current.includes(index)) return
 
-      if (existingIdx >= 0) {
-        if (!fromMove && existingIdx === current.length - 1) {
-          onPathChange(current.slice(0, -1))
-          lastCellRef.current = index
-        } else if (fromMove && existingIdx === current.length - 2) {
-          onPathChange(current.slice(0, -1))
-          lastCellRef.current = index
-        }
+      const { grid, validPrefixes } = optionsRef.current ?? {}
+      if (
+        grid &&
+        validPrefixes &&
+        validPrefixes.size > 0 &&
+        !canExtendWordHuntPath(grid, current, index, validPrefixes)
+      ) {
         return
       }
 
       if (current.length === 0) {
+        const { grid, validPrefixes } = optionsRef.current ?? {}
+        if (grid && validPrefixes && validPrefixes.size > 0) {
+          const prefix = wordFromPath(grid, [index])
+          if (!validPrefixes.has(prefix)) return
+        }
         onPathChange([index])
         lastCellRef.current = index
         return
@@ -94,7 +107,7 @@ export function useWordHuntGridInteraction(
       activePointerRef.current = e.pointerId
       e.currentTarget.setPointerCapture(e.pointerId)
       const index = cellIndexFromPoint(e.clientX, e.clientY, gridRef.current)
-      if (index !== null) applyCell(index, false)
+      if (index !== null) applyCell(index)
     },
     [applyCell, disabled]
   )
@@ -105,7 +118,7 @@ export function useWordHuntGridInteraction(
       e.preventDefault()
       movedRef.current = true
       const index = cellIndexFromPoint(e.clientX, e.clientY, gridRef.current)
-      if (index !== null) applyCell(index, true)
+      if (index !== null) applyCell(index)
     },
     [applyCell, disabled]
   )

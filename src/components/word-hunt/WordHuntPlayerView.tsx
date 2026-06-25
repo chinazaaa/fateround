@@ -562,6 +562,8 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
             leaderboard={leaderboard}
             highlightPlayerId={myPlayerId}
             mySubmissions={mySubmissions}
+            allSubmissions={submissions}
+            grid={grid}
             validWords={validWords.size > 0 ? Array.from(validWords) : undefined}
             showCreateNewGame
           />
@@ -599,6 +601,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
             onPathChange={setSelectedPath}
             onStrokeEnd={handleSubmitWord}
             foundWords={myFoundWords}
+            validWords={validWords}
             myPoints={myPoints}
             timeLabel={timeLabel}
             timeUp={timeUp}

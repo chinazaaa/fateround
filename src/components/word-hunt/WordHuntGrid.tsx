@@ -1,50 +1,65 @@
 'use client'
 
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { rowColToIndex } from '@/lib/word-hunt'
 import { useWordHuntGridInteraction } from '@/hooks/useWordHuntGridInteraction'
 
 type Props = {
   grid: string[][]
-  selectedPath: number[]
-  onPathChange: (path: number[]) => void
+  selectedPath?: number[]
+  highlightPath?: number[]
+  onPathChange?: (path: number[]) => void
   onStrokeEnd?: (path: number[]) => void
   disabled?: boolean
-  variant?: 'play' | 'host'
+  variant?: 'play' | 'host' | 'review'
+  validPrefixes?: ReadonlySet<string>
 }
 
 export function WordHuntGrid({
   grid,
-  selectedPath,
-  onPathChange,
+  selectedPath = [],
+  highlightPath = [],
+  onPathChange = () => {},
   onStrokeEnd,
   disabled = false,
   variant = 'play',
+  validPrefixes,
 }: Props) {
   const cellRefs = useRef<(HTMLDivElement | null)[]>([])
   const [linePoints, setLinePoints] = useState<{ x: number; y: number }[]>([])
+  const isReview = variant === 'review'
+  const interactionDisabled = disabled || isReview
+
+  const interactionOptions = useMemo(
+    () => (validPrefixes ? { grid, validPrefixes } : undefined),
+    [grid, validPrefixes]
+  )
+
   const { gridRef, gridHandlers } = useWordHuntGridInteraction(
     selectedPath,
     onPathChange,
-    disabled,
-    onStrokeEnd
+    interactionDisabled,
+    onStrokeEnd,
+    interactionOptions
   )
+
+  const displayPath = isReview ? highlightPath : selectedPath
 
   useLayoutEffect(() => {
     const root = gridRef.current
-    if (!root || selectedPath.length < 2) {
+    if (!root || displayPath.length < 2) {
       setLinePoints([])
       return
     }
 
     function updateLine() {
       const container = gridRef.current
-      if (!container || selectedPath.length < 2) {
+      if (!container || displayPath.length < 2) {
         setLinePoints([])
         return
       }
       const rootRect = container.getBoundingClientRect()
-      const points = selectedPath
+      const points = displayPath
         .map((index) => {
           const el = cellRefs.current[index]
           if (!el) return null
@@ -62,7 +77,7 @@ export function WordHuntGrid({
     const observer = new ResizeObserver(updateLine)
     observer.observe(root)
     return () => observer.disconnect()
-  }, [grid, gridRef, selectedPath])
+  }, [displayPath, grid, gridRef])
 
   const frameClass =
     variant === 'play'
@@ -74,14 +89,14 @@ export function WordHuntGrid({
       ? 'aspect-square rounded-xl font-black text-lg sm:text-2xl flex items-center justify-center select-none transition-[transform,box-shadow,background-color] duration-100'
       : 'aspect-square rounded-lg font-black text-xl sm:text-2xl flex items-center justify-center select-none transition-all duration-100'
 
-  const showPathLine = variant === 'play' && linePoints.length >= 2
+  const showPathLine = linePoints.length >= 2
 
   return (
     <div
       ref={gridRef}
-      className={[frameClass, 'touch-none relative'].join(' ')}
-      style={{ touchAction: 'none' }}
-      {...gridHandlers}
+      className={[frameClass, 'touch-none relative', isReview ? '' : ''].join(' ')}
+      style={{ touchAction: isReview ? undefined : 'none' }}
+      {...(isReview ? {} : gridHandlers)}
     >
       {showPathLine && (
         <svg
@@ -105,16 +120,16 @@ export function WordHuntGrid({
         {grid.map((row, r) =>
           row.map((letter, c) => {
             const index = rowColToIndex(r, c)
-            const inPath = selectedPath.includes(index)
-            const pathOrder = selectedPath.indexOf(index)
+            const inPath = displayPath.includes(index)
+            const pathOrder = displayPath.indexOf(index)
             return (
               <div
                 key={index}
                 ref={(el) => {
                   cellRefs.current[index] = el
                 }}
-                data-word-hunt-cell={index}
-                aria-disabled={disabled}
+                data-word-hunt-cell={isReview ? undefined : index}
+                aria-disabled={interactionDisabled}
                 className={[
                   cellBase,
                   inPath
@@ -122,7 +137,7 @@ export function WordHuntGrid({
                     : variant === 'play'
                       ? 'bg-[var(--card-strong)] text-[var(--foreground)] border border-[var(--border-strong)] shadow-[var(--card-shadow)]'
                       : 'bg-[var(--card-strong)] text-[var(--foreground)] border border-[var(--border-strong)] shadow-[var(--card-shadow)]',
-                  disabled ? 'opacity-50' : '',
+                  interactionDisabled && !isReview ? 'opacity-50' : '',
                 ].join(' ')}
                 style={
                   inPath
@@ -135,7 +150,7 @@ export function WordHuntGrid({
               >
                 <span className="relative pointer-events-none">
                   {letter}
-                  {inPath && pathOrder >= 0 && variant !== 'play' && (
+                  {inPath && pathOrder >= 0 && variant === 'host' && (
                     <span className="absolute -top-2.5 -right-3 text-[8px] font-black text-[var(--marry)]">
                       {pathOrder + 1}
                     </span>

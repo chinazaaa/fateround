@@ -12,25 +12,56 @@ const INITIAL_VISIBLE = 15
 const wordListPanelClass =
   'rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[color-mix(in_srgb,var(--primary)_5%,var(--card-strong))] p-3 sm:p-4 shadow-[var(--card-shadow)]'
 
-function WordTile({ children, missed = false }: { children: React.ReactNode; missed?: boolean }) {
-  return (
-    <span
-      className={[
-        'inline-flex min-w-[4.5rem] justify-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-[0.08em] border',
-        missed
-          ? 'bg-[var(--surface-inset-bg)] border-[var(--border)] text-muted'
-          : 'bg-[var(--chip-active-bg)] border-[var(--chip-active-border)] text-[var(--chip-active-text)]',
-      ].join(' ')}
-    >
-      {children}
-    </span>
-  )
+function WordTile({
+  children,
+  missed = false,
+  selected = false,
+  onClick,
+}: {
+  children: React.ReactNode
+  missed?: boolean
+  selected?: boolean
+  onClick?: () => void
+}) {
+  const className = [
+    'inline-flex min-w-[4.5rem] justify-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-[0.08em] border transition-colors',
+    selected
+      ? 'bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-strong)_100%)] text-white border-transparent'
+      : missed
+        ? 'bg-[var(--surface-inset-bg)] border-[var(--border)] text-muted'
+        : 'bg-[var(--chip-active-bg)] border-[var(--chip-active-border)] text-[var(--chip-active-text)]',
+    onClick && !selected ? 'hover:border-[color-mix(in_srgb,var(--primary)_35%,var(--border))] cursor-pointer' : '',
+  ].join(' ')
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {children}
+      </button>
+    )
+  }
+
+  return <span className={className}>{children}</span>
 }
 
-function WordRow({ word, points, missed = false }: { word: string; points: number; missed?: boolean }) {
+function WordRow({
+  word,
+  points,
+  missed = false,
+  selected = false,
+  onSelect,
+}: {
+  word: string
+  points: number
+  missed?: boolean
+  selected?: boolean
+  onSelect?: () => void
+}) {
   return (
     <div className="flex items-center justify-between gap-3 py-0.5">
-      <WordTile missed={missed}>{word.toUpperCase()}</WordTile>
+      <WordTile missed={missed} selected={selected} onClick={onSelect}>
+        {word.toUpperCase()}
+      </WordTile>
       <span
         className={[
           'text-sm font-black tabular-nums shrink-0',
@@ -44,17 +75,34 @@ function WordRow({ word, points, missed = false }: { word: string; points: numbe
 }
 
 type Props = {
-  submissions: Pick<WordHuntSubmission, 'word' | 'points_awarded'>[]
+  submissions: Pick<WordHuntSubmission, 'word' | 'points_awarded' | 'path'>[]
   validWords?: string[]
+  selectedWord?: string | null
+  onWordSelect?: (word: string, path?: number[]) => void
 }
 
-export function WordHuntPersonalResults({ submissions, validWords = [] }: Props) {
+export function WordHuntPersonalResults({
+  submissions,
+  validWords = [],
+  selectedWord = null,
+  onWordSelect,
+}: Props) {
   const [expanded, setExpanded] = useState(false)
   const [revealAll, setRevealAll] = useState(false)
 
   const sortedFound = useMemo(() => sortWordHuntSubmissions(submissions), [submissions])
   const wordCount = sortedFound.length
   const totalScore = sortedFound.reduce((sum, entry) => sum + entry.points_awarded, 0)
+
+  const pathByWord = useMemo(() => {
+    const map = new Map<string, number[]>()
+    for (const entry of submissions) {
+      if (entry.path?.length) {
+        map.set(entry.word.toLowerCase(), entry.path)
+      }
+    }
+    return map
+  }, [submissions])
 
   const foundSet = useMemo(
     () => new Set(sortedFound.map((entry) => entry.word.toLowerCase())),
@@ -68,6 +116,11 @@ export function WordHuntPersonalResults({ submissions, validWords = [] }: Props)
   const missedCount = allWords.filter((entry) => !entry.found).length
   const visibleFound = expanded ? sortedFound : sortedFound.slice(0, INITIAL_VISIBLE)
   const remainingFound = Math.max(0, sortedFound.length - INITIAL_VISIBLE)
+
+  function handleSelect(word: string) {
+    if (!onWordSelect) return
+    onWordSelect(word, pathByWord.get(word.toLowerCase()))
+  }
 
   return (
     <div className="space-y-4">
@@ -88,7 +141,13 @@ export function WordHuntPersonalResults({ submissions, validWords = [] }: Props)
         <div className={wordListPanelClass}>
           <div className="space-y-1">
             {visibleFound.map((entry) => (
-              <WordRow key={entry.word} word={entry.word} points={entry.points_awarded} />
+              <WordRow
+                key={entry.word}
+                word={entry.word}
+                points={entry.points_awarded}
+                selected={selectedWord === entry.word.toLowerCase()}
+                onSelect={onWordSelect ? () => handleSelect(entry.word) : undefined}
+              />
             ))}
           </div>
           {remainingFound > 0 && !expanded && (
@@ -128,6 +187,8 @@ export function WordHuntPersonalResults({ submissions, validWords = [] }: Props)
                     word={entry.word}
                     points={entry.points}
                     missed={!entry.found}
+                    selected={selectedWord === entry.word.toLowerCase()}
+                    onSelect={onWordSelect ? () => handleSelect(entry.word) : undefined}
                   />
                 ))}
               </div>
