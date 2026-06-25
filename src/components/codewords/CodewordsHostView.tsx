@@ -39,6 +39,8 @@ import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { PlayAgainSetup, playAgainNeedsSetup, type PlayAgainPayload } from '@/components/PlayAgainSetup'
+import { customQuestionCount, parseQuestionSource } from '@/lib/custom-questions'
+import { parseGameType } from '@/lib/game-types'
 
 type HostTab = 'play' | 'manage'
 
@@ -66,6 +68,8 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
   const [playAgainOpen, setPlayAgainOpen] = useState(false)
+  const [lobbyPoolOpen, setLobbyPoolOpen] = useState(false)
+  const [savingLobbyPool, setSavingLobbyPool] = useState(false)
   const suppressRoundDataUntilRef = useRef(0)
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
@@ -403,6 +407,31 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     void executePlayAgain()
   }
 
+  const handleLobbyPoolSave = async (payload: PlayAgainPayload = {}) => {
+    if (!payload.custom_questions) {
+      setLobbyPoolOpen(false)
+      return
+    }
+    setSavingLobbyPool(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode}/lobby-pool`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, custom_questions: payload.custom_questions }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to save word list')
+      if (data.game) setGame(data.game as Game)
+      await load()
+      success('Word list updated')
+      setLobbyPoolOpen(false)
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to save word list')
+    } finally {
+      setSavingLobbyPool(false)
+    }
+  }
+
   const endSession = async () => {
     setEnding(true)
     try {
@@ -621,6 +650,17 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
         benchingPlayerId={benchingPlayerId}
         removingPlayerId={removingPlayerId}
         showSpectatorBoard={hostMode === 'spectator'}
+        customWordCount={
+          game && parseQuestionSource(game.question_source, parseGameType(game.game_type)) === 'custom'
+            ? customQuestionCount(game)
+            : 0
+        }
+        onEditWordPool={
+          game && parseQuestionSource(game.question_source, parseGameType(game.game_type)) === 'custom'
+            ? () => setLobbyPoolOpen(true)
+            : undefined
+        }
+        savingWordPool={savingLobbyPool}
       />
       {game && (
         <PlayAgainSetup
@@ -630,6 +670,17 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
           participants={[]}
           loading={playingAgain}
           onConfirm={(payload) => executePlayAgain(payload)}
+        />
+      )}
+      {game && (
+        <PlayAgainSetup
+          open={lobbyPoolOpen}
+          onClose={() => setLobbyPoolOpen(false)}
+          game={game}
+          participants={[]}
+          loading={savingLobbyPool}
+          variant="lobby"
+          onConfirm={(payload) => handleLobbyPoolSave(payload)}
         />
       )}
     </HostPageShell>

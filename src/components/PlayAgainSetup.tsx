@@ -66,6 +66,8 @@ interface PlayAgainSetupProps {
   onConfirm: (payload: PlayAgainPayload) => void | Promise<void>
   loading?: boolean
   variant?: PoolSetupVariant
+  /** When set, pre-selects the questions/words tab on open (lobby edits default to change). */
+  defaultQuestionMode?: PoolMode
 }
 
 function hostParticipants(participants: Participant[]): ParticipantInput[] {
@@ -132,6 +134,7 @@ export function PlayAgainSetup({
   onConfirm,
   loading,
   variant = 'play-again',
+  defaultQuestionMode,
 }: PlayAgainSetupProps) {
   const gameType = parseGameType(game.game_type)
   const showQuestions = hasQuestionPool(game)
@@ -170,7 +173,7 @@ export function PlayAgainSetup({
 
   useEffect(() => {
     if (!open) return
-    setQuestionMode('same')
+    setQuestionMode(defaultQuestionMode ?? (variant === 'lobby' ? 'change' : 'same'))
     setParticipantMode('same')
     setQuestionsUploadError(null)
     setParticipantUploadError(null)
@@ -178,7 +181,7 @@ export function PlayAgainSetup({
     setCustomMltQuestions(parseStoredMltQuestions(game.custom_questions))
     setCustomCodewordsWords(parseStoredCodewordsWords(game.custom_questions))
     setDraftParticipants(hostParticipants(participants))
-  }, [open, game.custom_questions, participants, game])
+  }, [open, game.custom_questions, participants, game, variant, defaultQuestionMode])
 
   const customQuestionCount = isCodewords
     ? customCodewordsWords.length
@@ -489,6 +492,15 @@ export function PlayAgainSetup({
   const questionSample = questionSampleFile(gameType)
   const participantSample = participantSampleFile(gameType, participantOpts)
   const isLobby = variant === 'lobby'
+
+  const confirmDisabled =
+    loading ||
+    (isLobby &&
+      showQuestions &&
+      questionMode === 'change' &&
+      (isCodewords
+        ? customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL
+        : (isBinaryLobby ? customWyrQuestions : customMltQuestions).length === 0))
 
   return (
     <Modal
@@ -804,7 +816,7 @@ export function PlayAgainSetup({
           <button type="button" onClick={onClose} disabled={loading} className="btn-secondary flex-1 py-3">
             Cancel
           </button>
-          <button type="button" onClick={handleConfirm} disabled={loading} className="btn-primary flex-1 py-3">
+          <button type="button" onClick={handleConfirm} disabled={confirmDisabled} className="btn-primary flex-1 py-3">
             {loading ? (isLobby ? 'Saving…' : 'Resetting…') : isLobby ? 'Save changes' : 'Start lobby'}
           </button>
         </div>

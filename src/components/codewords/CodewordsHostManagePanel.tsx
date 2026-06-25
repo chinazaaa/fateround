@@ -63,6 +63,9 @@ export function CodewordsHostManagePanel({
   showSpectatorBoard = true,
   firstTeam = 'random' as 'random' | 'red' | 'blue',
   onFirstTeamChange,
+  customWordCount = 0,
+  onEditWordPool,
+  savingWordPool = false,
 }: {
   game: Game
   gameCode: string
@@ -98,6 +101,9 @@ export function CodewordsHostManagePanel({
   showSpectatorBoard?: boolean
   firstTeam?: 'random' | 'red' | 'blue'
   onFirstTeamChange?: (team: 'random' | 'red' | 'blue') => void
+  customWordCount?: number
+  onEditWordPool?: () => void
+  savingWordPool?: boolean
 }) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
@@ -269,6 +275,24 @@ export function CodewordsHostManagePanel({
               disabled={savingMaxPlayers}
             />
           </HostLobbySettingBlock>
+          {onEditWordPool && (
+            <div className="space-y-2 pt-1">
+              <p className="text-body text-sm">
+                {customWordCount} word{customWordCount === 1 ? '' : 's'} in your library
+              </p>
+              <p className="text-faint text-xs leading-relaxed">
+                Upload a new CSV to replace the list. After saving, the next board uses your updated words.
+              </p>
+              <button
+                type="button"
+                onClick={onEditWordPool}
+                disabled={savingWordPool}
+                className="btn-secondary w-full py-3"
+              >
+                {savingWordPool ? 'Saving…' : 'Change words or upload CSV'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

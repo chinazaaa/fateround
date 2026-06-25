@@ -13,9 +13,10 @@ import {
   parseHostPoolParticipants,
   replaceHostParticipantList,
 } from '@/lib/host-pool-update'
-import { parseGameType, isBinaryChoiceGame, isMostLikelyTo, isNeverHaveIEver, isTriviaGame } from '@/lib/game-types'
+import { parseGameType, isBinaryChoiceGame, isMostLikelyTo, isNeverHaveIEver, isTriviaGame, isCodewordsGame } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { parsePoolUsage } from '@/lib/pool-usage'
+import { CODEWORDS_MIN_CUSTOM_POOL } from '@/lib/codewords'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -93,6 +94,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const nextQuestions = parseHostPoolCustomQuestions(rawCustomQuestions, gameType)
     if (!nextQuestions) {
       return NextResponse.json({ error: 'Upload at least one valid question' }, { status: 400 })
+    }
+    if (
+      isCodewordsGame(gameType) &&
+      Array.isArray(nextQuestions) &&
+      nextQuestions.length < CODEWORDS_MIN_CUSTOM_POOL
+    ) {
+      return NextResponse.json(
+        { error: `Need at least ${CODEWORDS_MIN_CUSTOM_POOL} valid words in your library` },
+        { status: 400 }
+      )
     }
     const { gameUpdate: questionUpdate, poolUsage: nextPoolUsage } = applyCustomQuestionsUpdate(
       game,

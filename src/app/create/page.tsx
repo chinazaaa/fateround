@@ -1691,7 +1691,7 @@ function CreateGameInner() {
                             setQuestionsUploadError('No valid rows. Add one single word per line.')
                             return
                           }
-                          setCustomCodewordsWords((prev) => mergeCodewordsWords(prev, rows))
+                          setCustomCodewordsWords(rows)
                         } catch {
                           setQuestionsUploadError('Could not read that file. Try the sample CSV.')
                         }
