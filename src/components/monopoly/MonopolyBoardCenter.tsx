@@ -154,7 +154,7 @@ export function MonopolyBoardCenter({
     if (!actingRef.current) void postAction('/api/monopoly/auction', { action: 'pass' })
   }, [postAction])
 
-  const autoJailRoll = useCallback(() => {
+  const autoRoll = useCallback(() => {
     if (!actingRef.current) void postAction('/api/monopoly/roll')
   }, [postAction])
 
@@ -166,7 +166,8 @@ export function MonopolyBoardCenter({
   const buySeconds = useMonopolyDeadlineTimer(deadline, showBuy, autoBuyAuction)
   const rentSeconds = useMonopolyDeadlineTimer(deadline, showRent, autoPayRent)
   const raiseFundsSeconds = useMonopolyDeadlineTimer(deadline, showRaiseFunds, autoForfeit)
-  const jailSeconds = useMonopolyDeadlineTimer(deadline, showJail, autoJailRoll)
+  const rollSeconds = useMonopolyDeadlineTimer(deadline, showRoll, autoRoll)
+  const jailSeconds = useMonopolyDeadlineTimer(deadline, showJail, autoRoll)
   const auctionSeconds = useMonopolyDeadlineTimer(deadline, showAuction, autoAuctionPass)
 
   const actionSeconds = showBuy
@@ -175,11 +176,13 @@ export function MonopolyBoardCenter({
       ? rentSeconds
       : showRaiseFunds
         ? raiseFundsSeconds
-        : showJail
-          ? jailSeconds
-          : showAuction
-            ? auctionSeconds
-            : 0
+        : showRoll
+          ? rollSeconds
+          : showJail
+            ? jailSeconds
+            : showAuction
+              ? auctionSeconds
+              : 0
 
   const phaseColorBar =
     (showBuy || showRent) && pendingSpace?.color

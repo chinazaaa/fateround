@@ -1,4 +1,5 @@
 import type { LobbyLimitGameType } from '@/lib/game-limits'
+import { MONOPOLY_TURN_TIMER_OPTIONS } from '@/lib/monopoly'
 import { MONOPOLY_DEFAULT_TURN_TIMER } from '@/lib/supabase-selects'
 
 export const BOARD_GAME_TURN_TIMER_OPTIONS = [0, 30, 60, 90, 120] as const
@@ -11,7 +12,9 @@ export function boardGameToLobbyLimitType(gameType: BoardGameLobbyType): LobbyLi
 }
 
 export function turnTimerOptionsFor(gameType: BoardGameLobbyType): readonly number[] {
-  return gameType === 'ludo' ? LUDO_TURN_TIMER_OPTIONS : BOARD_GAME_TURN_TIMER_OPTIONS
+  if (gameType === 'ludo') return LUDO_TURN_TIMER_OPTIONS
+  if (gameType === 'monopoly') return MONOPOLY_TURN_TIMER_OPTIONS
+  return BOARD_GAME_TURN_TIMER_OPTIONS
 }
 
 export function clampBoardGameTurnTimer(raw: unknown, gameType: BoardGameLobbyType): number {

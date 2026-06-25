@@ -27,7 +27,7 @@ export const MONOPOLY_BOARD_SELECT =
   'id,game_id,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,chance_deck,community_deck,chance_discard,community_discard,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,turn_deadline_at,winner_player_id,created_at,updated_at'
 
 /** Default per-turn timer when host enables timing (seconds). 0 = off. */
-export const MONOPOLY_DEFAULT_TURN_TIMER = 90
+export const MONOPOLY_DEFAULT_TURN_TIMER = 45
 
 /** Fixed bid window per auction turn (seconds). */
 export const MONOPOLY_AUCTION_TIMER_SECONDS = 10

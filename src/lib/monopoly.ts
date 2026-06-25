@@ -51,7 +51,7 @@ export const MONOPOLY_MAX_PLAYERS = 6
 export const MONOPOLY_DEFAULT_MAX_PLAYERS = 6
 
 /** Per-turn timer options (seconds). 0 = off. */
-export const MONOPOLY_TURN_TIMER_OPTIONS = [0, 30, 60, 90, 120] as const
+export const MONOPOLY_TURN_TIMER_OPTIONS = [0, 30, 45, 60, 90] as const
 
 /** Whole-game session length options (seconds). 0 = no limit. */
 export const MONOPOLY_GAME_DURATION_OPTIONS = [0, 900, 1800, 2700, 3600, 5400, 7200] as const
@@ -2676,34 +2676,6 @@ async function bankruptPlayer(
   return {}
 }
 
-async function skipMonopolyTurnForTimeout(
-  supabase: SupabaseClient,
-  gameId: string,
-  board: MonopolyBoard,
-  playerId: string
-): Promise<{ error?: string }> {
-  const { data: statesRaw } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)
-  const states = (statesRaw ?? []) as MonopolyPlayerState[]
-  const timerSeconds = await getMonopolyTimerSeconds(supabase, gameId)
-  const turnIndex = nextTurnIndex(board, states)
-  const phase = phaseForTurn(board, states, turnIndex)
-
-  await supabase
-    .from('monopoly_boards')
-    .update({
-      current_turn_index: turnIndex,
-      phase,
-      consecutive_doubles: 0,
-      pending_space: null,
-      status_message: 'Turn skipped — time ran out.',
-      turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, phase),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-
-  return {}
-}
-
 /** Advance or resolve the current turn when the per-turn timer expires. */
 export async function processMonopolyExpireTurn(
   supabase: SupabaseClient,
@@ -2735,8 +2707,9 @@ export async function processMonopolyExpireTurn(
     }
     case 'roll':
     case 'jail':
+      return processMonopolyRoll(supabase, gameId, playerId)
     default:
-      return skipMonopolyTurnForTimeout(supabase, gameId, board, playerId)
+      return { error: `Cannot expire turn in phase ${board.phase}` }
   }
 }
 
