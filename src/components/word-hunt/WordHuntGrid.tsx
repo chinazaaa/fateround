@@ -81,12 +81,12 @@ export function WordHuntGrid({
 
   const frameClass =
     variant === 'play'
-      ? 'surface-inset rounded-2xl p-2.5 sm:p-3 ring-1 ring-[color-mix(in_srgb,var(--primary)_12%,transparent)]'
+      ? `surface-inset rounded-2xl p-2.5 sm:p-3 ring-1 ring-[color-mix(in_srgb,var(--primary)_12%,transparent)]${interactionDisabled ? '' : ' cursor-crosshair'}`
       : 'rounded-2xl p-3 border border-[color-mix(in_srgb,var(--primary)_18%,var(--border))] bg-[color-mix(in_srgb,var(--primary)_5%,var(--card-strong))] shadow-[var(--card-shadow)]'
 
   const cellBase =
     variant === 'play'
-      ? 'aspect-square rounded-xl font-black text-lg sm:text-2xl flex items-center justify-center select-none transition-[transform,box-shadow,background-color] duration-100'
+      ? 'aspect-square rounded-xl font-black text-lg sm:text-2xl flex items-center justify-center select-none transition-[transform,box-shadow,background-color] duration-75'
       : 'aspect-square rounded-lg font-black text-xl sm:text-2xl flex items-center justify-center select-none transition-all duration-100'
 
   const showPathLine = linePoints.length >= 2
@@ -96,6 +96,7 @@ export function WordHuntGrid({
       ref={gridRef}
       className={[frameClass, 'touch-none relative', isReview ? '' : ''].join(' ')}
       style={{ touchAction: isReview ? undefined : 'none' }}
+      onDragStart={(e) => e.preventDefault()}
       {...(isReview ? {} : gridHandlers)}
     >
       {showPathLine && (
@@ -134,8 +135,8 @@ export function WordHuntGrid({
                   cellBase,
                   inPath
                     ? 'bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-strong)_100%)] text-white shadow-[0_0_0_2px_var(--primary),0_8px_20px_-6px_var(--primary-glow)] scale-[1.04] z-[1]'
-                    : variant === 'play'
-                      ? 'bg-[var(--card-strong)] text-[var(--foreground)] border border-[var(--border-strong)] shadow-[var(--card-shadow)]'
+                    : variant === 'play' && !interactionDisabled
+                      ? 'bg-[var(--card-strong)] text-[var(--foreground)] border border-[var(--border-strong)] shadow-[var(--card-shadow)] hover:bg-[color-mix(in_srgb,var(--primary)_10%,var(--card-strong))] hover:border-[color-mix(in_srgb,var(--primary)_22%,var(--border-strong))]'
                       : 'bg-[var(--card-strong)] text-[var(--foreground)] border border-[var(--border-strong)] shadow-[var(--card-shadow)]',
                   interactionDisabled && !isReview ? 'opacity-50' : '',
                 ].join(' ')}
