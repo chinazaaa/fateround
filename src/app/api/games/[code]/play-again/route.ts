@@ -20,7 +20,7 @@ import {
 } from '@/lib/game-types'
 import { clearAnonymousRoomSessionData, reopenSecretMessageBoard } from '@/lib/anonymous-messages'
 import { clearBingoSessionData } from '@/lib/bingo'
-import { clearCodewordsRoundData } from '@/lib/codewords'
+import { clearCodewordsRoundData, CODEWORDS_MIN_CUSTOM_POOL } from '@/lib/codewords'
 import { clearMonopolySessionData } from '@/lib/monopoly'
 import { clearYahtzeeSessionData } from '@/lib/yahtzee'
 import { clearWhotSessionData } from '@/lib/whot'
@@ -41,7 +41,7 @@ import {
   parseHostPoolParticipants,
   replaceHostParticipantList,
 } from '@/lib/host-pool-update'
-import { extractRoundUsage, mergePoolUsageState, parsePoolUsage } from '@/lib/pool-usage'
+import { extractRoundUsage, extractCodewordsBoardUsage, mergePoolUsageState, parsePoolUsage } from '@/lib/pool-usage'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { resetSpectatorsForLobby } from '@/lib/viewers'
 
@@ -104,18 +104,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const genderBased = isGameGenderBased(game)
 
-  const [{ data: rounds }, { data: participantsData }] = await Promise.all([
+  const [{ data: rounds }, { data: participantsData }, { data: codewordsBoard }] = await Promise.all([
     supabase
       .from('rounds')
       .select('participant_ids, wyr_option_a, wyr_option_b, mlt_question, submitter_player_id, trivia_metadata')
       .eq('game_id', gameId),
     supabase.from('participants').select('id, name, gender').eq('game_id', gameId),
+    isCodewordsGame(gameType)
+      ? supabase.from('codewords_boards').select('words').eq('game_id', gameId).maybeSingle()
+      : Promise.resolve({ data: null }),
   ])
 
   let poolUsage = mergePoolUsageState(
     parsePoolUsage(game.pool_usage),
     extractRoundUsage(rounds ?? [], participantsData ?? [])
   )
+  if (codewordsBoard?.words?.length) {
+    poolUsage = mergePoolUsageState(poolUsage, extractCodewordsBoardUsage(codewordsBoard.words))
+  }
 
   const gameUpdate: Record<string, unknown> = {
     status: 'waiting',
@@ -125,7 +131,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     anonymous_messages_trimmed_at: null,
   }
 
-  if (rawCustomQuestions !== undefined && !isTriviaGame(gameType)) {
+  if (rawCustomQuestions !== undefined && isCodewordsGame(gameType)) {
+    const nextWords = parseHostPoolCustomQuestions(rawCustomQuestions, gameType)
+    if (!nextWords || !Array.isArray(nextWords) || nextWords.length < CODEWORDS_MIN_CUSTOM_POOL) {
+      return NextResponse.json(
+        { error: `Need at least ${CODEWORDS_MIN_CUSTOM_POOL} valid words in your library` },
+        { status: 400 }
+      )
+    }
+    const { gameUpdate: wordUpdate, poolUsage: nextPoolUsage } = applyCustomQuestionsUpdate(
+      game,
+      nextWords,
+      poolUsage
+    )
+    Object.assign(gameUpdate, wordUpdate)
+    poolUsage = nextPoolUsage
+  } else if (rawCustomQuestions !== undefined && !isTriviaGame(gameType)) {
     const nextQuestions = parseHostPoolCustomQuestions(rawCustomQuestions, gameType)
     if (!nextQuestions) {
       return NextResponse.json({ error: 'Upload at least one valid question' }, { status: 400 })

@@ -1,6 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { markGameFinished } from '@/lib/game-finish'
-import { CODEWORDS_WORD_POOL } from '@/lib/codewords-words'
+import { parseQuestionSource } from '@/lib/custom-questions'
+import {
+  CODEWORDS_BOARD_SIZE,
+  CODEWORDS_MIN_CUSTOM_POOL,
+  codewordPoolKey,
+  parseStoredCodewordsWords,
+  pickBoardWordsFromPool,
+} from '@/lib/codewords-pool'
+import { isCodewordsGame, parseGameType } from '@/lib/game-types'
 import type {
   CodewordsBoard,
   CodewordsCellType,
@@ -14,7 +22,8 @@ import type {
 export const CODEWORDS_MIN_PLAYERS = 4
 export const CODEWORDS_MAX_PLAYERS = 20
 export const CODEWORDS_DEFAULT_MAX_PLAYERS = 8
-export const CODEWORDS_GRID_SIZE = 25
+export const CODEWORDS_GRID_SIZE = CODEWORDS_BOARD_SIZE
+export { CODEWORDS_MIN_CUSTOM_POOL }
 
 export function clampCodewordsMaxPlayers(value: number): number {
   return Math.min(CODEWORDS_MAX_PLAYERS, Math.max(CODEWORDS_MIN_PLAYERS, value))
@@ -84,8 +93,22 @@ function shuffle<T>(items: T[]): T[] {
   return next
 }
 
-export function pickBoardWords(): string[] {
-  return shuffle(CODEWORDS_WORD_POOL).slice(0, CODEWORDS_GRID_SIZE)
+export { codewordPoolKey } from '@/lib/codewords-pool'
+
+export function codewordsWordPoolForGame(
+  game: Pick<Game, 'game_type' | 'question_source' | 'custom_questions'>
+): string[] | null {
+  if (!isCodewordsGame(parseGameType(game.game_type))) return null
+  if (parseQuestionSource(game.question_source, game.game_type) !== 'custom') return null
+  const words = parseStoredCodewordsWords(game.custom_questions)
+  return words.length > 0 ? words : null
+}
+
+export function pickBoardWords(
+  pool?: readonly string[],
+  usageCounts: Map<string, number> = new Map()
+): string[] {
+  return pickBoardWordsFromPool(pool, usageCounts)
 }
 
 export function generateKey(startingTeam: CodewordsTeam): CodewordsCellType[] {

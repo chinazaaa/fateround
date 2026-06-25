@@ -1,14 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { stripHtml } from '@/lib/validation'
-import { parseGameType, isBinaryChoiceGame, isMostLikelyTo, isNeverHaveIEver, isThisOrThat } from '@/lib/game-types'
+import { parseGameType, isBinaryChoiceGame, isMostLikelyTo, isNeverHaveIEver, isThisOrThat, isCodewordsGame } from '@/lib/game-types'
 import { usesHostParticipantList } from '@/lib/participant-mode'
 import { normalizeGender, participantsNeedGenderForGame, type ParticipantInput } from '@/lib/participants'
 import {
   parseStoredMltQuestions,
   parseStoredWyrQuestions,
   parseStoredTriviaQuestions,
+  parseStoredCodewordsWords,
   questionPoolCap,
 } from '@/lib/custom-questions'
+import { codewordPoolKey } from '@/lib/codewords-pool'
 import { wyrQuestionKey } from '@/lib/would-you-rather-questions'
 import { triviaQuestionKey } from '@/lib/trivia-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
@@ -57,6 +59,10 @@ export function parseHostPoolCustomQuestions(
   }
   if (isMostLikelyTo(gameType) || isNeverHaveIEver(gameType)) {
     const parsed = parseStoredMltQuestions(raw)
+    return parsed.length > 0 ? parsed : null
+  }
+  if (isCodewordsGame(gameType)) {
+    const parsed = parseStoredCodewordsWords(raw)
     return parsed.length > 0 ? parsed : null
   }
   return null
@@ -125,6 +131,12 @@ export function applyCustomQuestionsUpdate(
       ...poolUsage,
       mlt: pruneQuestionUsage(poolUsage.mlt, nextQuestions as string[], (q) => q),
     }
+  } else if (isCodewordsGame(gameType)) {
+    poolUsage = {
+      ...poolUsage,
+      codewords: pruneQuestionUsage(poolUsage.codewords, nextQuestions as string[], codewordPoolKey),
+    }
+    gameUpdate.question_source = 'custom'
   }
 
   if (isThisOrThat(gameType)) {

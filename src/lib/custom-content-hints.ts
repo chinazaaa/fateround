@@ -9,6 +9,7 @@ import {
   isTriviaGame,
   isWhoSaidThis,
   isWouldYouRather,
+  isCodewordsGame,
 } from '@/lib/game-types'
 import { questionSampleFile } from '@/lib/custom-questions'
 import { isPeoplePollGame } from '@/lib/player-participant-pool'
@@ -29,7 +30,8 @@ export function supportsQuestionCustomContentHint(gameType: GameType): boolean {
     isMostLikelyTo(gameType) ||
     isNeverHaveIEver(gameType) ||
     isPickANumber(gameType) ||
-    isTriviaGame(gameType)
+    isTriviaGame(gameType) ||
+    isCodewordsGame(gameType)
   )
 }
 

@@ -38,6 +38,7 @@ import { useToast } from '@/components/ui/Toast'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
+import { PlayAgainSetup, playAgainNeedsSetup, type PlayAgainPayload } from '@/components/PlayAgainSetup'
 
 type HostTab = 'play' | 'manage'
 
@@ -64,6 +65,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
+  const [playAgainOpen, setPlayAgainOpen] = useState(false)
   const suppressRoundDataUntilRef = useRef(0)
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
@@ -351,7 +353,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     }
   }
 
-  const playAgain = async () => {
+  const executePlayAgain = async (payload?: PlayAgainPayload) => {
     setPlayingAgain(true)
     suppressRoundDataUntilRef.current = Date.now() + 8000
     setBoard(null)
@@ -372,7 +374,11 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined }),
+        body: JSON.stringify({
+          hostToken,
+          hostPlayerId: hostPlayerId ?? undefined,
+          ...payload,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to reset')
@@ -385,7 +391,16 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       toastError(err instanceof Error ? err.message : 'Failed to reset')
     } finally {
       setPlayingAgain(false)
+      setPlayAgainOpen(false)
     }
+  }
+
+  const playAgain = () => {
+    if (game && playAgainNeedsSetup(game)) {
+      setPlayAgainOpen(true)
+      return
+    }
+    void executePlayAgain()
   }
 
   const endSession = async () => {
@@ -607,6 +622,16 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
         removingPlayerId={removingPlayerId}
         showSpectatorBoard={hostMode === 'spectator'}
       />
+      {game && (
+        <PlayAgainSetup
+          open={playAgainOpen}
+          onClose={() => setPlayAgainOpen(false)}
+          game={game}
+          participants={[]}
+          loading={playingAgain}
+          onConfirm={(payload) => executePlayAgain(payload)}
+        />
+      )}
     </HostPageShell>
   )
 }

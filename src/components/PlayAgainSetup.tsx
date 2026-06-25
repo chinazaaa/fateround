@@ -22,14 +22,19 @@ import {
   parseExcelWyrQuestions,
   parseExcelThisOrThatQuestions,
   parseExcelMltQuestions,
+  parseCodewordsWordRows,
+  parseExcelCodewordsWords,
   mergeWyrQuestions,
   mergeMltQuestions,
+  mergeCodewordsWords,
   questionSampleFile,
   questionUploadHint,
   parseQuestionSource,
   parseStoredWyrQuestions,
   parseStoredMltQuestions,
+  parseStoredCodewordsWords,
   parseOrSplitQuestion,
+  CODEWORDS_MIN_CUSTOM_POOL,
 } from '@/lib/custom-questions'
 import {
   isBinaryChoiceGame,
@@ -39,6 +44,7 @@ import {
   isWouldYouRather,
   parseGameType,
   isAnonymousMessagesGame,
+  isCodewordsGame,
 } from '@/lib/game-types'
 import { supportsHostListPlayAgain, hostListPlayAgainHint } from '@/lib/participant-mode'
 import { isGameGenderBased } from '@/lib/gender-based'
@@ -78,7 +84,6 @@ export function hostPoolSetupAvailable(game: Game): boolean {
     isAnonymousMessagesGame(type) ||
     type === 'secret_message' ||
     type === 'bingo' ||
-    type === 'codewords' ||
     type === 'monopoly' ||
     type === 'yahtzee' ||
     type === 'whot' ||
@@ -91,12 +96,23 @@ export function hostPoolSetupAvailable(game: Game): boolean {
 export function hostPoolSetupLabels(game: Game): { title: string; hasQuestions: boolean; hasParticipants: boolean } {
   const hasQuestions = hasQuestionPool(game)
   const hasParticipants = hasParticipantPool(game)
-  const title = hasQuestions && hasParticipants ? 'Questions & name list' : hasQuestions ? 'Questions' : 'Name list'
+  const isCodewords = isCodewordsGame(game.game_type)
+  const title =
+    hasQuestions && hasParticipants
+      ? isCodewords
+        ? 'Words & name list'
+        : 'Questions & name list'
+      : hasQuestions
+        ? isCodewords
+          ? 'Word list'
+          : 'Questions'
+        : 'Name list'
   return { title, hasQuestions, hasParticipants }
 }
 
 function hasQuestionPool(game: Game): boolean {
   const type = parseGameType(game.game_type)
+  if (isCodewordsGame(type) && parseQuestionSource(game.question_source, type) === 'custom') return true
   if (isThisOrThat(type)) return true
   if (isWouldYouRather(type) && parseQuestionSource(game.question_source, type) === 'custom') return true
   if (isNeverHaveIEver(type) && parseQuestionSource(game.question_source, type) === 'custom') return true
@@ -124,6 +140,7 @@ export function PlayAgainSetup({
   const isWyr = isWouldYouRather(gameType)
   const isNhie = isNeverHaveIEver(gameType)
   const isMlt = isMostLikelyTo(gameType)
+  const isCodewords = isCodewordsGame(gameType)
   const isBinaryLobby = isBinaryChoiceGame(gameType)
   const needsGender = participantsNeedGenderForGame(gameType, { game, genderBased: isGameGenderBased(game) })
   const participantOpts = { game, genderBased: isGameGenderBased(game) }
@@ -135,6 +152,7 @@ export function PlayAgainSetup({
 
   const [customWyrQuestions, setCustomWyrQuestions] = useState<WyrQuestion[]>([])
   const [customMltQuestions, setCustomMltQuestions] = useState<string[]>([])
+  const [customCodewordsWords, setCustomCodewordsWords] = useState<string[]>([])
   const [draftParticipants, setDraftParticipants] = useState<ParticipantInput[]>([])
 
   const [questionsUploadError, setQuestionsUploadError] = useState<string | null>(null)
@@ -158,31 +176,51 @@ export function PlayAgainSetup({
     setParticipantUploadError(null)
     setCustomWyrQuestions(parseStoredWyrQuestions(game.custom_questions))
     setCustomMltQuestions(parseStoredMltQuestions(game.custom_questions))
+    setCustomCodewordsWords(parseStoredCodewordsWords(game.custom_questions))
     setDraftParticipants(hostParticipants(participants))
   }, [open, game.custom_questions, participants, game])
 
-  const customQuestionCount = isBinaryLobby ? customWyrQuestions.length : customMltQuestions.length
+  const customQuestionCount = isCodewords
+    ? customCodewordsWords.length
+    : isBinaryLobby
+      ? customWyrQuestions.length
+      : customMltQuestions.length
 
   const unusedHint = useMemo(() => {
     const hints: string[] = []
-    if (showQuestions) hints.push('Uploaded questions that did not appear last game are picked first.')
+    if (showQuestions) {
+      hints.push(
+        isCodewords
+          ? 'Words that did not appear on the last board are picked first for the next round.'
+          : 'Uploaded questions that did not appear last game are picked first.'
+      )
+    }
     if (showParticipants) hints.push(hostListPlayAgainHint(game))
     if (hints.length === 0) return null
     return hints.join(' ')
-  }, [showQuestions, showParticipants, game])
+  }, [showQuestions, showParticipants, game, isCodewords])
 
-  const addCustomQuestionsFromRows = (wyrRows: WyrQuestion[], mltRows: string[], replace = false) => {
+  const addCustomQuestionsFromRows = (
+    wyrRows: WyrQuestion[],
+    mltRows: string[],
+    codewordsRows: string[] = [],
+    replace = false
+  ) => {
     if (wyrRows.length > 0) {
       setCustomWyrQuestions(replace ? wyrRows : (prev) => mergeWyrQuestions(prev, wyrRows))
     }
     if (mltRows.length > 0) {
       setCustomMltQuestions(replace ? mltRows : (prev) => mergeMltQuestions(prev, mltRows))
     }
+    if (codewordsRows.length > 0) {
+      setCustomCodewordsWords(replace ? codewordsRows : (prev) => mergeCodewordsWords(prev, codewordsRows))
+    }
   }
 
   const clearAllQuestions = () => {
     setCustomWyrQuestions([])
     setCustomMltQuestions([])
+    setCustomCodewordsWords([])
     setQuestionsUploadError(null)
   }
 
@@ -204,21 +242,28 @@ export function PlayAgainSetup({
             setQuestionsUploadError('No valid rows. Use option_a and option_b columns.')
             return
           }
-          addCustomQuestionsFromRows(rows, [], replace)
+          addCustomQuestionsFromRows(rows, [], [], replace)
         } else if (isTot) {
           const rows = parseThisOrThatQuestionRows(text)
           if (rows.length === 0) {
             setQuestionsUploadError('No valid rows. Use one question per line (e.g. Coffee or Tea?).')
             return
           }
-          addCustomQuestionsFromRows(rows, [], replace)
+          addCustomQuestionsFromRows(rows, [], [], replace)
         } else if (isMlt || isNhie) {
           const rows = parseMltQuestionRows(text)
           if (rows.length === 0) {
             setQuestionsUploadError('No valid rows. Add one question per line.')
             return
           }
-          addCustomQuestionsFromRows([], rows, replace)
+          addCustomQuestionsFromRows([], rows, [], replace)
+        } else if (isCodewords) {
+          const rows = parseCodewordsWordRows(text)
+          if (rows.length === 0) {
+            setQuestionsUploadError('No valid rows. Add one single word per line.')
+            return
+          }
+          addCustomQuestionsFromRows([], [], rows, replace)
         }
         return
       }
@@ -231,21 +276,28 @@ export function PlayAgainSetup({
             setQuestionsUploadError('No valid rows. Use option_a and option_b columns.')
             return
           }
-          addCustomQuestionsFromRows(rows, [], replace)
+          addCustomQuestionsFromRows(rows, [], [], replace)
         } else if (isTot) {
           const rows = await parseExcelThisOrThatQuestions(buffer)
           if (rows.length === 0) {
             setQuestionsUploadError('No valid rows. Use one question per line (e.g. Coffee or Tea?).')
             return
           }
-          addCustomQuestionsFromRows(rows, [], replace)
+          addCustomQuestionsFromRows(rows, [], [], replace)
         } else if (isMlt || isNhie) {
           const rows = await parseExcelMltQuestions(buffer)
           if (rows.length === 0) {
             setQuestionsUploadError('No valid rows. Add one question per line.')
             return
           }
-          addCustomQuestionsFromRows([], rows, replace)
+          addCustomQuestionsFromRows([], rows, [], replace)
+        } else if (isCodewords) {
+          const rows = await parseExcelCodewordsWords(buffer)
+          if (rows.length === 0) {
+            setQuestionsUploadError('No valid rows. Add one single word per line.')
+            return
+          }
+          addCustomQuestionsFromRows([], [], rows, replace)
         }
         return
       }
@@ -268,7 +320,14 @@ export function PlayAgainSetup({
     }
     const q = mltQuestionInput.trim()
     if (!q) return
-    if (isTot) {
+    if (isCodewords) {
+      const rows = parseCodewordsWordRows(q)
+      if (rows.length === 0) {
+        setQuestionsUploadError('Use a single word with no spaces.')
+        return
+      }
+      addCustomQuestionsFromRows([], [], rows)
+    } else if (isTot) {
       const parsed = parseOrSplitQuestion(q)
       if (!parsed) {
         setQuestionsUploadError('Use “Coffee or Tea?” style, or two columns for A and B.')
@@ -290,21 +349,28 @@ export function PlayAgainSetup({
         setQuestionsUploadError('No valid rows found.')
         return
       }
-      addCustomQuestionsFromRows(rows, [], replace)
+      addCustomQuestionsFromRows(rows, [], [], replace)
     } else if (isTot) {
       const rows = parseThisOrThatQuestionRows(questionsBulkPaste)
       if (rows.length === 0) {
         setQuestionsUploadError('No valid questions found.')
         return
       }
-      addCustomQuestionsFromRows(rows, [], replace)
+      addCustomQuestionsFromRows(rows, [], [], replace)
+    } else if (isCodewords) {
+      const rows = parseCodewordsWordRows(questionsBulkPaste)
+      if (rows.length === 0) {
+        setQuestionsUploadError('No valid words found.')
+        return
+      }
+      addCustomQuestionsFromRows([], [], rows, replace)
     } else {
       const rows = parseMltQuestionRows(questionsBulkPaste)
       if (rows.length === 0) {
         setQuestionsUploadError('No valid questions found.')
         return
       }
-      addCustomQuestionsFromRows([], rows, replace)
+      addCustomQuestionsFromRows([], rows, [], replace)
     }
     setQuestionsBulkPaste('')
   }
@@ -393,9 +459,17 @@ export function PlayAgainSetup({
     const payload: PlayAgainPayload = {}
 
     if (showQuestions && questionMode === 'change') {
-      const questions = isBinaryLobby ? customWyrQuestions : customMltQuestions
+      const questions = isCodewords
+        ? customCodewordsWords
+        : isBinaryLobby
+          ? customWyrQuestions
+          : customMltQuestions
       if (questions.length === 0) {
-        setQuestionsUploadError('Add at least one question')
+        setQuestionsUploadError(isCodewords ? 'Add at least one word' : 'Add at least one question')
+        return
+      }
+      if (isCodewords && questions.length < CODEWORDS_MIN_CUSTOM_POOL) {
+        setQuestionsUploadError(`Need at least ${CODEWORDS_MIN_CUSTOM_POOL} words for a full board`)
         return
       }
       payload.custom_questions = questions
@@ -433,7 +507,7 @@ export function PlayAgainSetup({
 
         {showQuestions && (
           <div className="space-y-3">
-            <p className="label-caps">Questions</p>
+            <p className="label-caps">{isCodewords ? 'Words' : 'Questions'}</p>
             <SegmentedControl
               value={questionMode}
               onChange={setQuestionMode}
@@ -441,7 +515,7 @@ export function PlayAgainSetup({
                 {
                   value: 'same',
                   label: 'Same list',
-                  hint: `${customQuestionCount || parseStoredWyrQuestions(game.custom_questions).length || parseStoredMltQuestions(game.custom_questions).length} loaded — unused ones first`,
+                  hint: `${customQuestionCount || parseStoredCodewordsWords(game.custom_questions).length || parseStoredWyrQuestions(game.custom_questions).length || parseStoredMltQuestions(game.custom_questions).length} loaded — unused ones first`,
                 },
                 {
                   value: 'change',
@@ -512,12 +586,12 @@ export function PlayAgainSetup({
                         value={mltQuestionInput}
                         onChange={(e) => setMltQuestionInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && addManualQuestion()}
-                        placeholder={isTot ? 'Coffee or Tea?' : 'Who is most likely to…'}
+                        placeholder={isCodewords ? 'Ocean' : isTot ? 'Coffee or Tea?' : 'Who is most likely to…'}
                         className="input-field py-2.5 text-sm"
                       />
                     )}
                     <button type="button" onClick={addManualQuestion} className="btn-secondary w-full text-sm py-2.5">
-                      Add question
+                      {isCodewords ? 'Add word' : 'Add question'}
                     </button>
                     <textarea
                       value={questionsBulkPaste}
@@ -527,7 +601,9 @@ export function PlayAgainSetup({
                           ? 'Paste from Excel:\nNever have pizza,Never have tacos'
                           : isTot
                             ? 'Coffee or Tea?\nBeach or Mountains?'
-                            : 'Who is most likely to become famous?'
+                            : isCodewords
+                              ? 'Ocean\nMountain\nCastle'
+                              : 'Who is most likely to become famous?'
                       }
                       rows={3}
                       className="input-field resize-none font-medium text-sm"
@@ -569,7 +645,20 @@ export function PlayAgainSetup({
                             </button>
                           </div>
                         ))
-                      : customMltQuestions.map((q, i) => (
+                      : isCodewords
+                        ? customCodewordsWords.map((q, i) => (
+                            <div key={i} className="flex items-start gap-2 text-sm">
+                              <p className="text-body flex-1 min-w-0">{q}</p>
+                              <button
+                                type="button"
+                                onClick={() => setCustomCodewordsWords((prev) => prev.filter((_, idx) => idx !== i))}
+                                className="text-faint hover:text-red-300 text-xs shrink-0"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))
+                        : customMltQuestions.map((q, i) => (
                           <div key={i} className="flex items-start gap-2 text-sm">
                             <p className="text-body flex-1 min-w-0">{q}</p>
                             <button

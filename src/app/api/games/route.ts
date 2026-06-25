@@ -56,6 +56,7 @@ import {
   parseStoredWyrQuestions,
   parseStoredMltQuestions,
   parseStoredTriviaQuestions,
+  parseStoredCodewordsWords,
 } from '@/lib/custom-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import type { ParticipantMode, QuestionSource, TriviaQuestion } from '@/types'
@@ -80,6 +81,7 @@ import {
   clampCodewordsTimer,
   CODEWORDS_DEFAULT_OPERATIVE_TIMER,
   CODEWORDS_DEFAULT_SPYMASTER_TIMER,
+  CODEWORDS_MIN_CUSTOM_POOL,
 } from '@/lib/codewords'
 import {
   clampLobbyMaxPlayers,
@@ -130,6 +132,7 @@ function lobbyMaxRounds(
     if (isNeverHaveIEver(gameType)) return parseStoredMltQuestions(customQuestions).length
     if (isPickANumber(gameType)) return parseStoredMltQuestions(customQuestions).length
     if (isTriviaGame(gameType)) return parseStoredTriviaQuestions(customQuestions).length
+    if (isCodewordsGame(gameType)) return parseStoredCodewordsWords(customQuestions).length
     return 20
   }
   if (isBinaryChoiceGame(gameType)) return isThisOrThat(gameType) ? 0 : WYR_QUESTION_COUNT
@@ -163,6 +166,10 @@ function parseCustomQuestionsBody(
   }
   if (isTriviaGame(gameType)) {
     const parsed = parseStoredTriviaQuestions(raw)
+    return parsed.length > 0 ? parsed : null
+  }
+  if (isCodewordsGame(gameType)) {
+    const parsed = parseStoredCodewordsWords(raw)
     return parsed.length > 0 ? parsed : null
   }
   return null
@@ -227,7 +234,8 @@ export async function POST(req: NextRequest) {
       isMostLikelyTo(game_type) ||
       isNeverHaveIEver(game_type) ||
       isPickANumber(game_type) ||
-      isTriviaGame(game_type))
+      isTriviaGame(game_type) ||
+      isCodewordsGame(game_type))
   ) {
     const cqParsed = parseCustomQuestionsBody(rawCustomQuestions, game_type)
     if (!cqParsed) {
@@ -332,6 +340,18 @@ export async function POST(req: NextRequest) {
   ) {
     return NextResponse.json(
       { error: `Need at least ${PAN_MIN_POOL} custom questions for the numbered list` },
+      { status: 400 }
+    )
+  }
+
+  if (
+    question_source === 'custom' &&
+    custom_questions &&
+    isCodewordsGame(game_type) &&
+    custom_questions.length < CODEWORDS_MIN_CUSTOM_POOL
+  ) {
+    return NextResponse.json(
+      { error: `Need at least ${CODEWORDS_MIN_CUSTOM_POOL} words in your custom library` },
       { status: 400 }
     )
   }
@@ -465,7 +485,8 @@ export async function POST(req: NextRequest) {
       isNeverHaveIEver(game_type) ||
       isPickANumber(game_type) ||
       isMostLikelyTo(game_type) ||
-      isTriviaGame(game_type)
+      isTriviaGame(game_type) ||
+      isCodewordsGame(game_type)
         ? question_source
         : 'platform',
     custom_questions,

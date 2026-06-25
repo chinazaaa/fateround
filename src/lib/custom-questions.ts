@@ -13,9 +13,27 @@ import {
   isThisOrThat,
   isBinaryChoiceGame,
   isTriviaGame,
+  isCodewordsGame,
   parseGameType,
 } from '@/lib/game-types'
 import { pickLeastUsed } from '@/lib/question-picker'
+import {
+  CODEWORDS_MIN_CUSTOM_POOL,
+  mergeCodewordsWords,
+  parseCodewordsWordRows,
+  parseExcelCodewordsWords,
+  parseStoredCodewordsWords,
+  pickCustomCodewordsWords,
+} from '@/lib/codewords-pool'
+
+export {
+  parseCodewordsWordRows,
+  parseExcelCodewordsWords,
+  parseStoredCodewordsWords,
+  mergeCodewordsWords,
+  pickCustomCodewordsWords,
+  CODEWORDS_MIN_CUSTOM_POOL,
+} from '@/lib/codewords-pool'
 
 function splitCsvRow(line: string): string[] {
   const result: string[] = []
@@ -352,6 +370,7 @@ export function parseQuestionSource(raw: unknown, gameType?: GameType | string):
   if (isThisOrThat(gameType)) return 'custom'
   if (
     isTriviaGame(gameType) ||
+    isCodewordsGame(gameType) ||
     isWouldYouRather(gameType) ||
     isMostLikelyTo(gameType) ||
     isNeverHaveIEver(gameType) ||
@@ -469,6 +488,9 @@ export function questionSampleFile(gameType?: GameType | string): { href: string
   if (isTriviaGame(gameType)) {
     return { href: '/trivia-questions-sample.csv', download: 'trivia-questions-sample.csv' }
   }
+  if (isCodewordsGame(gameType)) {
+    return { href: '/codewords-words-sample.csv', download: 'codewords-words-sample.csv' }
+  }
   if (isThisOrThat(gameType)) {
     return { href: '/this-or-that-questions-sample.csv', download: 'this-or-that-questions-sample.csv' }
   }
@@ -487,6 +509,9 @@ export function questionSampleFile(gameType?: GameType | string): { href: string
 export function questionUploadHint(gameType?: GameType | string): string {
   if (isTriviaGame(gameType)) {
     return '.csv or .xlsx — question, option_a–option_d, correct (A–D). Quote questions that contain commas.'
+  }
+  if (isCodewordsGame(gameType)) {
+    return '.csv or .xlsx — one word per row (single words only, no spaces).'
   }
   if (isThisOrThat(gameType)) {
     return '.csv or .xlsx — one question per row (e.g. Coffee or Tea?)'
@@ -538,6 +563,7 @@ export function customQuestionCount(game: Pick<Game, 'game_type' | 'question_sou
     return parseStoredMltQuestions(game.custom_questions).length
   }
   if (isTriviaGame(game.game_type)) return parseStoredTriviaQuestions(game.custom_questions).length
+  if (isCodewordsGame(game.game_type)) return parseStoredCodewordsWords(game.custom_questions).length
   return 0
 }
 
@@ -630,6 +656,20 @@ export function questionSourceOptions(gameType: GameType | string): {
         value: 'custom',
         label: 'Your own',
         hint: 'Upload a CSV with “Coffee or Tea?” style prompts.',
+      },
+    ]
+  }
+  if (isCodewordsGame(gameType)) {
+    return [
+      {
+        value: 'platform',
+        label: 'Platform',
+        hint: 'Use our built-in word list (~400 words).',
+      },
+      {
+        value: 'custom',
+        label: 'Your own',
+        hint: `Upload a CSV with at least ${CODEWORDS_MIN_CUSTOM_POOL} single words for your boards.`,
       },
     ]
   }

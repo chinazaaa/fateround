@@ -82,11 +82,15 @@ import {
   mergeWyrQuestions,
   mergeMltQuestions,
   mergeTriviaQuestions,
+  mergeCodewordsWords,
+  parseCodewordsWordRows,
+  parseExcelCodewordsWords,
   questionSampleFile,
   questionUploadHint,
   questionSourceOptions,
   questionRoundPickerOptions,
   clampLobbyQuestionRounds,
+  CODEWORDS_MIN_CUSTOM_POOL,
 } from '@/lib/custom-questions'
 import { playerQuestionsOrderOptions, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
 import { isPeoplePollGame, playerNameSubmissionHint } from '@/lib/player-participant-pool'
@@ -223,6 +227,10 @@ function CreateGameInner() {
   const [codewordsPlayerPicks, setCodewordsPlayerPicks] = useState(true)
   const [lateJoinPolicy, setLateJoinPolicy] = useState<LateJoinPolicy>('viewers_only')
   const [codewordsRandomizeTeams, setCodewordsRandomizeTeams] = useState(false)
+  const [customCodewordsWords, setCustomCodewordsWords] = useState<string[]>([])
+  const [codewordsWordInput, setCodewordsWordInput] = useState('')
+  const [codewordsBulkPaste, setCodewordsBulkPaste] = useState('')
+  const codewordsFileRef = useRef<HTMLInputElement>(null)
   const [triviaCategory, setTriviaCategory] = useState<TriviaCategory>('general')
   const [triviaMaxPlayers, setTriviaMaxPlayers] = useState(TRIVIA_DEFAULT_MAX_PLAYERS)
   const [ttlMaxPlayers, setTtlMaxPlayers] = useState(TTL_DEFAULT_MAX_PLAYERS)
@@ -975,6 +983,7 @@ function CreateGameInner() {
     if (loading) return
     if (isQuickLobby) {
       if (!settings.title.trim()) return
+      if (isCodewords && questionSource === 'custom' && customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL) return
     } else if (isTriviaQuickCreate) {
       if (!canCreateQuickLobby) return
     } else if (isJoinersMode ? !canCreateJoiners : !canCreateImport) return
@@ -987,15 +996,20 @@ function CreateGameInner() {
           ...settings,
           ...(isWordHunt ? { timer_seconds: wordHuntTimer } : {}),
           rounds_count: isWst ? Math.max(participants.length, 2) : settings.rounds_count,
-          question_source: isTot
-            ? 'custom'
-            : isLobbyQuestions
-              ? questionSource === 'library'
-                ? 'custom'
-                : questionSource
-              : 'platform',
-          custom_questions:
-            isLobbyQuestions && (isTot || questionSource === 'custom' || questionSource === 'library')
+          question_source: isCodewords
+            ? questionSource
+            : isTot
+              ? 'custom'
+              : isLobbyQuestions
+                ? questionSource === 'library'
+                  ? 'custom'
+                  : questionSource
+                : 'platform',
+          custom_questions: isCodewords
+            ? questionSource === 'custom'
+              ? customCodewordsWords
+              : null
+            : isLobbyQuestions && (isTot || questionSource === 'custom' || questionSource === 'library')
               ? isWyr || isTot
                 ? customWyrQuestions
                 : isTrivia
@@ -1630,6 +1644,128 @@ function CreateGameInner() {
                 <Field label="Join after game starts">
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
                 </Field>
+                <Field label="Word list">
+                  <SegmentedControl
+                    value={questionSource}
+                    onChange={(v) => setQuestionSource(v as QuestionSource)}
+                    options={questionSourceOptions('codewords')}
+                  />
+                </Field>
+                {questionSource === 'custom' && (
+                  <div className="space-y-3 surface-inset border border-theme rounded-xl p-4">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => codewordsFileRef.current?.click()}
+                        className="btn-secondary !py-3"
+                      >
+                        Choose file
+                      </button>
+                      <a
+                        href={questionSampleFile('codewords').href}
+                        download={questionSampleFile('codewords').download}
+                        className="btn-secondary !py-3 text-center no-underline flex items-center justify-center"
+                      >
+                        Sample CSV
+                      </a>
+                    </div>
+                    <input
+                      ref={codewordsFileRef}
+                      type="file"
+                      accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        e.target.value = ''
+                        if (!file) return
+                        setQuestionsUploadError(null)
+                        const ext = file.name.split('.').pop()?.toLowerCase()
+                        try {
+                          const rows =
+                            ext === 'csv'
+                              ? parseCodewordsWordRows(await file.text())
+                              : ext === 'xlsx' || ext === 'xls'
+                                ? await parseExcelCodewordsWords(await file.arrayBuffer())
+                                : []
+                          if (rows.length === 0) {
+                            setQuestionsUploadError('No valid rows. Add one single word per line.')
+                            return
+                          }
+                          setCustomCodewordsWords((prev) => mergeCodewordsWords(prev, rows))
+                        } catch {
+                          setQuestionsUploadError('Could not read that file. Try the sample CSV.')
+                        }
+                      }}
+                    />
+                    <p className="text-faint text-xs text-center">{questionUploadHint('codewords')}</p>
+                    <input
+                      value={codewordsWordInput}
+                      onChange={(e) => setCodewordsWordInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter') return
+                        const rows = parseCodewordsWordRows(codewordsWordInput)
+                        if (rows.length === 0) {
+                          setQuestionsUploadError('Use a single word with no spaces.')
+                          return
+                        }
+                        setQuestionsUploadError(null)
+                        setCustomCodewordsWords((prev) => mergeCodewordsWords(prev, rows))
+                        setCodewordsWordInput('')
+                      }}
+                      placeholder="Ocean"
+                      className="input-field py-2.5 text-sm"
+                    />
+                    <textarea
+                      value={codewordsBulkPaste}
+                      onChange={(e) => setCodewordsBulkPaste(e.target.value)}
+                      placeholder={'Ocean\nMountain\nCastle'}
+                      rows={3}
+                      className="input-field resize-none font-medium text-sm"
+                    />
+                    {codewordsBulkPaste.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const rows = parseCodewordsWordRows(codewordsBulkPaste)
+                          if (rows.length === 0) {
+                            setQuestionsUploadError('No valid words found.')
+                            return
+                          }
+                          setQuestionsUploadError(null)
+                          setCustomCodewordsWords((prev) => mergeCodewordsWords(prev, rows))
+                          setCodewordsBulkPaste('')
+                        }}
+                        className="btn-secondary w-full text-sm py-2.5"
+                      >
+                        Import pasted list
+                      </button>
+                    )}
+                    {questionsUploadError && <p className="text-red-400 text-sm">{questionsUploadError}</p>}
+                    {customCodewordsWords.length > 0 && (
+                      <div className="max-h-36 overflow-y-auto space-y-1.5">
+                        <p className="text-muted text-xs uppercase tracking-wider">
+                          Loaded ({customCodewordsWords.length}
+                          {customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL
+                            ? ` — need ${CODEWORDS_MIN_CUSTOM_POOL} minimum`
+                            : ''}
+                          )
+                        </p>
+                        {customCodewordsWords.map((word, i) => (
+                          <div key={i} className="flex items-start gap-2 text-sm">
+                            <p className="text-body flex-1 min-w-0">{word}</p>
+                            <button
+                              type="button"
+                              onClick={() => setCustomCodewordsWords((prev) => prev.filter((_, idx) => idx !== i))}
+                              className="text-faint hover:text-red-300 text-xs shrink-0"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <p className="text-faint text-sm leading-relaxed">
                   Two teams of spymasters and operatives. Spymasters give one-word clues — operatives guess words on the
                   5×5 grid. First team to find all their words wins. Avoid the assassin!
@@ -2382,7 +2518,16 @@ function CreateGameInner() {
 
           <StickyActionBar>
             {isQuickLobby ? (
-              <PrimaryBtn onClick={createGame} disabled={!settings.title.trim() || loading}>
+              <PrimaryBtn
+                onClick={createGame}
+                disabled={
+                  !settings.title.trim() ||
+                  loading ||
+                  (isCodewords &&
+                    questionSource === 'custom' &&
+                    customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL)
+                }
+              >
                 {loading ? 'Creating...' : 'Create Game'}
               </PrimaryBtn>
             ) : isBinaryLobby || isTriviaQuickCreate || (isMlt && isJoinersMode) ? (

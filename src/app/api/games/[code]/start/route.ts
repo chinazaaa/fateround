@@ -82,6 +82,8 @@ import {
   pickBoardWords,
   teamsNeedRandomization,
   turnDeadline,
+  codewordsWordPoolForGame,
+  CODEWORDS_MIN_CUSTOM_POOL,
 } from '@/lib/codewords'
 import { buildTtlRoundRows, lobbyReadyForTwoTruths, shufflePlayerOrder, TTL_MIN_PLAYERS } from '@/lib/two-truths'
 import { initializeMonopolyGame, MONOPOLY_MIN_PLAYERS } from '@/lib/monopoly'
@@ -460,7 +462,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       firstTeamPref === 'red' || firstTeamPref === 'blue'
         ? firstTeamPref
         : Math.random() < 0.5 ? 'red' : 'blue'
-    const words = pickBoardWords()
+    const customPool = codewordsWordPoolForGame(game)
+    if (parseQuestionSource(game.question_source, gameType) === 'custom') {
+      if (!customPool || customPool.length < CODEWORDS_MIN_CUSTOM_POOL) {
+        return NextResponse.json(
+          { error: `Need at least ${CODEWORDS_MIN_CUSTOM_POOL} words in your custom library` },
+          { status: 400 }
+        )
+      }
+    }
+    const wordUsage = poolUsageToMap(poolUsage.codewords)
+    const words = pickBoardWords(customPool ?? undefined, wordUsage)
     const key = generateKey(startingTeam)
     const spymasterTimer = clampCodewordsTimer(game.timer_seconds ?? CODEWORDS_DEFAULT_SPYMASTER_TIMER)
     const operativeTimer = clampCodewordsTimer(game.operative_timer_seconds ?? CODEWORDS_DEFAULT_OPERATIVE_TIMER)
