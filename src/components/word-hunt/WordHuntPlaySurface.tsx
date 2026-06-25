@@ -66,7 +66,7 @@ export function WordHuntPlaySurface({
 
       <div className="px-4 pt-3 pb-1 min-h-[2.5rem] flex items-center justify-center">
         {currentWord ? (
-          <div className="px-4 py-1.5 rounded-full bg-[color-mix(in_srgb,var(--primary)_78%,#22c55e)] text-white font-black text-sm sm:text-base tracking-[0.12em] uppercase shadow-[0_4px_14px_-4px_color-mix(in_srgb,var(--primary)_55%,#16a34a)]">
+          <div className="px-4 py-1.5 rounded-full bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-strong)_100%)] text-white font-black text-sm sm:text-base tracking-[0.12em] uppercase shadow-[0_4px_14px_-4px_var(--primary-glow)]">
             {currentWord}
             {currentPoints > 0 && <span className="opacity-90"> (+{currentPoints})</span>}
           </div>

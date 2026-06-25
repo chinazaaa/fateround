@@ -67,7 +67,6 @@ export function useWordHuntGridInteraction(
   const endStroke = useCallback(
     (target: HTMLElement, pointerId: number) => {
       const path = selectedPathRef.current
-      const didMove = movedRef.current
       draggingRef.current = false
       movedRef.current = false
       lastCellRef.current = null
@@ -75,11 +74,14 @@ export function useWordHuntGridInteraction(
       if (target.hasPointerCapture(pointerId)) {
         target.releasePointerCapture(pointerId)
       }
-      if (didMove && path.length >= WORD_HUNT_MIN_WORD_LENGTH && onStrokeEnd) {
+      if (path.length >= WORD_HUNT_MIN_WORD_LENGTH && onStrokeEnd) {
         onStrokeEnd([...path])
       }
+      if (path.length > 0) {
+        onPathChange([])
+      }
     },
-    [onStrokeEnd]
+    [onPathChange, onStrokeEnd]
   )
 
   const onPointerDown = useCallback(

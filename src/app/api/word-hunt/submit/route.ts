@@ -23,11 +23,25 @@ export async function POST(req: NextRequest) {
 
   const { gameId, playerId, word, path } = parsed.data
 
-  const { data: game } = await supabase
-    .from('games')
-    .select('id,status,session_started_at,timer_seconds')
-    .eq('id', gameId)
-    .maybeSingle()
+  const [{ data: game }, { data: player }, { data: round }] = await Promise.all([
+    supabase
+      .from('games')
+      .select('id,status,session_started_at,timer_seconds')
+      .eq('id', gameId)
+      .maybeSingle(),
+    supabase
+      .from('players')
+      .select('id, joined_at, spectator')
+      .eq('id', playerId)
+      .eq('game_id', gameId)
+      .maybeSingle(),
+    supabase
+      .from('rounds')
+      .select('id,word_hunt_metadata')
+      .eq('game_id', gameId)
+      .eq('round_number', 1)
+      .maybeSingle(),
+  ])
 
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.status !== 'active') {
@@ -38,23 +52,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Time is up' }, { status: 400 })
   }
 
-  const { data: player } = await supabase
-    .from('players')
-    .select('id, joined_at, spectator')
-    .eq('id', playerId)
-    .eq('game_id', gameId)
-    .maybeSingle()
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
   if (playerIsViewer(player, game)) {
     return NextResponse.json({ error: 'Viewers cannot submit words' }, { status: 403 })
   }
-
-  const { data: round } = await supabase
-    .from('rounds')
-    .select('id,word_hunt_metadata')
-    .eq('game_id', gameId)
-    .eq('round_number', 1)
-    .maybeSingle()
 
   if (!round) return NextResponse.json({ error: 'Round not found' }, { status: 404 })
 
@@ -67,28 +68,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: validation.error }, { status: 400 })
   }
 
-  const { data: alreadyFound } = await supabase
-    .from('word_hunt_submissions')
-    .select('id')
-    .eq('round_id', round.id)
-    .eq('player_id', playerId)
-    .eq('word', validation.normalized)
-    .maybeSingle()
-
-  if (alreadyFound) {
-    return NextResponse.json({ error: 'You already found this word' }, { status: 409 })
-  }
-
   const pointsAwarded = wordHuntPoints(validation.normalized.length)
 
-  const { error: insertError } = await supabase.from('word_hunt_submissions').insert({
-    game_id: gameId,
-    round_id: round.id,
-    player_id: playerId,
-    word: validation.normalized,
-    path,
-    points_awarded: pointsAwarded,
-  })
+  const { data: inserted, error: insertError } = await supabase
+    .from('word_hunt_submissions')
+    .insert({
+      game_id: gameId,
+      round_id: round.id,
+      player_id: playerId,
+      word: validation.normalized,
+      path,
+      points_awarded: pointsAwarded,
+    })
+    .select('id')
+    .single()
 
   if (insertError) {
     if (insertError.code === '23505') {
@@ -97,5 +90,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: insertError.message }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true, pointsAwarded, word: validation.normalized })
+  return NextResponse.json({
+    success: true,
+    pointsAwarded,
+    word: validation.normalized,
+    submissionId: inserted.id,
+  })
 }

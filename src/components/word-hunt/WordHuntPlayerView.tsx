@@ -18,6 +18,7 @@ import { gameTypeConfig } from '@/lib/game-types'
 import {
   parseWordHuntMetadata,
   tallyWordHuntScores,
+  wordHuntPoints,
   WORD_HUNT_MIN_WORD_LENGTH,
 } from '@/lib/word-hunt'
 import { validateWordHuntSubmissionClient, validWordsSetFromMetadata } from '@/lib/word-hunt-client'
@@ -246,8 +247,13 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
         { event: 'INSERT', schema: 'public', table: 'word_hunt_submissions', filter: `round_id=eq.${roundId}` },
         (payload) => {
           setSubmissions((prev) => {
-            const exists = prev.some((s) => s.id === (payload.new as WordHuntSubmission).id)
-            return exists ? prev : [...prev, payload.new as WordHuntSubmission]
+            const incoming = payload.new as WordHuntSubmission
+            const exists = prev.some(
+              (submission) =>
+                submission.id === incoming.id ||
+                (submission.player_id === incoming.player_id && submission.word === incoming.word)
+            )
+            return exists ? prev : [...prev, incoming]
           })
         }
       )
@@ -330,8 +336,6 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     const path = pathOverride ?? selectedPath
     if (!myPlayerId || !roundId || !grid || timeUp || path.length < WORD_HUNT_MIN_WORD_LENGTH) return
 
-    setSelectedPath([])
-
     const foundSet = new Set(
       submissions.filter((s) => s.player_id === myPlayerId).map((s) => s.word)
     )
@@ -343,6 +347,30 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
 
     if (inFlightWordsRef.current.has(validation.normalized)) return
     inFlightWordsRef.current.add(validation.normalized)
+
+    const pointsAwarded = wordHuntPoints(validation.normalized.length)
+    const optimisticId = `pending-${validation.normalized}`
+
+    setSubmissions((prev) => {
+      const withoutPending = prev.filter(
+        (submission) =>
+          submission.id !== optimisticId &&
+          !(submission.player_id === myPlayerId && submission.word === validation.normalized)
+      )
+      return [
+        ...withoutPending,
+        {
+          id: optimisticId,
+          game_id: gameCode,
+          round_id: roundId,
+          player_id: myPlayerId,
+          word: validation.normalized,
+          path,
+          points_awarded: pointsAwarded,
+          submitted_at: new Date().toISOString(),
+        },
+      ]
+    })
 
     void fetch('/api/word-hunt/submit', {
       method: 'POST',
@@ -357,12 +385,50 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
       .then(async (res) => {
         const json = await res.json()
         if (!res.ok) {
+          setSubmissions((prev) =>
+            prev.filter(
+              (submission) =>
+                submission.id !== optimisticId &&
+                !(submission.player_id === myPlayerId && submission.word === validation.normalized)
+            )
+          )
           showToast(json.error ?? 'Invalid word', false)
-        } else {
-          showToast(`+${json.pointsAwarded} pts — ${json.word}`, true)
+          return
         }
+
+        setSubmissions((prev) => {
+          const withoutPending = prev.filter((submission) => submission.id !== optimisticId)
+          const submissionId = typeof json.submissionId === 'string' ? json.submissionId : optimisticId
+          const word = typeof json.word === 'string' ? json.word : validation.normalized
+          const alreadyThere = withoutPending.some(
+            (submission) =>
+              submission.id === submissionId ||
+              (submission.player_id === myPlayerId && submission.word === word)
+          )
+          if (alreadyThere) return withoutPending
+          return [
+            ...withoutPending,
+            {
+              id: submissionId,
+              game_id: gameCode,
+              round_id: roundId,
+              player_id: myPlayerId,
+              word,
+              path,
+              points_awarded: json.pointsAwarded ?? pointsAwarded,
+              submitted_at: new Date().toISOString(),
+            },
+          ]
+        })
       })
       .catch(() => {
+        setSubmissions((prev) =>
+          prev.filter(
+            (submission) =>
+              submission.id !== optimisticId &&
+              !(submission.player_id === myPlayerId && submission.word === validation.normalized)
+          )
+        )
         showToast('Could not submit word — try again', false)
       })
       .finally(() => {

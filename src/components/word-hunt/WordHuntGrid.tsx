@@ -118,7 +118,7 @@ export function WordHuntGrid({
                 className={[
                   cellBase,
                   inPath
-                    ? 'bg-[color-mix(in_srgb,var(--primary)_72%,#22c55e)] text-white shadow-[0_0_0_2px_color-mix(in_srgb,var(--primary)_55%,#16a34a),0_8px_20px_-6px_color-mix(in_srgb,var(--primary)_45%,transparent)] scale-[1.04] z-[1]'
+                    ? 'bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-strong)_100%)] text-white shadow-[0_0_0_2px_var(--primary),0_8px_20px_-6px_var(--primary-glow)] scale-[1.04] z-[1]'
                     : variant === 'play'
                       ? 'bg-[var(--card-strong)] text-[var(--foreground)] border border-[var(--border-strong)] shadow-[var(--card-shadow)]'
                       : 'bg-[var(--card-strong)] text-[var(--foreground)] border border-[var(--border-strong)] shadow-[var(--card-shadow)]',

@@ -194,12 +194,16 @@ export function buildWordHuntWordList(
   validWords: string[],
   foundWords: ReadonlySet<string>
 ): WordHuntWordEntry[] {
+  const foundNormalized = new Set([...foundWords].map((word) => word.toLowerCase()))
   return validWords
-    .map((word) => ({
-      word,
-      points: wordHuntPoints(word.length),
-      found: foundWords.has(word),
-    }))
+    .map((word) => {
+      const normalized = word.toLowerCase()
+      return {
+        word: normalized,
+        points: wordHuntPoints(normalized.length),
+        found: foundNormalized.has(normalized),
+      }
+    })
     .sort((a, b) => b.points - a.points || a.word.localeCompare(b.word))
 }
 
