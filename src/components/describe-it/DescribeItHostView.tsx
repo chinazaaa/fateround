@@ -15,6 +15,7 @@ import {
   DESCRIBE_IT_GUESS_SELECT,
 } from '@/lib/supabase-selects'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { DescribeItGuess, DescribeItPlayer, DescribeItSession, DescribeItWord, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -35,6 +36,18 @@ import {
 import { DescribeItPlayPanel } from '@/components/describe-it/DescribeItPlay'
 import { DescribeItFinalResultsShareBlock } from '@/components/describe-it/DescribeItFinalResultsShareBlock'
 
+type HostMode = 'spectator' | 'player'
+type HostTab = 'play' | 'manage'
+const HOST_MODE_KEY = 'describe_it_host_mode'
+
+function getHostMode(gameCode: string): HostMode {
+  if (typeof window === 'undefined') return 'spectator'
+  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as HostMode) ?? 'spectator'
+}
+function storeHostMode(gameCode: string, mode: HostMode) {
+  if (typeof window !== 'undefined') localStorage.setItem(`${HOST_MODE_KEY}_${gameCode}`, mode)
+}
+
 export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
   const [game, setGame] = useState<Game | null>(null)
@@ -49,6 +62,15 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   const [ending, setEnding] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [acting, setActing] = useState(false)
+  const [picking, setPicking] = useState(false)
+
+  const [hostMode, setHostMode] = useState<HostMode>('spectator')
+  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
+  const [hostPlayerName, setHostPlayerName] = useState('')
+  const [hostJoinName, setHostJoinName] = useState('')
+  const [hostJoining, setHostJoining] = useState(false)
+  const [tab, setTab] = useState<HostTab>('manage')
 
   useApplyGameTheme(game?.theme)
 
@@ -82,7 +104,13 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
 
   useEffect(() => {
     load()
-  }, [load])
+    setHostMode(getHostMode(gameCode))
+    const stored = getPlayerSession(gameCode)
+    if (stored) {
+      setHostPlayerId(stored.playerId)
+      setHostPlayerName(stored.playerName)
+    }
+  }, [gameCode, load])
 
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scheduleLoad = useCallback(() => {
@@ -112,7 +140,41 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
-  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, () => void load())
+  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, (id) => {
+    if (id === hostPlayerId) {
+      setHostPlayerId(null)
+      setHostPlayerName('')
+      clearPlayerSession(gameCode)
+    }
+    void load()
+  })
+
+  const changeHostMode = (mode: HostMode) => {
+    setHostMode(mode)
+    storeHostMode(gameCode, mode)
+  }
+
+  const hostJoinGame = async () => {
+    if (!hostJoinName.trim()) return
+    setHostJoining(true)
+    try {
+      const res = await fetch('/api/players', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameCode, playerName: hostJoinName.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
+      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
+      setHostPlayerId(data.playerId)
+      setHostPlayerName(data.playerName)
+      await load()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to join')
+    } finally {
+      setHostJoining(false)
+    }
+  }
 
   const post = async (path: string, body: Record<string, unknown>) => {
     const res = await fetch(`/api/describe-it/${path}`, {
@@ -122,6 +184,32 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error ?? 'Action failed')
+  }
+
+  const pickTeam = async (team: number) => {
+    if (!hostPlayerId) return
+    setPicking(true)
+    try {
+      await post('team', { playerId: hostPlayerId, team })
+      await load()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to pick team')
+    } finally {
+      setPicking(false)
+    }
+  }
+
+  const sendAction = async (path: string, body: Record<string, unknown>) => {
+    if (!hostPlayerId) return
+    setActing(true)
+    try {
+      await post(path, { playerId: hostPlayerId, ...body })
+      await load()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Action failed')
+    } finally {
+      setActing(false)
+    }
   }
 
   const balanceTeams = async () => {
@@ -160,6 +248,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
       if (!res.ok) throw new Error(data.error ?? 'Failed to start')
       success('Game started!')
       await load()
+      if (hostMode === 'player' && hostPlayerId) setTab('play')
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to start')
     } finally {
@@ -191,7 +280,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken }),
+        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to reset')
@@ -228,93 +317,205 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   const readyPlayers = players.filter((p) => p.spectator !== true)
   const canStart = readyPlayers.length >= DESCRIBE_IT_MIN_PLAYERS && ready.ok
   const gameFinished = isDescribeItResultsPhase(game.status, session)
-  const layout = hostPlayLayoutFlags('manage', false, game.status)
+  const hostPlays = hostMode === 'player' && !!hostPlayerId
+  const showPlayTab = hostPlays && game.status === 'active' && !gameFinished
+  const layout = hostPlayLayoutFlags(tab, showPlayTab, game.status)
 
   return (
     <HostPageShell gameCode={gameCode} {...layout}>
       {!gameFinished && <HostGameHeader game={game} />}
 
-      {gameFinished && (
-        <DescribeItFinalResultsShareBlock
-          game={game}
+      {/* ---- Host mode picker (lobby) ---- */}
+      {game.status === 'waiting' && (
+        <div className="glass-card-strong p-5 space-y-3">
+          <p className="label-caps">Host mode</p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => changeHostMode('spectator')}
+              className={[
+                'rounded-2xl border-2 px-4 py-4 text-left',
+                hostMode === 'spectator'
+                  ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                  : 'border-[var(--border-strong)] text-muted',
+              ].join(' ')}
+            >
+              <span className="font-bold block text-base">Host only</span>
+              <span className="text-faint text-xs">Run the game &amp; watch</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => changeHostMode('player')}
+              className={[
+                'rounded-2xl border-2 px-4 py-4 text-left',
+                hostMode === 'player'
+                  ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                  : 'border-[var(--border-strong)] text-muted',
+              ].join(' ')}
+            >
+              <span className="font-bold block text-base">Host + play</span>
+              <span className="text-faint text-xs">Join a team and play</span>
+            </button>
+          </div>
+          {hostMode === 'player' && !hostPlayerId && (
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="text"
+                value={hostJoinName}
+                onChange={(e) => setHostJoinName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void hostJoinGame()}
+                placeholder="Your name"
+                className="input-field flex-1"
+                maxLength={40}
+              />
+              <button
+                type="button"
+                onClick={() => void hostJoinGame()}
+                disabled={!hostJoinName.trim() || hostJoining}
+                className="btn-primary btn-fit shrink-0 px-4 py-2.5 text-sm whitespace-nowrap"
+              >
+                {hostJoining ? 'Joining…' : 'Join'}
+              </button>
+            </div>
+          )}
+          {hostPlays && (
+            <p className="text-sm text-muted">
+              Playing as <span className="font-semibold text-[var(--foreground)]">{hostPlayerName}</span> — pick your team
+              below.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ---- Play / Manage tabs ---- */}
+      {showPlayTab && (
+        <div className="flex rounded-xl border border-[var(--border-strong)] p-1 bg-[var(--surface-inset-bg)]">
+          {(['play', 'manage'] as HostTab[]).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              className={`flex-1 py-2 text-sm font-bold rounded-lg capitalize ${tab === t ? 'bg-[var(--background)] shadow' : 'text-muted'}`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ---- Host plays: interactive panel ---- */}
+      {showPlayTab && tab === 'play' && session && (
+        <DescribeItPlayPanel
+          session={session}
           players={players}
+          teamRows={teamPlain}
           words={words}
-          numTeams={numTeams}
-          playAgainButton={
-            <DescribeItPrimaryButton onClick={playAgain} loading={playingAgain}>
-              Play again
-            </DescribeItPrimaryButton>
-          }
+          guesses={guesses}
+          myPlayerId={hostPlayerId}
+          secondsLeft={secondsLeft}
+          breakLeft={breakLeft}
+          urgent={urgent}
+          onClue={(clue) => void sendAction('clue', { clue })}
+          onGuess={(text) => void sendAction('guess', { text })}
+          onSkip={() => void sendAction('skip', {})}
+          acting={acting}
         />
       )}
 
-      {game.status === 'active' && !gameFinished && session && (
+      {/* ---- Manage / spectate ---- */}
+      {(tab === 'manage' || !showPlayTab) && (
         <>
-          <DescribeItPlayPanel
-            session={session}
-            players={players}
-            teamRows={teamPlain}
-            words={words}
-            guesses={guesses}
-            myPlayerId={null}
-            secondsLeft={secondsLeft}
-            breakLeft={breakLeft}
-            urgent={urgent}
-          />
-          {session.phase === 'break' && (
-            <button type="button" onClick={advanceTurn} disabled={advancing} className="btn-primary w-full py-2.5">
-              {advancing ? 'Starting…' : 'Next team now →'}
-            </button>
+          {gameFinished && (
+            <DescribeItFinalResultsShareBlock
+              game={game}
+              players={players}
+              words={words}
+              numTeams={numTeams}
+              playAgainButton={
+                <DescribeItPrimaryButton onClick={playAgain} loading={playingAgain}>
+                  Play again
+                </DescribeItPrimaryButton>
+              }
+            />
           )}
-          <button type="button" onClick={endGame} disabled={ending} className="btn-secondary w-full py-3">
-            {ending ? 'Ending…' : 'End game early'}
-          </button>
-        </>
-      )}
 
-      {game.status === 'waiting' && (
-        <>
-          <DescribeItCard className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-bold">Teams ({numTeams})</p>
-              <button
-                type="button"
-                onClick={balanceTeams}
-                disabled={balancing}
-                className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
-              >
-                {balancing ? 'Balancing…' : 'Auto-balance'}
+          {game.status === 'active' && !gameFinished && session && (
+            <>
+              <DescribeItPlayPanel
+                session={session}
+                players={players}
+                teamRows={teamPlain}
+                words={words}
+                guesses={guesses}
+                myPlayerId={null}
+                secondsLeft={secondsLeft}
+                breakLeft={breakLeft}
+                urgent={urgent}
+              />
+              {session.phase === 'break' && (
+                <button type="button" onClick={advanceTurn} disabled={advancing} className="btn-primary w-full py-2.5">
+                  {advancing ? 'Starting…' : 'Next team now →'}
+                </button>
+              )}
+              <button type="button" onClick={endGame} disabled={ending} className="btn-secondary w-full py-3">
+                {ending ? 'Ending…' : 'End game early'}
               </button>
-            </div>
-            <DescribeItTeamRoster numTeams={numTeams} teamRows={teamPlain} players={players} />
-            {!ready.ok && <p className="text-amber-400 text-xs text-center">{ready.error}</p>}
-            <p className="text-center">
-              <GameRulesLink gameType="describe_it" variant="subtle" />
-            </p>
-          </DescribeItCard>
+            </>
+          )}
 
-          <HostLobbyPlayersSection
-            players={players}
-            removingPlayerId={removingPlayerId}
-            onRemovePlayer={removePlayer}
-          />
+          {game.status === 'waiting' && (
+            <>
+              <DescribeItCard className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-bold">Teams ({numTeams})</p>
+                  <button
+                    type="button"
+                    onClick={balanceTeams}
+                    disabled={balancing}
+                    className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
+                  >
+                    {balancing ? 'Balancing…' : 'Auto-balance'}
+                  </button>
+                </div>
+                <DescribeItTeamRoster
+                  numTeams={numTeams}
+                  teamRows={teamPlain}
+                  players={players}
+                  myPlayerId={hostPlays ? hostPlayerId : null}
+                  onPick={hostPlays ? pickTeam : undefined}
+                  picking={picking}
+                />
+                {!ready.ok && <p className="text-amber-400 text-xs text-center">{ready.error}</p>}
+                <p className="text-center">
+                  <GameRulesLink gameType="describe_it" variant="subtle" />
+                </p>
+              </DescribeItCard>
 
-          <HostLobbyWaitingFooter
-            gameCode={gameCode}
-            hostToken={hostToken}
-            onStart={startGame}
-            onEnded={load}
-            canStart={canStart}
-            starting={starting}
-            startDisabledHint={
-              canStart
-                ? null
-                : readyPlayers.length < DESCRIBE_IT_MIN_PLAYERS
-                  ? `Need at least ${DESCRIBE_IT_MIN_PLAYERS} players (${readyPlayers.length})`
-                  : (ready.error ?? 'Every team needs at least 2 players')
-            }
-            className="space-y-3"
-          />
+              <HostLobbyPlayersSection
+                players={players}
+                removingPlayerId={removingPlayerId}
+                onRemovePlayer={removePlayer}
+                highlightPlayerId={hostPlayerId}
+              />
+
+              <HostLobbyWaitingFooter
+                gameCode={gameCode}
+                hostToken={hostToken}
+                onStart={startGame}
+                onEnded={load}
+                canStart={canStart}
+                starting={starting}
+                startDisabledHint={
+                  canStart
+                    ? null
+                    : readyPlayers.length < DESCRIBE_IT_MIN_PLAYERS
+                      ? `Need at least ${DESCRIBE_IT_MIN_PLAYERS} players (${readyPlayers.length})`
+                      : (ready.error ?? 'Every team needs at least 2 players')
+                }
+                className="space-y-3"
+              />
+            </>
+          )}
         </>
       )}
     </HostPageShell>
