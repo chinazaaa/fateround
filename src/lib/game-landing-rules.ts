@@ -810,6 +810,40 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  chess: [
+    {
+      title: 'Objective',
+      points: [
+        'Checkmate your opponent’s king — attack it so it cannot escape, block, or capture its way out.',
+        'A game with no checkmate can end in a draw (stalemate, insufficient material, repetition, or the fifty-move rule).',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        'Exactly 2 players join a room. The host can play too.',
+        'One player is randomly assigned White, the other Black. White always moves first.',
+        'Optional chess clock — each player gets their own time bank (e.g. 10 minutes) that only counts down on their turn. Run out and you lose on time.',
+      ],
+    },
+    {
+      title: 'Taking a turn',
+      points: [
+        'On your turn, tap one of your pieces to see its legal moves, then tap a highlighted square to move there.',
+        'All standard rules apply — castling, en passant, and pawn promotion are handled automatically; only legal moves are allowed.',
+        'When a pawn reaches the far rank, choose what it promotes to (Queen, Rook, Bishop, or Knight).',
+      ],
+    },
+    {
+      title: 'Winning',
+      points: [
+        'Deliver checkmate to win immediately. You can also win if your opponent resigns or runs out of time.',
+        'Stalemate or insufficient material ends the game in a draw.',
+        'Play again starts a fresh game — colors swap so the previous Black player opens as White.',
+      ],
+    },
+  ],
+
   word_hunt: [
     {
       title: 'Objective',

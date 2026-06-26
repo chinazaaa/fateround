@@ -1148,6 +1148,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  chess: {
+    id: 'chess',
+    label: 'Chess',
+    tagline: 'Classic chess, head-to-head — checkmate your friend to win',
+    headerEmoji: '♚♛',
+    card: {
+      accent: '#6366f1',
+      accentSoft: 'rgba(99, 102, 241, 0.15)',
+      emoji: '♟️',
+      players: '2 players',
+      vibe: 'Battle of wits',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '♔',
+        label: 'White',
+        color: '#e2e8f0',
+        leaderboardLabel: 'White wins',
+        activeClass: 'bg-slate-200/20 text-slate-100 border-slate-300',
+        borderClass: 'border-slate-300/50 bg-slate-200/10',
+        textColor: '#e2e8f0',
+      },
+      marry: {
+        emoji: '♚',
+        label: 'Black',
+        color: '#475569',
+        leaderboardLabel: 'Black wins',
+        activeClass: 'bg-slate-700/30 text-slate-100 border-slate-500',
+        borderClass: 'border-slate-600/50 bg-slate-700/20',
+        textColor: '#cbd5e1',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
 }
 
 /** Home page “Popular games” grid — order is display order. */
@@ -1187,6 +1230,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'sudoku',
   'tic_tac_toe',
   'word_hunt',
+  'chess',
 ]
 
 export function parseGameType(raw: unknown): GameType {
@@ -1215,6 +1259,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'sudoku') return 'sudoku'
   if (raw === 'tic_tac_toe') return 'tic_tac_toe'
   if (raw === 'word_hunt') return 'word_hunt'
+  if (raw === 'chess') return 'chess'
   return 'smash_marry_kill'
 }
 
@@ -1269,6 +1314,8 @@ export function gameHowItWorks(
       return 'Two players join with their name. The host can play too. Ultimate Tic-Tac-Toe is nine small 3x3 boards in one big grid — the cell you play sends your opponent to the matching board. Win a small board with three in a row, and win the game by taking three boards in a row.'
     case 'word_hunt':
       return 'Players join with their name. Everyone gets the same 4×4 letter grid — connect adjacent letters to spell valid words (3+ letters) before the timer runs out. Longer words score more points.'
+    case 'chess':
+      return 'Two players join with their name. The host can play too. One player is White, the other Black — White moves first. Move pieces by the standard rules; checkmate your opponent to win. Optional chess clock — each player gets their own time bank that only ticks on their turn, and the first to run out loses.'
     case 'i_call_on':
       return "Players join with their name. Set a game timer (or play all 26 letters). Each letter cycle someone calls A–Z, everyone fills Name, Animal, Place, Thing, and Food, then marks the next player's sheet. Duplicates score 5 automatically; unique valid answers score 10. Everyone sees all marks live."
     case 'most_likely_to':
@@ -1505,7 +1552,8 @@ export function isNameOnlyPlayerJoin(gameType: GameType | string | undefined): b
     type === 'i_call_on' ||
     type === 'sudoku' ||
     type === 'tic_tac_toe' ||
-    type === 'word_hunt'
+    type === 'word_hunt' ||
+    type === 'chess'
   )
 }
 
@@ -1600,6 +1648,10 @@ export function isLudoGame(gameType: GameType | string | undefined): boolean {
 
 export function isTicTacToeGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'tic_tac_toe'
+}
+
+export function isChessGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'chess'
 }
 
 export function isICallOnGame(gameType: GameType | string | undefined): boolean {

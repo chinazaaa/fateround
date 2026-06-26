@@ -34,6 +34,7 @@ import {
   isWhotGame,
   isLudoGame,
   isTicTacToeGame,
+  isChessGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
@@ -92,6 +93,7 @@ import {
 import { clampMonopolyGameDuration, clampMonopolyTurnTimer } from '@/lib/monopoly'
 import { clampWhotGameDuration } from '@/lib/whot'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
+import { clampChessTimer } from '@/lib/chess'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, type LateJoinPolicy } from '@/lib/viewers'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -255,7 +257,8 @@ export async function POST(req: NextRequest) {
     isLudoGame(game_type) ||
     isSudokuGame(game_type) ||
     isWordHuntGame(game_type) ||
-    isTicTacToeGame(game_type)
+    isTicTacToeGame(game_type) ||
+    isChessGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
         ? 'import'
@@ -308,7 +311,8 @@ export async function POST(req: NextRequest) {
     isLudoGame(game_type) ||
     isSudokuGame(game_type) ||
     isWordHuntGame(game_type) ||
-    isTicTacToeGame(game_type)
+    isTicTacToeGame(game_type) ||
+    isChessGame(game_type)
       ? 1
       : isWhoSaidThis(game_type)
         ? wstAutoRoundCount(participants.length)
@@ -408,6 +412,12 @@ export async function POST(req: NextRequest) {
                               rawMaxPlayers,
                               lobbyDefaultMaxPlayers('tic_tac_toe', lobbyLimits)
                             )
+                          : isChessGame(game_type)
+                          ? resolveMaxPlayers(
+                              'chess',
+                              rawMaxPlayers,
+                              lobbyDefaultMaxPlayers('chess', lobbyLimits)
+                            )
                           : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
@@ -438,9 +448,11 @@ export async function POST(req: NextRequest) {
               ? clampMonopolyTurnTimer(timer_seconds)
               : isWordHuntGame(game_type)
                 ? clampWordHuntTimer(timer_seconds)
-                : [15, 30, 60].includes(Number(timer_seconds))
-                  ? Number(timer_seconds)
-                  : 30,
+                : isChessGame(game_type)
+                  ? clampChessTimer(timer_seconds)
+                  : [15, 30, 60].includes(Number(timer_seconds))
+                    ? Number(timer_seconds)
+                    : 30,
     ...(isCodewordsGame(game_type)
       ? {
           operative_timer_seconds: clampCodewordsTimer(

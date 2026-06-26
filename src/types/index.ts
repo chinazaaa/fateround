@@ -35,6 +35,7 @@ export type GameType =
   | 'sudoku'
   | 'tic_tac_toe'
   | 'word_hunt'
+  | 'chess'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -498,6 +499,38 @@ export interface TicTacToeSession {
   active_board: number | null
   current_turn_mark: TicTacToeMark
   status: 'active' | 'finished'
+  winner_player_id: string | null
+  is_draw: boolean
+  status_message: string | null
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type ChessColor = 'w' | 'b'
+
+export interface ChessSession {
+  id: string
+  game_id: string
+  player_white_id: string
+  player_black_id: string
+  /** Current position in Forsyth–Edwards Notation. */
+  fen: string
+  /** Full move history in Portable Game Notation. */
+  pgn: string
+  current_turn: ChessColor
+  /** Remaining clock for each player in milliseconds; null when the game is untimed. */
+  white_time_ms: number | null
+  black_time_ms: number | null
+  /** When the player on the move started their clock — used to compute elapsed time. */
+  turn_started_at: string | null
+  /** Squares of the most recent move, for highlighting (e.g. 'e2' -> 'e4'). */
+  last_move_from: string | null
+  last_move_to: string | null
+  in_check: boolean
+  status: 'active' | 'finished'
+  /** checkmate | stalemate | threefold | insufficient | fifty_move | timeout | resignation */
+  result_reason: string | null
   winner_player_id: string | null
   is_draw: boolean
   status_message: string | null

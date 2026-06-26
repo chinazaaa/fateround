@@ -57,6 +57,7 @@ import {
   isWhotGame,
   isLudoGame,
   isTicTacToeGame,
+  isChessGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
@@ -396,6 +397,15 @@ function CreateGameInner() {
               rounds_count: 1,
             }
           : {}),
+        ...(isChessGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              // Cumulative per-player clock (chess.com style). Default 10 minutes each.
+              timer_seconds: 600,
+            }
+          : {}),
         ...(isWhoSaidThis(type)
           ? {
               participant_mode: 'import' as const,
@@ -454,6 +464,7 @@ function CreateGameInner() {
   }, [whotCardsEnabled])
   const isLudo = isLudoGame(settings.game_type)
   const isTicTacToe = isTicTacToeGame(settings.game_type)
+  const isChess = isChessGame(settings.game_type)
   const isNpat = isICallOnGame(settings.game_type)
   const isSudoku = isSudokuGame(settings.game_type)
   const isWordHunt = isWordHuntGame(settings.game_type)
@@ -548,6 +559,7 @@ function CreateGameInner() {
     isWhot ||
     isLudo ||
     isTicTacToe ||
+    isChess ||
     isNpat ||
     isSudoku ||
     isWordHunt
@@ -1507,6 +1519,29 @@ function CreateGameInner() {
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
                   Ultimate Tic-Tac-Toe — nine small boards in one big grid. Your move sends your opponent to the matching board; win three boards in a row to win it all.
+                </p>
+              </SettingsGroup>
+            ) : isChess ? (
+              <SettingsGroup title="Chess room">
+                <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
+                <Field label="Time per player">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={0}>No timer</option>
+                    <option value={180}>3 minutes each</option>
+                    <option value={300}>5 minutes each</option>
+                    <option value={600}>10 minutes each</option>
+                  </select>
+                </Field>
+                <Field label="Late joiners">
+                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="chess" />
+                </Field>
+                <p className="text-faint text-sm leading-relaxed">
+                  Classic chess — White moves first, standard rules, checkmate to win. Each player gets their own clock
+                  that only ticks on their turn; the first to run out of time loses.
                 </p>
               </SettingsGroup>
             ) : isNpat ? (

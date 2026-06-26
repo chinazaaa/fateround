@@ -71,6 +71,7 @@ const gameTypeEnum = z.enum([
   'sudoku',
   'tic_tac_toe',
   'word_hunt',
+  'chess',
 ])
 
 const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
@@ -738,6 +739,29 @@ export const ticTacToeExpireSchema = z.object({
 })
 
 export type TicTacToeMoveInput = z.infer<typeof ticTacToeMoveSchema>
+
+const chessSquare = z
+  .string()
+  .regex(/^[a-h][1-8]$/, 'Invalid square')
+
+export const chessMoveSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  from: chessSquare,
+  to: chessSquare,
+  promotion: z.enum(['q', 'r', 'b', 'n']).optional(),
+})
+
+export const chessExpireSchema = z.object({
+  gameId: gameCodeString(),
+})
+
+export const chessResignSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+})
+
+export type ChessMoveInput = z.infer<typeof chessMoveSchema>
 
 const codewordsTeamEnum = z.enum(['red', 'blue'])
 const codewordsRoleEnum = z.enum(['spymaster', 'operative'])

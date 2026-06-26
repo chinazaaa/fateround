@@ -56,6 +56,9 @@ export const LUDO_PLAYER_STATE_SELECT = 'id,game_id,player_id,color,pieces,playe
 export const TIC_TAC_TOE_SESSION_SELECT =
   'id,game_id,player_x_id,player_o_id,board,board_winners,active_board,current_turn_mark,status,winner_player_id,is_draw,status_message,turn_deadline_at,created_at,updated_at'
 
+export const CHESS_SESSION_SELECT =
+  'id,game_id,player_white_id,player_black_id,fen,pgn,current_turn,white_time_ms,black_time_ms,turn_started_at,last_move_from,last_move_to,in_check,status,result_reason,winner_player_id,is_draw,status_message,turn_deadline_at,created_at,updated_at'
+
 export const BINGO_CALLED_NUMBER_SELECT = 'id,game_id,number,called_at'
 
 export const BINGO_CLAIM_SELECT = 'id,game_id,player_id,pattern,status,created_at'

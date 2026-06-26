@@ -14,6 +14,7 @@ import {
   isWhotGame,
   isLudoGame,
   isTicTacToeGame,
+  isChessGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
@@ -26,6 +27,7 @@ import { clearYahtzeeSessionData } from '@/lib/yahtzee'
 import { clearWhotSessionData } from '@/lib/whot'
 import { clearLudoSessionData } from '@/lib/ludo'
 import { clearTicTacToeSessionData, canTicTacToePlayAgain } from '@/lib/tic-tac-toe'
+import { clearChessSessionData, canChessPlayAgain } from '@/lib/chess'
 import { clearNpatSessionData } from '@/lib/npat'
 import { clearSudokuSessionData } from '@/lib/sudoku'
 import { clearWordHuntSessionData } from '@/lib/word-hunt'
@@ -75,10 +77,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const ticTacToeCanReplay = isTicTacToeGame(gameType)
     ? await canTicTacToePlayAgain(supabase, gameId, game.status)
     : false
+  const chessCanReplay = isChessGame(gameType)
+    ? await canChessPlayAgain(supabase, gameId, game.status)
+    : false
   const canReturnToLobby =
     game.status === 'waiting' ||
     game.status === 'finished' ||
     ticTacToeCanReplay ||
+    chessCanReplay ||
     (isCodewordsGame(gameType) && game.status === 'active') ||
     (isTwoTruthsGame(gameType) && game.status === 'active') ||
     (isICallOnGame(gameType) && game.status === 'active') ||
@@ -278,6 +284,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
   }
 
+  if (isChessGame(gameType)) {
+    const { error: clearError } = await clearChessSessionData(supabase, gameId)
+    if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
+  }
   if (isTicTacToeGame(gameType)) {
     const { error: clearError } = await clearTicTacToeSessionData(supabase, gameId)
     if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })

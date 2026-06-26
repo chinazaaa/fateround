@@ -78,6 +78,7 @@ import {
   isWhotGame,
   isLudoGame,
   isTicTacToeGame,
+  isChessGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
@@ -94,6 +95,7 @@ import { YahtzeePlayerView } from '@/components/yahtzee/YahtzeePlayerView'
 import { WhotPlayerView } from '@/components/whot/WhotPlayerView'
 import { LudoPlayerView } from '@/components/ludo/LudoPlayerView'
 import { TicTacToePlayerView } from '@/components/tic-tac-toe/TicTacToePlayerView'
+import { ChessPlayerView } from '@/components/chess/ChessPlayerView'
 import { SudokuPlayerView } from '@/components/sudoku/SudokuPlayerView'
 import { WordHuntPlayerView } from '@/components/word-hunt/WordHuntPlayerView'
 import {
@@ -575,6 +577,9 @@ export function PollGamePlayerExperience({
   }
   if (game && isTicTacToeGame(game.game_type)) {
     return <TicTacToePlayerView gameCode={gameCode} />
+  }
+  if (game && isChessGame(game.game_type)) {
+    return <ChessPlayerView gameCode={gameCode} />
   }
   if (game && isSudokuGame(game.game_type)) {
     return <SudokuPlayerView gameCode={gameCode} />
