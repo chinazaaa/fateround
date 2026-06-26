@@ -18,6 +18,7 @@ import { setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import { resolvePlayerSession } from '@/lib/player-resume'
 import type { Game, Player, ChessSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
@@ -47,6 +48,7 @@ type Screen =
 export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
+  const { confirm } = useConfirm()
   const [screen, setScreen] = useState<Screen>('loading')
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
@@ -226,7 +228,13 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
 
   const resign = async () => {
     if (!myPlayerId) return
-    if (!window.confirm('Resign this game?')) return
+    const ok = await confirm({
+      title: 'Resign this game?',
+      message: 'Your opponent will be awarded the win.',
+      confirmLabel: 'Resign',
+      destructive: true,
+    })
+    if (!ok) return
     setActing(true)
     try {
       const res = await fetch('/api/chess/resign', {

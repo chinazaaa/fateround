@@ -13,6 +13,7 @@ import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player, ChessSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
@@ -39,6 +40,7 @@ function setHostMode(gameCode: string, mode: ChessHostMode): void {
 
 export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
+  const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<ChessSession | null>(null)
@@ -187,7 +189,13 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   const resign = async () => {
     if (!hostPlayerId) return
-    if (!window.confirm('Resign this game?')) return
+    const ok = await confirm({
+      title: 'Resign this game?',
+      message: 'Your opponent will be awarded the win.',
+      confirmLabel: 'Resign',
+      destructive: true,
+    })
+    if (!ok) return
     setHostActing(true)
     try {
       const res = await fetch('/api/chess/resign', {
