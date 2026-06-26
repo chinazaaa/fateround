@@ -6,16 +6,37 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { teamLabel, type DescribeItTeamScore } from '@/lib/describe-it'
 import type { Player } from '@/types'
 
-/** Per-team accent classes (chip background / border / text). */
-export const TEAM_STYLES: { chip: string; ring: string; text: string; dot: string }[] = [
-  { chip: 'bg-sky-500/15 border-sky-400/50', ring: 'ring-sky-400', text: 'text-sky-300', dot: 'bg-sky-400' },
-  { chip: 'bg-rose-500/15 border-rose-400/50', ring: 'ring-rose-400', text: 'text-rose-300', dot: 'bg-rose-400' },
-  { chip: 'bg-emerald-500/15 border-emerald-400/50', ring: 'ring-emerald-400', text: 'text-emerald-300', dot: 'bg-emerald-400' },
-  { chip: 'bg-amber-500/15 border-amber-400/50', ring: 'ring-amber-400', text: 'text-amber-300', dot: 'bg-amber-400' },
+/** Per-team accent classes. `badge` is a solid high-contrast pill for the team name. */
+export const TEAM_STYLES: { chip: string; ring: string; badge: string; dot: string }[] = [
+  { chip: 'bg-sky-500/20 border-sky-500/60', ring: 'ring-sky-400', badge: 'bg-sky-600 text-white', dot: 'bg-sky-500' },
+  { chip: 'bg-pink-500/20 border-pink-500/60', ring: 'ring-pink-400', badge: 'bg-pink-600 text-white', dot: 'bg-pink-500' },
+  {
+    chip: 'bg-emerald-500/20 border-emerald-500/60',
+    ring: 'ring-emerald-400',
+    badge: 'bg-emerald-600 text-white',
+    dot: 'bg-emerald-500',
+  },
+  {
+    chip: 'bg-amber-500/20 border-amber-500/60',
+    ring: 'ring-amber-400',
+    badge: 'bg-amber-500 text-black',
+    dot: 'bg-amber-500',
+  },
 ]
 
 export function teamStyle(team: number) {
   return TEAM_STYLES[(team - 1) % TEAM_STYLES.length]!
+}
+
+/** Solid colored pill showing the team name — readable in any theme. */
+export function TeamBadge({ team, className = '' }: { team: number; className?: string }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-black ${teamStyle(team).badge} ${className}`}
+    >
+      {teamLabel(team)}
+    </span>
+  )
 }
 
 export function DescribeItShell({
@@ -134,9 +155,9 @@ export function DescribeItScoreboard({
                 active ? `ring-2 ${st.ring}` : '',
               ].join(' ')}
             >
-              <span className={`text-sm font-bold ${st.text}`}>
-                {teamLabel(s.team)}
-                {active ? ' ⏱' : ''}
+              <span className="flex items-center gap-1.5">
+                <TeamBadge team={s.team} />
+                {active ? <span title="On the clock">⏱</span> : null}
               </span>
               <span className="text-lg font-black tabular-nums">{s.score}</span>
             </div>
@@ -178,7 +199,7 @@ export function DescribeItTeamRoster({
         return (
           <div key={team} className={`rounded-2xl border p-3 space-y-2 ${st.chip}`}>
             <div className="flex items-center justify-between">
-              <span className={`text-sm font-black ${st.text}`}>{teamLabel(team)}</span>
+              <TeamBadge team={team} />
               <span className="text-faint text-xs">{members.length}</span>
             </div>
             <ul className="space-y-1 min-h-[1.5rem]">

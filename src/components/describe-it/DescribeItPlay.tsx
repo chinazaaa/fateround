@@ -1,14 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import {
-  computeDescribeItScores,
-  teamLabel,
-  teamForTurn,
-  type DescribeItTeamScore,
-} from '@/lib/describe-it'
+import { computeDescribeItScores, teamForTurn, type DescribeItTeamScore } from '@/lib/describe-it'
 import type { DescribeItGuess, DescribeItSession, DescribeItWord, Player } from '@/types'
-import { DescribeItCard, DescribeItScoreboard, teamStyle } from '@/components/describe-it/DescribeItChrome'
+import { DescribeItCard, DescribeItScoreboard, TeamBadge } from '@/components/describe-it/DescribeItChrome'
 
 function GuessFeed({
   guesses,
@@ -114,14 +109,21 @@ export function DescribeItPlayPanel({
 }) {
   const scores: DescribeItTeamScore[] = computeDescribeItScores(words, session.num_teams)
   const activeTeam = session.active_team
-  const activeStyle = teamStyle(activeTeam)
   const myTeam = teamRows.find((r) => r.player_id === myPlayerId)?.team ?? null
   const isDescriber = !!myPlayerId && session.describer_player_id === myPlayerId
   const onActiveTeam = myTeam === activeTeam
   const describerName = players.find((p) => p.id === session.describer_player_id)?.name ?? 'Someone'
+  const clues = session.current_clues?.length ? session.current_clues : session.current_clue ? [session.current_clue] : []
 
   return (
     <div className="space-y-4">
+      {myTeam != null && (
+        <p className="flex items-center justify-center gap-1.5 text-xs text-faint">
+          You&apos;re on <TeamBadge team={myTeam} />
+          {isDescriber && session.phase === 'turn' && onActiveTeam ? <span>· you&apos;re describing 🗣️</span> : null}
+        </p>
+      )}
+
       <DescribeItScoreboard
         scores={scores}
         activeTeam={activeTeam}
@@ -133,9 +135,8 @@ export function DescribeItPlayPanel({
         <DescribeItCard className="p-5 text-center space-y-2">
           <p className="text-3xl">⏭️</p>
           <p className="text-base font-bold">{session.status_message}</p>
-          <p className="text-faint text-sm">
-            Next up: <span className="font-bold">{teamLabel(teamForTurn(session.turn_index + 1, session.num_teams))}</span>{' '}
-            in {breakLeft}s
+          <p className="flex items-center justify-center gap-1.5 text-faint text-sm">
+            Next up: <TeamBadge team={teamForTurn(session.turn_index + 1, session.num_teams)} /> in {breakLeft}s
           </p>
         </DescribeItCard>
       )}
@@ -143,7 +144,9 @@ export function DescribeItPlayPanel({
       {session.phase === 'turn' && (
         <>
           <DescribeItCard className={`p-3 flex items-center justify-between ${urgent ? 'animate-pulse' : ''}`}>
-            <span className={`text-sm font-black ${activeStyle.text}`}>{teamLabel(activeTeam)}&apos;s turn</span>
+            <span className="flex items-center gap-1.5 text-sm font-bold">
+              <TeamBadge team={activeTeam} /> is up
+            </span>
             <span className={`text-2xl font-black tabular-nums ${urgent ? 'text-amber-400' : ''}`}>
               {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}
             </span>
@@ -155,6 +158,18 @@ export function DescribeItPlayPanel({
               <p className="text-3xl sm:text-4xl font-black tracking-tight break-words">{session.current_word}</p>
               {onClue && (
                 <ClueOrGuessInput placeholder="Type a clue…" buttonLabel="Send" onSubmit={onClue} disabled={!!acting} />
+              )}
+              {clues.length > 0 && (
+                <div className="text-left space-y-1">
+                  <p className="text-faint text-[11px] font-semibold uppercase tracking-wide">Clues you&apos;ve given</p>
+                  <div className="flex flex-wrap gap-1">
+                    {clues.map((c, i) => (
+                      <span key={i} className="rounded-md bg-[var(--surface-inset-bg)] px-2 py-0.5 text-xs">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               )}
               {onSkip && (
                 <button
@@ -169,12 +184,16 @@ export function DescribeItPlayPanel({
             </DescribeItCard>
           ) : (
             <DescribeItCard className="p-4 space-y-3">
-              <p className="text-center text-sm text-faint">
-                🗣️ <span className="font-bold">{describerName}</span> is describing for {teamLabel(activeTeam)}
+              <p className="flex items-center justify-center gap-1.5 text-sm text-faint">
+                🗣️ <span className="font-bold">{describerName}</span> describing for <TeamBadge team={activeTeam} />
               </p>
-              <div className="rounded-xl border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] px-4 py-4 text-center min-h-[3.5rem] flex items-center justify-center">
-                {session.current_clue ? (
-                  <p className="text-xl font-bold">“{session.current_clue}”</p>
+              <div className="rounded-xl border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] px-4 py-4 text-center min-h-[3.5rem] flex flex-col items-center justify-center gap-1">
+                {clues.length > 0 ? (
+                  clues.map((c, i) => (
+                    <p key={i} className={i === clues.length - 1 ? 'text-xl font-bold' : 'text-sm text-faint'}>
+                      “{c}”
+                    </p>
+                  ))
                 ) : (
                   <p className="text-faint text-sm animate-pulse">Waiting for a clue…</p>
                 )}

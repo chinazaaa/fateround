@@ -3,7 +3,7 @@
 import { useRef, type ReactNode } from 'react'
 import type { DescribeItWord, Game, Player } from '@/types'
 import { computeDescribeItScores, describeItWinningTeams, teamLabel } from '@/lib/describe-it'
-import { teamStyle } from '@/components/describe-it/DescribeItChrome'
+import { teamStyle, TeamBadge } from '@/components/describe-it/DescribeItChrome'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
@@ -59,9 +59,9 @@ export function DescribeItFinalResultsShareBlock({
                   isWinner ? `ring-2 ${st.ring}` : '',
                 ].join(' ')}
               >
-                <span className={`font-bold ${st.text}`}>
-                  {isWinner ? '👑 ' : `${i + 1}. `}
-                  {teamLabel(s.team)}
+                <span className="flex items-center gap-1.5 font-bold">
+                  <span>{isWinner ? '👑' : `${i + 1}.`}</span>
+                  <TeamBadge team={s.team} />
                 </span>
                 <span className="text-lg font-black tabular-nums">
                   {s.score} {s.score === 1 ? 'word' : 'words'}

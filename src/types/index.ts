@@ -558,6 +558,8 @@ export interface DescribeItSession {
   describer_player_id: string | null
   current_word: string | null
   current_clue: string | null
+  /** All clues given for the current word (reset each word). */
+  current_clues: string[]
   used_words: string[]
   turn_deadline_at: string | null
   break_deadline_at: string | null

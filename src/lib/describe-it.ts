@@ -197,6 +197,7 @@ function buildTurn(
     describer_player_id: describer,
     current_word: word,
     current_clue: null,
+    current_clues: [],
     used_words: [...usedWords, word],
     turn_deadline_at: deadline(turnSeconds),
     break_deadline_at: null,
@@ -267,9 +268,13 @@ export async function processDescribeItClue(
   if (session.current_word && clueContainsWord(trimmed, session.current_word)) {
     return { error: "Your clue can't contain the word" }
   }
+  // Avoid logging the exact same clue twice in a row.
+  const history = session.current_clues ?? []
+  const nextClues = history.some((c) => normalizeGuess(c) === normalizeGuess(trimmed)) ? history : [...history, trimmed]
+
   const { error: updateError } = await supabase
     .from('describe_it_sessions')
-    .update({ current_clue: trimmed, updated_at: new Date().toISOString() })
+    .update({ current_clue: trimmed, current_clues: nextClues, updated_at: new Date().toISOString() })
     .eq('game_id', gameId)
   if (updateError) return { error: updateError.message }
   return {}
@@ -334,6 +339,7 @@ export async function processDescribeItGuess(
     .update({
       current_word: nextWord,
       current_clue: null,
+      current_clues: [],
       used_words: [...session.used_words, nextWord],
       status_message: `${name} guessed it!`,
       updated_at: new Date().toISOString(),
@@ -381,6 +387,7 @@ export async function processDescribeItSkip(
     .update({
       current_word: nextWord,
       current_clue: null,
+      current_clues: [],
       used_words: [...session.used_words, nextWord],
       updated_at: new Date().toISOString(),
     })

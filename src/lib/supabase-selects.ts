@@ -59,7 +59,7 @@ export const CHESS_SESSION_SELECT =
   'id,game_id,player_white_id,player_black_id,fen,pgn,current_turn,white_time_ms,black_time_ms,turn_started_at,last_move_from,last_move_to,in_check,status,result_reason,winner_player_id,is_draw,status_message,turn_deadline_at,created_at,updated_at'
 
 export const DESCRIBE_IT_SESSION_SELECT =
-  'id,game_id,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,current_word,current_clue,used_words,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
+  'id,game_id,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,current_word,current_clue,current_clues,used_words,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
 
 export const DESCRIBE_IT_PLAYER_SELECT = 'id,game_id,player_id,team,created_at'
 
