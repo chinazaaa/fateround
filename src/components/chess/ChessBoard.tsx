@@ -127,7 +127,7 @@ function CapturedTray({
 function Piece({ type, color }: { type: string; color: ChessColor }) {
   return (
     <span
-      className="select-none leading-none text-[7.5vw] sm:text-[2.4rem]"
+      className="relative z-10 select-none leading-none text-[7.5vw] sm:text-[2.4rem]"
       style={{
         color: color === 'w' ? '#f8fafc' : '#1e293b',
         textShadow:
@@ -318,12 +318,12 @@ export function ChessGamePanel({
                     interactive ? 'cursor-pointer' : 'cursor-default',
                   ].join(' ')}
                 >
-                  {isLastMove && <span className="absolute inset-0 bg-yellow-300/40" />}
-                  {isCheck && <span className="absolute inset-0 bg-rose-500/50" />}
-                  {isSelected && <span className="absolute inset-0 ring-2 ring-inset ring-[var(--primary)]" />}
+                  {isLastMove && <span className="absolute inset-0 z-0 bg-yellow-300/40" />}
+                  {isCheck && <span className="absolute inset-0 z-0 bg-rose-500/50" />}
+                  {isSelected && <span className="absolute inset-0 z-20 ring-2 ring-inset ring-[var(--primary)]" />}
                   {piece && <Piece type={piece.type} color={piece.color} />}
-                  {target && !piece && <span className="absolute w-1/4 h-1/4 rounded-full bg-black/30" />}
-                  {target && piece && <span className="absolute inset-1 rounded-full ring-4 ring-black/30" />}
+                  {target && !piece && <span className="absolute z-20 w-1/4 h-1/4 rounded-full bg-black/30" />}
+                  {target && piece && <span className="absolute inset-1 z-20 rounded-full ring-4 ring-black/30" />}
                 </button>
               )
             })
