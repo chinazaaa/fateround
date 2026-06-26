@@ -96,12 +96,18 @@ function CapturedTray({
   return (
     <div className="flex items-center gap-1.5 min-h-[1.75rem] px-1">
       <span className="text-xs font-bold shrink-0">{glyphColor === 'w' ? '♚' : '♔'} {name}</span>
-      <div className="flex items-center flex-wrap gap-px leading-none">
+      <div className="flex items-center flex-wrap gap-0.5 leading-none">
         {pieces.map((type, i) => (
           <span
             key={`${type}-${i}`}
-            className="text-sm sm:text-base"
-            style={{ color: glyphColor === 'w' ? '#f8fafc' : '#1e293b' }}
+            className="text-xl sm:text-2xl leading-none"
+            style={{
+              color: glyphColor === 'w' ? '#f8fafc' : '#1e293b',
+              textShadow:
+                glyphColor === 'w'
+                  ? '0 0 1px #0f172a, 0 1px 1px rgba(0,0,0,0.55)'
+                  : '0 0 1px #f8fafc, 0 1px 1px rgba(255,255,255,0.4)',
+            }}
           >
             {GLYPH[type]}
           </span>
