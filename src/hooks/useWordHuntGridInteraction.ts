@@ -9,44 +9,59 @@ import {
 import { canExtendWordHuntPath } from '@/lib/word-hunt-client'
 
 /** Pixels before a pointer sequence counts as a drag (not a tap). */
-const DRAG_THRESHOLD_PX = 16
+const DRAG_THRESHOLD_PX = 10
 
-/** Nearest cell under the pointer — works across gaps for diagonal drags. */
-function cellIndexFromPoint(x: number, y: number, gridRoot: HTMLElement | null): number | null {
-  if (!gridRoot) return null
+type CellRect = { index: number; left: number; top: number; width: number; height: number }
 
+/**
+ * Snapshot every cell's geometry once at the start of a stroke. Reusing this for
+ * the whole drag avoids calling getBoundingClientRect on all 16 cells on every
+ * pointer move (forced layout reflow), which is the main source of drag jank.
+ * Safe because the grid can't scroll/resize mid-stroke (touch-action: none).
+ */
+function snapshotCellRects(gridRoot: HTMLElement | null): CellRect[] {
+  if (!gridRoot) return []
   const innerGrid = gridRoot.querySelector('[data-word-hunt-cells]')
-  if (!innerGrid) return null
-
+  if (!innerGrid) return []
   const cells = innerGrid.querySelectorAll<HTMLElement>('[data-word-hunt-cell]')
-  if (!cells.length) return null
+  const out: CellRect[] = []
+  cells.forEach((cell) => {
+    const index = Number(cell.getAttribute('data-word-hunt-cell'))
+    if (!Number.isFinite(index)) return
+    const rect = cell.getBoundingClientRect()
+    out.push({ index, left: rect.left, top: rect.top, width: rect.width, height: rect.height })
+  })
+  return out
+}
 
+/**
+ * Cell under the pointer.
+ * - `strict` (during a drag): only the cell whose central core contains the
+ *   point. The gaps and outer edges are dead zones, so a diagonal drag moves
+ *   cleanly from one cell's core to the next without grabbing the orthogonal
+ *   neighbour it passes near.
+ * - lenient (initial tap/press): nearest cell within a padded box, so a tap
+ *   anywhere on or near a cell still selects it.
+ */
+function cellAtPoint(rects: CellRect[], x: number, y: number, strict: boolean): number | null {
   let bestIndex: number | null = null
   let bestDist = Infinity
-
-  for (const cell of cells) {
-    const raw = cell.getAttribute('data-word-hunt-cell')
-    if (raw == null) continue
-    const index = Number(raw)
-    if (!Number.isFinite(index)) continue
-
-    const rect = cell.getBoundingClientRect()
-    const cx = rect.left + rect.width / 2
-    const cy = rect.top + rect.height / 2
-    const dx = x - cx
-    const dy = y - cy
-    const dist = Math.hypot(dx, dy)
-    const pad = Math.min(rect.width, rect.height) * 0.42
-    if (
-      Math.abs(dx) <= rect.width / 2 + pad &&
-      Math.abs(dy) <= rect.height / 2 + pad &&
-      dist < bestDist
-    ) {
-      bestDist = dist
-      bestIndex = index
+  for (const { index, left, top, width, height } of rects) {
+    const halfW = width / 2
+    const halfH = height / 2
+    const dx = x - (left + halfW)
+    const dy = y - (top + halfH)
+    const pad = Math.min(width, height) * 0.42
+    const boundX = strict ? halfW * 0.72 : halfW + pad
+    const boundY = strict ? halfH * 0.72 : halfH + pad
+    if (Math.abs(dx) <= boundX && Math.abs(dy) <= boundY) {
+      const dist = dx * dx + dy * dy
+      if (dist < bestDist) {
+        bestDist = dist
+        bestIndex = index
+      }
     }
   }
-
   return bestIndex
 }
 
@@ -79,6 +94,7 @@ export function useWordHuntGridInteraction(
   const lastCellRef = useRef<number | null>(null)
   const activePointerRef = useRef<number | null>(null)
   const pointerStartRef = useRef({ x: 0, y: 0 })
+  const cellRectsRef = useRef<CellRect[]>([])
   const optionsRef = useRef(options)
   optionsRef.current = options
 
@@ -139,6 +155,7 @@ export function useWordHuntGridInteraction(
       movedRef.current = false
       lastCellRef.current = null
       activePointerRef.current = null
+      cellRectsRef.current = []
       if (target.hasPointerCapture(pointerId)) {
         target.releasePointerCapture(pointerId)
       }
@@ -163,7 +180,8 @@ export function useWordHuntGridInteraction(
       activePointerRef.current = e.pointerId
       pointerStartRef.current = { x: e.clientX, y: e.clientY }
       e.currentTarget.setPointerCapture(e.pointerId)
-      const index = cellIndexFromPoint(e.clientX, e.clientY, gridRef.current)
+      cellRectsRef.current = snapshotCellRects(gridRef.current)
+      const index = cellAtPoint(cellRectsRef.current, e.clientX, e.clientY, false)
       if (index !== null) applyCell(index)
     },
     [applyCell, disabled]
@@ -179,7 +197,8 @@ export function useWordHuntGridInteraction(
       if (dist < DRAG_THRESHOLD_PX) return
       e.preventDefault()
       movedRef.current = true
-      const index = cellIndexFromPoint(e.clientX, e.clientY, gridRef.current)
+      if (!cellRectsRef.current.length) cellRectsRef.current = snapshotCellRects(gridRef.current)
+      const index = cellAtPoint(cellRectsRef.current, e.clientX, e.clientY, true)
       if (index !== null) applyCell(index)
     },
     [applyCell, disabled]
