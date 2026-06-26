@@ -4,10 +4,11 @@ import { processDescribeItExpireTurn, processDescribeItAdvance } from '@/lib/des
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
-// Safety net so a match never freezes if every client disconnects. Vercel Cron
-// hits this; it only acts on sessions already past their deadline (the engine
-// functions re-check phase + deadline, so this is idempotent). Protected by
-// CRON_SECRET when that env var is set (Vercel sends it as a Bearer token).
+// Safety net so a match never freezes if every client disconnects. Meant to be
+// polled by an external scheduler (e.g. an uptime cron or GitHub Actions); it
+// only acts on sessions already past their deadline (the engine functions
+// re-check phase + deadline, so this is idempotent). Protect it by setting
+// CRON_SECRET and sending it as an `Authorization: Bearer <secret>` header.
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET
   if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
