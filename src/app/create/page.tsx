@@ -150,6 +150,8 @@ import { getCodeDefaultLimits, playerCountOptions, type GamePlayerLimitsMap } fr
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
 import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { PlayerInviteCard } from '@/components/PlayerInviteCard'
+import { playerGameUrl, shareOrigin } from '@/lib/site'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { scrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useToast } from '@/components/ui/Toast'
@@ -2784,6 +2786,7 @@ function CreateGameInner() {
 
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const hostUrl = `${origin}/host/${result?.gameCode}?token=${result?.hostToken}`
+  const inviteUrl = result?.gameCode ? playerGameUrl(result.gameCode, shareOrigin()) : ''
 
   return (
     <GameJoinLobbyShell
@@ -2797,7 +2800,7 @@ function CreateGameInner() {
             🎉
           </div>
           <h1 className="text-3xl font-black tracking-tight gradient-title-subtle">You&apos;re live!</h1>
-          <p className="text-muted text-sm">Share the code with players — save your host link.</p>
+          <p className="text-muted text-sm">Share the invite link or code — save your host link.</p>
         </div>
       }
     >
@@ -2811,6 +2814,8 @@ function CreateGameInner() {
           successMessage="Game code copied"
         />
       </div>
+
+      {inviteUrl && <PlayerInviteCard url={inviteUrl} title="Invite players" />}
 
       <CopyCard label="Host link — save this" value={hostUrl} accent />
 
