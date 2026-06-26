@@ -86,7 +86,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const lastSession = snapshotCountRes.data?.[0]?.session_number ?? 0
 
   if (snapshotVotes.length > 0) {
-    await supabase.from('game_snapshots').insert({
+    const { error: snapErr } = await supabase.from('game_snapshots').insert({
       game_id: gameId,
       session_number: lastSession + 1,
       snapshot_data: {
@@ -95,6 +95,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         gameType: game.game_type,
       },
     })
+    if (snapErr) console.error('Failed to save game snapshot:', snapErr.message)
   }
 
   const { error } = await markGameFinished(supabase, gameId, now)
