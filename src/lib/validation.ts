@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { LOBBY_LIMIT_GAME_TYPES } from '@/lib/game-limits'
 import { MONOPOLY_TOKEN_ID_LIST } from '@/lib/monopoly-tokens'
+import { SCRABBLE_DICTIONARY_OPTIONS } from '@/lib/scrabble-dictionary-meta'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -178,6 +179,7 @@ export const updateGameSchema = z.object({
   timer_seconds: z.coerce.number().optional(),
   operative_timer_seconds: z.coerce.number().optional(),
   game_duration_seconds: z.coerce.number().optional(),
+  scrabble_dictionary_id: z.enum(SCRABBLE_DICTIONARY_OPTIONS).optional(),
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
   pair_vote_mode: pairVoteModeEnum.optional(),

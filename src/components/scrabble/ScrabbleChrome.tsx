@@ -137,6 +137,7 @@ export function ScrabbleTurnBar({
   secondsLeft,
   showTimer,
   urgent,
+  tilesInBag,
 }: {
   turnPlayerName?: string
   isMyTurn?: boolean
@@ -144,6 +145,7 @@ export function ScrabbleTurnBar({
   secondsLeft?: number
   showTimer?: boolean
   urgent?: boolean
+  tilesInBag?: number
 }) {
   return (
     <div
@@ -160,16 +162,26 @@ export function ScrabbleTurnBar({
         </span>
         {statusMessage && <span className="text-xs text-faint font-normal truncate">{statusMessage}</span>}
       </div>
-      {showTimer && (
-        <span
-          className={[
-            'shrink-0 rounded-lg px-2.5 py-1 text-base font-black tabular-nums',
-            urgent ? 'bg-[var(--marry)] text-white animate-pulse' : 'bg-[var(--background)] text-[var(--foreground)]',
-          ].join(' ')}
-        >
-          {Math.floor((secondsLeft ?? 0) / 60)}:{String((secondsLeft ?? 0) % 60).padStart(2, '0')}
-        </span>
-      )}
+      <div className="flex shrink-0 items-center gap-1.5">
+        {typeof tilesInBag === 'number' && (
+          <span
+            title="Tiles left in the bag"
+            className="rounded-lg bg-[var(--background)] px-2 py-1 text-xs font-bold tabular-nums text-muted"
+          >
+            🎒 {tilesInBag}
+          </span>
+        )}
+        {showTimer && (
+          <span
+            className={[
+              'rounded-lg px-2.5 py-1 text-base font-black tabular-nums',
+              urgent ? 'bg-[var(--marry)] text-white animate-pulse' : 'bg-[var(--background)] text-[var(--foreground)]',
+            ].join(' ')}
+          >
+            {Math.floor((secondsLeft ?? 0) / 60)}:{String((secondsLeft ?? 0) % 60).padStart(2, '0')}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
