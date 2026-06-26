@@ -495,6 +495,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
                 <DescribeItScoreboard
                   scores={computeDescribeItScores(words, numTeams)}
                   activeTeam={session.active_team}
+                  myTeam={hostTeam}
                   round={session.current_round}
                   totalRounds={session.total_rounds}
                 />

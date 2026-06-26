@@ -131,6 +131,7 @@ export function DescribeItPlayPanel({
       <DescribeItScoreboard
         scores={scores}
         activeTeam={activeTeam}
+        myTeam={myTeam}
         round={session.current_round}
         totalRounds={session.total_rounds}
       />

@@ -128,29 +128,35 @@ export function DescribeItLoadingScreen() {
   )
 }
 
-/** Live team scoreboard, sorted highest first, with the active team highlighted. */
+/** Live team scoreboard, sorted highest first, with the active + your team marked. */
 export function DescribeItScoreboard({
   scores,
   activeTeam,
+  myTeam,
   round,
   totalRounds,
 }: {
   scores: DescribeItTeamScore[]
   activeTeam?: number | null
+  myTeam?: number | null
   round?: number
   totalRounds?: number
 }) {
   return (
     <DescribeItCard className="p-3 space-y-2">
-      {round != null && totalRounds != null && (
-        <p className="text-center text-faint text-xs font-semibold">
-          Round {Math.min(round, totalRounds)} of {totalRounds}
-        </p>
-      )}
+      <div className="flex items-center justify-between">
+        <p className="label-caps">Scores</p>
+        {round != null && totalRounds != null && (
+          <p className="text-faint text-xs font-semibold">
+            Round {Math.min(round, totalRounds)} of {totalRounds}
+          </p>
+        )}
+      </div>
       <div className="grid grid-cols-2 gap-2">
         {scores.map((s) => {
           const st = teamStyle(s.team)
           const active = activeTeam === s.team
+          const isMine = myTeam === s.team
           return (
             <div
               key={s.team}
@@ -162,6 +168,7 @@ export function DescribeItScoreboard({
             >
               <span className="flex items-center gap-1.5">
                 <TeamBadge team={s.team} />
+                {isMine ? <span className="text-[10px] font-bold text-faint">you</span> : null}
                 {active ? <span title="On the clock">⏱</span> : null}
               </span>
               <span className="text-lg font-black tabular-nums">{s.score}</span>
