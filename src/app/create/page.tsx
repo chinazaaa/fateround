@@ -58,6 +58,7 @@ import {
   isLudoGame,
   isTicTacToeGame,
   isChessGame,
+  isDescribeItGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
@@ -146,6 +147,14 @@ import {
   NPAT_TIMER_OPTIONS,
 } from '@/lib/npat'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_DEFAULT_TIMER, WORD_HUNT_TIMER_OPTIONS } from '@/lib/word-hunt'
+import {
+  DESCRIBE_IT_DEFAULT_ROUNDS,
+  DESCRIBE_IT_DEFAULT_TURN_SECONDS,
+  DESCRIBE_IT_ROUND_OPTIONS,
+  DESCRIBE_IT_TEAM_OPTIONS,
+  DESCRIBE_IT_TURN_OPTIONS,
+} from '@/lib/describe-it'
+import { parseDescribeItWords, parseExcelDescribeItWords } from '@/lib/describe-it-words'
 import { getCodeDefaultLimits, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
 import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
@@ -169,6 +178,7 @@ interface Settings {
   theme: ThemeId
   participant_filter: 'all' | 'joined'
   gender_based: boolean
+  describe_it_num_teams: number
 }
 
 type Step = 'settings' | 'participants' | 'done'
@@ -196,7 +206,11 @@ function CreateGameInner() {
     theme: 'default',
     participant_filter: 'all' as 'all' | 'joined',
     gender_based: true,
+    describe_it_num_teams: 2,
   })
+  const [describeItWords, setDescribeItWords] = useState('')
+  const [describeItUploadError, setDescribeItUploadError] = useState<string | null>(null)
+  const describeItFileRef = useRef<HTMLInputElement>(null)
   const [participants, setParticipants] = useState<ParticipantInput[]>([])
   const [nameInput, setNameInput] = useState('')
   const [defaultGender, setDefaultGender] = useState<ParticipantGender>('female')
@@ -408,6 +422,15 @@ function CreateGameInner() {
               timer_seconds: 600,
             }
           : {}),
+        ...(isDescribeItGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: DESCRIBE_IT_DEFAULT_ROUNDS,
+              timer_seconds: DESCRIBE_IT_DEFAULT_TURN_SECONDS,
+              describe_it_num_teams: 2,
+            }
+          : {}),
         ...(isWhoSaidThis(type)
           ? {
               participant_mode: 'import' as const,
@@ -467,6 +490,7 @@ function CreateGameInner() {
   const isLudo = isLudoGame(settings.game_type)
   const isTicTacToe = isTicTacToeGame(settings.game_type)
   const isChess = isChessGame(settings.game_type)
+  const isDescribeIt = isDescribeItGame(settings.game_type)
   const isNpat = isICallOnGame(settings.game_type)
   const isSudoku = isSudokuGame(settings.game_type)
   const isWordHunt = isWordHuntGame(settings.game_type)
@@ -562,6 +586,7 @@ function CreateGameInner() {
     isLudo ||
     isTicTacToe ||
     isChess ||
+    isDescribeIt ||
     isNpat ||
     isSudoku ||
     isWordHunt
@@ -1012,24 +1037,32 @@ function CreateGameInner() {
           rounds_count: isWst ? Math.max(participants.length, 2) : settings.rounds_count,
           question_source: isCodewords
             ? questionSource
-            : isTot
-              ? 'custom'
-              : isLobbyQuestions
-                ? questionSource === 'library'
-                  ? 'custom'
-                  : questionSource
-                : 'platform',
+            : isDescribeIt
+              ? parseDescribeItWords(describeItWords).length > 0
+                ? 'custom'
+                : 'platform'
+              : isTot
+                ? 'custom'
+                : isLobbyQuestions
+                  ? questionSource === 'library'
+                    ? 'custom'
+                    : questionSource
+                  : 'platform',
           custom_questions: isCodewords
             ? questionSource === 'custom'
               ? customCodewordsWords
               : null
-            : isLobbyQuestions && (isTot || questionSource === 'custom' || questionSource === 'library')
-              ? isWyr || isTot
-                ? customWyrQuestions
-                : isTrivia
-                  ? customTriviaQuestions
-                  : customMltQuestions
-              : null,
+            : isDescribeIt
+              ? parseDescribeItWords(describeItWords).length > 0
+                ? parseDescribeItWords(describeItWords)
+                : null
+              : isLobbyQuestions && (isTot || questionSource === 'custom' || questionSource === 'library')
+                ? isWyr || isTot
+                  ? customWyrQuestions
+                  : isTrivia
+                    ? customTriviaQuestions
+                    : customMltQuestions
+                : null,
           trivia_category: isTrivia ? triviaCategory : undefined,
           participants: isJoinersMode ? [] : participants,
           wst_quote_source: isWst ? wstQuoteSource : undefined,
@@ -1545,6 +1578,106 @@ function CreateGameInner() {
                 <p className="text-faint text-sm leading-relaxed">
                   Classic chess — White moves first, standard rules, checkmate to win. Each player gets their own clock
                   that only ticks on their turn; the first to run out of time loses.
+                </p>
+              </SettingsGroup>
+            ) : isDescribeIt ? (
+              <SettingsGroup title="Describe It room">
+                <p className="text-faint text-sm">Players join with a name and split into teams. 4+ players.</p>
+                <Field label="Teams">
+                  <select
+                    value={settings.describe_it_num_teams}
+                    onChange={(e) => setSettings({ ...settings, describe_it_num_teams: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {DESCRIBE_IT_TEAM_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n} teams
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Rounds (each team plays once per round)">
+                  <select
+                    value={settings.rounds_count}
+                    onChange={(e) => setSettings({ ...settings, rounds_count: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {DESCRIBE_IT_ROUND_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n} rounds
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Time per turn">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {DESCRIBE_IT_TURN_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n === 60 ? '1 minute' : n === 120 ? '2 minutes' : `${n} seconds`}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Add your own words (optional, one per line)">
+                  <textarea
+                    value={describeItWords}
+                    onChange={(e) => setDescribeItWords(e.target.value)}
+                    placeholder="pizza&#10;rainbow&#10;astronaut"
+                    rows={3}
+                    className="input-field w-full resize-y"
+                  />
+                  <div className="flex items-center gap-3 pt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => describeItFileRef.current?.click()}
+                      className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
+                    >
+                      Upload CSV / Excel
+                    </button>
+                    <span className="text-faint text-xs">one word per row</span>
+                  </div>
+                  <input
+                    ref={describeItFileRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      e.target.value = ''
+                      if (!file) return
+                      setDescribeItUploadError(null)
+                      const ext = file.name.split('.').pop()?.toLowerCase()
+                      try {
+                        const rows =
+                          ext === 'csv'
+                            ? parseDescribeItWords(await file.text())
+                            : ext === 'xlsx' || ext === 'xls'
+                              ? await parseExcelDescribeItWords(await file.arrayBuffer())
+                              : []
+                        if (rows.length === 0) {
+                          setDescribeItUploadError('No words found. Use one word per line or row.')
+                          return
+                        }
+                        // Merge with whatever's already in the box, de-duplicated.
+                        setDescribeItWords((prev) => parseDescribeItWords(`${prev}\n${rows.join('\n')}`).join('\n'))
+                      } catch {
+                        setDescribeItUploadError('Could not read that file. Try a .csv or .xlsx.')
+                      }
+                    }}
+                  />
+                  {describeItUploadError && <p className="text-rose-400 text-xs pt-1">{describeItUploadError}</p>}
+                </Field>
+                <Field label="Late joiners">
+                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="describe_it" />
+                </Field>
+                <p className="text-faint text-sm leading-relaxed">
+                  Teams race the clock: a describer gives clues for secret words while teammates type guesses. Every
+                  correct guess scores a point — most words across all rounds wins. Built-in words are included; your
+                  own words are mixed in.
                 </p>
               </SettingsGroup>
             ) : isNpat ? (

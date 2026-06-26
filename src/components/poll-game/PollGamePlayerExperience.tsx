@@ -79,6 +79,7 @@ import {
   isLudoGame,
   isTicTacToeGame,
   isChessGame,
+  isDescribeItGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
@@ -96,6 +97,7 @@ import { WhotPlayerView } from '@/components/whot/WhotPlayerView'
 import { LudoPlayerView } from '@/components/ludo/LudoPlayerView'
 import { TicTacToePlayerView } from '@/components/tic-tac-toe/TicTacToePlayerView'
 import { ChessPlayerView } from '@/components/chess/ChessPlayerView'
+import { DescribeItPlayerView } from '@/components/describe-it/DescribeItPlayerView'
 import { SudokuPlayerView } from '@/components/sudoku/SudokuPlayerView'
 import { WordHuntPlayerView } from '@/components/word-hunt/WordHuntPlayerView'
 import {
@@ -580,6 +582,9 @@ export function PollGamePlayerExperience({
   }
   if (game && isChessGame(game.game_type)) {
     return <ChessPlayerView gameCode={gameCode} />
+  }
+  if (game && isDescribeItGame(game.game_type)) {
+    return <DescribeItPlayerView gameCode={gameCode} />
   }
   if (game && isSudokuGame(game.game_type)) {
     return <SudokuPlayerView gameCode={gameCode} />

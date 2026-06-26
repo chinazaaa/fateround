@@ -1191,6 +1191,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  describe_it: {
+    id: 'describe_it',
+    label: 'Describe It',
+    tagline: 'Teams race the clock — describe the word, teammates guess it',
+    headerEmoji: '🗣️💬',
+    card: {
+      accent: '#14b8a6',
+      accentSoft: 'rgba(20, 184, 166, 0.15)',
+      emoji: '🗣️',
+      players: '4–20 players',
+      vibe: 'Team word race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🗣️',
+        label: 'Describer',
+        color: '#14b8a6',
+        leaderboardLabel: 'Clues given',
+        activeClass: 'bg-teal-500/20 text-teal-100 border-teal-400',
+        borderClass: 'border-teal-500/50 bg-teal-500/10',
+        textColor: '#5eead4',
+      },
+      marry: {
+        emoji: '💬',
+        label: 'Guessers',
+        color: '#6366f1',
+        leaderboardLabel: 'Words guessed',
+        activeClass: 'bg-indigo-500/20 text-indigo-100 border-indigo-400',
+        borderClass: 'border-indigo-500/50 bg-indigo-500/10',
+        textColor: '#a5b4fc',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winning team',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winning team',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
 }
 
 /** Home page “Popular games” grid — order is display order. */
@@ -1231,6 +1274,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'tic_tac_toe',
   'word_hunt',
   'chess',
+  'describe_it',
 ]
 
 export function parseGameType(raw: unknown): GameType {
@@ -1260,6 +1304,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'tic_tac_toe') return 'tic_tac_toe'
   if (raw === 'word_hunt') return 'word_hunt'
   if (raw === 'chess') return 'chess'
+  if (raw === 'describe_it') return 'describe_it'
   return 'smash_marry_kill'
 }
 
@@ -1316,6 +1361,8 @@ export function gameHowItWorks(
       return 'Players join with their name. Everyone gets the same 4×4 letter grid — connect adjacent letters to spell valid words (3+ letters) before the timer runs out. Longer words score more points.'
     case 'chess':
       return 'Two players join with their name. The host can play too. One player is White, the other Black — White moves first. Move pieces by the standard rules; checkmate your opponent to win. Optional chess clock — each player gets their own time bank that only ticks on their turn, and the first to run out loses.'
+    case 'describe_it':
+      return 'Players join with their name and split into teams (you pick how many). Each round, one team is on the clock — a describer sees a secret word and types clues without saying it, while teammates race to type the word. Every correct guess scores a point. Most words across all rounds wins.'
     case 'i_call_on':
       return "Players join with their name. Set a game timer (or play all 26 letters). Each letter cycle someone calls A–Z, everyone fills Name, Animal, Place, Thing, and Food, then marks the next player's sheet. Duplicates score 5 automatically; unique valid answers score 10. Everyone sees all marks live."
     case 'most_likely_to':
@@ -1553,7 +1600,8 @@ export function isNameOnlyPlayerJoin(gameType: GameType | string | undefined): b
     type === 'sudoku' ||
     type === 'tic_tac_toe' ||
     type === 'word_hunt' ||
-    type === 'chess'
+    type === 'chess' ||
+    type === 'describe_it'
   )
 }
 
@@ -1652,6 +1700,10 @@ export function isTicTacToeGame(gameType: GameType | string | undefined): boolea
 
 export function isChessGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'chess'
+}
+
+export function isDescribeItGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'describe_it'
 }
 
 export function isICallOnGame(gameType: GameType | string | undefined): boolean {

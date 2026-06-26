@@ -36,6 +36,7 @@ export type GameType =
   | 'tic_tac_toe'
   | 'word_hunt'
   | 'chess'
+  | 'describe_it'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -233,6 +234,8 @@ export interface Game {
   codewords_late_join?: boolean
   /** Codewords — host picks spymasters only; operatives are shuffled onto teams at start. */
   codewords_randomize_teams?: boolean
+  /** Describe It — number of teams (2-4). */
+  describe_it_num_teams?: number
   /** Cumulative usage across play-again sessions — unused pool items are prioritized next game. */
   pool_usage?: Record<string, unknown> | null
   /** Trivia — platform pool category when question_source is platform. */
@@ -537,6 +540,66 @@ export interface ChessSession {
   turn_deadline_at: string | null
   created_at: string
   updated_at: string
+}
+
+export type DescribeItPhase = 'turn' | 'break' | 'finished'
+
+export interface DescribeItSession {
+  id: string
+  game_id: string
+  num_teams: number
+  total_rounds: number
+  turn_seconds: number
+  phase: DescribeItPhase
+  /** 0-based index into the full turn order (num_teams * total_rounds turns). */
+  turn_index: number
+  current_round: number
+  active_team: number
+  describer_player_id: string | null
+  current_word: string | null
+  current_clue: string | null
+  /** All clues given for the current word (reset each word). */
+  current_clues: string[]
+  used_words: string[]
+  turn_deadline_at: string | null
+  break_deadline_at: string | null
+  status: 'active' | 'finished'
+  status_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DescribeItPlayer {
+  id: string
+  game_id: string
+  player_id: string
+  team: number
+  created_at: string
+}
+
+export interface DescribeItWord {
+  id: string
+  game_id: string
+  turn_index: number
+  round: number
+  team: number
+  describer_player_id: string | null
+  word: string
+  clue: string | null
+  status: 'guessed' | 'skipped'
+  guesser_player_id: string | null
+  created_at: string
+}
+
+export interface DescribeItGuess {
+  id: string
+  game_id: string
+  turn_index: number
+  player_id: string
+  team: number
+  text: string
+  correct: boolean
+  created_at: string
 }
 
 export interface TriviaQuestion {

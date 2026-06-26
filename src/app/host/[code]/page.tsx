@@ -66,6 +66,7 @@ import {
   isLudoGame,
   isTicTacToeGame,
   isChessGame,
+  isDescribeItGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
@@ -84,6 +85,7 @@ import { WhotHostView } from '@/components/whot/WhotHostView'
 import { LudoHostView } from '@/components/ludo/LudoHostView'
 import { TicTacToeHostView } from '@/components/tic-tac-toe/TicTacToeHostView'
 import { ChessHostView } from '@/components/chess/ChessHostView'
+import { DescribeItHostView } from '@/components/describe-it/DescribeItHostView'
 import { NpatHostView } from '@/components/npat/NpatHostView'
 import { SudokuHostView } from '@/components/sudoku/SudokuHostView'
 import { WordHuntHostView } from '@/components/word-hunt/WordHuntHostView'
@@ -1520,6 +1522,10 @@ export default function HostPage() {
 
   if (game && isChessGame(game.game_type)) {
     return <ChessHostView gameCode={gameCode} hostToken={hostToken} />
+  }
+
+  if (game && isDescribeItGame(game.game_type)) {
+    return <DescribeItHostView gameCode={gameCode} hostToken={hostToken} />
   }
 
   if (game && isAnonymousMessagesGame(game.game_type)) {

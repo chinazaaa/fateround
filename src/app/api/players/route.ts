@@ -22,6 +22,7 @@ import {
   isLudoGame,
   isTicTacToeGame,
   isChessGame,
+  isDescribeItGame,
   isTwoTruthsGame,
 } from '@/lib/game-types'
 import { fetchGamePlayerLimits, isLobbyLimitGameType, lobbyMaxPlayersFromGame } from '@/lib/game-limits'
@@ -534,7 +535,7 @@ export async function POST(req: NextRequest) {
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
   }
 
-  if (isTicTacToeGame(rowGameType) || isChessGame(rowGameType)) {
+  if (isTicTacToeGame(rowGameType) || isChessGame(rowGameType) || isDescribeItGame(rowGameType)) {
     const joinCheck = canJoinGame(gameRow as Game)
     if (!joinCheck.ok) {
       return NextResponse.json({ error: joinCheck.error }, { status: 400 })
@@ -544,7 +545,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'playerName is required' }, { status: 400 })
     }
 
-    const maxPlayers = lobbyMaxPlayersFromGame(isChessGame(rowGameType) ? 'chess' : 'tic_tac_toe', gameRow, lobbyLimits)
+    const limitKey = isChessGame(rowGameType) ? 'chess' : isDescribeItGame(rowGameType) ? 'describe_it' : 'tic_tac_toe'
+    const maxPlayers = lobbyMaxPlayersFromGame(limitKey, gameRow, lobbyLimits)
     const { count: playerCount } = await supabase
       .from('players')
       .select('id', { count: 'exact', head: true })

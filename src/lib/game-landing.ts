@@ -54,6 +54,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   tic_tac_toe: 'tic-tac-toe',
   word_hunt: 'word-hunt',
   chess: 'chess',
+  describe_it: 'describe-it',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -1231,6 +1232,50 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer: 'No — chess is strictly 2 players. The host can play as one of the two if they want in on the match.',
       },
     ],
+  }),
+
+  describe_it: landing('describe_it', {
+    seoTitle: 'Describe It — Online Team Word Game',
+    seoDescription:
+      'Play Describe It online with friends. Split into teams, describe the secret word without saying it, and race the clock to guess the most words. No sign-up.',
+    keywords: [
+      'describe it game',
+      'online team word game',
+      'password game online',
+      'catch phrase online',
+      'word guessing game',
+    ],
+    heroSubtitle:
+      'Split into teams, describe the word without saying it, and guess as many as you can before time runs out.',
+    bodyParagraph:
+      'Describe It on Fate Round is a fast, team-based word race — like Password or Catch Phrase, online. Players join with their name and split into 2–4 teams. Each round one team is on the clock: a describer sees a secret word and types clues (without using the word), while teammates race to type the answer. Every correct guess scores a point and reveals the next word. After all the rounds, the team with the most words wins.',
+    highlights: ['4–20 players', '2–4 teams', 'Race the clock'],
+    features: [
+      {
+        title: 'Describe, don’t say it',
+        description: 'The describer types clues for a secret word — but never the word itself.',
+        emoji: '🗣️',
+      },
+      {
+        title: 'Teammates race to guess',
+        description: 'Everyone on the team types guesses; a correct one scores and reveals the next word.',
+        emoji: '💬',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Make teams', description: 'Players join with a name and pick a team — the host sets how many teams.' },
+      {
+        title: 'Describe & guess',
+        description: 'One teammate describes secret words while the rest race to guess them.',
+      },
+      {
+        title: 'Most words wins',
+        description: 'Add up each team’s guessed words across all rounds — highest total wins.',
+      },
+    ],
+    perfectFor: ['Parties', 'Team building', 'Family game night', 'Big groups'],
   }),
 }
 
