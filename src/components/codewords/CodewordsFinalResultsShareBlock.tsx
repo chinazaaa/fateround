@@ -35,20 +35,11 @@ export function CodewordsFinalResultsShareBlock({
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
 
-  const operativeStats = useMemo(
-    () => tallyCodewordsOperativeStats(guesses, roles, players),
-    [guesses, roles, players]
-  )
-  const spymasterStats = useMemo(
-    () => tallyCodewordsSpymasterStats(guesses, roles, players),
-    [guesses, roles, players]
-  )
+  const operativeStats = useMemo(() => tallyCodewordsOperativeStats(guesses, roles, players), [guesses, roles, players])
+  const spymasterStats = useMemo(() => tallyCodewordsSpymasterStats(guesses, roles, players), [guesses, roles, players])
 
   const bestOperative = operativeStats[0] ?? null
-  const bestSpymaster = useMemo(
-    () => pickBestCodewordsSpymaster(spymasterStats, winner),
-    [spymasterStats, winner]
-  )
+  const bestSpymaster = useMemo(() => pickBestCodewordsSpymaster(spymasterStats, winner), [spymasterStats, winner])
 
   return (
     <div className="space-y-4">

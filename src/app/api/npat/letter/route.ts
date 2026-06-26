@@ -65,11 +65,7 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const { data: players } = await supabase
-    .from('players')
-    .select('id')
-    .eq('game_id', gameId)
-    .eq('spectator', false)
+  const { data: players } = await supabase.from('players').select('id').eq('game_id', gameId).eq('spectator', false)
   await ensureBlankAnswers(
     supabase,
     gameId,

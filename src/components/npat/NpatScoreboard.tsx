@@ -123,10 +123,9 @@ export function NpatScoreboard({
             return (
               <tr
                 key={player.id}
-                className={[
-                  'border-b border-[var(--border-strong)]/60 align-top',
-                  isMe ? 'bg-sky-500/5' : '',
-                ].join(' ')}
+                className={['border-b border-[var(--border-strong)]/60 align-top', isMe ? 'bg-sky-500/5' : ''].join(
+                  ' '
+                )}
               >
                 <td className="py-3 pr-2">
                   <div className="flex items-center gap-1.5 flex-wrap">

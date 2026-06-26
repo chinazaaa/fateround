@@ -472,11 +472,7 @@ export function PlayAgainSetup({
     const payload: PlayAgainPayload = {}
 
     if (showQuestions && questionMode === 'change') {
-      const questions = isCodewords
-        ? customCodewordsWords
-        : isBinaryLobby
-          ? customWyrQuestions
-          : customMltQuestions
+      const questions = isCodewords ? customCodewordsWords : isBinaryLobby ? customWyrQuestions : customMltQuestions
       if (questions.length === 0) {
         setQuestionsUploadError(isCodewords ? 'Add at least one word' : 'Add at least one question')
         return
@@ -681,17 +677,17 @@ export function PlayAgainSetup({
                             </div>
                           ))
                         : customMltQuestions.map((q, i) => (
-                          <div key={i} className="flex items-start gap-2 text-sm">
-                            <p className="text-body flex-1 min-w-0">{q}</p>
-                            <button
-                              type="button"
-                              onClick={() => setCustomMltQuestions((prev) => prev.filter((_, idx) => idx !== i))}
-                              className="text-faint hover:text-red-300 text-xs shrink-0"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ))}
+                            <div key={i} className="flex items-start gap-2 text-sm">
+                              <p className="text-body flex-1 min-w-0">{q}</p>
+                              <button
+                                type="button"
+                                onClick={() => setCustomMltQuestions((prev) => prev.filter((_, idx) => idx !== i))}
+                                className="text-faint hover:text-red-300 text-xs shrink-0"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
                   </div>
                 )}
               </div>

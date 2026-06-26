@@ -17,11 +17,7 @@ export async function POST(req: NextRequest) {
   const { gameId, hostToken, max_players, spymasterTimerSeconds, operativeTimerSeconds } = parsed.data
   const code = gameId.toUpperCase()
 
-  if (
-    max_players === undefined &&
-    spymasterTimerSeconds === undefined &&
-    operativeTimerSeconds === undefined
-  ) {
+  if (max_players === undefined && spymasterTimerSeconds === undefined && operativeTimerSeconds === undefined) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
 

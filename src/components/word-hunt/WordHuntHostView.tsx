@@ -14,11 +14,7 @@ import { WordHuntPlayerView } from '@/components/word-hunt/WordHuntPlayerView'
 import { WordHuntFinalResultsShareBlock } from '@/components/word-hunt/WordHuntFinalResultsShareBlock'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
-import {
-  parseWordHuntMetadata,
-  tallyWordHuntScores,
-  WORD_HUNT_MIN_PLAYERS,
-} from '@/lib/word-hunt'
+import { parseWordHuntMetadata, tallyWordHuntScores, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { validWordsSetFromMetadata } from '@/lib/word-hunt-client'
 import { useWordHuntGameTimer } from '@/hooks/useWordHuntGameTimer'
 import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
@@ -30,8 +26,7 @@ import { useToast } from '@/components/ui/Toast'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
-const WORD_HUNT_SUBMISSION_SELECT =
-  'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
+const WORD_HUNT_SUBMISSION_SELECT = 'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
 
 type WordHuntHostMode = 'spectator' | 'player'
 type HostTab = 'manage' | 'play'
@@ -108,16 +103,8 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
       }
     } else if (gameData.status === 'finished') {
       const [{ data: subs }, { data: roundData }] = await Promise.all([
-        supabase
-          .from('word_hunt_submissions')
-          .select(WORD_HUNT_SUBMISSION_SELECT)
-          .eq('game_id', gameCode),
-        supabase
-          .from('rounds')
-          .select(ROUND_SELECT)
-          .eq('game_id', gameCode)
-          .eq('round_number', 1)
-          .maybeSingle(),
+        supabase.from('word_hunt_submissions').select(WORD_HUNT_SUBMISSION_SELECT).eq('game_id', gameCode),
+        supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).eq('round_number', 1).maybeSingle(),
       ])
       setSubmissions((subs ?? []) as WordHuntSubmission[])
       if (roundData) {
@@ -411,12 +398,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
 
           {game.status === 'active' && (
             <>
-              <HostLateJoinSettingsCard
-                gameCode={gameCode}
-                hostToken={hostToken}
-                game={game}
-                onGameUpdate={setGame}
-              />
+              <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
 
               <div className="flex items-center justify-between">
                 <div>

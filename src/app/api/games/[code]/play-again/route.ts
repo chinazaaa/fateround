@@ -77,9 +77,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const ticTacToeCanReplay = isTicTacToeGame(gameType)
     ? await canTicTacToePlayAgain(supabase, gameId, game.status)
     : false
-  const chessCanReplay = isChessGame(gameType)
-    ? await canChessPlayAgain(supabase, gameId, game.status)
-    : false
+  const chessCanReplay = isChessGame(gameType) ? await canChessPlayAgain(supabase, gameId, game.status) : false
   const canReturnToLobby =
     game.status === 'waiting' ||
     game.status === 'finished' ||
@@ -131,11 +129,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         { status: 400 }
       )
     }
-    const { gameUpdate: wordUpdate, poolUsage: nextPoolUsage } = applyCustomQuestionsUpdate(
-      game,
-      nextWords,
-      poolUsage
-    )
+    const { gameUpdate: wordUpdate, poolUsage: nextPoolUsage } = applyCustomQuestionsUpdate(game, nextWords, poolUsage)
     Object.assign(gameUpdate, wordUpdate)
     poolUsage = nextPoolUsage
   } else if (rawCustomQuestions !== undefined && !isTriviaGame(gameType)) {

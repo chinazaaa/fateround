@@ -8,16 +8,12 @@ type Member = {
 }
 
 export function RoomLeaderboard({ members }: { members: Member[] }) {
-  const sorted = [...members].sort(
-    (a, b) => b.room_points - a.room_points || b.games_played - a.games_played
-  )
+  const sorted = [...members].sort((a, b) => b.room_points - a.room_points || b.games_played - a.games_played)
 
   if (members.length === 0) {
     return (
       <div className="flex items-center justify-center h-full py-12">
-        <p className="text-faint text-sm text-center px-4">
-          Stats will appear here after your first game.
-        </p>
+        <p className="text-faint text-sm text-center px-4">Stats will appear here after your first game.</p>
       </div>
     )
   }

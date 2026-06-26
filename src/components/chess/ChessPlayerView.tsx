@@ -2,12 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  ChessCard,
-  ChessLoadingScreen,
-  ChessSecondaryButton,
-  ChessShell,
-} from '@/components/chess/ChessChrome'
+import { ChessCard, ChessLoadingScreen, ChessSecondaryButton, ChessShell } from '@/components/chess/ChessChrome'
 import { ChessFinalResultsShareBlock } from '@/components/chess/ChessFinalResultsShareBlock'
 import { ChessGamePanel } from '@/components/chess/ChessBoard'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -140,7 +135,11 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   useEffect(() => {
     const channel = supabase
       .channel(`chess-player-${gameCode}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` }, scheduleLoad)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
+        scheduleLoad
+      )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'chess_sessions', filter: `game_id=eq.${gameCode}` },
@@ -289,7 +288,12 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       <GameJoinLobbyShell
         gameCode={gameCode}
         header={
-          <GameJoinHeader emoji={cfg.headerEmoji} title={game?.title ?? cfg.label} gameType="chess" subtitle={cfg.tagline} />
+          <GameJoinHeader
+            emoji={cfg.headerEmoji}
+            title={game?.title ?? cfg.label}
+            gameType="chess"
+            subtitle={cfg.tagline}
+          />
         }
       >
         <NameJoinForm
@@ -362,7 +366,13 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           <ChessCard className="p-6 text-center space-y-3">
             <p className="text-4xl">{session?.is_draw ? '🤝' : winner ? '🏆' : '🏁'}</p>
             <p className="text-2xl font-black">
-              {session?.is_draw ? "It's a draw!" : winner ? (iWon ? 'You win!' : `${winner.name} wins!`) : 'Game ended early'}
+              {session?.is_draw
+                ? "It's a draw!"
+                : winner
+                  ? iWon
+                    ? 'You win!'
+                    : `${winner.name} wins!`
+                  : 'Game ended early'}
             </p>
           </ChessCard>
         )}

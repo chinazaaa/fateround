@@ -63,7 +63,11 @@ function getSavedIdentity(roomCode: string): Identity | null {
 }
 
 function getSavedCreatorToken(roomCode: string): string | null {
-  try { return localStorage.getItem(CREATOR_KEY(roomCode)) } catch { return null }
+  try {
+    return localStorage.getItem(CREATOR_KEY(roomCode))
+  } catch {
+    return null
+  }
 }
 
 type Status = 'loading' | 'not_found' | 'removed' | 'unauthenticated' | 'ready'
@@ -103,9 +107,7 @@ function MemberRow({
 }) {
   return (
     <div
-      className={`flex items-center gap-2.5 rounded-xl px-2 py-2 ${
-        online ? 'bg-[var(--surface)]/80' : 'opacity-60'
-      }`}
+      className={`flex items-center gap-2.5 rounded-xl px-2 py-2 ${online ? 'bg-[var(--surface)]/80' : 'opacity-60'}`}
     >
       <MemberAvatar name={name} online={online} />
       <span className="min-w-0 flex-1 truncate text-sm text-body">
@@ -126,15 +128,7 @@ function MemberRow({
   )
 }
 
-function MemberChip({
-  name,
-  online,
-  isYou,
-}: {
-  name: string
-  online: boolean
-  isYou: boolean
-}) {
+function MemberChip({ name, online, isYou }: { name: string; online: boolean; isYou: boolean }) {
   return (
     <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1">
       <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${online ? 'bg-green-400' : 'bg-[var(--muted)]'}`} />
@@ -164,13 +158,9 @@ function RoomMeta({ room }: { room: Room }) {
             🔐 Locked
           </span>
         )}
-        {room.timezone && (
-          <span className="text-[10px] text-faint">🕐 {formatRoomTimezone(room.timezone)}</span>
-        )}
+        {room.timezone && <span className="text-[10px] text-faint">🕐 {formatRoomTimezone(room.timezone)}</span>}
       </div>
-      {room.description && (
-        <p className="text-xs text-muted leading-relaxed">{room.description}</p>
-      )}
+      {room.description && <p className="text-xs text-muted leading-relaxed">{room.description}</p>}
     </div>
   )
 }
@@ -199,7 +189,9 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
       .then((d) => {
         if (d.games) setGames(d.games)
       })
-      .catch(() => { /* noop */ })
+      .catch(() => {
+        /* noop */
+      })
   }, [roomCode])
 
   // Initial load
@@ -210,8 +202,14 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
   useEffect(() => {
     async function init() {
       const res = await fetch(`/api/rooms/${roomCode}`)
-      if (res.status === 404) { setStatus('not_found'); return }
-      if (!res.ok) { setStatus('unauthenticated'); return }
+      if (res.status === 404) {
+        setStatus('not_found')
+        return
+      }
+      if (!res.ok) {
+        setStatus('unauthenticated')
+        return
+      }
       const data = await res.json()
       setRoom(data.room)
       setMembers(data.members ?? [])
@@ -261,7 +259,9 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
         }
       )
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [roomCode])
 
   // Realtime — room settings & deletion
@@ -286,7 +286,9 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
         }
       )
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [roomCode])
 
   // Realtime — members
@@ -302,7 +304,9 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
           }
           return r.json()
         })
-        .then((d) => { if (d?.members) setMembers(d.members) })
+        .then((d) => {
+          if (d?.members) setMembers(d.members)
+        })
     }
 
     const channel = supabase
@@ -342,7 +346,9 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
         }
       )
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [roomCode])
 
   // Realtime — games
@@ -365,7 +371,9 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
         }
       )
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [roomCode])
 
   // Refresh game list when returning to the tab or while games are live
@@ -391,7 +399,11 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
     presenceChannel
       .on('presence', { event: 'sync' }, () => {
         const state = presenceChannel.presenceState<{ memberId: string }>()
-        const online = new Set(Object.values(state).flat().map((p) => p.memberId))
+        const online = new Set(
+          Object.values(state)
+            .flat()
+            .map((p) => p.memberId)
+        )
         setOnlineIds(online)
       })
       .subscribe(async (s) => {
@@ -399,7 +411,9 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
           await presenceChannel.track({ memberId: identity.memberId })
         }
       })
-    return () => { supabase.removeChannel(presenceChannel) }
+    return () => {
+      supabase.removeChannel(presenceChannel)
+    }
   }, [roomCode, identity])
 
   const handleJoined = useCallback((id: Identity) => {
@@ -407,14 +421,17 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
     setStatus('ready')
   }, [])
 
-  const sendMessage = useCallback(async (text: string) => {
-    if (!identity) return
-    await fetch(`/api/rooms/${roomCode}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ memberCode: identity.memberCode, text }),
-    })
-  }, [roomCode, identity])
+  const sendMessage = useCallback(
+    async (text: string) => {
+      if (!identity) return
+      await fetch(`/api/rooms/${roomCode}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberCode: identity.memberCode, text }),
+      })
+    },
+    [roomCode, identity]
+  )
 
   const endRoom = useCallback(async () => {
     if (!creatorToken) return
@@ -438,28 +455,28 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
     }
   }, [confirm, creatorToken, roomCode, router])
 
-  const removeMember = useCallback(async (memberId: string, name: string) => {
-    if (!creatorToken) return
-    const ok = await confirm({
-      title: `Remove ${name}?`,
-      message: 'They will be removed from the room and their stats will be deleted.',
-      confirmLabel: 'Remove',
-      destructive: true,
-    })
-    if (!ok) return
+  const removeMember = useCallback(
+    async (memberId: string, name: string) => {
+      if (!creatorToken) return
+      const ok = await confirm({
+        title: `Remove ${name}?`,
+        message: 'They will be removed from the room and their stats will be deleted.',
+        confirmLabel: 'Remove',
+        destructive: true,
+      })
+      if (!ok) return
 
-    await fetch(`/api/rooms/${roomCode}/members/${memberId}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ creatorToken }),
-    })
-  }, [confirm, creatorToken, roomCode])
+      await fetch(`/api/rooms/${roomCode}/members/${memberId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creatorToken }),
+      })
+    },
+    [confirm, creatorToken, roomCode]
+  )
 
   const copyText = async (text: string, which: 'room' | 'member') => {
-    const payload =
-      which === 'room'
-        ? `${roomCode}\n${roomLobbyUrl(roomCode, shareOrigin())}`
-        : text
+    const payload = which === 'room' ? `${roomCode}\n${roomLobbyUrl(roomCode, shareOrigin())}` : text
     await copyToClipboard(payload)
     setCopySuccess(which)
     setTimeout(() => setCopySuccess(null), 2000)
@@ -553,7 +570,9 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
             aria-label="Copy room code and link"
             className="flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-2.5 sm:px-3 py-1.5 text-xs font-mono font-bold tracking-widest hover:border-[var(--border-strong)] transition-colors"
           >
-            <span className="hidden sm:inline text-[10px] uppercase tracking-wider text-faint font-sans font-semibold">Room</span>
+            <span className="hidden sm:inline text-[10px] uppercase tracking-wider text-faint font-sans font-semibold">
+              Room
+            </span>
             {roomCode}
             <span className="text-faint">{copySuccess === 'room' ? '✓' : '⎘'}</span>
           </button>
@@ -564,7 +583,9 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
               aria-label="Copy your player code"
               className="flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-2.5 sm:px-3 py-1.5 text-xs font-mono font-bold tracking-widest hover:border-[var(--border-strong)] transition-colors"
             >
-              <span className="hidden sm:inline text-[10px] uppercase tracking-wider text-faint font-sans font-semibold">Player</span>
+              <span className="hidden sm:inline text-[10px] uppercase tracking-wider text-faint font-sans font-semibold">
+                Player
+              </span>
               {identity.memberCode}
               <span className="text-faint">{copySuccess === 'member' ? '✓' : '⎘'}</span>
             </button>
@@ -624,7 +645,11 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
                 </button>
               )}
             </div>
-            {room && <div className="mt-3"><RoomMeta room={room} /></div>}
+            {room && (
+              <div className="mt-3">
+                <RoomMeta room={room} />
+              </div>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-1 min-h-0">
@@ -711,20 +736,10 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
             {members.length > 0 && (
               <div className="flex gap-2 overflow-x-auto pb-0.5 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {onlineMembers.map((m) => (
-                  <MemberChip
-                    key={m.id}
-                    name={m.display_name}
-                    online
-                    isYou={m.id === identity?.memberId}
-                  />
+                  <MemberChip key={m.id} name={m.display_name} online isYou={m.id === identity?.memberId} />
                 ))}
                 {offlineMembers.map((m) => (
-                  <MemberChip
-                    key={m.id}
-                    name={m.display_name}
-                    online={false}
-                    isYou={m.id === identity?.memberId}
-                  />
+                  <MemberChip key={m.id} name={m.display_name} online={false} isYou={m.id === identity?.memberId} />
                 ))}
               </div>
             )}
@@ -757,19 +772,11 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
           <div className="flex-1 overflow-y-auto min-h-0 bg-[var(--background)]">
             {tab === 'chat' && identity && (
               <div className="h-full flex flex-col">
-                <RoomChat
-                  messages={messages}
-                  myMemberId={identity.memberId}
-                  onSend={sendMessage}
-                />
+                <RoomChat messages={messages} myMemberId={identity.memberId} onSend={sendMessage} />
               </div>
             )}
-            {tab === 'leaderboard' && (
-              <RoomLeaderboard members={members} />
-            )}
-            {tab === 'history' && (
-              <RoomGameHistory games={games} memberCode={identity?.memberCode} />
-            )}
+            {tab === 'leaderboard' && <RoomLeaderboard members={members} />}
+            {tab === 'history' && <RoomGameHistory games={games} memberCode={identity?.memberCode} />}
           </div>
         </main>
       </div>
@@ -795,12 +802,20 @@ export function RoomLobby({ roomCode }: { roomCode: string }) {
 
 function MemberCodeReminder({ memberCode, displayName }: { memberCode: string; displayName: string }) {
   const [dismissed, setDismissed] = useState(() => {
-    try { return !!localStorage.getItem(`kmk_room_code_seen_${memberCode}`) } catch { return false }
+    try {
+      return !!localStorage.getItem(`kmk_room_code_seen_${memberCode}`)
+    } catch {
+      return false
+    }
   })
   const [copied, setCopied] = useState(false)
 
   const dismiss = () => {
-    try { localStorage.setItem(`kmk_room_code_seen_${memberCode}`, '1') } catch { /* noop */ }
+    try {
+      localStorage.setItem(`kmk_room_code_seen_${memberCode}`, '1')
+    } catch {
+      /* noop */
+    }
     setDismissed(true)
   }
 
@@ -820,7 +835,9 @@ function MemberCodeReminder({ memberCode, displayName }: { memberCode: string; d
             <p className="font-semibold text-body text-sm">Save your member code, {displayName}!</p>
             <p className="text-xs text-faint mt-0.5">Use it to rejoin as yourself on any device.</p>
           </div>
-          <button type="button" onClick={dismiss} className="text-faint hover:text-body text-lg leading-none shrink-0">×</button>
+          <button type="button" onClick={dismiss} className="text-faint hover:text-body text-lg leading-none shrink-0">
+            ×
+          </button>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-center font-mono font-bold text-xl tracking-[0.2em]">
@@ -830,7 +847,11 @@ function MemberCodeReminder({ memberCode, displayName }: { memberCode: string; d
             {copied ? 'Copied!' : 'Copy'}
           </button>
         </div>
-        <button type="button" onClick={dismiss} className="text-center w-full text-xs text-faint hover:text-body transition-colors">
+        <button
+          type="button"
+          onClick={dismiss}
+          className="text-center w-full text-xs text-faint hover:text-body transition-colors"
+        >
           I&apos;ve saved it
         </button>
       </div>

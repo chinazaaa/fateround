@@ -98,7 +98,7 @@ function buildShareText({
   if (isWordHuntGame(gameType) && wordHuntLeaderboard && wordHuntLeaderboard.length > 0) {
     const lines = [
       ...gameHeader,
-      wordHuntWinnerName ? `🏆 ${wordHuntWinnerName} wins!` : '⏱️ Time\'s up!',
+      wordHuntWinnerName ? `🏆 ${wordHuntWinnerName} wins!` : "⏱️ Time's up!",
       '',
       'Final leaderboard:',
       ...wordHuntLeaderboard
@@ -111,11 +111,7 @@ function buildShareText({
   }
 
   if (isCodewordsGame(gameType)) {
-    const lines = [
-      ...gameHeader,
-      codewordsWinnerLabel ?? '🏆 Game over',
-      '',
-    ]
+    const lines = [...gameHeader, codewordsWinnerLabel ?? '🏆 Game over', '']
     if (codewordsOperativeStats && codewordsOperativeStats.length > 0) {
       lines.push(
         'Operative leaderboard:',

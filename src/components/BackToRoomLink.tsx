@@ -17,9 +17,7 @@ export function BackToRoomLink({ gameCode, className = '', compact = false }: Pr
     <Link
       href={`/room/${roomCode}`}
       className={[
-        compact
-          ? 'btn-secondary text-xs py-1.5 px-2.5 whitespace-nowrap'
-          : 'btn-secondary w-full text-center',
+        compact ? 'btn-secondary text-xs py-1.5 px-2.5 whitespace-nowrap' : 'btn-secondary w-full text-center',
         className,
       ].join(' ')}
     >

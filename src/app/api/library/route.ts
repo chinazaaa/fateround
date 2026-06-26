@@ -10,7 +10,10 @@ export async function GET(req: NextRequest) {
   const gameType = searchParams.get('game_type')
   const tag = searchParams.get('tag')
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
-  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(searchParams.get('page_size') ?? String(DEFAULT_PAGE_SIZE), 10)))
+  const pageSize = Math.min(
+    MAX_PAGE_SIZE,
+    Math.max(1, parseInt(searchParams.get('page_size') ?? String(DEFAULT_PAGE_SIZE), 10))
+  )
 
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 

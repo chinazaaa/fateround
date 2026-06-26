@@ -54,10 +54,7 @@ export function buildWordHuntPrefixSet(validWords: ReadonlySet<string>): Set<str
   return prefixes
 }
 
-export function isValidWordHuntPrefix(
-  prefix: string,
-  validPrefixes: ReadonlySet<string>
-): boolean {
+export function isValidWordHuntPrefix(prefix: string, validPrefixes: ReadonlySet<string>): boolean {
   if (validPrefixes.size === 0) return true
   return validPrefixes.has(prefix.toLowerCase())
 }
@@ -81,12 +78,9 @@ export function previewWordHuntDrag(
   const word = wordFromPath(grid, path)
   const prefixValid = isValidWordHuntPrefix(word, validPrefixes)
   const isValidWord =
-    word.length >= WORD_HUNT_MIN_WORD_LENGTH &&
-    isValidPath(path) &&
-    (validWords.size === 0 || validWords.has(word))
+    word.length >= WORD_HUNT_MIN_WORD_LENGTH && isValidPath(path) && (validWords.size === 0 || validWords.has(word))
   const alreadyFound = foundWords.has(word)
-  const points =
-    isValidWord && !alreadyFound ? wordHuntPoints(word.length) : null
+  const points = isValidWord && !alreadyFound ? wordHuntPoints(word.length) : null
 
   return { word, points, prefixValid, isValidWord, alreadyFound }
 }

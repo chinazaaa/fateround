@@ -150,7 +150,10 @@ export function letterAt(grid: string[][], index: number): string {
 }
 
 export function wordFromPath(grid: string[][], path: number[]): string {
-  return path.map((i) => letterAt(grid, i)).join('').toLowerCase()
+  return path
+    .map((i) => letterAt(grid, i))
+    .join('')
+    .toLowerCase()
 }
 
 export function isValidPath(path: number[]): boolean {
@@ -185,15 +188,10 @@ export interface WordHuntWordEntry {
 export function sortWordHuntSubmissions(
   submissions: Pick<WordHuntSubmission, 'word' | 'points_awarded'>[]
 ): Pick<WordHuntSubmission, 'word' | 'points_awarded'>[] {
-  return [...submissions].sort(
-    (a, b) => b.points_awarded - a.points_awarded || a.word.localeCompare(b.word)
-  )
+  return [...submissions].sort((a, b) => b.points_awarded - a.points_awarded || a.word.localeCompare(b.word))
 }
 
-export function buildWordHuntWordList(
-  validWords: string[],
-  foundWords: ReadonlySet<string>
-): WordHuntWordEntry[] {
+export function buildWordHuntWordList(validWords: string[], foundWords: ReadonlySet<string>): WordHuntWordEntry[] {
   const foundNormalized = new Set([...foundWords].map((word) => word.toLowerCase()))
   return validWords
     .map((word) => {

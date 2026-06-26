@@ -101,10 +101,7 @@ export async function canTicTacToePlayAgain(
 
 export function isTicTacToeResultsPhase(
   gameStatus: string | undefined,
-  session:
-    | Pick<TicTacToeSession, 'status' | 'is_draw' | 'winner_player_id' | 'board_winners'>
-    | null
-    | undefined
+  session: Pick<TicTacToeSession, 'status' | 'is_draw' | 'winner_player_id' | 'board_winners'> | null | undefined
 ): boolean {
   if (!gameStatus || gameStatus === 'waiting') return false
   if (gameStatus === 'finished') return true
@@ -304,6 +301,9 @@ export async function processTicTacToeExpireTurn(
 }
 
 /** Play again — keep finished session so the next start can swap who opens as X. */
-export async function clearTicTacToeSessionData(_supabase: SupabaseClient, _gameId: string): Promise<{ error?: string }> {
+export async function clearTicTacToeSessionData(
+  _supabase: SupabaseClient,
+  _gameId: string
+): Promise<{ error?: string }> {
   return {}
 }

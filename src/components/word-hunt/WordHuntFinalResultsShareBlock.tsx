@@ -35,7 +35,7 @@ export function WordHuntFinalResultsShareBlock({
     highlightPlayerId ?? leaderboard[0]?.player_id ?? null
   )
   const winner = leaderboard[0]
-  const winnerLabel = winner ? `${winner.name} wins!` : 'Time\'s up!'
+  const winnerLabel = winner ? `${winner.name} wins!` : "Time's up!"
 
   return (
     <div className="space-y-4">
@@ -49,9 +49,7 @@ export function WordHuntFinalResultsShareBlock({
         />
       )}
 
-      {mySubmissions && (
-        <WordHuntPersonalResults submissions={mySubmissions} validWords={validWords} />
-      )}
+      {mySubmissions && <WordHuntPersonalResults submissions={mySubmissions} validWords={validWords} />}
 
       <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-4">
         <ShareResultsCaptureHeader game={game} />

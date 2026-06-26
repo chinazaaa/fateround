@@ -14,13 +14,7 @@ interface GameTypeModalProps {
 
 function matchesGameSearch(type: GameType, query: string): boolean {
   const cfg = gameTypeConfig(type)
-  const haystack = [
-    cfg.label,
-    cfg.tagline,
-    cfg.card.vibe,
-    cfg.card.players,
-    type.replace(/_/g, ' '),
-  ]
+  const haystack = [cfg.label, cfg.tagline, cfg.card.vibe, cfg.card.players, type.replace(/_/g, ' ')]
     .join(' ')
     .toLowerCase()
   return haystack.includes(query)

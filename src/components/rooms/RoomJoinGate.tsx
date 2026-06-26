@@ -24,9 +24,8 @@ export function RoomJoinGate({ roomCode, roomName, isLocked, description, timezo
     setLoading(true)
     setError('')
     try {
-      const body = mode === 'new'
-        ? { displayName: displayName.trim() }
-        : { memberCode: memberCode.trim().toUpperCase() }
+      const body =
+        mode === 'new' ? { displayName: displayName.trim() } : { memberCode: memberCode.trim().toUpperCase() }
 
       const res = await fetch(`/api/rooms/${roomCode}/join`, {
         method: 'POST',
@@ -64,12 +63,8 @@ export function RoomJoinGate({ roomCode, roomName, isLocked, description, timezo
           <p className="label-caps">Joining room</p>
           <h1 className="text-2xl font-black gradient-title">{roomName}</h1>
           <p className="font-mono text-sm text-faint tracking-widest">{roomCode}</p>
-          {description && (
-            <p className="text-sm text-muted pt-1 leading-relaxed">{description}</p>
-          )}
-          {timezone && (
-            <p className="text-xs text-faint">🕐 Plays in {formatRoomTimezone(timezone)}</p>
-          )}
+          {description && <p className="text-sm text-muted pt-1 leading-relaxed">{description}</p>}
+          {timezone && <p className="text-xs text-faint">🕐 Plays in {formatRoomTimezone(timezone)}</p>}
         </div>
 
         {isLocked && mode === 'new' ? (
@@ -83,7 +78,10 @@ export function RoomJoinGate({ roomCode, roomName, isLocked, description, timezo
             </div>
             <button
               type="button"
-              onClick={() => { setMode('returning'); setError('') }}
+              onClick={() => {
+                setMode('returning')
+                setError('')
+              }}
               className="btn-secondary w-full text-sm"
             >
               I&apos;m a returning member
@@ -104,14 +102,20 @@ export function RoomJoinGate({ roomCode, roomName, isLocked, description, timezo
               <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
                 <button
                   type="button"
-                  onClick={() => { setMode('new'); setError('') }}
+                  onClick={() => {
+                    setMode('new')
+                    setError('')
+                  }}
                   className={`flex-1 py-2 text-sm font-semibold transition-colors ${mode === 'new' ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'}`}
                 >
                   New member
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setMode('returning'); setError('') }}
+                  onClick={() => {
+                    setMode('returning')
+                    setError('')
+                  }}
                   className={`flex-1 py-2 text-sm font-semibold transition-colors ${mode === 'returning' ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'}`}
                 >
                   Returning
@@ -166,12 +170,7 @@ export function RoomJoinGate({ roomCode, roomName, isLocked, description, timezo
 
             {error && <p className="text-xs text-red-400">{error}</p>}
 
-            <button
-              type="button"
-              onClick={submit}
-              disabled={!canSubmit || loading}
-              className="btn-primary"
-            >
+            <button type="button" onClick={submit} disabled={!canSubmit || loading} className="btn-primary">
               {loading ? 'Joining…' : 'Enter Room'}
             </button>
           </div>

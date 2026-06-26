@@ -11,13 +11,7 @@ function glyph(value: string | null): string {
   return value === 'X' ? '✕' : value === 'O' ? '○' : ''
 }
 
-function ReadOnlyBoard({
-  board,
-  boardWinners,
-}: {
-  board: ('X' | 'O' | null)[]
-  boardWinners: TicTacToeBoardResult[]
-}) {
+function ReadOnlyBoard({ board, boardWinners }: { board: ('X' | 'O' | null)[]; boardWinners: TicTacToeBoardResult[] }) {
   const win = checkOverallWinner(boardWinners)
   const winLine = new Set(win?.line ?? [])
 
@@ -31,9 +25,7 @@ function ReadOnlyBoard({
             key={boardIndex}
             className={[
               'relative rounded-lg border-2 p-0.5',
-              winLine.has(boardIndex)
-                ? 'border-amber-400 bg-amber-400/15'
-                : 'border-[var(--border-strong)]',
+              winLine.has(boardIndex) ? 'border-amber-400 bg-amber-400/15' : 'border-[var(--border-strong)]',
             ].join(' ')}
           >
             <div className="grid grid-cols-3 gap-px">
@@ -56,10 +48,7 @@ function ReadOnlyBoard({
                   <span className="text-base">🤝</span>
                 ) : (
                   <span
-                    className={[
-                      'text-2xl font-black',
-                      result === 'X' ? 'text-sky-500' : 'text-orange-500',
-                    ].join(' ')}
+                    className={['text-2xl font-black', result === 'X' ? 'text-sky-500' : 'text-orange-500'].join(' ')}
                   >
                     {glyph(result)}
                   </span>
@@ -104,7 +93,13 @@ export function TicTacToeFinalResultsShareBlock({
         <ShareResultsCaptureHeader game={game} />
         <p className="text-5xl sm:text-6xl leading-none text-center pt-1">{isDraw ? '🤝' : endedEarly ? '🏁' : '🏆'}</p>
         <p className="text-xl sm:text-2xl font-black text-center text-[var(--marry)]">
-          {isDraw ? "It's a draw!" : displayWinner ? `${displayWinner} wins!` : endedEarly ? 'Game ended early' : 'Game over'}
+          {isDraw
+            ? "It's a draw!"
+            : displayWinner
+              ? `${displayWinner} wins!`
+              : endedEarly
+                ? 'Game ended early'
+                : 'Game over'}
         </p>
         {session && (
           <>
@@ -119,10 +114,7 @@ export function TicTacToeFinalResultsShareBlock({
                 {playerO?.id === highlightPlayerId ? ' (you)' : ''}
               </span>
             </div>
-            <ReadOnlyBoard
-              board={session.board as ('X' | 'O' | null)[]}
-              boardWinners={session.board_winners ?? []}
-            />
+            <ReadOnlyBoard board={session.board as ('X' | 'O' | null)[]} boardWinners={session.board_winners ?? []} />
           </>
         )}
       </div>

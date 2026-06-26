@@ -58,7 +58,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   if (body.name !== undefined) {
     const name = String(body.name ?? '').trim()
     if (!name) return NextResponse.json({ error: 'Room name is required' }, { status: 400 })
-    if (name.length > 50) return NextResponse.json({ error: 'Room name must be 50 characters or less' }, { status: 400 })
+    if (name.length > 50)
+      return NextResponse.json({ error: 'Room name must be 50 characters or less' }, { status: 400 })
     updates.name = name
   }
 
@@ -90,22 +91,22 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
   const { code } = await params
   const roomCode = code.toUpperCase()
 
-  const { data: room } = await supabase
-    .from('rooms')
-    .select(ROOM_PUBLIC_FIELDS)
-    .eq('id', roomCode)
-    .maybeSingle()
+  const { data: room } = await supabase.from('rooms').select(ROOM_PUBLIC_FIELDS).eq('id', roomCode).maybeSingle()
   if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 })
 
   const [{ data: members }, { data: recentGames }] = await Promise.all([
     supabase
       .from('room_members')
-      .select('id, display_name, member_code, joined_at, times_kissed, times_married, times_killed, games_played, room_points')
+      .select(
+        'id, display_name, member_code, joined_at, times_kissed, times_married, times_killed, games_played, room_points'
+      )
       .eq('room_id', roomCode)
       .order('joined_at', { ascending: true }),
     supabase
       .from('room_games')
-      .select('id, game_id, created_at, started_by_member_id, room_members(display_name), games(title, game_type, status)')
+      .select(
+        'id, game_id, created_at, started_by_member_id, room_members(display_name), games(title, game_type, status)'
+      )
       .eq('room_id', roomCode)
       .order('created_at', { ascending: false })
       .limit(10),

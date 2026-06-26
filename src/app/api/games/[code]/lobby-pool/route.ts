@@ -13,7 +13,14 @@ import {
   parseHostPoolParticipants,
   replaceHostParticipantList,
 } from '@/lib/host-pool-update'
-import { parseGameType, isBinaryChoiceGame, isMostLikelyTo, isNeverHaveIEver, isTriviaGame, isCodewordsGame } from '@/lib/game-types'
+import {
+  parseGameType,
+  isBinaryChoiceGame,
+  isMostLikelyTo,
+  isNeverHaveIEver,
+  isTriviaGame,
+  isCodewordsGame,
+} from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { parsePoolUsage } from '@/lib/pool-usage'
 import { CODEWORDS_MIN_CUSTOM_POOL } from '@/lib/codewords'
@@ -95,11 +102,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (!nextQuestions) {
       return NextResponse.json({ error: 'Upload at least one valid question' }, { status: 400 })
     }
-    if (
-      isCodewordsGame(gameType) &&
-      Array.isArray(nextQuestions) &&
-      nextQuestions.length < CODEWORDS_MIN_CUSTOM_POOL
-    ) {
+    if (isCodewordsGame(gameType) && Array.isArray(nextQuestions) && nextQuestions.length < CODEWORDS_MIN_CUSTOM_POOL) {
       return NextResponse.json(
         { error: `Need at least ${CODEWORDS_MIN_CUSTOM_POOL} valid words in your library` },
         { status: 400 }

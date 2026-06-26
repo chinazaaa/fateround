@@ -1518,7 +1518,8 @@ function CreateGameInner() {
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="tic_tac_toe" />
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
-                  Ultimate Tic-Tac-Toe — nine small boards in one big grid. Your move sends your opponent to the matching board; win three boards in a row to win it all.
+                  Ultimate Tic-Tac-Toe — nine small boards in one big grid. Your move sends your opponent to the
+                  matching board; win three boards in a row to win it all.
                 </p>
               </SettingsGroup>
             ) : isChess ? (
@@ -1859,8 +1860,8 @@ function CreateGameInner() {
                   </Field>
                 )}
                 <p className="text-faint text-sm leading-relaxed">
-                  Everyone races on the same 4×4 letter grid. Connect adjacent letters to spell valid words — 3 letters =
-                  100 pts, 4 = 400, 5 = 800, and longer words score even more.
+                  Everyone races on the same 4×4 letter grid. Connect adjacent letters to spell valid words — 3 letters
+                  = 100 pts, 4 = 400, 5 = 800, and longer words score even more.
                 </p>
               </SettingsGroup>
             ) : (

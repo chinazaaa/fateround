@@ -1,10 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  formatWordHuntTimer,
-  WORD_HUNT_TIMER_OPTIONS,
-} from '@/lib/word-hunt'
+import { formatWordHuntTimer, WORD_HUNT_TIMER_OPTIONS } from '@/lib/word-hunt'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
@@ -32,13 +29,7 @@ function shortTimerLabel(seconds: number): string {
   return `${seconds}s`
 }
 
-export function HostWordHuntLobbyPanel({
-  gameCode,
-  hostToken,
-  game,
-  playerCount,
-  onGameUpdate,
-}: Props) {
+export function HostWordHuntLobbyPanel({ gameCode, hostToken, game, playerCount, onGameUpdate }: Props) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
   const [maxPlayers, setMaxPlayers] = useState(6)

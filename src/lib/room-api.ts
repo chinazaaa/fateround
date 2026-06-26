@@ -11,8 +11,7 @@ export type RoomRow = {
   max_members: number | null
 }
 
-export const ROOM_PUBLIC_FIELDS =
-  'id, name, created_at, is_public, is_locked, description, timezone, max_members'
+export const ROOM_PUBLIC_FIELDS = 'id, name, created_at, is_public, is_locked, description, timezone, max_members'
 
 export async function verifyRoomCreator(
   supabase: SupabaseClient,
@@ -23,11 +22,7 @@ export async function verifyRoomCreator(
     return { ok: false, status: 401, error: 'Creator token required' }
   }
 
-  const { data: room } = await supabase
-    .from('rooms')
-    .select('creator_token')
-    .eq('id', roomCode)
-    .maybeSingle()
+  const { data: room } = await supabase.from('rooms').select('creator_token').eq('id', roomCode).maybeSingle()
 
   if (!room) return { ok: false, status: 404, error: 'Room not found' }
   if (!room.creator_token || room.creator_token !== creatorToken) {
@@ -37,16 +32,10 @@ export async function verifyRoomCreator(
   return { ok: true, room }
 }
 
-export async function countMembersByRoom(
-  supabase: SupabaseClient,
-  roomIds: string[]
-): Promise<Record<string, number>> {
+export async function countMembersByRoom(supabase: SupabaseClient, roomIds: string[]): Promise<Record<string, number>> {
   if (roomIds.length === 0) return {}
 
-  const { data: members } = await supabase
-    .from('room_members')
-    .select('room_id')
-    .in('room_id', roomIds)
+  const { data: members } = await supabase.from('room_members').select('room_id').in('room_id', roomIds)
 
   const counts: Record<string, number> = {}
   for (const id of roomIds) counts[id] = 0

@@ -2,10 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
-import {
-  getRoomTimezoneOptions,
-  ROOM_DESCRIPTION_MAX,
-} from '@/lib/room-timezones'
+import { getRoomTimezoneOptions, ROOM_DESCRIPTION_MAX } from '@/lib/room-timezones'
 import type { RoomRow as RoomApiRow } from '@/lib/room-api'
 
 type Props = {
@@ -77,12 +74,7 @@ export function RoomSettings({ open, onClose, roomCode, creatorToken, room, onUp
       <div className="space-y-4">
         <div className="space-y-1.5">
           <label className="label-caps">Room name</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={50}
-            className="input-field w-full"
-          />
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={50} className="input-field w-full" />
         </div>
 
         <div className="space-y-1.5">
@@ -163,11 +155,7 @@ export function RoomSettings({ open, onClose, roomCode, creatorToken, room, onUp
           <label className="label-caps">
             Timezone <span className="normal-case text-faint font-normal">(optional)</span>
           </label>
-          <select
-            value={timezone}
-            onChange={(e) => setTimezone(e.target.value)}
-            className="input-field w-full"
-          >
+          <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="input-field w-full">
             <option value="">No timezone set</option>
             {timezoneOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>

@@ -183,36 +183,39 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
   })
 
-  const join = useCallback(async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-    const name = (opts?.name ?? joinName).trim()
-    if (!name) return
-    const joiningAsViewer = game?.status === 'active'
-    if (!joiningAsViewer && !joinToken) return
-    setJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gameCode,
-          playerName: name,
-          ...joinExtras,
-          ...(joiningAsViewer ? { joinAsViewer: opts?.joinAsViewer ?? true } : { monopolyToken: joinToken }),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-      setMyPlayerId(data.playerId)
-      setMyPlayerName(data.playerName)
-      await load()
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-      await load()
-    } finally {
-      setJoining(false)
-    }
-  }, [game?.status, gameCode, joinExtras, joinName, joinToken, load, toastError])
+  const join = useCallback(
+    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
+      const name = (opts?.name ?? joinName).trim()
+      if (!name) return
+      const joiningAsViewer = game?.status === 'active'
+      if (!joiningAsViewer && !joinToken) return
+      setJoining(true)
+      try {
+        const res = await fetch('/api/players', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gameCode,
+            playerName: name,
+            ...joinExtras,
+            ...(joiningAsViewer ? { joinAsViewer: opts?.joinAsViewer ?? true } : { monopolyToken: joinToken }),
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? 'Failed to join')
+        setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
+        setMyPlayerId(data.playerId)
+        setMyPlayerName(data.playerName)
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to join')
+        await load()
+      } finally {
+        setJoining(false)
+      }
+    },
+    [game?.status, gameCode, joinExtras, joinName, joinToken, load, toastError]
+  )
 
   const postAction = async (url: string, body: Record<string, unknown> = {}) => {
     if (!myPlayerId || actingRef.current) return
@@ -353,11 +356,13 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               </>
             ) : (
               <>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--primary)]">You&apos;re in</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--primary)]">
+                  You&apos;re in
+                </p>
                 <h2 className="text-xl sm:text-2xl font-black">You&apos;re in, {displayName}!</h2>
                 <p className="text-muted text-sm leading-relaxed">
-                  Waiting for the host to start. You&apos;ll begin with £{MONOPOLY_STARTING_CASH.toLocaleString('en-GB')}{' '}
-                  when the game begins.
+                  Waiting for the host to start. You&apos;ll begin with £
+                  {MONOPOLY_STARTING_CASH.toLocaleString('en-GB')} when the game begins.
                 </p>
               </>
             )}

@@ -11,13 +11,7 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-export function RoomGameHistory({
-  games,
-  memberCode,
-}: {
-  games: RoomGame[]
-  memberCode?: string | null
-}) {
+export function RoomGameHistory({ games, memberCode }: { games: RoomGame[]; memberCode?: string | null }) {
   if (games.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">

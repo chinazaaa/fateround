@@ -267,39 +267,42 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     void loadBoard()
   }, [board, loadBoard, screen])
 
-  const joinGame = useCallback(async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-    const name = (opts?.name ?? joinName).trim()
-    if (!name) return
-    setJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gameCode,
-          playerName: name,
-          ...joinExtras,
-          ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer } : {}),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-      setMyPlayerId(data.playerId)
-      setMyPlayerName(data.playerName)
-      if (data.codewordsRole) setMyRole(data.codewordsRole)
-      await load()
-      if (data.codewordsRole) {
-        success(`You're ${teamLabel(data.codewordsRole.team)} operative`)
-      } else {
-        success(`Joined as ${data.playerName}`)
+  const joinGame = useCallback(
+    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
+      const name = (opts?.name ?? joinName).trim()
+      if (!name) return
+      setJoining(true)
+      try {
+        const res = await fetch('/api/players', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gameCode,
+            playerName: name,
+            ...joinExtras,
+            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer } : {}),
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? 'Failed to join')
+        setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
+        setMyPlayerId(data.playerId)
+        setMyPlayerName(data.playerName)
+        if (data.codewordsRole) setMyRole(data.codewordsRole)
+        await load()
+        if (data.codewordsRole) {
+          success(`You're ${teamLabel(data.codewordsRole.team)} operative`)
+        } else {
+          success(`Joined as ${data.playerName}`)
+        }
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to join')
+      } finally {
+        setJoining(false)
       }
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setJoining(false)
-    }
-  }, [game?.status, gameCode, joinExtras, joinName, load, success, toastError])
+    },
+    [game?.status, gameCode, joinExtras, joinName, load, success, toastError]
+  )
 
   useRoomMemberAutoJoin({
     displayName: roomDisplayName,
@@ -688,8 +691,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
           </div>
           <div className="glass-card p-4 space-y-4">
             <div className="glass-card p-4 text-center text-sm font-medium text-muted">
-              <CodewordsTeamBadge team={board.current_turn} />{' '}
-              {waitingTurnMessage(board, allRoles, playerNameById)}
+              <CodewordsTeamBadge team={board.current_turn} /> {waitingTurnMessage(board, allRoles, playerNameById)}
             </div>
             <CodewordsCurrentClueCard board={board} showGuessesRemaining />
             <CodewordsBoardGrid board={board} cellAttribution={cellAttribution} />

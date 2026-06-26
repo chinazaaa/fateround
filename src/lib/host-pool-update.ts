@@ -1,6 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { stripHtml } from '@/lib/validation'
-import { parseGameType, isBinaryChoiceGame, isMostLikelyTo, isNeverHaveIEver, isThisOrThat, isCodewordsGame } from '@/lib/game-types'
+import {
+  parseGameType,
+  isBinaryChoiceGame,
+  isMostLikelyTo,
+  isNeverHaveIEver,
+  isThisOrThat,
+  isCodewordsGame,
+} from '@/lib/game-types'
 import { usesHostParticipantList } from '@/lib/participant-mode'
 import { normalizeGender, participantsNeedGenderForGame, type ParticipantInput } from '@/lib/participants'
 import {

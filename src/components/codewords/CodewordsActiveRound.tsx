@@ -193,9 +193,7 @@ export function CodewordsActiveRound({
             {active ? turnStatusMessage() : `${teamLabel(board.winner ?? board.current_turn)} team wins`}
           </div>
 
-          {board.current_clue_word && (
-            <CodewordsCurrentClueCard board={board} showGuessesRemaining={canGuess} />
-          )}
+          {board.current_clue_word && <CodewordsCurrentClueCard board={board} showGuessesRemaining={canGuess} />}
 
           {canGiveClue && (
             <div className="glass-card p-4 space-y-3">

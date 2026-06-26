@@ -9,7 +9,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
 
   const { data: games, error } = await supabase
     .from('room_games')
-    .select('id, game_id, created_at, started_by_member_id, room_members(display_name), games(title, game_type, status)')
+    .select(
+      'id, game_id, created_at, started_by_member_id, room_members(display_name), games(title, game_type, status)'
+    )
     .eq('room_id', roomCode)
     .order('created_at', { ascending: false })
     .limit(20)
@@ -24,8 +26,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const roomCode = code.toUpperCase()
 
   const body = await req.json()
-  const gameCode = String(body.gameCode ?? '').trim().toUpperCase()
-  const memberCode = String(body.memberCode ?? '').trim().toUpperCase()
+  const gameCode = String(body.gameCode ?? '')
+    .trim()
+    .toUpperCase()
+  const memberCode = String(body.memberCode ?? '')
+    .trim()
+    .toUpperCase()
 
   if (!gameCode) return NextResponse.json({ error: 'gameCode is required' }, { status: 400 })
 

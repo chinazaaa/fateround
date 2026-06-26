@@ -255,7 +255,11 @@ export default function SubmitPackPage() {
               >
                 Browse library
               </button>
-              <button type="button" onClick={() => router.push('/')} className="btn-secondary btn-fit px-4 py-2 text-sm">
+              <button
+                type="button"
+                onClick={() => router.push('/')}
+                className="btn-secondary btn-fit px-4 py-2 text-sm"
+              >
                 Home
               </button>
             </div>
@@ -486,10 +490,7 @@ export default function SubmitPackPage() {
             </div>
           )}
 
-          <PrimaryBtn
-            onClick={handleSubmit}
-            disabled={!validation?.ok || !title.trim() || submitting}
-          >
+          <PrimaryBtn onClick={handleSubmit} disabled={!validation?.ok || !title.trim() || submitting}>
             {submitting ? 'Submitting…' : 'Submit pack'}
           </PrimaryBtn>
         </>

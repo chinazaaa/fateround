@@ -48,11 +48,7 @@ async function countActivePlayers(supabase: SupabaseClient, gameId: string): Pro
   return (data ?? []).map((p) => p.id)
 }
 
-async function countRoundAnswers(
-  supabase: SupabaseClient,
-  roundId: string,
-  playerIds: string[]
-): Promise<number> {
+async function countRoundAnswers(supabase: SupabaseClient, roundId: string, playerIds: string[]): Promise<number> {
   if (playerIds.length === 0) return 0
   const { count } = await supabase
     .from('npat_answers')
@@ -63,11 +59,7 @@ async function countRoundAnswers(
   return count ?? 0
 }
 
-async function countRoundMarks(
-  supabase: SupabaseClient,
-  roundId: string,
-  playerIds: string[]
-): Promise<number> {
+async function countRoundMarks(supabase: SupabaseClient, roundId: string, playerIds: string[]): Promise<number> {
   if (playerIds.length === 0) return 0
   const { count } = await supabase
     .from('npat_marks')

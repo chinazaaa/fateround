@@ -7,13 +7,7 @@ import {
 } from '@/components/rooms/room-game-display'
 import { gamePathWithRoomMember } from '@/lib/room-member-join'
 
-export function RoomLiveGames({
-  games,
-  memberCode,
-}: {
-  games: RoomGame[]
-  memberCode?: string | null
-}) {
+export function RoomLiveGames({ games, memberCode }: { games: RoomGame[]; memberCode?: string | null }) {
   const liveGames = games.filter((g) => roomGameDisplay(g).isLive)
 
   if (liveGames.length === 0) return null

@@ -37,22 +37,21 @@ export function WordHuntPlaySurface({
   const preview = previewWordHuntDrag(grid, selectedPath, validWords, validPrefixes, foundSet)
   const timerUrgent = !timeUp && secondsLeft <= 10
 
-  const wordChipClass = preview.isValidWord && !preview.alreadyFound
-    ? 'bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-strong)_100%)] text-white shadow-[0_4px_14px_-4px_var(--primary-glow)]'
-    : preview.prefixValid && preview.word.length >= WORD_HUNT_MIN_WORD_LENGTH
-      ? 'bg-[color-mix(in_srgb,var(--primary)_12%,var(--card-strong))] text-[var(--foreground)] border border-[color-mix(in_srgb,var(--primary)_25%,var(--border))]'
-      : preview.word
-        ? 'bg-[var(--surface-inset-bg)] text-muted border border-[var(--border-strong)]'
-        : ''
+  const wordChipClass =
+    preview.isValidWord && !preview.alreadyFound
+      ? 'bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-strong)_100%)] text-white shadow-[0_4px_14px_-4px_var(--primary-glow)]'
+      : preview.prefixValid && preview.word.length >= WORD_HUNT_MIN_WORD_LENGTH
+        ? 'bg-[color-mix(in_srgb,var(--primary)_12%,var(--card-strong))] text-[var(--foreground)] border border-[color-mix(in_srgb,var(--primary)_25%,var(--border))]'
+        : preview.word
+          ? 'bg-[var(--surface-inset-bg)] text-muted border border-[var(--border-strong)]'
+          : ''
 
   return (
     <div className="glass-card-strong overflow-hidden border border-[color-mix(in_srgb,var(--primary)_18%,var(--border))] shadow-[var(--card-shadow-glow)] overscroll-none">
       <div className="grid grid-cols-[1fr_auto] gap-3 p-4 border-b border-[var(--border)]">
         <div className="rounded-2xl border border-[color-mix(in_srgb,var(--primary)_14%,var(--border))] bg-[color-mix(in_srgb,var(--primary)_6%,transparent)] px-3 py-2.5">
           <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted">Words</p>
-          <p className="text-xl font-black tabular-nums text-[var(--foreground)] leading-tight">
-            {foundWords.length}
-          </p>
+          <p className="text-xl font-black tabular-nums text-[var(--foreground)] leading-tight">{foundWords.length}</p>
           <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.2em] text-muted">Score</p>
           <p className="text-xl font-black tabular-nums text-[var(--foreground)] leading-tight">{myPoints}</p>
         </div>
@@ -110,9 +109,7 @@ export function WordHuntPlaySurface({
             </button>
           </>
         ) : (
-          <p className="text-sm text-muted font-medium text-center">
-            Drag or tap adjacent letters
-          </p>
+          <p className="text-sm text-muted font-medium text-center">Drag or tap adjacent letters</p>
         )}
       </div>
 

@@ -1040,11 +1040,16 @@ export async function processWhotExpireTurn(
     }
     const top = session.top_card
     const matchHint = top ? ` — match ${cardLabel(top)}` : ''
-    await persistSession(supabase, gameId, {
-      current_turn_index: nextIndex,
-      phase: 'playing',
-      status_message: `${playerName(playerNames, nextId)}'s turn${matchHint}`,
-    }, timerSeconds)
+    await persistSession(
+      supabase,
+      gameId,
+      {
+        current_turn_index: nextIndex,
+        phase: 'playing',
+        status_message: `${playerName(playerNames, nextId)}'s turn${matchHint}`,
+      },
+      timerSeconds
+    )
     return {}
   }
 

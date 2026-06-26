@@ -14,9 +14,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const leaderboard = (members ?? []).sort(
-    (a, b) => b.room_points - a.room_points || b.games_played - a.games_played
-  )
+  const leaderboard = (members ?? []).sort((a, b) => b.room_points - a.room_points || b.games_played - a.games_played)
 
   return NextResponse.json({ leaderboard })
 }

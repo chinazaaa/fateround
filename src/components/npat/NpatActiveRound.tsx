@@ -207,7 +207,17 @@ export function NpatActiveRound({
       thing: myAnswer.thing ?? '',
       food: myAnswer.food ?? '',
     })
-  }, [currentRound?.id, metadata?.phase, myAnswer?.submitted_at, myAnswer?.id, myAnswer?.name, myAnswer?.animal, myAnswer?.place, myAnswer?.thing, myAnswer?.food])
+  }, [
+    currentRound?.id,
+    metadata?.phase,
+    myAnswer?.submitted_at,
+    myAnswer?.id,
+    myAnswer?.name,
+    myAnswer?.animal,
+    myAnswer?.place,
+    myAnswer?.thing,
+    myAnswer?.food,
+  ])
 
   useEffect(() => {
     if (!currentRound || !reviewTargetAnswer || !metadata) return

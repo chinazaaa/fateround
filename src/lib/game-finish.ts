@@ -6,10 +6,7 @@ export async function markGameFinished(
   gameId: string,
   finishedAt = new Date().toISOString()
 ) {
-  const result = await supabase
-    .from('games')
-    .update({ status: 'finished', finished_at: finishedAt })
-    .eq('id', gameId)
+  const result = await supabase.from('games').update({ status: 'finished', finished_at: finishedAt }).eq('id', gameId)
 
   if (!result.error) {
     try {

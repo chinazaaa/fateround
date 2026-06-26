@@ -740,9 +740,7 @@ export const ticTacToeExpireSchema = z.object({
 
 export type TicTacToeMoveInput = z.infer<typeof ticTacToeMoveSchema>
 
-const chessSquare = z
-  .string()
-  .regex(/^[a-h][1-8]$/, 'Invalid square')
+const chessSquare = z.string().regex(/^[a-h][1-8]$/, 'Invalid square')
 
 export const chessMoveSchema = z.object({
   gameId: gameCodeString(),

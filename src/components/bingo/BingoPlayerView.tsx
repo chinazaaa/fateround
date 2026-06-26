@@ -248,35 +248,38 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     onSynced: load,
   })
 
-  const joinGame = useCallback(async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-    const name = (opts?.name ?? joinName).trim()
-    if (!name) return
-    setJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gameCode,
-          playerName: name,
-          ...joinExtras,
-          ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer } : {}),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to join')
+  const joinGame = useCallback(
+    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
+      const name = (opts?.name ?? joinName).trim()
+      if (!name) return
+      setJoining(true)
+      try {
+        const res = await fetch('/api/players', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gameCode,
+            playerName: name,
+            ...joinExtras,
+            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer } : {}),
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? 'Failed to join')
 
-      setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-      setMyPlayerId(data.playerId)
-      setMyPlayerName(data.playerName)
-      await load()
-      success(`Joined as ${data.playerName}`)
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to join')
-    } finally {
-      setJoining(false)
-    }
-  }, [game?.status, gameCode, joinExtras, joinName, load, success, toastError])
+        setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
+        setMyPlayerId(data.playerId)
+        setMyPlayerName(data.playerName)
+        await load()
+        success(`Joined as ${data.playerName}`)
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to join')
+      } finally {
+        setJoining(false)
+      }
+    },
+    [game?.status, gameCode, joinExtras, joinName, load, success, toastError]
+  )
 
   useRoomMemberAutoJoin({
     displayName: roomDisplayName,

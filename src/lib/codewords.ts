@@ -104,10 +104,7 @@ export function codewordsWordPoolForGame(
   return words.length > 0 ? words : null
 }
 
-export function pickBoardWords(
-  pool?: readonly string[],
-  usageCounts: Map<string, number> = new Map()
-): string[] {
+export function pickBoardWords(pool?: readonly string[], usageCounts: Map<string, number> = new Map()): string[] {
   return pickBoardWordsFromPool(pool, usageCounts)
 }
 
@@ -586,10 +583,7 @@ export function codewordsAllowsPlayerChanges(status: string): boolean {
 }
 
 /** True when the host lobby is open (waiting, or reopening after play again). */
-export function codewordsInLobby(
-  status: string,
-  board: Pick<CodewordsBoard, 'id'> | null | undefined
-): boolean {
+export function codewordsInLobby(status: string, board: Pick<CodewordsBoard, 'id'> | null | undefined): boolean {
   if (status === 'waiting') return true
   if (!board) return status === 'active'
   return false

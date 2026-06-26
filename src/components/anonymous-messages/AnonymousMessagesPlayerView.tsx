@@ -323,7 +323,12 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
             "Join the anonymous room — you'll get a random lobby name shown on your messages."
           )}
         </p>
-        <button type="button" onClick={() => void join()} disabled={joining || lobbyFull} className="btn-primary w-full">
+        <button
+          type="button"
+          onClick={() => void join()}
+          disabled={joining || lobbyFull}
+          className="btn-primary w-full"
+        >
           {joining
             ? 'Joining…'
             : lobbyFull

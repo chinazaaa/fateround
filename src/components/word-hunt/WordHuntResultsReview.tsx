@@ -1,11 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import {
-  sortWordHuntSubmissions,
-  type WordHuntPlayerScore,
-  type WordHuntSubmission,
-} from '@/lib/word-hunt'
+import { sortWordHuntSubmissions, type WordHuntPlayerScore, type WordHuntSubmission } from '@/lib/word-hunt'
 
 type SubmissionWithPath = Pick<WordHuntSubmission, 'word' | 'points_awarded' | 'path' | 'player_id'>
 

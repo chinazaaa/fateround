@@ -407,18 +407,14 @@ export async function POST(req: NextRequest) {
                               lobbyDefaultMaxPlayers('word_hunt', lobbyLimits)
                             )
                           : isTicTacToeGame(game_type)
-                          ? resolveMaxPlayers(
-                              'tic_tac_toe',
-                              rawMaxPlayers,
-                              lobbyDefaultMaxPlayers('tic_tac_toe', lobbyLimits)
-                            )
-                          : isChessGame(game_type)
-                          ? resolveMaxPlayers(
-                              'chess',
-                              rawMaxPlayers,
-                              lobbyDefaultMaxPlayers('chess', lobbyLimits)
-                            )
-                          : null
+                            ? resolveMaxPlayers(
+                                'tic_tac_toe',
+                                rawMaxPlayers,
+                                lobbyDefaultMaxPlayers('tic_tac_toe', lobbyLimits)
+                              )
+                            : isChessGame(game_type)
+                              ? resolveMaxPlayers('chess', rawMaxPlayers, lobbyDefaultMaxPlayers('chess', lobbyLimits))
+                              : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy

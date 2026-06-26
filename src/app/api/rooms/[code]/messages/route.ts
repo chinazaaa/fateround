@@ -22,11 +22,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const roomCode = code.toUpperCase()
 
   const body = await req.json()
-  const memberCode = String(body.memberCode ?? '').trim().toUpperCase()
+  const memberCode = String(body.memberCode ?? '')
+    .trim()
+    .toUpperCase()
   const text = String(body.text ?? '').trim()
 
   if (!text) return NextResponse.json({ error: 'Message cannot be empty' }, { status: 400 })
-  if (text.length > 500) return NextResponse.json({ error: 'Message is too long (max 500 characters)' }, { status: 400 })
+  if (text.length > 500)
+    return NextResponse.json({ error: 'Message is too long (max 500 characters)' }, { status: 400 })
   if (!memberCode) return NextResponse.json({ error: 'memberCode is required' }, { status: 400 })
 
   const { data: member } = await supabase

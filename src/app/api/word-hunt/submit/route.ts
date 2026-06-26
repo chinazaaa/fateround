@@ -24,23 +24,9 @@ export async function POST(req: NextRequest) {
   const { gameId, playerId, word, path } = parsed.data
 
   const [{ data: game }, { data: player }, { data: round }] = await Promise.all([
-    supabase
-      .from('games')
-      .select('id,status,session_started_at,timer_seconds')
-      .eq('id', gameId)
-      .maybeSingle(),
-    supabase
-      .from('players')
-      .select('id, joined_at, spectator')
-      .eq('id', playerId)
-      .eq('game_id', gameId)
-      .maybeSingle(),
-    supabase
-      .from('rounds')
-      .select('id,word_hunt_metadata')
-      .eq('game_id', gameId)
-      .eq('round_number', 1)
-      .maybeSingle(),
+    supabase.from('games').select('id,status,session_started_at,timer_seconds').eq('id', gameId).maybeSingle(),
+    supabase.from('players').select('id, joined_at, spectator').eq('id', playerId).eq('game_id', gameId).maybeSingle(),
+    supabase.from('rounds').select('id,word_hunt_metadata').eq('game_id', gameId).eq('round_number', 1).maybeSingle(),
   ])
 
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })

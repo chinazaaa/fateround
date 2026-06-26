@@ -188,8 +188,7 @@ export function CodewordsHostManagePanel({
     onSetSpymaster(playerId, team, makeSpymaster)
   }
 
-  const startDisabled =
-    starting || players.length < CODEWORDS_MIN_PLAYERS || !ready.ok
+  const startDisabled = starting || players.length < CODEWORDS_MIN_PLAYERS || !ready.ok
   const startDisabledHint =
     players.length < CODEWORDS_MIN_PLAYERS
       ? `Need at least ${CODEWORDS_MIN_PLAYERS} players to start (${players.length}/${CODEWORDS_MIN_PLAYERS})`
@@ -202,12 +201,7 @@ export function CodewordsHostManagePanel({
   const showWinnerResults = Boolean(board && roundWon && (sessionEnded || game.status === 'active'))
   const showSessionEndedResults = Boolean(board && sessionEnded && !board.winner)
   const playAgainButton = (
-    <button
-      type="button"
-      onClick={onPlayAgain}
-      disabled={playingAgain || ending}
-      className="btn-primary w-full"
-    >
+    <button type="button" onClick={onPlayAgain} disabled={playingAgain || ending} className="btn-primary w-full">
       {playingAgain ? 'Returning…' : 'Return to lobby'}
     </button>
   )
@@ -265,9 +259,7 @@ export function CodewordsHostManagePanel({
       {inLobby && (
         <div className="glass-card p-5 space-y-3 border-[color-mix(in_srgb,var(--primary)_18%,var(--border))]">
           <p className="label-caps">Lobby</p>
-          <p className="text-faint text-xs leading-relaxed">
-            Assign teams below, then start when everyone is ready.
-          </p>
+          <p className="text-faint text-xs leading-relaxed">Assign teams below, then start when everyone is ready.</p>
           <HostLobbySettingBlock title={`Max players · ${players.length} joined`}>
             <HostLobbyOptionChips
               value={lobbyMaxPlayers}

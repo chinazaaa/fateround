@@ -186,28 +186,37 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     }
   }, [gameCode])
 
-  const handleJoin = useCallback(async (opts?: { name?: string }) => {
-    const name = (opts?.name ?? joinName).trim()
-    if (!name) return
-    setJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerName: name, ...joinExtras }),
-      })
-      const json = await res.json()
-      if (!res.ok) {
-        showToast(json.error ?? 'Failed to join', false)
-        return
+  const handleJoin = useCallback(
+    async (opts?: { name?: string }) => {
+      const name = (opts?.name ?? joinName).trim()
+      if (!name) return
+      setJoining(true)
+      try {
+        const res = await fetch('/api/players', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameCode, playerName: name, ...joinExtras }),
+        })
+        const json = await res.json()
+        if (!res.ok) {
+          showToast(json.error ?? 'Failed to join', false)
+          return
+        }
+        myPlayerIdRef.current = json.playerId
+        setPlayerSession(
+          gameCode,
+          json.playerId,
+          json.playerName,
+          json.playerGender ?? 'no_pref',
+          json.resumeToken ?? null
+        )
+        setView('waiting')
+      } finally {
+        setJoining(false)
       }
-      myPlayerIdRef.current = json.playerId
-      setPlayerSession(gameCode, json.playerId, json.playerName, json.playerGender ?? 'no_pref', json.resumeToken ?? null)
-      setView('waiting')
-    } finally {
-      setJoining(false)
-    }
-  }, [gameCode, joinExtras, joinName])
+    },
+    [gameCode, joinExtras, joinName]
+  )
 
   useRoomMemberAutoJoin({
     displayName: roomDisplayName,
@@ -319,12 +328,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       <div className="min-h-screen flex flex-col">
         <GamePlayerChrome />
         <main className="pt-16 flex-1 flex items-center justify-center px-4">
-          <JoinForm
-            name={joinName}
-            onNameChange={setJoinName}
-            onJoin={() => void handleJoin()}
-            joining={joining}
-          />
+          <JoinForm name={joinName} onNameChange={setJoinName} onJoin={() => void handleJoin()} joining={joining} />
         </main>
       </div>
     )

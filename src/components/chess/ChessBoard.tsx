@@ -86,7 +86,9 @@ function CapturedTray({
   const lowTime = clockMs != null && clockMs <= 30000
   return (
     <div className="flex items-center gap-1.5 min-h-[1.75rem] px-1">
-      <span className="text-xs font-bold shrink-0">{glyphColor === 'w' ? '♚' : '♔'} {name}</span>
+      <span className="text-xs font-bold shrink-0">
+        {glyphColor === 'w' ? '♚' : '♔'} {name}
+      </span>
       <div className="flex items-center flex-wrap gap-0.5 leading-none">
         {pieces.map((type, i) => (
           <span
@@ -129,9 +131,7 @@ function Piece({ type, color }: { type: string; color: ChessColor }) {
       style={{
         color: color === 'w' ? '#f8fafc' : '#1e293b',
         textShadow:
-          color === 'w'
-            ? '0 0 1px #0f172a, 0 1px 2px rgba(0,0,0,0.45)'
-            : '0 0 1px #f8fafc, 0 1px 2px rgba(0,0,0,0.35)',
+          color === 'w' ? '0 0 1px #0f172a, 0 1px 2px rgba(0,0,0,0.45)' : '0 0 1px #f8fafc, 0 1px 2px rgba(0,0,0,0.35)',
       }}
     >
       {GLYPH[type]}
@@ -322,18 +322,18 @@ export function ChessGamePanel({
                   {isCheck && <span className="absolute inset-0 bg-rose-500/50" />}
                   {isSelected && <span className="absolute inset-0 ring-2 ring-inset ring-[var(--primary)]" />}
                   {piece && <Piece type={piece.type} color={piece.color} />}
-                  {target && !piece && (
-                    <span className="absolute w-1/4 h-1/4 rounded-full bg-black/30" />
-                  )}
-                  {target && piece && (
-                    <span className="absolute inset-1 rounded-full ring-4 ring-black/30" />
-                  )}
+                  {target && !piece && <span className="absolute w-1/4 h-1/4 rounded-full bg-black/30" />}
+                  {target && piece && <span className="absolute inset-1 rounded-full ring-4 ring-black/30" />}
                 </button>
               )
             })
           )}
         </div>
-        <CapturedTray {...trayFor(bottomColor)} clockMs={clockFor(bottomColor)} clockActive={clockActive(bottomColor)} />
+        <CapturedTray
+          {...trayFor(bottomColor)}
+          clockMs={clockFor(bottomColor)}
+          clockActive={clockActive(bottomColor)}
+        />
       </div>
 
       {pendingPromotion && (

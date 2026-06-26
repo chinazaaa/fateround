@@ -8,7 +8,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { code } = await params
   const roomCode = code.toUpperCase()
 
-  const { data: room } = await supabase.from('rooms').select('id, max_members, is_locked').eq('id', roomCode).maybeSingle()
+  const { data: room } = await supabase
+    .from('rooms')
+    .select('id, max_members, is_locked')
+    .eq('id', roomCode)
+    .maybeSingle()
   if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 })
 
   const body = await req.json()
@@ -54,7 +58,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return NextResponse.json({ error: `Room is full (${room.max_members} members max)` }, { status: 409 })
     }
   }
-  if (displayName.length > 30) return NextResponse.json({ error: 'Name must be 30 characters or less' }, { status: 400 })
+  if (displayName.length > 30)
+    return NextResponse.json({ error: 'Name must be 30 characters or less' }, { status: 400 })
 
   const { data: nameTaken } = await supabase
     .from('room_members')

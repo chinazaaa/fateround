@@ -110,7 +110,11 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   useEffect(() => {
     const channel = supabase
       .channel(`chess-host-${gameCode}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` }, scheduleLoad)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
+        scheduleLoad
+      )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'chess_sessions', filter: `game_id=eq.${gameCode}` },
@@ -281,11 +285,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const showPlayTab = hostPlays && game?.status !== 'waiting' && !gameFinished
   const isHostTurn = turnPlayerId === hostPlayerId
 
-  const clocks = useChessClocks(
-    gameCode,
-    session,
-    game?.status === 'active' && (tab === 'play' ? isHostTurn : true)
-  )
+  const clocks = useChessClocks(gameCode, session, game?.status === 'active' && (tab === 'play' ? isHostTurn : true))
 
   if (loading) {
     return (

@@ -1206,7 +1206,10 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     steps: [
       { title: 'Join a room', description: 'Two players join with their name — the host can join as a player too.' },
-      { title: 'White moves first', description: 'One player is White, the other Black. Tap a piece, then its destination.' },
+      {
+        title: 'White moves first',
+        description: 'One player is White, the other Black. Tap a piece, then its destination.',
+      },
       {
         title: 'Checkmate to win',
         description: 'Trap the enemy king with no legal escape. Stalemate or insufficient material is a draw.',
@@ -1225,8 +1228,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         question: 'Can more than 2 people play?',
-        answer:
-          'No — chess is strictly 2 players. The host can play as one of the two if they want in on the match.',
+        answer: 'No — chess is strictly 2 players. The host can play as one of the two if they want in on the match.',
       },
     ],
   }),

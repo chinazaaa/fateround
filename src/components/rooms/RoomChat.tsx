@@ -44,16 +44,12 @@ export function RoomChat({ messages, myMemberId, onSend }: Props) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto space-y-2 p-3 min-h-0">
-        {messages.length === 0 && (
-          <p className="text-center text-faint text-sm py-8">No messages yet. Say hi!</p>
-        )}
+        {messages.length === 0 && <p className="text-center text-faint text-sm py-8">No messages yet. Say hi!</p>}
         {messages.map((msg) => {
           const isMe = msg.member_id === myMemberId
           return (
             <div key={msg.id} className={`flex flex-col gap-0.5 ${isMe ? 'items-end' : 'items-start'}`}>
-              {!isMe && (
-                <span className="text-[10px] text-faint px-1">{msg.display_name}</span>
-              )}
+              {!isMe && <span className="text-[10px] text-faint px-1">{msg.display_name}</span>}
               <div
                 className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-snug ${
                   isMe

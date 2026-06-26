@@ -488,9 +488,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const firstTeamPref = raw.firstTeam
     const startingTeam: 'red' | 'blue' =
-      firstTeamPref === 'red' || firstTeamPref === 'blue'
-        ? firstTeamPref
-        : Math.random() < 0.5 ? 'red' : 'blue'
+      firstTeamPref === 'red' || firstTeamPref === 'blue' ? firstTeamPref : Math.random() < 0.5 ? 'red' : 'blue'
     const customPool = codewordsWordPoolForGame(game)
     if (parseQuestionSource(game.question_source, gameType) === 'custom') {
       if (!customPool || customPool.length < CODEWORDS_MIN_CUSTOM_POOL) {

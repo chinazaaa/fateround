@@ -1,11 +1,7 @@
 'use client'
 
 import { useCallback, useRef } from 'react'
-import {
-  WORD_HUNT_MIN_WORD_LENGTH,
-  areWordHuntCellsAdjacent,
-  wordFromPath,
-} from '@/lib/word-hunt'
+import { WORD_HUNT_MIN_WORD_LENGTH, areWordHuntCellsAdjacent, wordFromPath } from '@/lib/word-hunt'
 import { canExtendWordHuntPath } from '@/lib/word-hunt-client'
 
 /** Pixels before a pointer sequence counts as a drag (not a tap). */
@@ -190,10 +186,7 @@ export function useWordHuntGridInteraction(
   const onPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!draggingRef.current || disabled || activePointerRef.current !== e.pointerId) return
-      const dist = Math.hypot(
-        e.clientX - pointerStartRef.current.x,
-        e.clientY - pointerStartRef.current.y
-      )
+      const dist = Math.hypot(e.clientX - pointerStartRef.current.x, e.clientY - pointerStartRef.current.y)
       if (dist < DRAG_THRESHOLD_PX) return
       e.preventDefault()
       movedRef.current = true

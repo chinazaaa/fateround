@@ -33,9 +33,10 @@ function ReadOnlyBoard({ fen }: { fen: string }) {
           return (
             <div
               key={square}
-              className={['aspect-square flex items-center justify-center', isLight ? 'bg-[#eed9b5]' : 'bg-[#b58863]'].join(
-                ' '
-              )}
+              className={[
+                'aspect-square flex items-center justify-center',
+                isLight ? 'bg-[#eed9b5]' : 'bg-[#b58863]',
+              ].join(' ')}
             >
               {piece && (
                 <span
@@ -85,7 +86,13 @@ export function ChessFinalResultsShareBlock({
         <ShareResultsCaptureHeader game={game} />
         <p className="text-5xl sm:text-6xl leading-none text-center pt-1">{isDraw ? '🤝' : endedEarly ? '🏁' : '🏆'}</p>
         <p className="text-xl sm:text-2xl font-black text-center text-[var(--marry)]">
-          {isDraw ? "It's a draw!" : displayWinner ? `${displayWinner} wins!` : endedEarly ? 'Game ended early' : 'Game over'}
+          {isDraw
+            ? "It's a draw!"
+            : displayWinner
+              ? `${displayWinner} wins!`
+              : endedEarly
+                ? 'Game ended early'
+                : 'Game over'}
         </p>
         {resultDetail && !endedEarly && (
           <p className="text-sm text-center text-faint -mt-2 capitalize">{resultDetail}</p>

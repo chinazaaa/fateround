@@ -164,33 +164,36 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
   })
 
-  const join = useCallback(async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-    const name = (opts?.name ?? joinName).trim()
-    if (!name) return
-    setJoining(true)
-    try {
-      const res = await fetch('/api/players', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gameCode,
-          playerName: name,
-          ...joinExtras,
-          ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer ?? true } : {}),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toastError(data.error ?? 'Failed to join')
-        return
+  const join = useCallback(
+    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
+      const name = (opts?.name ?? joinName).trim()
+      if (!name) return
+      setJoining(true)
+      try {
+        const res = await fetch('/api/players', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gameCode,
+            playerName: name,
+            ...joinExtras,
+            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer ?? true } : {}),
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          toastError(data.error ?? 'Failed to join')
+          return
+        }
+        setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
+        setMyPlayerId(data.playerId)
+        await load()
+      } finally {
+        setJoining(false)
       }
-      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-      setMyPlayerId(data.playerId)
-      await load()
-    } finally {
-      setJoining(false)
-    }
-  }, [game?.status, gameCode, joinExtras, joinName, load, toastError])
+    },
+    [game?.status, gameCode, joinExtras, joinName, load, toastError]
+  )
 
   useRoomMemberAutoJoin({
     displayName: roomDisplayName,

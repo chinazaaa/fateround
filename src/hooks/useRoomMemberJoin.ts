@@ -19,9 +19,7 @@ export function useRoomMemberJoin(gameCode: string) {
 
     let cancelled = false
     setResolving(true)
-    fetch(
-      `/api/games/${encodeURIComponent(gameCode)}/room-member?member=${encodeURIComponent(memberCode)}`
-    )
+    fetch(`/api/games/${encodeURIComponent(gameCode)}/room-member?member=${encodeURIComponent(memberCode)}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!cancelled && data?.displayName) {
@@ -37,10 +35,7 @@ export function useRoomMemberJoin(gameCode: string) {
     }
   }, [gameCode, memberCode])
 
-  const joinExtras = useMemo(
-    () => (memberCode ? { roomMemberCode: memberCode } : {}),
-    [memberCode]
-  )
+  const joinExtras = useMemo(() => (memberCode ? { roomMemberCode: memberCode } : {}), [memberCode])
 
   return { memberCode, displayName, resolving, joinExtras, fromRoom: !!memberCode }
 }
@@ -104,11 +99,7 @@ export function useRoomMemberAutoJoin({
 }
 
 /** Prefill a name field when the room member profile loads. */
-export function useRoomMemberNamePrefill(
-  displayName: string | null,
-  name: string,
-  setName: (value: string) => void
-) {
+export function useRoomMemberNamePrefill(displayName: string | null, name: string, setName: (value: string) => void) {
   useEffect(() => {
     if (displayName && !name.trim()) {
       setName(displayName)

@@ -56,11 +56,7 @@ export async function canChessPlayAgain(
   if (gameStatus === 'waiting' || gameStatus === 'finished') return true
   if (gameStatus !== 'active') return false
 
-  const { data: session } = await supabase
-    .from('chess_sessions')
-    .select('status')
-    .eq('game_id', gameId)
-    .maybeSingle()
+  const { data: session } = await supabase.from('chess_sessions').select('status').eq('game_id', gameId).maybeSingle()
 
   return session?.status === 'finished'
 }
@@ -341,10 +337,7 @@ export async function processChessMove(
 }
 
 /** The player on the move ran out of their cumulative clock — the opponent wins. */
-export async function processChessExpireTurn(
-  supabase: SupabaseClient,
-  gameId: string
-): Promise<{ error?: string }> {
+export async function processChessExpireTurn(supabase: SupabaseClient, gameId: string): Promise<{ error?: string }> {
   const { session, error: loadError } = await loadSession(supabase, gameId)
   if (loadError) return { error: loadError }
   if (!session) return { error: 'Game not found' }

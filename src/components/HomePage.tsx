@@ -95,7 +95,9 @@ export function HomePage() {
             <span className="text-2xl shrink-0">🏠</span>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-body">Game Rooms</p>
-              <p className="text-[11px] sm:text-xs text-faint leading-snug">Permanent space for your crew — chat, leaderboard &amp; multiple games</p>
+              <p className="text-[11px] sm:text-xs text-faint leading-snug">
+                Permanent space for your crew — chat, leaderboard &amp; multiple games
+              </p>
             </div>
             <span className="text-faint text-sm shrink-0">→</span>
           </Link>

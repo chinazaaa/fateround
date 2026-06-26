@@ -15,8 +15,7 @@ export const ROUND_SELECT =
 export const SUDOKU_SUBMISSION_SELECT =
   'id,game_id,round_id,player_id,block_index,is_correct,points_awarded,submitted_at'
 
-export const WORD_HUNT_SUBMISSION_SELECT =
-  'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
+export const WORD_HUNT_SUBMISSION_SELECT = 'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
 
 export const VOTE_SELECT =
   'id,player_id,round_id,game_id,kiss_participant_id,marry_participant_id,kill_participant_id,pair_assignments,wyr_choice,target_player_id,target_participant_id,anime_choice,picked_number,created_at'

@@ -5,12 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { supabase } from '@/lib/supabase'
-import {
-  formatRoomTimezone,
-  getRoomTimezoneOptions,
-  getUserTimezone,
-  ROOM_DESCRIPTION_MAX,
-} from '@/lib/room-timezones'
+import { formatRoomTimezone, getRoomTimezoneOptions, getUserTimezone, ROOM_DESCRIPTION_MAX } from '@/lib/room-timezones'
 import type { RoomRow } from '@/lib/room-api'
 
 type PublicRoom = RoomRow & { memberCount: number }
@@ -73,38 +68,34 @@ export function RoomsPage() {
 
     const channel = supabase
       .channel('public_rooms_browse')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'rooms' },
-        (payload) => {
-          if (payload.eventType === 'DELETE') {
-            const id = (payload.old as { id?: string })?.id
-            if (id) setPublicRooms((prev) => prev.filter((room) => room.id !== id))
-            return
-          }
-
-          const room = (payload.eventType === 'INSERT' ? payload.new : payload.new) as RoomRow
-          const visible = room.is_public && !room.is_locked
-
-          if (!visible) {
-            setPublicRooms((prev) => prev.filter((r) => r.id !== room.id))
-            return
-          }
-
-          if (payload.eventType === 'UPDATE') {
-            setPublicRooms((prev) => {
-              if (!prev.some((r) => r.id === room.id)) {
-                void loadPublicRooms()
-                return prev
-              }
-              return prev.map((r) => (r.id === room.id ? { ...r, ...room } : r))
-            })
-            return
-          }
-
-          void loadPublicRooms()
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, (payload) => {
+        if (payload.eventType === 'DELETE') {
+          const id = (payload.old as { id?: string })?.id
+          if (id) setPublicRooms((prev) => prev.filter((room) => room.id !== id))
+          return
         }
-      )
+
+        const room = (payload.eventType === 'INSERT' ? payload.new : payload.new) as RoomRow
+        const visible = room.is_public && !room.is_locked
+
+        if (!visible) {
+          setPublicRooms((prev) => prev.filter((r) => r.id !== room.id))
+          return
+        }
+
+        if (payload.eventType === 'UPDATE') {
+          setPublicRooms((prev) => {
+            if (!prev.some((r) => r.id === room.id)) {
+              void loadPublicRooms()
+              return prev
+            }
+            return prev.map((r) => (r.id === room.id ? { ...r, ...room } : r))
+          })
+          return
+        }
+
+        void loadPublicRooms()
+      })
       .subscribe()
 
     const onVisible = () => {
@@ -136,7 +127,10 @@ export function RoomsPage() {
         }),
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.error ?? 'Failed to create room'); return }
+      if (!res.ok) {
+        setError(data.error ?? 'Failed to create room')
+        return
+      }
       if (data.creatorToken) {
         localStorage.setItem(`kmk_room_${data.roomCode}_creator`, data.creatorToken)
       }
@@ -155,8 +149,14 @@ export function RoomsPage() {
     setError('')
     try {
       const res = await fetch(`/api/rooms/${code}`)
-      if (res.status === 404) { setError('Room not found. Check the code and try again.'); return }
-      if (!res.ok) { setError('Something went wrong.'); return }
+      if (res.status === 404) {
+        setError('Room not found. Check the code and try again.')
+        return
+      }
+      if (!res.ok) {
+        setError('Something went wrong.')
+        return
+      }
       router.push(`/room/${code}`)
     } catch {
       setError('Something went wrong. Please try again.')
@@ -184,7 +184,8 @@ export function RoomsPage() {
             <div className="text-4xl">🏠</div>
             <h1 className="text-2xl font-black tracking-tight gradient-title">Game Rooms</h1>
             <p className="text-muted text-sm">
-              A permanent home base for your friend group. Play multiple games, track stats, and chat — no sign-up needed.
+              A permanent home base for your friend group. Play multiple games, track stats, and chat — no sign-up
+              needed.
             </p>
           </div>
 
@@ -270,11 +271,7 @@ export function RoomsPage() {
                   <label className="label-caps">
                     Timezone <span className="normal-case text-faint font-normal">(optional)</span>
                   </label>
-                  <select
-                    value={timezone}
-                    onChange={(e) => setTimezone(e.target.value)}
-                    className="input-field"
-                  >
+                  <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="input-field">
                     <option value="">No timezone</option>
                     {timezoneOptions.map((opt) => (
                       <option key={opt.value} value={opt.value}>
@@ -285,7 +282,9 @@ export function RoomsPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="label-caps">Max members <span className="normal-case text-faint font-normal">(optional)</span></label>
+                  <label className="label-caps">
+                    Max members <span className="normal-case text-faint font-normal">(optional)</span>
+                  </label>
                   <input
                     value={maxMembers}
                     onChange={(e) => setMaxMembers(e.target.value.replace(/[^0-9]/g, ''))}
@@ -342,7 +341,9 @@ export function RoomsPage() {
                 {browseLoading ? (
                   <p className="text-sm text-muted text-center py-6">Loading public rooms…</p>
                 ) : publicRooms.length === 0 ? (
-                  <p className="text-sm text-muted text-center py-6">No public rooms right now. Create one and set it to public!</p>
+                  <p className="text-sm text-muted text-center py-6">
+                    No public rooms right now. Create one and set it to public!
+                  </p>
                 ) : (
                   <ul className="space-y-2 max-h-80 overflow-y-auto -mx-1 px-1">
                     {publicRooms.map((room) => (
@@ -359,12 +360,8 @@ export function RoomsPage() {
                             {room.memberCount} member{room.memberCount !== 1 ? 's' : ''}
                           </span>
                         </div>
-                        {room.description && (
-                          <p className="text-xs text-muted line-clamp-2">{room.description}</p>
-                        )}
-                        {room.timezone && (
-                          <p className="text-xs text-faint">🕐 {formatRoomTimezone(room.timezone)}</p>
-                        )}
+                        {room.description && <p className="text-xs text-muted line-clamp-2">{room.description}</p>}
+                        {room.timezone && <p className="text-xs text-faint">🕐 {formatRoomTimezone(room.timezone)}</p>}
                         <button
                           type="button"
                           onClick={() => router.push(`/room/${room.id}`)}
@@ -391,7 +388,9 @@ export function RoomsPage() {
           </div>
 
           <p className="text-center text-faint text-xs">
-            <Link href="/" className="hover:text-body transition-colors">← Back to home</Link>
+            <Link href="/" className="hover:text-body transition-colors">
+              ← Back to home
+            </Link>
           </p>
         </div>
       </div>

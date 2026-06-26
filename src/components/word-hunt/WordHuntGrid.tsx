@@ -30,10 +30,7 @@ export function WordHuntGrid({
   const isReview = variant === 'review'
   const interactionDisabled = disabled || isReview
 
-  const interactionOptions = useMemo(
-    () => (validPrefixes ? { grid, validPrefixes } : undefined),
-    [grid, validPrefixes]
-  )
+  const interactionOptions = useMemo(() => (validPrefixes ? { grid, validPrefixes } : undefined), [grid, validPrefixes])
 
   const { gridRef, gridHandlers } = useWordHuntGridInteraction(
     selectedPath,
@@ -95,17 +92,18 @@ export function WordHuntGrid({
     <div
       ref={gridRef}
       className={[frameClass, 'touch-none relative select-none', isReview ? '' : ''].join(' ')}
-      style={{ touchAction: isReview ? undefined : 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as CSSProperties}
+      style={
+        {
+          touchAction: isReview ? undefined : 'none',
+          WebkitUserSelect: 'none',
+          WebkitTouchCallout: 'none',
+        } as CSSProperties
+      }
       onDragStart={(e) => e.preventDefault()}
       {...(isReview ? {} : gridHandlers)}
     >
       {showPathLine && (
-        <svg
-          className="absolute inset-0 pointer-events-none z-[2]"
-          width="100%"
-          height="100%"
-          aria-hidden
-        >
+        <svg className="absolute inset-0 pointer-events-none z-[2]" width="100%" height="100%" aria-hidden>
           <polyline
             points={linePoints.map((point) => `${point.x},${point.y}`).join(' ')}
             fill="none"

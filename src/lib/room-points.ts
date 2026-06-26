@@ -51,10 +51,7 @@ export function isCompetitiveRoomGame(gameType: GameType): boolean {
   )
 }
 
-export async function resolveRoomCodeForGame(
-  supabase: SupabaseClient,
-  gameId: string
-): Promise<string | null> {
+export async function resolveRoomCodeForGame(supabase: SupabaseClient, gameId: string): Promise<string | null> {
   const { data: roomGame } = await supabase
     .from('room_games')
     .select('room_id')
@@ -108,14 +105,9 @@ export async function linkPlayerToRoomMember(
   await supabase.from('players').update({ room_member_id: roomMemberId }).eq('id', playerId)
 }
 
-function memberIdForPlayer(
-  player: RoomPlayerRow,
-  members: RoomMemberRow[]
-): string | null {
+function memberIdForPlayer(player: RoomPlayerRow, members: RoomMemberRow[]): string | null {
   if (player.room_member_id) return player.room_member_id
-  const match = members.find(
-    (m) => m.display_name.toLowerCase() === player.name.toLowerCase()
-  )
+  const match = members.find((m) => m.display_name.toLowerCase() === player.name.toLowerCase())
   return match?.id ?? null
 }
 
@@ -185,11 +177,9 @@ async function getCompetitiveStandings(
     ])
     if (!states?.length) return session?.winner_player_id ? [session.winner_player_id] : []
     const playerRows = players.map((p) => ({ id: p.id, name: p.name })) as Player[]
-    return buildLudoStandings(
-      states as LudoPlayerState[],
-      playerRows,
-      session?.winner_player_id ?? null
-    ).map((row) => row.playerId)
+    return buildLudoStandings(states as LudoPlayerState[], playerRows, session?.winner_player_id ?? null).map(
+      (row) => row.playerId
+    )
   }
 
   if (isBingoGame(gameType)) {
@@ -267,10 +257,7 @@ async function getCompetitiveStandings(
   return []
 }
 
-export async function awardRoomGamePoints(
-  supabase: SupabaseClient,
-  gameId: string
-): Promise<void> {
+export async function awardRoomGamePoints(supabase: SupabaseClient, gameId: string): Promise<void> {
   const id = gameId.toUpperCase()
 
   const { data: roomGame } = await supabase
@@ -281,11 +268,7 @@ export async function awardRoomGamePoints(
 
   if (!roomGame || roomGame.points_awarded_at) return
 
-  const { data: game } = await supabase
-    .from('games')
-    .select('game_type, status')
-    .eq('id', id)
-    .maybeSingle()
+  const { data: game } = await supabase.from('games').select('game_type, status').eq('id', id).maybeSingle()
 
   if (!game || game.status !== 'finished') return
 
@@ -308,12 +291,7 @@ export async function awardRoomGamePoints(
 
   if (playerToMember.size > 0) {
     if (isCompetitiveRoomGame(gameType)) {
-      const standings = await getCompetitiveStandings(
-        supabase,
-        id,
-        gameType,
-        (players ?? []) as RoomPlayerRow[]
-      )
+      const standings = await getCompetitiveStandings(supabase, id, gameType, (players ?? []) as RoomPlayerRow[])
       const rankedMembers = new Set<string>()
 
       if (standings.length > 0) {
@@ -359,8 +337,5 @@ export async function awardRoomGamePoints(
       .eq('id', memberId)
   }
 
-  await supabase
-    .from('room_games')
-    .update({ points_awarded_at: new Date().toISOString() })
-    .eq('id', roomGame.id)
+  await supabase.from('room_games').update({ points_awarded_at: new Date().toISOString() }).eq('id', roomGame.id)
 }

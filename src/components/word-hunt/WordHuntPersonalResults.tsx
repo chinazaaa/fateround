@@ -1,11 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import {
-  buildWordHuntWordList,
-  sortWordHuntSubmissions,
-  type WordHuntSubmission,
-} from '@/lib/word-hunt'
+import { buildWordHuntWordList, sortWordHuntSubmissions, type WordHuntSubmission } from '@/lib/word-hunt'
 
 const INITIAL_VISIBLE = 15
 
@@ -56,10 +52,7 @@ export function WordHuntPersonalResults({ submissions, validWords = [] }: Props)
   const wordCount = sortedFound.length
   const totalScore = sortedFound.reduce((sum, entry) => sum + entry.points_awarded, 0)
 
-  const foundSet = useMemo(
-    () => new Set(sortedFound.map((entry) => entry.word.toLowerCase())),
-    [sortedFound]
-  )
+  const foundSet = useMemo(() => new Set(sortedFound.map((entry) => entry.word.toLowerCase())), [sortedFound])
   const allWords = useMemo(
     () => (validWords.length > 0 ? buildWordHuntWordList(validWords, foundSet) : []),
     [foundSet, validWords]
@@ -123,12 +116,7 @@ export function WordHuntPersonalResults({ submissions, validWords = [] }: Props)
             <div className={`${wordListPanelClass} max-h-[min(28rem,55vh)] overflow-y-auto`}>
               <div className="space-y-1">
                 {allWords.map((entry) => (
-                  <WordRow
-                    key={entry.word}
-                    word={entry.word}
-                    points={entry.points}
-                    missed={!entry.found}
-                  />
+                  <WordRow key={entry.word} word={entry.word} points={entry.points} missed={!entry.found} />
                 ))}
               </div>
             </div>
