@@ -1,10 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Chess, type Square } from 'chess.js'
 import { chessResultDetail, colorForPlayer, currentTurnPlayerId } from '@/lib/chess'
 import type { ChessColor, Player, ChessSession } from '@/types'
-import type { ChessClockState } from '@/hooks/useChessClocks'
 import { ChessCard, ChessTurnBar } from '@/components/chess/ChessChrome'
 
 /** Format remaining clock ms as m:ss (always reads as a clock, e.g. 10:00, 0:14, 0:05). */
@@ -13,6 +12,45 @@ function formatClock(ms: number): string {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+/**
+ * A single player's live clock, isolated in its own component. Only the active
+ * player's chip re-renders on a tick — the board itself doesn't, so moving
+ * pieces stays smooth and the countdown doesn't stutter/jump under render load.
+ */
+function ChessClockChip({ session, color }: { session: ChessSession; color: ChessColor }) {
+  const [, bump] = useState(0)
+  const timed = session.white_time_ms != null && session.black_time_ms != null
+  const active = session.status === 'active' && session.current_turn === color
+
+  useEffect(() => {
+    if (!timed || !active) return
+    const id = window.setInterval(() => bump((n) => n + 1), 250)
+    return () => window.clearInterval(id)
+  }, [timed, active])
+
+  if (!timed) return null
+
+  const base = (color === 'w' ? session.white_time_ms : session.black_time_ms) ?? 0
+  const startedAt = session.turn_started_at ? Date.parse(session.turn_started_at) : null
+  const ms = active && startedAt != null ? Math.max(0, base - Math.max(0, Date.now() - startedAt)) : base
+  const lowTime = ms <= 30000
+
+  return (
+    <span
+      className={[
+        'ml-auto shrink-0 tabular-nums font-black rounded-md px-2 py-0.5 text-sm border',
+        active
+          ? lowTime
+            ? 'bg-rose-500/20 border-rose-400 text-rose-300 animate-pulse'
+            : 'bg-[var(--primary)]/15 border-[var(--primary)]/50 text-[var(--foreground)]'
+          : 'bg-[var(--surface-inset-bg)] border-[var(--border)] text-muted',
+      ].join(' ')}
+    >
+      {formatClock(ms)}
+    </span>
+  )
 }
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const
@@ -74,16 +112,13 @@ function CapturedTray({
   name,
   pieces,
   glyphColor,
-  clockMs,
-  clockActive,
+  clock,
 }: {
   name: string
   pieces: string[]
   glyphColor: ChessColor
-  clockMs?: number | null
-  clockActive?: boolean
+  clock?: ReactNode
 }) {
-  const lowTime = clockMs != null && clockMs <= 30000
   return (
     <div className="flex items-center gap-1.5 min-h-[1.75rem] px-1">
       <span className="text-xs font-bold shrink-0">
@@ -106,20 +141,7 @@ function CapturedTray({
           </span>
         ))}
       </div>
-      {clockMs != null && (
-        <span
-          className={[
-            'ml-auto shrink-0 tabular-nums font-black rounded-md px-2 py-0.5 text-sm border',
-            clockActive
-              ? lowTime
-                ? 'bg-rose-500/20 border-rose-400 text-rose-300 animate-pulse'
-                : 'bg-[var(--primary)]/15 border-[var(--primary)]/50 text-[var(--foreground)]'
-              : 'bg-[var(--surface-inset-bg)] border-[var(--border)] text-muted',
-          ].join(' ')}
-        >
-          {formatClock(clockMs)}
-        </span>
-      )}
+      {clock}
     </div>
   )
 }
@@ -127,7 +149,7 @@ function CapturedTray({
 function Piece({ type, color }: { type: string; color: ChessColor }) {
   return (
     <span
-      className="relative z-10 select-none leading-none text-[7.5vw] sm:text-[2.4rem]"
+      className="relative z-10 select-none leading-none text-[7.5vw] sm:text-[2.2rem] lg:text-[2.8rem]"
       style={{
         color: color === 'w' ? '#f8fafc' : '#1e293b',
         textShadow:
@@ -144,7 +166,6 @@ export function ChessGamePanel({
   players,
   myPlayerId,
   isMyTurn,
-  clocks,
   timeControlSeconds,
   onMove,
   onResign,
@@ -154,7 +175,6 @@ export function ChessGamePanel({
   players: Player[]
   myPlayerId: string | null
   isMyTurn: boolean
-  clocks?: ChessClockState
   timeControlSeconds?: number
   onMove?: (from: string, to: string, promotion?: 'q' | 'r' | 'b' | 'n') => void
   onResign?: () => void
@@ -222,10 +242,7 @@ export function ChessGamePanel({
 
   const bottomColor: ChessColor = flip ? 'b' : 'w'
   const topColor: ChessColor = flip ? 'w' : 'b'
-
-  const clockFor = (color: ChessColor): number | null | undefined =>
-    clocks?.timed ? (color === 'w' ? clocks.whiteMs : clocks.blackMs) : undefined
-  const clockActive = (color: ChessColor): boolean => session.status === 'active' && session.current_turn === color
+  const timed = session.white_time_ms != null && session.black_time_ms != null
 
   const handleSquareClick = (square: string) => {
     if (!interactive) return
@@ -262,13 +279,7 @@ export function ChessGamePanel({
   return (
     <div className="space-y-4">
       {session.status === 'active' && (
-        <ChessTurnBar
-          turnPlayerName={turnPlayer?.name}
-          isMyTurn={isMyTurn}
-          secondsLeft={clocks?.activeSeconds ?? 0}
-          hasTimer={clocks?.timed}
-          inCheck={session.in_check}
-        />
+        <ChessTurnBar turnPlayerName={turnPlayer?.name} isMyTurn={isMyTurn} inCheck={session.in_check} />
       )}
 
       <ChessCard className="p-3 flex items-center justify-between text-sm">
@@ -277,7 +288,7 @@ export function ChessGamePanel({
         <span className="font-bold">♚ {black?.name ?? 'Black'}</span>
       </ChessCard>
 
-      {clocks?.timed && timeControlSeconds ? (
+      {timed && timeControlSeconds ? (
         <p className="text-center text-faint text-xs -mt-2">
           ⏱ {Math.round(timeControlSeconds / 60)} min each — your clock only counts down on your turn
         </p>
@@ -293,8 +304,8 @@ export function ChessGamePanel({
         </ChessCard>
       )}
 
-      <div className="max-w-md mx-auto w-full space-y-1.5">
-        <CapturedTray {...trayFor(topColor)} clockMs={clockFor(topColor)} clockActive={clockActive(topColor)} />
+      <div className="max-w-md sm:max-w-lg lg:max-w-xl mx-auto w-full space-y-1.5">
+        <CapturedTray {...trayFor(topColor)} clock={<ChessClockChip session={session} color={topColor} />} />
         <div className="grid grid-cols-8 rounded-lg overflow-hidden border-2 border-[var(--border-strong)] shadow-lg">
           {orderedRanks.map((rank) =>
             orderedFiles.map((file) => {
@@ -329,11 +340,7 @@ export function ChessGamePanel({
             })
           )}
         </div>
-        <CapturedTray
-          {...trayFor(bottomColor)}
-          clockMs={clockFor(bottomColor)}
-          clockActive={clockActive(bottomColor)}
-        />
+        <CapturedTray {...trayFor(bottomColor)} clock={<ChessClockChip session={session} color={bottomColor} />} />
       </div>
 
       {pendingPromotion && (

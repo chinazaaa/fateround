@@ -3,7 +3,6 @@
 import type { ReactNode } from 'react'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
-import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 
 export function ChessShell({
   children,
@@ -133,19 +132,12 @@ export function ChessLoadingScreen() {
 export function ChessTurnBar({
   turnPlayerName,
   isMyTurn,
-  secondsLeft,
-  hasTimer,
   inCheck,
 }: {
   turnPlayerName?: string
   isMyTurn?: boolean
-  /** Only used for the low-time ticking sound — the visible clocks live on the board. */
-  secondsLeft?: number
-  hasTimer?: boolean
   inCheck?: boolean
 }) {
-  useTimerTickSound(secondsLeft ?? 0, !!hasTimer)
-
   return (
     <div
       className={[
