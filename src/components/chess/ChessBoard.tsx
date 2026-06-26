@@ -7,13 +7,11 @@ import type { ChessColor, Player, ChessSession } from '@/types'
 import type { ChessClockState } from '@/hooks/useChessClocks'
 import { ChessCard, ChessTurnBar } from '@/components/chess/ChessChrome'
 
-/** Format remaining clock ms as m:ss, or s.t under 20 seconds. */
+/** Format remaining clock ms as m:ss (always reads as a clock, e.g. 10:00, 0:14, 0:05). */
 function formatClock(ms: number): string {
-  const totalSeconds = ms / 1000
-  if (ms <= 0) return '0:00'
-  if (totalSeconds < 20) return totalSeconds.toFixed(1)
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000))
   const minutes = Math.floor(totalSeconds / 60)
-  const seconds = Math.floor(totalSeconds % 60)
+  const seconds = totalSeconds % 60
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
@@ -151,6 +149,7 @@ export function ChessGamePanel({
   myPlayerId,
   isMyTurn,
   clocks,
+  timeControlSeconds,
   onMove,
   onResign,
   acting,
@@ -160,6 +159,7 @@ export function ChessGamePanel({
   myPlayerId: string | null
   isMyTurn: boolean
   clocks?: ChessClockState
+  timeControlSeconds?: number
   onMove?: (from: string, to: string, promotion?: 'q' | 'r' | 'b' | 'n') => void
   onResign?: () => void
   acting?: boolean
@@ -281,6 +281,12 @@ export function ChessGamePanel({
         <span className="text-faint">vs</span>
         <span className="font-bold">♚ {black?.name ?? 'Black'}</span>
       </ChessCard>
+
+      {clocks?.timed && timeControlSeconds ? (
+        <p className="text-center text-faint text-xs -mt-2">
+          ⏱ {Math.round(timeControlSeconds / 60)} min each — your clock only counts down on your turn
+        </p>
+      ) : null}
 
       {finished && (
         <ChessCard className="p-4 text-center space-y-1">

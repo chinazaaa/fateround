@@ -387,6 +387,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
           myPlayerId={hostPlayerId}
           isMyTurn={isHostTurn}
           clocks={clocks}
+          timeControlSeconds={game?.timer_seconds ?? 0}
           onMove={movePiece}
           onResign={resign}
           acting={hostActing}
@@ -423,6 +424,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
               myPlayerId={hostPlayerId}
               isMyTurn={false}
               clocks={clocks}
+              timeControlSeconds={game?.timer_seconds ?? 0}
             />
           )}
 
