@@ -4,20 +4,24 @@ resource "aws_security_group" "alb" {
   description = "Public ingress to the load balancer"
   vpc_id      = aws_vpc.main.id
 
+  # When restrict_alb_to_cloudflare is on, only Cloudflare's edge can reach the
+  # ALB (so clients can't bypass Cloudflare); otherwise open to the internet.
   ingress {
-    description = "HTTP"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    description      = "HTTP"
+    from_port        = 80
+    to_port          = 80
+    protocol         = "tcp"
+    cidr_blocks      = local.alb_ingress_ipv4
+    ipv6_cidr_blocks = local.alb_ingress_ipv6
   }
 
   ingress {
-    description = "HTTPS"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    description      = "HTTPS"
+    from_port        = 443
+    to_port          = 443
+    protocol         = "tcp"
+    cidr_blocks      = local.alb_ingress_ipv4
+    ipv6_cidr_blocks = local.alb_ingress_ipv6
   }
 
   egress {

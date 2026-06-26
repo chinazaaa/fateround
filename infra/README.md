@@ -16,6 +16,7 @@ Supabase remains the managed backend. **This stack does not create a database** 
   - `CRON_SECRET` — `SecureString`
 - **IAM instance role** (`iam.tf`): ECR auth + pull (scoped to this repo), read of this app's SSM parameters, `kms:Decrypt` restricted to SSM, and SSM Session Manager access (no SSH keys / bastion).
 - **EventBridge Scheduler → Lambda** (`scheduler.tf`, `lambda/tick/index.mjs`): on `tick_schedule`, a Lambda POSTs to `/api/describe-it/tick` with the `CRON_SECRET` as a Bearer token. This replaces the Vercel cron that the Hobby plan could not run. The endpoint is idempotent and only acts on sessions past their deadline.
+- **(Optional) Cloudflare DNS record** (`cloudflare.tf`): when `cloudflare_enabled` is set, a `CNAME` pointing your hostname at the ALB. Off by default — see [Cloudflare (optional)](#cloudflare-optional).
 
 > **Database:** none of this provisions a database. Supabase stays as the managed backend; the app talks to it directly using the SSM-stored values.
 
@@ -102,6 +103,48 @@ app_base_url        = "https://play.example.com"
 ```
 
 and re-apply. `app_base_url` is also used by the tick scheduler; if empty it falls back to the ALB over HTTP.
+
+## Cloudflare (optional)
+
+Everything here is **off by default** and inert unless you set the corresponding variables — the stack works fine without a Cloudflare account. When enabled, Terraform can:
+
+- Create a **DNS `CNAME`** (`cloudflare_record.app`) for `cloudflare_record_name` in zone `cloudflare_zone_id`, pointing at the ALB's DNS name (CNAME because the ALB has no static IP). With `cloudflare_proxied = true` (the default) the record is proxied through Cloudflare's edge for TLS/WAF/CDN.
+- Optionally **lock the ALB down to Cloudflare** (`restrict_alb_to_cloudflare = true`): the ALB security group's ingress is set to Cloudflare's published edge IP ranges (IPv4 + IPv6, via the `cloudflare_ip_ranges` data source) instead of `0.0.0.0/0`, so traffic can't bypass Cloudflare to hit the ALB directly.
+
+### Credentials needed at apply time
+
+Only required when the feature is enabled:
+
+- A **Cloudflare API token** scoped **DNS:Edit** for the zone — pass it as `cloudflare_api_token` or set the `CLOUDFLARE_API_TOKEN` env var (the variable falls back to the env var when empty).
+- The **Zone ID** of your domain, as `cloudflare_zone_id`.
+
+### TLS guidance
+
+When the record is **proxied** (`cloudflare_proxied = true`), Cloudflare terminates TLS at its edge and connects to the ALB as the origin. Use Cloudflare SSL mode **Full (strict)** and put a certificate on the ALB origin, one of:
+
+- **Keep ACM** — set `enable_https = true` and `acm_certificate_arn` so the ALB serves a valid public cert; or
+- **Import a free Cloudflare Origin Certificate** into AWS ACM and pass its ARN as `acm_certificate_arn` (still requires `enable_https = true`).
+
+Do **not** use Cloudflare's **Flexible** SSL mode: it leaves the Cloudflare→ALB hop unencrypted.
+
+### Locking the ALB to Cloudflare
+
+With `restrict_alb_to_cloudflare = true`, only Cloudflare's edge IPs can reach the ALB — direct client access is blocked. In that mode you **must keep the record proxied** (`cloudflare_proxied = true`), otherwise visitors resolve straight to the ALB and are denied.
+
+### Example tfvars
+
+```hcl
+cloudflare_enabled         = true
+cloudflare_api_token       = "REPLACE_WITH_DNS_EDIT_TOKEN"  # or set CLOUDFLARE_API_TOKEN
+cloudflare_zone_id         = "REPLACE_WITH_ZONE_ID"
+cloudflare_record_name     = "play"        # -> play.example.com
+cloudflare_proxied         = true          # orange cloud: TLS/WAF/CDN at the edge
+restrict_alb_to_cloudflare = true          # lock the ALB to Cloudflare IPs
+
+# With proxied = true, use Cloudflare SSL "Full (strict)" and put a cert on the
+# ALB origin: either keep ACM (enable_https + acm_certificate_arn) or import a
+# free Cloudflare Origin Certificate into ACM and use its ARN.
+```
 
 ## Operating
 

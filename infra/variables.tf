@@ -123,3 +123,44 @@ variable "tick_schedule" {
   type        = string
   default     = "rate(1 minute)"
 }
+
+# ---------------------------------------------------------------------------
+# Cloudflare (optional — all off by default)
+# ---------------------------------------------------------------------------
+
+variable "cloudflare_enabled" {
+  description = "Create a Cloudflare DNS record (CNAME) pointing at the ALB."
+  type        = bool
+  default     = false
+}
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token with DNS:Edit on the zone. Falls back to CLOUDFLARE_API_TOKEN env var."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare Zone ID for the domain."
+  type        = string
+  default     = ""
+}
+
+variable "cloudflare_record_name" {
+  description = "Hostname for the DNS record (e.g. 'play' or 'play.example.com')."
+  type        = string
+  default     = ""
+}
+
+variable "cloudflare_proxied" {
+  description = "Proxy the record through Cloudflare (orange cloud) for TLS/WAF/CDN."
+  type        = bool
+  default     = true
+}
+
+variable "restrict_alb_to_cloudflare" {
+  description = "Lock the ALB security group to Cloudflare's edge IP ranges, so traffic can't bypass Cloudflare."
+  type        = bool
+  default     = false
+}

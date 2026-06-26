@@ -21,3 +21,15 @@ cron_secret       = "REPLACE_WITH_A_LONG_RANDOM_STRING"
 # app_base_url        = "https://play.example.com"
 
 tick_schedule = "rate(1 minute)"
+
+# Cloudflare (optional). Leave disabled to manage DNS/TLS in the dashboard.
+# cloudflare_enabled         = true
+# cloudflare_api_token       = "REPLACE_WITH_DNS_EDIT_TOKEN"  # or set CLOUDFLARE_API_TOKEN
+# cloudflare_zone_id         = "REPLACE_WITH_ZONE_ID"
+# cloudflare_record_name     = "play"        # -> play.example.com
+# cloudflare_proxied         = true          # orange cloud: TLS/WAF/CDN at the edge
+# restrict_alb_to_cloudflare = true          # lock the ALB to Cloudflare IPs
+#
+# With proxied = true, use Cloudflare SSL "Full (strict)" and put a cert on the
+# ALB origin: either keep ACM (enable_https + acm_certificate_arn) or import a
+# free Cloudflare Origin Certificate into ACM and use its ARN.
