@@ -10,7 +10,17 @@ import { ShareResults } from '@/components/ShareResults'
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const
 const RANKS = [8, 7, 6, 5, 4, 3, 2, 1] as const
-const GLYPH: Record<string, string> = { p: '♟', r: '♜', n: '♞', b: '♝', q: '♛', k: '♚' }
+// U+FE0E forces monochrome text rendering so our CSS `color` applies (iOS would
+// otherwise render these as emoji, making White's pieces look dark/black).
+const VS = '\uFE0E'
+const GLYPH: Record<string, string> = {
+  p: `♟${VS}`,
+  r: `♜${VS}`,
+  n: `♞${VS}`,
+  b: `♝${VS}`,
+  q: `♛${VS}`,
+  k: `♚${VS}`,
+}
 
 function ReadOnlyBoard({ fen }: { fen: string }) {
   const chess = useMemo(() => {

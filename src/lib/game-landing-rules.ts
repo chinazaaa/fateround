@@ -844,6 +844,40 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  describe_it: [
+    {
+      title: 'Objective',
+      points: [
+        'Split into teams and score points by guessing words. The team with the most words guessed across all rounds wins.',
+        'Each round, one team is on the clock — a describer gives clues for secret words and teammates race to guess them.',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        'Players join with their name and pick a team. The host chooses how many teams (2–4) and how many rounds.',
+        'Each team needs at least 2 players — one to describe and at least one to guess.',
+        'The host sets the turn length (e.g. 2 minutes). Built-in words are provided; the host can also add their own.',
+      ],
+    },
+    {
+      title: 'Taking a turn',
+      points: [
+        'The describer sees a secret word and types clues for it — but can’t use the word itself.',
+        'Teammates type their guesses; the first correct guess scores a point and a new word appears instantly.',
+        'The describer can skip a tough word. Only the team on the clock can score during their turn.',
+      ],
+    },
+    {
+      title: 'Winning',
+      points: [
+        'When a team’s timer runs out, their words are tallied and the next team takes over.',
+        'The describer role rotates each round so everyone gets a turn to give clues.',
+        'After every team has played all rounds, the highest total wins. A tie is shared.',
+      ],
+    },
+  ],
+
   scrabble: [
     {
       title: 'Objective',
@@ -878,7 +912,6 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
   ],
-
   word_hunt: [
     {
       title: 'Objective',

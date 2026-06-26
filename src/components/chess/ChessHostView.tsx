@@ -18,7 +18,7 @@ import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { useChessClocks } from '@/hooks/useChessClocks'
+import { useChessClockExpiry } from '@/hooks/useChessClocks'
 import { ChessGamePanel } from '@/components/chess/ChessBoard'
 import { ChessFinalResultsShareBlock } from '@/components/chess/ChessFinalResultsShareBlock'
 import { ChessPrimaryButton } from '@/components/chess/ChessChrome'
@@ -285,7 +285,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const showPlayTab = hostPlays && game?.status !== 'waiting' && !gameFinished
   const isHostTurn = turnPlayerId === hostPlayerId
 
-  const clocks = useChessClocks(gameCode, session, game?.status === 'active' && (tab === 'play' ? isHostTurn : true))
+  useChessClockExpiry(gameCode, session, game?.status === 'active')
 
   if (loading) {
     return (
@@ -394,7 +394,6 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
           players={players}
           myPlayerId={hostPlayerId}
           isMyTurn={isHostTurn}
-          clocks={clocks}
           timeControlSeconds={game?.timer_seconds ?? 0}
           onMove={movePiece}
           onResign={resign}
@@ -431,7 +430,6 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
               players={players}
               myPlayerId={hostPlayerId}
               isMyTurn={false}
-              clocks={clocks}
               timeControlSeconds={game?.timer_seconds ?? 0}
             />
           )}

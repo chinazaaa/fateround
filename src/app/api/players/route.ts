@@ -8,6 +8,7 @@ import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
 import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
 import { createBingoCardForPlayer } from '@/lib/bingo'
 import { assignCodewordsLateJoinOperative, codewordsAllowsPlayerChanges, removeCodewordsPlayer } from '@/lib/codewords'
+import { assignDescribeItLateJoinTeam } from '@/lib/describe-it'
 import {
   parseGameType,
   isNameOnlyPlayerJoin,
@@ -22,6 +23,7 @@ import {
   isLudoGame,
   isTicTacToeGame,
   isChessGame,
+  isDescribeItGame,
   isTwoTruthsGame,
 } from '@/lib/game-types'
 import { fetchGamePlayerLimits, isLobbyLimitGameType, lobbyMaxPlayersFromGame } from '@/lib/game-limits'
@@ -544,7 +546,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'playerName is required' }, { status: 400 })
     }
 
-    const maxPlayers = lobbyMaxPlayersFromGame(isChessGame(rowGameType) ? 'chess' : 'tic_tac_toe', gameRow, lobbyLimits)
+    const limitKey = isChessGame(rowGameType) ? 'chess' : 'tic_tac_toe'
+    const maxPlayers = lobbyMaxPlayersFromGame(limitKey, gameRow, lobbyLimits)
     const { count: playerCount } = await supabase
       .from('players')
       .select('id', { count: 'exact', head: true })
@@ -632,6 +635,58 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: assignError }, { status: 500 })
       }
       return jsonPlayerJoin(roomMemberId, player, gameRow as Game, role ? { codewordsRole: role } : {})
+    }
+
+    return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
+  }
+
+  if (isDescribeItGame(rowGameType)) {
+    const joinCheck = canJoinGame(gameRow as Game)
+    if (!joinCheck.ok) {
+      return NextResponse.json({ error: joinCheck.error }, { status: 400 })
+    }
+    const choiceError = lateJoinChoiceError(gameRow as Game, rawJoinAsViewer)
+    if (choiceError) return NextResponse.json({ error: choiceError }, { status: 400 })
+
+    if (!name) {
+      return NextResponse.json({ error: 'playerName is required' }, { status: 400 })
+    }
+
+    const maxPlayers = lobbyMaxPlayersFromGame('describe_it', gameRow, lobbyLimits)
+    const { count: playerCount } = await supabase
+      .from('players')
+      .select('id', { count: 'exact', head: true })
+      .eq('game_id', gameId)
+    if ((playerCount ?? 0) >= maxPlayers) {
+      return NextResponse.json({ error: 'This game is full' }, { status: 400 })
+    }
+
+    if (await nameTaken(gameId, name)) {
+      return NextResponse.json({ error: 'That name is already taken' }, { status: 400 })
+    }
+
+    const isSpectator = spectatorOnJoin(gameRow as Game, rawJoinAsViewer)
+    const { data: player, error } = await supabase
+      .from('players')
+      .insert({
+        game_id: gameId,
+        name,
+        gender: 'both',
+        identity_gender: null,
+        participant_id: null,
+        spectator: isSpectator,
+      })
+      .select()
+      .single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Late joiner as a player → auto-assign to the smallest team so they can play.
+    if (gameRow.status === 'active' && !isSpectator) {
+      const { error: assignError } = await assignDescribeItLateJoinTeam(supabase, gameId, player.id)
+      if (assignError) {
+        await supabase.from('players').delete().eq('id', player.id)
+        return NextResponse.json({ error: assignError }, { status: 500 })
+      }
     }
 
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game)

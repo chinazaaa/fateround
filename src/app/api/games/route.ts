@@ -35,6 +35,7 @@ import {
   isLudoGame,
   isTicTacToeGame,
   isChessGame,
+  isDescribeItGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
@@ -94,6 +95,7 @@ import { clampMonopolyGameDuration, clampMonopolyTurnTimer } from '@/lib/monopol
 import { clampWhotGameDuration } from '@/lib/whot'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampChessTimer } from '@/lib/chess'
+import { clampDescribeItRounds, clampDescribeItTeams } from '@/lib/describe-it'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, type LateJoinPolicy } from '@/lib/viewers'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -208,6 +210,7 @@ export async function POST(req: NextRequest) {
     codewords_player_picks: rawCodewordsPlayerPicks,
     codewords_late_join: rawCodewordsLateJoin,
     codewords_randomize_teams: rawCodewordsRandomizeTeams,
+    describe_it_num_teams: rawDescribeItNumTeams,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -258,7 +261,8 @@ export async function POST(req: NextRequest) {
     isSudokuGame(game_type) ||
     isWordHuntGame(game_type) ||
     isTicTacToeGame(game_type) ||
-    isChessGame(game_type)
+    isChessGame(game_type) ||
+    isDescribeItGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
         ? 'import'
@@ -314,15 +318,17 @@ export async function POST(req: NextRequest) {
     isTicTacToeGame(game_type) ||
     isChessGame(game_type)
       ? 1
-      : isWhoSaidThis(game_type)
-        ? wstAutoRoundCount(participants.length)
-        : isHotSeat(game_type)
-          ? clampHotSeatMaxCap(rounds_count ?? HOT_SEAT_MIN_PLAYERS, hotSeatMaxCapUpperBound(0, participants.length))
-          : isPickANumber(game_type)
-            ? clampPanRounds(rounds_count ?? 5)
-            : isTriviaGame(game_type)
-              ? Math.min(Math.max(Number(rounds_count) || TRIVIA_DEFAULT_ROUNDS, 1), maxRounds)
-              : Math.min(Math.max(Number(rounds_count) || 3, 1), maxRounds)
+      : isDescribeItGame(game_type)
+        ? clampDescribeItRounds(rounds_count)
+        : isWhoSaidThis(game_type)
+          ? wstAutoRoundCount(participants.length)
+          : isHotSeat(game_type)
+            ? clampHotSeatMaxCap(rounds_count ?? HOT_SEAT_MIN_PLAYERS, hotSeatMaxCapUpperBound(0, participants.length))
+            : isPickANumber(game_type)
+              ? clampPanRounds(rounds_count ?? 5)
+              : isTriviaGame(game_type)
+                ? Math.min(Math.max(Number(rounds_count) || TRIVIA_DEFAULT_ROUNDS, 1), maxRounds)
+                : Math.min(Math.max(Number(rounds_count) || 3, 1), maxRounds)
 
   if (
     question_source === 'custom' &&
@@ -414,7 +420,13 @@ export async function POST(req: NextRequest) {
                               )
                             : isChessGame(game_type)
                               ? resolveMaxPlayers('chess', rawMaxPlayers, lobbyDefaultMaxPlayers('chess', lobbyLimits))
-                              : null
+                              : isDescribeItGame(game_type)
+                                ? resolveMaxPlayers(
+                                    'describe_it',
+                                    rawMaxPlayers,
+                                    lobbyDefaultMaxPlayers('describe_it', lobbyLimits)
+                                  )
+                                : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
@@ -466,6 +478,7 @@ export async function POST(req: NextRequest) {
             game_duration_seconds: clampNpatGameDuration(rawGameDurationSeconds ?? NPAT_DEFAULT_GAME_DURATION),
           }
         : {}),
+    ...(isDescribeItGame(game_type) ? { describe_it_num_teams: clampDescribeItTeams(rawDescribeItNumTeams) } : {}),
     ...(gameSupportsViewerSetting(game_type)
       ? { allow_viewers: viewersAllowed, allow_late_players: latePlayersAllowed }
       : {}),

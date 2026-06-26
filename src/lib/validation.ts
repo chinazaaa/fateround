@@ -72,6 +72,7 @@ const gameTypeEnum = z.enum([
   'tic_tac_toe',
   'word_hunt',
   'chess',
+  'describe_it',
 ])
 
 const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
@@ -123,6 +124,7 @@ export const createGameSchema = z.object({
   max_players: z.coerce.number().int().min(1).max(100).optional(),
   codewords_player_picks: z.boolean().optional(),
   codewords_late_join: z.boolean().optional(),
+  describe_it_num_teams: z.coerce.number().int().min(2).max(4).optional(),
   allow_viewers: z.boolean().optional(),
   allow_late_players: z.boolean().optional(),
   late_join_policy: z.enum(['lobby_only', 'viewers_only', 'viewers_and_players']).optional(),
@@ -761,6 +763,42 @@ export const chessResignSchema = z.object({
 
 export type ChessMoveInput = z.infer<typeof chessMoveSchema>
 
+export const describeItTeamSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  team: z.coerce.number().int().min(1).max(4),
+})
+
+export const describeItClueSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  clue: z.string().trim().min(1).max(100),
+})
+
+export const describeItGuessSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  text: z.string().trim().min(1).max(80),
+})
+
+export const describeItPlayerActionSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+})
+
+export const describeItGameSchema = z.object({
+  gameId: gameCodeString(),
+})
+
+export const describeItSettingsSchema = z.object({
+  gameId: z.string().trim().min(1).max(12),
+  hostToken: z.string().min(1),
+  numTeams: z.coerce.number().int().min(2).max(4).optional(),
+  turnSeconds: z.coerce.number().int().optional(),
+  rounds: z.coerce.number().int().optional(),
+  maxPlayers: z.coerce.number().int().min(4).max(20).optional(),
+  words: z.string().max(8000).optional(),
+})
 // Scrabble (POST /api/scrabble/*)
 
 export const scrabbleActionSchema = z.object({

@@ -8,6 +8,7 @@ import {
   isLudoGame,
   isTicTacToeGame,
   isChessGame,
+  isDescribeItGame,
   isWordHuntGame,
   isMostLikelyTo,
   isNeverHaveIEver,
@@ -72,6 +73,7 @@ export function gameOffersLateJoinChoice(gameType: GameType): boolean {
   return (
     isTriviaGame(gameType) ||
     isCodewordsGame(gameType) ||
+    isDescribeItGame(gameType) ||
     isBingoGame(gameType) ||
     isWordHuntGame(gameType) ||
     isWouldYouRather(gameType) ||
