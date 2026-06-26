@@ -31,6 +31,7 @@ import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
@@ -268,33 +269,43 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (screen === 'lobby') {
+    const me = players.find((p) => p.id === myPlayerId)
     return (
-      <DescribeItShell title={game?.title ?? cfg.label} compact>
-        <DescribeItCard className="p-4 space-y-3">
-          <p className="text-center text-sm font-bold">Pick your team</p>
-          <DescribeItTeamRoster
-            numTeams={numTeams}
-            teamRows={teamPlain}
-            players={players}
-            myPlayerId={myPlayerId}
-            onPick={pickTeam}
-            picking={picking}
-          />
-          <p className="text-center text-faint text-xs">Waiting for the host to start the game…</p>
-          <p className="text-center">
-            <GameRulesLink gameType="describe_it" variant="subtle" />
-          </p>
-        </DescribeItCard>
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-          />
-        )}
-      </DescribeItShell>
+      <GameJoinLobbyShell gameCode={gameCode}>
+        <GameLobbyWaitingPanel
+          gameCode={gameCode}
+          players={players}
+          myPlayerId={myPlayerId}
+          myPlayerName={myName}
+          onRenamed={() => void load()}
+          onLeft={handlePlayerLeft}
+          title="Waiting for host to start"
+          rulesLink={<GameRulesLink gameType="describe_it" variant="subtle" />}
+          isSpectator={me?.spectator === true}
+          onReady={async () => {
+            if (!myPlayerId) return
+            await fetch('/api/players/ready', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+            })
+            await load()
+          }}
+          activity={
+            <DescribeItCard className="p-4 space-y-2">
+              <p className="text-center text-sm font-bold">Pick your team</p>
+              <DescribeItTeamRoster
+                numTeams={numTeams}
+                teamRows={teamPlain}
+                players={players}
+                myPlayerId={myPlayerId}
+                onPick={pickTeam}
+                picking={picking}
+              />
+            </DescribeItCard>
+          }
+        />
+      </GameJoinLobbyShell>
     )
   }
 
