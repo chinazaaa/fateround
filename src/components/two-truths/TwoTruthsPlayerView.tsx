@@ -253,6 +253,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
       <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
         <GameLobbyWaitingPanel
           gameCode={gameCode}
+          gameType={game?.game_type}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myPlayerName}

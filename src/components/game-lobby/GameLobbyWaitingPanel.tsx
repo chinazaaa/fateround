@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { WhatsAppChannelLink } from '@/components/WhatsAppChannelLink'
+import { gameTypeConfig, parseGameType } from '@/lib/game-types'
 import type { Player } from '@/types'
 
 type Props = {
@@ -14,6 +15,8 @@ type Props = {
   onRenamed: (name: string) => void
   onLeft: () => void
   title?: string
+  /** Game type (e.g. game.game_type) — shows the game's name + emoji so players know what they joined. */
+  gameType?: string
   description?: React.ReactNode
   rulesLink?: React.ReactNode
   activity?: React.ReactNode
@@ -30,6 +33,7 @@ export function GameLobbyWaitingPanel({
   onRenamed,
   onLeft,
   title = 'Waiting for host',
+  gameType,
   description,
   rulesLink,
   activity,
@@ -38,6 +42,7 @@ export function GameLobbyWaitingPanel({
   onReady,
 }: Props) {
   const [readying, setReadying] = useState(false)
+  const gameCfg = gameType ? gameTypeConfig(parseGameType(gameType)) : null
 
   const handleReady = async () => {
     if (!onReady || readying) return
@@ -74,6 +79,12 @@ export function GameLobbyWaitingPanel({
             <h2 className="text-xl sm:text-2xl font-black">{title}</h2>
             {description ? <div className="text-muted text-sm leading-relaxed">{description}</div> : null}
           </>
+        )}
+        {gameCfg && (
+          <p className="flex items-center justify-center gap-1.5 pt-1 text-sm font-bold text-[var(--foreground)]">
+            <span className="leading-none">{gameCfg.headerEmoji}</span>
+            <span>{gameCfg.label}</span>
+          </p>
         )}
         <div className="flex justify-center pt-2">
           <WhatsAppChannelLink />

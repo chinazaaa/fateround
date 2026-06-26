@@ -472,6 +472,10 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
                     : 'Waiting in lobby'}
             </h2>
             {!isSpectator ? <p className="text-muted text-sm">Playing as {myPlayerName}</p> : null}
+            <p className="flex items-center justify-center gap-1.5 pt-0.5 text-sm font-bold text-[var(--foreground)]">
+              <span className="leading-none">{cfg.headerEmoji}</span>
+              <span>{cfg.label}</span>
+            </p>
           </div>
           {isSpectator && game?.status === 'waiting' && (
             <button

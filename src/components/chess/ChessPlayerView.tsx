@@ -325,6 +325,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       <GameJoinLobbyShell gameCode={gameCode}>
         <GameLobbyWaitingPanel
           gameCode={gameCode}
+          gameType={game?.game_type}
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}

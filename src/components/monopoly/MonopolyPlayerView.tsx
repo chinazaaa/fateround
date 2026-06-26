@@ -366,6 +366,10 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
                 </p>
               </>
             )}
+            <p className="flex items-center justify-center gap-1.5 pt-1 text-sm font-bold text-[var(--foreground)]">
+              <span className="leading-none">{cfg.headerEmoji}</span>
+              <span>{cfg.label}</span>
+            </p>
           </div>
           <GameRulesLink gameType="monopoly" variant="subtle" />
           <div className="glass-card-strong p-4 text-center">
