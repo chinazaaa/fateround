@@ -1581,7 +1581,7 @@ function CreateGameInner() {
                 </p>
               </SettingsGroup>
             ) : isDescribeIt ? (
-              <SettingsGroup title="Describe It room">
+              <SettingsGroup title="Text Charades room">
                 <p className="text-faint text-sm">Players join with a name and split into teams. 4+ players.</p>
                 <Field label="Teams">
                   <select

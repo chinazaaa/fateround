@@ -1193,7 +1193,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   },
   describe_it: {
     id: 'describe_it',
-    label: 'Describe It',
+    label: 'Text Charades',
     tagline: 'Teams race the clock — describe the word, teammates guess it',
     headerEmoji: '🗣️💬',
     card: {

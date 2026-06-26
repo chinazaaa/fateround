@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
+import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { supabase } from '@/lib/supabase'
 import {
@@ -588,6 +589,9 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
                   >
                     {savingWords ? 'Saving…' : 'Save words'}
                   </button>
+                </div>
+                <div className="pt-1 border-t border-[var(--border)]">
+                  <HostAllowViewersField gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
                 </div>
               </DescribeItCard>
 

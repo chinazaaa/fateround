@@ -54,7 +54,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   tic_tac_toe: 'tic-tac-toe',
   word_hunt: 'word-hunt',
   chess: 'chess',
-  describe_it: 'describe-it',
+  describe_it: 'text-charades',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -1235,9 +1235,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   }),
 
   describe_it: landing('describe_it', {
-    seoTitle: 'Describe It — Online Team Word Game',
+    seoTitle: 'Text Charades — Online Team Word Game',
     seoDescription:
-      'Play Describe It online with friends. Split into teams, describe the secret word without saying it, and race the clock to guess the most words. No sign-up.',
+      'Play Text Charades online with friends. Split into teams, describe the secret word without saying it, and race the clock to guess the most words. No sign-up.',
     keywords: [
       'describe it game',
       'online team word game',
@@ -1248,7 +1248,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'Split into teams, describe the word without saying it, and guess as many as you can before time runs out.',
     bodyParagraph:
-      'Describe It on Fate Round is a fast, team-based word race — like Password or Catch Phrase, online. Players join with their name and split into 2–4 teams. Each round one team is on the clock: a describer sees a secret word and types clues (without using the word), while teammates race to type the answer. Every correct guess scores a point and reveals the next word. After all the rounds, the team with the most words wins.',
+      'Text Charades on Fate Round is a fast, team-based word race — like Password or Catch Phrase, online. Players join with their name and split into 2–4 teams. Each round one team is on the clock: a describer sees a secret word and types clues (without using the word), while teammates race to type the answer. Every correct guess scores a point and reveals the next word. After all the rounds, the team with the most words wins.',
     highlights: ['4–20 players', '2–4 teams', 'Race the clock'],
     features: [
       {

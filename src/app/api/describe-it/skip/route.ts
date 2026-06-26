@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.status !== 'active') return NextResponse.json({ error: 'Game not active' }, { status: 400 })
   if (!isDescribeItGame(parseGameType(game.game_type))) {
-    return NextResponse.json({ error: 'Not a Describe It game' }, { status: 400 })
+    return NextResponse.json({ error: 'Not a Text Charades game' }, { status: 400 })
   }
 
   const { error } = await processDescribeItSkip(supabase, code, playerId)
