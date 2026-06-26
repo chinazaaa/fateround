@@ -35,6 +35,7 @@ import {
   isLudoGame,
   isTicTacToeGame,
   isChessGame,
+  isScrabbleGame,
   isDescribeItGame,
   isICallOnGame,
   isSudokuGame,
@@ -95,6 +96,7 @@ import { clampMonopolyGameDuration, clampMonopolyTurnTimer } from '@/lib/monopol
 import { clampWhotGameDuration } from '@/lib/whot'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampChessTimer } from '@/lib/chess'
+import { clampScrabbleTimer } from '@/lib/scrabble'
 import { clampDescribeItRounds, clampDescribeItTeams } from '@/lib/describe-it'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, type LateJoinPolicy } from '@/lib/viewers'
 
@@ -262,6 +264,7 @@ export async function POST(req: NextRequest) {
     isWordHuntGame(game_type) ||
     isTicTacToeGame(game_type) ||
     isChessGame(game_type) ||
+    isScrabbleGame(game_type) ||
     isDescribeItGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
@@ -316,7 +319,8 @@ export async function POST(req: NextRequest) {
     isSudokuGame(game_type) ||
     isWordHuntGame(game_type) ||
     isTicTacToeGame(game_type) ||
-    isChessGame(game_type)
+    isChessGame(game_type) ||
+    isScrabbleGame(game_type)
       ? 1
       : isDescribeItGame(game_type)
         ? clampDescribeItRounds(rounds_count)
@@ -420,13 +424,19 @@ export async function POST(req: NextRequest) {
                               )
                             : isChessGame(game_type)
                               ? resolveMaxPlayers('chess', rawMaxPlayers, lobbyDefaultMaxPlayers('chess', lobbyLimits))
-                              : isDescribeItGame(game_type)
+                              : isScrabbleGame(game_type)
                                 ? resolveMaxPlayers(
-                                    'describe_it',
+                                    'scrabble',
                                     rawMaxPlayers,
-                                    lobbyDefaultMaxPlayers('describe_it', lobbyLimits)
+                                    lobbyDefaultMaxPlayers('scrabble', lobbyLimits)
                                   )
-                                : null
+                                : isDescribeItGame(game_type)
+                                  ? resolveMaxPlayers(
+                                      'describe_it',
+                                      rawMaxPlayers,
+                                      lobbyDefaultMaxPlayers('describe_it', lobbyLimits)
+                                    )
+                                  : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
@@ -458,9 +468,11 @@ export async function POST(req: NextRequest) {
                 ? clampWordHuntTimer(timer_seconds)
                 : isChessGame(game_type)
                   ? clampChessTimer(timer_seconds)
-                  : [15, 30, 60].includes(Number(timer_seconds))
-                    ? Number(timer_seconds)
-                    : 30,
+                  : isScrabbleGame(game_type)
+                    ? clampScrabbleTimer(timer_seconds)
+                    : [15, 30, 60].includes(Number(timer_seconds))
+                      ? Number(timer_seconds)
+                      : 30,
     ...(isCodewordsGame(game_type)
       ? {
           operative_timer_seconds: clampCodewordsTimer(

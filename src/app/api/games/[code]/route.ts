@@ -14,9 +14,11 @@ import {
   isPickANumber,
   isICallOnGame,
   isWordHuntGame,
+  isScrabbleGame,
 } from '@/lib/game-types'
 import { clampNpatGameDuration, clampNpatMarkingTimer, clampNpatTimer } from '@/lib/npat'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
+import { clampScrabbleTimer } from '@/lib/scrabble'
 import { isCustomTwoSlotGame } from '@/lib/custom-game'
 import { clampHotSeatMaxCap, HOT_SEAT_MIN_PLAYERS, hotSeatJoinedPlayers, hotSeatMaxCapUpperBound } from '@/lib/hot-seat'
 import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
@@ -108,7 +110,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       ? clampNpatTimer(rawTimerSeconds)
       : isWordHuntGame(gameType)
         ? clampWordHuntTimer(rawTimerSeconds)
-        : parseTimerSeconds(rawTimerSeconds)
+        : isScrabbleGame(gameType)
+          ? clampScrabbleTimer(rawTimerSeconds)
+          : parseTimerSeconds(rawTimerSeconds)
   }
 
   if (rawOperativeTimerSeconds !== undefined) {

@@ -73,6 +73,7 @@ const gameTypeEnum = z.enum([
   'word_hunt',
   'chess',
   'describe_it',
+  'scrabble',
 ])
 
 const participantModeEnum = z.enum(['import', 'joiners', 'voters'])

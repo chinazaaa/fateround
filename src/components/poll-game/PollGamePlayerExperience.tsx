@@ -79,6 +79,7 @@ import {
   isLudoGame,
   isTicTacToeGame,
   isChessGame,
+  isScrabbleGame,
   isDescribeItGame,
   isICallOnGame,
   isSudokuGame,
@@ -97,6 +98,7 @@ import { WhotPlayerView } from '@/components/whot/WhotPlayerView'
 import { LudoPlayerView } from '@/components/ludo/LudoPlayerView'
 import { TicTacToePlayerView } from '@/components/tic-tac-toe/TicTacToePlayerView'
 import { ChessPlayerView } from '@/components/chess/ChessPlayerView'
+import { ScrabblePlayerView } from '@/components/scrabble/ScrabblePlayerView'
 import { DescribeItPlayerView } from '@/components/describe-it/DescribeItPlayerView'
 import { SudokuPlayerView } from '@/components/sudoku/SudokuPlayerView'
 import { WordHuntPlayerView } from '@/components/word-hunt/WordHuntPlayerView'
@@ -582,6 +584,9 @@ export function PollGamePlayerExperience({
   }
   if (game && isChessGame(game.game_type)) {
     return <ChessPlayerView gameCode={gameCode} />
+  }
+  if (game && isScrabbleGame(game.game_type)) {
+    return <ScrabblePlayerView gameCode={gameCode} />
   }
   if (game && isDescribeItGame(game.game_type)) {
     return <DescribeItPlayerView gameCode={gameCode} />

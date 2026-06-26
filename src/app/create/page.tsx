@@ -58,6 +58,7 @@ import {
   isLudoGame,
   isTicTacToeGame,
   isChessGame,
+  isScrabbleGame,
   isDescribeItGame,
   isICallOnGame,
   isSudokuGame,
@@ -422,6 +423,15 @@ function CreateGameInner() {
               timer_seconds: 600,
             }
           : {}),
+        ...(isScrabbleGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              // Optional per-turn timer; default off.
+              timer_seconds: 0,
+            }
+          : {}),
         ...(isDescribeItGame(type)
           ? {
               participant_mode: 'joiners' as const,
@@ -490,6 +500,7 @@ function CreateGameInner() {
   const isLudo = isLudoGame(settings.game_type)
   const isTicTacToe = isTicTacToeGame(settings.game_type)
   const isChess = isChessGame(settings.game_type)
+  const isScrabble = isScrabbleGame(settings.game_type)
   const isDescribeIt = isDescribeItGame(settings.game_type)
   const isNpat = isICallOnGame(settings.game_type)
   const isSudoku = isSudokuGame(settings.game_type)
@@ -586,6 +597,7 @@ function CreateGameInner() {
     isLudo ||
     isTicTacToe ||
     isChess ||
+    isScrabble ||
     isDescribeIt ||
     isNpat ||
     isSudoku ||
@@ -1580,6 +1592,29 @@ function CreateGameInner() {
                   that only ticks on their turn; the first to run out of time loses.
                 </p>
               </SettingsGroup>
+            ) : isScrabble ? (
+              <SettingsGroup title="Scrabble room">
+                <p className="text-faint text-sm">2–4 players — the host can join as one of them.</p>
+                <Field label="Time per turn">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={0}>No timer</option>
+                    <option value={60}>1 minute</option>
+                    <option value={180}>3 minutes</option>
+                    <option value={300}>5 minutes</option>
+                  </select>
+                </Field>
+                <Field label="Late joiners">
+                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="scrabble" />
+                </Field>
+                <p className="text-faint text-sm leading-relaxed">
+                  Build words on a 15×15 board, hit the premium squares, and outscore everyone. Every word is checked
+                  against a real dictionary; highest score when the tiles run out wins.
+                </p>
+              </SettingsGroup>
             ) : isDescribeIt ? (
               <SettingsGroup title="Text Charades room">
                 <p className="text-faint text-sm">Players join with a name and split into teams. 4+ players.</p>
@@ -2564,7 +2599,13 @@ function CreateGameInner() {
                 )}
 
                 {!isAnonymousRoom &&
-                  ((!isBinaryLobby && !isWst && !isWhoSaidThis(settings.game_type) && !isTrivia && !isPan && !isNpat) ||
+                  ((!isBinaryLobby &&
+                    !isWst &&
+                    !isWhoSaidThis(settings.game_type) &&
+                    !isTrivia &&
+                    !isPan &&
+                    !isNpat &&
+                    !isScrabble) ||
                   isHotSeatGame ? (
                     <SettingsGroup title={isHotSeatGame ? "Who's in the game" : "Who's in the poll"}>
                       <SegmentedControl
@@ -2623,7 +2664,8 @@ function CreateGameInner() {
                   !isHotSeatGame &&
                   !isPan &&
                   !isTrivia &&
-                  !isNpat && (
+                  !isNpat &&
+                  !isScrabble && (
                     <SettingsGroup title="Who appears in rounds">
                       <SegmentedControl
                         value={settings.participant_filter}

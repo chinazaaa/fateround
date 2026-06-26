@@ -117,6 +117,7 @@ export function ScrabbleGamePanel({
     for (const s of playerStates) m.set(s.player_id, s)
     return m
   }, [playerStates])
+  const topScore = useMemo(() => Math.max(0, ...playerStates.map((s) => s.score)), [playerStates])
 
   const pendingAt = (row: number, col: number) => pending.find((p) => p.row === row && p.col === col)
 
@@ -293,16 +294,17 @@ export function ScrabbleGamePanel({
       {interactive && pending.length > 0 && !exchangeMode && (
         <div
           className={[
-            'rounded-xl px-3 py-2 text-sm font-semibold text-center border',
+            'flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold border',
             preview.valid
-              ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200'
-              : 'bg-[var(--surface-inset-bg)] border-[var(--border)] text-muted',
+              ? 'bg-emerald-600 border-emerald-500 text-white shadow-sm'
+              : 'bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300',
           ].join(' ')}
         >
           {preview.valid ? (
-            <span>
-              {preview.words.join(', ')} · {preview.score} pts
-            </span>
+            <>
+              <span className="truncate">{preview.words.join(', ')}</span>
+              <span className="shrink-0 rounded-md bg-white/25 px-2 py-0.5 tabular-nums">+{preview.score} pts</span>
+            </>
           ) : (
             <span>{preview.error ?? 'Incomplete word'}</span>
           )}
@@ -383,9 +385,18 @@ export function ScrabbleGamePanel({
                 type="button"
                 onClick={() => void submitPlay()}
                 disabled={pending.length === 0 || !preview.valid || acting}
-                className="btn-primary w-full py-3 text-base font-bold disabled:opacity-50"
+                className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-base font-bold disabled:opacity-50"
               >
-                {acting ? '…' : 'Submit word'}
+                {acting ? (
+                  '…'
+                ) : (
+                  <>
+                    <span>Submit word</span>
+                    {preview.valid && pending.length > 0 && (
+                      <span className="rounded-md bg-white/25 px-2 py-0.5 text-sm tabular-nums">+{preview.score}</span>
+                    )}
+                  </>
+                )}
               </button>
               <div className="grid grid-cols-3 gap-2">
                 <button
@@ -419,30 +430,42 @@ export function ScrabbleGamePanel({
       )}
 
       {/* Scoreboard */}
-      <ScrabbleCard className="p-3 space-y-1.5">
+      <ScrabbleCard className="p-3 space-y-2">
         <p className="label-caps text-xs">Scores</p>
-        {session.turn_order.map((pid) => {
-          const player = players.find((p) => p.id === pid)
-          const score = stateByPlayer.get(pid)?.score ?? 0
-          const onTurn = pid === turnPlayerId && !finished
-          const isMe = pid === myPlayerId
-          return (
-            <div
-              key={pid}
-              className={[
-                'flex items-center justify-between rounded-lg px-2.5 py-1.5 text-sm',
-                onTurn ? 'bg-[var(--primary)]/15 border border-[var(--primary)]/40' : '',
-              ].join(' ')}
-            >
-              <span className="font-bold truncate">
-                {onTurn && <span className="mr-1">▶</span>}
-                {player?.name ?? 'Player'}
-                {isMe && <span className="text-faint font-normal"> (you)</span>}
-              </span>
-              <span className="tabular-nums font-black">{score}</span>
-            </div>
-          )
-        })}
+        <div className="space-y-1.5">
+          {session.turn_order.map((pid) => {
+            const player = players.find((p) => p.id === pid)
+            const score = stateByPlayer.get(pid)?.score ?? 0
+            const onTurn = pid === turnPlayerId && !finished
+            const isMe = pid === myPlayerId
+            const isLeader = score > 0 && score === topScore
+            return (
+              <div
+                key={pid}
+                className={[
+                  'flex items-center justify-between gap-2 rounded-xl border px-3 py-2 transition-colors',
+                  onTurn
+                    ? 'border-[var(--primary)]/50 bg-[var(--primary)]/15'
+                    : 'border-[var(--border)] bg-[var(--surface-inset-bg)]',
+                ].join(' ')}
+              >
+                <span className="flex min-w-0 items-center gap-1.5 font-bold text-[var(--foreground)]">
+                  {onTurn && <span className="shrink-0 text-[var(--primary)]">▶</span>}
+                  {isLeader && (
+                    <span className="shrink-0" title="Leading">
+                      👑
+                    </span>
+                  )}
+                  <span className="truncate">{player?.name ?? 'Player'}</span>
+                  {isMe && <span className="shrink-0 text-faint text-xs font-normal">you</span>}
+                </span>
+                <span className="shrink-0 rounded-lg bg-[var(--background)] px-2.5 py-1 text-lg font-black tabular-nums text-[var(--foreground)] shadow-sm">
+                  {score}
+                </span>
+              </div>
+            )
+          })}
+        </div>
       </ScrabbleCard>
     </div>
   )

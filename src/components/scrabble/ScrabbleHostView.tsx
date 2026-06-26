@@ -262,6 +262,21 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
     }
   }
 
+  const saveTimer = async (seconds: number) => {
+    try {
+      const res = await fetch(`/api/games/${gameCode}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, timer_seconds: seconds }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to update')
+      await load()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to update timer')
+    }
+  }
+
   const endGame = async () => {
     setEnding(true)
     try {
@@ -389,6 +404,25 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
               Playing as <span className="font-semibold text-[var(--foreground)]">{hostPlayerName}</span>
             </p>
           )}
+        </div>
+      )}
+
+      {game.status === 'waiting' && (
+        <div className="glass-card-strong p-5 space-y-3">
+          <p className="label-caps">Game settings</p>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-semibold text-[var(--foreground)]">Time per turn</span>
+            <select
+              value={[0, 60, 180, 300].includes(game.timer_seconds) ? game.timer_seconds : 0}
+              onChange={(e) => void saveTimer(Number(e.target.value))}
+              className="input-field w-full"
+            >
+              <option value={0}>No timer</option>
+              <option value={60}>1 minute</option>
+              <option value={180}>3 minutes</option>
+              <option value={300}>5 minutes</option>
+            </select>
+          </label>
         </div>
       )}
 
