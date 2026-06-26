@@ -42,6 +42,9 @@ CREATE POLICY "public_scrabble_player_state" ON scrabble_player_state FOR ALL US
 
 ALTER PUBLICATION supabase_realtime ADD TABLE scrabble_player_state;
 
+-- These DROP/ADD the game_type checks, so the list must include EVERY existing
+-- game type (not just scrabble) or it would silently disallow the others.
+-- 'describe_it' was added on main in parallel — keep it here too.
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (
   'smash_marry_kill',
@@ -71,6 +74,7 @@ ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (
   'tic_tac_toe',
   'word_hunt',
   'chess',
+  'describe_it',
   'scrabble'
 ));
 
@@ -104,12 +108,13 @@ ALTER TABLE app_feedback ADD CONSTRAINT app_feedback_game_type_check CHECK (game
   'tic_tac_toe',
   'word_hunt',
   'chess',
+  'describe_it',
   'scrabble'
 ));
 
 ALTER TABLE game_player_limits DROP CONSTRAINT IF EXISTS game_player_limits_game_type_check;
 ALTER TABLE game_player_limits ADD CONSTRAINT game_player_limits_game_type_check CHECK (
-  game_type IN ('anonymous_messages', 'bingo', 'codewords', 'trivia', 'two_truths', 'monopoly', 'yahtzee', 'whot', 'ludo', 'i_call_on', 'sudoku', 'tic_tac_toe', 'word_hunt', 'chess', 'scrabble')
+  game_type IN ('anonymous_messages', 'bingo', 'codewords', 'trivia', 'two_truths', 'monopoly', 'yahtzee', 'whot', 'ludo', 'i_call_on', 'sudoku', 'tic_tac_toe', 'word_hunt', 'chess', 'describe_it', 'scrabble')
 );
 
 INSERT INTO game_player_limits (game_type, max_players)
