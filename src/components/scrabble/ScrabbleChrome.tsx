@@ -133,22 +133,42 @@ export function ScrabbleTurnBar({
   turnPlayerName,
   isMyTurn,
   statusMessage,
+  secondsLeft,
+  showTimer,
+  urgent,
 }: {
   turnPlayerName?: string
   isMyTurn?: boolean
   statusMessage?: string | null
+  secondsLeft?: number
+  showTimer?: boolean
+  urgent?: boolean
 }) {
   return (
     <div
       className={[
-        'flex flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-2 text-sm font-semibold border text-center',
+        'flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold border',
         isMyTurn
           ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40 text-[var(--foreground)]'
           : 'bg-[var(--surface-inset-bg)] border-[var(--border)] text-muted',
       ].join(' ')}
     >
-      <span>{isMyTurn ? 'Your turn' : turnPlayerName ? `${turnPlayerName}'s turn` : 'Waiting…'}</span>
-      {statusMessage && <span className="text-xs text-faint font-normal">{statusMessage}</span>}
+      <div className="flex flex-col min-w-0">
+        <span className="truncate">
+          {isMyTurn ? 'Your turn' : turnPlayerName ? `${turnPlayerName}'s turn` : 'Waiting…'}
+        </span>
+        {statusMessage && <span className="text-xs text-faint font-normal truncate">{statusMessage}</span>}
+      </div>
+      {showTimer && (
+        <span
+          className={[
+            'shrink-0 rounded-lg px-2.5 py-1 text-base font-black tabular-nums',
+            urgent ? 'bg-[var(--marry)] text-white animate-pulse' : 'bg-[var(--background)] text-[var(--foreground)]',
+          ].join(' ')}
+        >
+          {Math.floor((secondsLeft ?? 0) / 60)}:{String((secondsLeft ?? 0) % 60).padStart(2, '0')}
+        </span>
+      )}
     </div>
   )
 }
