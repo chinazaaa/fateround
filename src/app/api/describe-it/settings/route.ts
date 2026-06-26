@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { parseGameType, isDescribeItGame } from '@/lib/game-types'
 import { describeItSettingsSchema } from '@/lib/validation'
-import { clampDescribeItRounds, clampDescribeItTeams, clampDescribeItTurnSeconds } from '@/lib/describe-it'
+import {
+  clampDescribeItMaxPlayers,
+  clampDescribeItRounds,
+  clampDescribeItTeams,
+  clampDescribeItTurnSeconds,
+} from '@/lib/describe-it'
 import { parseDescribeItWords } from '@/lib/describe-it-words'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -12,7 +17,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
-  const { gameId, hostToken, numTeams, turnSeconds, rounds, words } = parsed.data
+  const { gameId, hostToken, numTeams, turnSeconds, rounds, maxPlayers, words } = parsed.data
   const code = gameId.toUpperCase()
 
   const { data: game } = await supabase
@@ -32,6 +37,7 @@ export async function POST(req: NextRequest) {
   if (numTeams != null) update.describe_it_num_teams = clampDescribeItTeams(numTeams)
   if (turnSeconds != null) update.timer_seconds = clampDescribeItTurnSeconds(turnSeconds)
   if (rounds != null) update.rounds_count = clampDescribeItRounds(rounds)
+  if (maxPlayers != null) update.max_players = clampDescribeItMaxPlayers(maxPlayers)
   if (words !== undefined) {
     const parsedWords = parseDescribeItWords(words)
     update.question_source = parsedWords.length > 0 ? 'custom' : 'platform'

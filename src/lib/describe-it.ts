@@ -10,6 +10,7 @@ export const DESCRIBE_IT_DEFAULT_MAX_PLAYERS = 12
 export const DESCRIBE_IT_TEAM_OPTIONS = [2, 3, 4] as const
 export const DESCRIBE_IT_ROUND_OPTIONS = [2, 3, 4, 5] as const
 export const DESCRIBE_IT_TURN_OPTIONS = [60, 90, 120] as const
+export const DESCRIBE_IT_MAX_PLAYER_OPTIONS = [6, 8, 10, 12, 16, 20] as const
 export const DESCRIBE_IT_DEFAULT_TURN_SECONDS = 90
 export const DESCRIBE_IT_DEFAULT_ROUNDS = 3
 /** Players needed per team (a describer + at least one guesser). */
@@ -30,6 +31,12 @@ export function clampDescribeItRounds(value: unknown): number {
 export function clampDescribeItTurnSeconds(value: unknown): number {
   const n = Number(value)
   return (DESCRIBE_IT_TURN_OPTIONS as readonly number[]).includes(n) ? n : DESCRIBE_IT_DEFAULT_TURN_SECONDS
+}
+
+export function clampDescribeItMaxPlayers(value: unknown): number {
+  const n = Math.round(Number(value))
+  if (!Number.isFinite(n)) return DESCRIBE_IT_DEFAULT_MAX_PLAYERS
+  return Math.min(DESCRIBE_IT_MAX_PLAYERS, Math.max(DESCRIBE_IT_MIN_PLAYERS, n))
 }
 
 export const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3', 'Team 4'] as const

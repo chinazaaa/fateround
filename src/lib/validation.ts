@@ -796,6 +796,7 @@ export const describeItSettingsSchema = z.object({
   numTeams: z.coerce.number().int().min(2).max(4).optional(),
   turnSeconds: z.coerce.number().int().optional(),
   rounds: z.coerce.number().int().optional(),
+  maxPlayers: z.coerce.number().int().min(4).max(20).optional(),
   words: z.string().max(8000).optional(),
 })
 

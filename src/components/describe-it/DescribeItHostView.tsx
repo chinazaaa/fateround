@@ -27,8 +27,11 @@ import { useDescribeItSounds } from '@/hooks/useDescribeItSounds'
 import {
   clampDescribeItTeams,
   clampDescribeItRounds,
+  clampDescribeItMaxPlayers,
   computeDescribeItScores,
   describeItLobbyReady,
+  DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
+  DESCRIBE_IT_MAX_PLAYER_OPTIONS,
   DESCRIBE_IT_MIN_PLAYERS,
   DESCRIBE_IT_ROUND_OPTIONS,
   DESCRIBE_IT_TEAM_OPTIONS,
@@ -572,6 +575,20 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
                     </select>
                   </label>
                 </div>
+                <label className="text-xs font-semibold text-faint space-y-1 block">
+                  <span>Max players</span>
+                  <select
+                    value={clampDescribeItMaxPlayers(game.max_players ?? DESCRIBE_IT_DEFAULT_MAX_PLAYERS)}
+                    onChange={(e) => void saveSettings({ maxPlayers: Number(e.target.value) })}
+                    className="input-field w-full text-sm"
+                  >
+                    {DESCRIBE_IT_MAX_PLAYER_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-faint">Your words (one per line, optional)</p>
                   <textarea
