@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { finishMonopolyGameEarly } from '@/lib/monopoly'
 import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anonymous-messages'
 import { finishCodewordsGame } from '@/lib/codewords'
+import { finishScrabbleGameEarly } from '@/lib/scrabble'
 import { markGameFinished } from '@/lib/game-finish'
 import {
   parseGameType,
@@ -10,6 +11,7 @@ import {
   isSecretMessageGame,
   isCodewordsGame,
   isMonopolyGame,
+  isScrabbleGame,
 } from '@/lib/game-types'
 import { hostActionSchema } from '@/lib/validation'
 
@@ -65,6 +67,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (isMonopolyGame(gameType) && !inLobby) {
     const { error } = await finishMonopolyGameEarly(supabase, gameId)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  // Scrabble finalizes its own session (tally scores + pick a winner) when ended
+  // mid-game. In the lobby there's no session yet, so fall through to markGameFinished.
+  if (isScrabbleGame(gameType) && !inLobby) {
+    const { error } = await finishScrabbleGameEarly(supabase, gameId)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }

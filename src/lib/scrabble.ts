@@ -59,9 +59,15 @@ export function scrabbleGameSessionExpired(
   return elapsed >= durationSeconds
 }
 
-/** End the game now because the session clock ran out: tally final scores (rack
- *  penalties applied, as at a normal game end) and pick the winner by score. */
-async function finishScrabbleByTimeLimit(supabase: SupabaseClient, gameId: string): Promise<{ error: string | null }> {
+/** Finalize a scrabble game now: tally final scores (rack penalties applied, as at
+ *  a normal game end), pick the winner by score, and flip the session + game to
+ *  finished. Shared by the time-limit auto-end and the host's early-end so both
+ *  produce a proper winner and final scores. `reason` prefixes the status message. */
+async function finalizeScrabbleSession(
+  supabase: SupabaseClient,
+  gameId: string,
+  reason: string
+): Promise<{ error: string | null }> {
   const { data: sessionRaw } = await supabase.from('scrabble_sessions').select('*').eq('game_id', gameId).maybeSingle()
   if (!sessionRaw) return { error: 'Session not found' }
   const session = sessionRaw as ScrabbleSession
@@ -75,7 +81,7 @@ async function finishScrabbleByTimeLimit(supabase: SupabaseClient, gameId: strin
   const result = finalizeScores(states, names, null)
 
   // Claim the session FIRST so finalize runs exactly once: if a play/pass finish (or
-  // another time-limit call) already moved the row from this exact state we lose the
+  // another finalize call) already moved the row from this exact state we lose the
   // CAS and bail before applying rack penalties — no double-penalizing.
   const won = await persistSession(
     supabase,
@@ -84,7 +90,7 @@ async function finishScrabbleByTimeLimit(supabase: SupabaseClient, gameId: strin
       phase: 'finished',
       winner_player_id: result.winnerPlayerId,
       is_tie: result.isTie,
-      status_message: `Time's up! ${result.statusMessage}`,
+      status_message: `${reason} ${result.statusMessage}`,
       turn_deadline_at: null,
     },
     session.updated_at
@@ -94,6 +100,20 @@ async function finishScrabbleByTimeLimit(supabase: SupabaseClient, gameId: strin
   await persistFinalScores(supabase, states, result.finalScores)
   await markGameFinished(supabase, gameId)
   return { error: null }
+}
+
+/** End the game now because the session clock ran out. */
+async function finishScrabbleByTimeLimit(supabase: SupabaseClient, gameId: string): Promise<{ error: string | null }> {
+  return finalizeScrabbleSession(supabase, gameId, "Time's up!")
+}
+
+/** End the game now because the host chose to end it early. Tallies final scores
+ *  and picks a winner, same as a natural game end. */
+export async function finishScrabbleGameEarly(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error: string | null }> {
+  return finalizeScrabbleSession(supabase, gameId, 'Host ended the game.')
 }
 
 export async function finishExpiredScrabbleGame(
