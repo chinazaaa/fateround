@@ -1,0 +1,28 @@
+# Dev environment. Copy to terraform.dev.tfvars (gitignored) and fill in.
+# Deploy in a dedicated workspace so dev/prod state never collide:
+#   terraform workspace select dev || terraform workspace new dev
+#   terraform apply -var-file=terraform.dev.tfvars
+
+aws_region  = "us-east-1"
+name_prefix = "fateround-dev"
+
+# Smaller footprint for dev.
+instance_type = "t3.small"
+app_port      = 3000
+
+app_image_tag = "latest"
+
+# From your DEV Supabase branch (Supabase Branching -> persistent `dev` branch).
+supabase_url      = "https://YOUR-DEV-PROJECT.supabase.co"
+supabase_anon_key = "REPLACE_WITH_DEV_ANON_KEY"
+cron_secret       = "REPLACE_WITH_DEV_CRON_SECRET"
+
+tick_interval_seconds = 60
+
+# Cloudflare. The token is read from the CLOUDFLARE_API_TOKEN env var
+# (kept in ~/.config/shell/secrets.sh), NOT here.
+cloudflare_enabled     = true
+cloudflare_zone_id     = "fff141dbd5d5f15aadf4497bcd46f3fc" # fateround.com zone
+cloudflare_record_name = "dev"                              # -> dev.fateround.com
+cloudflare_proxied     = true
+# restrict_to_cloudflare = true   # optional: lock the instance SG to Cloudflare IPs

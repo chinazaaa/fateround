@@ -1,0 +1,31 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+aws_region  = "us-east-1"
+name_prefix = "fateround"
+
+vpc_cidr      = "10.0.0.0/16"
+instance_type = "t3.small"
+app_port      = 3000 # container's internal port; published on host :80
+
+app_image_tag = "latest" # must match the tag you push to ECR
+
+# App config (from your Supabase project). The URL and anon key are public-by-
+# design; cron_secret is your own generated value (also set on the app).
+supabase_url      = "https://YOUR-PROJECT.supabase.co"
+supabase_anon_key = "REPLACE_WITH_ANON_KEY"
+cron_secret       = "REPLACE_WITH_A_LONG_RANDOM_STRING"
+
+# How often the on-box systemd timer hits /api/describe-it/tick (freeze recovery).
+tick_interval_seconds = 60
+
+# Cloudflare (optional). Leave disabled to manage DNS/TLS in the dashboard.
+# cloudflare_enabled     = true
+# cloudflare_api_token   = "REPLACE_WITH_DNS_EDIT_TOKEN"  # or set CLOUDFLARE_API_TOKEN
+# cloudflare_zone_id     = "REPLACE_WITH_ZONE_ID"
+# cloudflare_record_name = "app"   # -> app.yourdomain
+# cloudflare_proxied     = true    # orange cloud: TLS/WAF/CDN at the edge
+# restrict_to_cloudflare = true    # lock the instance SG to Cloudflare IPs
+#
+# With proxied = true, use Cloudflare SSL "Full" + a free Cloudflare Origin
+# Certificate on the box for end-to-end TLS, or at minimum keep
+# restrict_to_cloudflare = true so the origin is only reachable via Cloudflare.

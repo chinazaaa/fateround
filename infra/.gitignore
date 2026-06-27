@@ -1,0 +1,11 @@
+# Local Terraform state, plugins, build artifacts, and real secrets.
+# Note: .terraform.lock.hcl is intentionally committed (pins provider versions).
+.terraform/
+.build/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!*.tfvars.example
+override.tf
+override.tf.json

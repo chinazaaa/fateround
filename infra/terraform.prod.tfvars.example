@@ -1,0 +1,32 @@
+# Prod environment. Copy to terraform.prod.tfvars (gitignored) and fill in.
+# Deploy in a dedicated workspace so dev/prod state never collide:
+#   terraform workspace select prod || terraform workspace new prod
+#   terraform apply -var-file=terraform.prod.tfvars
+
+aws_region  = "us-east-1"
+name_prefix = "fateround-prod"
+
+instance_type = "t3.small"
+app_port      = 3000
+
+app_image_tag = "latest"
+
+# From your PRODUCTION Supabase branch (the live project).
+supabase_url      = "https://YOUR-PROD-PROJECT.supabase.co"
+supabase_anon_key = "REPLACE_WITH_PROD_ANON_KEY"
+cron_secret       = "REPLACE_WITH_PROD_CRON_SECRET"
+
+tick_interval_seconds = 60
+
+# Cloudflare. Token via CLOUDFLARE_API_TOKEN env, not here.
+cloudflare_enabled     = true
+cloudflare_zone_id     = "fff141dbd5d5f15aadf4497bcd46f3fc" # fateround.com zone
+cloudflare_record_name = "@"                                # -> fateround.com (apex)
+cloudflare_proxied     = true
+restrict_to_cloudflare = true # lock the origin to Cloudflare's edge IPs
+# NOTE: fateround.com may already have a Cloudflare record (current prod). Before
+# applying prod, delete/repoint that record or `terraform import` it into
+# cloudflare_record.app[0] so this stack doesn't conflict with it.
+
+# TLS: with the record proxied, use Cloudflare SSL "Full" and put a free
+# Cloudflare Origin Certificate on the box for end-to-end encryption.
