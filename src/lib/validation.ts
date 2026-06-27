@@ -840,7 +840,7 @@ export const scrabblePlaySchema = scrabbleActionSchema.extend({
       z.object({
         row: z.coerce.number().int().min(0).max(14),
         col: z.coerce.number().int().min(0).max(14),
-        letter: z.string().regex(/^[A-Za-z]$/),
+        letter: z.string().regex(/^[A-Za-zÄÖÜÑäöüñ]$/),
         isBlank: z.boolean(),
       })
     )

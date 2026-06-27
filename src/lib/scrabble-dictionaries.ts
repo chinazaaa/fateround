@@ -5,6 +5,9 @@
 import { SCRABBLE_WORDS_RAW } from '@/lib/data/scrabble-words'
 import { SCRABBLE_WORDS_COLLINS_RAW } from '@/lib/data/scrabble-words-collins'
 import { SCRABBLE_WORDS_TWL_RAW } from '@/lib/data/scrabble-words-twl'
+import { SCRABBLE_WORDS_FRENCH_RAW } from '@/lib/data/scrabble-words-french'
+import { SCRABBLE_WORDS_GERMAN_RAW } from '@/lib/data/scrabble-words-german'
+import { SCRABBLE_WORDS_SPANISH_RAW } from '@/lib/data/scrabble-words-spanish'
 import { parseScrabbleDictionaryId, type ScrabbleDictionaryId } from '@/lib/scrabble-dictionary-meta'
 
 /** Maps each selectable dictionary to its raw newline-separated word list. */
@@ -12,6 +15,9 @@ const DICTIONARY_RAW: Record<ScrabbleDictionaryId, string> = {
   enable: SCRABBLE_WORDS_RAW,
   collins: SCRABBLE_WORDS_COLLINS_RAW,
   twl: SCRABBLE_WORDS_TWL_RAW,
+  french: SCRABBLE_WORDS_FRENCH_RAW,
+  german: SCRABBLE_WORDS_GERMAN_RAW,
+  spanish: SCRABBLE_WORDS_SPANISH_RAW,
 }
 
 // Lazily build (and cache) the validation Set for each dictionary the first time

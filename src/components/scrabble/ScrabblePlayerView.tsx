@@ -13,6 +13,7 @@ import { ScrabbleGamePanel } from '@/components/scrabble/ScrabbleBoard'
 import { ScrabbleGameTimerBar } from '@/components/scrabble/ScrabbleGameTimerBar'
 import { gameTypeConfig } from '@/lib/game-types'
 import { currentTurnPlayerId, isScrabbleResultsPhase } from '@/lib/scrabble-board'
+import { tileSetForDictionary } from '@/lib/scrabble-rulesets'
 import { supabase } from '@/lib/supabase'
 import {
   GAME_SELECT,
@@ -288,6 +289,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
   const myName = activePlayer?.name ?? ''
+  const tileSet = tileSetForDictionary(game?.scrabble_dictionary_id)
 
   if (screen === 'loading') return <ScrabbleLoadingScreen />
 
@@ -430,6 +432,8 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
           playerStates={playerStates}
           myPlayerId={myPlayerId}
           isMyTurn={isMyTurn && !isViewer}
+          tileValues={tileSet.values}
+          alphabet={tileSet.alphabet}
           onPlay={isMyTurn && !isViewer ? playWord : undefined}
           onExchange={isMyTurn && !isViewer ? exchangeTiles : undefined}
           onPass={isMyTurn && !isViewer ? passTurn : undefined}
