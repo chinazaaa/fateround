@@ -629,7 +629,13 @@ function playerOutPatch(
   playerNames: Map<string, string>,
   board: Partial<WhotSession>
 ): Partial<WhotSession> {
-  if (gameDurationSeconds <= 0) {
+  const remaining = (session.turn_order ?? []).filter((id) => id !== playerId && whotHandCount(hands, id) > 0)
+
+  // The game ends — and the player who just emptied their hand wins — when it can't
+  // meaningfully continue: an untimed game finishes the moment someone goes out, and
+  // ANY game finishes once fewer than 2 players still hold cards (heads-up: the last
+  // remaining player can't play on alone, so don't strand them waiting for the timer).
+  if (gameDurationSeconds <= 0 || remaining.length < 2) {
     return {
       ...board,
       phase: 'finished',
@@ -638,7 +644,6 @@ function playerOutPatch(
     }
   }
 
-  const remaining = (session.turn_order ?? []).filter((id) => id !== playerId && whotHandCount(hands, id) > 0)
   const nextIndex = whotNextTurnIndex(session, hands, session.current_turn_index, 1)
   const nextId = session.turn_order[nextIndex]
   const top = session.top_card
@@ -858,7 +863,9 @@ export async function processWhotPlay(
   }
   if (wentOut) {
     await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
-    if (gameDurationSeconds <= 0) await markGameFinished(supabase, gameId)
+    // Mark the game over whenever this play actually ended it (untimed win, or a
+    // timed game that ran out of players) — keyed off the patch we just committed.
+    if (patch.phase === 'finished') await markGameFinished(supabase, gameId)
   }
 
   return {}
