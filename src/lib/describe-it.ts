@@ -11,11 +11,11 @@ export const DESCRIBE_IT_DEFAULT_MAX_PLAYERS = 12
 
 // ── Individual (skribbl-style) mode scoring ──
 /** Flat points a correct guesser always earns, before the speed bonus. */
-export const DESCRIBE_IT_GUESS_BASE_POINTS = 100
+export const DESCRIBE_IT_GUESS_BASE_POINTS = 10
 /** Extra points for an instant guess, decaying linearly to 0 at time-up. */
-export const DESCRIBE_IT_GUESS_SPEED_BONUS = 400
+export const DESCRIBE_IT_GUESS_SPEED_BONUS = 40
 /** Points the describer earns for each player who guesses their word. */
-export const DESCRIBE_IT_DESCRIBER_POINTS_PER_GUESS = 50
+export const DESCRIBE_IT_DESCRIBER_POINTS_PER_GUESS = 5
 
 export function clampDescribeItMode(value: unknown): DescribeItMode {
   return value === 'individual' ? 'individual' : 'team'
