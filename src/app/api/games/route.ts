@@ -98,6 +98,7 @@ import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampChessTimer } from '@/lib/chess'
 import { clampScrabbleTimer, clampScrabbleGameDuration } from '@/lib/scrabble'
+import { parseScrabbleDictionaryId } from '@/lib/scrabble-dictionary-meta'
 import {
   clampDescribeItMode,
   clampDescribeItRounds,
@@ -231,6 +232,7 @@ export async function POST(req: NextRequest) {
     whot_cards_enabled: rawWhotCardsEnabled,
     whot_number_calls_enabled: rawWhotNumberCallsEnabled,
     whot_pick2_stacking: rawWhotPick2Stacking,
+    scrabble_dictionary_id: rawScrabbleDictionaryId,
   } = parsed.data
 
   const game_type = parseGameType(rawGameType)
@@ -575,7 +577,12 @@ export async function POST(req: NextRequest) {
           bingo_call_interval_seconds: clampBingoCallInterval(rawBingoCallInterval),
         }
       : {}),
-    ...(isScrabbleGame(game_type) ? { game_duration_seconds: clampScrabbleGameDuration(rawGameDurationSeconds) } : {}),
+    ...(isScrabbleGame(game_type)
+      ? {
+          game_duration_seconds: clampScrabbleGameDuration(rawGameDurationSeconds),
+          scrabble_dictionary_id: parseScrabbleDictionaryId(rawScrabbleDictionaryId),
+        }
+      : {}),
     ...(isMonopolyGame(game_type)
       ? { game_duration_seconds: clampMonopolyGameDuration(rawGameDurationSeconds) }
       : isWhotGame(game_type)

@@ -140,6 +140,7 @@ export const createGameSchema = z.object({
   whot_cards_enabled: z.boolean().optional(),
   whot_number_calls_enabled: z.boolean().optional(),
   whot_pick2_stacking: z.boolean().optional(),
+  scrabble_dictionary_id: z.enum(SCRABBLE_DICTIONARY_OPTIONS).optional(),
   custom_slots: z
     .object({
       slots: z

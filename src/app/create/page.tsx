@@ -136,6 +136,13 @@ import {
 } from '@/lib/monopoly'
 import { MONOPOLY_DEFAULT_TURN_TIMER } from '@/lib/supabase-selects'
 import { SCRABBLE_GAME_DURATION_OPTIONS, formatScrabbleGameDuration } from '@/lib/scrabble'
+import {
+  SCRABBLE_DICTIONARY_OPTIONS,
+  SCRABBLE_DICTIONARY_LABELS,
+  SCRABBLE_DICTIONARY_BLURBS,
+  SCRABBLE_DEFAULT_DICTIONARY,
+  type ScrabbleDictionaryId,
+} from '@/lib/scrabble-dictionary-meta'
 import { YAHTZEE_DEFAULT_MAX_PLAYERS } from '@/lib/yahtzee'
 import { WHOT_DEFAULT_MAX_PLAYERS, WHOT_GAME_DURATION_OPTIONS, formatWhotGameDuration } from '@/lib/whot'
 import { turnTimerOptionsFor, formatBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
@@ -262,6 +269,7 @@ function CreateGameInner() {
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
   const [scrabbleGameDuration, setScrabbleGameDuration] = useState(0)
+  const [scrabbleDictionary, setScrabbleDictionary] = useState<ScrabbleDictionaryId>(SCRABBLE_DEFAULT_DICTIONARY)
   const [yahtzeeMaxPlayers, setYahtzeeMaxPlayers] = useState(YAHTZEE_DEFAULT_MAX_PLAYERS)
   const [whotMaxPlayers, setWhotMaxPlayers] = useState(WHOT_DEFAULT_MAX_PLAYERS)
   const [whotGameDuration, setWhotGameDuration] = useState(0)
@@ -1142,6 +1150,7 @@ function CreateGameInner() {
           whot_pick2_stacking: isWhot ? whotPick2Stacking : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
           whot_number_calls_enabled: isWhot ? whotNumberCallsEnabled : undefined,
+          scrabble_dictionary_id: isScrabble ? scrabbleDictionary : undefined,
         }),
       })
       const data = await res.json()
@@ -1639,6 +1648,20 @@ function CreateGameInner() {
                       </option>
                     ))}
                   </select>
+                </Field>
+                <Field label="Dictionary">
+                  <select
+                    value={scrabbleDictionary}
+                    onChange={(e) => setScrabbleDictionary(e.target.value as ScrabbleDictionaryId)}
+                    className="input-field w-full"
+                  >
+                    {SCRABBLE_DICTIONARY_OPTIONS.map((id) => (
+                      <option key={id} value={id}>
+                        {SCRABBLE_DICTIONARY_LABELS[id]}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-faint mt-1 text-xs">{SCRABBLE_DICTIONARY_BLURBS[scrabbleDictionary]}</p>
                 </Field>
                 <Field label="Late joiners">
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="scrabble" />
