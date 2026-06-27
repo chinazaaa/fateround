@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { GAME_TYPE_OPTIONS, HOMEPAGE_FEATURED_GAMES, gameTypeConfig } from '@/lib/game-types'
+import { GAME_TYPE_OPTIONS, HOMEPAGE_FEATURED_GAMES, gameTypeConfig, gameTypeCreateParam } from '@/lib/game-types'
 import { gameLandingSlug } from '@/lib/game-landing'
 import { GameTypeModal } from '@/components/GameTypeModal'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
@@ -22,7 +22,7 @@ export function HomePage() {
 
   const startCreate = (type?: GameType) => {
     if (type) {
-      router.push(`/create?type=${type}`)
+      router.push(`/create?type=${gameTypeCreateParam(type)}`)
     } else {
       setShowGameTypes(true)
     }
@@ -165,7 +165,7 @@ export function HomePage() {
       <GameTypeModal
         open={showGameTypes}
         onClose={() => setShowGameTypes(false)}
-        onSelect={(type) => router.push(`/create?type=${type}`)}
+        onSelect={(type) => router.push(`/create?type=${gameTypeCreateParam(type)}`)}
       />
     </>
   )

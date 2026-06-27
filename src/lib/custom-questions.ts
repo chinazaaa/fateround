@@ -14,6 +14,7 @@ import {
   isBinaryChoiceGame,
   isTriviaGame,
   isCodewordsGame,
+  isDescribeItGame,
   parseGameType,
 } from '@/lib/game-types'
 import { pickLeastUsed } from '@/lib/question-picker'
@@ -488,6 +489,9 @@ export function questionSampleFile(gameType?: GameType | string): { href: string
   if (isTriviaGame(gameType)) {
     return { href: '/trivia-questions-sample.csv', download: 'trivia-questions-sample.csv' }
   }
+  if (isDescribeItGame(gameType)) {
+    return { href: '/text-charades-words-sample.csv', download: 'text-charades-words-sample.csv' }
+  }
   if (isCodewordsGame(gameType)) {
     return { href: '/codewords-words-sample.csv', download: 'codewords-words-sample.csv' }
   }
@@ -509,6 +513,9 @@ export function questionSampleFile(gameType?: GameType | string): { href: string
 export function questionUploadHint(gameType?: GameType | string): string {
   if (isTriviaGame(gameType)) {
     return '.csv or .xlsx — question, option_a–option_d, correct (A–D). Quote questions that contain commas.'
+  }
+  if (isDescribeItGame(gameType)) {
+    return '.csv or .xlsx — one word or phrase per row.'
   }
   if (isCodewordsGame(gameType)) {
     return '.csv or .xlsx — one word per row (single words only, no spaces).'

@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
-import { teamLabel, type DescribeItTeamScore } from '@/lib/describe-it'
+import { teamLabel, type DescribeItPlayerScore, type DescribeItTeamScore } from '@/lib/describe-it'
 import type { Player } from '@/types'
 
 /** Per-team accent classes. `badge` is a solid high-contrast pill for the team name. */
@@ -172,6 +172,58 @@ export function DescribeItScoreboard({
                 {active ? <span title="On the clock">⏱</span> : null}
               </span>
               <span className="text-lg font-black tabular-nums">{s.score}</span>
+            </div>
+          )
+        })}
+      </div>
+    </DescribeItCard>
+  )
+}
+
+/** Live per-player leaderboard for individual mode, highest first. */
+export function DescribeItPlayerScoreboard({
+  leaderboard,
+  describerId,
+  myPlayerId,
+  round,
+  totalRounds,
+}: {
+  leaderboard: DescribeItPlayerScore[]
+  describerId?: string | null
+  myPlayerId?: string | null
+  round?: number
+  totalRounds?: number
+}) {
+  return (
+    <DescribeItCard className="p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="label-caps">Leaderboard</p>
+        {round != null && totalRounds != null && (
+          <p className="text-faint text-xs font-semibold">
+            Round {Math.min(round, totalRounds)} of {totalRounds}
+          </p>
+        )}
+      </div>
+      <div className="space-y-1">
+        {leaderboard.map((p, i) => {
+          const isMine = p.id === myPlayerId
+          const isDescriber = p.id === describerId
+          return (
+            <div
+              key={p.id}
+              className={[
+                'flex items-center justify-between rounded-lg px-2.5 py-1.5 text-sm',
+                isMine ? 'bg-[var(--primary)]/10 font-semibold' : '',
+                isDescriber ? 'ring-1 ring-[var(--primary)]/40' : '',
+              ].join(' ')}
+            >
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span className="text-faint tabular-nums w-5 shrink-0">{i + 1}.</span>
+                <span className="truncate">{p.name}</span>
+                {isDescriber ? <span title="Describing now">🗣️</span> : null}
+                {isMine ? <span className="text-[10px] text-faint shrink-0">(you)</span> : null}
+              </span>
+              <span className="text-base font-black tabular-nums shrink-0">{p.score}</span>
             </div>
           )
         })}
