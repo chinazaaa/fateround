@@ -5,6 +5,7 @@ import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anon
 import { finishCodewordsGame } from '@/lib/codewords'
 import { finishScrabbleGameEarly } from '@/lib/scrabble'
 import { markGameFinished } from '@/lib/game-finish'
+import { awardTournamentPlacements } from '@/lib/tournament-scoring'
 import {
   parseGameType,
   isAnonymousMessagesGame,
@@ -110,6 +111,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { error } = await markGameFinished(supabase, gameId, now)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  try {
+    await awardTournamentPlacements(supabase, gameId)
+  } catch {
+    // Tournament scoring is best-effort — never block game finish
+  }
 
   return NextResponse.json({ success: true })
 }
