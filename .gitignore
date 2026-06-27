@@ -43,3 +43,6 @@ CLAUDE.md
 .venv
 .claude/
 .worktrees/
+
+# local MCP server config
+.mcp.json
