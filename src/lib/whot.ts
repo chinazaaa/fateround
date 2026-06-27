@@ -4,7 +4,7 @@ import { secondsUntilDeadline } from '@/lib/round-timing'
 import type { Game, WhotCard, WhotPlayerHand, WhotSession, WhotShape } from '@/types'
 
 export const WHOT_MIN_PLAYERS = 2
-export const WHOT_MAX_PLAYERS = 6
+export const WHOT_MAX_PLAYERS = 8
 export const WHOT_DEFAULT_MAX_PLAYERS = 6
 
 /** Whole-game session length (seconds). 0 = no limit. */
