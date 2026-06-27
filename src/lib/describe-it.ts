@@ -596,19 +596,19 @@ async function processIndividualGuess(
   }
 
   const points = describeItGuessPoints(session.turn_deadline_at, session.turn_seconds)
-  const { error: insertError } = await supabase.from('describe_it_guesses').insert({
-    game_id: gameId,
-    turn_index: session.turn_index,
-    player_id: playerId,
-    team: 0,
-    text: guess.slice(0, 80),
-    correct: true,
-    points,
+  // Record the scored guess and credit the points atomically (single round-trip). The
+  // partial unique index keeps it idempotent — a re-submit returns false and never
+  // double-awards — and there's no insert→score gap where a crash could drop a point.
+  const { data: scored, error: scoreError } = await supabase.rpc('describe_it_record_correct_guess', {
+    p_game_id: gameId,
+    p_turn_index: session.turn_index,
+    p_player_id: playerId,
+    p_text: guess.slice(0, 80),
+    p_points: points,
   })
-  // A unique-violation means this player already scored this turn — never double-award.
-  if (insertError) return { correct: true }
-
-  await supabase.rpc('describe_it_add_score', { p_game_id: gameId, p_player_id: playerId, p_delta: points })
+  // false = this player already scored this turn; an error = nothing recorded. Either
+  // way the guess was correct, but skip the turn-end check (it ran on the first call).
+  if (scoreError || scored === false) return { correct: true }
 
   // End the turn early once every guesser (everyone but the describer) has it.
   const { count } = await supabase
