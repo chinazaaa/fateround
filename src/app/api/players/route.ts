@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { removeMonopolyPlayer } from '@/lib/monopoly'
+import { removeScrabblePlayer } from '@/lib/scrabble'
 import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
 import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
@@ -1400,6 +1401,12 @@ export async function DELETE(req: NextRequest) {
 
   if (isMonopolyGame(gameType)) {
     const { error } = await removeMonopolyPlayer(supabase, id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isScrabbleGame(gameType)) {
+    const { error } = await removeScrabblePlayer(supabase, id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }
