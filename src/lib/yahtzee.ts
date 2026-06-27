@@ -220,6 +220,29 @@ export function pickAutoScoreCategory(categories: YahtzeeCategoryPoints): Yahtze
   return null
 }
 
+/**
+ * Optimistic-concurrency session write. The update only lands if the row still
+ * carries the `expectedUpdatedAt` we read, so when two requests race (e.g. every
+ * client driving the turn timer) only the first wins — the loser gets 0 rows and
+ * the caller aborts before writing scores or finalizing. Returns true if this
+ * write won. The patch carries `turn_deadline_at` itself, so each call site keeps
+ * its existing deadline behavior (roll refreshes, score advances, finish clears).
+ */
+async function persistSession(
+  supabase: SupabaseClient,
+  gameId: string,
+  patch: Partial<YahtzeeSession>,
+  expectedUpdatedAt: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from('yahtzee_sessions')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('game_id', gameId)
+    .eq('updated_at', expectedUpdatedAt)
+    .select('game_id')
+  return (data?.length ?? 0) > 0
+}
+
 export async function initializeYahtzeeGame(
   supabase: SupabaseClient,
   gameId: string,
@@ -313,20 +336,22 @@ export async function processYahtzeeRoll(
   const timerSeconds = (gameRes.data?.timer_seconds ?? 0) as number
   const turn_deadline_at = yahtzeeTurnDeadline(timerSeconds)
 
-  const { error: sessionError } = await supabase
-    .from('yahtzee_sessions')
-    .update({
+  // Claim the turn via CAS — if another request already advanced this session
+  // from the exact state we read, we lose the race and bail without re-rolling.
+  await persistSession(
+    supabase,
+    gameId,
+    {
       dice: nextDice,
       rolls_remaining,
       rolls_this_turn,
       turn_deadline_at,
-      updated_at: new Date().toISOString(),
       status_message:
         rolls_remaining > 0 ? `Roll again (${rolls_remaining} left) or score.` : 'Rolls used — score your turn!',
-    })
-    .eq('game_id', gameId)
+    },
+    session.updated_at
+  )
 
-  if (sessionError) return { error: sessionError.message }
   return {}
 }
 
@@ -345,12 +370,10 @@ export async function processYahtzeeHold(
   if ((session.rolls_this_turn ?? 0) < 1) return { error: 'Roll at least once before keeping dice' }
   if (!Array.isArray(held) || held.length !== YAHTZEE_DICE_COUNT) return { error: 'Invalid held array' }
 
-  const { error: sessionError } = await supabase
-    .from('yahtzee_sessions')
-    .update({ held, updated_at: new Date().toISOString() })
-    .eq('game_id', gameId)
+  // CAS so a hold that lost the race against a concurrent roll/score/advance is
+  // dropped rather than stamping a stale `held` onto the next player's turn.
+  await persistSession(supabase, gameId, { held }, session.updated_at)
 
-  if (sessionError) return { error: sessionError.message }
   return {}
 }
 
@@ -399,14 +422,6 @@ export async function processYahtzeeScore(
 
   const nextPoints: YahtzeeCategoryPoints = { ...currentPoints, [category]: score }
 
-  const { error: updateScoreError } = await supabase
-    .from('yahtzee_player_scores')
-    .update({ scores: { categories: nextPoints } })
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-
-  if (updateScoreError) return { error: updateScoreError.message }
-
   const updatedScoresRows = (scoresRows as YahtzeePlayerScore[]).map((r) =>
     r.player_id === playerId ? { ...r, scores: { ...r.scores, categories: nextPoints } } : r
   )
@@ -421,17 +436,28 @@ export async function processYahtzeeScore(
     const winners = totals.filter((t) => t.total === max).map((t) => t.playerId)
     const winnerPlayerId = winners.length === 1 ? winners[0] : null
 
-    const { error: sessionError } = await supabase
-      .from('yahtzee_sessions')
-      .update({
+    // Claim the session FIRST. Only the request that wins the CAS writes the score
+    // row and finalizes, so a player action racing the timer can't double-write the
+    // category cell or decide the winner twice.
+    const won = await persistSession(
+      supabase,
+      gameId,
+      {
         phase: 'finished',
         winner_player_id: winnerPlayerId,
         turn_deadline_at: null,
         status_message: 'Game over — thanks for playing!',
-        updated_at: new Date().toISOString(),
-      })
+      },
+      session.updated_at
+    )
+    if (!won) return {}
+
+    const { error: updateScoreError } = await supabase
+      .from('yahtzee_player_scores')
+      .update({ scores: { categories: nextPoints } })
       .eq('game_id', gameId)
-    if (sessionError) return { error: sessionError.message }
+      .eq('player_id', playerId)
+    if (updateScoreError) return { error: updateScoreError.message }
 
     const { error: gameError } = await markGameFinished(supabase, gameId)
     if (gameError) return { error: gameError.message }
@@ -442,20 +468,26 @@ export async function processYahtzeeScore(
   const nextIndex = nextUnfinishedIndex(order, updatedScoresRows, session.current_turn_index)
   if (nextIndex == null) {
     // Should not happen because allComplete is false, but handle defensively.
-    const { error: sessionError } = await supabase
-      .from('yahtzee_sessions')
-      .update({ phase: 'finished', updated_at: new Date().toISOString() })
+    const won = await persistSession(supabase, gameId, { phase: 'finished' }, session.updated_at)
+    if (!won) return {}
+    const { error: updateScoreError } = await supabase
+      .from('yahtzee_player_scores')
+      .update({ scores: { categories: nextPoints } })
       .eq('game_id', gameId)
-    if (sessionError) return { error: sessionError.message }
+      .eq('player_id', playerId)
+    if (updateScoreError) return { error: updateScoreError.message }
     return {}
   }
 
   const resetDice = [1, 1, 1, 1, 1]
   const resetHeld = [false, false, false, false, false]
 
-  const { error: sessionError } = await supabase
-    .from('yahtzee_sessions')
-    .update({
+  // Claim the turn before writing the score row, so a request that lost the race
+  // never records its score into the (now stale) category.
+  const won = await persistSession(
+    supabase,
+    gameId,
+    {
       current_turn_index: nextIndex,
       dice: resetDice,
       held: resetHeld,
@@ -464,11 +496,18 @@ export async function processYahtzeeScore(
       // Start the next player's deadline immediately so they have the full window
       turn_deadline_at: yahtzeeTurnDeadline(timerSeconds),
       status_message: 'Next player — roll the dice.',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
+    },
+    session.updated_at
+  )
+  if (!won) return {}
 
-  if (sessionError) return { error: sessionError.message }
+  const { error: updateScoreError } = await supabase
+    .from('yahtzee_player_scores')
+    .update({ scores: { categories: nextPoints } })
+    .eq('game_id', gameId)
+    .eq('player_id', playerId)
+  if (updateScoreError) return { error: updateScoreError.message }
+
   return {}
 }
 
@@ -515,14 +554,6 @@ export async function processYahtzeeExpireTurn(
   const score = categoryScore(dice, category)
   const nextPoints: YahtzeeCategoryPoints = { ...playerRow.scores.categories, [category]: score }
 
-  const { error: updateScoreError } = await supabase
-    .from('yahtzee_player_scores')
-    .update({ scores: { categories: nextPoints } })
-    .eq('game_id', gameId)
-    .eq('player_id', currentId)
-
-  if (updateScoreError) return { error: updateScoreError.message }
-
   const updatedScoresRows = scoresRows.map((r) =>
     r.player_id === currentId ? { ...r, scores: { categories: nextPoints } } : r
   )
@@ -537,16 +568,28 @@ export async function processYahtzeeExpireTurn(
     const winners = totals.filter((t) => t.total === max).map((t) => t.playerId)
     const winnerPlayerId = winners.length === 1 ? winners[0] : null
 
-    const { error: se } = await supabase
-      .from('yahtzee_sessions')
-      .update({
+    // Claim FIRST. Two timer fires re-roll DIFFERENT random dice; only the request
+    // that wins the CAS commits its dice's auto-score and decides the winner — the
+    // loser bails without touching the score row, keeping the cell single-valued.
+    const won = await persistSession(
+      supabase,
+      gameId,
+      {
         phase: 'finished',
         winner_player_id: winnerPlayerId,
         turn_deadline_at: null,
-        updated_at: new Date().toISOString(),
-      })
+      },
+      session.updated_at
+    )
+    if (!won) return { skipped: true }
+
+    const { error: updateScoreError } = await supabase
+      .from('yahtzee_player_scores')
+      .update({ scores: { categories: nextPoints } })
       .eq('game_id', gameId)
-    if (se) return { error: se.message }
+      .eq('player_id', currentId)
+    if (updateScoreError) return { error: updateScoreError.message }
+
     await markGameFinished(supabase, gameId)
     return {}
   }
@@ -554,16 +597,28 @@ export async function processYahtzeeExpireTurn(
   const order = (session.turn_order as string[]) ?? []
   const nextIndex = nextUnfinishedIndex(order, updatedScoresRows, session.current_turn_index)
   if (nextIndex == null) {
-    await supabase
-      .from('yahtzee_sessions')
-      .update({ phase: 'finished', turn_deadline_at: null, updated_at: new Date().toISOString() })
+    const won = await persistSession(
+      supabase,
+      gameId,
+      { phase: 'finished', turn_deadline_at: null },
+      session.updated_at
+    )
+    if (!won) return { skipped: true }
+    const { error: updateScoreError } = await supabase
+      .from('yahtzee_player_scores')
+      .update({ scores: { categories: nextPoints } })
       .eq('game_id', gameId)
+      .eq('player_id', currentId)
+    if (updateScoreError) return { error: updateScoreError.message }
     return {}
   }
 
-  const { error: se } = await supabase
-    .from('yahtzee_sessions')
-    .update({
+  // Claim the turn before writing the auto-score, so only the winning timer fire
+  // records its random dice's score into the category.
+  const won = await persistSession(
+    supabase,
+    gameId,
+    {
       current_turn_index: nextIndex,
       dice,
       held: [false, false, false, false, false],
@@ -571,11 +626,18 @@ export async function processYahtzeeExpireTurn(
       rolls_this_turn: 0,
       turn_deadline_at: yahtzeeTurnDeadline(timerSeconds),
       status_message: 'Turn skipped (time ran out). Next player — roll the dice.',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
+    },
+    session.updated_at
+  )
+  if (!won) return { skipped: true }
 
-  if (se) return { error: se.message }
+  const { error: updateScoreError } = await supabase
+    .from('yahtzee_player_scores')
+    .update({ scores: { categories: nextPoints } })
+    .eq('game_id', gameId)
+    .eq('player_id', currentId)
+  if (updateScoreError) return { error: updateScoreError.message }
+
   return {}
 }
 
