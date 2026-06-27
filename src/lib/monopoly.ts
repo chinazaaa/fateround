@@ -1504,7 +1504,7 @@ export async function processMonopolyBuy(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  buy: boolean
+  decision: 'buy' | 'auction' | 'pass'
 ): Promise<{ error?: string }> {
   const { data: boardRaw } = await supabase.from('monopoly_boards').select('*').eq('game_id', gameId).maybeSingle()
   if (!boardRaw) return { error: 'Board not found' }
@@ -1530,7 +1530,7 @@ export async function processMonopolyBuy(
   const states = (statesRaw ?? []) as MonopolyPlayerState[]
   const timerSeconds = await getMonopolyTimerSeconds(supabase, gameId)
 
-  if (buy) {
+  if (decision === 'buy') {
     const price = space.price ?? 0
     if (state.cash < price) return { error: 'Not enough cash' }
     owners[String(spaceIndex)] = playerId
@@ -1557,6 +1557,25 @@ export async function processMonopolyBuy(
       board.updated_at
     )
     if (!won) return {}
+    return {}
+  }
+
+  if (decision === 'pass') {
+    // Decline without an auction — the property stays unowned and the turn just moves on.
+    const turnFinish = finishTurnAfterSpaceAction(board, states, playerId)
+    await persistBoard(
+      supabase,
+      gameId,
+      {
+        phase: turnFinish.phase,
+        pending_space: null,
+        current_turn_index: turnFinish.turnIndex,
+        consecutive_doubles: turnFinish.consecutiveDoubles,
+        status_message: `${space.name} was passed up — no auction.`,
+        turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, turnFinish.phase),
+      },
+      board.updated_at
+    )
     return {}
   }
 
@@ -2798,7 +2817,7 @@ export async function processMonopolyExpireTurn(
 
   switch (board.phase) {
     case 'buy':
-      return processMonopolyBuy(supabase, gameId, playerId, false)
+      return processMonopolyBuy(supabase, gameId, playerId, 'auction')
     case 'pay_rent':
       return processMonopolyPayRent(supabase, gameId, playerId)
     case 'raise_funds':
