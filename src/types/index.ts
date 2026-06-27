@@ -257,6 +257,8 @@ export interface Game {
   whot_cards_enabled?: boolean
   /** Whot — allow calling a number when playing WHOT. */
   whot_number_calls_enabled?: boolean
+  /** Whot — whether a Pick 2 can be stacked/defended (true) or must be drawn (false). */
+  whot_pick2_stacking?: boolean
 }
 
 export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'auction' | 'raise_funds' | 'finished'

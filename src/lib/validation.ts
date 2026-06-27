@@ -139,6 +139,7 @@ export const createGameSchema = z.object({
   whot_pick3_enabled: z.boolean().optional(),
   whot_cards_enabled: z.boolean().optional(),
   whot_number_calls_enabled: z.boolean().optional(),
+  whot_pick2_stacking: z.boolean().optional(),
   custom_slots: z
     .object({
       slots: z
@@ -462,6 +463,7 @@ export const boardGameLobbySettingsSchema = z.object({
   whot_pick3_enabled: z.boolean().optional(),
   whot_cards_enabled: z.boolean().optional(),
   whot_number_calls_enabled: z.boolean().optional(),
+  whot_pick2_stacking: z.boolean().optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>

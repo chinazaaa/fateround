@@ -492,6 +492,9 @@ export function NpatActiveRound({
       myPlayerId={myPlayerId}
     />
   ) : null
+  // The caller-review and approval-wait screens render their own scoreboard
+  // (with review/dispute controls), so the standalone live one would double up.
+  const showLiveScoreboard = !!scoreboard && screen !== 'caller_review' && screen !== 'approval_wait'
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(280px,420px)] gap-4 items-start">
@@ -730,7 +733,7 @@ export function NpatActiveRound({
             )
           })()}
 
-        {showTransparency && <div className="lg:hidden">{scoreboard}</div>}
+        {showLiveScoreboard && <div className="lg:hidden">{scoreboard}</div>}
 
         {screen === 'revealed' && myAnswer && myAnswer.score_name != null && (
           <div className="glass-card p-4 text-center font-semibold">
@@ -746,7 +749,7 @@ export function NpatActiveRound({
           highlightId={myPlayerId}
           scoreLabel={(score) => `${score} pts`}
         />
-        {scoreboard && <div className="hidden lg:block">{scoreboard}</div>}
+        {showLiveScoreboard && <div className="hidden lg:block">{scoreboard}</div>}
       </aside>
     </div>
   )

@@ -138,6 +138,7 @@ import { MONOPOLY_DEFAULT_TURN_TIMER } from '@/lib/supabase-selects'
 import { SCRABBLE_GAME_DURATION_OPTIONS, formatScrabbleGameDuration } from '@/lib/scrabble'
 import { YAHTZEE_DEFAULT_MAX_PLAYERS } from '@/lib/yahtzee'
 import { WHOT_DEFAULT_MAX_PLAYERS, WHOT_GAME_DURATION_OPTIONS, formatWhotGameDuration } from '@/lib/whot'
+import { turnTimerOptionsFor, formatBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { LUDO_DEFAULT_MAX_PLAYERS } from '@/lib/ludo'
 import {
   formatNpatGameDuration,
@@ -265,6 +266,7 @@ function CreateGameInner() {
   const [whotMaxPlayers, setWhotMaxPlayers] = useState(WHOT_DEFAULT_MAX_PLAYERS)
   const [whotGameDuration, setWhotGameDuration] = useState(0)
   const [whotPick3Enabled, setWhotPick3Enabled] = useState(true)
+  const [whotPick2Stacking, setWhotPick2Stacking] = useState(true)
   const [whotCardsEnabled, setWhotCardsEnabled] = useState(true)
   const [whotNumberCallsEnabled, setWhotNumberCallsEnabled] = useState(true)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
@@ -1137,6 +1139,7 @@ function CreateGameInner() {
                   ? scrabbleGameDuration
                   : undefined,
           whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
+          whot_pick2_stacking: isWhot ? whotPick2Stacking : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
           whot_number_calls_enabled: isWhot ? whotNumberCallsEnabled : undefined,
         }),
@@ -1467,11 +1470,11 @@ function CreateGameInner() {
                     onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
                     className="input-field w-full"
                   >
-                    <option value={0}>No timer</option>
-                    <option value={30}>30 seconds</option>
-                    <option value={60}>60 seconds</option>
-                    <option value={90}>90 seconds</option>
-                    <option value={120}>2 minutes</option>
+                    {turnTimerOptionsFor('whot').map((s) => (
+                      <option key={s} value={s}>
+                        {formatBoardGameTurnTimer(s)}
+                      </option>
+                    ))}
                   </select>
                 </Field>
                 <Field label="Game length">
@@ -1497,6 +1500,12 @@ function CreateGameInner() {
                       description="Include 5 cards and the Pick 3 draw penalty"
                       value={whotPick3Enabled}
                       onChange={setWhotPick3Enabled}
+                    />
+                    <Toggle
+                      label="Stack Pick 2"
+                      description="On: defend a Pick 2 with your own 2 (next player draws more). Off: you must draw it."
+                      value={whotPick2Stacking}
+                      onChange={setWhotPick2Stacking}
                     />
                     <Toggle
                       label="WHOT cards"
@@ -1710,6 +1719,12 @@ function CreateGameInner() {
                       </option>
                     ))}
                   </select>
+                  {settings.describe_it_mode === 'individual' && (
+                    <p className="text-faint text-[11px] pt-1">
+                      Total turns = players × rounds. E.g. 6 players × {settings.rounds_count} rounds ={' '}
+                      {6 * settings.rounds_count} turns — the lobby shows the exact count once everyone joins.
+                    </p>
+                  )}
                 </Field>
                 <Field label="Time per turn">
                   <select

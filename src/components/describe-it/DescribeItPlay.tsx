@@ -21,10 +21,15 @@ function GuessFeed({
   guesses,
   players,
   turnIndex,
+  myPlayerId,
+  hideOthersText,
 }: {
   guesses: DescribeItGuess[]
   players: Player[]
   turnIndex: number
+  myPlayerId: string | null
+  /** Individual mode: never show another player's guess text, so nobody can copy it. */
+  hideOthersText?: boolean
 }) {
   const nameById = new Map(players.map((p) => [p.id, p.name]))
   // `guesses` arrives newest-first, so the most recent for this turn are at the front.
@@ -34,13 +39,26 @@ function GuessFeed({
   }
   return (
     <div className="space-y-1 max-h-40 overflow-y-auto">
-      {recent.map((g) => (
-        <div key={g.id} className="flex items-center gap-1.5 text-sm">
-          <span className="text-faint shrink-0 truncate max-w-[40%]">{nameById.get(g.player_id) ?? 'Player'}:</span>
-          <span className={g.correct ? 'font-black text-emerald-400' : 'text-[var(--foreground)]'}>{g.text}</span>
-          {g.correct && <span>✅</span>}
-        </div>
-      ))}
+      {recent.map((g) => {
+        const mask = hideOthersText && g.player_id !== myPlayerId
+        return (
+          <div key={g.id} className="flex items-center gap-1.5 text-sm">
+            <span className="text-faint shrink-0 truncate max-w-[45%]">{nameById.get(g.player_id) ?? 'Player'}:</span>
+            {mask ? (
+              g.correct ? (
+                <span className="font-bold text-emerald-400">guessed it ✅</span>
+              ) : (
+                <span className="text-faint italic">guessing…</span>
+              )
+            ) : (
+              <>
+                <span className={g.correct ? 'font-black text-emerald-400' : 'text-[var(--foreground)]'}>{g.text}</span>
+                {g.correct && <span>✅</span>}
+              </>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -138,8 +156,26 @@ export function DescribeItPlayPanel({
   // Individual mode: anyone in the roster who isn't the describer may guess.
   const canGuess = isIndividual ? inRoster && !isDescriber : onActiveTeam
 
-  return (
-    <div className="space-y-4">
+  const scoreboardEl = isIndividual ? (
+    <DescribeItPlayerScoreboard
+      leaderboard={leaderboard}
+      describerId={session.describer_player_id}
+      myPlayerId={myPlayerId}
+      round={session.current_round}
+      totalRounds={session.total_rounds}
+    />
+  ) : (
+    <DescribeItScoreboard
+      scores={teamScores}
+      activeTeam={activeTeam}
+      myTeam={myTeam}
+      round={session.current_round}
+      totalRounds={session.total_rounds}
+    />
+  )
+
+  const inner = (
+    <div className="space-y-4 min-w-0">
       {isIndividual
         ? isDescriber &&
           session.phase === 'turn' && <p className="text-center text-xs text-faint">You&apos;re describing 🗣️</p>
@@ -152,23 +188,8 @@ export function DescribeItPlayPanel({
             </p>
           )}
 
-      {isIndividual ? (
-        <DescribeItPlayerScoreboard
-          leaderboard={leaderboard}
-          describerId={session.describer_player_id}
-          myPlayerId={myPlayerId}
-          round={session.current_round}
-          totalRounds={session.total_rounds}
-        />
-      ) : (
-        <DescribeItScoreboard
-          scores={teamScores}
-          activeTeam={activeTeam}
-          myTeam={myTeam}
-          round={session.current_round}
-          totalRounds={session.total_rounds}
-        />
-      )}
+      {/* Team mode keeps the scoreboard inline; individual mode shows it in a side column. */}
+      {!isIndividual && scoreboardEl}
 
       {session.phase === 'break' && (
         <DescribeItCard className="p-5 text-center space-y-2">
@@ -281,10 +302,26 @@ export function DescribeItPlayPanel({
           )}
 
           <DescribeItCard className="p-3">
-            <GuessFeed guesses={guesses} players={players} turnIndex={session.turn_index} />
+            <GuessFeed
+              guesses={guesses}
+              players={players}
+              turnIndex={session.turn_index}
+              myPlayerId={myPlayerId}
+              hideOthersText={isIndividual}
+            />
           </DescribeItCard>
         </>
       )}
+    </div>
+  )
+
+  if (!isIndividual) return inner
+
+  // Individual mode: leaderboard sits in a side column (stacks below on mobile), like Trivia.
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(220px,300px)] lg:items-start">
+      {inner}
+      <aside className="space-y-4 lg:sticky lg:top-4">{scoreboardEl}</aside>
     </div>
   )
 }

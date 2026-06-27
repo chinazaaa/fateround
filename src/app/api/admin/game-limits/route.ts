@@ -41,9 +41,12 @@ export async function PATCH(req: NextRequest) {
 
   for (const entry of parsed.data.limits) {
     const gameType = entry.game_type as LobbyLimitGameType
-    const min = GAME_LIMIT_CODE_DEFAULTS[gameType].min
+    const { min, max } = GAME_LIMIT_CODE_DEFAULTS[gameType]
     if (entry.max_players < min) {
       return NextResponse.json({ error: `${gameType} max players must be at least ${min}` }, { status: 400 })
+    }
+    if (entry.max_players > max) {
+      return NextResponse.json({ error: `${gameType} max players can't exceed ${max}` }, { status: 400 })
     }
 
     const { error } = await supabase.from('game_player_limits').upsert(

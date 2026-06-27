@@ -603,10 +603,22 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
                     </button>
                   </div>
                   {isIndividual && (
-                    <p className="text-faint text-[11px]">
-                      Everyone takes turns describing one word; guessers score by speed and the describer scores per
-                      correct guess.
-                    </p>
+                    <div className="text-faint text-[11px] space-y-1">
+                      <p>
+                        Everyone takes turns describing one word; guessers score by speed and the describer scores per
+                        correct guess.
+                      </p>
+                      <p
+                        className={
+                          readyPlayers.length * currentRounds > 40 ? 'text-amber-400 font-semibold' : 'text-faint'
+                        }
+                      >
+                        Every player describes once per round, so {readyPlayers.length}{' '}
+                        {readyPlayers.length === 1 ? 'player' : 'players'} × {currentRounds}{' '}
+                        {currentRounds === 1 ? 'round' : 'rounds'} = {readyPlayers.length * currentRounds} turns.
+                        {readyPlayers.length * currentRounds > 40 ? ' That’s a long game — try fewer rounds.' : ''}
+                      </p>
+                    </div>
                   )}
                 </div>
                 {!isIndividual && biggestTeamSize > currentRounds && (
