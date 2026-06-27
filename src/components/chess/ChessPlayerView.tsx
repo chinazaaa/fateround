@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Chess } from 'chess.js'
 import { useRouter } from 'next/navigation'
 import { ChessCard, ChessLoadingScreen, ChessSecondaryButton, ChessShell } from '@/components/chess/ChessChrome'
 import { ChessFinalResultsShareBlock } from '@/components/chess/ChessFinalResultsShareBlock'
@@ -206,7 +207,31 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const movePiece = async (from: string, to: string, promotion?: 'q' | 'r' | 'b' | 'n') => {
-    if (!myPlayerId) return
+    if (!myPlayerId || !session) return
+    const prevSession = session
+
+    // Optimistic: apply the move locally so the board responds instantly instead of
+    // sitting on the old position for the server round-trip + reload (~1-2s of "lag").
+    // The server stays authoritative — load() reconciles clocks/PGN below, and we
+    // revert if it rejects the move.
+    try {
+      const preview = new Chess()
+      preview.load(session.fen)
+      if (preview.move({ from, to, promotion })) {
+        setSession({
+          ...session,
+          fen: preview.fen(),
+          current_turn: session.current_turn === 'w' ? 'b' : 'w',
+          last_move_from: from,
+          last_move_to: to,
+          in_check: preview.inCheck(),
+        })
+      }
+    } catch {
+      // Illegal locally (the board only offers legal targets, so this shouldn't happen) —
+      // skip the preview and let the server be the judge.
+    }
+
     setActing(true)
     try {
       const res = await fetch('/api/chess/move', {
@@ -216,10 +241,14 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       })
       const data = await res.json()
       if (!res.ok) {
+        setSession(prevSession) // server rejected — roll back the optimistic move
         toastError(data.error ?? 'Move failed')
       } else {
         await load()
       }
+    } catch {
+      setSession(prevSession)
+      toastError('Move failed')
     } finally {
       setActing(false)
     }

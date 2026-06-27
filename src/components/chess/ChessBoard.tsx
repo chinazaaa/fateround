@@ -153,7 +153,7 @@ function CapturedTray({
 function Piece({ type, color }: { type: string; color: ChessColor }) {
   return (
     <span
-      className="relative z-10 select-none leading-none text-[7.5vw] sm:text-[2.2rem] lg:text-[2.8rem]"
+      className="relative z-10 select-none leading-none text-[9vw] sm:text-[2.9rem] lg:text-[3.5rem]"
       style={{
         color: color === 'w' ? '#f8fafc' : '#1e293b',
         textShadow:
@@ -308,7 +308,7 @@ export function ChessGamePanel({
         </ChessCard>
       )}
 
-      <div className="max-w-md sm:max-w-lg lg:max-w-xl mx-auto w-full space-y-1.5">
+      <div className="max-w-lg sm:max-w-xl lg:max-w-2xl mx-auto w-full space-y-1.5">
         <CapturedTray {...trayFor(topColor)} clock={<ChessClockChip session={session} color={topColor} />} />
         <div className="grid grid-cols-8 rounded-lg overflow-hidden border-2 border-[var(--border-strong)] shadow-lg">
           {orderedRanks.map((rank) =>

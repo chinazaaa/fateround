@@ -57,6 +57,7 @@ export function HostBoardGameLobbyPanel({
   const [turnTimer, setTurnTimer] = useState(0)
   const [gameDuration, setGameDuration] = useState(0)
   const [whotPick3Enabled, setWhotPick3Enabled] = useState(true)
+  const [whotPick2Stacking, setWhotPick2Stacking] = useState(true)
   const [whotCardsEnabled, setWhotCardsEnabled] = useState(true)
   const [whotNumberCallsEnabled, setWhotNumberCallsEnabled] = useState(true)
   const [saveState, setSaveState] = useState<SaveState>('idle')
@@ -78,6 +79,7 @@ export function HostBoardGameLobbyPanel({
     setGameDuration(game.game_duration_seconds ?? 0)
     if (boardGameType === 'whot') {
       setWhotPick3Enabled(game.whot_pick3_enabled !== false)
+      setWhotPick2Stacking(game.whot_pick2_stacking !== false)
       setWhotCardsEnabled(game.whot_cards_enabled !== false)
       setWhotNumberCallsEnabled(game.whot_number_calls_enabled !== false)
     }
@@ -141,6 +143,7 @@ export function HostBoardGameLobbyPanel({
 
   const onWhotRuleChange = (patch: Record<string, boolean>) => {
     if (patch.whot_pick3_enabled !== undefined) setWhotPick3Enabled(patch.whot_pick3_enabled)
+    if (patch.whot_pick2_stacking !== undefined) setWhotPick2Stacking(patch.whot_pick2_stacking)
     if (patch.whot_cards_enabled !== undefined) setWhotCardsEnabled(patch.whot_cards_enabled)
     if (patch.whot_number_calls_enabled !== undefined) setWhotNumberCallsEnabled(patch.whot_number_calls_enabled)
     void patchSettings(patch)
@@ -214,6 +217,12 @@ export function HostBoardGameLobbyPanel({
               description="Include 5 cards and the Pick 3 draw penalty"
               value={whotPick3Enabled}
               onChange={(v) => onWhotRuleChange({ whot_pick3_enabled: v })}
+            />
+            <Toggle
+              label="Stack Pick 2"
+              description="On: defend a Pick 2 with your own 2. Off: you must draw it."
+              value={whotPick2Stacking}
+              onChange={(v) => onWhotRuleChange({ whot_pick2_stacking: v })}
             />
             <Toggle
               label="WHOT cards"

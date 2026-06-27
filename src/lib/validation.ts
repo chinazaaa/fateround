@@ -127,6 +127,7 @@ export const createGameSchema = z.object({
   codewords_player_picks: z.boolean().optional(),
   codewords_late_join: z.boolean().optional(),
   describe_it_num_teams: z.coerce.number().int().min(2).max(4).optional(),
+  describe_it_mode: z.enum(['team', 'individual']).optional(),
   allow_viewers: z.boolean().optional(),
   allow_late_players: z.boolean().optional(),
   late_join_policy: z.enum(['lobby_only', 'viewers_only', 'viewers_and_players']).optional(),
@@ -147,6 +148,8 @@ export const createGameSchema = z.object({
     })
     .optional()
     .nullable(),
+  whot_pick2_stacking: z.boolean().optional(),
+  scrabble_dictionary_id: z.enum(SCRABBLE_DICTIONARY_OPTIONS).optional(),
   custom_slots: z
     .object({
       slots: z
@@ -479,6 +482,7 @@ export const boardGameLobbySettingsSchema = z.object({
   whot_pick3_enabled: z.boolean().optional(),
   whot_cards_enabled: z.boolean().optional(),
   whot_number_calls_enabled: z.boolean().optional(),
+  whot_pick2_stacking: z.boolean().optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>
@@ -618,7 +622,9 @@ export const monopolyActionSchema = z.object({
 })
 
 export const monopolyBuySchema = monopolyActionSchema.extend({
-  buy: z.boolean(),
+  // 'buy' = purchase it · 'auction' = decline and put it up for auction · 'pass' =
+  // decline and skip the auction, the turn just moves on.
+  decision: z.enum(['buy', 'auction', 'pass']),
 })
 
 export const monopolyJailSchema = monopolyActionSchema.extend({
@@ -814,6 +820,7 @@ export const describeItGameSchema = z.object({
 export const describeItSettingsSchema = z.object({
   gameId: gameCodeString(),
   hostToken: z.string().min(1),
+  mode: z.enum(['team', 'individual']).optional(),
   numTeams: z.coerce.number().int().min(2).max(4).optional(),
   turnSeconds: z.coerce.number().int().optional(),
   rounds: z.coerce.number().int().optional(),

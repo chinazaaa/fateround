@@ -95,7 +95,11 @@ import { initializeWhotGame, WHOT_MIN_PLAYERS } from '@/lib/whot'
 import { initializeLudoGame, LUDO_MIN_PLAYERS } from '@/lib/ludo'
 import { initializeTicTacToeGame, TIC_TAC_TOE_MIN_PLAYERS } from '@/lib/tic-tac-toe'
 import { initializeChessGame, CHESS_MIN_PLAYERS } from '@/lib/chess'
-import { initializeDescribeItGame, DESCRIBE_IT_MIN_PLAYERS } from '@/lib/describe-it'
+import {
+  initializeDescribeItGame,
+  DESCRIBE_IT_MIN_PLAYERS,
+  DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
+} from '@/lib/describe-it'
 import { initializeScrabbleGame, SCRABBLE_MIN_PLAYERS, SCRABBLE_MAX_PLAYERS } from '@/lib/scrabble'
 import { buildNpatInitialRound, NPAT_MIN_PLAYERS, shufflePlayerOrder as npatShufflePlayerOrder } from '@/lib/npat'
 import { buildSudokuRoundRow, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
@@ -496,8 +500,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (isDescribeItGame(gameType)) {
     const playingPlayers = playersData.filter((p) => p.spectator !== true)
-    if (playingPlayers.length < DESCRIBE_IT_MIN_PLAYERS) {
-      return NextResponse.json({ error: `Need at least ${DESCRIBE_IT_MIN_PLAYERS} players to start` }, { status: 400 })
+    const minPlayers =
+      game.describe_it_mode === 'individual' ? DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL : DESCRIBE_IT_MIN_PLAYERS
+    if (playingPlayers.length < minPlayers) {
+      return NextResponse.json({ error: `Need at least ${minPlayers} players to start` }, { status: 400 })
     }
 
     const { error: initError } = await initializeDescribeItGame(

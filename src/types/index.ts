@@ -250,6 +250,8 @@ export interface Game {
   codewords_randomize_teams?: boolean
   /** Describe It — number of teams (2-4). */
   describe_it_num_teams?: number
+  /** Describe It — 'team' (teams race) or 'individual' (skribbl-style solo scoring). */
+  describe_it_mode?: DescribeItMode
   /** Cumulative usage across play-again sessions — unused pool items are prioritized next game. */
   pool_usage?: Record<string, unknown> | null
   /** Trivia — platform pool category when question_source is platform. */
@@ -269,6 +271,8 @@ export interface Game {
   ai_questions_enabled?: boolean
   ai_questions_config?: AiQuestionsConfig | null
   ai_generated_questions?: AiGeneratedQuestions | null
+  /** Whot — whether a Pick 2 can be stacked/defended (true) or must be drawn (false). */
+  whot_pick2_stacking?: boolean
 }
 
 export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'auction' | 'raise_funds' | 'finished'
@@ -561,18 +565,24 @@ export interface ChessSession {
 
 export type DescribeItPhase = 'turn' | 'break' | 'finished'
 
+/** Team = current behaviour (teams race). Individual = skribbl-style solo scoring + leaderboard. */
+export type DescribeItMode = 'team' | 'individual'
+
 export interface DescribeItSession {
   id: string
   game_id: string
+  mode: DescribeItMode
   num_teams: number
   total_rounds: number
   turn_seconds: number
   phase: DescribeItPhase
-  /** 0-based index into the full turn order (num_teams * total_rounds turns). */
+  /** 0-based index into the full turn order (team: num_teams * rounds, individual: players * rounds). */
   turn_index: number
   current_round: number
   active_team: number
   describer_player_id: string | null
+  /** Ordered player ids that take turns describing (individual mode only). */
+  roster: string[]
   current_word: string | null
   current_clue: string | null
   /** All clues given for the current word (reset each word). */
@@ -591,6 +601,8 @@ export interface DescribeItPlayer {
   game_id: string
   player_id: string
   team: number
+  /** Running individual-mode score. */
+  score: number
   created_at: string
 }
 
@@ -616,6 +628,8 @@ export interface DescribeItGuess {
   team: number
   text: string
   correct: boolean
+  /** Points earned for a correct guess (individual mode speed scoring). */
+  points: number
   created_at: string
 }
 
