@@ -49,6 +49,14 @@ export function useCodewordsRealtime(gameCode: string, channelId: string, handle
       )
       .on(
         'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+        (p) => {
+          const player = p.new as Player
+          handlersRef.current.onPlayers?.((prev) => prev.map((x) => (x.id === player.id ? player : x)))
+        }
+      )
+      .on(
+        'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (p) => {
           const player = p.old as Player

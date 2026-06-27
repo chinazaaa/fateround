@@ -1,11 +1,35 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { markGameFinished } from '@/lib/game-finish'
-import type { DescribeItSession, DescribeItWord, Game } from '@/types'
+import type { DescribeItMode, DescribeItSession, DescribeItWord, Game } from '@/types'
 import { DESCRIBE_IT_WORD_POOL, parseStoredDescribeItWords, pickDescribeWord } from '@/lib/describe-it-words'
 
 export const DESCRIBE_IT_MIN_PLAYERS = 4
+/** Individual mode only needs a describer + two guessers, so it can start with fewer. */
+export const DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL = 3
 export const DESCRIBE_IT_MAX_PLAYERS = 20
 export const DESCRIBE_IT_DEFAULT_MAX_PLAYERS = 12
+
+// ── Individual (skribbl-style) mode scoring ──
+/** Flat points a correct guesser always earns, before the speed bonus. */
+export const DESCRIBE_IT_GUESS_BASE_POINTS = 10
+/** Extra points for an instant guess, decaying linearly to 0 at time-up. */
+export const DESCRIBE_IT_GUESS_SPEED_BONUS = 40
+/** Points the describer earns for each player who guesses their word. */
+export const DESCRIBE_IT_DESCRIBER_POINTS_PER_GUESS = 5
+
+export function clampDescribeItMode(value: unknown): DescribeItMode {
+  return value === 'individual' ? 'individual' : 'team'
+}
+
+/** Speed-scaled points for a correct guess: full bonus instantly, decaying to the base by time-up. */
+export function describeItGuessPoints(turnDeadlineAt: string | null, turnSeconds: number): number {
+  if (!turnDeadlineAt) return DESCRIBE_IT_GUESS_BASE_POINTS
+  const totalMs = Math.max(turnSeconds, 1) * 1000
+  const startMs = new Date(turnDeadlineAt).getTime() - totalMs
+  const elapsed = Math.max(0, Date.now() - startMs)
+  const ratio = Math.max(0, Math.min(1, 1 - elapsed / totalMs))
+  return DESCRIBE_IT_GUESS_BASE_POINTS + Math.floor(DESCRIBE_IT_GUESS_SPEED_BONUS * ratio)
+}
 
 export const DESCRIBE_IT_TEAM_OPTIONS = [2, 3, 4] as const
 // Up to 10 so big teams can give everyone a turn to describe (describer rotates each round).
@@ -61,13 +85,26 @@ export function normalizeGuess(text: string): string {
 
 /** A clue must not contain the secret word (Taboo rule). */
 export function clueContainsWord(clue: string, word: string): boolean {
-  const c = normalizeGuess(clue)
-  const w = normalizeGuess(word)
-  if (!w) return false
-  // Word-boundary match: reject the secret word as a whole word or phrase, but
-  // allow it as an incidental substring (e.g. "art" inside "smart" is fine).
-  // `w` is normalized to [a-z0-9 ] so it carries no regex metacharacters.
-  return new RegExp(`\\b${w}\\b`).test(c)
+  // Strict Taboo: reject the secret word used as ANY part of a clue word, in either
+  // direction. e.g. word "fire" blocks "firewall"; word "dance" blocks "dancing";
+  // word "firewall" blocks the clue "fire". Spaces are stripped so multi-word
+  // answers ("ice cream") are caught even when run together ("icecream").
+  const wKey = normalizeGuess(word).replace(/ /g, '')
+  if (!wKey) return false
+  const tokens = normalizeGuess(clue).split(' ').filter(Boolean)
+  for (const t of tokens) {
+    // The secret word sits inside a clue word: "firewall" ⊇ "fire", "danced" ⊇ "dance", "cats" ⊇ "cat".
+    if (t.includes(wKey)) return true
+    // The "-ing" form of an e-ending word drops the e, so it isn't a substring of the word:
+    // "dance"→"dancing", "bake"→"baking", "ride"→"riding". Matched exactly to avoid false hits
+    // like "first" for "fire". Other suffixes (-ed/-er/-es) keep the e and are caught above.
+    if (wKey.length >= 3 && wKey.endsWith('e') && t === `${wKey.slice(0, -1)}ing`) return true
+    // A clue word is a meaningful chunk of the secret word: clue "fire" for word "firewall".
+    if (t.length >= 4 && wKey.includes(t)) return true
+  }
+  // Multi-word answer run together as a single clue word, e.g. "ice cream" → "icecream".
+  if (normalizeGuess(word).includes(' ') && tokens.join('').includes(wKey)) return true
+  return false
 }
 
 /**
@@ -91,6 +128,22 @@ export function describeItWordPools(game: Pick<Game, 'question_source' | 'custom
 
 export function totalDescribeItTurns(numTeams: number, totalRounds: number): number {
   return numTeams * totalRounds
+}
+
+/** Turns in a match. Team: teams × rounds. Individual: each player describes once per round. */
+export function describeItTotalTurns(
+  mode: DescribeItMode,
+  numTeams: number,
+  rosterLen: number,
+  totalRounds: number
+): number {
+  return (mode === 'individual' ? rosterLen : numTeams) * totalRounds
+}
+
+/** Describer for an individual-mode turn — rotates through the whole roster. */
+export function describerForIndividualTurn(roster: string[], turnIndex: number): string | null {
+  if (roster.length === 0) return null
+  return roster[turnIndex % roster.length] ?? null
 }
 
 export function roundForTurn(turnIndex: number, numTeams: number): number {
@@ -249,33 +302,45 @@ async function playerName(supabase: SupabaseClient, gameId: string, playerId: st
 }
 
 /** Build the session fields for the turn at `turnIndex` (or null if the match is over). */
-function buildTurn(
-  turnIndex: number,
-  numTeams: number,
-  totalRounds: number,
-  turnSeconds: number,
-  roster: Map<number, string[]>,
-  primary: readonly string[],
-  fallback: readonly string[],
+function buildTurn(opts: {
+  turnIndex: number
+  mode: DescribeItMode
+  numTeams: number
+  totalRounds: number
+  turnSeconds: number
+  teamRoster: Map<number, string[]>
+  individualRoster: string[]
+  primary: readonly string[]
+  fallback: readonly string[]
   usedWords: string[]
-): Partial<DescribeItSession> | null {
-  if (turnIndex >= totalDescribeItTurns(numTeams, totalRounds)) return null
-  const round = roundForTurn(turnIndex, numTeams)
-  const activeTeam = teamForTurn(turnIndex, numTeams)
-  const describer = describerForTurn(roster.get(activeTeam) ?? [], round)
-  const word = pickDescribeWord(primary, fallback, usedWords)
-  return {
-    phase: 'turn',
+}): Partial<DescribeItSession> | null {
+  const { turnIndex, mode, numTeams, totalRounds, turnSeconds, teamRoster, individualRoster, primary, fallback } = opts
+  const units = mode === 'individual' ? individualRoster.length : numTeams
+  if (units === 0 || turnIndex >= units * totalRounds) return null
+
+  const round = Math.floor(turnIndex / units) + 1
+  const word = pickDescribeWord(primary, fallback, opts.usedWords)
+  const base = {
+    phase: 'turn' as const,
     turn_index: turnIndex,
     current_round: round,
-    active_team: activeTeam,
-    describer_player_id: describer,
     current_word: word,
     current_clue: null,
     current_clues: [],
-    used_words: [...usedWords, word],
+    used_words: [...opts.usedWords, word],
     turn_deadline_at: deadline(turnSeconds),
     break_deadline_at: null,
+  }
+
+  if (mode === 'individual') {
+    // active_team is unused in individual mode (0 = no team).
+    return { ...base, active_team: 0, describer_player_id: describerForIndividualTurn(individualRoster, turnIndex) }
+  }
+  const activeTeam = teamForTurn(turnIndex, numTeams)
+  return {
+    ...base,
+    active_team: activeTeam,
+    describer_player_id: describerForTurn(teamRoster.get(activeTeam) ?? [], round),
   }
 }
 
@@ -286,35 +351,54 @@ export async function initializeDescribeItGame(
 ): Promise<{ error?: string }> {
   const { data: game } = await supabase
     .from('games')
-    .select('describe_it_num_teams, rounds_count, timer_seconds, question_source, custom_questions, pool_usage')
+    .select(
+      'describe_it_mode, describe_it_num_teams, rounds_count, timer_seconds, question_source, custom_questions, pool_usage'
+    )
     .eq('id', gameId)
     .maybeSingle()
   if (!game) return { error: 'Game not found' }
 
+  const mode = clampDescribeItMode(game.describe_it_mode)
   const numTeams = clampDescribeItTeams(game.describe_it_num_teams)
   const totalRounds = clampDescribeItRounds(game.rounds_count)
   const turnSeconds = clampDescribeItTurnSeconds(game.timer_seconds)
 
-  // Auto-assign any joined players who never picked a team onto the smallest
-  // teams, so a player who skipped team selection isn't silently excluded.
-  const existingRows = await loadTeamRows(supabase, gameId)
-  const assignment = balanceDescribeItTeams(playerIds, existingRows, numTeams)
-  const existingIds = new Set(existingRows.map((r) => r.player_id))
-  const newRows = [...assignment.entries()]
-    .filter(([player_id]) => !existingIds.has(player_id))
-    .map(([player_id, team]) => ({ game_id: gameId, player_id, team }))
-  if (newRows.length > 0) {
-    const { error: assignError } = await supabase
+  // Roster the players. Team mode balances onto teams; individual mode locks the
+  // join-ordered list that takes turns describing (and seeds each player's score row).
+  let teamRoster_ = new Map<number, string[]>()
+  let individualRoster: string[] = []
+
+  if (mode === 'individual') {
+    if (playerIds.length < DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL) {
+      return { error: `Need at least ${DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL} players to start` }
+    }
+    individualRoster = playerIds
+    const rows = playerIds.map((player_id) => ({ game_id: gameId, player_id, team: 1, score: 0 }))
+    const { error: seedError } = await supabase
       .from('describe_it_players')
-      .upsert(newRows, { onConflict: 'game_id,player_id' })
-    if (assignError) return { error: assignError.message }
+      .upsert(rows, { onConflict: 'game_id,player_id' })
+    if (seedError) return { error: seedError.message }
+  } else {
+    // Auto-assign any joined players who never picked a team onto the smallest
+    // teams, so a player who skipped team selection isn't silently excluded.
+    const existingRows = await loadTeamRows(supabase, gameId)
+    const assignment = balanceDescribeItTeams(playerIds, existingRows, numTeams)
+    const existingIds = new Set(existingRows.map((r) => r.player_id))
+    const newRows = [...assignment.entries()]
+      .filter(([player_id]) => !existingIds.has(player_id))
+      .map(([player_id, team]) => ({ game_id: gameId, player_id, team }))
+    if (newRows.length > 0) {
+      const { error: assignError } = await supabase
+        .from('describe_it_players')
+        .upsert(newRows, { onConflict: 'game_id,player_id' })
+      if (assignError) return { error: assignError.message }
+    }
+    const teamRows = newRows.length > 0 ? await loadTeamRows(supabase, gameId) : existingRows
+    const ready = describeItLobbyReady(teamRows, numTeams)
+    if (!ready.ok) return { error: ready.error }
+    teamRoster_ = teamRoster(teamRows)
   }
 
-  const teamRows = newRows.length > 0 ? await loadTeamRows(supabase, gameId) : existingRows
-  const ready = describeItLobbyReady(teamRows, numTeams)
-  if (!ready.ok) return { error: ready.error }
-
-  const roster = teamRoster(teamRows)
   const { primary, fallback } = describeItWordPools(game as Pick<Game, 'question_source' | 'custom_questions'>)
 
   // Carry word usage across Play again so each new game prefers fresh words.
@@ -323,15 +407,33 @@ export async function initializeDescribeItGame(
   let priorUsed = readUsedFromPoolUsage(game.pool_usage).filter((w) => primaryKeys.has(w.toLowerCase()))
   if (priorUsed.length >= primary.length) priorUsed = []
 
-  const firstTurn = buildTurn(0, numTeams, totalRounds, turnSeconds, roster, primary, fallback, priorUsed)
+  const firstTurn = buildTurn({
+    turnIndex: 0,
+    mode,
+    numTeams,
+    totalRounds,
+    turnSeconds,
+    teamRoster: teamRoster_,
+    individualRoster,
+    primary,
+    fallback,
+    usedWords: priorUsed,
+  })
   if (!firstTurn) return { error: 'Could not start the match' }
 
+  const firstMessage =
+    mode === 'individual'
+      ? `${await playerName(supabase, gameId, firstTurn.describer_player_id ?? null)} is up first`
+      : `${teamLabel(firstTurn.active_team!)} is up first`
+
   const row = {
+    mode,
     num_teams: numTeams,
     total_rounds: totalRounds,
     turn_seconds: turnSeconds,
+    roster: individualRoster,
     status: 'active' as const,
-    status_message: `${teamLabel(firstTurn.active_team!)} is up first`,
+    status_message: firstMessage,
     ...firstTurn,
     updated_at: new Date().toISOString(),
   }
@@ -392,6 +494,8 @@ export async function processDescribeItGuess(
   if (!session || session.status === 'finished') return { error: 'Game not active' }
   if (session.phase !== 'turn') return { error: 'Not in a turn right now' }
   if (session.describer_player_id === playerId) return { error: "The describer can't guess" }
+
+  if (session.mode === 'individual') return processIndividualGuess(supabase, gameId, playerId, text, session)
 
   const teamRows = await loadTeamRows(supabase, gameId)
   const mine = teamRows.find((r) => r.player_id === playerId)
@@ -460,6 +564,121 @@ export async function processDescribeItGuess(
   return { correct: true }
 }
 
+/**
+ * Individual mode: any roster player can guess the one shared word. Each correct
+ * guesser scores by speed (once per turn — a partial unique index guards a
+ * double-award). The word does not advance; the turn ends when everyone has it.
+ */
+async function processIndividualGuess(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  text: string,
+  session: DescribeItSession
+): Promise<{ error?: string; correct?: boolean }> {
+  if (!session.roster.includes(playerId)) return { error: 'You are not in this game' }
+
+  const guess = text.trim()
+  if (!guess) return { error: 'Guess is empty' }
+  const correct = !!session.current_word && normalizeGuess(guess) === normalizeGuess(session.current_word)
+
+  if (!correct) {
+    await supabase.from('describe_it_guesses').insert({
+      game_id: gameId,
+      turn_index: session.turn_index,
+      player_id: playerId,
+      team: 0,
+      text: guess.slice(0, 80),
+      correct: false,
+      points: 0,
+    })
+    return { correct: false }
+  }
+
+  const points = describeItGuessPoints(session.turn_deadline_at, session.turn_seconds)
+  // Record the scored guess and credit the points atomically (single round-trip). The
+  // partial unique index keeps it idempotent — a re-submit returns false and never
+  // double-awards — and there's no insert→score gap where a crash could drop a point.
+  const { data: scored, error: scoreError } = await supabase.rpc('describe_it_record_correct_guess', {
+    p_game_id: gameId,
+    p_turn_index: session.turn_index,
+    p_player_id: playerId,
+    p_text: guess.slice(0, 80),
+    p_points: points,
+  })
+  // false = this player already scored this turn; an error = nothing recorded. Either
+  // way the guess was correct, but skip the turn-end check (it ran on the first call).
+  if (scoreError || scored === false) return { correct: true }
+
+  // End the turn early once every guesser (everyone but the describer) has it.
+  const { count } = await supabase
+    .from('describe_it_guesses')
+    .select('id', { count: 'exact', head: true })
+    .eq('game_id', gameId)
+    .eq('turn_index', session.turn_index)
+    .eq('correct', true)
+  const guesserCount = session.roster.filter((id) => id !== session.describer_player_id).length
+  if ((count ?? 0) >= guesserCount) await endIndividualTurn(supabase, gameId, session)
+
+  return { correct: true }
+}
+
+/**
+ * Close out an individual-mode turn (timer expiry or everyone guessed): claim the
+ * turn→break transition once, log the word, and pay the describer per correct guesser.
+ */
+async function endIndividualTurn(supabase: SupabaseClient, gameId: string, session: DescribeItSession): Promise<void> {
+  const { count } = await supabase
+    .from('describe_it_guesses')
+    .select('id', { count: 'exact', head: true })
+    .eq('game_id', gameId)
+    .eq('turn_index', session.turn_index)
+    .eq('correct', true)
+  const guessedCount = count ?? 0
+
+  const last = describeItTotalTurns('individual', session.num_teams, session.roster.length, session.total_rounds) - 1
+  const isLastTurn = session.turn_index >= last
+  const describerName = await playerName(supabase, gameId, session.describer_player_id)
+
+  // Scope the transition to the turn we observed so the early-finish and the timer
+  // can't both close it — only the first to flip phase 'turn'→'break' pays out.
+  const { data: claimed } = await supabase
+    .from('describe_it_sessions')
+    .update({
+      phase: 'break',
+      turn_deadline_at: null,
+      break_deadline_at: deadline(DESCRIBE_IT_BREAK_SECONDS),
+      current_clue: null,
+      status_message: `${describerName}'s word was "${session.current_word}" — ${guessedCount} guessed it${isLastTurn ? '' : ' · next describer soon'}`,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('game_id', gameId)
+    .eq('phase', 'turn')
+    .eq('turn_index', session.turn_index)
+    .select('id')
+  if (!claimed || claimed.length === 0) return
+
+  await supabase.from('describe_it_words').insert({
+    game_id: gameId,
+    turn_index: session.turn_index,
+    round: session.current_round,
+    team: 0,
+    describer_player_id: session.describer_player_id,
+    word: session.current_word,
+    clue: session.current_clue,
+    status: guessedCount > 0 ? 'guessed' : 'skipped',
+    guesser_player_id: null,
+  })
+
+  if (guessedCount > 0 && session.describer_player_id) {
+    await supabase.rpc('describe_it_add_score', {
+      p_game_id: gameId,
+      p_player_id: session.describer_player_id,
+      p_delta: guessedCount * DESCRIBE_IT_DESCRIBER_POINTS_PER_GUESS,
+    })
+  }
+}
+
 export async function processDescribeItSkip(
   supabase: SupabaseClient,
   gameId: string,
@@ -469,6 +688,7 @@ export async function processDescribeItSkip(
   if (error) return { error }
   if (!session || session.status === 'finished') return { error: 'Game not active' }
   if (session.phase !== 'turn') return { error: 'Not in a turn right now' }
+  if (session.mode === 'individual') return { error: "You can't skip in this mode" }
   if (session.describer_player_id !== playerId) return { error: 'Only the describer can skip' }
   if (!session.current_word) return {}
 
@@ -523,6 +743,11 @@ export async function processDescribeItExpireTurn(
   if (session.phase !== 'turn') return {}
   if (!session.turn_deadline_at || new Date(session.turn_deadline_at).getTime() > Date.now()) return {}
 
+  if (session.mode === 'individual') {
+    await endIndividualTurn(supabase, gameId, session)
+    return {}
+  }
+
   const { count } = await supabase
     .from('describe_it_words')
     .select('id', { count: 'exact', head: true })
@@ -574,16 +799,18 @@ export async function processDescribeItAdvance(
     .maybeSingle()
   const { primary, fallback } = describeItWordPools((game ?? {}) as Pick<Game, 'question_source' | 'custom_questions'>)
 
-  const nextTurn = buildTurn(
-    nextIndex,
-    session.num_teams,
-    session.total_rounds,
-    session.turn_seconds,
-    roster,
+  const nextTurn = buildTurn({
+    turnIndex: nextIndex,
+    mode: session.mode,
+    numTeams: session.num_teams,
+    totalRounds: session.total_rounds,
+    turnSeconds: session.turn_seconds,
+    teamRoster: roster,
+    individualRoster: session.roster,
     primary,
     fallback,
-    session.used_words
-  )
+    usedWords: session.used_words,
+  })
 
   // Scope every transition to the break we observed, so concurrent advances
   // (every client runs the timer) resolve to a single winner instead of each
@@ -608,11 +835,16 @@ export async function processDescribeItAdvance(
     return {}
   }
 
+  const nextMessage =
+    session.mode === 'individual'
+      ? `${await playerName(supabase, gameId, nextTurn.describer_player_id ?? null)} is up`
+      : `${teamLabel(nextTurn.active_team!)} is up`
+
   const { error: updateError } = await supabase
     .from('describe_it_sessions')
     .update({
       ...nextTurn,
-      status_message: `${teamLabel(nextTurn.active_team!)} is up`,
+      status_message: nextMessage,
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
@@ -644,6 +876,19 @@ export function describeItWinningTeams(scores: DescribeItTeamScore[]): number[] 
   const top = scores[0]!.score
   if (top === 0) return []
   return scores.filter((s) => s.score === top).map((s) => s.team)
+}
+
+export type DescribeItPlayerScore = { id: string; name: string; score: number }
+
+/** Individual-mode leaderboard from each player's running score, highest first. */
+export function describeItIndividualLeaderboard(
+  playerRows: Array<{ player_id: string; score?: number | null }>,
+  players: Array<{ id: string; name: string }>
+): DescribeItPlayerScore[] {
+  const nameById = new Map(players.map((p) => [p.id, p.name]))
+  return playerRows
+    .map((r) => ({ id: r.player_id, name: nameById.get(r.player_id) ?? 'Player', score: r.score ?? 0 }))
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
 }
 
 export function isDescribeItResultsPhase(
@@ -702,5 +947,7 @@ export async function clearDescribeItSessionData(
   await supabase.from('describe_it_guesses').delete().eq('game_id', gameId)
   await supabase.from('describe_it_words').delete().eq('game_id', gameId)
   await supabase.from('describe_it_sessions').delete().eq('game_id', gameId)
+  // Reset individual-mode scores so the next game starts from zero.
+  await supabase.from('describe_it_players').update({ score: 0 }).eq('game_id', gameId)
   return {}
 }

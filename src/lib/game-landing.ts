@@ -77,7 +77,7 @@ export function gameRulesHref(gameType: GameType): string {
 export const ALL_GAME_LANDING_SLUGS = Object.values(GAME_TYPE_TO_SLUG)
 
 const SHARED_FEATURES = {
-  noSignup: { title: 'No sign-up', description: 'Create a room and play in seconds — no account needed.', emoji: '⚡' },
+  noSignup: { title: 'No sign-up', description: 'Create a game and play in seconds — no account needed.', emoji: '⚡' },
   realtime: {
     title: 'Live results',
     description: 'Votes sync in real time. Reveal round-by-round or all at once.',
@@ -453,7 +453,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Can I use custom Most Likely To prompts?',
         answer:
-          'Yes. Fate Round includes built-in prompts and supports custom questions when you create a room. Vote on your friend group directly or import a name list — results reveal anonymously round by round.',
+          'Yes. Fate Round includes built-in prompts and supports custom questions when you create a game. Vote on your friend group directly or import a name list — results reveal anonymously round by round.',
       },
     ],
   }),
@@ -600,7 +600,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       SHARED_FEATURES.noSignup,
     ],
     steps: [
-      { title: 'Create a room', description: 'Host sets a title and shares the game code.' },
+      { title: 'Create a game', description: 'Host sets a title and shares the game code.' },
       { title: 'Everyone joins', description: 'Players tap join — no typing a name.' },
       { title: 'Post live', description: 'Host starts the session and anonymous messages flow for the whole room.' },
     ],
@@ -662,7 +662,14 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Bingo — Free Online Number Bingo Game',
     seoDescription:
       'Host a free online bingo game for your group. Players get unique cards, you call numbers B1–O75, and the first line wins.',
-    keywords: ['online bingo game', 'free bingo party', 'number bingo multiplayer', 'host bingo night'],
+    keywords: [
+      'online bingo game',
+      'bingo rules',
+      'how to play bingo',
+      'free bingo party',
+      'number bingo multiplayer',
+      'host bingo night',
+    ],
     heroSubtitle:
       'Classic 75-ball bingo for parties and game nights. Everyone gets their own card on their phone — you call the numbers, they mark and shout BINGO.',
     bodyParagraph:
@@ -683,12 +690,27 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       SHARED_FEATURES.noSignup,
     ],
     steps: [
-      { title: 'Create a room', description: 'Set a title, share the code, and wait for players to join.' },
+      { title: 'Create a game', description: 'Set a title, share the code, and wait for players to join.' },
       { title: 'Deal cards', description: 'Start the game — every player gets a unique bingo card instantly.' },
       { title: 'Call & win', description: 'Call numbers until someone completes a line and claims BINGO.' },
     ],
     perfectFor: ['Family game night', 'Office parties', 'Classroom fun', 'Pub quizzes'],
     extraFaqs: [
+      {
+        question: 'How do you win at online Bingo?',
+        answer:
+          'Complete any full line on your card — a row, column, or diagonal of five marked cells, with the free center square counting toward it. Tap BINGO to claim, and the host confirms the win.',
+      },
+      {
+        question: 'What numbers are called in 75-ball Bingo?',
+        answer:
+          'Numbers run B1–B15, I16–I30, N31–N45, G46–G60, and O61–O75 — one range per column. You can only mark a number once the host has actually called it.',
+      },
+      {
+        question: 'Does the host pick the numbers or are they random?',
+        answer:
+          'Either. The host can call random numbers at the tap of a button, set an auto timer, or pick numbers manually. Every called number syncs in real time so all players see the same board.',
+      },
       {
         question: 'Does each player get a different Bingo card?',
         answer:
@@ -821,7 +843,14 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Monopoly — Free Online Board Game for Groups',
     seoDescription:
       'Play Monopoly online with friends. Roll dice, buy properties, pay rent, and bankrupt your opponents — all on your phones.',
-    keywords: ['online monopoly game', 'free monopoly multiplayer', 'board game night', 'property game online'],
+    keywords: [
+      'online monopoly game',
+      'monopoly rules',
+      'how to play monopoly',
+      'free monopoly multiplayer',
+      'board game night',
+      'property game online',
+    ],
     heroSubtitle:
       'Classic Monopoly on your phones. Join a room, roll the dice, buy properties, and be the last player standing.',
     bodyParagraph:
@@ -844,7 +873,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     steps: [
       {
-        title: 'Create a room',
+        title: 'Create a game',
         description: 'Set the player cap and share the link — everyone joins with their name.',
       },
       { title: 'Start the game', description: 'Everyone begins on GO with £1,500. The host starts when ready.' },
@@ -856,6 +885,26 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     perfectFor: ['Game nights', 'Family gatherings', 'Friend groups', 'Remote hangouts'],
     extraFaqs: [
       {
+        question: 'How do you win at Monopoly?',
+        answer:
+          'Buy properties, charge rent, and manage your cash until every opponent goes bankrupt. The last solvent player left in the game wins — there’s no points total, just survival.',
+      },
+      {
+        question: 'How much money do you start with in Monopoly?',
+        answer:
+          'Every player starts on GO with £1,500 in the UK edition used on Fate Round, and collects £200 each time they pass GO (after their first lap around the board).',
+      },
+      {
+        question: 'What happens when you land on an unowned property?',
+        answer:
+          'You can buy it from the Bank at its listed price. If you decline, it goes to auction and any player — including you — can bid. Note you can’t buy, pay tax, or draw cards until you’ve passed GO once on your first lap.',
+      },
+      {
+        question: 'How do you get out of Jail in Monopoly?',
+        answer:
+          'Pay the £50 fine before your next roll, use a Get Out of Jail Free card, or roll doubles on any of your next three turns. After three turns without doubles, you pay £50 and move by your roll.',
+      },
+      {
         question: 'How many people can play Monopoly online?',
         answer:
           'Monopoly on Fate Round supports 2–6 players in one room. Everyone joins with a display name, starts on GO with £1,500, and takes turns rolling dice until one player bankrupts the rest.',
@@ -864,13 +913,23 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   }),
 
   yahtzee: landing('yahtzee', {
-    seoTitle: 'Yahtzee Online — Roll, Hold, and Score',
+    seoTitle: 'Play Yahtzee Online Free with Friends — No Sign-Up',
     seoDescription:
-      'Play Yahtzee online with friends. Roll dice, hold what you want, and fill your scorecard with the best combos.',
-    keywords: ['yahtzee game online', 'dice game multiplayer', 'roll hold scorecard', 'play yahtzee friends'],
+      'Play Yahtzee online free with friends — no sign-up, no download. Roll five dice, hold what you want, and fill your scorecard. Solo or up to 6 players.',
+    keywords: [
+      'yahtzee game online',
+      'yahtzee rules',
+      'how to play yahtzee',
+      'how many dice in yahtzee',
+      'full house yahtzee',
+      'yahtzee scoring',
+      'dice game multiplayer',
+      'roll hold scorecard',
+      'play yahtzee friends',
+    ],
     heroSubtitle: 'The classic dice puzzle — score straights, full houses, and Yahtzees together.',
     bodyParagraph:
-      'Yahtzee on Fate Round brings roll-and-hold dice scoring to your group online. Up to three rolls per turn, hold the dice you want, and fill your scorecard category by category — straights, full houses, chance, and the coveted Yahtzee. Play solo or with up to six friends — no physical scorecard or dice cup needed.',
+      'Yahtzee on Fate Round brings roll-and-hold dice scoring to your group online — often mistyped as Yatzee, Yahtzy, Yachtzee, Yathzee, or Tahtzee, it’s the same classic five-dice game. Roll five dice up to three times per turn, hold the ones you want, and fill your scorecard category by category — three of a kind, full house, small and large straights, chance, and the coveted Yahtzee (five of a kind). Play solo or with up to six friends — no physical scorecard or dice cup needed.',
     highlights: ['5 dice', '1–6 players', 'Turn-based scoring'],
     features: [
       {
@@ -894,18 +953,51 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     perfectFor: ['Game nights', 'Casual hangouts', 'Friend groups'],
     extraFaqs: [
       {
+        question: 'How many dice do you play Yahtzee with?',
+        answer:
+          'Yahtzee is played with five dice. On Fate Round you roll all five on screen — no physical dice or cup needed — and hold the ones you want between rolls.',
+      },
+      {
+        question: 'How many rolls do you get per turn in Yahtzee?',
+        answer:
+          'Up to three rolls per turn. After the first roll you can hold any dice you like and re-roll the rest, then do the same again. After your third roll (or sooner) you must score one unused category.',
+      },
+      {
+        question: 'What is a full house in Yahtzee?',
+        answer:
+          'A full house is three dice showing one number plus two dice showing another — for example three 5s and two 2s. It scores a flat 25 points in the Full House category, no matter which numbers make it up.',
+      },
+      {
         question: 'How does scoring work in online Yahtzee?',
         answer:
-          'Each turn you roll up to three times, holding dice between rolls. Pick an unused scorecard category to fill — upper section, lower section combos, or chance. Highest total when the board is full wins.',
+          'Each turn you roll up to three times, holding dice between rolls, then fill one unused category. The upper section (Ones–Sixes) scores the total of those dice — reach 63+ there for a 35-point bonus. Lower-section combos pay fixed amounts: Full House 25, Small Straight 30, Large Straight 40, Yahtzee 50, with Three/Four of a Kind and Chance scoring the sum of all five dice. Highest total when every category is filled wins.',
+      },
+      {
+        question: 'What are the odds of rolling a Yahtzee?',
+        answer:
+          'Getting five of a kind on a single roll of five dice is about 1 in 1,296 (roughly 0.08%). Across all three rolls in a turn, playing optimally to chase it, your odds rise to about 4.6%.',
+      },
+      {
+        question: 'Is it spelled Yahtzee or Yatzee?',
+        answer:
+          'The correct spelling is Yahtzee, but it’s commonly mistyped as Yatzee, Yahtzy, Yatzy, Yachtzee, Yathzee, or Tahtzee. However you spell it, it’s the same five-dice scoring game — and you can play it free on Fate Round.',
       },
     ],
   }),
 
   whot: landing('whot', {
-    seoTitle: 'Whot Online — Nigerian Card Game with Friends',
+    seoTitle: 'Play Whot Online Free with Friends — No Sign-Up',
     seoDescription:
-      'Play Whot online with friends. Match shape or number, stack Pick 2 and Pick 3, call WHOT — classic Naija house rules.',
-    keywords: ['whot card game online', 'naija whot multiplayer', 'nigerian whot game', 'play whot friends'],
+      'Play Whot online free with friends — no sign-up, no download. Match shape or number, stack Pick 2 and Pick 3, and call WHOT. Classic Naija house rules, 2–6 players.',
+    keywords: [
+      'whot card game online',
+      'whot rules',
+      'how to play whot',
+      'naija whot multiplayer',
+      'nigerian whot game',
+      'whot special cards',
+      'play whot friends',
+    ],
     heroSubtitle: 'The Nigerian card classic — match, stack, and call WHOT on your crew.',
     bodyParagraph:
       'Whot on Fate Round follows common Nigerian house rules: match the top card by shape or number, play WHOT to call the next match, and keep Pick 2 and Pick 3 stacks separate. Special cards — Hold On, Suspension, General Market — keep the table lively. First to empty their hand wins.',
@@ -932,6 +1024,21 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     perfectFor: ['Game nights', 'Nigerian diaspora hangouts', 'Card game lovers'],
     extraFaqs: [
       {
+        question: 'How do you win at Whot?',
+        answer:
+          'Be the first to play all the cards in your hand. If the game gets blocked or a game clock is running and time runs out, the player with the lowest total in hand wins instead — the WHOT card counts as 20 points.',
+      },
+      {
+        question: 'How many cards do you start with in Whot?',
+        answer:
+          'Each player is dealt 5 cards (6 in a 2-player game), with one card turned face-up to start the discard pile. The host deals when everyone is ready.',
+      },
+      {
+        question: 'What does it mean to call WHOT?',
+        answer:
+          'Playing the WHOT card (number 20) lets you call any shape or number the next player must match. You can override another player’s WHOT call with your own — but you can’t play WHOT to escape an active Pick 2 or Pick 3.',
+      },
+      {
         question: 'What are the special cards in Whot?',
         answer:
           '1 = Hold On (extra turn), 2 = Pick 2, 5 = Pick 3, 8 = Suspension (skip next player), 14 = General Market (others draw), 20 = WHOT (call shape or number). Pick 2 and Pick 3 stacks cannot be mixed.',
@@ -942,7 +1049,14 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Ludo Online — Play Classic Board Game with Friends',
     seoDescription:
       'Play Ludo online with friends. Roll two dice, race your pieces home, capture opponents, and block with pairs — classic rules.',
-    keywords: ['ludo online', 'play ludo friends', 'ludo board game multiplayer', 'ludo game online free'],
+    keywords: [
+      'ludo online',
+      'ludo rules',
+      'how to play ludo',
+      'play ludo friends',
+      'ludo board game multiplayer',
+      'ludo game online free',
+    ],
     heroSubtitle: 'The classic board game — roll two dice, race, capture, and be first to get all four pieces home.',
     bodyParagraph:
       'Ludo on Fate Round follows classic rules: roll two dice and use each die separately — a 6 brings pieces onto the board, doubles (e.g. 6+6) let you play both sixes then roll again, send opponents back to their yard on capture, and form blockades with pairs. First player to finish all four pieces wins.',
@@ -973,6 +1087,21 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     perfectFor: ['Family game night', 'Friend groups', 'Board game fans'],
     extraFaqs: [
+      {
+        question: 'How do you get a piece out of your yard in Ludo?',
+        answer:
+          'You need to roll a 6 on one of your two dice to move a piece from your home yard onto its start square. Until at least one piece is in play, non-6 dice can’t be used — so on a 6+3 you use the 6 first, then the 3.',
+      },
+      {
+        question: 'How do you win at Ludo?',
+        answer:
+          'Move all four of your pieces clockwise around the board, up your colored home column, and into the center home triangle. The first player to get all four pieces home wins; the others keep playing for runner-up places.',
+      },
+      {
+        question: 'What happens when you land on an opponent in Ludo?',
+        answer:
+          'Landing on a single opponent piece on a normal square sends it back to its yard — they need a 6 to re-enter. Pieces on ★ start and safe squares can’t be captured, and stacking two of your own pieces forms a blockade opponents can’t pass.',
+      },
       {
         question: 'What happens when I roll three doubles in a row?',
         answer: 'Your turn ends immediately — no move and no extra roll. Play passes to the next player.',
@@ -1349,7 +1478,7 @@ export function getGameBodyParagraph(content: GameLandingContent): string {
   if (content.bodyParagraph) return content.bodyParagraph
 
   const cfg = gameTypeConfig(content.gameType)
-  return `${cfg.label} on Fate Round runs entirely in the browser — no app download or account required. ${content.heroSubtitle} Create a room, share a short code with your group, and play together from any phone or computer in real time.`
+  return `${cfg.label} on Fate Round runs entirely in the browser — no app download or account required. ${content.heroSubtitle} Create a game, share a short code with your group, and play together from any phone or computer in real time.`
 }
 
 export function getGameFaqs(content: GameLandingContent): GameLandingFaq[] {
@@ -1359,11 +1488,11 @@ export function getGameFaqs(content: GameLandingContent): GameLandingFaq[] {
   return [
     {
       question: `How many players do you need for ${label}?`,
-      answer: `${label} works with ${cfg.card.players.toLowerCase()}. Create a room on Fate Round, share the link or code, and everyone joins from their browser — no sign-up required.`,
+      answer: `${label} works with ${cfg.card.players.toLowerCase()}. Create a game on Fate Round, share the link or code, and everyone joins from their browser — no sign-up required.`,
     },
     {
       question: `Is ${label} free to play online?`,
-      answer: `Yes. ${label} on Fate Round is completely free — no download, no payment, and no account needed. Create a room and start playing in under a minute.`,
+      answer: `Yes. ${label} on Fate Round is completely free — no download, no payment, and no account needed. Create a game and start playing in under a minute.`,
     },
     {
       question: `Can I play ${label} on my phone?`,

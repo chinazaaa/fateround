@@ -5,6 +5,7 @@ import { GAME_TYPE_OPTIONS, gameTypeConfig } from '@/lib/game-types'
 import { GAME_LANDING_CONTENT, gameLandingSlug } from '@/lib/game-landing'
 import { SITE_NAME, OG_IMAGE } from '@/lib/seo'
 import { GamesGrid } from '@/components/GamesGrid'
+import { SiteFooter } from '@/components/SiteFooter'
 
 export const metadata: Metadata = {
   title: 'All Party Games',
@@ -50,7 +51,7 @@ export default function GamesIndexPage() {
             <p className="label-caps">{SITE_NAME}</p>
             <h1 className="text-3xl sm:text-4xl font-black tracking-tight gradient-title">Party games</h1>
             <p className="text-muted text-sm sm:text-base max-w-md mx-auto leading-relaxed">
-              Pick a mode, create a room, share the code. Every game is free and runs in the browser.
+              Pick a mode, create a game, share the code. Every game is free and runs in the browser.
             </p>
             <Link href="/create" className="btn-primary btn-fit">
               Create any game
@@ -60,6 +61,8 @@ export default function GamesIndexPage() {
           <GamesGrid games={games} />
         </div>
       </div>
+
+      <SiteFooter />
     </>
   )
 }

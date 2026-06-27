@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { SudokuBoard, type BlockStatus } from '@/components/sudoku/SudokuBoard'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
@@ -10,8 +10,6 @@ import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } fr
 import { getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import type { Game, Player } from '@/types'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 interface SudokuSubmission {
   id: string
@@ -22,6 +20,39 @@ interface SudokuSubmission {
   is_correct: boolean
   points_awarded: number
   submitted_at: string
+}
+
+// Persist the player's entered cells so a mid-game refresh doesn't wipe them —
+// including blocks already solved (which lock their inputs and can't be retyped).
+// Keyed by round so a play-again / new round starts from a clean grid.
+const GRID_KEY = (roundId: string, playerId: string) => `sudoku_grid_${roundId}_${playerId}`
+
+function loadSavedGrid(roundId: string, playerId: string): number[][] | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(GRID_KEY(roundId, playerId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === 9 &&
+      parsed.every((r) => Array.isArray(r) && r.length === 9 && r.every((v) => typeof v === 'number'))
+    ) {
+      return parsed as number[][]
+    }
+  } catch {
+    // Corrupt entry — ignore and start fresh.
+  }
+  return null
+}
+
+function saveGrid(roundId: string, playerId: string, grid: number[][]) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(GRID_KEY(roundId, playerId), JSON.stringify(grid))
+  } catch {
+    // Storage full / unavailable — non-fatal, the grid just won't survive refresh.
+  }
 }
 
 type View = 'loading' | 'join' | 'waiting' | 'playing' | 'finished'
@@ -111,7 +142,28 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       .from('sudoku_submissions')
       .select(SUDOKU_SUBMISSION_SELECT)
       .eq('round_id', roundData.id)
-    setSubmissions((subs ?? []) as SudokuSubmission[])
+    const submissionRows = (subs ?? []) as SudokuSubmission[]
+    setSubmissions(submissionRows)
+
+    // Rebuild this player's grid after a refresh. Solved blocks are authoritative and
+    // come from the server — the solution is no longer in client metadata, so we ask
+    // for just this player's solved-block cells (a 9×9 grid, 0 elsewhere) and overlay
+    // them onto any in-progress entries restored from localStorage.
+    const savedGrid = loadSavedGrid(roundData.id as string, session.playerId)
+    const grid = savedGrid ? savedGrid.map((r) => [...r]) : Array.from({ length: 9 }, () => Array(9).fill(0))
+    const { data: solvedCells } = await supabase.rpc('sudoku_solved_cells', {
+      p_round_id: roundData.id,
+      p_player_id: session.playerId,
+    })
+    if (Array.isArray(solvedCells)) {
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          const v = (solvedCells as number[][])[r]?.[c]
+          if (typeof v === 'number' && v > 0) grid[r][c] = v
+        }
+      }
+    }
+    setUserGrid(grid)
 
     setView('playing')
   }, [gameCode])
@@ -239,9 +291,11 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   function handleCellChange(row: number, col: number, value: number) {
+    const playerId = myPlayerIdRef.current
     setUserGrid((prev) => {
       const next = prev.map((r) => [...r])
       next[row][col] = value
+      if (roundId && playerId) saveGrid(roundId, playerId, next)
       return next
     })
   }

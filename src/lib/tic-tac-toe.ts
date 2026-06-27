@@ -123,7 +123,7 @@ export async function initializeTicTacToeGame(
 
   const { data: existing } = await supabase
     .from('tic_tac_toe_sessions')
-    .select('player_x_id, player_o_id')
+    .select('player_x_id, player_o_id, updated_at')
     .eq('game_id', gameId)
     .maybeSingle()
 
@@ -165,9 +165,13 @@ export async function initializeTicTacToeGame(
     updated_at: new Date().toISOString(),
   }
 
-  const { error } = existing
-    ? await supabase.from('tic_tac_toe_sessions').update(sessionRow).eq('game_id', gameId)
-    : await supabase.from('tic_tac_toe_sessions').insert({ ...sessionRow, game_id: gameId })
+  if (existing) {
+    // Rematch: only land the reset if the finished session is still the one we read.
+    await persistSession(supabase, gameId, sessionRow, existing.updated_at)
+    return {}
+  }
+
+  const { error } = await supabase.from('tic_tac_toe_sessions').insert({ ...sessionRow, game_id: gameId })
   if (error) return { error: error.message }
   return {}
 }
@@ -179,6 +183,28 @@ async function loadSession(
   const { data, error } = await supabase.from('tic_tac_toe_sessions').select('*').eq('game_id', gameId).maybeSingle()
   if (error) return { session: null, error: error.message }
   return { session: data as TicTacToeSession | null }
+}
+
+/**
+ * Optimistic-concurrency session write. The update only lands if the row still
+ * carries the `expectedUpdatedAt` we read, so when two requests race (e.g. a move
+ * landing at the same moment a client drives the turn timer) only the first wins —
+ * the loser gets 0 rows and the caller bails before finalizing. Returns true if
+ * this write won.
+ */
+async function persistSession(
+  supabase: SupabaseClient,
+  gameId: string,
+  patch: Partial<TicTacToeSession>,
+  expectedUpdatedAt: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from('tic_tac_toe_sessions')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('game_id', gameId)
+    .eq('updated_at', expectedUpdatedAt)
+    .select('game_id')
+  return (data?.length ?? 0) > 0
 }
 
 export async function processTicTacToeMove(
@@ -242,9 +268,13 @@ export async function processTicTacToeMove(
 
   const finished = !!overallWin || draw
 
-  const { error: updateError } = await supabase
-    .from('tic_tac_toe_sessions')
-    .update({
+  // Claim the turn with the exact state we read. If a concurrent request (e.g. a
+  // client driving the turn timer) already moved the game from this state we lose
+  // the CAS and bail — the winner finalizes, so we skip markGameFinished here.
+  const won = await persistSession(
+    supabase,
+    gameId,
+    {
       board,
       board_winners: boardWinners,
       active_board: finished ? null : nextActiveBoard,
@@ -254,11 +284,10 @@ export async function processTicTacToeMove(
       is_draw: draw,
       status_message: statusMessage,
       turn_deadline_at: finished ? null : ticTacToeTurnDeadline(timerSeconds),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-
-  if (updateError) return { error: updateError.message }
+    },
+    session.updated_at
+  )
+  if (!won) return {}
 
   if (finished) {
     await markGameFinished(supabase, gameId)
@@ -286,17 +315,20 @@ export async function processTicTacToeExpireTurn(
   const nextMark: TicTacToeMark = session.current_turn_mark === 'X' ? 'O' : 'X'
   const nextPlayerId = nextMark === 'X' ? session.player_x_id : session.player_o_id
 
-  const { error } = await supabase
-    .from('tic_tac_toe_sessions')
-    .update({
+  // Claim with the exact state we read. If a move (or another expire) already
+  // advanced the game we lose the CAS and no-op, so a stale "time ran out" message
+  // never overlays a valid move.
+  await persistSession(
+    supabase,
+    gameId,
+    {
       current_turn_mark: nextMark,
       status_message: `${names.get(nextPlayerId) ?? 'Player'}'s turn (${nextMark}) — time ran out`,
       turn_deadline_at: ticTacToeTurnDeadline(timerSeconds),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
+    },
+    session.updated_at
+  )
 
-  if (error) return { error: error.message }
   return {}
 }
 
@@ -306,4 +338,58 @@ export async function clearTicTacToeSessionData(
   _gameId: string
 ): Promise<{ error?: string }> {
   return {}
+}
+
+/**
+ * Remove a player from a Tic-Tac-Toe game (they left or were kicked). The game is
+ * heads-up, so leaving an active game is a forfeit: the other player wins. The
+ * session write is a plain (non-CAS) update so the removal always lands. If the
+ * game is already finished or still in the lobby, we just delete the player row.
+ */
+export async function removeTicTacToePlayer(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  playerName?: string
+): Promise<{ error: string | null }> {
+  const { data: sessionRaw } = await supabase
+    .from('tic_tac_toe_sessions')
+    .select('*')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  const session = sessionRaw as TicTacToeSession | null
+
+  if (
+    session &&
+    session.status === 'active' &&
+    (session.player_x_id === playerId || session.player_o_id === playerId)
+  ) {
+    const otherId = session.player_x_id === playerId ? session.player_o_id : session.player_x_id
+    const { data: playerRows } = await supabase.from('players').select('id, name').eq('game_id', gameId)
+    const names = new Map<string, string>()
+    for (const p of playerRows ?? []) names.set(p.id, p.name)
+    const loserName = playerName ?? names.get(playerId) ?? (session.player_x_id === playerId ? 'X' : 'O')
+    const winnerName = names.get(otherId) ?? 'Opponent'
+
+    const { error: sessionError } = await supabase
+      .from('tic_tac_toe_sessions')
+      .update({
+        status: 'finished',
+        winner_player_id: otherId,
+        is_draw: false,
+        status_message: `${loserName} left — ${winnerName} wins!`,
+        turn_deadline_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('game_id', gameId)
+    if (sessionError) return { error: sessionError.message }
+
+    await markGameFinished(supabase, gameId)
+    const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
+    return { error: error?.message ?? null }
+  }
+
+  // Already finished, still in the lobby, or not one of the seated players — just drop the row.
+  const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
+  return { error: error?.message ?? null }
 }

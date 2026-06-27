@@ -29,3 +29,8 @@ Use an LLM to generate personalized WYR/MLT questions based on player names and 
 
 ### Video Reveal
 Record short video reactions when results are shown using the MediaRecorder API. Upload clips to Supabase Storage. Play back a compilation at the final leaderboard. Significant storage and bandwidth implications.
+
+## Monetization
+
+### Pro Host Accounts
+One-time purchase (e.g. $2) that unlocks host-only powers — raised player caps, multiple concurrent rooms, Monopoly add-time, custom timers, larger imports, Pro badge. Playing/joining stays free forever; only hosts can pay. Plugs into the existing per-game limits in `src/lib/game-limits.ts` plus an `is_pro` account flag and a payment webhook. Full spec: [revenue-model.md](./revenue-model.md).

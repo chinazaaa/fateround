@@ -11,7 +11,7 @@ import {
 import { DescribeItPlayPanel } from '@/components/describe-it/DescribeItPlay'
 import { DescribeItFinalResultsShareBlock } from '@/components/describe-it/DescribeItFinalResultsShareBlock'
 import { gameTypeConfig } from '@/lib/game-types'
-import { clampDescribeItTeams, isDescribeItResultsPhase } from '@/lib/describe-it'
+import { clampDescribeItMode, clampDescribeItTeams, isDescribeItResultsPhase } from '@/lib/describe-it'
 import { supabase } from '@/lib/supabase'
 import {
   GAME_SELECT,
@@ -232,8 +232,10 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
   const myName = activePlayer?.name ?? ''
+  const isIndividual = clampDescribeItMode(game?.describe_it_mode) === 'individual'
   const numTeams = clampDescribeItTeams(game?.describe_it_num_teams)
-  const teamPlain = teamRows.map((r) => ({ player_id: r.player_id, team: r.team }))
+  const teamPlain = teamRows.map((r) => ({ player_id: r.player_id, team: r.team, score: r.score }))
+  const playerScores = teamRows.map((r) => ({ player_id: r.player_id, score: r.score }))
 
   const myTeam = teamRows.find((r) => r.player_id === myPlayerId)?.team ?? null
 
@@ -326,6 +328,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myName}
+          activityFirst={!isIndividual}
           onRenamed={() => void load()}
           onLeft={handlePlayerLeft}
           title="Waiting for host to start"
@@ -341,17 +344,27 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             await load()
           }}
           activity={
-            <DescribeItCard className="p-4 space-y-2">
-              <p className="text-center text-sm font-bold">Pick your team</p>
-              <DescribeItTeamRoster
-                numTeams={numTeams}
-                teamRows={teamPlain}
-                players={players}
-                myPlayerId={myPlayerId}
-                onPick={pickTeam}
-                picking={picking}
-              />
-            </DescribeItCard>
+            isIndividual ? (
+              <DescribeItCard className="p-4 space-y-1 text-center">
+                <p className="text-sm font-bold">Everyone plays solo 🏆</p>
+                <p className="text-faint text-xs">
+                  You&apos;ll take turns describing a word while everyone races to guess. Fastest guessers score the
+                  most.
+                </p>
+              </DescribeItCard>
+            ) : (
+              <DescribeItCard className="p-4 space-y-2">
+                <p className="text-center text-sm font-bold">Pick your team</p>
+                <DescribeItTeamRoster
+                  numTeams={numTeams}
+                  teamRows={teamPlain}
+                  players={players}
+                  myPlayerId={myPlayerId}
+                  onPick={pickTeam}
+                  picking={picking}
+                />
+              </DescribeItCard>
+            )
           }
         />
       </GameJoinLobbyShell>
@@ -361,7 +374,16 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   if (screen === 'finished') {
     return (
       <DescribeItShell compact>
-        {game && <DescribeItFinalResultsShareBlock game={game} players={players} words={words} numTeams={numTeams} />}
+        {game && (
+          <DescribeItFinalResultsShareBlock
+            game={game}
+            players={players}
+            words={words}
+            numTeams={numTeams}
+            mode={isIndividual ? 'individual' : 'team'}
+            playerScores={playerScores}
+          />
+        )}
         {myPlayerId && myName && (
           <PlayerSessionControls
             gameCode={gameCode}
@@ -377,7 +399,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   return (
-    <DescribeItShell title={game?.title ?? cfg.label} compact>
+    <DescribeItShell title={game?.title ?? cfg.label} compact wide={isIndividual}>
       {isViewer && <ViewerModeBanner />}
       {session && (
         <DescribeItPlayPanel

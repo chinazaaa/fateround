@@ -94,10 +94,17 @@ import {
 } from '@/lib/game-limits'
 import { clampMonopolyGameDuration, clampMonopolyTurnTimer } from '@/lib/monopoly'
 import { clampWhotGameDuration } from '@/lib/whot'
+import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampChessTimer } from '@/lib/chess'
 import { clampScrabbleTimer, clampScrabbleGameDuration } from '@/lib/scrabble'
-import { clampDescribeItRounds, clampDescribeItTeams } from '@/lib/describe-it'
+import { parseScrabbleDictionaryId } from '@/lib/scrabble-dictionary-meta'
+import {
+  clampDescribeItMode,
+  clampDescribeItRounds,
+  clampDescribeItTeams,
+  clampDescribeItTurnSeconds,
+} from '@/lib/describe-it'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, type LateJoinPolicy } from '@/lib/viewers'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -213,6 +220,7 @@ export async function POST(req: NextRequest) {
     codewords_late_join: rawCodewordsLateJoin,
     codewords_randomize_teams: rawCodewordsRandomizeTeams,
     describe_it_num_teams: rawDescribeItNumTeams,
+    describe_it_mode: rawDescribeItMode,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -223,6 +231,8 @@ export async function POST(req: NextRequest) {
     whot_pick3_enabled: rawWhotPick3Enabled,
     whot_cards_enabled: rawWhotCardsEnabled,
     whot_number_calls_enabled: rawWhotNumberCallsEnabled,
+    whot_pick2_stacking: rawWhotPick2Stacking,
+    scrabble_dictionary_id: rawScrabbleDictionaryId,
   } = parsed.data
 
   const game_type = parseGameType(rawGameType)
@@ -470,9 +480,13 @@ export async function POST(req: NextRequest) {
                   ? clampChessTimer(timer_seconds)
                   : isScrabbleGame(game_type)
                     ? clampScrabbleTimer(timer_seconds)
-                    : [15, 30, 60].includes(Number(timer_seconds))
-                      ? Number(timer_seconds)
-                      : 30,
+                    : isDescribeItGame(game_type)
+                      ? clampDescribeItTurnSeconds(timer_seconds)
+                      : isWhotGame(game_type)
+                        ? clampBoardGameTurnTimer(timer_seconds, 'whot')
+                        : [15, 30, 60].includes(Number(timer_seconds))
+                          ? Number(timer_seconds)
+                          : 30,
     ...(isCodewordsGame(game_type)
       ? {
           operative_timer_seconds: clampCodewordsTimer(
@@ -490,7 +504,12 @@ export async function POST(req: NextRequest) {
             game_duration_seconds: clampNpatGameDuration(rawGameDurationSeconds ?? NPAT_DEFAULT_GAME_DURATION),
           }
         : {}),
-    ...(isDescribeItGame(game_type) ? { describe_it_num_teams: clampDescribeItTeams(rawDescribeItNumTeams) } : {}),
+    ...(isDescribeItGame(game_type)
+      ? {
+          describe_it_num_teams: clampDescribeItTeams(rawDescribeItNumTeams),
+          describe_it_mode: clampDescribeItMode(rawDescribeItMode),
+        }
+      : {}),
     ...(gameSupportsViewerSetting(game_type)
       ? { allow_viewers: viewersAllowed, allow_late_players: latePlayersAllowed }
       : {}),
@@ -558,7 +577,12 @@ export async function POST(req: NextRequest) {
           bingo_call_interval_seconds: clampBingoCallInterval(rawBingoCallInterval),
         }
       : {}),
-    ...(isScrabbleGame(game_type) ? { game_duration_seconds: clampScrabbleGameDuration(rawGameDurationSeconds) } : {}),
+    ...(isScrabbleGame(game_type)
+      ? {
+          game_duration_seconds: clampScrabbleGameDuration(rawGameDurationSeconds),
+          scrabble_dictionary_id: parseScrabbleDictionaryId(rawScrabbleDictionaryId),
+        }
+      : {}),
     ...(isMonopolyGame(game_type)
       ? { game_duration_seconds: clampMonopolyGameDuration(rawGameDurationSeconds) }
       : isWhotGame(game_type)
@@ -567,6 +591,7 @@ export async function POST(req: NextRequest) {
             whot_pick3_enabled: rawWhotPick3Enabled !== false,
             whot_cards_enabled: rawWhotCardsEnabled !== false,
             whot_number_calls_enabled: rawWhotNumberCallsEnabled !== false,
+            whot_pick2_stacking: rawWhotPick2Stacking !== false,
           }
         : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots

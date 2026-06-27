@@ -1,4 +1,4 @@
-CREATE TABLE question_packs (
+create table if not exists question_packs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
   game_type TEXT NOT NULL CHECK (game_type IN ('trivia', 'would_you_rather', 'most_likely_to')),
@@ -13,7 +13,9 @@ CREATE TABLE question_packs (
 
 ALTER TABLE question_packs ENABLE ROW LEVEL SECURITY;
 -- Public can read approved packs and insert new ones; no public update/delete
+drop policy if exists "public_read_approved" on question_packs;
 CREATE POLICY "public_read_approved" ON question_packs FOR SELECT USING (status = 'approved');
+drop policy if exists "public_insert" on question_packs;
 CREATE POLICY "public_insert" ON question_packs FOR INSERT WITH CHECK (true);
 
-CREATE INDEX question_packs_status_game_type ON question_packs (status, game_type);
+create index if not exists question_packs_status_game_type ON question_packs (status, game_type);

@@ -16,6 +16,7 @@ CREATE INDEX IF NOT EXISTS idx_codewords_guesses_game_id ON codewords_guesses(ga
 CREATE INDEX IF NOT EXISTS idx_codewords_guesses_board_id ON codewords_guesses(board_id);
 
 ALTER TABLE codewords_guesses ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_codewords_guesses" on codewords_guesses;
 CREATE POLICY "public_codewords_guesses" ON codewords_guesses FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE codewords_guesses;
+do $$ begin alter publication supabase_realtime add table codewords_guesses; exception when duplicate_object then null; end $$;

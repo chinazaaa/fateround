@@ -15,14 +15,16 @@ create table if not exists player_questions (
 create index if not exists idx_player_questions_game_id on player_questions(game_id);
 
 alter table player_questions enable row level security;
+drop policy if exists "public_player_questions" on player_questions;
 create policy "public_player_questions" on player_questions for all to anon using (true) with check (true);
-alter publication supabase_realtime add table player_questions;
+do $$ begin alter publication supabase_realtime add table player_questions; exception when duplicate_object then null; end $$;
 
 -- 2. Avatars storage bucket (for participant photos)
 insert into storage.buckets (id, name, public)
 values ('avatars', 'avatars', true)
 on conflict (id) do nothing;
 
+drop policy if exists "public_avatars" on storage.objects;
 create policy "public_avatars"
   on storage.objects for all to anon
   using (bucket_id = 'avatars')

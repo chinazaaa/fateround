@@ -18,9 +18,10 @@ CREATE INDEX IF NOT EXISTS idx_word_hunt_submissions_player_id ON word_hunt_subm
 
 ALTER TABLE word_hunt_submissions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "public_word_hunt_submissions" ON word_hunt_submissions;
+drop policy if exists "public_word_hunt_submissions" on word_hunt_submissions;
 CREATE POLICY "public_word_hunt_submissions" ON word_hunt_submissions FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE word_hunt_submissions;
+do $$ begin alter publication supabase_realtime add table word_hunt_submissions; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (

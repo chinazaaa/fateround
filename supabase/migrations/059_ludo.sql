@@ -30,13 +30,15 @@ CREATE TABLE IF NOT EXISTS ludo_player_state (
 CREATE INDEX IF NOT EXISTS idx_ludo_player_state_game_id ON ludo_player_state(game_id);
 
 ALTER TABLE ludo_sessions ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_ludo_sessions" on ludo_sessions;
 CREATE POLICY "public_ludo_sessions" ON ludo_sessions FOR ALL USING (true) WITH CHECK (true);
 
 ALTER TABLE ludo_player_state ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_ludo_player_state" on ludo_player_state;
 CREATE POLICY "public_ludo_player_state" ON ludo_player_state FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE ludo_sessions;
-ALTER PUBLICATION supabase_realtime ADD TABLE ludo_player_state;
+do $$ begin alter publication supabase_realtime add table ludo_sessions; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table ludo_player_state; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (

@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS anime_quote_pool (
 );
 
 ALTER TABLE anime_quote_pool ENABLE ROW LEVEL SECURITY;
+drop policy if exists "anime_quote_pool_public" on anime_quote_pool;
 CREATE POLICY "anime_quote_pool_public" ON anime_quote_pool FOR ALL USING (true) WITH CHECK (true);
 
 -- New columns on existing tables

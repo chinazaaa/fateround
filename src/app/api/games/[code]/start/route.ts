@@ -95,7 +95,11 @@ import { initializeWhotGame, WHOT_MIN_PLAYERS } from '@/lib/whot'
 import { initializeLudoGame, LUDO_MIN_PLAYERS } from '@/lib/ludo'
 import { initializeTicTacToeGame, TIC_TAC_TOE_MIN_PLAYERS } from '@/lib/tic-tac-toe'
 import { initializeChessGame, CHESS_MIN_PLAYERS } from '@/lib/chess'
-import { initializeDescribeItGame, DESCRIBE_IT_MIN_PLAYERS } from '@/lib/describe-it'
+import {
+  initializeDescribeItGame,
+  DESCRIBE_IT_MIN_PLAYERS,
+  DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
+} from '@/lib/describe-it'
 import { initializeScrabbleGame, SCRABBLE_MIN_PLAYERS, SCRABBLE_MAX_PLAYERS } from '@/lib/scrabble'
 import { buildNpatInitialRound, NPAT_MIN_PLAYERS, shufflePlayerOrder as npatShufflePlayerOrder } from '@/lib/npat'
 import { buildSudokuRoundRow, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
@@ -106,6 +110,7 @@ import { appearanceCountsForParticipants, mergeUsageMaps, parsePoolUsage, poolUs
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 import type { ParticipantForRounds } from '@/lib/utils'
+import type { AiGeneratedQuestions, AiQuestionsConfig } from '@/types'
 
 /** Same-gender round groups for custom games with 4–5 slots. */
 function generateGenderBasedNRounds(
@@ -150,6 +155,44 @@ function generateGenderBasedNRounds(
   }
 
   return result
+}
+
+function mergeAiIntoPlatformPool<T>(
+  aiItems: T[],
+  platformItems: T[],
+  totalNeeded: number,
+  ratio: AiQuestionsConfig['ratio']
+): T[] {
+  if (aiItems.length === 0) return platformItems.slice(0, totalNeeded)
+
+  let aiCount: number
+  switch (ratio) {
+    case 'all_ai':
+      aiCount = totalNeeded
+      break
+    case 'mostly_ai':
+      aiCount = Math.ceil(totalNeeded * 0.75)
+      break
+    case 'half':
+      aiCount = Math.ceil(totalNeeded * 0.5)
+      break
+    case 'mostly_platform':
+      aiCount = Math.ceil(totalNeeded * 0.25)
+      break
+    default:
+      aiCount = Math.ceil(totalNeeded * 0.5)
+  }
+
+  const actualAi = aiItems.slice(0, aiCount)
+  const platformNeeded = totalNeeded - actualAi.length
+  const actualPlatform = platformItems.slice(0, platformNeeded)
+
+  const merged = [...actualAi, ...actualPlatform]
+  for (let i = merged.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[merged[i], merged[j]] = [merged[j], merged[i]]
+  }
+  return merged
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -457,8 +500,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (isDescribeItGame(gameType)) {
     const playingPlayers = playersData.filter((p) => p.spectator !== true)
-    if (playingPlayers.length < DESCRIBE_IT_MIN_PLAYERS) {
-      return NextResponse.json({ error: `Need at least ${DESCRIBE_IT_MIN_PLAYERS} players to start` }, { status: 400 })
+    const minPlayers =
+      game.describe_it_mode === 'individual' ? DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL : DESCRIBE_IT_MIN_PLAYERS
+    if (playingPlayers.length < minPlayers) {
+      return NextResponse.json({ error: `Need at least ${minPlayers} players to start` }, { status: 400 })
     }
 
     const { error: initError } = await initializeDescribeItGame(
@@ -673,10 +718,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
-    const roundRow = buildSudokuRoundRow(code.toUpperCase(), seed)
+    const { roundRow, solution } = buildSudokuRoundRow(code.toUpperCase(), seed)
 
-    const { error: roundError } = await supabase.from('rounds').insert(roundRow)
-    if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
+    const { data: insertedRound, error: roundError } = await supabase
+      .from('rounds')
+      .insert(roundRow)
+      .select('id')
+      .single()
+    if (roundError || !insertedRound) {
+      return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
+    }
+
+    // Solution is stored separately (RLS hides it from players); never in the round metadata.
+    const { error: solutionError } = await supabase
+      .from('sudoku_solutions')
+      .insert({ round_id: insertedRound.id, solution })
+    if (solutionError) return NextResponse.json({ error: solutionError.message }, { status: 500 })
 
     const { error: gameError } = await supabase
       .from('games')
@@ -938,9 +995,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const platformQuestions = useCustom
       ? pickCustomMltQuestions(customPool, poolNeeded, customMltUsage)
       : pickMltQuestions(poolNeeded, mergeUsageMaps(await fetchMltQuestionUsage(supabase), customMltUsage))
+
+    const aiMltQuestions: string[] =
+      game.ai_questions_enabled &&
+      game.ai_generated_questions &&
+      typeof game.ai_generated_questions === 'object' &&
+      (game.ai_generated_questions as AiGeneratedQuestions).type === 'mlt'
+        ? ((game.ai_generated_questions as Extract<AiGeneratedQuestions, { type: 'mlt' }>).questions ?? [])
+        : []
+
+    const mergedPlatformMlt =
+      aiMltQuestions.length > 0
+        ? mergeAiIntoPlatformPool(
+            aiMltQuestions,
+            platformQuestions,
+            poolNeeded,
+            (game.ai_questions_config as AiQuestionsConfig | null)?.ratio ?? 'half'
+          )
+        : platformQuestions
+
     const questions = combineLobbyQuestions(
       playerQuestionsEnabled ? playerMltQuestions : [],
-      platformQuestions,
+      mergedPlatformMlt,
       game.rounds_count,
       playerQuestionsEnabled ? questionOrder : 'uploaded_first'
     )
@@ -1012,9 +1088,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const platformQuestions = useCustom
       ? pickCustomMltQuestions(customPool, poolNeeded, customMltUsage)
       : pickNhieQuestions(poolNeeded, mergeUsageMaps(await fetchNhieQuestionUsage(supabase), customMltUsage))
+
+    const aiNhieQuestions: string[] =
+      game.ai_questions_enabled &&
+      game.ai_generated_questions &&
+      typeof game.ai_generated_questions === 'object' &&
+      (game.ai_generated_questions as AiGeneratedQuestions).type === 'nhie'
+        ? ((game.ai_generated_questions as Extract<AiGeneratedQuestions, { type: 'nhie' }>).questions ?? [])
+        : []
+
+    const mergedPlatformNhie =
+      aiNhieQuestions.length > 0
+        ? mergeAiIntoPlatformPool(
+            aiNhieQuestions,
+            platformQuestions,
+            poolNeeded,
+            (game.ai_questions_config as AiQuestionsConfig | null)?.ratio ?? 'half'
+          )
+        : platformQuestions
+
     const questions = combineLobbyQuestions(
       playerQuestionsEnabled ? playerNhieQuestions : [],
-      platformQuestions,
+      mergedPlatformNhie,
       game.rounds_count,
       playerQuestionsEnabled ? questionOrder : 'uploaded_first'
     )
@@ -1236,9 +1331,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const platformQuestions = useCustom
       ? pickCustomWyrQuestions(customPool, poolNeeded, customWyrUsage)
       : pickWyrQuestions(poolNeeded, mergeUsageMaps(await fetchWyrQuestionUsage(supabase), customWyrUsage))
+
+    const aiWyrQuestions: { optionA: string; optionB: string }[] =
+      game.ai_questions_enabled &&
+      game.ai_generated_questions &&
+      typeof game.ai_generated_questions === 'object' &&
+      (game.ai_generated_questions as AiGeneratedQuestions).type === 'wyr'
+        ? ((game.ai_generated_questions as Extract<AiGeneratedQuestions, { type: 'wyr' }>).questions ?? [])
+        : []
+
+    const mergedPlatformWyr =
+      aiWyrQuestions.length > 0
+        ? mergeAiIntoPlatformPool(
+            aiWyrQuestions,
+            platformQuestions,
+            poolNeeded,
+            (game.ai_questions_config as AiQuestionsConfig | null)?.ratio ?? 'half'
+          )
+        : platformQuestions
+
     const questions = combineLobbyQuestions(
       playerQuestionsEnabled ? playerWyrQuestions : [],
-      platformQuestions,
+      mergedPlatformWyr,
       game.rounds_count,
       playerQuestionsEnabled ? questionOrder : 'uploaded_first'
     )

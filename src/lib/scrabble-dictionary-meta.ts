@@ -4,16 +4,19 @@
 // validation schema import these option ids, so this module must stay free of any
 // large word-list imports.
 
-export const SCRABBLE_DICTIONARY_OPTIONS = ['enable', 'collins', 'twl'] as const
+export const SCRABBLE_DICTIONARY_OPTIONS = ['enable', 'collins', 'twl', 'french', 'german', 'spanish'] as const
 
 export type ScrabbleDictionaryId = (typeof SCRABBLE_DICTIONARY_OPTIONS)[number]
 
 export const SCRABBLE_DEFAULT_DICTIONARY: ScrabbleDictionaryId = 'enable'
 
 export const SCRABBLE_DICTIONARY_LABELS: Record<ScrabbleDictionaryId, string> = {
-  enable: 'Standard (ENABLE)',
-  collins: 'Collins · CSW (international)',
-  twl: 'TWL (North America)',
+  enable: 'English · Standard (ENABLE)',
+  collins: 'English · Collins / CSW',
+  twl: 'English · TWL (North America)',
+  french: 'Français · ODS',
+  german: 'Deutsch',
+  spanish: 'Español · FISE',
 }
 
 /** Short blurb shown under the picker, optional UI use. */
@@ -21,6 +24,9 @@ export const SCRABBLE_DICTIONARY_BLURBS: Record<ScrabbleDictionaryId, string> = 
   enable: 'Open public-domain list — a great default.',
   collins: 'Official international tournament words (largest list).',
   twl: 'Official North American tournament words.',
+  french: 'French tiles + the ODS word list.',
+  german: 'German tiles (incl. Ä/Ö/Ü) + German word list.',
+  spanish: 'Spanish tiles (incl. Ñ, no K/W) + the FISE word list.',
 }
 
 /** Narrow an arbitrary string to a valid dictionary id, falling back to the default. */

@@ -9,7 +9,6 @@ import {
   SCRABBLE_CENTER,
   SCRABBLE_RACK_SIZE,
   SCRABBLE_BINGO_BONUS,
-  SCRABBLE_TILE_VALUES,
   scrabblePremiumAt,
 } from './scrabble-constants'
 
@@ -42,10 +41,9 @@ export function isBoardEmpty(board: ScrabbleBoard): boolean {
   return true
 }
 
-/** Point value of a single tile (blanks are always 0). */
-export function tileScore(letter: string, isBlank: boolean): number {
-  if (isBlank) return 0
-  return SCRABBLE_TILE_VALUES[letter.toUpperCase()] ?? 0
+/** Point value of a single tile (blanks are always 0). Values are edition-specific. */
+export function tileScore(letter: string, isBlank: boolean, values: Record<string, number>): number {
+  return isBlank ? 0 : (values[letter.toUpperCase()] ?? 0)
 }
 
 /** Returns a copy of the board with the given tiles placed (letters upper-cased). */
@@ -200,7 +198,11 @@ export interface PlacementScore {
  * Premiums apply only to NEWLY placed tiles; word multipliers stack; a 7-tile play
  * earns the bingo bonus.
  */
-export function scorePlacement(board: ScrabbleBoard, tiles: ScrabblePlacedTile[]): PlacementScore {
+export function scorePlacement(
+  board: ScrabbleBoard,
+  tiles: ScrabblePlacedTile[],
+  values: Record<string, number>
+): PlacementScore {
   const geo = validatePlacementGeometry(board, tiles)
   if (!geo.ok) return { valid: false, error: geo.error, score: 0, words: [] }
 
@@ -217,7 +219,7 @@ export function scorePlacement(board: ScrabbleBoard, tiles: ScrabblePlacedTile[]
       const key = `${cell.row},${cell.col}`
       const isNew = newCells.has(key)
       const letterOnBoard = boardLetterAt(board, tiles, cell.row, cell.col)
-      let letterScore = blankCells.has(key) ? 0 : (SCRABBLE_TILE_VALUES[letterOnBoard] ?? 0)
+      let letterScore = blankCells.has(key) ? 0 : (values[letterOnBoard] ?? 0)
       if (isNew) {
         const prem = scrabblePremiumAt(cell.row, cell.col)
         if (prem === 'DL') letterScore *= 2

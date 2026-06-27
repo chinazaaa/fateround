@@ -16,9 +16,10 @@ CREATE TABLE IF NOT EXISTS ttl_statements (
 CREATE INDEX IF NOT EXISTS idx_ttl_statements_game_id ON ttl_statements(game_id);
 
 ALTER TABLE ttl_statements ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_ttl_statements" on ttl_statements;
 CREATE POLICY "public_ttl_statements" ON ttl_statements FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE ttl_statements;
+do $$ begin alter publication supabase_realtime add table ttl_statements; exception when duplicate_object then null; end $$;
 
 CREATE TABLE IF NOT EXISTS ttl_guesses (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -36,9 +37,10 @@ CREATE INDEX IF NOT EXISTS idx_ttl_guesses_game_id ON ttl_guesses(game_id);
 CREATE INDEX IF NOT EXISTS idx_ttl_guesses_round_id ON ttl_guesses(round_id);
 
 ALTER TABLE ttl_guesses ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_ttl_guesses" on ttl_guesses;
 CREATE POLICY "public_ttl_guesses" ON ttl_guesses FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE ttl_guesses;
+do $$ begin alter publication supabase_realtime add table ttl_guesses; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (

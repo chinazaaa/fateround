@@ -36,6 +36,7 @@ export interface JoinFlowDeps {
   setPlayers: React.Dispatch<React.SetStateAction<Player[]>>
   setParticipants: React.Dispatch<React.SetStateAction<Participant[]>>
   applyActiveRound: (round: Round) => void
+  initialName?: string
 }
 
 export function useJoinFlow(deps: JoinFlowDeps) {
@@ -54,11 +55,12 @@ export function useJoinFlow(deps: JoinFlowDeps) {
     setPlayers,
     setParticipants,
     applyActiveRound,
+    initialName,
   } = deps
   const toast = useToast()
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
 
-  const [nameInput, setNameInput] = useState('')
+  const [nameInput, setNameInput] = useState(initialName ?? '')
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null)
   const [joinIdentityGender, setJoinIdentityGender] = useState<ParticipantGender>('female')
   const [voteBothGenders, setVoteBothGenders] = useState(false)

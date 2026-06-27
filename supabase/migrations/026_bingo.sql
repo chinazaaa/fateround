@@ -33,13 +33,16 @@ ALTER TABLE bingo_cards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bingo_called_numbers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bingo_claims ENABLE ROW LEVEL SECURITY;
 
+drop policy if exists "public_bingo_cards" on bingo_cards;
 CREATE POLICY "public_bingo_cards" ON bingo_cards FOR ALL USING (true) WITH CHECK (true);
+drop policy if exists "public_bingo_called_numbers" on bingo_called_numbers;
 CREATE POLICY "public_bingo_called_numbers" ON bingo_called_numbers FOR ALL USING (true) WITH CHECK (true);
+drop policy if exists "public_bingo_claims" on bingo_claims;
 CREATE POLICY "public_bingo_claims" ON bingo_claims FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE bingo_cards;
-ALTER PUBLICATION supabase_realtime ADD TABLE bingo_called_numbers;
-ALTER PUBLICATION supabase_realtime ADD TABLE bingo_claims;
+do $$ begin alter publication supabase_realtime add table bingo_cards; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table bingo_called_numbers; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table bingo_claims; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (

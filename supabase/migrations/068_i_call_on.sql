@@ -39,14 +39,16 @@ CREATE INDEX IF NOT EXISTS idx_npat_marks_round_id ON npat_marks(round_id);
 
 ALTER TABLE npat_answers ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "public_npat_answers" ON npat_answers;
+drop policy if exists "public_npat_answers" on npat_answers;
 CREATE POLICY "public_npat_answers" ON npat_answers FOR ALL USING (true) WITH CHECK (true);
 
 ALTER TABLE npat_marks ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "public_npat_marks" ON npat_marks;
+drop policy if exists "public_npat_marks" on npat_marks;
 CREATE POLICY "public_npat_marks" ON npat_marks FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE npat_answers;
-ALTER PUBLICATION supabase_realtime ADD TABLE npat_marks;
+do $$ begin alter publication supabase_realtime add table npat_answers; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table npat_marks; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (

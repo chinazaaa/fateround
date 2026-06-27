@@ -16,4 +16,5 @@ create table if not exists game_snapshots (
 create index if not exists idx_game_snapshots_game_id on game_snapshots(game_id);
 
 alter table game_snapshots enable row level security;
+drop policy if exists "public_game_snapshots" on game_snapshots;
 create policy "public_game_snapshots" on game_snapshots for all to anon using (true) with check (true);

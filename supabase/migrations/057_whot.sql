@@ -32,13 +32,15 @@ CREATE TABLE IF NOT EXISTS whot_player_hands (
 CREATE INDEX IF NOT EXISTS idx_whot_player_hands_game_id ON whot_player_hands(game_id);
 
 ALTER TABLE whot_sessions ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_whot_sessions" on whot_sessions;
 CREATE POLICY "public_whot_sessions" ON whot_sessions FOR ALL USING (true) WITH CHECK (true);
 
 ALTER TABLE whot_player_hands ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_whot_player_hands" on whot_player_hands;
 CREATE POLICY "public_whot_player_hands" ON whot_player_hands FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE whot_sessions;
-ALTER PUBLICATION supabase_realtime ADD TABLE whot_player_hands;
+do $$ begin alter publication supabase_realtime add table whot_sessions; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table whot_player_hands; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (

@@ -33,6 +33,7 @@ import {
   SCRABBLE_DICTIONARY_LABELS,
   parseScrabbleDictionaryId,
 } from '@/lib/scrabble-dictionary-meta'
+import { tileSetForDictionary } from '@/lib/scrabble-rulesets'
 
 type HostTab = 'play' | 'manage'
 type ScrabbleHostMode = 'spectator' | 'player'
@@ -332,6 +333,7 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
   const gameFinished = isScrabbleResultsPhase(game?.status, session)
   const showPlayTab = hostPlays && game?.status !== 'waiting' && !gameFinished
   const isHostTurn = turnPlayerId === hostPlayerId
+  const tileSet = tileSetForDictionary(game?.scrabble_dictionary_id)
 
   if (loading) {
     return (
@@ -504,6 +506,8 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
             playerStates={playerStates}
             myPlayerId={hostPlayerId}
             isMyTurn={isHostTurn}
+            tileValues={tileSet.values}
+            alphabet={tileSet.alphabet}
             onPlay={playWord}
             onExchange={exchangeTiles}
             onPass={passTurn}
@@ -553,6 +557,8 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
               playerStates={playerStates}
               myPlayerId={hostPlayerId}
               isMyTurn={false}
+              tileValues={tileSet.values}
+              alphabet={tileSet.alphabet}
             />
           )}
 

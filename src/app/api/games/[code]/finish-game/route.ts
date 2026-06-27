@@ -3,13 +3,16 @@ import { createClient } from '@supabase/supabase-js'
 import { finishMonopolyGameEarly } from '@/lib/monopoly'
 import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anonymous-messages'
 import { finishCodewordsGame } from '@/lib/codewords'
+import { finishScrabbleGameEarly } from '@/lib/scrabble'
 import { markGameFinished } from '@/lib/game-finish'
+import { awardTournamentPlacements } from '@/lib/tournament-scoring'
 import {
   parseGameType,
   isAnonymousMessagesGame,
   isSecretMessageGame,
   isCodewordsGame,
   isMonopolyGame,
+  isScrabbleGame,
 } from '@/lib/game-types'
 import { hostActionSchema } from '@/lib/validation'
 
@@ -69,6 +72,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ success: true })
   }
 
+  // Scrabble finalizes its own session (tally scores + pick a winner) when ended
+  // mid-game. In the lobby there's no session yet, so fall through to markGameFinished.
+  if (isScrabbleGame(gameType) && !inLobby) {
+    const { error } = await finishScrabbleGameEarly(supabase, gameId)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
   // Save snapshot for rematch history
   const [votesRes, participantsRes, snapshotCountRes] = await Promise.all([
     supabase.from('votes').select('*').eq('game_id', gameId),
@@ -100,6 +111,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { error } = await markGameFinished(supabase, gameId, now)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  try {
+    await awardTournamentPlacements(supabase, gameId)
+  } catch {
+    // Tournament scoring is best-effort — never block game finish
+  }
 
   return NextResponse.json({ success: true })
 }
