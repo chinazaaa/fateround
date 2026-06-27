@@ -1719,6 +1719,12 @@ function CreateGameInner() {
                       </option>
                     ))}
                   </select>
+                  {settings.describe_it_mode === 'individual' && (
+                    <p className="text-faint text-[11px] pt-1">
+                      Total turns = players × rounds. E.g. 6 players × {settings.rounds_count} rounds ={' '}
+                      {6 * settings.rounds_count} turns — the lobby shows the exact count once everyone joins.
+                    </p>
+                  )}
                 </Field>
                 <Field label="Time per turn">
                   <select

@@ -156,8 +156,26 @@ export function DescribeItPlayPanel({
   // Individual mode: anyone in the roster who isn't the describer may guess.
   const canGuess = isIndividual ? inRoster && !isDescriber : onActiveTeam
 
-  return (
-    <div className="space-y-4">
+  const scoreboardEl = isIndividual ? (
+    <DescribeItPlayerScoreboard
+      leaderboard={leaderboard}
+      describerId={session.describer_player_id}
+      myPlayerId={myPlayerId}
+      round={session.current_round}
+      totalRounds={session.total_rounds}
+    />
+  ) : (
+    <DescribeItScoreboard
+      scores={teamScores}
+      activeTeam={activeTeam}
+      myTeam={myTeam}
+      round={session.current_round}
+      totalRounds={session.total_rounds}
+    />
+  )
+
+  const inner = (
+    <div className="space-y-4 min-w-0">
       {isIndividual
         ? isDescriber &&
           session.phase === 'turn' && <p className="text-center text-xs text-faint">You&apos;re describing 🗣️</p>
@@ -170,23 +188,8 @@ export function DescribeItPlayPanel({
             </p>
           )}
 
-      {isIndividual ? (
-        <DescribeItPlayerScoreboard
-          leaderboard={leaderboard}
-          describerId={session.describer_player_id}
-          myPlayerId={myPlayerId}
-          round={session.current_round}
-          totalRounds={session.total_rounds}
-        />
-      ) : (
-        <DescribeItScoreboard
-          scores={teamScores}
-          activeTeam={activeTeam}
-          myTeam={myTeam}
-          round={session.current_round}
-          totalRounds={session.total_rounds}
-        />
-      )}
+      {/* Team mode keeps the scoreboard inline; individual mode shows it in a side column. */}
+      {!isIndividual && scoreboardEl}
 
       {session.phase === 'break' && (
         <DescribeItCard className="p-5 text-center space-y-2">
@@ -309,6 +312,16 @@ export function DescribeItPlayPanel({
           </DescribeItCard>
         </>
       )}
+    </div>
+  )
+
+  if (!isIndividual) return inner
+
+  // Individual mode: leaderboard sits in a side column (stacks below on mobile), like Trivia.
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(220px,300px)] lg:items-start">
+      {inner}
+      <aside className="space-y-4 lg:sticky lg:top-4">{scoreboardEl}</aside>
     </div>
   )
 }
