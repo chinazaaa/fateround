@@ -175,6 +175,33 @@ async function loadSession(
   return { session: data as ChessSession | null }
 }
 
+/**
+ * Optimistic-concurrency session write. The update only lands if the row still
+ * carries the `expectedUpdatedAt` we read at the top of the handler, so when two
+ * requests race (e.g. a move landing just as another client's expire-turn fires)
+ * only the first wins — the loser gets 0 rows and bails before finalizing. This
+ * stops a stale timeout from overwriting a real (even checkmating) move, and
+ * keeps two requests from both calling markGameFinished. Returns true if this
+ * write won. The caller supplies the full patch (including turn_deadline_at).
+ */
+async function persistSession(
+  supabase: SupabaseClient,
+  gameId: string,
+  patch: Partial<ChessSession>,
+  expectedUpdatedAt: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from('chess_sessions')
+    .update({
+      ...patch,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('game_id', gameId)
+    .eq('updated_at', expectedUpdatedAt)
+    .select('game_id')
+  return (data?.length ?? 0) > 0
+}
+
 function describeDrawReason(reason: string): string {
   switch (reason) {
     case 'stalemate':
@@ -305,9 +332,14 @@ export async function processChessMove(
   const nextRemaining = nextTurn === 'w' ? whiteMs : blackMs
   const nextDeadline = !finished && timed && nextRemaining != null ? new Date(now + nextRemaining).toISOString() : null
 
-  const { error: updateError } = await supabase
-    .from('chess_sessions')
-    .update({
+  // Claim the session from the exact state we read. If another request already
+  // moved the game (e.g. a concurrent expire-turn flagged a timeout) we lose the
+  // CAS and bail without error — the winner finalizes, so a played move is never
+  // double-finished or overwritten by a stale timeout.
+  const won = await persistSession(
+    supabase,
+    gameId,
+    {
       fen: chess.fen(),
       pgn: chess.pgn(),
       current_turn: nextTurn,
@@ -323,11 +355,10 @@ export async function processChessMove(
       is_draw: draw,
       status_message: statusMessage,
       turn_deadline_at: nextDeadline,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-
-  if (updateError) return { error: updateError.message }
+    },
+    session.updated_at
+  )
+  if (!won) return {}
 
   if (finished) {
     await markGameFinished(supabase, gameId)
@@ -351,9 +382,13 @@ export async function processChessExpireTurn(supabase: SupabaseClient, gameId: s
   const loserName = names.get(playerIdForColor(session, loserColor)) ?? (loserColor === 'w' ? 'White' : 'Black')
   const winnerName = names.get(winnerPlayerId) ?? (winnerColor === 'w' ? 'White' : 'Black')
 
-  const { error } = await supabase
-    .from('chess_sessions')
-    .update({
+  // Claim from the exact state we read. If the player actually moved in time, that
+  // move already advanced updated_at and we lose the CAS here — bail without error
+  // so the real move stands instead of being recorded as a timeout loss.
+  const won = await persistSession(
+    supabase,
+    gameId,
+    {
       status: 'finished',
       result_reason: 'timeout',
       winner_player_id: winnerPlayerId,
@@ -364,11 +399,10 @@ export async function processChessExpireTurn(supabase: SupabaseClient, gameId: s
       turn_started_at: null,
       status_message: `${loserName} ran out of time — ${winnerName} wins!`,
       turn_deadline_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-
-  if (error) return { error: error.message }
+    },
+    session.updated_at
+  )
+  if (!won) return {}
 
   await markGameFinished(supabase, gameId)
   return {}
@@ -394,20 +428,23 @@ export async function processChessResign(
   const loserName = names.get(playerId) ?? (color === 'w' ? 'White' : 'Black')
   const winnerName = names.get(winnerPlayerId) ?? (winnerColor === 'w' ? 'White' : 'Black')
 
-  const { error } = await supabase
-    .from('chess_sessions')
-    .update({
+  // Claim from the exact state we read. If a concurrent move/expire-turn already
+  // finished the game, we lose the CAS and bail without error so we don't
+  // double-finish or overwrite the real result.
+  const won = await persistSession(
+    supabase,
+    gameId,
+    {
       status: 'finished',
       result_reason: 'resignation',
       winner_player_id: winnerPlayerId,
       is_draw: false,
       status_message: `${loserName} resigned — ${winnerName} wins!`,
       turn_deadline_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-
-  if (error) return { error: error.message }
+    },
+    session.updated_at
+  )
+  if (!won) return {}
 
   await markGameFinished(supabase, gameId)
   return {}
