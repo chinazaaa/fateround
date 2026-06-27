@@ -235,13 +235,13 @@ do $$ begin alter publication supabase_realtime add table player_questions; exce
 -- ============================================================================
 
 -- Jikan API response cache (avoid redundant lookups)
-CREATE TABLE jikan_search_cache (
+create table if not exists jikan_search_cache (
   show_name text PRIMARY KEY,
   mal_id integer,
   cached_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE jikan_anime_cache (
+create table if not exists jikan_anime_cache (
   mal_id integer PRIMARY KEY,
   show_name text NOT NULL,
   characters jsonb NOT NULL,
@@ -249,7 +249,7 @@ CREATE TABLE jikan_anime_cache (
 );
 
 -- Anime quote pool (lobby phase, persists across refreshes)
-CREATE TABLE anime_quote_pool (
+create table if not exists anime_quote_pool (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   game_id text NOT NULL REFERENCES games(id) ON DELETE CASCADE,
   quote_text text NOT NULL,
@@ -265,12 +265,12 @@ drop policy if exists "anime_quote_pool_public" on anime_quote_pool;
 CREATE POLICY "anime_quote_pool_public" ON anime_quote_pool FOR ALL USING (true) WITH CHECK (true);
 
 -- New columns on existing tables
-ALTER TABLE games ADD COLUMN wst_quote_source text NOT NULL DEFAULT 'player'
+alter table games add column if not exists wst_quote_source text NOT NULL DEFAULT 'player'
   CHECK (wst_quote_source IN ('player', 'anime', 'both'));
 
-ALTER TABLE rounds ADD COLUMN anime_metadata jsonb;
+alter table rounds add column if not exists anime_metadata jsonb;
 
-ALTER TABLE votes ADD COLUMN anime_choice text;
+alter table votes add column if not exists anime_choice text;
 
 -- ============================================================================
 -- Hot Seat — schema additions

@@ -1,2 +1,2 @@
-ALTER TABLE question_packs ADD COLUMN tags TEXT[] NOT NULL DEFAULT '{}';
-CREATE INDEX question_packs_tags ON question_packs USING GIN (tags);
+alter table question_packs add column if not exists tags TEXT[] NOT NULL DEFAULT '{}';
+create index if not exists question_packs_tags ON question_packs USING GIN (tags);
