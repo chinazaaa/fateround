@@ -1,0 +1,32 @@
+# Prod environment. Copy to terraform.prod.tfvars (gitignored) and fill in.
+# Deploy in a dedicated workspace so dev/prod state never collide:
+#   terraform workspace select prod || terraform workspace new prod
+#   terraform apply -var-file=terraform.prod.tfvars
+
+aws_region  = "us-east-1"
+name_prefix = "fateround-prod"
+
+instance_type        = "t3.small"
+asg_min_size         = 2
+asg_max_size         = 4
+asg_desired_capacity = 2
+
+# From your PRODUCTION Supabase branch (the live project).
+supabase_url      = "https://YOUR-PROD-PROJECT.supabase.co"
+supabase_anon_key = "REPLACE_WITH_PROD_ANON_KEY"
+cron_secret       = "REPLACE_WITH_PROD_CRON_SECRET"
+
+# TLS for prod: with Cloudflare proxied, use Full (strict) + a cert on the ALB
+# (free Cloudflare Origin Certificate imported into ACM, or an ACM cert).
+enable_https        = true
+acm_certificate_arn = "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/REPLACE"
+app_base_url        = "https://app.yourdomain.com"
+
+# Cloudflare (Nazaalistic account). Token via CLOUDFLARE_API_TOKEN env, not here.
+cloudflare_enabled         = true
+cloudflare_zone_id         = "REPLACE_WITH_ZONE_ID"
+cloudflare_record_name     = "app" # -> app.<yourdomain>
+cloudflare_proxied         = true
+restrict_alb_to_cloudflare = true
+
+tick_schedule = "rate(1 minute)"

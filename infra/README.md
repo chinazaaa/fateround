@@ -104,6 +104,35 @@ app_base_url        = "https://play.example.com"
 
 and re-apply. `app_base_url` is also used by the tick scheduler; if empty it falls back to the ALB over HTTP.
 
+## Environments (dev / prod)
+
+Run dev and prod as fully isolated stacks using **Terraform workspaces** + a
+per-environment var file. The distinct `name_prefix` (`fateround-dev` vs
+`fateround-prod`) namespaces every resource and SSM path, and each workspace has
+its own state, so the two never collide.
+
+```bash
+cd infra
+cp terraform.dev.tfvars.example terraform.dev.tfvars     # fill in (gitignored)
+cp terraform.prod.tfvars.example terraform.prod.tfvars
+
+# dev
+terraform workspace new dev      # or: terraform workspace select dev
+terraform apply -var-file=terraform.dev.tfvars
+
+# prod
+terraform workspace new prod     # or: terraform workspace select prod
+terraform apply -var-file=terraform.prod.tfvars
+```
+
+Each environment points at its own **Supabase branch** (see
+`docs/ENVIRONMENTS.md`): dev → the persistent `dev` branch, prod → the
+production branch. Put each branch's `supabase_url` / `anon_key` and a
+per-env `cron_secret` in the matching `terraform.<env>.tfvars`. Cloudflare's
+`cloudflare_zone_id` is the same zone; use distinct `cloudflare_record_name`s
+(e.g. `dev` vs `app`). The `CLOUDFLARE_API_TOKEN` is read from the environment,
+never from these files.
+
 ## Cloudflare (optional)
 
 Everything here is **off by default** and inert unless you set the corresponding variables — the stack works fine without a Cloudflare account. When enabled, Terraform can:
