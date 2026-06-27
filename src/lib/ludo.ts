@@ -638,6 +638,33 @@ function pickAutoMove(moves: LudoMoveOption[]): LudoMoveOption | null {
   return moves[0]!
 }
 
+/**
+ * Optimistic-concurrency session write. The update only lands if the row still
+ * carries the `expectedUpdatedAt` we read, so when two requests race (e.g. every
+ * client driving the turn timer, or two concurrent auto-rolls) only the first
+ * wins — the loser gets 0 rows and the caller aborts before mutating piece state.
+ * Returns true if this write won.
+ */
+async function persistSession(
+  supabase: SupabaseClient,
+  gameId: string,
+  patch: Partial<LudoSession>,
+  timerSeconds: number,
+  expectedUpdatedAt: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from('ludo_sessions')
+    .update({
+      ...patch,
+      turn_deadline_at: patch.phase === 'finished' ? null : ludoTurnDeadline(timerSeconds),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('game_id', gameId)
+    .eq('updated_at', expectedUpdatedAt)
+    .select('game_id')
+  return (data?.length ?? 0) > 0
+}
+
 async function persistMove(
   supabase: SupabaseClient,
   gameId: string,
@@ -685,7 +712,6 @@ async function persistMove(
   if (won) {
     phase = 'finished'
     statusMessage = `${name} wins!`
-    await markGameFinished(supabase, gameId)
   } else if (remainingAfter.length > 0) {
     const nextMoves = getLegalMovesFromRemaining(playerRow.color, myPieces, remainingAfter, nextStates, playerId)
     if (nextMoves.length > 0) {
@@ -738,6 +764,28 @@ async function persistMove(
     return !original || JSON.stringify(original.pieces) !== JSON.stringify(row.pieces)
   })
 
+  // Claim the turn via CAS FIRST. If another request already moved the game from
+  // this exact state (e.g. the loser of two concurrent auto-rolls), we lose the
+  // CAS and bail — discarding our non-deterministic roll without touching pieces.
+  const claimed = await persistSession(
+    supabase,
+    gameId,
+    {
+      phase,
+      current_turn_index: currentTurnIndex,
+      last_dice: lastDice,
+      remaining_dice: remainingDice,
+      consecutive_sixes: consecutiveSixes,
+      extra_turn: extraTurn,
+      status_message: statusMessage,
+      winner_player_id: won ? playerId : null,
+    },
+    timerSeconds,
+    session.updated_at
+  )
+  if (!claimed) return {}
+
+  // We hold the claim — now safe to write piece state and finalize.
   const writeResults = await Promise.all(
     changedRows.map((row) =>
       supabase
@@ -750,23 +798,10 @@ async function persistMove(
   const writeError = writeResults.find((r) => r.error)
   if (writeError?.error) return { error: writeError.error.message }
 
-  const { error: sessionError } = await supabase
-    .from('ludo_sessions')
-    .update({
-      phase,
-      current_turn_index: currentTurnIndex,
-      last_dice: lastDice,
-      remaining_dice: remainingDice,
-      consecutive_sixes: consecutiveSixes,
-      extra_turn: extraTurn,
-      status_message: statusMessage,
-      winner_player_id: won ? playerId : null,
-      turn_deadline_at: phase === 'finished' ? null : ludoTurnDeadline(timerSeconds),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
+  // Mark the game over only when this committed claim ended it, so a single
+  // winner finalizes.
+  if (won) await markGameFinished(supabase, gameId)
 
-  if (sessionError) return { error: sessionError.message }
   return {}
 }
 
@@ -795,74 +830,73 @@ export async function processLudoRoll(
     else consecutiveSixes = 0
 
     if (ludoGrantsExtraRoll(dice) && consecutiveSixes < 3) {
-      const { error } = await supabase
-        .from('ludo_sessions')
-        .update({
+      await persistSession(
+        supabase,
+        gameId,
+        {
           last_dice: null,
           remaining_dice: null,
           consecutive_sixes: consecutiveSixes,
           phase: 'roll',
           status_message: `${name} rolled ${rollLabel} but has no moves — roll again!`,
-          turn_deadline_at: ludoTurnDeadline(timerSeconds),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('game_id', gameId)
-      if (error) return { error: error.message }
+        },
+        timerSeconds,
+        session.updated_at
+      )
       return { dice }
     }
 
     if (consecutiveSixes >= 3) {
       const nextIndex = advanceTurnIndex(session)
       const nextId = session.turn_order[nextIndex]
-      const { error } = await supabase
-        .from('ludo_sessions')
-        .update({
+      await persistSession(
+        supabase,
+        gameId,
+        {
           last_dice: null,
           remaining_dice: null,
           consecutive_sixes: 0,
           current_turn_index: nextIndex,
           phase: 'roll',
           status_message: `Three double sixes in a row — turn lost. ${playerNames.get(nextId ?? '') ?? 'Next player'}'s turn`,
-          turn_deadline_at: ludoTurnDeadline(timerSeconds),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('game_id', gameId)
-      if (error) return { error: error.message }
+        },
+        timerSeconds,
+        session.updated_at
+      )
       return { dice }
     }
 
     const nextIndex = advanceTurnIndex(session)
     const nextId = session.turn_order[nextIndex]
-    const { error } = await supabase
-      .from('ludo_sessions')
-      .update({
+    await persistSession(
+      supabase,
+      gameId,
+      {
         last_dice: null,
         remaining_dice: null,
         consecutive_sixes: 0,
         current_turn_index: nextIndex,
         phase: 'roll',
         status_message: `${name} rolled ${rollLabel} — no moves. ${playerNames.get(nextId ?? '') ?? 'Next player'}'s turn`,
-        turn_deadline_at: ludoTurnDeadline(timerSeconds),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('game_id', gameId)
-    if (error) return { error: error.message }
+      },
+      timerSeconds,
+      session.updated_at
+    )
     return { dice }
   }
 
-  const { error } = await supabase
-    .from('ludo_sessions')
-    .update({
+  await persistSession(
+    supabase,
+    gameId,
+    {
       last_dice: dice,
       remaining_dice: remainingDice,
       phase: 'move',
       status_message: `${name} rolled ${rollLabel} — use each die (${dice.d1} & ${dice.d2})`,
-      turn_deadline_at: ludoTurnDeadline(timerSeconds),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-
-  if (error) return { error: error.message }
+    },
+    timerSeconds,
+    session.updated_at
+  )
   return { dice }
 }
 
@@ -918,20 +952,20 @@ export async function processLudoExpireTurn(supabase: SupabaseClient, gameId: st
   if (!auto) {
     const nextIndex = advanceTurnIndex(session)
     const nextId = session.turn_order[nextIndex]
-    const { error } = await supabase
-      .from('ludo_sessions')
-      .update({
+    await persistSession(
+      supabase,
+      gameId,
+      {
         last_dice: null,
         remaining_dice: null,
         phase: 'roll',
         current_turn_index: nextIndex,
         consecutive_sixes: 0,
         status_message: `Time's up — ${playerNames.get(nextId ?? '') ?? 'Next player'}'s turn`,
-        turn_deadline_at: ludoTurnDeadline(timerSeconds),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('game_id', gameId)
-    if (error) return { error: error.message }
+      },
+      timerSeconds,
+      session.updated_at
+    )
     return {}
   }
 
