@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.106.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -22,6 +23,7 @@
     "@tanstack/react-query": "^5.101.0",
     "axios": "^1.17.0",
     "chess.js": "^1.4.0",
+    "emoji-mart": "^5.6.0",
     "html-to-image": "^1.11.13",
     "next": "16.2.9",
     "react": "19.2.4",

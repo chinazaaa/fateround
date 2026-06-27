@@ -10,10 +10,11 @@ CREATE INDEX IF NOT EXISTS idx_anonymous_messages_game_id ON anonymous_messages(
 CREATE INDEX IF NOT EXISTS idx_anonymous_messages_game_created ON anonymous_messages(game_id, created_at);
 
 ALTER TABLE anonymous_messages ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_anonymous_messages" on anonymous_messages;
 CREATE POLICY "public_anonymous_messages" ON anonymous_messages
   FOR ALL TO anon USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE anonymous_messages;
+do $$ begin alter publication supabase_realtime add table anonymous_messages; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (

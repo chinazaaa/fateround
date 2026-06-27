@@ -22,9 +22,10 @@ CREATE TABLE IF NOT EXISTS scrabble_sessions (
 CREATE INDEX IF NOT EXISTS idx_scrabble_sessions_game_id ON scrabble_sessions(game_id);
 
 ALTER TABLE scrabble_sessions ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_scrabble_sessions" on scrabble_sessions;
 CREATE POLICY "public_scrabble_sessions" ON scrabble_sessions FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE scrabble_sessions;
+do $$ begin alter publication supabase_realtime add table scrabble_sessions; exception when duplicate_object then null; end $$;
 
 CREATE TABLE IF NOT EXISTS scrabble_player_state (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -38,9 +39,10 @@ CREATE TABLE IF NOT EXISTS scrabble_player_state (
 );
 
 ALTER TABLE scrabble_player_state ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_scrabble_player_state" on scrabble_player_state;
 CREATE POLICY "public_scrabble_player_state" ON scrabble_player_state FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE scrabble_player_state;
+do $$ begin alter publication supabase_realtime add table scrabble_player_state; exception when duplicate_object then null; end $$;
 
 -- These DROP/ADD the game_type checks, so the list must include EVERY existing
 -- game type (not just scrabble) or it would silently disallow the others.

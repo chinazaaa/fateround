@@ -174,6 +174,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     updatePayload.player_questions_order = parsePlayerQuestionsOrder(parsed.data.player_questions_order)
   }
 
+  if (parsed.data.ai_questions_enabled !== undefined) {
+    updatePayload.ai_questions_enabled = parsed.data.ai_questions_enabled
+  }
+
+  if (parsed.data.ai_questions_config !== undefined) {
+    updatePayload.ai_questions_config = parsed.data.ai_questions_config
+  }
+
   if (parsed.data.late_join_policy !== undefined) {
     if (!gameSupportsViewerSetting(gameType)) {
       return NextResponse.json({ error: 'This game type does not support late join settings' }, { status: 400 })

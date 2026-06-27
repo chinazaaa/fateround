@@ -1341,9 +1341,17 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'tic_tac_toe') return 'tic_tac_toe'
   if (raw === 'word_hunt') return 'word_hunt'
   if (raw === 'chess') return 'chess'
-  if (raw === 'describe_it') return 'describe_it'
+  if (raw === 'describe_it' || raw === 'text-charades') return 'describe_it'
   if (raw === 'scrabble') return 'scrabble'
   return 'smash_marry_kill'
+}
+
+/**
+ * The `?type=` value to use in /create links. Text Charades uses its public
+ * slug so the URL reads `text-charades` instead of the internal `describe_it`.
+ */
+export function gameTypeCreateParam(gameType: GameType): string {
+  return gameType === 'describe_it' ? 'text-charades' : gameType
 }
 
 export function gameTypeConfig(gameType: GameType | string | undefined): GameTypeConfig {

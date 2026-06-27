@@ -18,9 +18,10 @@ CREATE INDEX IF NOT EXISTS idx_sudoku_submissions_player_id ON sudoku_submission
 
 ALTER TABLE sudoku_submissions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "public_sudoku_submissions" ON sudoku_submissions;
+drop policy if exists "public_sudoku_submissions" on sudoku_submissions;
 CREATE POLICY "public_sudoku_submissions" ON sudoku_submissions FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE sudoku_submissions;
+do $$ begin alter publication supabase_realtime add table sudoku_submissions; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (

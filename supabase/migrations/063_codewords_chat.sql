@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS codewords_messages (
 CREATE INDEX IF NOT EXISTS idx_codewords_messages_game_team ON codewords_messages(game_id, team, created_at);
 
 ALTER TABLE codewords_messages ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_codewords_messages" on codewords_messages;
 CREATE POLICY "public_codewords_messages" ON codewords_messages FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE codewords_messages;
+do $$ begin alter publication supabase_realtime add table codewords_messages; exception when duplicate_object then null; end $$;

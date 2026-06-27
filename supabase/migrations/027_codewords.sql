@@ -30,11 +30,13 @@ CREATE INDEX IF NOT EXISTS idx_codewords_player_roles_game_id ON codewords_playe
 ALTER TABLE codewords_boards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE codewords_player_roles ENABLE ROW LEVEL SECURITY;
 
+drop policy if exists "public_codewords_boards" on codewords_boards;
 CREATE POLICY "public_codewords_boards" ON codewords_boards FOR ALL USING (true) WITH CHECK (true);
+drop policy if exists "public_codewords_player_roles" on codewords_player_roles;
 CREATE POLICY "public_codewords_player_roles" ON codewords_player_roles FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE codewords_boards;
-ALTER PUBLICATION supabase_realtime ADD TABLE codewords_player_roles;
+do $$ begin alter publication supabase_realtime add table codewords_boards; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table codewords_player_roles; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (

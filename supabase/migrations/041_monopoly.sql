@@ -34,13 +34,15 @@ CREATE TABLE IF NOT EXISTS monopoly_player_state (
 CREATE INDEX IF NOT EXISTS idx_monopoly_player_state_game_id ON monopoly_player_state(game_id);
 
 ALTER TABLE monopoly_boards ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_monopoly_boards" on monopoly_boards;
 CREATE POLICY "public_monopoly_boards" ON monopoly_boards FOR ALL USING (true) WITH CHECK (true);
 
 ALTER TABLE monopoly_player_state ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_monopoly_player_state" on monopoly_player_state;
 CREATE POLICY "public_monopoly_player_state" ON monopoly_player_state FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE monopoly_boards;
-ALTER PUBLICATION supabase_realtime ADD TABLE monopoly_player_state;
+do $$ begin alter publication supabase_realtime add table monopoly_boards; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table monopoly_player_state; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (

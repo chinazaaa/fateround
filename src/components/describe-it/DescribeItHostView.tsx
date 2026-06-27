@@ -28,11 +28,14 @@ import {
   clampDescribeItTeams,
   clampDescribeItRounds,
   clampDescribeItMaxPlayers,
+  clampDescribeItMode,
   computeDescribeItScores,
+  describeItIndividualLeaderboard,
   describeItLobbyReady,
   DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
   DESCRIBE_IT_MAX_PLAYER_OPTIONS,
   DESCRIBE_IT_MIN_PLAYERS,
+  DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
   DESCRIBE_IT_ROUND_OPTIONS,
   DESCRIBE_IT_TEAM_OPTIONS,
   DESCRIBE_IT_TURN_OPTIONS,
@@ -41,6 +44,7 @@ import {
 import { parseDescribeItWords, parseExcelDescribeItWords, parseStoredDescribeItWords } from '@/lib/describe-it-words'
 import {
   DescribeItCard,
+  DescribeItPlayerScoreboard,
   DescribeItPrimaryButton,
   DescribeItScoreboard,
   DescribeItTeamRoster,
@@ -378,8 +382,11 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     )
   }
 
+  const mode = clampDescribeItMode(game.describe_it_mode)
+  const isIndividual = mode === 'individual'
   const numTeams = clampDescribeItTeams(game.describe_it_num_teams)
-  const teamPlain = teamRows.map((r) => ({ player_id: r.player_id, team: r.team }))
+  const teamPlain = teamRows.map((r) => ({ player_id: r.player_id, team: r.team, score: r.score }))
+  const playerScores = teamRows.map((r) => ({ player_id: r.player_id, score: r.score }))
   const ready = describeItLobbyReady(teamPlain, numTeams)
   // Biggest team — everyone describes only if there are at least this many rounds.
   const biggestTeamSize = Math.max(
@@ -388,7 +395,8 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   )
   const currentRounds = clampDescribeItRounds(game.rounds_count)
   const readyPlayers = players.filter((p) => p.spectator !== true)
-  const canStart = readyPlayers.length >= DESCRIBE_IT_MIN_PLAYERS && ready.ok
+  const minPlayers = isIndividual ? DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL : DESCRIBE_IT_MIN_PLAYERS
+  const canStart = readyPlayers.length >= minPlayers && (isIndividual || ready.ok)
   const gameFinished = isDescribeItResultsPhase(game.status, session)
   const hostPlays = hostMode === 'player' && !!hostPlayerId
   const showPlayTab = hostPlays && game.status === 'active' && !gameFinished
@@ -427,7 +435,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
               ].join(' ')}
             >
               <span className="font-bold block text-base">Host + play</span>
-              <span className="text-faint text-xs">Join a team and play</span>
+              <span className="text-faint text-xs">{isIndividual ? 'Join in and play' : 'Join a team and play'}</span>
             </button>
           </div>
           {hostMode === 'player' && !hostPlayerId && (
@@ -453,8 +461,8 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
           )}
           {hostPlays && (
             <p className="text-sm text-muted">
-              Playing as <span className="font-semibold text-[var(--foreground)]">{hostPlayerName}</span> — pick your
-              team below.
+              Playing as <span className="font-semibold text-[var(--foreground)]">{hostPlayerName}</span>
+              {isIndividual ? ' — you’re in the rotation.' : ' — pick your team below.'}
             </p>
           )}
         </div>
@@ -504,6 +512,8 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
               players={players}
               words={words}
               numTeams={numTeams}
+              mode={mode}
+              playerScores={playerScores}
               playAgainButton={
                 <DescribeItPrimaryButton onClick={playAgain} loading={playingAgain}>
                   Play again
@@ -517,13 +527,23 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
               {/* When the host is playing, Play shows the full game — Manage just needs
                   the scoreboard + controls (no duplicate). Spectator hosts watch here. */}
               {showPlayTab ? (
-                <DescribeItScoreboard
-                  scores={computeDescribeItScores(words, numTeams)}
-                  activeTeam={session.active_team}
-                  myTeam={hostTeam}
-                  round={session.current_round}
-                  totalRounds={session.total_rounds}
-                />
+                isIndividual ? (
+                  <DescribeItPlayerScoreboard
+                    leaderboard={describeItIndividualLeaderboard(teamPlain, players)}
+                    describerId={session.describer_player_id}
+                    myPlayerId={hostPlayerId}
+                    round={session.current_round}
+                    totalRounds={session.total_rounds}
+                  />
+                ) : (
+                  <DescribeItScoreboard
+                    scores={computeDescribeItScores(words, numTeams)}
+                    activeTeam={session.active_team}
+                    myTeam={hostTeam}
+                    round={session.current_round}
+                    totalRounds={session.total_rounds}
+                  />
+                )
               ) : (
                 <DescribeItPlayPanel
                   session={session}
@@ -539,7 +559,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
               )}
               {session.phase === 'break' && (
                 <button type="button" onClick={advanceTurn} disabled={advancing} className="btn-primary w-full py-2.5">
-                  {advancing ? 'Starting…' : 'Next team now →'}
+                  {advancing ? 'Starting…' : isIndividual ? 'Next describer now →' : 'Next team now →'}
                 </button>
               )}
               <button type="button" onClick={endGame} disabled={ending} className="btn-secondary w-full py-3">
@@ -552,27 +572,78 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
             <>
               <DescribeItCard className="p-4 space-y-3">
                 <p className="text-sm font-bold">Game settings</p>
-                {biggestTeamSize > currentRounds && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold text-faint">Mode</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void saveSettings({ mode: 'team' })}
+                      className={[
+                        'rounded-xl border-2 px-3 py-2.5 text-left',
+                        !isIndividual
+                          ? 'border-[var(--primary)]/60 bg-[var(--primary)]/10'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-sm">Teams</span>
+                      <span className="text-faint text-[11px]">Teams race for words</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void saveSettings({ mode: 'individual' })}
+                      className={[
+                        'rounded-xl border-2 px-3 py-2.5 text-left',
+                        isIndividual
+                          ? 'border-[var(--primary)]/60 bg-[var(--primary)]/10'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-sm">Individual</span>
+                      <span className="text-faint text-[11px]">Solo — fastest guess wins</span>
+                    </button>
+                  </div>
+                  {isIndividual && (
+                    <div className="text-faint text-[11px] space-y-1">
+                      <p>
+                        Everyone takes turns describing one word; guessers score by speed and the describer scores per
+                        correct guess.
+                      </p>
+                      <p
+                        className={
+                          readyPlayers.length * currentRounds > 40 ? 'text-amber-400 font-semibold' : 'text-faint'
+                        }
+                      >
+                        Every player describes once per round, so {readyPlayers.length}{' '}
+                        {readyPlayers.length === 1 ? 'player' : 'players'} × {currentRounds}{' '}
+                        {currentRounds === 1 ? 'round' : 'rounds'} = {readyPlayers.length * currentRounds} turns.
+                        {readyPlayers.length * currentRounds > 40 ? ' That’s a long game — try fewer rounds.' : ''}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                {!isIndividual && biggestTeamSize > currentRounds && (
                   <p className="text-amber-400 text-xs">
                     A new teammate describes each round. Your biggest team has {biggestTeamSize} players — pick{' '}
                     {biggestTeamSize}+ rounds so everyone gets a turn to describe.
                   </p>
                 )}
-                <div className="grid grid-cols-3 gap-2">
-                  <label className="text-xs font-semibold text-faint space-y-1">
-                    <span>Teams</span>
-                    <select
-                      value={numTeams}
-                      onChange={(e) => void saveSettings({ numTeams: Number(e.target.value) })}
-                      className="input-field w-full text-sm"
-                    >
-                      {DESCRIBE_IT_TEAM_OPTIONS.map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                <div className={`grid gap-2 ${isIndividual ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                  {!isIndividual && (
+                    <label className="text-xs font-semibold text-faint space-y-1">
+                      <span>Teams</span>
+                      <select
+                        value={numTeams}
+                        onChange={(e) => void saveSettings({ numTeams: Number(e.target.value) })}
+                        className="input-field w-full text-sm"
+                      >
+                        {DESCRIBE_IT_TEAM_OPTIONS.map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <label className="text-xs font-semibold text-faint space-y-1">
                     <span>Rounds</span>
                     <select
@@ -679,36 +750,49 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
                 </div>
               </DescribeItCard>
 
-              <DescribeItCard className="p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-bold">Teams ({numTeams})</p>
-                  <button
-                    type="button"
-                    onClick={balanceTeams}
-                    disabled={balancing}
-                    className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
-                  >
-                    {balancing ? 'Balancing…' : 'Auto-balance'}
-                  </button>
-                </div>
-                <DescribeItTeamRoster
-                  numTeams={numTeams}
-                  teamRows={teamPlain}
-                  players={players}
-                  myPlayerId={hostPlays ? hostPlayerId : null}
-                  onPick={hostPlays ? pickTeam : undefined}
-                  picking={picking}
-                  onMoveTeam={moveTeam}
-                  moving={moving}
-                />
-                <p className="text-faint text-[11px] text-center">
-                  Tap a colored number to move a player to that team.
-                </p>
-                {!ready.ok && <p className="text-amber-400 text-xs text-center">{ready.error}</p>}
-                <p className="text-center">
-                  <GameRulesLink gameType="describe_it" variant="subtle" />
-                </p>
-              </DescribeItCard>
+              {isIndividual ? (
+                <DescribeItCard className="p-4 space-y-2 text-center">
+                  <p className="text-sm font-bold">Everyone plays solo 🏆</p>
+                  <p className="text-faint text-xs">
+                    No teams — players take turns describing and race to guess. Need at least{' '}
+                    {DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL} players. See the full list below.
+                  </p>
+                  <p>
+                    <GameRulesLink gameType="describe_it" variant="subtle" />
+                  </p>
+                </DescribeItCard>
+              ) : (
+                <DescribeItCard className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold">Teams ({numTeams})</p>
+                    <button
+                      type="button"
+                      onClick={balanceTeams}
+                      disabled={balancing}
+                      className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
+                    >
+                      {balancing ? 'Balancing…' : 'Auto-balance'}
+                    </button>
+                  </div>
+                  <DescribeItTeamRoster
+                    numTeams={numTeams}
+                    teamRows={teamPlain}
+                    players={players}
+                    myPlayerId={hostPlays ? hostPlayerId : null}
+                    onPick={hostPlays ? pickTeam : undefined}
+                    picking={picking}
+                    onMoveTeam={moveTeam}
+                    moving={moving}
+                  />
+                  <p className="text-faint text-[11px] text-center">
+                    Tap a colored number to move a player to that team.
+                  </p>
+                  {!ready.ok && <p className="text-amber-400 text-xs text-center">{ready.error}</p>}
+                  <p className="text-center">
+                    <GameRulesLink gameType="describe_it" variant="subtle" />
+                  </p>
+                </DescribeItCard>
+              )}
 
               <HostLobbyPlayersSection
                 players={players}

@@ -23,4 +23,5 @@ create table if not exists app_feedback (
 create index if not exists idx_app_feedback_created_at on app_feedback(created_at desc);
 
 alter table app_feedback enable row level security;
+drop policy if exists "public_app_feedback_insert" on app_feedback;
 create policy "public_app_feedback_insert" on app_feedback for insert to anon with check (true);

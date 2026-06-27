@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 import { GameHostChrome } from '@/components/GameHostChrome'
 import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { SudokuPlayerView } from '@/components/sudoku/SudokuPlayerView'
@@ -14,8 +14,6 @@ import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/ut
 import type { Game, Player } from '@/types'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useToast } from '@/components/ui/Toast'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 type SudokuHostMode = 'spectator' | 'player'
 type HostTab = 'manage' | 'play'
@@ -414,8 +412,15 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
               </div>
 
               <div className="grid md:grid-cols-2 gap-6">
-                {solution && puzzle && (
-                  <SudokuBoard puzzle={puzzle} solution={solution} blockScorers={blockScorers} readOnly />
+                {puzzle && (
+                  // Hide the solution while the host is also competing — they'd be able to
+                  // copy answers from Manage into the Play tab. Spectator hosts still see it.
+                  <SudokuBoard
+                    puzzle={puzzle}
+                    solution={hostPlays ? undefined : (solution ?? undefined)}
+                    blockScorers={blockScorers}
+                    readOnly
+                  />
                 )}
 
                 <div className="space-y-3">

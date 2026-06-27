@@ -10,6 +10,7 @@ import {
   isWhoSaidThis,
   isWouldYouRather,
   isCodewordsGame,
+  isDescribeItGame,
 } from '@/lib/game-types'
 import { questionSampleFile } from '@/lib/custom-questions'
 import { isPeoplePollGame } from '@/lib/player-participant-pool'
@@ -31,7 +32,8 @@ export function supportsQuestionCustomContentHint(gameType: GameType): boolean {
     isNeverHaveIEver(gameType) ||
     isPickANumber(gameType) ||
     isTriviaGame(gameType) ||
-    isCodewordsGame(gameType)
+    isCodewordsGame(gameType) ||
+    isDescribeItGame(gameType)
   )
 }
 
@@ -44,6 +46,18 @@ export function getQuestionCustomContentHint(gameType: GameType): CustomContentH
 
   const label = gameTypeConfig(gameType).label
   const sample = questionSampleFile(gameType)
+
+  // Word-list games (Text Charades) use plain words, not Q&A — phrase the tip for words.
+  if (isDescribeItGame(gameType)) {
+    return {
+      headline: 'Any theme you want',
+      body: `Use our built-in word bank, or add your own. Pick any theme your group cares about — a fandom, a holiday, inside jokes. Ask ChatGPT, Claude, or any AI assistant to write a list of ${label} words, one per line, then paste or upload them here.`,
+      promptExample: `"Create a list of 30 ${label} words about [your theme], one per line."`,
+      sampleHref: sample.href,
+      sampleDownload: sample.download,
+    }
+  }
+
   const hasPlatform = !isThisOrThat(gameType)
 
   return {

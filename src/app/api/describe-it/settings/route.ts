@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
-  const { gameId, hostToken, numTeams, turnSeconds, rounds, maxPlayers, words } = parsed.data
+  const { gameId, hostToken, mode, numTeams, turnSeconds, rounds, maxPlayers, words } = parsed.data
   const code = gameId.toUpperCase()
 
   const { data: game } = await supabase
@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Settings are locked once the game starts' }, { status: 400 })
 
   const update: Record<string, unknown> = {}
+  if (mode != null) update.describe_it_mode = mode
   if (numTeams != null) update.describe_it_num_teams = clampDescribeItTeams(numTeams)
   if (turnSeconds != null) update.timer_seconds = clampDescribeItTurnSeconds(turnSeconds)
   if (rounds != null) update.rounds_count = clampDescribeItRounds(rounds)

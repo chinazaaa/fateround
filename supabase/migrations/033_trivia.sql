@@ -19,9 +19,10 @@ CREATE INDEX IF NOT EXISTS idx_trivia_answers_game_id ON trivia_answers(game_id)
 CREATE INDEX IF NOT EXISTS idx_trivia_answers_round_id ON trivia_answers(round_id);
 
 ALTER TABLE trivia_answers ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_trivia_answers" on trivia_answers;
 CREATE POLICY "public_trivia_answers" ON trivia_answers FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE trivia_answers;
+do $$ begin alter publication supabase_realtime add table trivia_answers; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (

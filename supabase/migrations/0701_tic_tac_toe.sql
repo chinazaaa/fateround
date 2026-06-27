@@ -17,9 +17,10 @@ CREATE TABLE IF NOT EXISTS tic_tac_toe_sessions (
 CREATE INDEX IF NOT EXISTS idx_tic_tac_toe_sessions_game_id ON tic_tac_toe_sessions(game_id);
 
 ALTER TABLE tic_tac_toe_sessions ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_tic_tac_toe_sessions" on tic_tac_toe_sessions;
 CREATE POLICY "public_tic_tac_toe_sessions" ON tic_tac_toe_sessions FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE tic_tac_toe_sessions;
+do $$ begin alter publication supabase_realtime add table tic_tac_toe_sessions; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (

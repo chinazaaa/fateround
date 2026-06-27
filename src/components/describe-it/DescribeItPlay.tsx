@@ -1,18 +1,35 @@
 'use client'
 
 import { useState } from 'react'
-import { computeDescribeItScores, teamForTurn, totalDescribeItTurns, type DescribeItTeamScore } from '@/lib/describe-it'
+import {
+  computeDescribeItScores,
+  describeItIndividualLeaderboard,
+  describeItTotalTurns,
+  teamForTurn,
+  totalDescribeItTurns,
+  type DescribeItTeamScore,
+} from '@/lib/describe-it'
 import type { DescribeItGuess, DescribeItSession, DescribeItWord, Player } from '@/types'
-import { DescribeItCard, DescribeItScoreboard, TeamBadge } from '@/components/describe-it/DescribeItChrome'
+import {
+  DescribeItCard,
+  DescribeItPlayerScoreboard,
+  DescribeItScoreboard,
+  TeamBadge,
+} from '@/components/describe-it/DescribeItChrome'
 
 function GuessFeed({
   guesses,
   players,
   turnIndex,
+  myPlayerId,
+  hideOthersText,
 }: {
   guesses: DescribeItGuess[]
   players: Player[]
   turnIndex: number
+  myPlayerId: string | null
+  /** Individual mode: never show another player's guess text, so nobody can copy it. */
+  hideOthersText?: boolean
 }) {
   const nameById = new Map(players.map((p) => [p.id, p.name]))
   // `guesses` arrives newest-first, so the most recent for this turn are at the front.
@@ -22,13 +39,26 @@ function GuessFeed({
   }
   return (
     <div className="space-y-1 max-h-40 overflow-y-auto">
-      {recent.map((g) => (
-        <div key={g.id} className="flex items-center gap-1.5 text-sm">
-          <span className="text-faint shrink-0 truncate max-w-[40%]">{nameById.get(g.player_id) ?? 'Player'}:</span>
-          <span className={g.correct ? 'font-black text-emerald-400' : 'text-[var(--foreground)]'}>{g.text}</span>
-          {g.correct && <span>✅</span>}
-        </div>
-      ))}
+      {recent.map((g) => {
+        const mask = hideOthersText && g.player_id !== myPlayerId
+        return (
+          <div key={g.id} className="flex items-center gap-1.5 text-sm">
+            <span className="text-faint shrink-0 truncate max-w-[45%]">{nameById.get(g.player_id) ?? 'Player'}:</span>
+            {mask ? (
+              g.correct ? (
+                <span className="font-bold text-emerald-400">guessed it ✅</span>
+              ) : (
+                <span className="text-faint italic">guessing…</span>
+              )
+            ) : (
+              <>
+                <span className={g.correct ? 'font-black text-emerald-400' : 'text-[var(--foreground)]'}>{g.text}</span>
+                {g.correct && <span>✅</span>}
+              </>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -93,7 +123,7 @@ export function DescribeItPlayPanel({
 }: {
   session: DescribeItSession
   players: Player[]
-  teamRows: { player_id: string; team: number }[]
+  teamRows: { player_id: string; team: number; score?: number }[]
   words: DescribeItWord[]
   guesses: DescribeItGuess[]
   myPlayerId: string | null
@@ -105,11 +135,15 @@ export function DescribeItPlayPanel({
   onSkip?: () => void
   acting?: boolean
 }) {
-  const scores: DescribeItTeamScore[] = computeDescribeItScores(words, session.num_teams)
+  const isIndividual = session.mode === 'individual'
   const activeTeam = session.active_team
   const myTeam = teamRows.find((r) => r.player_id === myPlayerId)?.team ?? null
   const isDescriber = !!myPlayerId && session.describer_player_id === myPlayerId
   const onActiveTeam = myTeam === activeTeam
+  const inRoster = !!myPlayerId && session.roster.includes(myPlayerId)
+  const myGuessedThisTurn = guesses.some(
+    (g) => g.turn_index === session.turn_index && g.player_id === myPlayerId && g.correct
+  )
   const describerName = players.find((p) => p.id === session.describer_player_id)?.name ?? 'Someone'
   const clues = session.current_clues?.length
     ? session.current_clues
@@ -117,31 +151,59 @@ export function DescribeItPlayPanel({
       ? [session.current_clue]
       : []
 
-  return (
-    <div className="space-y-4">
-      {myTeam != null && (
-        <p className="flex items-center justify-center gap-1.5 text-xs text-faint">
-          You&apos;re on <TeamBadge team={myTeam} />
-          {isDescriber && session.phase === 'turn' && onActiveTeam ? <span>· you&apos;re describing 🗣️</span> : null}
-        </p>
-      )}
+  const teamScores: DescribeItTeamScore[] = isIndividual ? [] : computeDescribeItScores(words, session.num_teams)
+  const leaderboard = isIndividual ? describeItIndividualLeaderboard(teamRows, players) : []
+  // Individual mode: anyone in the roster who isn't the describer may guess.
+  const canGuess = isIndividual ? inRoster && !isDescriber : onActiveTeam
 
-      <DescribeItScoreboard
-        scores={scores}
-        activeTeam={activeTeam}
-        myTeam={myTeam}
-        round={session.current_round}
-        totalRounds={session.total_rounds}
-      />
+  const scoreboardEl = isIndividual ? (
+    <DescribeItPlayerScoreboard
+      leaderboard={leaderboard}
+      describerId={session.describer_player_id}
+      myPlayerId={myPlayerId}
+      round={session.current_round}
+      totalRounds={session.total_rounds}
+    />
+  ) : (
+    <DescribeItScoreboard
+      scores={teamScores}
+      activeTeam={activeTeam}
+      myTeam={myTeam}
+      round={session.current_round}
+      totalRounds={session.total_rounds}
+    />
+  )
+
+  const inner = (
+    <div className="space-y-4 min-w-0">
+      {isIndividual
+        ? isDescriber &&
+          session.phase === 'turn' && <p className="text-center text-xs text-faint">You&apos;re describing 🗣️</p>
+        : myTeam != null && (
+            <p className="flex items-center justify-center gap-1.5 text-xs text-faint">
+              You&apos;re on <TeamBadge team={myTeam} />
+              {isDescriber && session.phase === 'turn' && onActiveTeam ? (
+                <span>· you&apos;re describing 🗣️</span>
+              ) : null}
+            </p>
+          )}
+
+      {/* Team mode keeps the scoreboard inline; individual mode shows it in a side column. */}
+      {!isIndividual && scoreboardEl}
 
       {session.phase === 'break' && (
         <DescribeItCard className="p-5 text-center space-y-2">
           <p className="text-3xl">⏭️</p>
           <p className="text-base font-bold">{session.status_message}</p>
-          {session.turn_index + 1 < totalDescribeItTurns(session.num_teams, session.total_rounds) ? (
-            <p className="flex items-center justify-center gap-1.5 text-faint text-sm">
-              Next up: <TeamBadge team={teamForTurn(session.turn_index + 1, session.num_teams)} /> in {breakLeft}s
-            </p>
+          {session.turn_index + 1 <
+          describeItTotalTurns(session.mode, session.num_teams, session.roster.length, session.total_rounds) ? (
+            isIndividual ? (
+              <p className="text-faint text-sm">Next describer in {breakLeft}s</p>
+            ) : (
+              <p className="flex items-center justify-center gap-1.5 text-faint text-sm">
+                Next up: <TeamBadge team={teamForTurn(session.turn_index + 1, session.num_teams)} /> in {breakLeft}s
+              </p>
+            )
           ) : (
             <p className="text-faint text-sm">Final results in {breakLeft}s</p>
           )}
@@ -152,7 +214,15 @@ export function DescribeItPlayPanel({
         <>
           <DescribeItCard className={`p-3 flex items-center justify-between ${urgent ? 'animate-pulse' : ''}`}>
             <span className="flex items-center gap-1.5 text-sm font-bold">
-              <TeamBadge team={activeTeam} /> is up
+              {isIndividual ? (
+                <>
+                  🗣️ <span className="truncate">{describerName}</span>
+                </>
+              ) : (
+                <>
+                  <TeamBadge team={activeTeam} /> is up
+                </>
+              )}
             </span>
             <span className={`text-2xl font-black tabular-nums ${urgent ? 'text-amber-400' : ''}`}>
               {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}
@@ -180,7 +250,7 @@ export function DescribeItPlayPanel({
                   </div>
                 </div>
               )}
-              {onSkip && (
+              {!isIndividual && onSkip && (
                 <button
                   type="button"
                   onClick={onSkip}
@@ -194,7 +264,14 @@ export function DescribeItPlayPanel({
           ) : (
             <DescribeItCard className="p-4 space-y-3">
               <p className="flex items-center justify-center gap-1.5 text-sm text-faint">
-                🗣️ <span className="font-bold">{describerName}</span> describing for <TeamBadge team={activeTeam} />
+                🗣️ <span className="font-bold">{describerName}</span>
+                {isIndividual ? (
+                  <span>is describing — guess it!</span>
+                ) : (
+                  <>
+                    describing for <TeamBadge team={activeTeam} />
+                  </>
+                )}
               </p>
               <div className="rounded-xl border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] px-4 py-4 text-center min-h-[3.5rem] flex flex-col items-center justify-center gap-1">
                 {clues.length > 0 ? (
@@ -207,7 +284,9 @@ export function DescribeItPlayPanel({
                   <p className="text-faint text-sm animate-pulse">Waiting for a clue…</p>
                 )}
               </div>
-              {onActiveTeam && onGuess ? (
+              {isIndividual && myGuessedThisTurn ? (
+                <p className="text-center text-emerald-400 text-sm font-bold">✅ You got it! Waiting for the others…</p>
+              ) : canGuess && onGuess ? (
                 <ClueOrGuessInput
                   placeholder="Type your guess…"
                   buttonLabel="Guess"
@@ -215,16 +294,34 @@ export function DescribeItPlayPanel({
                   disabled={!!acting}
                 />
               ) : (
-                <p className="text-center text-faint text-xs">{myTeam ? 'Waiting for your team’s turn' : 'Watching'}</p>
+                <p className="text-center text-faint text-xs">
+                  {isIndividual ? 'Watching' : myTeam ? 'Waiting for your team’s turn' : 'Watching'}
+                </p>
               )}
             </DescribeItCard>
           )}
 
           <DescribeItCard className="p-3">
-            <GuessFeed guesses={guesses} players={players} turnIndex={session.turn_index} />
+            <GuessFeed
+              guesses={guesses}
+              players={players}
+              turnIndex={session.turn_index}
+              myPlayerId={myPlayerId}
+              hideOthersText={isIndividual}
+            />
           </DescribeItCard>
         </>
       )}
+    </div>
+  )
+
+  if (!isIndividual) return inner
+
+  // Individual mode: leaderboard sits in a side column (stacks below on mobile), like Trivia.
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(220px,300px)] lg:items-start">
+      {inner}
+      <aside className="space-y-4 lg:sticky lg:top-4">{scoreboardEl}</aside>
     </div>
   )
 }

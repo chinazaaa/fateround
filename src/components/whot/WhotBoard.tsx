@@ -51,14 +51,14 @@ export function WhotPlayingCard({
       onClick={onClick}
       disabled={!onClick}
       className={[
-        'relative flex flex-col items-center justify-center gap-0.5 rounded-xl border-2 bg-gradient-to-br font-black transition-all overflow-hidden',
+        'relative flex flex-col items-center justify-center gap-0.5 rounded-xl border-2 bg-linear-to-br font-black transition-all overflow-hidden',
         sizeStyles.box,
         SHAPE_COLORS[card.shape],
         onClick && playable !== false
-          ? 'cursor-pointer hover:scale-105 hover:shadow-lg active:scale-95 ring-2 ring-[var(--primary)]/70'
+          ? 'cursor-pointer hover:scale-105 hover:shadow-lg active:scale-95 ring-2 ring-(--primary)/70'
           : '',
         onClick && playable === false ? 'opacity-40 cursor-not-allowed' : '',
-        selected ? 'ring-2 ring-[var(--primary)] scale-105' : '',
+        selected ? 'ring-2 ring-(--primary) scale-105' : '',
         !onClick ? 'cursor-default' : '',
       ].join(' ')}
     >
@@ -120,10 +120,10 @@ export function WhotTable({
         className={[
           'rounded-lg px-3 py-2 text-sm flex items-center justify-between gap-2',
           watching
-            ? 'border border-dashed border-[var(--border-strong)] bg-[var(--surface-inset-bg)]/60 opacity-75'
+            ? 'border border-dashed border-(--border-strong) bg-(--surface-inset-bg)/60 opacity-75'
             : isTurn
-              ? 'bg-[var(--primary)]/15 border border-[var(--primary)]/40 font-bold'
-              : 'bg-[var(--surface-inset-bg)]',
+              ? 'bg-(--primary)/15 border border-(--primary)/40 font-bold'
+              : 'bg-(--surface-inset-bg)',
         ].join(' ')}
       >
         <div className="min-w-0 flex flex-wrap items-center gap-1.5">
@@ -132,7 +132,7 @@ export function WhotTable({
             {isMe ? ' (you)' : ''}
           </span>
           {isTurn && (
-            <span className="rounded-full bg-[color-mix(in_srgb,var(--marry)_20%,transparent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--marry)]">
+            <span className="rounded-full bg-[color-mix(in_srgb,var(--marry)_20%,transparent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-(--marry)">
               Turn
             </span>
           )}
@@ -172,21 +172,35 @@ export function WhotTable({
       </div>
 
       {session.required_shape && (
-        <p className="text-center text-sm font-bold text-[var(--primary)]">
+        <p className="text-center text-sm font-bold text-(--primary)">
           Must match: {WHOT_SHAPE_LABELS[session.required_shape]} — or play WHOT to call something new
         </p>
       )}
       {session.required_number != null && (
-        <p className="text-center text-sm font-bold text-[var(--primary)]">
+        <p className="text-center text-sm font-bold text-(--primary)">
           Must match: number {session.required_number} — or play WHOT to call something new
         </p>
       )}
 
       <div className="flex items-center justify-center gap-6 py-2">
         <div className="text-center">
-          <div className="w-14 h-20 rounded-xl border-2 border-dashed border-[var(--border-strong)] flex items-center justify-center text-muted text-xs">
-            🂠
-          </div>
+          <svg viewBox="0 0 56 80" width="56" height="80" className="rounded-xl overflow-hidden" aria-hidden>
+            <defs>
+              <pattern
+                id="card-back-hatch"
+                width="6"
+                height="6"
+                patternUnits="userSpaceOnUse"
+                patternTransform="rotate(45)"
+              >
+                <line x1="0" y1="0" x2="0" y2="6" stroke="#2a3a5a" strokeWidth="1.5" />
+              </pattern>
+            </defs>
+            <rect width="56" height="80" rx="10" fill="url(#card-back-hatch)" stroke="#2a3a5a" strokeWidth="1" />
+            <rect x="3" y="3" width="50" height="74" rx="8" fill="none" stroke="#2a4a7a" strokeWidth="1.5" />
+            <polygon points="28,24 36,40 28,56 20,40" fill="none" stroke="#3a5a9a" strokeWidth="1.5" />
+            <circle cx="28" cy="40" r="3" fill="#3a5a9a" opacity="0.7" />
+          </svg>
           <p className="text-[10px] text-muted mt-1">{drawCount} left</p>
         </div>
         {top ? (
@@ -200,10 +214,10 @@ export function WhotTable({
       </div>
 
       {session.status_message && (
-        <p className="text-center text-sm text-muted border-t border-[var(--border)] pt-3">{session.status_message}</p>
+        <p className="text-center text-sm text-muted border-t border-(--border) pt-3">{session.status_message}</p>
       )}
 
-      <div className="space-y-3 border-t border-[var(--border)] pt-3">
+      <div className="space-y-3 border-t border-(--border) pt-3">
         {activePlayers.length > 0 && (
           <div className="space-y-2">
             {watchingPlayers.length > 0 && (
@@ -298,7 +312,7 @@ export function WhotChoosePanel({
               type="button"
               disabled={acting}
               onClick={() => onChooseShape(shape)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] hover:bg-[var(--primary)]/10 font-semibold text-sm"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-(--border-strong) bg-(--surface-inset-bg) hover:bg-(--primary)/10 font-semibold text-sm"
             >
               <WhotShapeIcon shape={shape} size="sm" />
               {WHOT_SHAPE_LABELS[shape]}
@@ -316,7 +330,7 @@ export function WhotChoosePanel({
                 type="button"
                 disabled={acting}
                 onClick={() => onChooseNumber(n)}
-                className="w-10 h-10 rounded-lg border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] hover:bg-[var(--primary)]/10 font-bold text-sm"
+                className="w-10 h-10 rounded-lg border border-(--border-strong) bg-(--surface-inset-bg) hover:bg-(--primary)/10 font-bold text-sm"
               >
                 {n}
               </button>

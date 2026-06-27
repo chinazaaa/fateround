@@ -14,6 +14,7 @@ create index if not exists idx_product_updates_type on product_updates(type);
 create index if not exists idx_product_updates_list on product_updates(type, year desc nulls last, month desc nulls last, sort_order desc);
 
 alter table product_updates enable row level security;
+drop policy if exists "public_product_updates_select" on product_updates;
 create policy "public_product_updates_select" on product_updates for select to anon, authenticated using (true);
 
 insert into product_updates (type, title, description, month, year, sort_order) values

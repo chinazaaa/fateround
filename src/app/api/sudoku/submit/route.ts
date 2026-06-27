@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { parseSudokuMetadata, validateBlock, sudokuBlockPoints, SUDOKU_WRONG_PENALTY } from '@/lib/sudoku'
+import { markGameFinished } from '@/lib/game-finish'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -88,6 +89,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Already solved this block' }, { status: 409 })
     }
     return NextResponse.json({ error: insertError.message }, { status: 500 })
+  }
+
+  // Auto-finish once every block has been solved. The whole puzzle is complete when
+  // all 9 block indices have at least one correct submission for this round.
+  if (isCorrect) {
+    const { data: correctSubs } = await supabase
+      .from('sudoku_submissions')
+      .select('block_index')
+      .eq('round_id', round.id)
+      .eq('is_correct', true)
+
+    const solvedBlocks = new Set((correctSubs ?? []).map((s) => s.block_index))
+    if (solvedBlocks.size >= 9) {
+      await markGameFinished(supabase, gameId)
+    }
   }
 
   return NextResponse.json({ success: true, isCorrect, pointsAwarded })

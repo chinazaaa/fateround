@@ -11,46 +11,31 @@ export const WHOT_SHAPE_COLORS: Record<WhotShape, string> = {
 
 const SIZE_PX = { sm: 16, md: 20, lg: 24 } as const
 
-function starPoints(cx: number, cy: number, outer: number, inner: number): string {
-  const pts: string[] = []
-  for (let i = 0; i < 10; i++) {
-    const r = i % 2 === 0 ? outer : inner
-    const angle = -Math.PI / 2 + (i * Math.PI) / 5
-    pts.push(`${cx + r * Math.cos(angle)},${cy + r * Math.sin(angle)}`)
-  }
-  return pts.join(' ')
-}
-
 function ShapeGraphic({ shape, color }: { shape: WhotShape; color: string }) {
   switch (shape) {
     case 'circle':
-      return <circle cx="12" cy="12" r="7.5" fill="none" stroke={color} strokeWidth="2.75" />
+      return <circle cx="12" cy="12" r="9" fill={color} />
     case 'cross':
       return (
         <>
-          <line x1="7" y1="7" x2="17" y2="17" stroke={color} strokeWidth="2.75" strokeLinecap="round" />
-          <line x1="17" y1="7" x2="7" y2="17" stroke={color} strokeWidth="2.75" strokeLinecap="round" />
+          <rect x="9.5" y="3" width="5" height="18" rx="1.5" fill={color} />
+          <rect x="3" y="9.5" width="18" height="5" rx="1.5" fill={color} />
         </>
       )
     case 'triangle':
-      return <polygon points="12,5.5 20.5,18.5 3.5,18.5" fill={color} />
+      return <polygon points="12,2 22,21 2,21" fill={color} strokeLinejoin="round" />
     case 'square':
-      return <rect x="5.5" y="5.5" width="13" height="13" rx="1.5" fill={color} />
+      return <rect x="3" y="3" width="18" height="18" rx="2.5" fill={color} />
     case 'star':
-      return <polygon points={starPoints(12, 12, 8, 3.5)} fill={color} />
-    case 'whot':
       return (
-        <>
-          <polygon
-            points="12,4 20,12 12,20 4,12"
-            fill="none"
-            stroke={color}
-            strokeWidth="2.25"
-            strokeLinejoin="round"
-          />
-          <circle cx="12" cy="12" r="2.75" fill={color} />
-        </>
+        <polygon
+          points="12,2.25 14.6,9.4 22.1,9.4 16.4,13.9 18.5,21 12,16.7 5.6,21 7.7,13.9 1.9,9.4 9.4,9.4"
+          fill={color}
+          strokeLinejoin="round"
+        />
       )
+    case 'whot':
+      return <polygon points="12,2 22,12 12,22 2,12" fill={color} strokeLinejoin="round" />
   }
 }
 

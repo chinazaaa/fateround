@@ -24,4 +24,5 @@ create table if not exists hot_seat_submissions (
 );
 create index if not exists idx_hot_seat_submissions_round on hot_seat_submissions(round_id);
 alter table hot_seat_submissions enable row level security;
+drop policy if exists "public_hot_seat_submissions" on hot_seat_submissions;
 create policy "public_hot_seat_submissions" on hot_seat_submissions for all to anon using (true) with check (true);

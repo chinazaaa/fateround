@@ -75,15 +75,19 @@ ALTER TABLE describe_it_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE describe_it_players ENABLE ROW LEVEL SECURITY;
 ALTER TABLE describe_it_words ENABLE ROW LEVEL SECURITY;
 ALTER TABLE describe_it_guesses ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_describe_it_sessions" on describe_it_sessions;
 CREATE POLICY "public_describe_it_sessions" ON describe_it_sessions FOR ALL USING (true) WITH CHECK (true);
+drop policy if exists "public_describe_it_players" on describe_it_players;
 CREATE POLICY "public_describe_it_players" ON describe_it_players FOR ALL USING (true) WITH CHECK (true);
+drop policy if exists "public_describe_it_words" on describe_it_words;
 CREATE POLICY "public_describe_it_words" ON describe_it_words FOR ALL USING (true) WITH CHECK (true);
+drop policy if exists "public_describe_it_guesses" on describe_it_guesses;
 CREATE POLICY "public_describe_it_guesses" ON describe_it_guesses FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE describe_it_sessions;
-ALTER PUBLICATION supabase_realtime ADD TABLE describe_it_players;
-ALTER PUBLICATION supabase_realtime ADD TABLE describe_it_words;
-ALTER PUBLICATION supabase_realtime ADD TABLE describe_it_guesses;
+do $$ begin alter publication supabase_realtime add table describe_it_sessions; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table describe_it_players; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table describe_it_words; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table describe_it_guesses; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (

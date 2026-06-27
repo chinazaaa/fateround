@@ -29,13 +29,15 @@ CREATE TABLE IF NOT EXISTS yahtzee_player_scores (
 CREATE INDEX IF NOT EXISTS idx_yahtzee_player_scores_game_id ON yahtzee_player_scores(game_id);
 
 ALTER TABLE yahtzee_sessions ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_yahtzee_sessions" on yahtzee_sessions;
 CREATE POLICY "public_yahtzee_sessions" ON yahtzee_sessions FOR ALL USING (true) WITH CHECK (true);
 
 ALTER TABLE yahtzee_player_scores ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_yahtzee_player_scores" on yahtzee_player_scores;
 CREATE POLICY "public_yahtzee_player_scores" ON yahtzee_player_scores FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE yahtzee_sessions;
-ALTER PUBLICATION supabase_realtime ADD TABLE yahtzee_player_scores;
+do $$ begin alter publication supabase_realtime add table yahtzee_sessions; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table yahtzee_player_scores; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (

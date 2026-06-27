@@ -8,6 +8,7 @@ create table if not exists game_player_limits (
 );
 
 alter table game_player_limits enable row level security;
+drop policy if exists "public_game_player_limits_select" on game_player_limits;
 create policy "public_game_player_limits_select" on game_player_limits
   for select to anon, authenticated using (true);
 

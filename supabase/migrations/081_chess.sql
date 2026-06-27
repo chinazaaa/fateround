@@ -25,9 +25,10 @@ CREATE TABLE IF NOT EXISTS chess_sessions (
 CREATE INDEX IF NOT EXISTS idx_chess_sessions_game_id ON chess_sessions(game_id);
 
 ALTER TABLE chess_sessions ENABLE ROW LEVEL SECURITY;
+drop policy if exists "public_chess_sessions" on chess_sessions;
 CREATE POLICY "public_chess_sessions" ON chess_sessions FOR ALL USING (true) WITH CHECK (true);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE chess_sessions;
+do $$ begin alter publication supabase_realtime add table chess_sessions; exception when duplicate_object then null; end $$;
 
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (
