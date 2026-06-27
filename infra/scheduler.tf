@@ -1,7 +1,8 @@
 locals {
-  # Prefer the real public URL (needed when HTTPS/redirects are on); otherwise
-  # hit the ALB directly over HTTP.
-  tick_url = var.app_base_url != "" ? "${var.app_base_url}/api/describe-it/tick" : "http://${aws_lb.main.dns_name}/api/describe-it/tick"
+  # Prefer the real public URL (required when HTTPS/redirects or the Cloudflare
+  # lockdown are on — see the precondition below); otherwise hit the ALB over
+  # HTTP. trimsuffix avoids a double slash if app_base_url ends with "/".
+  tick_url = var.app_base_url != "" ? "${trimsuffix(var.app_base_url, "/")}/api/describe-it/tick" : "http://${aws_lb.main.dns_name}/api/describe-it/tick"
 }
 
 data "archive_file" "tick_lambda" {
@@ -31,6 +32,30 @@ resource "aws_iam_role_policy_attachment" "tick_lambda_logs" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+# Let the Lambda read CRON_SECRET from SSM at runtime (decrypt only via SSM), so
+# the secret is never a plaintext Lambda env var readable via GetFunctionConfiguration.
+data "aws_iam_policy_document" "tick_lambda_secret" {
+  statement {
+    actions   = ["ssm:GetParameter"]
+    resources = [aws_ssm_parameter.cron_secret.arn]
+  }
+  statement {
+    actions   = ["kms:Decrypt"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["ssm.${data.aws_region.current.name}.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "tick_lambda_secret" {
+  name   = "${var.name_prefix}-tick-lambda-secret"
+  role   = aws_iam_role.tick_lambda.id
+  policy = data.aws_iam_policy_document.tick_lambda_secret.json
+}
+
 resource "aws_lambda_function" "tick" {
   function_name    = "${var.name_prefix}-tick"
   role             = aws_iam_role.tick_lambda.arn
@@ -42,8 +67,15 @@ resource "aws_lambda_function" "tick" {
 
   environment {
     variables = {
-      TICK_URL    = local.tick_url
-      CRON_SECRET = var.cron_secret
+      TICK_URL          = local.tick_url
+      CRON_SECRET_PARAM = aws_ssm_parameter.cron_secret.name
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = !(var.enable_https || var.restrict_alb_to_cloudflare) || var.app_base_url != ""
+      error_message = "app_base_url must be set when enable_https or restrict_alb_to_cloudflare is true — the tick Lambda cannot reach the ALB directly in those modes."
     }
   }
 }

@@ -6,7 +6,7 @@ provider "aws" {
     tags = {
       Project   = var.name_prefix
       ManagedBy = "terraform"
-      Stack     = "fateround-app"
+      Stack     = var.name_prefix
     }
   }
 }

@@ -68,4 +68,11 @@ resource "aws_lb_listener" "https" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app.arn
   }
+
+  lifecycle {
+    precondition {
+      condition     = var.acm_certificate_arn != ""
+      error_message = "enable_https = true requires acm_certificate_arn to be set."
+    }
+  }
 }

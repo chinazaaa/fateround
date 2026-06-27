@@ -14,13 +14,14 @@ resource "aws_vpc" "main" {
   tags = { Name = "${var.name_prefix}-vpc" }
 }
 
-# Public subnets host the ALB and the NAT gateway.
+# Public subnets host the ALB and the NAT gateway — both bring their own ENIs/
+# EIP, so no instance needs an auto-assigned public IP here.
 resource "aws_subnet" "public" {
   count                   = var.az_count
   vpc_id                  = aws_vpc.main.id
   cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)
   availability_zone       = local.azs[count.index]
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
 
   tags = { Name = "${var.name_prefix}-public-${local.azs[count.index]}" }
 }

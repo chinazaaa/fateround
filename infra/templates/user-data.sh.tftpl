@@ -10,23 +10,42 @@ TAG="${image_tag}"
 PREFIX="${name_prefix}"
 APP_PORT="${app_port}"
 
-dnf update -y
-dnf install -y docker
+# Retry transient ops (network, ECR throttling, image pull) so a blip doesn't
+# abort the boot under `set -e` and crashloop the instance. Logs to stderr so it
+# doesn't pollute command-substitution output.
+retry() {
+  local i
+  for i in 1 2 3 4 5; do
+    "$@" && return 0
+    echo "retry $i failed: $*" >&2
+    sleep $((i * 5))
+  done
+  return 1
+}
+
+retry dnf install -y docker unzip
 systemctl enable --now docker
+
+# AWS CLI v2 is NOT preinstalled on Amazon Linux 2023 — install it, or the SSM/
+# ECR calls below would fail and crashloop the ASG.
+if ! command -v aws >/dev/null 2>&1; then
+  retry curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
+  unzip -q /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install
+fi
 
 # Authenticate Docker to ECR (registry host = repo URL up to the first '/').
 REGISTRY="$${REPO%%/*}"
-aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+ecr_login() { aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$REGISTRY"; }
+retry ecr_login
 
 # Pull app config from SSM Parameter Store.
-SUPABASE_URL=$(aws ssm get-parameter --region "$REGION" \
-  --name "/$PREFIX/NEXT_PUBLIC_SUPABASE_URL" --query 'Parameter.Value' --output text)
-SUPABASE_ANON_KEY=$(aws ssm get-parameter --region "$REGION" --with-decryption \
-  --name "/$PREFIX/NEXT_PUBLIC_SUPABASE_ANON_KEY" --query 'Parameter.Value' --output text)
-CRON_SECRET=$(aws ssm get-parameter --region "$REGION" --with-decryption \
-  --name "/$PREFIX/CRON_SECRET" --query 'Parameter.Value' --output text)
+get_param() { retry aws ssm get-parameter --region "$REGION" "$@" --query 'Parameter.Value' --output text; }
+SUPABASE_URL=$(get_param --name "/$PREFIX/NEXT_PUBLIC_SUPABASE_URL")
+SUPABASE_ANON_KEY=$(get_param --with-decryption --name "/$PREFIX/NEXT_PUBLIC_SUPABASE_ANON_KEY")
+CRON_SECRET=$(get_param --with-decryption --name "/$PREFIX/CRON_SECRET")
 
-docker pull "$REPO:$TAG"
+retry docker pull "$REPO:$TAG"
 docker rm -f app 2>/dev/null || true
 docker run -d --name app --restart always \
   -p "$APP_PORT:3000" \
