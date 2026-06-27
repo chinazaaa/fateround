@@ -718,10 +718,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
-    const roundRow = buildSudokuRoundRow(code.toUpperCase(), seed)
+    const { roundRow, solution } = buildSudokuRoundRow(code.toUpperCase(), seed)
 
-    const { error: roundError } = await supabase.from('rounds').insert(roundRow)
-    if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
+    const { data: insertedRound, error: roundError } = await supabase
+      .from('rounds')
+      .insert(roundRow)
+      .select('id')
+      .single()
+    if (roundError || !insertedRound) {
+      return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
+    }
+
+    // Solution is stored separately (RLS hides it from players); never in the round metadata.
+    const { error: solutionError } = await supabase
+      .from('sudoku_solutions')
+      .insert({ round_id: insertedRound.id, solution })
+    if (solutionError) return NextResponse.json({ error: solutionError.message }, { status: 500 })
 
     const { error: gameError } = await supabase
       .from('games')

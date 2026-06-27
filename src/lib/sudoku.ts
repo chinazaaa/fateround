@@ -16,7 +16,10 @@ export const SUDOKU_WRONG_PENALTY = -3
 
 export interface SudokuMetadata {
   puzzle: number[][] // 9×9, 0 = empty cell
-  solution: number[][] // 9×9, complete solution
+  // The solution is NEVER stored in round metadata that players can read — it lives
+  // in the RLS-protected sudoku_solutions table. Only generateSudokuPuzzle returns it
+  // (to be stored server-side); it is absent from anything a client loads.
+  solution?: number[][] // 9×9, complete solution — server-only
 }
 
 export interface SudokuSubmission {
@@ -115,7 +118,7 @@ function countSolutions(grid: number[][], limit: number): number {
  * `seed` drives deterministic puzzle generation per game session.
  * Aims for 36 given cells (45 removed).
  */
-export function generateSudokuPuzzle(seed: number): SudokuMetadata {
+export function generateSudokuPuzzle(seed: number): { puzzle: number[][]; solution: number[][] } {
   const rng = xorshift(seed)
   const solution: number[][] = Array.from({ length: 9 }, () => Array(9).fill(0))
   fillGrid(solution, rng)
@@ -147,7 +150,8 @@ export function generateSudokuPuzzle(seed: number): SudokuMetadata {
 export function parseSudokuMetadata(raw: unknown): SudokuMetadata | null {
   if (!raw || typeof raw !== 'object') return null
   const m = raw as Record<string, unknown>
-  if (!Array.isArray(m.puzzle) || !Array.isArray(m.solution)) return null
+  // Client metadata only carries the puzzle now; the solution is kept server-side.
+  if (!Array.isArray(m.puzzle)) return null
   return m as unknown as SudokuMetadata
 }
 
@@ -195,15 +199,23 @@ export function sudokuBlockPoints(position: number): number {
 
 // ── Session data ──────────────────────────────────────────────────────────────
 
+/**
+ * Build the round row and the solution separately. The round's metadata holds only
+ * the puzzle (client-readable); the solution must be written to the RLS-protected
+ * sudoku_solutions table by the caller, never embedded in the round.
+ */
 export function buildSudokuRoundRow(gameId: string, seed: number) {
-  const metadata = generateSudokuPuzzle(seed)
+  const { puzzle, solution } = generateSudokuPuzzle(seed)
   return {
-    game_id: gameId,
-    round_number: 1,
-    status: 'active' as const,
-    started_at: new Date().toISOString(),
-    participant_ids: [] as string[],
-    sudoku_metadata: metadata,
+    roundRow: {
+      game_id: gameId,
+      round_number: 1,
+      status: 'active' as const,
+      started_at: new Date().toISOString(),
+      participant_ids: [] as string[],
+      sudoku_metadata: { puzzle },
+    },
+    solution,
   }
 }
 

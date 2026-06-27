@@ -145,18 +145,22 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     const submissionRows = (subs ?? []) as SudokuSubmission[]
     setSubmissions(submissionRows)
 
-    // Rebuild this player's grid after a refresh. Solved blocks are authoritative:
-    // fill them straight from the solution so the locked green cells always show —
-    // even after cleared storage or on a new device. Un-submitted in-progress entries
-    // come from localStorage; the solution overwrites them for any solved block.
+    // Rebuild this player's grid after a refresh. Solved blocks are authoritative and
+    // come from the server — the solution is no longer in client metadata, so we ask
+    // for just this player's solved-block cells (a 9×9 grid, 0 elsewhere) and overlay
+    // them onto any in-progress entries restored from localStorage.
     const savedGrid = loadSavedGrid(roundData.id as string, session.playerId)
     const grid = savedGrid ? savedGrid.map((r) => [...r]) : Array.from({ length: 9 }, () => Array(9).fill(0))
-    for (const sub of submissionRows) {
-      if (sub.player_id !== session.playerId || !sub.is_correct) continue
-      const br = Math.floor(sub.block_index / 3) * 3
-      const bc = (sub.block_index % 3) * 3
-      for (let r = 0; r < 3; r++) {
-        for (let c = 0; c < 3; c++) grid[br + r][bc + c] = meta.solution[br + r][bc + c]
+    const { data: solvedCells } = await supabase.rpc('sudoku_solved_cells', {
+      p_round_id: roundData.id,
+      p_player_id: session.playerId,
+    })
+    if (Array.isArray(solvedCells)) {
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          const v = (solvedCells as number[][])[r]?.[c]
+          if (typeof v === 'number' && v > 0) grid[r][c] = v
+        }
       }
     }
     setUserGrid(grid)
