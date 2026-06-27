@@ -22,6 +22,39 @@ interface SudokuSubmission {
   submitted_at: string
 }
 
+// Persist the player's entered cells so a mid-game refresh doesn't wipe them —
+// including blocks already solved (which lock their inputs and can't be retyped).
+// Keyed by round so a play-again / new round starts from a clean grid.
+const GRID_KEY = (roundId: string, playerId: string) => `sudoku_grid_${roundId}_${playerId}`
+
+function loadSavedGrid(roundId: string, playerId: string): number[][] | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(GRID_KEY(roundId, playerId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === 9 &&
+      parsed.every((r) => Array.isArray(r) && r.length === 9 && r.every((v) => typeof v === 'number'))
+    ) {
+      return parsed as number[][]
+    }
+  } catch {
+    // Corrupt entry — ignore and start fresh.
+  }
+  return null
+}
+
+function saveGrid(roundId: string, playerId: string, grid: number[][]) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(GRID_KEY(roundId, playerId), JSON.stringify(grid))
+  } catch {
+    // Storage full / unavailable — non-fatal, the grid just won't survive refresh.
+  }
+}
+
 type View = 'loading' | 'join' | 'waiting' | 'playing' | 'finished'
 
 export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
@@ -104,6 +137,10 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
 
     setPuzzle(meta.puzzle)
     setRoundId(roundData.id as string)
+
+    // Restore any entries this player typed before a refresh (solved blocks included).
+    const savedGrid = loadSavedGrid(roundData.id as string, session.playerId)
+    if (savedGrid) setUserGrid(savedGrid)
 
     const { data: subs } = await supabase
       .from('sudoku_submissions')
@@ -237,9 +274,11 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   function handleCellChange(row: number, col: number, value: number) {
+    const playerId = myPlayerIdRef.current
     setUserGrid((prev) => {
       const next = prev.map((r) => [...r])
       next[row][col] = value
+      if (roundId && playerId) saveGrid(roundId, playerId, next)
       return next
     })
   }
