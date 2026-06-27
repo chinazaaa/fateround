@@ -138,15 +138,28 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     setPuzzle(meta.puzzle)
     setRoundId(roundData.id as string)
 
-    // Restore any entries this player typed before a refresh (solved blocks included).
-    const savedGrid = loadSavedGrid(roundData.id as string, session.playerId)
-    if (savedGrid) setUserGrid(savedGrid)
-
     const { data: subs } = await supabase
       .from('sudoku_submissions')
       .select(SUDOKU_SUBMISSION_SELECT)
       .eq('round_id', roundData.id)
-    setSubmissions((subs ?? []) as SudokuSubmission[])
+    const submissionRows = (subs ?? []) as SudokuSubmission[]
+    setSubmissions(submissionRows)
+
+    // Rebuild this player's grid after a refresh. Solved blocks are authoritative:
+    // fill them straight from the solution so the locked green cells always show —
+    // even after cleared storage or on a new device. Un-submitted in-progress entries
+    // come from localStorage; the solution overwrites them for any solved block.
+    const savedGrid = loadSavedGrid(roundData.id as string, session.playerId)
+    const grid = savedGrid ? savedGrid.map((r) => [...r]) : Array.from({ length: 9 }, () => Array(9).fill(0))
+    for (const sub of submissionRows) {
+      if (sub.player_id !== session.playerId || !sub.is_correct) continue
+      const br = Math.floor(sub.block_index / 3) * 3
+      const bc = (sub.block_index % 3) * 3
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) grid[br + r][bc + c] = meta.solution[br + r][bc + c]
+      }
+    }
+    setUserGrid(grid)
 
     setView('playing')
   }, [gameCode])
