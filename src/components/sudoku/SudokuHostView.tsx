@@ -78,11 +78,16 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
         .maybeSingle()
       if (roundData) {
         const meta = parseSudokuMetadata((roundData as Record<string, unknown>).sudoku_metadata)
-        if (meta) {
-          setPuzzle(meta.puzzle)
-          setSolution(meta.solution)
-        }
+        if (meta) setPuzzle(meta.puzzle)
         setRoundId(roundData.id as string)
+
+        // The solution is no longer in client metadata — fetch it with the host token
+        // for the spectator board (gated server-side on the token).
+        const { data: sol } = await supabase.rpc('sudoku_host_solution', {
+          p_game_id: gameCode,
+          p_host_token: hostToken,
+        })
+        if (Array.isArray(sol)) setSolution(sol as number[][])
 
         const { data: subs } = await supabase
           .from('sudoku_submissions')
@@ -97,7 +102,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
         .eq('game_id', gameCode)
       setSubmissions((subs ?? []) as SudokuSubmission[])
     }
-  }, [gameCode])
+  }, [gameCode, hostToken])
 
   useEffect(() => {
     load()

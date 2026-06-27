@@ -18,7 +18,7 @@ export function stripBidiControls(s: string): string {
 }
 
 /** Zod transform: trim + strip HTML. */
-const sanitizedString = (min: number, max: number) =>
+export const sanitizedString = (min: number, max: number) =>
   z
     .string()
     .transform((s) => stripHtml(s.trim()))
@@ -37,7 +37,7 @@ const gameCodeString = () =>
         .regex(/^[A-Z0-9]+$/, 'Game code must be alphanumeric')
     )
 
-const hostTokenString = () => z.string().min(1, 'hostToken is required')
+export const hostTokenString = () => z.string().min(1, 'hostToken is required')
 
 const uuidString = (label: string = 'ID') => z.string().uuid(`${label} must be a valid UUID`)
 

@@ -210,9 +210,11 @@ import type { View } from '@/hooks/useGameSession'
 export function PollGamePlayerExperience({
   gameCode: gameCodeProp,
   embedded: _embedded = false,
+  initialName,
 }: {
   gameCode: string
   embedded?: boolean
+  initialName?: string
 }) {
   const params = useParams<{ code: string }>()
   const router = useRouter()
@@ -453,6 +455,7 @@ export function PollGamePlayerExperience({
     setPlayers: session.setPlayers,
     setParticipants,
     applyActiveRound,
+    initialName,
   })
 
   // ── Sync refs after hooks are called ────────────────────────────────────
