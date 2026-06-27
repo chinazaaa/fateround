@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostModePanel } from '@/components/host/HostModePanel'
 import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
@@ -23,8 +23,6 @@ import type { Game, Player } from '@/types'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useToast } from '@/components/ui/Toast'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 const WORD_HUNT_SUBMISSION_SELECT = 'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
 

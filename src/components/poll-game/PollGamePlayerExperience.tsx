@@ -162,6 +162,7 @@ import { CustomRoundResults } from '@/components/CustomRoundResults'
 import { ShareResults } from '@/components/ShareResults'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { AchievementsShareBlock } from '@/components/AchievementsShareBlock'
+import { RematchHistory } from '@/components/RematchHistory'
 import { computeAchievements } from '@/lib/achievements'
 import { RoundResultsShareBlock } from '@/components/RoundResultsShareBlock'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
@@ -2865,6 +2866,14 @@ function FinalResultsView({
       )}
 
       <AchievementsShareBlock achievements={achievements} gameTitle={game.title} />
+
+      <RematchHistory
+        gameId={game.id}
+        currentParticipants={participants}
+        currentVotes={votes}
+        gameType={game.game_type}
+        customSlots={game.custom_slots?.slots}
+      />
 
       {genderBasedLeaderboards && (
         <FinalGenderBreakdown gameType={gameType} participants={participants} rounds={rounds} votes={votes} />

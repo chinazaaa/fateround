@@ -28,6 +28,11 @@ import { ScrabblePrimaryButton } from '@/components/scrabble/ScrabbleChrome'
 import { ScrabbleHostTimeExtension } from '@/components/scrabble/ScrabbleHostTimeExtension'
 import { ScrabbleGameTimerBar } from '@/components/scrabble/ScrabbleGameTimerBar'
 import { SCRABBLE_GAME_DURATION_OPTIONS, formatScrabbleGameDuration } from '@/lib/scrabble'
+import {
+  SCRABBLE_DICTIONARY_OPTIONS,
+  SCRABBLE_DICTIONARY_LABELS,
+  parseScrabbleDictionaryId,
+} from '@/lib/scrabble-dictionary-meta'
 
 type HostTab = 'play' | 'manage'
 type ScrabbleHostMode = 'spectator' | 'player'
@@ -447,8 +452,28 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
                 ))}
               </select>
             </label>
+            <label className="block space-y-1.5 col-span-2">
+              <span className="text-sm font-semibold text-[var(--foreground)]">Dictionary</span>
+              <select
+                value={parseScrabbleDictionaryId(game.scrabble_dictionary_id)}
+                onChange={(e) => void savePatch({ scrabble_dictionary_id: e.target.value })}
+                className="input-field w-full"
+              >
+                {SCRABBLE_DICTIONARY_OPTIONS.map((id) => (
+                  <option key={id} value={id}>
+                    {SCRABBLE_DICTIONARY_LABELS[id]}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </div>
+      )}
+
+      {game.status !== 'waiting' && !gameFinished && (
+        <p className="text-center text-xs text-muted">
+          Dictionary: {SCRABBLE_DICTIONARY_LABELS[parseScrabbleDictionaryId(game.scrabble_dictionary_id)]}
+        </p>
       )}
 
       {showPlayTab && (

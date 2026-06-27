@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { LOBBY_LIMIT_GAME_TYPES } from '@/lib/game-limits'
 import { MONOPOLY_TOKEN_ID_LIST } from '@/lib/monopoly-tokens'
+import { SCRABBLE_DICTIONARY_OPTIONS } from '@/lib/scrabble-dictionary-meta'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -126,6 +127,7 @@ export const createGameSchema = z.object({
   codewords_player_picks: z.boolean().optional(),
   codewords_late_join: z.boolean().optional(),
   describe_it_num_teams: z.coerce.number().int().min(2).max(4).optional(),
+  describe_it_mode: z.enum(['team', 'individual']).optional(),
   allow_viewers: z.boolean().optional(),
   allow_late_players: z.boolean().optional(),
   late_join_policy: z.enum(['lobby_only', 'viewers_only', 'viewers_and_players']).optional(),
@@ -178,6 +180,7 @@ export const updateGameSchema = z.object({
   timer_seconds: z.coerce.number().optional(),
   operative_timer_seconds: z.coerce.number().optional(),
   game_duration_seconds: z.coerce.number().optional(),
+  scrabble_dictionary_id: z.enum(SCRABBLE_DICTIONARY_OPTIONS).optional(),
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
   pair_vote_mode: pairVoteModeEnum.optional(),
@@ -794,6 +797,7 @@ export const describeItGameSchema = z.object({
 export const describeItSettingsSchema = z.object({
   gameId: gameCodeString(),
   hostToken: z.string().min(1),
+  mode: z.enum(['team', 'individual']).optional(),
   numTeams: z.coerce.number().int().min(2).max(4).optional(),
   turnSeconds: z.coerce.number().int().optional(),
   rounds: z.coerce.number().int().optional(),

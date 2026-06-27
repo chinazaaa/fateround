@@ -9,7 +9,8 @@ import {
   tileScore,
   withPlacedTiles,
 } from '@/lib/scrabble-board'
-import { SCRABBLE_WORDS_RAW } from '@/lib/data/scrabble-words'
+import { isValidScrabbleWord } from '@/lib/scrabble-dictionaries'
+import { SCRABBLE_DEFAULT_DICTIONARY } from '@/lib/scrabble-dictionary-meta'
 import type { Game, ScrabblePlacedTile, ScrabblePlayerState, ScrabbleSession } from '@/types'
 
 export const SCRABBLE_MIN_PLAYERS = 2
@@ -145,23 +146,9 @@ export { currentTurnPlayerId, isScrabbleResultsPhase }
 // Dictionary
 // ---------------------------------------------------------------------------
 
-let wordSet: Set<string> | null = null
-
-function dictionary(): Set<string> {
-  if (!wordSet) {
-    wordSet = new Set(
-      SCRABBLE_WORDS_RAW.split('\n')
-        .map((w) => w.trim().toLowerCase())
-        .filter((w) => w.length >= 2)
-    )
-  }
-  return wordSet
-}
-
-/** Standard-dictionary check. Words are length ≥ 2. */
-export function isValidScrabbleWord(word: string): boolean {
-  return dictionary().has(word.toLowerCase())
-}
+// Word validation now lives in the server-only ./scrabble-dictionaries module so
+// each game can pick its own word list. Re-exported here for existing callers.
+export { isValidScrabbleWord }
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -197,6 +184,11 @@ function computeDeadline(timerSeconds: number, now: number): string | null {
 async function loadTimerSeconds(supabase: SupabaseClient, gameId: string): Promise<number> {
   const { data } = await supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle()
   return data?.timer_seconds ?? 0
+}
+
+async function loadDictionaryId(supabase: SupabaseClient, gameId: string): Promise<string> {
+  const { data } = await supabase.from('games').select('scrabble_dictionary_id').eq('id', gameId).maybeSingle()
+  return data?.scrabble_dictionary_id ?? SCRABBLE_DEFAULT_DICTIONARY
 }
 
 async function loadPlayerNames(supabase: SupabaseClient, gameId: string): Promise<Map<string, string>> {
@@ -384,8 +376,9 @@ export async function processScrabblePlay(
   const placement = scorePlacement(session.board, tiles)
   if (!placement.valid) return { error: placement.error ?? 'Invalid placement' }
 
+  const dictId = await loadDictionaryId(supabase, gameId)
   for (const word of placement.words) {
-    if (!isValidScrabbleWord(word)) return { error: `"${word.toUpperCase()}" is not a valid word` }
+    if (!isValidScrabbleWord(word, dictId)) return { error: `"${word.toUpperCase()}" is not a valid word` }
   }
 
   const names = await loadPlayerNames(supabase, gameId)

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { SudokuBoard, type BlockStatus } from '@/components/sudoku/SudokuBoard'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
@@ -10,8 +10,6 @@ import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } fr
 import { getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import type { Game, Player } from '@/types'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 interface SudokuSubmission {
   id: string

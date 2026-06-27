@@ -2,7 +2,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
-import { gameTypeConfig } from '@/lib/game-types'
+import { gameTypeConfig, gameTypeCreateParam } from '@/lib/game-types'
 import {
   ALL_GAME_LANDING_SLUGS,
   GAME_LANDING_CONTENT,
@@ -14,6 +14,7 @@ import {
 import { SITE_NAME, faqPageJsonLd, gameJsonLd, gameLandingOgPath } from '@/lib/seo'
 import { getGameLandingCustomContentHints } from '@/lib/custom-content-hints'
 import { CustomContentAiTip } from '@/components/ui/CustomContentAiTip'
+import { SiteFooter } from '@/components/SiteFooter'
 import type { GameType } from '@/types'
 
 type Props = { params: Promise<{ slug: string }> }
@@ -121,7 +122,7 @@ export default async function GameLandingRoute({ params }: Props) {
             <p className="text-muted text-sm sm:text-base leading-relaxed max-w-md mx-auto">{content.heroSubtitle}</p>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 sm:gap-3 pt-0.5 w-full sm:w-fit mx-auto">
-              <Link href={`/create?type=${content.gameType}`} className="btn-primary btn-fit">
+              <Link href={`/create?type=${gameTypeCreateParam(content.gameType)}`} className="btn-primary btn-fit">
                 Play free →
               </Link>
               <Link href="/" className="btn-secondary btn-fit">
@@ -330,6 +331,8 @@ export default async function GameLandingRoute({ params }: Props) {
           </div>
         </section>
       </div>
+
+      <SiteFooter />
     </>
   )
 }

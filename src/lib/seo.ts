@@ -15,7 +15,7 @@ export const OG_IMAGE = {
 } as const
 
 export const DEFAULT_DESCRIPTION =
-  'Play free online party games with friends. Smash Marry Kill, Red Flag Green Flag, Smash or Pass, Would You Rather, Most Likely To, Who Said This, Hot Seat, and custom modes. Create a room, share the code, no sign-up required.'
+  'Play free online party games with friends. Smash Marry Kill, Red Flag Green Flag, Smash or Pass, Would You Rather, Most Likely To, Who Said This, Hot Seat, and custom modes. Create a game, share the code, no sign-up required.'
 
 export const DEFAULT_KEYWORDS = [
   'party games online',
@@ -73,14 +73,17 @@ export function rootMetadata(): Metadata {
   }
 }
 
+const HOME_DESCRIPTION =
+  'Play Yahtzee, Whot, Monopoly, Codewords and 25+ party games free with friends. Create a game, share the code — no sign-up, no download.'
+
 export function homeMetadata(): Metadata {
   return {
-    title: 'Free Online Party Games — Smash Marry Kill, WYR & More',
-    description: DEFAULT_DESCRIPTION,
+    title: 'Free Online Party Games — Yahtzee, Whot, Monopoly & More',
+    description: HOME_DESCRIPTION,
     alternates: { canonical: '/' },
     openGraph: {
       title: `${SITE_NAME} — Free Online Party Games`,
-      description: DEFAULT_DESCRIPTION,
+      description: HOME_DESCRIPTION,
       url: '/',
       images: [OG_IMAGE],
     },
@@ -91,11 +94,11 @@ export function createMetadata(): Metadata {
   return {
     title: 'Create a Game',
     description:
-      'Start a free Fate Round room — pick Smash Marry Kill, Would You Rather, Most Likely To, or another party game mode and share the code with friends.',
+      'Start a free Fate Round game — pick Smash Marry Kill, Would You Rather, Most Likely To, or another party game mode and share the code with friends.',
     alternates: { canonical: '/create' },
     openGraph: {
       title: `Create a Game | ${SITE_NAME}`,
-      description: 'Start a free online party game room and share the code with friends. No sign-up required.',
+      description: 'Start a free online party game and share the code with friends. No sign-up required.',
       url: '/create',
       images: [OG_IMAGE],
     },
@@ -288,6 +291,9 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   sudoku: '/og/sudoku.png',
   'tic-tac-toe': '/og/tic-tac-toe.png',
   'word-hunt': '/og/word-hunt.png',
+  chess: '/og/chess.png',
+  scrabble: '/og/scrabble.png',
+  'text-charades': '/og/text-charades.png',
 }
 
 export function gameLandingOgPath(slug: string): string {

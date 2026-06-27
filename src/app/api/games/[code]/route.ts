@@ -19,6 +19,7 @@ import {
 import { clampNpatGameDuration, clampNpatMarkingTimer, clampNpatTimer } from '@/lib/npat'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampScrabbleTimer, clampScrabbleGameDuration } from '@/lib/scrabble'
+import { parseScrabbleDictionaryId } from '@/lib/scrabble-dictionary-meta'
 import { isCustomTwoSlotGame } from '@/lib/custom-game'
 import { clampHotSeatMaxCap, HOT_SEAT_MIN_PLAYERS, hotSeatJoinedPlayers, hotSeatMaxCapUpperBound } from '@/lib/hot-seat'
 import { parsePlayerQuestionsEnabled, parsePlayerQuestionsOrder } from '@/lib/player-question-pool'
@@ -42,6 +43,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     timer_seconds: rawTimerSeconds,
     operative_timer_seconds: rawOperativeTimerSeconds,
     game_duration_seconds: rawGameDurationSeconds,
+    scrabble_dictionary_id: rawScrabbleDictionaryId,
     participant_filter,
   } = parsed.data
 
@@ -127,6 +129,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     } else if (isScrabbleGame(gameType)) {
       updatePayload.game_duration_seconds = clampScrabbleGameDuration(rawGameDurationSeconds)
     }
+  }
+
+  if (rawScrabbleDictionaryId !== undefined && isScrabbleGame(gameType)) {
+    updatePayload.scrabble_dictionary_id = parseScrabbleDictionaryId(rawScrabbleDictionaryId)
   }
 
   if (participant_filter !== undefined) {
