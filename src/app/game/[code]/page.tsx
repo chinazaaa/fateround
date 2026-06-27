@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PollGamePlayerExperience } from '@/components/poll-game/PollGamePlayerExperience'
@@ -35,11 +35,13 @@ function TournamentBanner({ gameCode }: { gameCode: string }) {
 
 export default function GamePage() {
   const { code } = useParams<{ code: string }>()
+  const searchParams = useSearchParams()
   const gameCode = (Array.isArray(code) ? code[0] : code).toUpperCase()
+  const initialName = searchParams.get('name') ?? undefined
 
   return (
     <>
-      <PollGamePlayerExperience gameCode={gameCode} />
+      <PollGamePlayerExperience gameCode={gameCode} initialName={initialName} />
       <TournamentBanner gameCode={gameCode} />
     </>
   )

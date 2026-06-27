@@ -33,18 +33,4 @@ export const addTournamentGameSchema = z.object({
     .optional(),
 })
 
-export const TOURNAMENT_ELIGIBLE_TYPES = [
-  'trivia',
-  'scrabble',
-  'yahtzee',
-  'ludo',
-  'whot',
-  'monopoly',
-  'word-hunt',
-  'i-call-on',
-  'chess',
-  'bingo',
-  'who-said-this',
-  'describe-it',
-  'codewords',
-] as const
+export const TOURNAMENT_ELIGIBLE_TYPES = ['trivia'] as const

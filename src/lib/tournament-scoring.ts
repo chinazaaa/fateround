@@ -106,10 +106,13 @@ export async function awardTournamentPlacements(supabase: SupabaseClient, gameId
     .eq('game_id', gameId)
 
   for (const [tpId, earned] of Object.entries(points)) {
-    await supabase.rpc('increment_tournament_points', {
+    const { error: rpcError } = await supabase.rpc('increment_tournament_points', {
       p_player_id: tpId,
       p_points: earned,
     })
+    if (rpcError) {
+      console.error('[tournament-scoring] Failed to increment points for player', tpId, rpcError)
+    }
   }
 
   const { data: tournamentState } = await supabase
