@@ -1738,55 +1738,111 @@ function CreateGameInner() {
                 {questionCustomHint && <CustomContentAiTip hint={questionCustomHint} />}
 
                 {questionSource === 'custom' && (
-                  <Field label="Your words (one per line)">
-                    <textarea
-                      value={describeItWords}
-                      onChange={(e) => setDescribeItWords(e.target.value)}
-                      placeholder="pizza&#10;rainbow&#10;astronaut"
-                      rows={4}
-                      className="input-field w-full resize-y"
+                  <div className="space-y-4 pt-1">
+                    <SegmentedControl
+                      value={questionTab}
+                      onChange={setQuestionTab}
+                      options={[
+                        { value: 'upload', label: 'Upload file', hint: questionUploadHint('describe_it') },
+                        { value: 'manual', label: 'Add manually', hint: 'Type or paste one word per line.' },
+                      ]}
                     />
-                    <div className="flex items-center gap-3 pt-1.5">
-                      <button
-                        type="button"
-                        onClick={() => describeItFileRef.current?.click()}
-                        className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
-                      >
-                        Upload CSV / Excel
-                      </button>
-                      <span className="text-faint text-xs">one word per row</span>
-                    </div>
-                    <input
-                      ref={describeItFileRef}
-                      type="file"
-                      accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0]
-                        e.target.value = ''
-                        if (!file) return
-                        setDescribeItUploadError(null)
-                        const ext = file.name.split('.').pop()?.toLowerCase()
-                        try {
-                          const rows =
-                            ext === 'csv'
-                              ? parseDescribeItWords(await file.text())
-                              : ext === 'xlsx' || ext === 'xls'
-                                ? await parseExcelDescribeItWords(await file.arrayBuffer())
-                                : []
-                          if (rows.length === 0) {
-                            setDescribeItUploadError('No words found. Use one word per line or row.')
-                            return
-                          }
-                          // Merge with whatever's already in the box, de-duplicated.
-                          setDescribeItWords((prev) => parseDescribeItWords(`${prev}\n${rows.join('\n')}`).join('\n'))
-                        } catch {
-                          setDescribeItUploadError('Could not read that file. Try a .csv or .xlsx.')
-                        }
-                      }}
-                    />
-                    {describeItUploadError && <p className="text-rose-400 text-xs pt-1">{describeItUploadError}</p>}
-                  </Field>
+
+                    {questionTab === 'upload' ? (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => describeItFileRef.current?.click()}
+                            className="btn-secondary !py-3"
+                          >
+                            Choose file
+                          </button>
+                          <a
+                            href={questionSampleFile('describe_it').href}
+                            download={questionSampleFile('describe_it').download}
+                            className="btn-secondary !py-3 text-center no-underline flex items-center justify-center"
+                          >
+                            Sample CSV
+                          </a>
+                        </div>
+                        <input
+                          ref={describeItFileRef}
+                          type="file"
+                          accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            e.target.value = ''
+                            if (!file) return
+                            setDescribeItUploadError(null)
+                            const ext = file.name.split('.').pop()?.toLowerCase()
+                            try {
+                              const rows =
+                                ext === 'csv'
+                                  ? parseDescribeItWords(await file.text())
+                                  : ext === 'xlsx' || ext === 'xls'
+                                    ? await parseExcelDescribeItWords(await file.arrayBuffer())
+                                    : []
+                              if (rows.length === 0) {
+                                setDescribeItUploadError('No words found. Use one word per line or row.')
+                                return
+                              }
+                              // Merge with whatever's already loaded, de-duplicated.
+                              setDescribeItWords((prev) =>
+                                parseDescribeItWords(`${prev}\n${rows.join('\n')}`).join('\n')
+                              )
+                            } catch {
+                              setDescribeItUploadError('Could not read that file. Try a .csv or .xlsx.')
+                            }
+                          }}
+                        />
+                        <p className="text-faint text-xs text-center">{questionUploadHint('describe_it')}</p>
+                      </div>
+                    ) : (
+                      <textarea
+                        value={describeItWords}
+                        onChange={(e) => setDescribeItWords(e.target.value)}
+                        placeholder="pizza&#10;rainbow&#10;astronaut"
+                        rows={5}
+                        className="input-field w-full resize-none font-medium text-sm"
+                      />
+                    )}
+
+                    {describeItUploadError && <p className="text-red-400 text-sm">{describeItUploadError}</p>}
+
+                    {questionTab === 'upload' && parseDescribeItWords(describeItWords).length > 0 && (
+                      <div className="surface-inset border border-theme rounded-xl p-3 space-y-2 max-h-48 overflow-y-auto">
+                        <p className="text-muted text-xs uppercase tracking-wider">
+                          Loaded ({parseDescribeItWords(describeItWords).length})
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {parseDescribeItWords(describeItWords).map((w, i) => (
+                            <span
+                              key={`${w}-${i}`}
+                              className="inline-flex items-center gap-1 rounded-md border border-theme bg-[var(--surface-inset-bg)] px-2 py-1 text-xs"
+                            >
+                              {w}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setDescribeItWords(
+                                    parseDescribeItWords(describeItWords)
+                                      .filter((_, idx) => idx !== i)
+                                      .join('\n')
+                                  )
+                                }
+                                className="text-faint hover:text-red-300"
+                                aria-label={`Remove ${w}`}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
                 <Field label="Late joiners">
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="describe_it" />
