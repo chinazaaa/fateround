@@ -196,7 +196,7 @@ function RackTile({
   selected,
   exchangeSelected,
   interactive,
-  disabled,
+  canArrange,
   tileValues,
   onClick,
 }: {
@@ -206,11 +206,17 @@ function RackTile({
   selected: boolean
   exchangeSelected: boolean
   interactive: boolean
-  disabled: boolean
+  canArrange: boolean
   tileValues: Record<string, number>
   onClick: () => void
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled })
+  // Reordering within the rack is cosmetic, so it's allowed whenever you hold the
+  // tile — even when it isn't your turn. Placing a tile on the board still requires
+  // an interactive (your-turn) tap or drag.
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: !canArrange || used,
+  })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -222,15 +228,15 @@ function RackTile({
       ref={setNodeRef}
       style={style}
       type="button"
-      onClick={onClick}
-      disabled={!interactive || used}
+      onClick={interactive && !used ? onClick : undefined}
+      disabled={used}
       {...attributes}
       {...listeners}
       className={[
         'aspect-square w-9 sm:w-11 rounded-md transition-all touch-none',
         selected ? '-translate-y-1.5 ring-2 ring-emerald-500' : '',
         exchangeSelected ? '-translate-y-1.5 ring-2 ring-rose-500' : '',
-        interactive && !used ? 'cursor-pointer' : 'cursor-default',
+        (interactive || canArrange) && !used ? 'cursor-pointer' : 'cursor-default',
       ].join(' ')}
     >
       {used ? (
@@ -444,6 +450,7 @@ export function ScrabbleGamePanel({
 
   /** Place a rack tile onto an empty board cell (pending). Blanks open the letter picker first. */
   const placeTile = (rackIndex: number, row: number, col: number) => {
+    if (!interactive) return // placing on the board requires your turn (reordering does not)
     if (usedRackIndices.has(rackIndex)) return
     const rackLetter = rack[rackIndex]
     if (rackLetter == null) return
@@ -505,13 +512,17 @@ export function ScrabbleGamePanel({
   }
 
   // ── Drag & drop ─────────────────────────────────────────────────────────────
-  // When dragging a rack tile, prefer a rack tile sitting directly under the pointer so
-  // it reorders within the rack. Without this, closestCenter measures against the board's
-  // 225 cells — one of which is almost always nearer than the neighbouring tile — so a
-  // rack-reorder drag gets mis-read as a board placement and the tiles never move.
+  // When dragging a rack tile, decide reorder-vs-place by the POINTER, not by closestCenter.
+  // closestCenter measures the dragged tile's rect (which is large and hangs toward the rack)
+  // against every droppable, so a genuine board drop near the top edge can land closer to a
+  // rack tile and get mis-read as a reorder. Resolving by pointerWithin keeps both reliable:
+  // pointer over a board cell → place there; pointer over another rack tile → reorder.
   const collisionDetection = useCallback<CollisionDetection>((args) => {
     if (String(args.active.id).startsWith(TILE_PREFIX)) {
-      const overTiles = pointerWithin(args).filter((c) => String(c.id).startsWith(TILE_PREFIX))
+      const within = pointerWithin(args)
+      const overCells = within.filter((c) => String(c.id).startsWith(CELL_PREFIX))
+      if (overCells.length > 0) return overCells
+      const overTiles = within.filter((c) => String(c.id).startsWith(TILE_PREFIX))
       if (overTiles.length > 0) return overTiles
     }
     return closestCenter(args)
@@ -620,7 +631,8 @@ export function ScrabbleGamePanel({
   const lastMovePlayer = lastMove ? players.find((p) => p.id === lastMove.player_id) : null
   // Shuffling/arranging is purely cosmetic, so allow it whenever you hold tiles —
   // even when it isn't your turn.
-  const showShuffle = !!myState && !finished && !exchangeMode && rack.length > 1
+  const canArrange = !!myState && !finished && !exchangeMode
+  const showShuffle = canArrange && rack.length > 1
 
   return (
     <div>
@@ -780,7 +792,7 @@ export function ScrabbleGamePanel({
                           selected={selected}
                           exchangeSelected={exchangeSelected}
                           interactive={interactive}
-                          disabled={!interactive || used || exchangeMode}
+                          canArrange={canArrange}
                           tileValues={tileValues}
                           onClick={() => handleRackTap(index)}
                         />
@@ -883,7 +895,12 @@ export function ScrabbleGamePanel({
           </div>
         </div>
 
-        <DragOverlay>{dragOverlay && <div className="w-9 sm:w-11 aspect-square">{dragOverlay}</div>}</DragOverlay>
+        {/* No drop animation: the default flies the overlay back to the rack slot, which on a
+            board drop looks like the tile is snapping back / rearranging. The placed tile already
+            shows on the cell (and reorders apply instantly), so the overlay should just vanish. */}
+        <DragOverlay dropAnimation={null}>
+          {dragOverlay && <div className="w-9 sm:w-11 aspect-square">{dragOverlay}</div>}
+        </DragOverlay>
       </DndContext>
     </div>
   )
