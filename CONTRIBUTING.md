@@ -17,6 +17,22 @@ feature/fix branch  ──PR──▶  dev  ──promotion PR──▶  main
 Keep PRs small and scoped. Update your branch with the latest `dev` before
 merging (`gh pr update-branch <n>` or merge `origin/dev` in).
 
+### Merge method: squash features, **merge** promotions
+
+- **Feature/fix → `dev`:** squash-merge (one tidy commit per change).
+- **`dev` ↔ `main` (promotion _and_ sync-back):** **"Create a merge commit" —
+  never squash.** A squash drops the ancestry link, so `main` never becomes
+  part of `dev`'s history; after a few of those, the `dev`→`main` 3-way merge
+  diverges from an ancient base and conflicts even though the content matches.
+  Merge commits keep the two branches sharing history, so promotions stay
+  fast-forward-clean.
+- Because of the above, **"Require linear history" must stay OFF** on `dev` and
+  `main` (it forbids merge commits). It can stay on elsewhere.
+- If a promotion ever does conflict (e.g. someone squashed a sync), reconcile
+  by overlaying `dev`'s tree onto a branch off `main`:
+  `git checkout -B promote origin/main && git read-tree -u --reset origin/dev &&
+  git commit -m "Promote dev → main"`, then PR that branch into `main`.
+
 ## Quality gates — run on every PR before it merges
 
 CI must be green, **and** the review skills must be run on the diff:

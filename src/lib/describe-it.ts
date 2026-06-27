@@ -91,14 +91,14 @@ export function clueContainsWord(clue: string, word: string): boolean {
   // answers ("ice cream") are caught even when run together ("icecream").
   const wKey = normalizeGuess(word).replace(/ /g, '')
   if (!wKey) return false
-  // Stem for e-dropping suffixes so "dance" also blocks "dancing"/"danced".
-  const stem = wKey.endsWith('e') ? wKey.slice(0, -1) : wKey
   const tokens = normalizeGuess(clue).split(' ').filter(Boolean)
   for (const t of tokens) {
     // The secret word sits inside a clue word: "firewall" ⊇ "fire", "danced" ⊇ "dance", "cats" ⊇ "cat".
     if (t.includes(wKey)) return true
-    // A suffixed form of an e-dropping stem: "dancing" from "dance".
-    if (stem.length >= 4 && t.length > stem.length && t.startsWith(stem)) return true
+    // The "-ing" form of an e-ending word drops the e, so it isn't a substring of the word:
+    // "dance"→"dancing", "bake"→"baking", "ride"→"riding". Matched exactly to avoid false hits
+    // like "first" for "fire". Other suffixes (-ed/-er/-es) keep the e and are caught above.
+    if (wKey.length >= 3 && wKey.endsWith('e') && t === `${wKey.slice(0, -1)}ing`) return true
     // A clue word is a meaningful chunk of the secret word: clue "fire" for word "firewall".
     if (t.length >= 4 && wKey.includes(t)) return true
   }
