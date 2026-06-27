@@ -1,6 +1,4 @@
-#!/bin/bash
-# Bootstraps an Amazon Linux 2023 instance to run the Next.js app container.
-# Values in $${...} / $VAR are shell; only ${aws_region} etc. are Terraform.
+#!/usr/bin/env bash
 set -euo pipefail
 exec > >(tee /var/log/user-data.log) 2>&1
 
@@ -10,9 +8,6 @@ TAG="${image_tag}"
 PREFIX="${name_prefix}"
 APP_PORT="${app_port}"
 
-# Retry transient ops (network, ECR throttling, image pull) so a blip doesn't
-# abort the boot under `set -e` and crashloop the instance. Logs to stderr so it
-# doesn't pollute command-substitution output.
 retry() {
   local i
   for i in 1 2 3 4 5; do
@@ -26,20 +21,16 @@ retry() {
 retry dnf install -y docker unzip
 systemctl enable --now docker
 
-# AWS CLI v2 is NOT preinstalled on Amazon Linux 2023 — install it, or the SSM/
-# ECR calls below would fail and crashloop the ASG.
 if ! command -v aws >/dev/null 2>&1; then
   retry curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
   unzip -q /tmp/awscliv2.zip -d /tmp
   /tmp/aws/install
 fi
 
-# Authenticate Docker to ECR (registry host = repo URL up to the first '/').
 REGISTRY="$${REPO%%/*}"
 ecr_login() { aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$REGISTRY"; }
 retry ecr_login
 
-# Pull app config from SSM Parameter Store.
 get_param() { retry aws ssm get-parameter --region "$REGION" "$@" --query 'Parameter.Value' --output text; }
 SUPABASE_URL=$(get_param --name "/$PREFIX/NEXT_PUBLIC_SUPABASE_URL")
 SUPABASE_ANON_KEY=$(get_param --with-decryption --name "/$PREFIX/NEXT_PUBLIC_SUPABASE_ANON_KEY")
@@ -48,9 +39,36 @@ CRON_SECRET=$(get_param --with-decryption --name "/$PREFIX/CRON_SECRET")
 retry docker pull "$REPO:$TAG"
 docker rm -f app 2>/dev/null || true
 docker run -d --name app --restart always \
-  -p "$APP_PORT:3000" \
+  -p "80:$APP_PORT" \
   -e NODE_ENV=production \
   -e NEXT_PUBLIC_SUPABASE_URL="$SUPABASE_URL" \
   -e NEXT_PUBLIC_SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
   -e CRON_SECRET="$CRON_SECRET" \
   "$REPO:$TAG"
+
+# Freeze-recovery tick via systemd (replaces Lambda/EventBridge).
+cat > /etc/systemd/system/fateround-tick.service <<EOF
+[Unit]
+Description=FateRound freeze-recovery tick
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:80/api/describe-it/tick
+EOF
+chmod 600 /etc/systemd/system/fateround-tick.service
+
+cat > /etc/systemd/system/fateround-tick.timer <<'EOF'
+[Unit]
+Description=FateRound freeze-recovery tick timer
+
+[Timer]
+OnBootSec=120
+OnUnitActiveSec=${tick_interval_seconds}
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now fateround-tick.timer

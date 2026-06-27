@@ -7,22 +7,22 @@ aws_region  = "us-east-1"
 name_prefix = "fateround-dev"
 
 # Smaller footprint for dev.
-instance_type        = "t3.small"
-asg_min_size         = 1
-asg_max_size         = 2
-asg_desired_capacity = 1
+instance_type = "t3.small"
+app_port      = 3000
 
-# From your DEV Supabase branch (Supabase Branching → persistent `dev` branch).
+app_image_tag = "latest"
+
+# From your DEV Supabase branch (Supabase Branching -> persistent `dev` branch).
 supabase_url      = "https://YOUR-DEV-PROJECT.supabase.co"
 supabase_anon_key = "REPLACE_WITH_DEV_ANON_KEY"
 cron_secret       = "REPLACE_WITH_DEV_CRON_SECRET"
 
-# Cloudflare (Nazaalistic account). The token is read from the
-# CLOUDFLARE_API_TOKEN env var (kept in ~/.config/shell/secrets.sh), NOT here.
+tick_interval_seconds = 60
+
+# Cloudflare. The token is read from the CLOUDFLARE_API_TOKEN env var
+# (kept in ~/.config/shell/secrets.sh), NOT here.
 cloudflare_enabled     = true
 cloudflare_zone_id     = "REPLACE_WITH_ZONE_ID"
 cloudflare_record_name = "dev" # -> dev.<yourdomain>
 cloudflare_proxied     = true
-# restrict_alb_to_cloudflare = true   # optional: lock the ALB to Cloudflare IPs
-
-tick_schedule = "rate(1 minute)"
+# restrict_to_cloudflare = true   # optional: lock the instance SG to Cloudflare IPs

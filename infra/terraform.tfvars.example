@@ -3,10 +3,11 @@
 aws_region  = "us-east-1"
 name_prefix = "fateround"
 
-instance_type        = "t3.small"
-asg_min_size         = 2
-asg_max_size         = 4
-asg_desired_capacity = 2
+vpc_cidr      = "10.0.0.0/16"
+instance_type = "t3.small"
+app_port      = 3000 # container's internal port; published on host :80
+
+app_image_tag = "latest" # must match the tag you push to ECR
 
 # App config (from your Supabase project). The URL and anon key are public-by-
 # design; cron_secret is your own generated value (also set on the app).
@@ -14,22 +15,17 @@ supabase_url      = "https://YOUR-PROJECT.supabase.co"
 supabase_anon_key = "REPLACE_WITH_ANON_KEY"
 cron_secret       = "REPLACE_WITH_A_LONG_RANDOM_STRING"
 
-# TLS / DNS — recommended for production. Provision an ACM cert in aws_region,
-# point your domain at the ALB, then:
-# enable_https        = true
-# acm_certificate_arn = "arn:aws:acm:us-east-1:1234567890:certificate/..."
-# app_base_url        = "https://play.example.com"
-
-tick_schedule = "rate(1 minute)"
+# How often the on-box systemd timer hits /api/describe-it/tick (freeze recovery).
+tick_interval_seconds = 60
 
 # Cloudflare (optional). Leave disabled to manage DNS/TLS in the dashboard.
-# cloudflare_enabled         = true
-# cloudflare_api_token       = "REPLACE_WITH_DNS_EDIT_TOKEN"  # or set CLOUDFLARE_API_TOKEN
-# cloudflare_zone_id         = "REPLACE_WITH_ZONE_ID"
-# cloudflare_record_name     = "play"        # -> play.example.com
-# cloudflare_proxied         = true          # orange cloud: TLS/WAF/CDN at the edge
-# restrict_alb_to_cloudflare = true          # lock the ALB to Cloudflare IPs
+# cloudflare_enabled     = true
+# cloudflare_api_token   = "REPLACE_WITH_DNS_EDIT_TOKEN"  # or set CLOUDFLARE_API_TOKEN
+# cloudflare_zone_id     = "REPLACE_WITH_ZONE_ID"
+# cloudflare_record_name = "app"   # -> app.yourdomain
+# cloudflare_proxied     = true    # orange cloud: TLS/WAF/CDN at the edge
+# restrict_to_cloudflare = true    # lock the instance SG to Cloudflare IPs
 #
-# With proxied = true, use Cloudflare SSL "Full (strict)" and put a cert on the
-# ALB origin: either keep ACM (enable_https + acm_certificate_arn) or import a
-# free Cloudflare Origin Certificate into ACM and use its ARN.
+# With proxied = true, use Cloudflare SSL "Full" + a free Cloudflare Origin
+# Certificate on the box for end-to-end TLS, or at minimum keep
+# restrict_to_cloudflare = true so the origin is only reachable via Cloudflare.

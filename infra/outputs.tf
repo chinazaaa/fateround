@@ -1,11 +1,11 @@
-output "alb_dns_name" {
-  description = "Public DNS name of the load balancer. Point your domain's CNAME/ALIAS here."
-  value       = aws_lb.main.dns_name
+output "instance_public_ip" {
+  description = "Elastic IP; point your Cloudflare A record here."
+  value       = aws_eip.app.public_ip
 }
 
-output "app_url" {
-  description = "URL the app is reachable at."
-  value       = var.app_base_url != "" ? var.app_base_url : "http://${aws_lb.main.dns_name}"
+output "instance_id" {
+  description = "Instance ID; use with aws ssm start-session."
+  value       = aws_instance.app.id
 }
 
 output "ecr_repository_url" {
@@ -16,9 +16,4 @@ output "ecr_repository_url" {
 output "vpc_id" {
   description = "ID of the created VPC."
   value       = aws_vpc.main.id
-}
-
-output "tick_lambda_name" {
-  description = "Name of the freeze-recovery tick Lambda."
-  value       = aws_lambda_function.tick.function_name
 }
