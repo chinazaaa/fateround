@@ -1,0 +1,16 @@
+# Supabase config, read by the CLI and by Supabase Branching.
+#
+# REQUIRED before Branching works:
+#   - project_id: your PRODUCTION project's Reference ID
+#     (Dashboard → Project Settings → General → Reference ID).
+#   - [db].major_version: match your project's Postgres version
+#     (Dashboard → Database → Infrastructure).
+#
+# This is a minimal config sufficient for migrations + Branching. Running
+# `supabase init` (after `brew install supabase/tap/supabase`) regenerates the
+# full default file with every section if you want finer control.
+
+project_id = "skhvbzitwvnbhqxfitgh"
+
+[db]
+major_version = 17

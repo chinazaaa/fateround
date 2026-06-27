@@ -417,7 +417,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
                   // copy answers from Manage into the Play tab. Spectator hosts still see it.
                   <SudokuBoard
                     puzzle={puzzle}
-                    solution={hostPlays ? undefined : solution ?? undefined}
+                    solution={hostPlays ? undefined : (solution ?? undefined)}
                     blockScorers={blockScorers}
                     readOnly
                   />
