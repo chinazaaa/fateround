@@ -94,6 +94,7 @@ import {
 } from '@/lib/game-limits'
 import { clampMonopolyGameDuration, clampMonopolyTurnTimer } from '@/lib/monopoly'
 import { clampWhotGameDuration } from '@/lib/whot'
+import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampChessTimer } from '@/lib/chess'
 import { clampScrabbleTimer, clampScrabbleGameDuration } from '@/lib/scrabble'
@@ -229,6 +230,7 @@ export async function POST(req: NextRequest) {
     whot_pick3_enabled: rawWhotPick3Enabled,
     whot_cards_enabled: rawWhotCardsEnabled,
     whot_number_calls_enabled: rawWhotNumberCallsEnabled,
+    whot_pick2_stacking: rawWhotPick2Stacking,
   } = parsed.data
 
   const game_type = parseGameType(rawGameType)
@@ -478,9 +480,11 @@ export async function POST(req: NextRequest) {
                     ? clampScrabbleTimer(timer_seconds)
                     : isDescribeItGame(game_type)
                       ? clampDescribeItTurnSeconds(timer_seconds)
-                      : [15, 30, 60].includes(Number(timer_seconds))
-                        ? Number(timer_seconds)
-                        : 30,
+                      : isWhotGame(game_type)
+                        ? clampBoardGameTurnTimer(timer_seconds, 'whot')
+                        : [15, 30, 60].includes(Number(timer_seconds))
+                          ? Number(timer_seconds)
+                          : 30,
     ...(isCodewordsGame(game_type)
       ? {
           operative_timer_seconds: clampCodewordsTimer(
@@ -580,6 +584,7 @@ export async function POST(req: NextRequest) {
             whot_pick3_enabled: rawWhotPick3Enabled !== false,
             whot_cards_enabled: rawWhotCardsEnabled !== false,
             whot_number_calls_enabled: rawWhotNumberCallsEnabled !== false,
+            whot_pick2_stacking: rawWhotPick2Stacking !== false,
           }
         : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots

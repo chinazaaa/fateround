@@ -41,6 +41,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     whot_pick3_enabled,
     whot_cards_enabled,
     whot_number_calls_enabled,
+    whot_pick2_stacking,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -50,7 +51,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     game_duration_seconds === undefined &&
     whot_pick3_enabled === undefined &&
     whot_cards_enabled === undefined &&
-    whot_number_calls_enabled === undefined
+    whot_number_calls_enabled === undefined &&
+    whot_pick2_stacking === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -117,10 +119,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (whot_number_calls_enabled !== undefined) {
       gameUpdate.whot_number_calls_enabled = whot_number_calls_enabled
     }
+    if (whot_pick2_stacking !== undefined) gameUpdate.whot_pick2_stacking = whot_pick2_stacking
   } else if (
     whot_pick3_enabled !== undefined ||
     whot_cards_enabled !== undefined ||
-    whot_number_calls_enabled !== undefined
+    whot_number_calls_enabled !== undefined ||
+    whot_pick2_stacking !== undefined
   ) {
     return NextResponse.json({ error: 'House rules only apply to Whot games' }, { status: 400 })
   }

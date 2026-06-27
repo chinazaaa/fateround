@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { GAME_TYPE_CONFIG } from '@/lib/game-types'
 import {
-  GAME_LIMIT_ABSOLUTE_MAX,
+  adminMaxCeiling,
   LOBBY_LIMIT_GAME_TYPES,
   type GameLimitConfig,
   type GamePlayerLimitsMap,
@@ -72,8 +72,9 @@ export default function AdminGameLimitsPage() {
         error(`Enter a whole number for ${formatGameLabel(type)}`)
         return
       }
-      if (maxPlayers < cfg.min || maxPlayers > GAME_LIMIT_ABSOLUTE_MAX) {
-        error(`${formatGameLabel(type)} max must be between ${cfg.min} and ${GAME_LIMIT_ABSOLUTE_MAX}`)
+      const ceiling = adminMaxCeiling(type)
+      if (maxPlayers < cfg.min || maxPlayers > ceiling) {
+        error(`${formatGameLabel(type)} max must be between ${cfg.min} and ${ceiling}`)
         return
       }
       if (maxPlayers !== cfg.max) {
@@ -158,7 +159,7 @@ function LimitRow({
       <div>
         <p className="font-semibold">{formatGameLabel(type)}</p>
         <p className="text-faint text-xs">
-          Min {config.min} players · default lobby size {config.default}
+          Min {config.min} · max {adminMaxCeiling(type)} · default lobby size {config.default}
         </p>
       </div>
       <label className="flex items-center gap-2 text-sm">
@@ -166,7 +167,7 @@ function LimitRow({
         <input
           type="number"
           min={config.min}
-          max={GAME_LIMIT_ABSOLUTE_MAX}
+          max={adminMaxCeiling(type)}
           value={value}
           onChange={(e) => onChange(type, e.target.value)}
           className="input-field w-24"

@@ -14,15 +14,21 @@ export type WhotRules = {
   pick3Enabled: boolean
   whotCardsEnabled: boolean
   numberCallsEnabled: boolean
+  /** Whether a Pick 2 can be stacked/defended with another 2. false = must draw it. */
+  pick2Stacking: boolean
 }
 
 export function parseWhotRules(
-  game: Pick<Game, 'whot_pick3_enabled' | 'whot_cards_enabled' | 'whot_number_calls_enabled'> | null | undefined
+  game:
+    | Pick<Game, 'whot_pick3_enabled' | 'whot_cards_enabled' | 'whot_number_calls_enabled' | 'whot_pick2_stacking'>
+    | null
+    | undefined
 ): WhotRules {
   return {
     pick3Enabled: game?.whot_pick3_enabled !== false,
     whotCardsEnabled: game?.whot_cards_enabled !== false,
     numberCallsEnabled: game?.whot_number_calls_enabled !== false,
+    pick2Stacking: game?.whot_pick2_stacking !== false,
   }
 }
 
@@ -203,7 +209,8 @@ export function canPlayCard(card: WhotCard, session: WhotSession, rules: WhotRul
   const cardNumber = Number(card.number)
   const { pickTwo, pickFive } = getNormalizedPickStacks(session)
 
-  if (pickTwo > 0) return cardNumber === 2
+  // When Pick 2 stacking is off, the targeted player can't defend with a 2 — they must draw.
+  if (pickTwo > 0) return rules.pick2Stacking && cardNumber === 2
   if (rules.pick3Enabled && pickFive > 0) return cardNumber === 5
 
   if (!rules.whotCardsEnabled && cardNumber === 20) return false
@@ -287,8 +294,8 @@ export function pickStackPlayError(
 ): string | null {
   const cardNumber = Number(card.number)
   const { pickTwo, pickFive } = getNormalizedPickStacks(session)
-  if (pickTwo > 0 && cardNumber !== 2) {
-    return 'Pick 2 active — play a 2 or draw the penalty'
+  if (pickTwo > 0 && (!rules.pick2Stacking || cardNumber !== 2)) {
+    return rules.pick2Stacking ? 'Pick 2 active — play a 2 or draw the penalty' : 'Pick 2 active — draw the penalty'
   }
   if (rules.pick3Enabled && pickFive > 0 && cardNumber !== 5) {
     return 'Pick 3 active — play a 5 or draw the penalty'
@@ -383,7 +390,7 @@ export async function initializeWhotGame(
 ): Promise<{ error?: string }> {
   const { data: gameRow } = await supabase
     .from('games')
-    .select('timer_seconds, whot_pick3_enabled, whot_cards_enabled, whot_number_calls_enabled')
+    .select('timer_seconds, whot_pick3_enabled, whot_cards_enabled, whot_number_calls_enabled, whot_pick2_stacking')
     .eq('id', gameId)
     .maybeSingle()
   const rules = parseWhotRules(gameRow)
@@ -480,7 +487,9 @@ async function loadGameState(
     supabase.from('whot_player_hands').select('*').eq('game_id', gameId).order('player_order'),
     supabase
       .from('games')
-      .select('timer_seconds, game_duration_seconds, whot_pick3_enabled, whot_cards_enabled, whot_number_calls_enabled')
+      .select(
+        'timer_seconds, game_duration_seconds, whot_pick3_enabled, whot_cards_enabled, whot_number_calls_enabled, whot_pick2_stacking'
+      )
       .eq('id', gameId)
       .maybeSingle(),
     supabase.from('players').select('id, name').eq('game_id', gameId),
@@ -671,7 +680,9 @@ type TurnAdvance = {
 }
 
 function resolveNextTurnIndex(session: WhotSession, hands: WhotPlayerHand[], cardNumber: number): TurnAdvance {
-  if (cardNumber === 1) {
+  // Hold On (1) and General Market (14) both keep the turn with the player who
+  // played them — after everyone else draws for a 14, that player goes again.
+  if (cardNumber === 1 || cardNumber === 14) {
     const currentId = session.turn_order[session.current_turn_index]
     if (currentId && whotHandCount(hands, currentId) > 0) {
       return { nextIndex: session.current_turn_index, holdOn: true, skipNext: false }
@@ -824,7 +835,7 @@ export async function processWhotPlay(
   const special = specialCardMessage(card.number)
 
   let status = advance.holdOn
-    ? `${playerName(playerNames, playerId)} — Hold On, go again!`
+    ? `${playerName(playerNames, playerId)} — ${card.number === 14 ? 'General Market! Everyone drew — go again' : 'Hold On, go again'}!`
     : `${playerName(playerNames, nextPlayerId)}'s turn — match ${cardLabel(card)}`
 
   if (special && !advance.holdOn) {
