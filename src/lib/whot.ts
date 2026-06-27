@@ -575,7 +575,7 @@ async function finishWhotByLowestHand(
   hands: WhotPlayerHand[],
   playerNames: Map<string, string>,
   reasonPrefix: string
-): Promise<void> {
+): Promise<boolean> {
   const activeIds = new Set(session.turn_order ?? [])
   let winnerId: string | null = null
   let winnerSum = Infinity
@@ -595,7 +595,7 @@ async function finishWhotByLowestHand(
 
   const winnerName = winnerId ? playerName(playerNames, winnerId) : 'Nobody'
 
-  await supabase
+  const { data } = await supabase
     .from('whot_sessions')
     .update({
       phase: 'finished',
@@ -605,72 +605,50 @@ async function finishWhotByLowestHand(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    .eq('updated_at', session.updated_at)
+    .select('game_id')
 
+  if ((data?.length ?? 0) === 0) return false // lost the race — another request already moved the game
   await markGameFinished(supabase, gameId)
+  return true
 }
 
-async function handlePlayerOutHand(
-  supabase: SupabaseClient,
-  gameId: string,
+/**
+ * Pure: the session patch for when `playerId` empties their hand on this turn.
+ * Folded into the play handler's single session write so the game goes straight
+ * to "finished"/"next player" instead of writing a transient "playing" state
+ * that a concurrent timer could act on between the two writes.
+ * `board` carries the board changes from the card just played.
+ */
+function playerOutPatch(
   session: WhotSession,
-  playerId: string,
-  playerNames: Map<string, string>,
   hands: WhotPlayerHand[],
   gameDurationSeconds: number,
-  timerSeconds: number
-): Promise<void> {
-  await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
-
-  const name = playerName(playerNames, playerId)
-  const remaining = (session.turn_order ?? []).filter((id) => id !== playerId && whotHandCount(hands, id) > 0)
-
+  playerId: string,
+  name: string,
+  playerNames: Map<string, string>,
+  board: Partial<WhotSession>
+): Partial<WhotSession> {
   if (gameDurationSeconds <= 0) {
-    await supabase
-      .from('whot_sessions')
-      .update({
-        phase: 'finished',
-        winner_player_id: playerId,
-        status_message: `${name} wins!`,
-        turn_deadline_at: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('game_id', gameId)
-    await markGameFinished(supabase, gameId)
-    return
+    return {
+      ...board,
+      phase: 'finished',
+      winner_player_id: playerId,
+      status_message: `${name} wins!`,
+    }
   }
 
+  const remaining = (session.turn_order ?? []).filter((id) => id !== playerId && whotHandCount(hands, id) > 0)
   const nextIndex = whotNextTurnIndex(session, hands, session.current_turn_index, 1)
   const nextId = session.turn_order[nextIndex]
   const top = session.top_card
   const matchHint = top ? ` — match ${cardLabel(top)}` : ''
-
-  await persistSession(
-    supabase,
-    gameId,
-    {
-      current_turn_index: nextIndex,
-      status_message: `${playerName(playerNames, nextId)}'s turn${matchHint} — ${name} is out (${remaining.length} left)`,
-    },
-    timerSeconds
-  )
-}
-
-async function finishIfEmptyHand(
-  supabase: SupabaseClient,
-  gameId: string,
-  session: WhotSession,
-  playerId: string,
-  playerNames: Map<string, string>,
-  hands: WhotPlayerHand[],
-  gameDurationSeconds: number,
-  timerSeconds: number
-): Promise<WhotSession | null> {
-  const cards = handForPlayer(hands, playerId)
-  if (cards.length > 0) return session
-
-  await handlePlayerOutHand(supabase, gameId, session, playerId, playerNames, hands, gameDurationSeconds, timerSeconds)
-
-  return session
+  return {
+    ...board,
+    current_turn_index: nextIndex,
+    phase: 'playing',
+    status_message: `${playerName(playerNames, nextId)}'s turn${matchHint} — ${name} is out (${remaining.length} left)`,
+  }
 }
 
 type TurnAdvance = {
@@ -702,17 +680,27 @@ function resolveNextTurnIndex(session: WhotSession, hands: WhotPlayerHand[], car
   }
 }
 
-async function applyGeneralMarket(
-  supabase: SupabaseClient,
-  gameId: string,
+/**
+ * Pure: compute the result of a General Market (every other player draws 1).
+ * Returns the new pile/discard/hands and the per-opponent hand writes to apply
+ * — the caller performs those writes only after winning the session claim, so a
+ * request that lost the turn race never hands out cards.
+ */
+function computeGeneralMarket(
   currentPlayerId: string,
   drawPile: WhotCard[],
   discardPile: WhotCard[],
   hands: WhotPlayerHand[]
-): Promise<{ drawPile: WhotCard[]; discardPile: WhotCard[]; hands: WhotPlayerHand[] }> {
+): {
+  drawPile: WhotCard[]
+  discardPile: WhotCard[]
+  hands: WhotPlayerHand[]
+  marketWrites: { player_id: string; cards: WhotCard[] }[]
+} {
   let pile = [...drawPile]
   let discard = [...discardPile]
   let nextHands = [...hands]
+  const marketWrites: { player_id: string; cards: WhotCard[] }[] = []
 
   for (const row of nextHands) {
     if (row.player_id === currentPlayerId) continue
@@ -722,22 +710,29 @@ async function applyGeneralMarket(
     pile = result.drawPile
     discard = result.discardPile
     if (result.drawn.length > 0) {
-      const cards = [...((row.cards as WhotCard[]) ?? []), ...result.drawn]
+      const cards = [...existing, ...result.drawn]
       nextHands = updateHand(nextHands, row.player_id, cards)
-      await supabase.from('whot_player_hands').update({ cards }).eq('game_id', gameId).eq('player_id', row.player_id)
+      marketWrites.push({ player_id: row.player_id, cards })
     }
   }
 
-  return { drawPile: pile, discardPile: discard, hands: nextHands }
+  return { drawPile: pile, discardPile: discard, hands: nextHands, marketWrites }
 }
 
+/**
+ * Optimistic-concurrency session write. The update only lands if the row still
+ * carries the `expectedUpdatedAt` we read, so when two requests race (e.g. every
+ * client driving the turn timer) only the first wins — the loser gets 0 rows and
+ * the caller aborts before mutating hands. Returns true if this write won.
+ */
 async function persistSession(
   supabase: SupabaseClient,
   gameId: string,
   patch: Partial<WhotSession>,
-  timerSeconds: number
-): Promise<void> {
-  await supabase
+  timerSeconds: number,
+  expectedUpdatedAt: string
+): Promise<boolean> {
+  const { data } = await supabase
     .from('whot_sessions')
     .update({
       ...patch,
@@ -745,6 +740,9 @@ async function persistSession(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    .eq('updated_at', expectedUpdatedAt)
+    .select('game_id')
+  return (data?.length ?? 0) > 0
 }
 
 export async function processWhotPlay(
@@ -776,78 +774,49 @@ export async function processWhotPlay(
 
   const newHand = hand.filter((_, i) => i !== cardIndex)
   let nextHands = updateHand(hands, playerId, newHand)
-  await supabase.from('whot_player_hands').update({ cards: newHand }).eq('game_id', gameId).eq('player_id', playerId)
+  const wentOut = newHand.length === 0
+  const name = playerName(playerNames, playerId)
 
   const stacks = applyPickStacksAfterPlay(card.number, session.pick_two_stack ?? 0, session.pick_five_stack ?? 0, rules)
   const pickTwo = stacks.pickTwo
   const pickFive = stacks.pickFive
 
-  if (card.number === 20) {
-    if (!rules.whotCardsEnabled) return { error: 'WHOT cards are disabled in this game' }
+  // Compute the SINGLE session patch this play produces (board + turn/terminal),
+  // plus any General Market draws — all pure, no writes yet. Hand writes are
+  // deferred until we win the turn claim, so a request that lost the race never
+  // mutates a hand or hands out cards.
+  let marketWrites: { player_id: string; cards: WhotCard[] }[] = []
+  let patch: Partial<WhotSession>
 
+  if (card.number === 20 && !wentOut) {
+    // WHOT played with cards left: pause for the shape/number choice.
     const whotStatus = rules.numberCallsEnabled
-      ? `${playerName(playerNames, playerId)} played WHOT — choose shape or number`
-      : `${playerName(playerNames, playerId)} played WHOT — choose a shape`
-
-    await persistSession(
-      supabase,
-      gameId,
-      {
-        top_card: card,
-        discard_pile: discardPlayedTop(session),
-        required_shape: null,
-        required_number: null,
-        pick_two_stack: pickTwo,
-        pick_five_stack: pickFive,
-        phase: 'choose_whot',
-        status_message: whotStatus,
-      },
-      timerSeconds
-    )
-
-    if (newHand.length === 0) {
-      await finishIfEmptyHand(
-        supabase,
-        gameId,
-        session,
-        playerId,
-        playerNames,
-        nextHands,
-        gameDurationSeconds,
-        timerSeconds
-      )
+      ? `${name} played WHOT — choose shape or number`
+      : `${name} played WHOT — choose a shape`
+    patch = {
+      top_card: card,
+      discard_pile: discardPlayedTop(session),
+      required_shape: null,
+      required_number: null,
+      pick_two_stack: pickTwo,
+      pick_five_stack: pickFive,
+      phase: 'choose_whot',
+      status_message: whotStatus,
     }
-    return {}
-  }
+  } else {
+    // Normal play — and a WHOT played as the last card, which wins immediately.
+    let drawPile = (session.draw_pile as WhotCard[]) ?? []
+    let discardPile = discardPlayedTop(session)
 
-  let drawPile = (session.draw_pile as WhotCard[]) ?? []
-  let discardPile = discardPlayedTop(session)
+    if (card.number === 14) {
+      const market = computeGeneralMarket(playerId, drawPile, discardPile, nextHands)
+      drawPile = market.drawPile
+      discardPile = market.discardPile
+      nextHands = market.hands
+      marketWrites = market.marketWrites
+    }
 
-  if (card.number === 14) {
-    const market = await applyGeneralMarket(supabase, gameId, playerId, drawPile, discardPile, nextHands)
-    drawPile = market.drawPile
-    discardPile = market.discardPile
-    nextHands = market.hands
-  }
-
-  const advance = resolveNextTurnIndex(session, nextHands, card.number)
-  const nextPlayerId = session.turn_order[advance.nextIndex]
-  const special = specialCardMessage(card.number)
-
-  let status = advance.holdOn
-    ? `${playerName(playerNames, playerId)} — ${card.number === 14 ? 'General Market! Everyone drew — go again' : 'Hold On, go again'}!`
-    : `${playerName(playerNames, nextPlayerId)}'s turn — match ${cardLabel(card)}`
-
-  if (special && !advance.holdOn) {
-    status = `${status} · ${special}`
-  }
-  if (pickTwo > 0) status = `${status} · Pick 2 active (${pickTwo} cards to draw)`
-  else if (pickFive > 0) status = `${status} · Pick 3 active (${pickFive} cards to draw)`
-
-  await persistSession(
-    supabase,
-    gameId,
-    {
+    const board: Partial<WhotSession> = {
       top_card: card,
       required_shape: null,
       required_number: null,
@@ -855,24 +824,41 @@ export async function processWhotPlay(
       pick_five_stack: pickFive,
       draw_pile: drawPile,
       discard_pile: discardPile,
-      current_turn_index: advance.nextIndex,
-      phase: 'playing',
-      status_message: status,
-    },
-    timerSeconds
-  )
+    }
 
-  if (newHand.length === 0) {
-    await finishIfEmptyHand(
-      supabase,
-      gameId,
-      session,
-      playerId,
-      playerNames,
-      nextHands,
-      gameDurationSeconds,
-      timerSeconds
-    )
+    if (wentOut) {
+      patch = playerOutPatch(session, nextHands, gameDurationSeconds, playerId, name, playerNames, board)
+    } else {
+      const advance = resolveNextTurnIndex(session, nextHands, card.number)
+      const nextPlayerId = session.turn_order[advance.nextIndex]
+      const special = specialCardMessage(card.number)
+      let status = advance.holdOn
+        ? `${name} — ${card.number === 14 ? 'General Market! Everyone drew — go again' : 'Hold On, go again'}!`
+        : `${playerName(playerNames, nextPlayerId)}'s turn — match ${cardLabel(card)}`
+      if (special && !advance.holdOn) status = `${status} · ${special}`
+      if (pickTwo > 0) status = `${status} · Pick 2 active (${pickTwo} cards to draw)`
+      else if (pickFive > 0) status = `${status} · Pick 3 active (${pickFive} cards to draw)`
+      patch = { ...board, current_turn_index: advance.nextIndex, phase: 'playing', status_message: status }
+    }
+  }
+
+  // Claim the turn. If another request already moved the game from this exact
+  // state we lose the CAS and bail — no hands touched.
+  const won = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
+  if (!won) return {}
+
+  // We hold the claim — now safe to write hands and finalize.
+  await supabase.from('whot_player_hands').update({ cards: newHand }).eq('game_id', gameId).eq('player_id', playerId)
+  for (const w of marketWrites) {
+    await supabase
+      .from('whot_player_hands')
+      .update({ cards: w.cards })
+      .eq('game_id', gameId)
+      .eq('player_id', w.player_id)
+  }
+  if (wentOut) {
+    await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
+    if (gameDurationSeconds <= 0) await markGameFinished(supabase, gameId)
   }
 
   return {}
@@ -935,15 +921,14 @@ export async function processWhotDraw(
         current_turn_index: nextIndex,
         status_message: `${playerName(playerNames, nextPlayerId)}'s turn${matchHint} (draw pile empty)`,
       },
-      timerSeconds
+      timerSeconds,
+      session.updated_at
     )
     return {}
   }
 
   const newHand = [...hand, ...drawn]
   const handsAfterDraw = updateHand(hands, playerId, newHand)
-
-  await supabase.from('whot_player_hands').update({ cards: newHand }).eq('game_id', gameId).eq('player_id', playerId)
 
   const nextIndexAfterDraw = whotNextTurnIndex(session, handsAfterDraw, session.current_turn_index, 1)
   const nextPlayerIdAfterDraw = session.turn_order[nextIndexAfterDraw]
@@ -955,9 +940,8 @@ export async function processWhotDraw(
         ? `${playerName(playerNames, playerId)} drew ${drawn.length} (Pick 3)`
         : `${playerName(playerNames, playerId)} drew 1 card`
 
-  const reshuffleNote = reshuffled ? 'Draw pile reshuffled. ' : ''
-
-  await persistSession(
+  // Claim the turn before crediting the cards, so a lost race never grows a hand.
+  const won = await persistSession(
     supabase,
     gameId,
     {
@@ -968,8 +952,12 @@ export async function processWhotDraw(
       current_turn_index: nextIndexAfterDraw,
       status_message: `${playerName(playerNames, nextPlayerIdAfterDraw)}'s turn — ${penaltyMsg}${reshuffled ? ' · deck reshuffled' : ''}`,
     },
-    timerSeconds
+    timerSeconds,
+    session.updated_at
   )
+  if (!won) return {}
+
+  await supabase.from('whot_player_hands').update({ cards: newHand }).eq('game_id', gameId).eq('player_id', playerId)
 
   return {}
 }
@@ -1018,7 +1006,8 @@ export async function processWhotChoose(
       phase: 'playing',
       status_message: status,
     },
-    timerSeconds
+    timerSeconds,
+    session.updated_at
   )
 
   return {}
@@ -1059,7 +1048,8 @@ export async function processWhotExpireTurn(
         phase: 'playing',
         status_message: `${playerName(playerNames, nextId)}'s turn${matchHint}`,
       },
-      timerSeconds
+      timerSeconds,
+      session.updated_at
     )
     return {}
   }
