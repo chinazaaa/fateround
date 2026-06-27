@@ -604,7 +604,9 @@ export const monopolyActionSchema = z.object({
 })
 
 export const monopolyBuySchema = monopolyActionSchema.extend({
-  buy: z.boolean(),
+  // 'buy' = purchase it · 'auction' = decline and put it up for auction · 'pass' =
+  // decline and skip the auction, the turn just moves on.
+  decision: z.enum(['buy', 'auction', 'pass']),
 })
 
 export const monopolyJailSchema = monopolyActionSchema.extend({

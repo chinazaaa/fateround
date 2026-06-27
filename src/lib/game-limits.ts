@@ -17,6 +17,7 @@ import { TIC_TAC_TOE_DEFAULT_MAX_PLAYERS, TIC_TAC_TOE_MAX_PLAYERS, TIC_TAC_TOE_M
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_MAX_PLAYERS, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { CHESS_DEFAULT_MAX_PLAYERS, CHESS_MAX_PLAYERS, CHESS_MIN_PLAYERS } from '@/lib/chess'
 import { SCRABBLE_MAX_PLAYERS, SCRABBLE_MIN_PLAYERS } from '@/lib/scrabble'
+import { SUDOKU_MAX_PLAYERS, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
 import { DESCRIBE_IT_DEFAULT_MAX_PLAYERS, DESCRIBE_IT_MAX_PLAYERS, DESCRIBE_IT_MIN_PLAYERS } from '@/lib/describe-it'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
@@ -103,9 +104,9 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     default: NPAT_DEFAULT_MAX_PLAYERS,
   },
   sudoku: {
-    min: 2,
-    max: 20,
-    default: 20,
+    min: SUDOKU_MIN_PLAYERS,
+    max: SUDOKU_MAX_PLAYERS,
+    default: SUDOKU_MAX_PLAYERS,
   },
   tic_tac_toe: {
     min: TIC_TAC_TOE_MIN_PLAYERS,

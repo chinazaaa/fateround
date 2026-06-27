@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Player, ScrabbleSession, ScrabblePlayerState, ScrabblePlacedTile } from '@/types'
 import {
   SCRABBLE_BOARD_SIZE,
@@ -20,10 +20,12 @@ import {
   PointerSensor,
   TouchSensor,
   closestCenter,
+  pointerWithin,
   useDraggable,
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
@@ -490,6 +492,18 @@ export function ScrabbleGamePanel({
   }
 
   // ── Drag & drop ─────────────────────────────────────────────────────────────
+  // When dragging a rack tile, prefer a rack tile sitting directly under the pointer so
+  // it reorders within the rack. Without this, closestCenter measures against the board's
+  // 225 cells — one of which is almost always nearer than the neighbouring tile — so a
+  // rack-reorder drag gets mis-read as a board placement and the tiles never move.
+  const collisionDetection = useCallback<CollisionDetection>((args) => {
+    if (String(args.active.id).startsWith(TILE_PREFIX)) {
+      const overTiles = pointerWithin(args).filter((c) => String(c.id).startsWith(TILE_PREFIX))
+      if (overTiles.length > 0) return overTiles
+    }
+    return closestCenter(args)
+  }, [])
+
   const onDragStart = (event: DragStartEvent) => {
     setActiveDragId(String(event.active.id))
   }
@@ -592,7 +606,7 @@ export function ScrabbleGamePanel({
     <div>
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={collisionDetection}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         onDragCancel={() => setActiveDragId(null)}

@@ -3,6 +3,12 @@ import { createClient } from '@supabase/supabase-js'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { removeMonopolyPlayer } from '@/lib/monopoly'
+import { removeScrabblePlayer } from '@/lib/scrabble'
+import { removeWhotPlayer } from '@/lib/whot'
+import { removeLudoPlayer } from '@/lib/ludo'
+import { removeYahtzeePlayer } from '@/lib/yahtzee'
+import { removeChessPlayer } from '@/lib/chess'
+import { removeTicTacToePlayer } from '@/lib/tic-tac-toe'
 import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
 import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
@@ -1400,6 +1406,42 @@ export async function DELETE(req: NextRequest) {
 
   if (isMonopolyGame(gameType)) {
     const { error } = await removeMonopolyPlayer(supabase, id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isScrabbleGame(gameType)) {
+    const { error } = await removeScrabblePlayer(supabase, id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isWhotGame(gameType)) {
+    const { error } = await removeWhotPlayer(supabase, id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isLudoGame(gameType)) {
+    const { error } = await removeLudoPlayer(supabase, id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isYahtzeeGame(gameType)) {
+    const { error } = await removeYahtzeePlayer(supabase, id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isChessGame(gameType)) {
+    const { error } = await removeChessPlayer(supabase, id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isTicTacToeGame(gameType)) {
+    const { error } = await removeTicTacToePlayer(supabase, id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }

@@ -143,7 +143,7 @@ export function MonopolyBoardCenter({
   actingRef.current = acting
 
   const autoBuyAuction = useCallback(() => {
-    if (!actingRef.current) void postAction('/api/monopoly/buy', { buy: false })
+    if (!actingRef.current) void postAction('/api/monopoly/buy', { decision: 'auction' })
   }, [postAction])
 
   const autoPayRent = useCallback(() => {
@@ -286,17 +286,28 @@ export function MonopolyBoardCenter({
           <p className={titleClass}>{pendingSpace.name}</p>
           <p className={priceClass}>{formatMonopolyMoney(pendingSpace.price ?? 0)}</p>
           {pendingSpace.rent != null && <p className={subtleClass}>Rent {formatMonopolyMoney(pendingSpace.rent)}</p>}
-          <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+          <div className="space-y-1.5 pt-0.5">
             <BoardPrimaryButton
-              onClick={() => postAction('/api/monopoly/buy', { buy: true })}
+              onClick={() => postAction('/api/monopoly/buy', { decision: 'buy' })}
               loading={acting}
               disabled={(myState?.cash ?? 0) < (pendingSpace.price ?? 0)}
             >
               Buy
             </BoardPrimaryButton>
-            <BoardSecondaryButton onClick={() => postAction('/api/monopoly/buy', { buy: false })} disabled={acting}>
-              Auction
-            </BoardSecondaryButton>
+            <div className="grid grid-cols-2 gap-1.5">
+              <BoardSecondaryButton
+                onClick={() => postAction('/api/monopoly/buy', { decision: 'auction' })}
+                disabled={acting}
+              >
+                Auction
+              </BoardSecondaryButton>
+              <BoardSecondaryButton
+                onClick={() => postAction('/api/monopoly/buy', { decision: 'pass' })}
+                disabled={acting}
+              >
+                Pass
+              </BoardSecondaryButton>
+            </div>
           </div>
         </div>
       )}

@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId, buy } = parsed.data
+  const { gameId, playerId, decision } = parsed.data
   const code = gameId.toUpperCase()
 
   const { data: game } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not a Monopoly game' }, { status: 400 })
   }
 
-  const { error } = await processMonopolyBuy(supabase, code, playerId, buy)
+  const { error } = await processMonopolyBuy(supabase, code, playerId, decision)
   if (error) return NextResponse.json({ error }, { status: 400 })
 
   return NextResponse.json({ success: true })
