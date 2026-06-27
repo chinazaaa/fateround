@@ -48,10 +48,13 @@ export function DescribeItShell({
   children,
   title,
   compact,
+  wide,
 }: {
   children: ReactNode
   title?: string
   compact?: boolean
+  /** Wider container so a side column (e.g. the individual leaderboard) has room. */
+  wide?: boolean
 }) {
   const cfg = gameTypeConfig('describe_it')
   return (
@@ -62,7 +65,12 @@ export function DescribeItShell({
           compact ? 'py-3 sm:py-4' : 'py-8 sm:py-10',
         ].join(' ')}
       >
-        <div className={['w-full max-w-lg', compact ? 'space-y-2' : 'space-y-5 sm:space-y-6'].join(' ')}>
+        <div
+          className={[
+            wide ? 'w-full max-w-3xl' : 'w-full max-w-lg',
+            compact ? 'space-y-2' : 'space-y-5 sm:space-y-6',
+          ].join(' ')}
+        >
           {compact && title && (
             <div className="flex items-center justify-center gap-1.5">
               <span className="text-lg leading-none">{cfg.card.emoji}</span>
@@ -279,7 +287,8 @@ export function DescribeItTeamRoster({
                   {m.player_id === myPlayerId && <span className="text-faint text-[10px] shrink-0">(you)</span>}
                   {m.player_id === describerId && <span className="text-[10px] shrink-0">🗣️</span>}
                   {onMoveTeam && numTeams > 1 && (
-                    <span className="ml-auto flex items-center gap-0.5 shrink-0">
+                    <span className="ml-auto flex items-center gap-1 shrink-0">
+                      <span className="text-faint text-[10px] font-semibold uppercase tracking-wide">move</span>
                       {Array.from({ length: numTeams }, (_, j) => j + 1)
                         .filter((t) => t !== team)
                         .map((t) => (
@@ -289,7 +298,7 @@ export function DescribeItTeamRoster({
                             onClick={() => onMoveTeam(m.player_id, t)}
                             disabled={moving}
                             title={`Move to ${teamLabel(t)}`}
-                            className={`flex h-5 w-5 items-center justify-center rounded-md text-[10px] font-black leading-none disabled:opacity-50 ${teamStyle(t).badge}`}
+                            className={`flex h-6 min-w-[1.5rem] items-center justify-center rounded-md px-1.5 text-xs font-black leading-none shadow-sm ring-1 ring-black/10 disabled:opacity-50 ${teamStyle(t).badge}`}
                           >
                             {t}
                           </button>

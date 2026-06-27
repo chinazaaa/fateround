@@ -85,13 +85,26 @@ export function normalizeGuess(text: string): string {
 
 /** A clue must not contain the secret word (Taboo rule). */
 export function clueContainsWord(clue: string, word: string): boolean {
-  const c = normalizeGuess(clue)
-  const w = normalizeGuess(word)
-  if (!w) return false
-  // Word-boundary match: reject the secret word as a whole word or phrase, but
-  // allow it as an incidental substring (e.g. "art" inside "smart" is fine).
-  // `w` is normalized to [a-z0-9 ] so it carries no regex metacharacters.
-  return new RegExp(`\\b${w}\\b`).test(c)
+  // Strict Taboo: reject the secret word used as ANY part of a clue word, in either
+  // direction. e.g. word "fire" blocks "firewall"; word "dance" blocks "dancing";
+  // word "firewall" blocks the clue "fire". Spaces are stripped so multi-word
+  // answers ("ice cream") are caught even when run together ("icecream").
+  const wKey = normalizeGuess(word).replace(/ /g, '')
+  if (!wKey) return false
+  // Stem for e-dropping suffixes so "dance" also blocks "dancing"/"danced".
+  const stem = wKey.endsWith('e') ? wKey.slice(0, -1) : wKey
+  const tokens = normalizeGuess(clue).split(' ').filter(Boolean)
+  for (const t of tokens) {
+    // The secret word sits inside a clue word: "firewall" ⊇ "fire", "danced" ⊇ "dance", "cats" ⊇ "cat".
+    if (t.includes(wKey)) return true
+    // A suffixed form of an e-dropping stem: "dancing" from "dance".
+    if (stem.length >= 4 && t.length > stem.length && t.startsWith(stem)) return true
+    // A clue word is a meaningful chunk of the secret word: clue "fire" for word "firewall".
+    if (t.length >= 4 && wKey.includes(t)) return true
+  }
+  // Multi-word answer run together as a single clue word, e.g. "ice cream" → "icecream".
+  if (normalizeGuess(word).includes(' ') && tokens.join('').includes(wKey)) return true
+  return false
 }
 
 /**

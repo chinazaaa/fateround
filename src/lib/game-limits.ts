@@ -160,8 +160,15 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
 }
 
 function clampAdminMax(gameType: LobbyLimitGameType, maxPlayers: number): number {
-  const { min } = GAME_LIMIT_CODE_DEFAULTS[gameType]
-  return Math.min(GAME_LIMIT_ABSOLUTE_MAX, Math.max(min, Math.floor(maxPlayers)))
+  // Each game's code-defined max is its hard ceiling — admins can tune down from it,
+  // but not above it (e.g. Whot stays capped at 6 regardless of any stored override).
+  const { min, max } = GAME_LIMIT_CODE_DEFAULTS[gameType]
+  return Math.min(max, Math.max(min, Math.floor(maxPlayers)))
+}
+
+/** The highest max-players an admin may set for a game (its code-defined capacity). */
+export function adminMaxCeiling(gameType: LobbyLimitGameType): number {
+  return GAME_LIMIT_CODE_DEFAULTS[gameType].max
 }
 
 function mergeLimitRows(rows: { game_type: string; max_players: number }[]): GamePlayerLimitsMap {

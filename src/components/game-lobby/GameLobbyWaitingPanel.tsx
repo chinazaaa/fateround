@@ -20,6 +20,8 @@ type Props = {
   description?: React.ReactNode
   rulesLink?: React.ReactNode
   activity?: React.ReactNode
+  /** Render the activity above the session controls + player list (e.g. team picker first). */
+  activityFirst?: boolean
   playerListLabel?: string
   isSpectator?: boolean
   onReady?: () => Promise<void>
@@ -37,6 +39,7 @@ export function GameLobbyWaitingPanel({
   description,
   rulesLink,
   activity,
+  activityFirst = false,
   playerListLabel = 'In lobby',
   isSpectator = false,
   onReady,
@@ -91,6 +94,8 @@ export function GameLobbyWaitingPanel({
         </div>
       </div>
 
+      {activityFirst ? activity : null}
+
       {myPlayerId ? (
         <PlayerSessionControls
           gameCode={gameCode}
@@ -104,7 +109,7 @@ export function GameLobbyWaitingPanel({
 
       {rulesLink ? <div className="text-center">{rulesLink}</div> : null}
       <GameLobbyPlayerList players={players} myPlayerId={myPlayerId} label={playerListLabel} />
-      {activity}
+      {activityFirst ? null : activity}
     </div>
   )
 }
