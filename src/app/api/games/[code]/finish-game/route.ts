@@ -69,6 +69,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ success: true })
   }
 
+  // Save snapshot for rematch history
+  const [votesRes, participantsRes, snapshotCountRes] = await Promise.all([
+    supabase.from('votes').select('*').eq('game_id', gameId),
+    supabase.from('participants').select('*').eq('game_id', gameId),
+    supabase
+      .from('game_snapshots')
+      .select('session_number')
+      .eq('game_id', gameId)
+      .order('session_number', { ascending: false })
+      .limit(1),
+  ])
+
+  const snapshotVotes = votesRes.data ?? []
+  const snapshotParticipants = participantsRes.data ?? []
+  const lastSession = snapshotCountRes.data?.[0]?.session_number ?? 0
+
+  if (snapshotVotes.length > 0) {
+    const { error: snapErr } = await supabase.from('game_snapshots').insert({
+      game_id: gameId,
+      session_number: lastSession + 1,
+      snapshot_data: {
+        votes: snapshotVotes,
+        participants: snapshotParticipants,
+        gameType: game.game_type,
+      },
+    })
+    if (snapErr) console.error('Failed to save game snapshot:', snapErr.message)
+  }
+
   const { error } = await markGameFinished(supabase, gameId, now)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

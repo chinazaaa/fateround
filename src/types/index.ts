@@ -205,6 +205,8 @@ export interface Game {
   host_token: string
   rounds_count: number
   timer_seconds: number
+  /** Scrabble — which word list to validate plays against (default 'enable'). */
+  scrabble_dictionary_id?: string | null
   /** Codewords — operative guess phase timer. */
   operative_timer_seconds?: number | null
   anonymous: boolean

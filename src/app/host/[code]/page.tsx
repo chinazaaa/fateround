@@ -186,6 +186,7 @@ import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { RoundResultsShareBlock } from '@/components/RoundResultsShareBlock'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { AchievementsShareBlock } from '@/components/AchievementsShareBlock'
+import { RematchHistory } from '@/components/RematchHistory'
 import { ShareResults } from '@/components/ShareResults'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
@@ -4077,6 +4078,14 @@ export default function HostPage() {
           ) : null}
 
           <AchievementsShareBlock achievements={achievements} gameTitle={game.title} />
+
+          <RematchHistory
+            gameId={game.id}
+            currentParticipants={participants}
+            currentVotes={votes}
+            gameType={game.game_type}
+            customSlots={game.custom_slots?.slots}
+          />
 
           {isNhie ? (
             <div className="space-y-8">

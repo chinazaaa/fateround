@@ -3,8 +3,6 @@ import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { generateAiQuestions } from '@/lib/ai-questions'
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-
 const requestSchema = z.object({
   gameId: z.string().min(1),
   hostToken: z.string().min(1),
@@ -17,6 +15,8 @@ const requestSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
+  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+
   let body: unknown
   try {
     body = await req.json()

@@ -58,6 +58,7 @@ import { TwoTruthsSessionSummary } from '@/components/two-truths/TwoTruthsSessio
 import { MonopolySessionSummary } from '@/components/monopoly/MonopolySessionSummary'
 import { YahtzeeSessionSummary } from '@/components/yahtzee/YahtzeeSessionSummary'
 import { WhotSessionSummary } from '@/components/whot/WhotSessionSummary'
+import { RematchHistory } from '@/components/RematchHistory'
 import { LudoSessionSummary } from '@/components/ludo/LudoSessionSummary'
 import { mergeCodewordsGuesses } from '@/lib/codewords'
 import { hotSeatPlayerDisplayName } from '@/lib/hot-seat'
@@ -627,6 +628,14 @@ export default function GameHistoryPage() {
           <p className="font-medium mt-0.5">{votes.length}</p>
         </div>
       </div>
+
+      <RematchHistory
+        gameId={game.id}
+        currentParticipants={participants}
+        currentVotes={votes}
+        gameType={game.game_type}
+        customSlots={game.custom_slots?.slots}
+      />
 
       {game.anonymous && (
         <p className="callout-warning text-sm">
