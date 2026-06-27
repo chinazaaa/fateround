@@ -2,7 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-export const SUDOKU_MIN_PLAYERS = 2
+// 1 so players can do a Sudoku on their own (like Yahtzee), not just in a group.
+export const SUDOKU_MIN_PLAYERS = 1
 export const SUDOKU_MAX_PLAYERS = 20
 export const SUDOKU_DEFAULT_DURATION = 900 // 15 minutes
 
