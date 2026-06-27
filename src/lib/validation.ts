@@ -796,6 +796,7 @@ export const describeItGameSchema = z.object({
 export const describeItSettingsSchema = z.object({
   gameId: gameCodeString(),
   hostToken: z.string().min(1),
+  mode: z.enum(['team', 'individual']).optional(),
   numTeams: z.coerce.number().int().min(2).max(4).optional(),
   turnSeconds: z.coerce.number().int().optional(),
   rounds: z.coerce.number().int().optional(),

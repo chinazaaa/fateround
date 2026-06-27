@@ -1,8 +1,13 @@
 'use client'
 
 import { useRef, type ReactNode } from 'react'
-import type { DescribeItWord, Game, Player } from '@/types'
-import { computeDescribeItScores, describeItWinningTeams, teamLabel } from '@/lib/describe-it'
+import type { DescribeItMode, DescribeItWord, Game, Player } from '@/types'
+import {
+  computeDescribeItScores,
+  describeItIndividualLeaderboard,
+  describeItWinningTeams,
+  teamLabel,
+} from '@/lib/describe-it'
 import { teamStyle, TeamBadge } from '@/components/describe-it/DescribeItChrome'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
@@ -13,15 +18,32 @@ export function DescribeItFinalResultsShareBlock({
   players,
   words,
   numTeams,
+  mode = 'team',
+  playerScores = [],
   playAgainButton,
 }: {
   game: Game
   players: Player[]
   words: DescribeItWord[]
   numTeams: number
+  mode?: DescribeItMode
+  playerScores?: { player_id: string; score?: number | null }[]
   playAgainButton?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
+
+  if (mode === 'individual') {
+    return (
+      <DescribeItIndividualResults
+        captureRef={captureRef}
+        game={game}
+        players={players}
+        playerScores={playerScores}
+        playAgainButton={playAgainButton}
+      />
+    )
+  }
+
   const scores = computeDescribeItScores(words, numTeams)
   const winners = describeItWinningTeams(scores)
   const isTie = winners.length > 1
@@ -78,6 +100,74 @@ export function DescribeItFinalResultsShareBlock({
             {topGuessers.map((g) => `${g.name} (${g.count})`).join(' · ')}
           </p>
         )}
+      </div>
+
+      <HostGameFinishedActions
+        playAgainButton={playAgainButton}
+        shareButton={
+          <ShareResults
+            captureRef={captureRef}
+            game={game}
+            participants={[]}
+            votes={[]}
+            rounds={[]}
+            players={players}
+          />
+        }
+      />
+    </div>
+  )
+}
+
+/** Individual-mode final standings: ranked players by total points. */
+function DescribeItIndividualResults({
+  captureRef,
+  game,
+  players,
+  playerScores,
+  playAgainButton,
+}: {
+  captureRef: React.RefObject<HTMLDivElement | null>
+  game: Game
+  players: Player[]
+  playerScores: { player_id: string; score?: number | null }[]
+  playAgainButton?: ReactNode
+}) {
+  const leaderboard = describeItIndividualLeaderboard(playerScores, players)
+  const top = leaderboard[0]?.score ?? 0
+  const winners = top > 0 ? leaderboard.filter((p) => p.score === top) : []
+  const winnerLabel =
+    winners.length === 0 ? 'No points scored' : winners.length > 1 ? "It's a tie!" : `${winners[0]!.name} wins!`
+
+  return (
+    <div className="space-y-4">
+      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-4">
+        <ShareResultsCaptureHeader game={game} />
+        <p className="text-5xl sm:text-6xl leading-none text-center pt-1">{winners.length === 0 ? '🏁' : '🏆'}</p>
+        <p className="text-xl sm:text-2xl font-black text-center text-[var(--marry)]">{winnerLabel}</p>
+
+        <div className="space-y-2">
+          {leaderboard.map((p, i) => {
+            const isWinner = winners.some((w) => w.id === p.id)
+            return (
+              <div
+                key={p.id}
+                className={[
+                  'flex items-center justify-between rounded-xl border px-4 py-2.5',
+                  isWinner ? 'border-[var(--primary)]/60 bg-[var(--primary)]/10' : 'border-[var(--border-strong)]',
+                ].join(' ')}
+              >
+                <span className="flex items-center gap-1.5 font-bold min-w-0">
+                  <span className="shrink-0">{isWinner ? '👑' : `${i + 1}.`}</span>
+                  <span className="truncate">{p.name}</span>
+                </span>
+                <span className="text-lg font-black tabular-nums shrink-0">
+                  {p.score} {p.score === 1 ? 'pt' : 'pts'}
+                </span>
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       <HostGameFinishedActions

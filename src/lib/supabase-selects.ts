@@ -59,14 +59,14 @@ export const CHESS_SESSION_SELECT =
   'id,game_id,player_white_id,player_black_id,fen,pgn,current_turn,white_time_ms,black_time_ms,turn_started_at,last_move_from,last_move_to,in_check,status,result_reason,winner_player_id,is_draw,status_message,turn_deadline_at,created_at,updated_at'
 
 export const DESCRIBE_IT_SESSION_SELECT =
-  'id,game_id,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,current_word,current_clue,current_clues,used_words,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
+  'id,game_id,mode,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,roster,current_word,current_clue,current_clues,used_words,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
 
-export const DESCRIBE_IT_PLAYER_SELECT = 'id,game_id,player_id,team,created_at'
+export const DESCRIBE_IT_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_at'
 
 export const DESCRIBE_IT_WORD_SELECT =
   'id,game_id,turn_index,round,team,describer_player_id,word,clue,status,guesser_player_id,created_at'
 
-export const DESCRIBE_IT_GUESS_SELECT = 'id,game_id,turn_index,player_id,team,text,correct,created_at'
+export const DESCRIBE_IT_GUESS_SELECT = 'id,game_id,turn_index,player_id,team,text,correct,points,created_at'
 
 export const SCRABBLE_SESSION_SELECT =
   'id,game_id,turn_order,current_turn_index,board,bag,phase,consecutive_passes,last_move,winner_player_id,is_tie,status_message,turn_deadline_at,created_at,updated_at'
