@@ -2,7 +2,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
-import { gameTypeConfig, gameTypeCreateParam } from '@/lib/game-types'
+import { gameTypeConfig, gameTypeCreateParam, GAME_TYPE_DISPLAY_ORDER } from '@/lib/game-types'
 import {
   ALL_GAME_LANDING_SLUGS,
   GAME_LANDING_CONTENT,
@@ -15,7 +15,6 @@ import { SITE_NAME, faqPageJsonLd, gameJsonLd, gameLandingOgPath } from '@/lib/s
 import { getGameLandingCustomContentHints } from '@/lib/custom-content-hints'
 import { CustomContentAiTip } from '@/components/ui/CustomContentAiTip'
 import { SiteFooter } from '@/components/SiteFooter'
-import type { GameType } from '@/types'
 
 type Props = { params: Promise<{ slug: string }> }
 
@@ -68,7 +67,9 @@ export default async function GameLandingRoute({ params }: Props) {
   if (!content) notFound()
 
   const cfg = gameTypeConfig(content.gameType)
-  const otherGames = (Object.keys(GAME_LANDING_CONTENT) as GameType[]).filter((t) => t !== content.gameType)
+  const otherGames = GAME_TYPE_DISPLAY_ORDER.filter(
+    (t) => t !== content.gameType && t in GAME_LANDING_CONTENT,
+  )
   const bodyParagraph = getGameBodyParagraph(content)
   const faqs = getGameFaqs(content)
   const customContentHints = getGameLandingCustomContentHints(content.gameType)
