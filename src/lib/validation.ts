@@ -1035,30 +1035,9 @@ export type HotSeatSubmissionInput = z.infer<typeof hotSeatSubmissionSchema>
 // App feedback (POST /api/feedback)
 // ---------------------------------------------------------------------------
 
-const feedbackGameTypeEnum = z.enum([
-  'general',
-  'smash_marry_kill',
-  'red_flag_green_flag',
-  'smash_or_pass',
-  'parent_approval',
-  'would_you_rather',
-  'never_have_i_ever',
-  'this_or_that',
-  'most_likely_to',
-  'who_said_this',
-  'hot_seat',
-  'custom',
-  'anonymous_messages',
-  'secret_message',
-  'bingo',
-  'codewords',
-  'trivia',
-  'two_truths',
-  'monopoly',
-  'yahtzee',
-  'whot',
-  'ludo',
-])
+// Derived from the canonical game-type list (+ 'general') so it can't drift as new
+// games are added — previously this was a hand-copied list that had gone stale.
+const feedbackGameTypeEnum = z.enum(['general', ...gameTypeEnum.options])
 
 const feedbackCategoryEnum = z.enum(['bug', 'feature', 'improvement', 'other'])
 

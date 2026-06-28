@@ -16,18 +16,16 @@ import {
 } from '@/lib/game-types'
 import { hostActionSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
-  const raw = await req.json()
-  const parsed = hostActionSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data, error: bodyError } = await parseJsonBody(req, hostActionSchema)
+  if (bodyError) return bodyError
 
-  const { hostToken } = parsed.data
+  const { hostToken } = data
   const gameId = code.toUpperCase()
 
   const admin = getSupabaseAdmin()
