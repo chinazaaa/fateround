@@ -67,9 +67,7 @@ export default async function GameLandingRoute({ params }: Props) {
   if (!content) notFound()
 
   const cfg = gameTypeConfig(content.gameType)
-  const otherGames = GAME_TYPE_DISPLAY_ORDER.filter(
-    (t) => t !== content.gameType && t in GAME_LANDING_CONTENT,
-  )
+  const otherGames = GAME_TYPE_DISPLAY_ORDER.filter((t) => t !== content.gameType && t in GAME_LANDING_CONTENT)
   const bodyParagraph = getGameBodyParagraph(content)
   const faqs = getGameFaqs(content)
   const customContentHints = getGameLandingCustomContentHints(content.gameType)
