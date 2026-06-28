@@ -19,6 +19,7 @@ Legend: `[ ]` todo · `[x]` done · `[~]` in progress
 ## Phase 1 — Safety net (prerequisite for everything below)
 
 - [x] **No automated tests** → fixed (#144). Added Vitest (node env) + a CI `Test` job; 29 unit tests over pure logic (scrabble scoring/geometry, language tile sets, `parseGameType`/guards, round generation). The harness everything below relies on.
+  - [x] **Component/hook harness** — added jsdom + React Testing Library + `@vitejs/plugin-react`, with a dummy-Supabase `test.env` so components that build a client at import don't throw. Per-file `// @vitest-environment jsdom` opt-in keeps pure-logic tests on node. This is the prerequisite for safely doing the **Phase 4 god-file decomposition** & realtime-view refactors.
 
 ## Phase 2 — Make dispatch fail-fast (cheap safety, surfaces existing gaps)
 
