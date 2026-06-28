@@ -1178,10 +1178,10 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   sudoku: landing('sudoku', {
     seoTitle: 'Sudoku — Multiplayer Puzzle Race Online',
     seoDescription:
-      'Play multiplayer Sudoku online. Race your friends to claim 3×3 blocks — first to solve a block scores 10 pts, wrong answers cost you points and lock you out.',
+      'Play multiplayer Sudoku online. Race your friends to claim 3×3 blocks — first to solve a block scores 10 pts, wrong answers cost you points but you can try again.',
     keywords: ['multiplayer sudoku', 'sudoku online', 'puzzle race game', 'party game sudoku'],
     heroSubtitle:
-      'Everyone solves the same 9×9 puzzle. Claim 3×3 blocks before your friends — first correct gets 10 pts, wrong answers lock you out.',
+      'Everyone solves the same 9×9 puzzle. Claim 3×3 blocks before your friends — first correct gets 10 pts, wrong answers cost points.',
     highlights: ['Race to claim blocks', 'Risk/reward scoring', 'Live real-time puzzle'],
     features: [
       {
@@ -1191,7 +1191,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         title: 'Risk vs reward',
-        description: 'A wrong answer costs 3 points and permanently locks you out of that block.',
+        description: 'A wrong answer costs 3 points — but you can keep trying that block until you get it.',
         emoji: '⚠️',
       },
       {
@@ -1213,7 +1213,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         title: 'Race to the top',
-        description: '1st correct on a block = 10 pts, 2nd = 6, 3rd = 3, rest = 1. Wrong answer = −3 pts, locked out.',
+        description:
+          '1st correct on a block = 10 pts, 2nd = 6, 3rd = 3, rest = 1. Wrong answer = −3 pts, but you can retry.',
       },
     ],
     perfectFor: ['Puzzle fans', 'Game nights', 'Brain teasers', 'Classrooms'],
@@ -1221,7 +1222,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'What happens if I submit a wrong answer?',
         answer:
-          'You lose 3 points and are permanently locked out of that block for the rest of the game. You can still attempt all other blocks.',
+          'You lose 3 points, but you can try that block again — and you can keep attempting every other block too.',
       },
       {
         question: 'Can multiple players solve the same block?',

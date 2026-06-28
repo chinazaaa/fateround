@@ -20,17 +20,21 @@ import {
 } from '@/components/crazy-eights/CrazyEightsChrome'
 import { CrazyEightsSuitIcon } from '@/components/crazy-eights/CrazyEightsSuitIcon'
 
-/** Card-face gradients per suit. Hearts/diamonds run red, spades/clubs slate, joker violet. */
+/**
+ * Card-face gradients per suit. Classic playing-card look: clean light faces so the
+ * black (spades/clubs) and red (hearts/diamonds) pips read with strong contrast.
+ * Jokers get a solid violet face (white pips).
+ */
 const SUIT_COLORS: Record<CrazyEightsSuit, string> = {
-  spades: 'from-slate-500/30 to-slate-700/20 border-slate-400/60',
-  clubs: 'from-slate-500/30 to-slate-700/20 border-slate-400/60',
-  hearts: 'from-red-500/30 to-red-600/20 border-red-400/60',
-  diamonds: 'from-red-500/30 to-red-600/20 border-red-400/60',
-  joker: 'from-fuchsia-500/40 to-purple-600/30 border-fuchsia-400/70',
+  spades: 'from-slate-50 to-slate-200 border-slate-300',
+  clubs: 'from-slate-50 to-slate-200 border-slate-300',
+  hearts: 'from-rose-50 to-rose-100 border-rose-300',
+  diamonds: 'from-rose-50 to-rose-100 border-rose-300',
+  joker: 'from-fuchsia-500 to-purple-600 border-fuchsia-300',
 }
 
-/** Wild cards (the 8 and Jokers) get a distinct violet face. */
-const WILD_COLORS = 'from-violet-500/40 to-purple-600/30 border-violet-400/70'
+/** Wild cards (the 8 and Jokers) get a distinct solid-violet face with white pips. */
+const WILD_COLORS = 'from-violet-500 to-purple-600 border-violet-300'
 
 const RANK_NAMES: Record<number, string> = {
   1: 'Ace',
@@ -103,7 +107,7 @@ export function CrazyEightsPlayingCard({
         <span
           className={[
             'mt-0.5 max-w-full truncate rounded px-1 py-0.5 font-bold uppercase tracking-wide leading-tight',
-            'text-white/95 bg-black/30',
+            'text-white bg-slate-900/75',
             sizeStyles.badge,
           ].join(' ')}
         >

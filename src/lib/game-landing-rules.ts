@@ -807,8 +807,8 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         '2nd correct = 6 points.',
         '3rd correct = 3 points.',
         '4th+ correct = 1 point.',
-        'Wrong submission = −3 points AND permanently locked out of that block.',
-        "You can still attempt every other block you haven't submitted yet.",
+        'Wrong submission = −3 points, but you can try that block again.',
+        "You can keep attempting every block you haven't already solved.",
       ],
     },
     {

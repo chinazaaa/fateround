@@ -149,6 +149,11 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
       .channel(`crazy-eights-player-${gameCode}`)
       .on(
         'postgres_changes',
+        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+        () => void load()
+      )
+      .on(
+        'postgres_changes',
         { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         () => void load()
       )

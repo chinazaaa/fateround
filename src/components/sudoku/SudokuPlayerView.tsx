@@ -343,7 +343,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       } else if (json.isCorrect) {
         showToast(`✓ Correct! +${json.pointsAwarded} pts`, true)
       } else {
-        showToast(`✗ Wrong! ${SUDOKU_WRONG_PENALTY} pts — locked out of this block`, false)
+        showToast(`✗ Wrong! ${SUDOKU_WRONG_PENALTY} pts — try again`, false)
       }
     } finally {
       setSubmitting(null)
@@ -495,7 +495,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
             4th+ <span className="font-bold text-emerald-200">+{SUDOKU_SCORING[3]}</span>
           </span>
           <span>
-            Wrong <span className="font-bold text-red-400">{SUDOKU_WRONG_PENALTY}</span> + locked out
+            Wrong <span className="font-bold text-red-400">{SUDOKU_WRONG_PENALTY}</span> · retry OK
           </span>
         </div>
 
