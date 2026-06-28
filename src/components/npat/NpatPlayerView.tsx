@@ -247,10 +247,11 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
           rulesLink={<GameRulesLink gameType="i_call_on" variant="subtle" />}
           isSpectator={me?.spectator === true}
           onReady={async () => {
+            if (!myResumeToken) return
             await fetch('/api/players/ready', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+              body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
             })
             await load()
           }}

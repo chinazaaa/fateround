@@ -240,7 +240,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       )
     }
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -287,7 +287,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       now,
     })
 
-    const { error: roundError } = await supabase.from('rounds').insert(roundRows)
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRows)
     if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
 
     const updatedPoolUsage = {
@@ -298,7 +298,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       },
     }
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -324,7 +324,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     )
     if (cardsError) return NextResponse.json({ error: cardsError }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -352,7 +352,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     )
     if (initError) return NextResponse.json({ error: initError }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -379,7 +379,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     )
     if (initError) return NextResponse.json({ error: initError }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -406,7 +406,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     )
     if (initError) return NextResponse.json({ error: initError }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -433,7 +433,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     )
     if (initError) return NextResponse.json({ error: initError }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -462,7 +462,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     )
     if (initError) return NextResponse.json({ error: initError }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -491,7 +491,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     )
     if (initError) return NextResponse.json({ error: initError }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -518,7 +518,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     )
     if (initError) return NextResponse.json({ error: initError }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -547,7 +547,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     )
     if (initError) return NextResponse.json({ error: initError }, { status: 400 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({ status: 'active', session_started_at: sessionStartedAt, current_round_number: 1 })
       .eq('id', code.toUpperCase())
@@ -572,7 +572,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     )
     if (initError) return NextResponse.json({ error: initError }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -655,7 +655,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     if (boardError) return NextResponse.json({ error: boardError.message }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -700,10 +700,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       )
     }
 
-    const { error: roundError } = await supabase.from('rounds').insert(roundRows)
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRows)
     if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -730,10 +730,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       now,
     })
 
-    const { error: roundError } = await supabase.from('rounds').insert(roundRow)
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRow)
     if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -756,7 +756,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
     const { roundRow, solution } = buildSudokuRoundRow(code.toUpperCase(), seed)
 
-    const { data: insertedRound, error: roundError } = await supabase
+    const { data: insertedRound, error: roundError } = await getSupabaseAdmin()
       .from('rounds')
       .insert(roundRow)
       .select('id')
@@ -771,7 +771,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .insert({ round_id: insertedRound.id, solution })
     if (solutionError) return NextResponse.json({ error: solutionError.message }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -795,10 +795,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const metadata = buildWordHuntMetadata(seed)
     const roundRow = buildWordHuntRoundRow(code.toUpperCase(), metadata)
 
-    const { error: roundError } = await supabase.from('rounds').insert(roundRow)
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRow)
     if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -835,10 +835,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const { roundRows, roundsCount } = built
 
-    const { error: roundError } = await supabase.from('rounds').insert(roundRows)
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRows)
     if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -957,10 +957,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       r.quote_submitted_at = i === 0 ? now : null
     })
 
-    const { error: roundError } = await supabase.from('rounds').insert(allRoundRows)
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(allRoundRows)
     if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -1073,10 +1073,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       ended_at: null,
     }))
 
-    const { error: roundError } = await supabase.from('rounds').insert(roundRows)
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRows)
     if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({ status: 'active', current_round_number: 1, session_started_at: sessionStartedAt })
       .eq('id', code.toUpperCase())
@@ -1166,10 +1166,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       ended_at: null,
     }))
 
-    const { error: roundError } = await supabase.from('rounds').insert(roundRows)
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRows)
     if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({ status: 'active', current_round_number: 1, session_started_at: sessionStartedAt })
       .eq('id', code.toUpperCase())
@@ -1242,16 +1242,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     const { roundRows, roundsCount } = built
 
-    const { error: poolError } = await supabase
+    const { error: poolError } = await getSupabaseAdmin()
       .from('games')
       .update({ custom_questions: questionPool })
       .eq('id', code.toUpperCase())
     if (poolError) return NextResponse.json({ error: poolError.message }, { status: 500 })
 
-    const { error: roundError } = await supabase.from('rounds').insert(roundRows)
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRows)
     if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -1319,10 +1319,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       ended_at: null,
     }))
 
-    const { error: roundError } = await supabase.from('rounds').insert(roundRows)
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRows)
     if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({ status: 'active', current_round_number: 1, session_started_at: sessionStartedAt })
       .eq('id', code.toUpperCase())
@@ -1410,10 +1410,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       ended_at: null,
     }))
 
-    const { error: roundError } = await supabase.from('rounds').insert(roundRows)
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRows)
     if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({ status: 'active', current_round_number: 1, session_started_at: sessionStartedAt })
       .eq('id', code.toUpperCase())
@@ -1496,10 +1496,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       ended_at: null,
     }))
 
-    const { error: roundError } = await supabase.from('rounds').insert(roundRows)
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRows)
     if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
 
-    const { error: gameError } = await supabase
+    const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
         status: 'active',
@@ -1592,10 +1592,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     ended_at: null,
   }))
 
-  const { error: roundError } = await supabase.from('rounds').insert(roundRows)
+  const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRows)
   if (roundError) return NextResponse.json({ error: roundError.message }, { status: 500 })
 
-  const { error: gameError } = await supabase
+  const { error: gameError } = await getSupabaseAdmin()
     .from('games')
     .update({ status: 'active', current_round_number: 1, session_started_at: sessionStartedAt })
     .eq('id', code.toUpperCase())

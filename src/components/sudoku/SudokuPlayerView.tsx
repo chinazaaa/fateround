@@ -283,11 +283,12 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   async function handleReady() {
-    if (!myPlayerId) return
+    const resumeToken = myResumeTokenRef.current
+    if (!resumeToken) return
     await fetch('/api/players/ready', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+      body: JSON.stringify({ gameId: gameCode, resumeToken }),
     })
     await load()
   }

@@ -643,7 +643,7 @@ export async function POST(req: NextRequest) {
     if (gameRow.status === 'active' && !isSpectator) {
       const { role, error: assignError } = await assignCodewordsLateJoinOperative(getSupabaseAdmin(), gameId, player.id)
       if (assignError) {
-        await supabase.from('players').delete().eq('id', player.id)
+        await getSupabaseAdmin().from('players').delete().eq('id', player.id)
         return NextResponse.json({ error: assignError }, { status: 500 })
       }
       return jsonPlayerJoin(roomMemberId, player, gameRow as Game, role ? { codewordsRole: role } : {})
@@ -696,7 +696,7 @@ export async function POST(req: NextRequest) {
     if (gameRow.status === 'active' && !isSpectator) {
       const { error: assignError } = await assignDescribeItLateJoinTeam(supabase, gameId, player.id)
       if (assignError) {
-        await supabase.from('players').delete().eq('id', player.id)
+        await getSupabaseAdmin().from('players').delete().eq('id', player.id)
         return NextResponse.json({ error: assignError }, { status: 500 })
       }
     }
@@ -765,7 +765,7 @@ export async function POST(req: NextRequest) {
     const { data: existingPlayers } = await supabase.from('players').select('id, name').eq('game_id', id)
     const displayOrder = existingPlayers?.length ?? 0
 
-    const { data: participant, error: partError } = await supabase
+    const { data: participant, error: partError } = await getSupabaseAdmin()
       .from('participants')
       .insert({
         game_id: id,
@@ -792,7 +792,7 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (playerError) {
-      await supabase.from('participants').delete().eq('id', participant.id)
+      await getSupabaseAdmin().from('participants').delete().eq('id', participant.id)
       return NextResponse.json({ error: playerError.message }, { status: 500 })
     }
 
@@ -978,7 +978,7 @@ export async function POST(req: NextRequest) {
     }
     const displayOrder = existingPlayers?.length ?? 0
 
-    const { data: participant, error: partError } = await supabase
+    const { data: participant, error: partError } = await getSupabaseAdmin()
       .from('participants')
       .insert({
         game_id: id,
@@ -1005,7 +1005,7 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (playerError) {
-      await supabase.from('participants').delete().eq('id', participant.id)
+      await getSupabaseAdmin().from('participants').delete().eq('id', participant.id)
       return NextResponse.json({ error: playerError.message }, { status: 500 })
     }
 
@@ -1110,7 +1110,7 @@ export async function PATCH(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     if (player.participant_id) {
-      await supabase.from('participants').update({ name }).eq('id', player.participant_id)
+      await getSupabaseAdmin().from('participants').update({ name }).eq('id', player.participant_id)
     }
 
     return NextResponse.json({
@@ -1321,7 +1321,7 @@ export async function PATCH(req: NextRequest) {
     else if (updates.gender && updates.gender !== 'both') partUpdates.gender = updates.gender
 
     if (Object.keys(partUpdates).length > 0) {
-      await supabase.from('participants').update(partUpdates).eq('id', participant.id)
+      await getSupabaseAdmin().from('participants').update(partUpdates).eq('id', participant.id)
     }
   }
 
@@ -1476,9 +1476,9 @@ export async function DELETE(req: NextRequest) {
   }
 
   if (game!.participant_mode === 'joiners') {
-    await deleteJoinerPair(supabase, id, player)
+    await deleteJoinerPair(getSupabaseAdmin(), id, player)
   } else {
-    const { error } = await supabase.from('players').delete().eq('id', playerId)
+    const { error } = await getSupabaseAdmin().from('players').delete().eq('id', playerId)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   }
 

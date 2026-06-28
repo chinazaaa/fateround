@@ -209,10 +209,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   gameUpdate.pool_usage = poolUsage
 
-  const { error: votesError } = await supabase.from('votes').delete().eq('game_id', gameId)
+  const admin = getSupabaseAdmin()
+
+  const { error: votesError } = await admin.from('votes').delete().eq('game_id', gameId)
   if (votesError) return NextResponse.json({ error: votesError.message }, { status: 500 })
 
-  const { error: confessionsError } = await supabase.from('confessions').delete().eq('game_id', gameId)
+  const { error: confessionsError } = await admin.from('confessions').delete().eq('game_id', gameId)
   if (confessionsError) return NextResponse.json({ error: confessionsError.message }, { status: 500 })
 
   if (isTriviaGame(gameType)) {
@@ -220,23 +222,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
   }
 
-  const { error: roundsError } = await supabase.from('rounds').delete().eq('game_id', gameId)
+  const { error: roundsError } = await admin.from('rounds').delete().eq('game_id', gameId)
   if (roundsError) return NextResponse.json({ error: roundsError.message }, { status: 500 })
 
-  const { error: poolError } = await supabase.from('wst_quote_pool').delete().eq('game_id', gameId)
+  const { error: poolError } = await admin.from('wst_quote_pool').delete().eq('game_id', gameId)
   if (poolError) return NextResponse.json({ error: poolError.message }, { status: 500 })
 
-  const { error: pqError } = await supabase.from('player_questions').delete().eq('game_id', gameId)
+  const { error: pqError } = await admin.from('player_questions').delete().eq('game_id', gameId)
   if (pqError) return NextResponse.json({ error: pqError.message }, { status: 500 })
 
-  const { error: playerNamesError } = await supabase
+  const { error: playerNamesError } = await admin
     .from('participants')
     .delete()
     .eq('game_id', gameId)
     .not('submitted_by_player_id', 'is', null)
   if (playerNamesError) return NextResponse.json({ error: playerNamesError.message }, { status: 500 })
 
-  const { error: hotSeatError } = await supabase.from('hot_seat_submissions').delete().eq('game_id', gameId)
+  const { error: hotSeatError } = await admin.from('hot_seat_submissions').delete().eq('game_id', gameId)
   if (hotSeatError) return NextResponse.json({ error: hotSeatError.message }, { status: 500 })
 
   if (isAnonymousMessagesGame(gameType)) {

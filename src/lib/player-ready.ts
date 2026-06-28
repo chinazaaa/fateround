@@ -1,8 +1,8 @@
-export async function markPlayerReady(gameId: string, playerId: string): Promise<void> {
+export async function markPlayerReady(gameId: string, resumeToken: string): Promise<void> {
   const res = await fetch('/api/players/ready', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ gameId, playerId }),
+    body: JSON.stringify({ gameId, resumeToken }),
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))

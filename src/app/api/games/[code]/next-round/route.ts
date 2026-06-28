@@ -68,9 +68,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     activateUpdate.quote_submitted_at = now
   }
 
-  await supabase.from('rounds').update(activateUpdate).eq('game_id', gameId).eq('round_number', nextRoundNumber)
+  const admin = getSupabaseAdmin()
 
-  const { error: pointerError } = await supabase
+  await admin.from('rounds').update(activateUpdate).eq('game_id', gameId).eq('round_number', nextRoundNumber)
+
+  const { error: pointerError } = await admin
     .from('games')
     .update({ current_round_number: nextRoundNumber })
     .eq('id', gameId)

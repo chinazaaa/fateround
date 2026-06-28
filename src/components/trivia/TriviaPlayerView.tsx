@@ -312,11 +312,11 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
                 type="button"
                 className="btn-primary w-full py-3 text-base font-bold"
                 onClick={async () => {
-                  if (!myPlayerId) return
+                  if (!myResumeToken) return
                   await fetch('/api/players/ready', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+                    body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
                   })
                   await load()
                 }}

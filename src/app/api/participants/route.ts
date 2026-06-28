@@ -80,7 +80,8 @@ export async function POST(req: NextRequest) {
     display_order: displayOrder++,
   }))
 
-  const { data: created, error } = await supabase.from('participants').insert(rows).select()
+  const admin = getSupabaseAdmin()
+  const { data: created, error } = await admin.from('participants').insert(rows).select()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ participants: created })
@@ -154,7 +155,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
 
-  const { data: updated, error } = await supabase
+  const { data: updated, error } = await getSupabaseAdmin()
     .from('participants')
     .update(updates)
     .eq('id', participantId)
@@ -176,7 +177,7 @@ export async function PATCH(req: NextRequest) {
       if (updates.name) playerUpdates.name = updates.name
       if (updates.gender && player.gender !== 'both') playerUpdates.gender = updates.gender
       if (Object.keys(playerUpdates).length > 0) {
-        await supabase.from('players').update(playerUpdates).eq('id', player.id)
+        await getSupabaseAdmin().from('players').update(playerUpdates).eq('id', player.id)
       }
     }
   }
@@ -214,12 +215,12 @@ export async function DELETE(req: NextRequest) {
       .maybeSingle()
 
     if (linkedPlayer) {
-      await deleteJoinerPair(supabase, auth.id, linkedPlayer)
+      await deleteJoinerPair(getSupabaseAdmin(), auth.id, linkedPlayer)
       return NextResponse.json({ success: true })
     }
   }
 
-  const { error } = await supabase.from('participants').delete().eq('id', participantId)
+  const { error } = await getSupabaseAdmin().from('participants').delete().eq('id', participantId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ success: true })

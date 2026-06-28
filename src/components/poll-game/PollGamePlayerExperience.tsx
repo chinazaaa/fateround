@@ -799,11 +799,15 @@ export function PollGamePlayerExperience({
                 type="button"
                 className="btn-primary w-full py-3 text-base font-bold"
                 onClick={async () => {
-                  if (!myPlayerId) return
+                  const resumeToken = getPlayerSession(gameCode)?.resumeToken
+                  if (!resumeToken) {
+                    toast.error('Your player session expired — rejoin to continue')
+                    return
+                  }
                   await fetch('/api/players/ready', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+                    body: JSON.stringify({ gameId: gameCode, resumeToken }),
                   })
                   await reloadPlayers()
                 }}

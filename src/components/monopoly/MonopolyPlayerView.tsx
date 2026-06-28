@@ -352,8 +352,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
                   <button
                     type="button"
                     onClick={async () => {
-                      if (!myPlayerId) return
-                      await markPlayerReady(gameCode, myPlayerId)
+                      if (!myResumeToken) return
+                      await markPlayerReady(gameCode, myResumeToken)
                       await load()
                     }}
                     className="btn-primary w-full py-3 text-base font-bold"

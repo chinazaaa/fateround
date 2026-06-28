@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       apiKey,
     })
 
-    const { error: updateErr } = await supabase
+    const { error: updateErr } = await getSupabaseAdmin()
       .from('games')
       .update({ ai_generated_questions: result })
       .eq('id', gameId.toUpperCase())

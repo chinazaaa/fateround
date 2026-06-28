@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 
 const schema = z.object({
   gameId: z.string().min(2).max(12),
-  playerId: z.string().uuid(),
+  // Self-action: the player marks themselves ready — authorized by their resume_token.
+  resumeToken: z.string().min(4),
 })
 
 export async function POST(req: NextRequest) {
@@ -16,8 +16,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId } = parsed.data
+  const { gameId, resumeToken } = parsed.data
   const gameCode = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase.from('games').select('id, status').eq('id', gameCode).maybeSingle()
 
@@ -26,10 +27,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Game is not in the lobby' }, { status: 400 })
   }
 
+  const auth = await assertPlayer(supabase, gameCode, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
   const { error } = await supabase
     .from('players')
     .update({ spectator: false })
-    .eq('id', playerId)
+    .eq('id', auth.player.id)
     .eq('game_id', gameCode)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
