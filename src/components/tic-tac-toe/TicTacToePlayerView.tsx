@@ -52,6 +52,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<TicTacToeSession | null>(null)
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
+  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
@@ -124,6 +125,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
     } else {
       setMyPlayerId(null)
     }
+    setMyResumeToken(session?.resumeToken ?? null)
 
     syncScreen(gameData, playerId, sessionData)
     return supabasePollOk(sessionRes)
@@ -214,12 +216,16 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
 
   const movePiece = async (cellIndex: number) => {
     if (!myPlayerId) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setActing(true)
     try {
       const res = await fetch('/api/tic-tac-toe/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, cellIndex }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, cellIndex }),
       })
       const data = await res.json()
       if (!res.ok) {

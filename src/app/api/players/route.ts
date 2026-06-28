@@ -1453,7 +1453,9 @@ export async function DELETE(req: NextRequest) {
   }
 
   if (isTicTacToeGame(gameType)) {
-    const { error } = await removeTicTacToePlayer(supabase, id, playerId, player.name)
+    // Tic-Tac-Toe tables are RLS-locked to anon writes — remove via service role.
+    // (Caller authority — host, or the player removing themselves — is enforced above.)
+    const { error } = await removeTicTacToePlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }

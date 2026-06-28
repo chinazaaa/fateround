@@ -482,8 +482,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return NextResponse.json({ error: `Need exactly ${TIC_TAC_TOE_MIN_PLAYERS} players to start` }, { status: 400 })
     }
 
+    // Tic-Tac-Toe tables are RLS-locked to anon writes — initialize via the
+    // service role. (Host authority is already enforced above for this route.)
     const { error: initError } = await initializeTicTacToeGame(
-      supabase,
+      getSupabaseAdmin(),
       code.toUpperCase(),
       playingPlayers.map((p) => p.id)
     )

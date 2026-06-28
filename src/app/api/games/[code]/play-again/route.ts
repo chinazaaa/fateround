@@ -310,7 +310,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
   }
   if (isTicTacToeGame(gameType)) {
-    const { error: clearError } = await clearTicTacToeSessionData(supabase, gameId)
+    // Tic-Tac-Toe tables are RLS-locked to anon writes — clear via service role.
+    const { error: clearError } = await clearTicTacToeSessionData(getSupabaseAdmin(), gameId)
     if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
   }
 

@@ -47,6 +47,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
   const [ending, setEnding] = useState(false)
   const [hostMode, setHostModeState] = useState<TicTacToeHostMode>('spectator')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
+  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
@@ -85,6 +86,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
     const stored = getPlayerSession(gameCode)
     if (stored) {
       setHostPlayerId(stored.playerId)
+      setHostResumeToken(stored.resumeToken ?? null)
       setHostPlayerName(stored.playerName)
     }
   }, [gameCode, load])
@@ -161,6 +163,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
       setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
       setHostPlayerId(data.playerId)
+      setHostResumeToken(data.resumeToken ?? null)
       setHostPlayerName(data.playerName)
       await load()
     } catch (err) {
@@ -172,12 +175,16 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
 
   const movePiece = async (cellIndex: number) => {
     if (!hostPlayerId) return
+    if (!hostResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setHostActing(true)
     try {
       const res = await fetch('/api/tic-tac-toe/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: hostPlayerId, cellIndex }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, cellIndex }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Move failed')

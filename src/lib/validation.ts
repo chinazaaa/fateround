@@ -775,7 +775,10 @@ export const snakeLadderExpireSchema = z.object({
 
 export const ticTacToeMoveSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Authorization is by the secret resume_token (resolved to a player server-side),
+  // not a client-supplied playerId. The token travels with the player across devices,
+  // so cross-device resume keeps working.
+  resumeToken: z.string().min(4),
   // 0-80: sub-board = floor(cellIndex/9), cell within board = cellIndex % 9.
   cellIndex: z.coerce.number().int().min(0).max(80),
 })
