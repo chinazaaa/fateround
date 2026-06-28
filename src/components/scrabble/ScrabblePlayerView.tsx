@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ScrabbleCard,
@@ -27,6 +27,7 @@ import type { Game, Player, ScrabbleSession, ScrabblePlayerState, ScrabblePlaced
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
@@ -140,37 +141,10 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
     load()
   }, [load])
 
-  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const scheduleLoad = useCallback(() => {
-    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
-    reloadTimerRef.current = setTimeout(() => void load(), 90)
-  }, [load])
+  // Realtime push: reload on any change to this game's row + scrabble tables.
+  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'scrabble_sessions', 'scrabble_player_state'], load)
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`scrabble-player-${gameCode}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        scheduleLoad
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'scrabble_sessions', filter: `game_id=eq.${gameCode}` },
-        scheduleLoad
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'scrabble_player_state', filter: `game_id=eq.${gameCode}` },
-        scheduleLoad
-      )
-      .subscribe()
-    return () => {
-      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, scheduleLoad])
-
+  // Safety-net poll in case a realtime event is missed / the socket drops.
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
   useLobbyOpenNotification(game?.status, () => {

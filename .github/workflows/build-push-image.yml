@@ -5,9 +5,10 @@ name: Build & Push Image
 # on the instance via SSM. All values here are non-secret (NEXT_PUBLIC_* ship in
 # the client bundle; role ARN / region / repo are public identifiers).
 on:
-  # Auto-build the DEV image when app code lands on dev (infra/docs-only changes skip it).
+  # Auto-build + deploy on app-code pushes: dev -> dev, main -> prod
+  # (infra/docs-only changes skip via the paths filter).
   push:
-    branches: [dev]
+    branches: [dev, main]
     paths:
       - "src/**"
       - "public/**"
@@ -43,7 +44,7 @@ jobs:
       - name: Resolve environment config
         run: |
           set -euo pipefail
-          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          ENV="${{ github.event.inputs.environment || (github.ref_name == 'main' && 'prod' || 'dev') }}"
           echo "Target environment: $ENV"
           case "$ENV" in
             prod)
