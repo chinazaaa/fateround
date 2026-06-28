@@ -250,14 +250,27 @@ sudoku_solutions.)
 
 ---
 
-# Phase 5 — Core & shared tables (plan)
+# Phase 5 — Core & shared tables
 
-> Status: **planned** (Phases 0–4 + token-hiding shipped in #134/#137). This is the final
-> phase. It locks the **shared/core tables** that back the **14 remaining game types** with no
-> dedicated tables — the 9 voting games (smash_marry_kill, red_flag_green_flag, smash_or_pass,
-> parent_approval, would_you_rather, never_have_i_ever, pick_a_number, this_or_that,
-> most_likely_to), plus who_said_this, hot_seat, custom, anonymous_messages, secret_message —
-> and the rooms feature.
+> Status: **IMPLEMENTED** on `feat/rls-core-tables` (pending live verification + merge). Locks
+> the **shared/core tables** that back the **14 remaining game types** with no dedicated tables
+> — the 9 voting games (smash_marry_kill, red_flag_green_flag, smash_or_pass, parent_approval,
+> would_you_rather, never_have_i_ever, pick_a_number, this_or_that, most_likely_to), plus
+> who_said_this, hot_seat, custom, anonymous_messages, secret_message — and the rooms feature.
+>
+> **Done:** votes + all player-submission routes (player-questions, player-participants, photos,
+> hot-seat, quote, confessions [gated by resume_token], wst-quotes, players/promote,
+> players/ready) authorize by `resume_token`; the service-role sweep moved every core-table
+> writer server-side (incl. fixing two stray client writers: sudoku end-game, host anime-quote
+> removal); `0124` locks the 11 core gameplay tables SELECT-only; `0125` locks the 4 rooms
+> tables SELECT-only + revokes anon read of `rooms.creator_token` / `room_members.member_code`.
+>
+> ⚠️ **Before merge/deploy:** apply migrations `0124` + `0125` together with this code; verify
+> realtime doesn't leak `creator_token`/`member_code` (same check as Phase 3); smoke-test a
+> voting game, who-said-this, hot-seat, custom, and a rooms session (create → join → play →
+> finish → play-again). The Phase-3 column-grant footgun now also applies to rooms/room_members.
+>
+> _(Original plan retained below for reference.)_
 
 ## Why this is the largest / most delicate phase
 
