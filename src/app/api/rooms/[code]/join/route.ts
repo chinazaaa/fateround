@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generateGameCode } from '@/lib/utils'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -16,11 +17,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 })
 
   const body = await req.json()
+  const admin = getSupabaseAdmin()
 
-  // Returning member — verify by member code
+  // Returning member — verify by member code (secret credential; read via service role)
   if (body.memberCode) {
     const memberCode = String(body.memberCode).trim().toUpperCase()
-    const { data: member } = await supabase
+    const { data: member } = await admin
       .from('room_members')
       .select('id, display_name, member_code, times_kissed, times_married, times_killed, games_played')
       .eq('room_id', roomCode)
@@ -72,12 +74,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   let memberCode = generateGameCode()
   for (let i = 0; i < 10; i++) {
-    const { data } = await supabase.from('room_members').select('id').eq('member_code', memberCode).maybeSingle()
+    const { data } = await admin.from('room_members').select('id').eq('member_code', memberCode).maybeSingle()
     if (!data) break
     memberCode = generateGameCode()
   }
 
-  const { data: member, error } = await supabase
+  const { data: member, error } = await admin
     .from('room_members')
     .insert({ room_id: roomCode, member_code: memberCode, display_name: displayName })
     .select('id, display_name, member_code')

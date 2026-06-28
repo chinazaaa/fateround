@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { generateGameCode } from '@/lib/utils'
 import { countMembersByRoom, ROOM_PUBLIC_FIELDS } from '@/lib/room-api'
 import { normalizeRoomDescription, normalizeRoomTimezone } from '@/lib/room-timezones'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -71,6 +72,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid timezone' }, { status: 400 })
   }
 
+  const admin = getSupabaseAdmin()
+
   let roomCode = generateGameCode()
   for (let i = 0; i < 10; i++) {
     const { data } = await supabase.from('rooms').select('id').eq('id', roomCode).maybeSingle()
@@ -80,7 +83,7 @@ export async function POST(req: NextRequest) {
 
   const creatorToken = generateGameCode() + generateGameCode()
 
-  const { error } = await supabase.from('rooms').insert({
+  const { error } = await admin.from('rooms').insert({
     id: roomCode,
     name,
     creator_token: creatorToken,

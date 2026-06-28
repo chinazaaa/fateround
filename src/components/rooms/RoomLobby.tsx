@@ -31,7 +31,6 @@ type Room = RoomRow
 type Member = {
   id: string
   display_name: string
-  member_code: string
   joined_at: string
   times_kissed: number
   times_married: number

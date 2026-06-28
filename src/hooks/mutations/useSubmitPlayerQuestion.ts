@@ -15,7 +15,7 @@ export function useSubmitPlayerQuestion(gameCode: string) {
 export function useDeletePlayerQuestion(gameCode: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (data: { questionId: string; playerId: string }) => api.delete('/player-questions', { data }),
+    mutationFn: (data: { questionId: string; resumeToken: string }) => api.delete('/player-questions', { data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: gameKeys.playerQuestions(gameCode) })
     },

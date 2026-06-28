@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { isVoterOnlyMode } from '@/lib/participant-mode'
 import { createVoteSchema } from '@/lib/validation'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 import { canPlayerVoteInRound, getRoundParticipantGender, playerVoteGenderForRound } from '@/lib/participants'
 import {
   isAssignmentComplete,
@@ -26,8 +27,6 @@ import { playerIsViewer } from '@/lib/viewers'
 import { parsePickANumberPool, pickANumberQuestionAt } from '@/lib/pick-a-number'
 import type { PairFlag, WyrChoice } from '@/types'
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-
 function parsePairAssignments(raw: unknown): Record<string, PairFlag> | null {
   if (!raw || typeof raw !== 'object') return null
   const out: Record<string, PairFlag> = {}
@@ -45,7 +44,7 @@ export async function POST(req: NextRequest) {
   }
 
   const {
-    playerId,
+    resumeToken,
     roundId,
     gameId,
     kiss,
@@ -58,13 +57,23 @@ export async function POST(req: NextRequest) {
     pickedNumber: rawPickedNumber,
   } = parsed.data
 
-  const [{ data: player }, { data: round }, { data: game }] = await Promise.all([
+  const supabase = getSupabaseAdmin()
+
+  // Authorize by the secret resume_token; the resolved player is authoritative (the client
+  // no longer supplies its own playerId).
+  const auth = await assertPlayer(supabase, gameId, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const player = auth.player
+  const playerId = player.id
+
+  const [{ data: round }, { data: game }] = await Promise.all([
+    // Scope the round to the authorized game so a known roundId from another game is rejected.
     supabase
-      .from('players')
-      .select('id, gender, identity_gender, name, joined_at, spectator')
-      .eq('id', playerId)
+      .from('rounds')
+      .select('participant_ids, submitter_player_id, quote_text')
+      .eq('id', roundId)
+      .eq('game_id', gameId.toUpperCase())
       .maybeSingle(),
-    supabase.from('rounds').select('participant_ids, submitter_player_id, quote_text').eq('id', roundId).maybeSingle(),
     supabase
       .from('games')
       .select(
@@ -74,7 +83,6 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
   ])
 
-  if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
   if (!round) return NextResponse.json({ error: 'Round not found' }, { status: 404 })
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (playerIsViewer(player, game)) {

@@ -25,11 +25,15 @@ export const LUDO_COLOR_HEX: Record<LudoColor, string> = {
   blue: '#3b82f6',
 }
 
+/**
+ * Track index where each colour's pieces enter the board. Corner layout:
+ * green TL · red TR · blue BR · yellow BL (clockwise from green's ★ at index 0).
+ */
 export const START_POS: Record<LudoColor, number> = {
-  red: 0,
-  green: 13,
-  yellow: 26,
-  blue: 39,
+  green: 0,
+  red: 13,
+  blue: 26,
+  yellow: 39,
 }
 
 /** ★ start + safe entry cells on the 52-cell track — pieces cannot be captured here. */
@@ -38,10 +42,10 @@ const SAFE_TRACK_POSITIONS: ReadonlySet<number> = new Set([
   START_POS.green,
   START_POS.yellow,
   START_POS.blue,
-  50, // red safe entry [7,0]
-  11, // green safe entry [0,7]
-  24, // yellow safe entry [7,14]
-  37, // blue safe entry [14,7]
+  50, // green safe entry [7,0]
+  11, // red safe entry [0,7]
+  24, // blue safe entry [7,14]
+  37, // yellow safe entry [14,7]
 ])
 
 /** Colors used for each player count (opposite corners for 2-player). */

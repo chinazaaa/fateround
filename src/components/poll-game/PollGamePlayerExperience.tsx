@@ -67,43 +67,8 @@ import {
   pairDisabledSlots,
   isHotSeat,
   isCustomGame,
-  isAnonymousMessagesGame,
-  isSecretMessageGame,
-  isBingoGame,
-  isCodewordsGame,
-  isTriviaGame,
-  isTwoTruthsGame,
-  isMonopolyGame,
-  isYahtzeeGame,
-  isWhotGame,
-  isLudoGame,
-  isSnakeAndLadderGame,
-  isTicTacToeGame,
-  isChessGame,
-  isScrabbleGame,
-  isDescribeItGame,
-  isICallOnGame,
-  isSudokuGame,
-  isWordHuntGame,
 } from '@/lib/game-types'
-import { AnonymousMessagesPlayerView } from '@/components/anonymous-messages/AnonymousMessagesPlayerView'
-import { SecretMessageSenderView } from '@/components/secret-message/SecretMessageSenderView'
-import { BingoPlayerView } from '@/components/bingo/BingoPlayerView'
-import { TriviaPlayerView } from '@/components/trivia/TriviaPlayerView'
-import { TwoTruthsPlayerView } from '@/components/two-truths/TwoTruthsPlayerView'
-import { NpatPlayerView } from '@/components/npat/NpatPlayerView'
-import { CodewordsPlayerView } from '@/components/codewords/CodewordsPlayerView'
-import { MonopolyPlayerView } from '@/components/monopoly/MonopolyPlayerView'
-import { YahtzeePlayerView } from '@/components/yahtzee/YahtzeePlayerView'
-import { WhotPlayerView } from '@/components/whot/WhotPlayerView'
-import { LudoPlayerView } from '@/components/ludo/LudoPlayerView'
-import { SnakeLadderPlayerView } from '@/components/snake-and-ladder/SnakeLadderPlayerView'
-import { TicTacToePlayerView } from '@/components/tic-tac-toe/TicTacToePlayerView'
-import { ChessPlayerView } from '@/components/chess/ChessPlayerView'
-import { ScrabblePlayerView } from '@/components/scrabble/ScrabblePlayerView'
-import { DescribeItPlayerView } from '@/components/describe-it/DescribeItPlayerView'
-import { SudokuPlayerView } from '@/components/sudoku/SudokuPlayerView'
-import { WordHuntPlayerView } from '@/components/word-hunt/WordHuntPlayerView'
+import { PLAYER_VIEW_REGISTRY } from '@/components/game-player-views'
 import {
   ParticipantRoundResults,
   VoteCountStat,
@@ -554,60 +519,9 @@ export function PollGamePlayerExperience({
   // ── Render ────────────────────────────────────────────────────────────────
   if (view === 'loading') return <FullLoader />
   if (view === 'not_found') return <NotFound onHome={() => router.push('/')} />
-  if (game && isSecretMessageGame(game.game_type)) {
-    return <SecretMessageSenderView gameCode={gameCode} />
-  }
-  if (game && isBingoGame(game.game_type)) {
-    return <BingoPlayerView gameCode={gameCode} />
-  }
-  if (game && isCodewordsGame(game.game_type)) {
-    return <CodewordsPlayerView gameCode={gameCode} />
-  }
-  if (game && isTriviaGame(game.game_type)) {
-    return <TriviaPlayerView gameCode={gameCode} />
-  }
-
-  if (game && isTwoTruthsGame(game.game_type)) {
-    return <TwoTruthsPlayerView gameCode={gameCode} />
-  }
-  if (game && isICallOnGame(game.game_type)) {
-    return <NpatPlayerView gameCode={gameCode} />
-  }
-  if (game && isMonopolyGame(game.game_type)) {
-    return <MonopolyPlayerView gameCode={gameCode} />
-  }
-  if (game && isYahtzeeGame(game.game_type)) {
-    return <YahtzeePlayerView gameCode={gameCode} />
-  }
-  if (game && isWhotGame(game.game_type)) {
-    return <WhotPlayerView gameCode={gameCode} />
-  }
-  if (game && isLudoGame(game.game_type)) {
-    return <LudoPlayerView gameCode={gameCode} />
-  }
-  if (game && isSnakeAndLadderGame(game.game_type)) {
-    return <SnakeLadderPlayerView gameCode={gameCode} />
-  }
-  if (game && isTicTacToeGame(game.game_type)) {
-    return <TicTacToePlayerView gameCode={gameCode} />
-  }
-  if (game && isChessGame(game.game_type)) {
-    return <ChessPlayerView gameCode={gameCode} />
-  }
-  if (game && isScrabbleGame(game.game_type)) {
-    return <ScrabblePlayerView gameCode={gameCode} />
-  }
-  if (game && isDescribeItGame(game.game_type)) {
-    return <DescribeItPlayerView gameCode={gameCode} />
-  }
-  if (game && isSudokuGame(game.game_type)) {
-    return <SudokuPlayerView gameCode={gameCode} />
-  }
-  if (game && isWordHuntGame(game.game_type)) {
-    return <WordHuntPlayerView gameCode={gameCode} />
-  }
-  if (game && isAnonymousMessagesGame(game.game_type)) {
-    return <AnonymousMessagesPlayerView gameCode={gameCode} />
+  if (game) {
+    const DedicatedView = PLAYER_VIEW_REGISTRY[parseGameType(game.game_type)]
+    if (DedicatedView) return <DedicatedView gameCode={gameCode} />
   }
 
   if (view === 'game_started_waiting') {
@@ -799,11 +713,15 @@ export function PollGamePlayerExperience({
                 type="button"
                 className="btn-primary w-full py-3 text-base font-bold"
                 onClick={async () => {
-                  if (!myPlayerId) return
+                  const resumeToken = getPlayerSession(gameCode)?.resumeToken
+                  if (!resumeToken) {
+                    toast.error('Your player session expired — rejoin to continue')
+                    return
+                  }
                   await fetch('/api/players/ready', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+                    body: JSON.stringify({ gameId: gameCode, resumeToken }),
                   })
                   await reloadPlayers()
                 }}
@@ -1075,6 +993,11 @@ export function PollGamePlayerExperience({
                         type="button"
                         disabled={!pqWyrA.trim() || !pqWyrB.trim() || pqSubmitting}
                         onClick={async () => {
+                          const resumeToken = getPlayerSession(gameCode)?.resumeToken
+                          if (!resumeToken) {
+                            toast.error('Your player session expired — rejoin to continue')
+                            return
+                          }
                           setPqSubmitting(true)
                           try {
                             const res = await fetch('/api/player-questions', {
@@ -1082,7 +1005,7 @@ export function PollGamePlayerExperience({
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
                                 gameId: gameCode,
-                                playerId: myPlayerId,
+                                resumeToken,
                                 questionType: 'wyr',
                                 optionA: pqWyrA.trim(),
                                 optionB: pqWyrB.trim(),
@@ -1130,6 +1053,11 @@ export function PollGamePlayerExperience({
                             toast.error('Use “Coffee or Tea?” format with “ or ” between options')
                             return
                           }
+                          const resumeToken = getPlayerSession(gameCode)?.resumeToken
+                          if (!resumeToken) {
+                            toast.error('Your player session expired — rejoin to continue')
+                            return
+                          }
                           setPqSubmitting(true)
                           try {
                             const res = await fetch('/api/player-questions', {
@@ -1137,7 +1065,7 @@ export function PollGamePlayerExperience({
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
                                 gameId: gameCode,
-                                playerId: myPlayerId,
+                                resumeToken,
                                 questionType: 'wyr',
                                 optionA: parsed.optionA,
                                 optionB: parsed.optionB,
@@ -1179,6 +1107,11 @@ export function PollGamePlayerExperience({
                         type="button"
                         disabled={!pqMltText.trim() || pqSubmitting}
                         onClick={async () => {
+                          const resumeToken = getPlayerSession(gameCode)?.resumeToken
+                          if (!resumeToken) {
+                            toast.error('Your player session expired — rejoin to continue')
+                            return
+                          }
                           setPqSubmitting(true)
                           try {
                             const res = await fetch('/api/player-questions', {
@@ -1186,7 +1119,7 @@ export function PollGamePlayerExperience({
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
                                 gameId: gameCode,
-                                playerId: myPlayerId,
+                                resumeToken,
                                 questionType: 'mlt',
                                 questionText: pqMltText.trim(),
                               }),
@@ -1227,10 +1160,15 @@ export function PollGamePlayerExperience({
                               type="button"
                               className="text-faint hover:text-red-400 text-xs shrink-0"
                               onClick={async () => {
+                                const resumeToken = getPlayerSession(gameCode)?.resumeToken
+                                if (!resumeToken) {
+                                  toast.error('Your player session expired — rejoin to continue')
+                                  return
+                                }
                                 await fetch('/api/player-questions', {
                                   method: 'DELETE',
                                   headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ questionId: q.id, playerId: myPlayerId }),
+                                  body: JSON.stringify({ questionId: q.id, resumeToken }),
                                 })
                                 setPqList((prev) => prev.filter((x) => x.id !== q.id))
                               }}
@@ -1291,6 +1229,11 @@ export function PollGamePlayerExperience({
                     type="button"
                     disabled={!pnNameInput.trim() || pnSubmitting}
                     onClick={async () => {
+                      const resumeToken = getPlayerSession(gameCode)?.resumeToken
+                      if (!resumeToken) {
+                        toast.error('Your player session expired — rejoin to continue')
+                        return
+                      }
                       setPnSubmitting(true)
                       try {
                         const res = await fetch('/api/player-participants', {
@@ -1298,7 +1241,7 @@ export function PollGamePlayerExperience({
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
                             gameId: gameCode,
-                            playerId: myPlayerId,
+                            resumeToken,
                             name: pnNameInput.trim(),
                             ...(joinNeedsGender ? { gender: pnGender } : {}),
                           }),
@@ -1342,10 +1285,15 @@ export function PollGamePlayerExperience({
                             type="button"
                             className="text-faint hover:text-red-400 text-xs shrink-0"
                             onClick={async () => {
+                              const resumeToken = getPlayerSession(gameCode)?.resumeToken
+                              if (!resumeToken) {
+                                toast.error('Your player session expired — rejoin to continue')
+                                return
+                              }
                               await fetch('/api/player-participants', {
                                 method: 'DELETE',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ participantId: p.id, playerId: myPlayerId }),
+                                body: JSON.stringify({ participantId: p.id, resumeToken }),
                               })
                               setPnList((prev) => prev.filter((x) => x.id !== p.id))
                             }}
@@ -1887,13 +1835,18 @@ export function PollGamePlayerExperience({
             <button
               onClick={async () => {
                 if (!hotSeatText.trim() || !currentRound || !myPlayerId) return
+                const resumeToken = getPlayerSession(gameCode)?.resumeToken
+                if (!resumeToken) {
+                  toast.error('Your player session expired — rejoin to continue')
+                  return
+                }
                 const res = await fetch('/api/hot-seat', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     gameId: gameCode,
                     roundId: currentRound.id,
-                    playerId: myPlayerId,
+                    resumeToken,
                     text: hotSeatText.trim(),
                     submissionType: hotSeatType,
                   }),

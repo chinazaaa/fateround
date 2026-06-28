@@ -300,7 +300,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           currentName={myPlayerName}
           onRenamed={(name) => {
             setMyPlayerName(name)
-            setPlayerSession(gameCode, myPlayerId, name, 'both')
+            setPlayerSession(gameCode, myPlayerId, name, 'both', myResumeToken)
           }}
           onLeft={handlePlayerLeft}
           inLobby={game.status === 'waiting'}
@@ -312,11 +312,11 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
                 type="button"
                 className="btn-primary w-full py-3 text-base font-bold"
                 onClick={async () => {
-                  if (!myPlayerId) return
+                  if (!myResumeToken) return
                   await fetch('/api/players/ready', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+                    body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
                   })
                   await load()
                 }}

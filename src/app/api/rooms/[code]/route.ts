@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { ROOM_PUBLIC_FIELDS, verifyRoomCreator } from '@/lib/room-api'
 import { normalizeRoomDescription, normalizeRoomTimezone } from '@/lib/room-timezones'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -11,10 +12,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ c
   const body = await req.json()
   const creatorToken = String(body.creatorToken ?? '')
 
-  const auth = await verifyRoomCreator(supabase, roomCode, creatorToken)
+  const admin = getSupabaseAdmin()
+  const auth = await verifyRoomCreator(admin, roomCode, creatorToken)
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const { error } = await supabase.from('rooms').delete().eq('id', roomCode)
+  const { error } = await admin.from('rooms').delete().eq('id', roomCode)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ ok: true })
@@ -26,7 +28,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   const body = await req.json()
   const creatorToken = String(body.creatorToken ?? '')
 
-  const auth = await verifyRoomCreator(supabase, roomCode, creatorToken)
+  const admin = getSupabaseAdmin()
+  const auth = await verifyRoomCreator(admin, roomCode, creatorToken)
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   const updates: Record<string, unknown> = {}
@@ -75,7 +78,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     return NextResponse.json({ error: 'No settings to update' }, { status: 400 })
   }
 
-  const { data: room, error } = await supabase
+  const { data: room, error } = await admin
     .from('rooms')
     .update(updates)
     .eq('id', roomCode)
@@ -97,9 +100,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
   const [{ data: members }, { data: recentGames }] = await Promise.all([
     supabase
       .from('room_members')
-      .select(
-        'id, display_name, member_code, joined_at, times_kissed, times_married, times_killed, games_played, room_points'
-      )
+      .select('id, display_name, joined_at, times_kissed, times_married, times_killed, games_played, room_points')
       .eq('room_id', roomCode)
       .order('joined_at', { ascending: true }),
     supabase

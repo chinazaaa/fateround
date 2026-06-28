@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { hotSeatSubmissionSchema } from '@/lib/validation'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { supabase as supabaseReadonly } from '@/lib/supabase'
+import { assertPlayer } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -11,7 +11,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, roundId, playerId, text, submissionType } = parsed.data
+  const { gameId, roundId, resumeToken, text, submissionType } = parsed.data
+
+  const supabase = getSupabaseAdmin()
 
   // Validate game exists and is active
   const { data: game } = await supabase.from('games').select('id, status').eq('id', gameId).maybeSingle()
@@ -28,14 +30,11 @@ export async function POST(req: NextRequest) {
   if (!round) return NextResponse.json({ error: 'Round not found' }, { status: 404 })
   if (round.status !== 'active') return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
 
-  // Validate player is in this game
-  const { data: player } = await supabase
-    .from('players')
-    .select('id, game_id')
-    .eq('id', playerId)
-    .eq('game_id', gameId)
-    .maybeSingle()
-  if (!player) return NextResponse.json({ error: 'Player not found in this game' }, { status: 404 })
+  // Authorize by the secret resume_token; the resolved player is authoritative (the client
+  // no longer supplies its own playerId).
+  const auth = await assertPlayer(supabase, gameId, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const playerId = auth.player.id
 
   // Player cannot submit about themselves (the hot seat player)
   if (round.submitter_player_id === playerId) {
@@ -71,6 +70,9 @@ export async function GET(req: NextRequest) {
   if (!roundId || !gameId) {
     return NextResponse.json({ error: 'roundId and gameId are required' }, { status: 400 })
   }
+
+  // Public read — use the anon client (anon SELECT stays open); no need for the service role.
+  const supabase = supabaseReadonly
 
   // Check round status — only return submissions if round is finished
   const { data: round } = await supabase

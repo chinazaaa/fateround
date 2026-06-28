@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { getPlayerSession } from '@/lib/utils'
 import { dedupeWstPool, mergeWstPoolEntry } from '@/lib/who-said-this'
 import { useToast } from '@/components/ui/Toast'
 import type { WstQuotePoolEntry } from '@/types'
@@ -26,13 +27,18 @@ export function useWstQuotePool({ gameCode, myPlayerId }: { gameCode: string; my
     const text = quoteInput.trim()
     if (!text || !quoteAuthorParticipantId) return
     const authorId = quoteAuthorParticipantId
+    const resumeToken = getPlayerSession(gameCode)?.resumeToken
+    if (!resumeToken) {
+      toast.error('Your player session expired — rejoin to continue')
+      return
+    }
     setQuoteSubmitting(true)
     try {
       const res = await fetch('/api/wst-quotes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          playerId: myPlayerId,
+          resumeToken,
           gameId: gameCode,
           quoteText: text,
           authorParticipantId: authorId,
@@ -60,12 +66,17 @@ export function useWstQuotePool({ gameCode, myPlayerId }: { gameCode: string; my
 
   const handleDeletePoolQuote = async (quoteId: string) => {
     if (!myPlayerId || quoteSubmitting) return
+    const resumeToken = getPlayerSession(gameCode)?.resumeToken
+    if (!resumeToken) {
+      toast.error('Your player session expired — rejoin to continue')
+      return
+    }
     setQuoteSubmitting(true)
     try {
       const res = await fetch('/api/wst-quotes', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId: myPlayerId, gameId: gameCode, quoteId }),
+        body: JSON.stringify({ resumeToken, gameId: gameCode, quoteId }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {

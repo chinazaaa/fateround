@@ -369,11 +369,11 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
           rulesLink={<GameRulesLink gameType="whot" variant="subtle" />}
           isSpectator={me?.spectator === true}
           onReady={async () => {
-            if (!myPlayerId) return
+            if (!myResumeToken) return
             await fetch('/api/players/ready', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+              body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
             })
             await load()
           }}

@@ -2,6 +2,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { getPlayerSession } from '@/lib/utils'
 import {
   parseGameType,
   isMostLikelyTo,
@@ -252,12 +253,14 @@ export function useAutoSubmit(
       }
     }
 
+    const resumeToken = getPlayerSession(gameCode)?.resumeToken
+    if (!resumeToken) return { submitted: false }
     try {
       const res = await fetch('/api/votes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          playerId: pid,
+          resumeToken,
           roundId: r.id,
           gameId: gameCode,
           ...voteBody,

@@ -1,25 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { parseGameType } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { normalizeGender } from '@/lib/participants'
 import { lobbyAllowsPlayerNameSubmissions } from '@/lib/player-participant-pool'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, '').trim()
 
 const submitNameSchema = z.object({
   gameId: z.string().min(1),
-  playerId: z.string().uuid(),
+  resumeToken: z.string().min(4),
   name: z.string().min(1).max(50),
   gender: z.enum(['male', 'female']).optional(),
 })
 
 const deleteNameSchema = z.object({
   participantId: z.string().uuid(),
-  playerId: z.string().uuid(),
+  resumeToken: z.string().min(4),
 })
 
 export async function POST(req: NextRequest) {
@@ -29,20 +28,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId, name: rawName, gender: rawGender } = parsed.data
+  const { gameId, resumeToken, name: rawName, gender: rawGender } = parsed.data
   const upperGameId = gameId.toUpperCase()
   const name = stripHtml(rawName)
   if (!name) {
     return NextResponse.json({ error: 'Name is required' }, { status: 400 })
   }
 
-  const [{ data: game }, { data: player }] = await Promise.all([
-    supabase.from('games').select('*').eq('id', upperGameId).maybeSingle(),
-    supabase.from('players').select('id').eq('id', playerId).eq('game_id', upperGameId).maybeSingle(),
-  ])
+  const supabase = getSupabaseAdmin()
 
+  const { data: game } = await supabase.from('games').select('*').eq('id', upperGameId).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (!player) return NextResponse.json({ error: 'Player not found in this game' }, { status: 404 })
+
+  // Authorize by the secret resume_token; the resolved player is authoritative (the client
+  // no longer supplies its own playerId).
+  const auth = await assertPlayer(supabase, upperGameId, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const playerId = auth.player.id
+
   if (game.status !== 'waiting') {
     return NextResponse.json({ error: 'Names can only be submitted before the game starts' }, { status: 400 })
   }
@@ -103,6 +106,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'gameId is required' }, { status: 400 })
   }
 
+  const supabase = getSupabaseAdmin()
+
   const { data, error } = await supabase
     .from('participants')
     .select('*')
@@ -121,7 +126,9 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { participantId, playerId } = parsed.data
+  const { participantId, resumeToken } = parsed.data
+
+  const supabase = getSupabaseAdmin()
 
   const { data: participant } = await supabase
     .from('participants')
@@ -133,7 +140,13 @@ export async function DELETE(req: NextRequest) {
   if (!participant.submitted_by_player_id) {
     return NextResponse.json({ error: 'Only player-submitted names can be removed this way' }, { status: 403 })
   }
-  if (participant.submitted_by_player_id !== playerId) {
+
+  // Authorize by the secret resume_token; the resolved player is authoritative (the client
+  // no longer supplies its own playerId).
+  const auth = await assertPlayer(supabase, participant.game_id, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
+  if (participant.submitted_by_player_id !== auth.player.id) {
     return NextResponse.json({ error: 'You can only remove your own submissions' }, { status: 403 })
   }
 

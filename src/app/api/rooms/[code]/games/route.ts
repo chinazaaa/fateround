@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -43,9 +44,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 })
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
 
+  const admin = getSupabaseAdmin()
+
+  // Resolve the acting member from their secret member_code (read via service role).
   let memberId: string | null = null
   if (memberCode) {
-    const { data: member } = await supabase
+    const { data: member } = await admin
       .from('room_members')
       .select('id')
       .eq('room_id', roomCode)
@@ -54,7 +58,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     memberId = member?.id ?? null
   }
 
-  const { error } = await supabase
+  const { error } = await admin
     .from('room_games')
     .insert({ room_id: roomCode, game_id: gameCode, started_by_member_id: memberId })
 

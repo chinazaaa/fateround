@@ -356,8 +356,9 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
             <button
               type="button"
               onClick={async () => {
-                if (!myPlayerId) return
-                await markPlayerReady(gameCode, myPlayerId)
+                const resumeToken = getPlayerSession(gameCode)?.resumeToken
+                if (!resumeToken) return
+                await markPlayerReady(gameCode, resumeToken)
                 await load()
               }}
               className="btn-primary w-full py-3 text-base font-bold"

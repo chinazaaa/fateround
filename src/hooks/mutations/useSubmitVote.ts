@@ -3,7 +3,7 @@ import { api } from '@/lib/api-client'
 import { gameKeys } from '@/lib/query-keys'
 
 interface VotePayload {
-  playerId: string
+  resumeToken: string
   roundId: string
   gameId: string
   [key: string]: unknown

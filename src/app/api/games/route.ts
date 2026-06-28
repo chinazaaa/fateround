@@ -107,6 +107,7 @@ import {
   clampDescribeItTurnSeconds,
 } from '@/lib/describe-it'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, type LateJoinPolicy } from '@/lib/viewers'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -478,7 +479,9 @@ export async function POST(req: NextRequest) {
     : { allow_viewers: true, allow_late_players: true }
   const { allow_viewers: viewersAllowed, allow_late_players: latePlayersAllowed } = lateJoinFields
 
-  const { error: gameError } = await supabase.from('games').insert({
+  const admin = getSupabaseAdmin()
+
+  const { error: gameError } = await admin.from('games').insert({
     id: gameCode,
     title,
     host_token: hostToken,
@@ -641,9 +644,9 @@ export async function POST(req: NextRequest) {
       display_order: index,
     }))
 
-    const { error: partError } = await supabase.from('participants').insert(participantRows)
+    const { error: partError } = await admin.from('participants').insert(participantRows)
     if (partError) {
-      await supabase.from('games').delete().eq('id', gameCode)
+      await admin.from('games').delete().eq('id', gameCode)
       return NextResponse.json({ error: partError.message }, { status: 500 })
     }
   }

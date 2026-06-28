@@ -7,6 +7,7 @@ import { NameSearchPicker } from '@/components/NameSearchPicker'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { isWouldYouRather, isMostLikelyTo, isNeverHaveIEver, isWhoSaidThis } from '@/lib/game-types'
 import { playerIdentityLabel } from '@/lib/participants'
+import { getPlayerSession } from '@/lib/utils'
 import { wstVoteTargets } from '@/lib/who-said-this'
 import type { Game, Participant, Player, WstQuotePoolEntry } from '@/types'
 import type { PlayerQuestion } from '@/hooks/queries/usePlayerQuestions'
@@ -125,13 +126,19 @@ export function WaitingView({
       return
     }
 
+    const resumeToken = getPlayerSession(gameCode)?.resumeToken
+    if (!resumeToken) {
+      toast.error('Your session expired — rejoin to upload a photo')
+      return
+    }
+
     setPhotoUploading(true)
     try {
       const fd = new FormData()
       fd.append('file', file)
       fd.append('gameId', gameCode)
       fd.append('participantId', me.participant_id)
-      fd.append('playerId', me.id)
+      fd.append('resumeToken', resumeToken)
 
       const res = await fetch('/api/photos', { method: 'POST', body: fd })
       const data = await res.json()
@@ -150,6 +157,11 @@ export function WaitingView({
 
   const handlePhotoDelete = async () => {
     if (!me?.participant_id || photoUploading) return
+    const resumeToken = getPlayerSession(gameCode)?.resumeToken
+    if (!resumeToken) {
+      toast.error('Your session expired — rejoin to remove your photo')
+      return
+    }
     setPhotoUploading(true)
     try {
       const res = await fetch('/api/photos', {
@@ -158,7 +170,7 @@ export function WaitingView({
         body: JSON.stringify({
           gameId: gameCode,
           participantId: me.participant_id,
-          playerId: me.id,
+          resumeToken,
         }),
       })
       const data = await res.json()

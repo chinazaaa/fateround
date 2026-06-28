@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { parseGameType, isBinaryChoiceGame, isMostLikelyTo, isNeverHaveIEver, isPickANumber } from '@/lib/game-types'
 import { lobbyAllowsPlayerQuestions } from '@/lib/player-question-pool'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, '').trim()
 
 const submitQuestionSchema = z.object({
   gameId: z.string().min(1),
-  playerId: z.string().uuid(),
+  resumeToken: z.string().min(4),
   questionType: z.enum(['wyr', 'mlt']),
   optionA: z.string().max(200).optional(),
   optionB: z.string().max(200).optional(),
@@ -19,7 +18,7 @@ const submitQuestionSchema = z.object({
 
 const deleteQuestionSchema = z.object({
   questionId: z.string().uuid(),
-  playerId: z.string().uuid(),
+  resumeToken: z.string().min(4),
 })
 
 export async function POST(req: NextRequest) {
@@ -29,19 +28,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId, questionType, optionA, optionB, questionText } = parsed.data
+  const { gameId, resumeToken, questionType, optionA, optionB, questionText } = parsed.data
   const upperGameId = gameId.toUpperCase()
 
-  const [{ data: game }, { data: player }] = await Promise.all([
-    supabase.from('games').select('status, game_type, player_questions_enabled').eq('id', upperGameId).maybeSingle(),
-    supabase.from('players').select('id').eq('id', playerId).eq('game_id', upperGameId).maybeSingle(),
-  ])
+  const supabase = getSupabaseAdmin()
+
+  const { data: game } = await supabase
+    .from('games')
+    .select('status, game_type, player_questions_enabled')
+    .eq('id', upperGameId)
+    .maybeSingle()
 
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (!player) return NextResponse.json({ error: 'Player not found in this game' }, { status: 404 })
   if (game.status !== 'waiting') {
     return NextResponse.json({ error: 'Questions can only be submitted before the game starts' }, { status: 400 })
   }
+
+  // Authorize by the secret resume_token; the resolved player is authoritative (the client
+  // no longer supplies its own playerId).
+  const auth = await assertPlayer(supabase, upperGameId, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const playerId = auth.player.id
 
   const gameType = parseGameType(game.game_type)
   if (!lobbyAllowsPlayerQuestions(game)) {
@@ -99,6 +106,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'gameId is required' }, { status: 400 })
   }
 
+  const supabase = getSupabaseAdmin()
+
   const { data, error } = await supabase
     .from('player_questions')
     .select('*')
@@ -116,16 +125,23 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { questionId, playerId } = parsed.data
+  const { questionId, resumeToken } = parsed.data
+
+  const supabase = getSupabaseAdmin()
 
   const { data: question } = await supabase
     .from('player_questions')
-    .select('id, player_id')
+    .select('id, player_id, game_id')
     .eq('id', questionId)
     .maybeSingle()
 
   if (!question) return NextResponse.json({ error: 'Question not found' }, { status: 404 })
-  if (question.player_id !== playerId) {
+
+  // Authorize by the secret resume_token against the question's own game; a player may
+  // only delete their OWN question. The resolved player id is authoritative.
+  const auth = await assertPlayer(supabase, question.game_id, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  if (question.player_id !== auth.player.id) {
     return NextResponse.json({ error: 'You can only delete your own questions' }, { status: 403 })
   }
 

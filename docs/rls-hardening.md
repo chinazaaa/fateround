@@ -247,3 +247,133 @@ tic_tac_toe_sessions, snake_ladder_sessions, snake_ladder_player_state, tourname
 tournament_players, tournament_games, anonymous_messages. (Already-narrow, leave/own pass:
 product_updates, game_player_limits, question_packs, app_feedback, anonymous_room_bans,
 sudoku_solutions.)
+
+---
+
+# Phase 5 — Core & shared tables
+
+> Status: **IMPLEMENTED** on `feat/rls-core-tables` (pending live verification + merge). Locks
+> the **shared/core tables** that back the **14 remaining game types** with no dedicated tables
+> — the 9 voting games (smash_marry_kill, red_flag_green_flag, smash_or_pass, parent_approval,
+> would_you_rather, never_have_i_ever, pick_a_number, this_or_that, most_likely_to), plus
+> who_said_this, hot_seat, custom, anonymous_messages, secret_message — and the rooms feature.
+>
+> **Done:** votes + all player-submission routes (player-questions, player-participants, photos,
+> hot-seat, quote, confessions [gated by resume_token], wst-quotes, players/promote,
+> players/ready) authorize by `resume_token`; the service-role sweep moved every core-table
+> writer server-side (incl. fixing two stray client writers: sudoku end-game, host anime-quote
+> removal); `0124` locks the 11 core gameplay tables SELECT-only; `0125` locks the 4 rooms
+> tables SELECT-only + revokes anon read of `rooms.creator_token` / `room_members.member_code`.
+>
+> ⚠️ **Before merge/deploy:** apply migrations `0124` + `0125` together with this code; verify
+> realtime doesn't leak `creator_token`/`member_code` (same check as Phase 3); smoke-test a
+> voting game, who-said-this, hot-seat, custom, and a rooms session (create → join → play →
+> finish → play-again). The Phase-3 column-grant footgun now also applies to rooms/room_members.
+>
+> _(Original plan retained below for reference.)_
+
+## Why this is the largest / most delicate phase
+
+These tables are written by the **hot paths every game uses** (create-game, join, start,
+finish, next-round, play-again), so locking them touches **all 30 games**, not just the 14.
+Much of the service-role groundwork already landed incrementally in earlier phases; what's
+left is finishing the sweep, adding **player/room ownership authz** to the player-action
+routes, and the lockdown migrations.
+
+## Tables in scope
+
+**Core gameplay:** `games`, `players`, `participants`, `rounds`, `votes`, `confessions`,
+`player_questions`, `wst_quote_pool`, `anime_quote_pool`, `hot_seat_submissions`,
+`game_snapshots`.
+**Rooms (distinct identity model):** `rooms`, `room_members`, `room_games`, `room_messages`.
+
+## Identity / authz model (no auth, token-based — unchanged)
+
+- **Host actions** → `games.host_token` (`assertHost*`). Already widely enforced.
+- **Player actions** → `players.resume_token` (`assertPlayer`, derive `auth.player.id`).
+- **Room member actions** → `room_members.member_code`. **Room ownership** → `rooms.creator_token`.
+  (Rooms do NOT use resume_token — treat as a separate slice.)
+
+## Write surface (from audit) — what each route needs
+
+| Route | Writes | Today | Needs |
+|---|---|---|---|
+| `votes` | votes | **playerId only** | `resumeToken` + `assertPlayer` (THE voting-games action) |
+| `player-questions` | player_questions | playerId only | `resumeToken` + assertPlayer |
+| `player-participants` | participants | playerId only | `resumeToken` + assertPlayer |
+| `photos` | participants, players | playerId only | `resumeToken` + assertPlayer |
+| `confessions` | confessions | **no authz** (anonymous) | gate with `resume_token` + assertPlayer (player-facing anonymity preserved; stops anon spam) |
+| `hot-seat` | hot_seat_submissions | playerId only | `resumeToken` + assertPlayer |
+| `wst-quotes` | wst_quote_pool | host + playerId | host path keeps hostToken; player submissions get `resumeToken` |
+| `quote` | who-said-this lobby submission | playerId only | `resumeToken` + assertPlayer |
+| `anime-quotes`(+reroll) | anime_quote_pool | host (now admin) | already host-authed; service-role write |
+| `players/promote` | players | playerId only | host or self ownership check |
+| `participants` | participants, players | host | host-authed (service role) |
+| `games` (POST create) | games, participants | anon insert (host_token generated) | service-role insert when games is locked |
+| `rooms` (POST create) | rooms | none (creator_token generated) | service-role insert; creator_token is the owner credential |
+| `rooms/[code]` | rooms | member_code (partial) | creator_token for room edits; service role |
+| `rooms/[code]/join` | room_members | member_code | service-role insert (returns member_code); keep member_code identity |
+| `rooms/[code]/messages` | room_messages | member_code-checked | `member_code` author check (mostly present); service role |
+| `rooms/[code]/members/[memberId]` | room_members | none | member/creator ownership check |
+| shared: `start`, `play-again`, `finish-game`, `next-round` | rounds, votes, confessions, etc. | mostly admin already (Phases 1–3) | finish the sweep |
+
+## Slices (sequenced)
+
+1. **Service-role sweep (mechanical, safe, no behavior change).** Convert every remaining
+   *anon-client* write of a core table to the service role (`getSupabaseAdmin()`), same pattern
+   as earlier phases. Targets: `votes`, `confessions`, `player-questions`, `player-participants`,
+   `photos`, `quote`, `hot-seat`, `wst-quotes`, `games` (create), `participants`, plus any
+   stragglers in `start`/`play-again`/`next-round`. Also fix anon `insert/update().select()`
+   that return a row (RETURNING needs privileges once locked).
+2. **Player-action authz (`resume_token`).** Add `resumeToken` to the player-action schemas
+   above; in each route call `assertPlayer` and act on `auth.player.id` (never trust client
+   `playerId`); update the client callers to send `resumeToken` (they already hold it in the
+   player session). This is the anti-griefing core (e.g. stop anyone from casting/altering
+   votes or submitting questions as another player).
+3. **Rooms slice (`member_code` / `creator_token`).** Separate, because identity differs.
+   Route writes through the service role; enforce `member_code` for member actions (join,
+   messages, leave) and `creator_token` for room edits/locks; then lock `room_*`. Hide
+   `creator_token` / `member_code` from anon reads if they're currently exposed (audit
+   `ROOM_*` selects, mirror the Phase-3 token-hiding approach).
+4. **Lockdown migrations (last).** Per the established pattern: replace `FOR ALL USING(true)`
+   with SELECT-only `_read` policies on the core tables (realtime reads stay open), with
+   drafted rollbacks. Ship a table's lockdown **only after** all its writers are server-side.
+   Likely split: one migration for core gameplay tables, one for rooms.
+
+## Risks / gotchas
+
+- **Blast radius:** create/join/lobby/start/finish are shared by all 30 games — a regression
+  here breaks everything. Stage carefully; verify a sample across game families.
+- **Anonymous inserts:** `confessions` (and possibly some lobby submissions) are intentionally
+  anonymous — locking them needs a product decision (gate via server with a player token, or
+  keep an explicit anon INSERT policy).
+- **Open game discovery / joining must keep working:** SELECT on `games`/`players`/`rooms`
+  (public lobby, join-by-code, public room list) stays open via `_read` policies.
+- **Column-grant footgun (from Phase 3):** `games`/`players` are already column-grant-based;
+  any new column added during this phase needs an anon SELECT grant (see migration 0123).
+- **Realtime:** `games`, `players`, `rounds`, `votes`, `rooms`, `room_*` are in the realtime
+  publication — keep reads open; confirm no secret (`creator_token`/`member_code`) leaks over
+  realtime (same check as Phase 3).
+
+## Testing
+
+- Per game-family smoke test with the core tables locked: create → join → play a round →
+  vote/submit → finish → play-again, for at least one voting game, who-said-this, hot-seat,
+  custom, and a rooms session.
+- Negative (anon key): `insert/update/delete` on each locked core table rejected; `select` +
+  realtime still work; voting/submitting with a wrong/absent `resumeToken` → 403; room actions
+  with a wrong `member_code` → 403.
+- `pnpm typecheck` + `eslint` per slice.
+
+## Decisions (resolved)
+
+1. **Confessions** → **gate with `resume_token`** (route through the service role + `assertPlayer`).
+   Player-facing anonymity is unchanged (other players still never see the author); the token
+   only proves the poster is a real player in the game, which stops anon-key spam. No public
+   anon INSERT policy.
+2. **Rooms** → **`member_code` + `creator_token`** model: member actions (join/message/leave)
+   gated by `member_code`; room edits/locks/kicks gated by `creator_token`; hide both from anon
+   reads (mirror Phase 3). Rooms is its own slice (Slice 3).
+3. **Game / room creation** → **keep open, just move the write server-side** (service role) so it
+   works under the lockdown. No new friction. Rate limiting / captcha is noted as a **future
+   follow-up**, not part of this phase.

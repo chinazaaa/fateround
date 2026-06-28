@@ -351,10 +351,10 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   }, [load])
 
   const markReady = useCallback(async () => {
-    if (!myPlayerId) return
-    await markPlayerReady(gameCode, myPlayerId)
+    if (!myResumeToken) return
+    await markPlayerReady(gameCode, myResumeToken)
     await load()
-  }, [gameCode, load, myPlayerId])
+  }, [gameCode, load, myResumeToken])
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting' || screen === 'late_join_choice') void load()

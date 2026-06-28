@@ -18,7 +18,7 @@ export function usePhotoUpload(gameCode: string) {
 export function usePhotoDelete(gameCode: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (data: { gameId: string; participantId: string; playerId: string }) => {
+    mutationFn: async (data: { gameId: string; participantId: string; resumeToken: string }) => {
       const res = await fetch('/api/photos', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },

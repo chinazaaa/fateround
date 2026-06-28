@@ -354,7 +354,9 @@ export type DeletePlayerInput = z.infer<typeof deletePlayerSchema>
 
 export const promotePlayerSchema = z.object({
   gameCode: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Self-promotion (spectator → player): the caller is resolved from their resume_token; no
+  // client-supplied playerId (the actor is always the token's own player).
+  resumeToken: z.string().min(4),
 })
 
 export type PromotePlayerInput = z.infer<typeof promotePlayerSchema>
@@ -364,7 +366,9 @@ export type PromotePlayerInput = z.infer<typeof promotePlayerSchema>
 // ---------------------------------------------------------------------------
 
 export const createVoteSchema = z.object({
-  playerId: uuidString('playerId'),
+  // Voter authorized by the secret resume_token (resolved to a player server-side),
+  // not a client-supplied playerId (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   roundId: uuidString('roundId'),
   gameId: gameCodeString(),
   kiss: z.string().optional().nullable(),
@@ -389,6 +393,9 @@ export const createConfessionSchema = z.object({
   gameId: gameCodeString(),
   roundId: uuidString('roundId').optional().nullable(),
   text: sanitizedString(1, 500),
+  // Confessions are anonymous to other players, but the poster must still be a real player
+  // in the game — gate by resume_token (resolved server-side) to stop anon-key spam.
+  resumeToken: z.string().min(4),
 })
 
 export type CreateConfessionInput = z.infer<typeof createConfessionSchema>
@@ -973,7 +980,8 @@ export const codewordsChatSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const createQuoteSchema = z.object({
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   roundId: uuidString('roundId'),
   gameId: gameCodeString(),
   quoteText: sanitizedString(1, 500),
@@ -1015,7 +1023,8 @@ const hotSeatSubmissionTypeEnum = z.enum(['compliment', 'roast', 'observation'])
 export const hotSeatSubmissionSchema = z.object({
   gameId: gameCodeString(),
   roundId: uuidString('roundId'),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   text: sanitizedString(1, 300),
   submissionType: hotSeatSubmissionTypeEnum,
 })
@@ -1026,30 +1035,9 @@ export type HotSeatSubmissionInput = z.infer<typeof hotSeatSubmissionSchema>
 // App feedback (POST /api/feedback)
 // ---------------------------------------------------------------------------
 
-const feedbackGameTypeEnum = z.enum([
-  'general',
-  'smash_marry_kill',
-  'red_flag_green_flag',
-  'smash_or_pass',
-  'parent_approval',
-  'would_you_rather',
-  'never_have_i_ever',
-  'this_or_that',
-  'most_likely_to',
-  'who_said_this',
-  'hot_seat',
-  'custom',
-  'anonymous_messages',
-  'secret_message',
-  'bingo',
-  'codewords',
-  'trivia',
-  'two_truths',
-  'monopoly',
-  'yahtzee',
-  'whot',
-  'ludo',
-])
+// Derived from the canonical game-type list (+ 'general') so it can't drift as new
+// games are added — previously this was a hand-copied list that had gone stale.
+const feedbackGameTypeEnum = z.enum(['general', ...gameTypeEnum.options])
 
 const feedbackCategoryEnum = z.enum(['bug', 'feature', 'improvement', 'other'])
 

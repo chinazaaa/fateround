@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { useToast } from '@/components/ui/Toast'
+import { getPlayerSession } from '@/lib/utils'
 import type { Participant } from '@/types'
 
 export function usePhotoUpload({
@@ -29,13 +30,19 @@ export function usePhotoUpload({
       return
     }
 
+    const resumeToken = getPlayerSession(gameCode)?.resumeToken
+    if (!resumeToken) {
+      toast.error('Your session expired — rejoin to upload a photo')
+      return
+    }
+
     setPhotoUploading(true)
     try {
       const fd = new FormData()
       fd.append('file', file)
       fd.append('gameId', gameCode)
       fd.append('participantId', participantId)
-      fd.append('playerId', playerId)
+      fd.append('resumeToken', resumeToken)
 
       const res = await fetch('/api/photos', { method: 'POST', body: fd })
       const data = await res.json()
@@ -53,7 +60,12 @@ export function usePhotoUpload({
   }
 
   const handlePhotoDelete = async () => {
-    if (!participantId || !playerId || photoUploading) return
+    if (!participantId || photoUploading) return
+    const resumeToken = getPlayerSession(gameCode)?.resumeToken
+    if (!resumeToken) {
+      toast.error('Your session expired — rejoin to remove your photo')
+      return
+    }
     setPhotoUploading(true)
     try {
       const res = await fetch('/api/photos', {
@@ -62,7 +74,7 @@ export function usePhotoUpload({
         body: JSON.stringify({
           gameId: gameCode,
           participantId,
-          playerId,
+          resumeToken,
         }),
       })
       const data = await res.json()

@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { parseGameType, isWhoSaidThis } from '@/lib/game-types'
-import { assertHostGame } from '@/lib/game-admin'
+import { assertHostGame, assertPlayer } from '@/lib/game-admin'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-
-async function validateAuthorParticipant(gameIdUpper: string, authorId: string) {
+async function validateAuthorParticipant(supabase: SupabaseClient, gameIdUpper: string, authorId: string) {
   const { data: authorParticipant } = await supabase
     .from('participants')
     .select('id')
@@ -21,14 +19,16 @@ async function validateAuthorParticipant(gameIdUpper: string, authorId: string) 
 }
 
 export async function POST(req: NextRequest) {
-  const { playerId, hostToken, gameId, quoteText, authorParticipantId, quoteId } = await req.json()
+  const { resumeToken, hostToken, gameId, quoteText, authorParticipantId, quoteId } = await req.json()
 
   if (!gameId) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  const supabase = getSupabaseAdmin()
+
   const isHostRequest = typeof hostToken === 'string' && hostToken.trim().length > 0
-  if (!isHostRequest && !playerId) {
+  if (!isHostRequest && (typeof resumeToken !== 'string' || !resumeToken.trim())) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
@@ -50,13 +50,13 @@ export async function POST(req: NextRequest) {
   const now = new Date().toISOString()
 
   if (isHostRequest) {
-    const auth = await assertHostGame(getSupabaseAdmin(), gameIdUpper, hostToken.trim())
+    const auth = await assertHostGame(supabase, gameIdUpper, hostToken.trim())
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
     if (!isWhoSaidThis(parseGameType(auth.game!.game_type))) {
       return NextResponse.json({ error: 'This game type does not use quote pool' }, { status: 400 })
     }
 
-    const authorError = await validateAuthorParticipant(gameIdUpper, authorId)
+    const authorError = await validateAuthorParticipant(supabase, gameIdUpper, authorId)
     if (authorError) return authorError
 
     if (quoteIdTrimmed) {
@@ -116,10 +116,13 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const [{ data: game }, { data: player }] = await Promise.all([
-    supabase.from('games').select('status, game_type').eq('id', gameIdUpper).maybeSingle(),
-    supabase.from('players').select('id, participant_id, game_id').eq('id', playerId).maybeSingle(),
-  ])
+  // Player path: authorize by the secret resume_token; the resolved player is authoritative
+  // (the client no longer supplies its own playerId).
+  const playerAuth = await assertPlayer(supabase, gameIdUpper, resumeToken)
+  if (playerAuth.error) return NextResponse.json({ error: playerAuth.error }, { status: playerAuth.status })
+  const player = playerAuth.player
+
+  const { data: game } = await supabase.from('games').select('status, game_type').eq('id', gameIdUpper).maybeSingle()
 
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (!isWhoSaidThis(parseGameType(game.game_type))) {
@@ -128,14 +131,11 @@ export async function POST(req: NextRequest) {
   if (game.status !== 'waiting') {
     return NextResponse.json({ error: 'Quote pool is closed — the game has already started' }, { status: 400 })
   }
-  if (!player || player.game_id !== gameIdUpper) {
-    return NextResponse.json({ error: 'Player not found in this game' }, { status: 404 })
-  }
   if (!player.participant_id) {
     return NextResponse.json({ error: 'Claim your name from the list before submitting a quote' }, { status: 400 })
   }
 
-  const authorError = await validateAuthorParticipant(gameIdUpper, authorId)
+  const authorError = await validateAuthorParticipant(supabase, gameIdUpper, authorId)
   if (authorError) return authorError
 
   if (quoteIdTrimmed) {
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
     if (!existing) {
       return NextResponse.json({ error: 'Quote not found' }, { status: 404 })
     }
-    if (existing.player_id !== playerId) {
+    if (existing.player_id !== player.id) {
       return NextResponse.json({ error: 'You can only edit your own quotes' }, { status: 403 })
     }
 
@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
     .from('wst_quote_pool')
     .insert({
       game_id: gameIdUpper,
-      player_id: playerId,
+      player_id: player.id,
       quote_text: quote,
       author_participant_id: authorId,
       created_at: now,
@@ -198,14 +198,16 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { playerId, hostToken, gameId, quoteId } = await req.json()
+  const { resumeToken, hostToken, gameId, quoteId } = await req.json()
 
   if (!gameId || !quoteId) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  const supabase = getSupabaseAdmin()
+
   const isHostRequest = typeof hostToken === 'string' && hostToken.trim().length > 0
-  if (!isHostRequest && !playerId) {
+  if (!isHostRequest && (typeof resumeToken !== 'string' || !resumeToken.trim())) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
@@ -216,7 +218,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   if (isHostRequest) {
-    const auth = await assertHostGame(getSupabaseAdmin(), gameIdUpper, hostToken.trim())
+    const auth = await assertHostGame(supabase, gameIdUpper, hostToken.trim())
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
     const { data: existing } = await supabase
@@ -237,6 +239,11 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: true })
   }
 
+  // Player path: authorize by the secret resume_token; the resolved player is authoritative.
+  const playerAuth = await assertPlayer(supabase, gameIdUpper, resumeToken)
+  if (playerAuth.error) return NextResponse.json({ error: playerAuth.error }, { status: playerAuth.status })
+  const player = playerAuth.player
+
   const { data: game } = await supabase.from('games').select('status, game_type').eq('id', gameIdUpper).maybeSingle()
 
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -252,7 +259,7 @@ export async function DELETE(req: NextRequest) {
     .maybeSingle()
 
   if (!existing) return NextResponse.json({ error: 'Quote not found' }, { status: 404 })
-  if (existing.player_id !== playerId) {
+  if (existing.player_id !== player.id) {
     return NextResponse.json({ error: 'You can only remove your own quotes' }, { status: 403 })
   }
 

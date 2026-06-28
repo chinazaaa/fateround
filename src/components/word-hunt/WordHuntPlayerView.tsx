@@ -546,11 +546,11 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
           rulesLink={<GameRulesLink gameType="word_hunt" variant="subtle" />}
           isSpectator={isViewer}
           onReady={async () => {
-            if (!myPlayerId) return
+            if (!myResumeToken) return
             await fetch('/api/players/ready', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+              body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
             })
             await load()
           }}

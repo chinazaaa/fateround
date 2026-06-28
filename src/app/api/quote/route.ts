@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { createQuoteSchema } from '@/lib/validation'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -11,7 +10,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { playerId, roundId, gameId, quoteText, authorParticipantId } = parsed.data
+  const { resumeToken, roundId, gameId, quoteText, authorParticipantId } = parsed.data
+
+  const supabase = getSupabaseAdmin()
 
   const [{ data: round }, { data: game }] = await Promise.all([
     supabase
@@ -29,6 +30,13 @@ export async function POST(req: NextRequest) {
   if (round.game_id !== gameId) {
     return NextResponse.json({ error: 'Round does not belong to this game' }, { status: 400 })
   }
+
+  // Authorize by the secret resume_token; the resolved player is authoritative (the client
+  // no longer supplies its own playerId).
+  const auth = await assertPlayer(supabase, gameId, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const playerId = auth.player.id
+
   if (round.submitter_player_id !== playerId) {
     return NextResponse.json({ error: 'Only the assigned writer can submit this quote' }, { status: 403 })
   }

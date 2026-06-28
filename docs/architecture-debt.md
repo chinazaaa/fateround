@@ -1,0 +1,47 @@
+# Architecture & SOLID debt tracker
+
+Living checklist from the 2026-06 architecture audit (3 parallel reviews over `dev`). Tick items as they land. Severity = impact, Effort = S/M/L.
+
+**Root cause:** there is no game registry — each of ~29 games is wired by hand-maintained `if (isXGame…)` chains, so adding one game touches **~22 files / 40+ edit-sites**. Most items below are symptoms of that. Recommended order is top-to-bottom (bugs → tests → exhaustiveness → registry → decomposition); the later structural work is unsafe without the earlier safety nets.
+
+Legend: `[ ]` todo · `[x]` done · `[~]` in progress
+
+---
+
+## Phase 0 — Quick-win bugs (isolated, low-risk, ship now)
+
+- [x] **`feedbackGameTypeEnum` was stale** → fixed. It omitted 9 games (chess, scrabble, sudoku, tic_tac_toe, word_hunt, pick_a_number, i_call_on, describe_it, snake_and_ladder), so feedback for them was rejected. Now derived from `gameTypeEnum.options` (+ `'general'`) so it can't drift. `src/lib/validation.ts`.
+- [x] **Copy-paste bug** → fixed. Removed the duplicated identical `isICallOnGame` payload spread in `src/app/create/page.tsx`.
+- [~] **Unguarded `await req.json()` → 500 instead of 400.** Added `parseJsonBody(req, schema)` helper (`src/lib/parse-body.ts`, try/catch + safeParse) and adopted it in `finish-game/route.ts` as the reference. **TODO: roll out across the remaining ~120 routes** that still do `schema.safeParse(await req.json())` inline. **Sev High · Eff M (remaining rollout)**
+- [x] **"Room points not awarded" — investigated, FALSE POSITIVE.** The audit grep matched `status:'finished'` on the **rounds** table (`finish-game:48`, `end-round:57`) and the **tournaments** table (`tournaments/[code]/finish`), not the `games` table. The actual game-finish path already routes through `markGameFinished` (`finish-game:115`). _Open sub-question (separate item): confirm each game-specific early-finish fn (`finishMonopolyGameEarly`, `finishScrabbleGameEarly`, `finishCodewordsGame`, `finishAnonymousRoomSession`, `finishSecretMessageBoard`) awards room points._
+- [ ] **Duplicate realtime channels.** `useGameChannel` (setState) and `useGameRealtime` (react-query invalidation) are _both_ mounted in `host/[code]/page.tsx` on the same tables (half-finished migration). → Pick one, delete the other. _Deferred: it's a frontend realtime behavior change — do carefully (ideally after Phase 1 tests)._ **Sev Med · Eff S–M**
+
+## Phase 1 — Safety net (prerequisite for everything below)
+
+- [x] **No automated tests** → fixed (#144). Added Vitest (node env) + a CI `Test` job; 29 unit tests over pure logic (scrabble scoring/geometry, language tile sets, `parseGameType`/guards, round generation). The harness everything below relies on.
+
+## Phase 2 — Make dispatch fail-fast (cheap safety, surfaces existing gaps)
+
+- [~] **Silent-fallthrough dispatch.** Delivered a fail-fast **coverage guard** instead (#147): a test that fails CI when a new game is half-wired across the hand-maintained surfaces. _The audit's `switch + assertNever` does **not** fit these chains — they have a legitimate default (poll-family games render inline), so a naive `assertNever` would be wrong. Consolidating the dispatch is folded into Phase 3 (registry)._
+- [x] **Partial enums drift from `GameType`** → addressed. `feedbackGameTypeEnum` now derives from `gameTypeEnum.options` (#142); `GAME_TYPE_OPTIONS`, `gameTypeEnum` (via `createGameSchema`), config, and landing slug/content/rules drift is now caught by the Phase 2 coverage test (#147). _`LOBBY_LIMIT_GAME_TYPES` is an intentional subset, left as-is._
+
+## Phase 3 — Game registry (the structural fix)
+
+- [~] **Introduce `GAME_REGISTRY: Record<GameType, GameDefinition>`** carrying `{ config, slug, landing, rules, selects, maxPlayers, validation, initialize, clearSession, canPlayAgain, PlayerView, HostView, score }`. Migrate incrementally: **(a)** client view dispatch first (mechanical — the views take uniform props: player views `gameCode`, host views `gameCode` + `hostToken`), **(b)** config/landing/selects, **(c)** server `start`/`clearSession`. Collapses ~22 edit-sites → ~1. **Sev High · Eff L**
+  - [x] **(a) client view dispatch** — `PLAYER_VIEW_REGISTRY` (`game-player-views.ts`) + `HOST_VIEW_REGISTRY` (`game-host-views.ts`) replace the two 18-branch `if (isXGame) return <XView/>` chains with a `parseGameType` lookup (behavior-identical: every guard was `parseGameType(x) === literal`). Removed ~196 lines from the two god files; adding a game's views is now one registry entry each.
+  - [ ] (b) config/landing/selects · [ ] (c) server `start`/`clearSession`
+- [ ] **`GameEngine` interface + `clearSessionTables(supabase, gameId, tables[])` helper** — replaces ~12 copy-pasted `clear*SessionData` and the duplicated `initialize*Game`/`can*PlayAgain` shapes; fixes `{error?}` vs `{error:null}` return drift. **Sev Med-High · Eff M**
+
+## Phase 4 — Decompose god files & adopt existing abstractions
+
+- [ ] **God files (SRP):** `host/[code]/page.tsx` (4.3k) → extract poll-host body into `PollHostView`; `create/page.tsx` (3.3k) → per-game settings registry + shared `<MaxPlayersField>`/`<TurnTimerField>`/`<LateJoinField>`; `PollGamePlayerExperience.tsx` (3.2k, 16 forward-refs) → split into `PollLobby/Round/Results/FinalResults`; `useGameSession.ts` (767) → split into join/realtime/voting/timers hooks; `start/route.ts` (1.6k) and `monopoly.ts` (2.8k) → rules/store/messages split; `types/index.ts` (915) → co-locate per-game types with engines. **Sev High · Eff L**
+- [ ] **Adopt the existing `useGameChannel` hook** — ~29 game views copy-paste `supabase.channel().on().subscribe()` (~850 LOC) while the generic hook sits unused. Add a `useGameViewBootstrap()` (load + screen-state + join) for the ~33 duplicated view scaffolds. **Sev High · Eff M**
+- [ ] **Collapse hook clone families** — generic `useTurnTimer(config)` (7+ clones), `useAdvancePolling(config)` (3), `useGameExpiryTimer(config)` (4), `useGameEventNotifier(...)` (7); hoist `secondsUntil`/`formatCountdown` to `lib/`. ~700 LOC. **Sev Med · Eff M**
+- [ ] **Centralize Supabase client + host-auth.** 121 routes each `createClient(... ANON_KEY)` on privileged mutations → one `getClient()`/deliberate anon-vs-service-role; collapse 4 `assertHost*` into one `requireHost(...)` (27 hand-rolled checks). **Sev High · Eff M**
+- [ ] **`validation.ts` (1062 lines) split per-domain**; add schemas to the ~34 unvalidated routes (`rooms/*`, `admin/*`, `library/*`). **Sev Med · Eff M**
+- [ ] **`supabase-selects.ts` is effectively dead** (0 route importers; ~74 `select('*')` in routes) — adopt broadly or delete; consider `supabase gen types`. **Sev Low · Eff S–M**
+- [ ] **Merge `game-landing.ts` + `game-landing-rules.ts`** (must be edited in lockstep; rules vs FAQ prose duplicate facts). Note: these `Record<GameType,…>` maps are the _one_ exhaustive (good) pattern — model the registry on them. **Sev Low · Eff S**
+
+---
+
+_Audit basis: `origin/dev` as of 2026-06. Update this file as items land (link the PR next to each)._

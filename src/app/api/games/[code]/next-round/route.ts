@@ -68,9 +68,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     activateUpdate.quote_submitted_at = now
   }
 
-  await supabase.from('rounds').update(activateUpdate).eq('game_id', gameId).eq('round_number', nextRoundNumber)
+  const admin = getSupabaseAdmin()
 
-  const { error: pointerError } = await supabase
+  // Activate the next round and confirm a row actually matched before advancing the pointer —
+  // otherwise we'd point the game at a round that doesn't exist.
+  const { data: activated, error: activateError } = await admin
+    .from('rounds')
+    .update(activateUpdate)
+    .eq('game_id', gameId)
+    .eq('round_number', nextRoundNumber)
+    .select('id')
+  if (activateError) return NextResponse.json({ error: activateError.message }, { status: 500 })
+  if (!activated || activated.length === 0) {
+    return NextResponse.json({ error: 'Next round not found' }, { status: 404 })
+  }
+
+  const { error: pointerError } = await admin
     .from('games')
     .update({ current_round_number: nextRoundNumber })
     .eq('id', gameId)
