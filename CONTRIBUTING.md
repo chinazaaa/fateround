@@ -80,8 +80,25 @@ Reserve serial work for genuinely dependent steps or edits to the same file.
 
 - **Commits/PRs:** clear, imperative messages. **No AI / co-author signature
   lines.**
-- **Migrations:** unique numeric prefixes; **never renumber a migration that
-  has already merged** (it breaks applied-migration history).
+- **Migrations — the rules that keep Supabase branching working** (a long drift
+  saga taught us these the hard way):
+  - **Name new migrations with a UTC timestamp prefix** so the latest is obvious
+    and the version is always unique: `YYYYMMDDHHMMSS_short_name.sql` (e.g.
+    `20260628143000_add_foo.sql`). Running `supabase migration new <name>`
+    generates this for you. The historical `0001…0103` files predate this and
+    stay as-is; new timestamped files sort cleanly after them.
+  - **The migration files are the only source of schema truth — never change the
+    schema directly in the Supabase SQL Editor.** Supabase records applied
+    migrations in `supabase_migrations.schema_migrations`; manual SQL-Editor
+    edits aren't recorded there, silently drift prod out of sync, and break every
+    preview-branch deploy. (Treat the SQL Editor as read-only for schema.)
+  - **Never reuse, duplicate, or renumber a prefix.** Two PRs must not land the
+    same prefix — timestamps make collisions essentially impossible, which is the
+    whole point. Renumbering an already-merged migration breaks the applied-history
+    record.
+  - Supabase applies migrations automatically via the GitHub integration: new
+    files run on the **preview branch** when a PR opens, and on **prod** when you
+    merge to the production branch — no manual SQL pasting.
 - **Secrets:** via environment variables. State-mutating endpoints
   **default-deny** — refuse to run if the required secret isn't configured,
   rather than failing open.
