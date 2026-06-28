@@ -25,11 +25,15 @@ export const LUDO_COLOR_HEX: Record<LudoColor, string> = {
   blue: '#3b82f6',
 }
 
+/**
+ * Track index where each colour's pieces enter the board. Corner layout:
+ * green TL · red TR · blue BR · yellow BL (clockwise from green's ★ at index 0).
+ */
 export const START_POS: Record<LudoColor, number> = {
-  red: 0,
-  green: 13,
-  yellow: 26,
-  blue: 39,
+  green: 0,
+  red: 13,
+  blue: 26,
+  yellow: 39,
 }
 
 /** ★ start + safe entry cells on the 52-cell track — pieces cannot be captured here. */
@@ -38,10 +42,10 @@ const SAFE_TRACK_POSITIONS: ReadonlySet<number> = new Set([
   START_POS.green,
   START_POS.yellow,
   START_POS.blue,
-  50, // red safe entry [7,0]
-  11, // green safe entry [0,7]
-  24, // yellow safe entry [7,14]
-  37, // blue safe entry [14,7]
+  50, // green safe entry [7,0]
+  11, // red safe entry [0,7]
+  24, // blue safe entry [7,14]
+  37, // yellow safe entry [14,7]
 ])
 
 /** Colors used for each player count (opposite corners for 2-player). */
@@ -612,32 +616,6 @@ export async function clearLudoSessionData(supabase: SupabaseClient, gameId: str
   return {}
 }
 
-function pickAutoMove(moves: LudoMoveOption[]): LudoMoveOption | null {
-  if (moves.length === 0) return null
-  if (moves.length === 1) return moves[0]!
-
-  const leavingBase = moves.filter((m) => m.from.zone === 'base')
-  if (leavingBase.length > 0) {
-    const sixes = leavingBase.filter((m) => m.diceValue === 6)
-    const pool = sixes.length > 0 ? sixes : leavingBase
-    return [...pool].sort((a, b) => a.pieceId - b.pieceId || a.diceIndex - b.diceIndex)[0]!
-  }
-
-  // Rolling a 6 with every piece still in base — all moves go to the same start square.
-  const dest = moves[0]!.to
-  if (moves.every((m) => m.from.zone === 'base' && m.to.zone === 'track' && m.to.pos === dest.pos)) {
-    return [...moves].sort((a, b) => a.pieceId - b.pieceId)[0]!
-  }
-
-  const capturing = moves.filter((m) => m.captures)
-  if (capturing.length > 0) return capturing[0]!
-  const finishing = moves.filter((m) => m.to.zone === 'finished')
-  if (finishing.length > 0) return finishing[0]!
-  const enteringHome = moves.filter((m) => m.to.zone === 'home' && m.from.zone === 'track')
-  if (enteringHome.length > 0) return enteringHome[0]!
-  return moves[0]!
-}
-
 /**
  * Optimistic-concurrency session write. The update only lands if the row still
  * carries the `expectedUpdatedAt` we read, so when two requests race (e.g. every
@@ -933,43 +911,39 @@ export async function processLudoMove(
 }
 
 export async function processLudoExpireTurn(supabase: SupabaseClient, gameId: string): Promise<{ error?: string }> {
-  const { session, states, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
+  const { session, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
   if (!session || session.phase === 'finished') return {}
 
   const playerId = currentPlayerId(session)
   if (!playerId) return { error: 'No current player' }
 
-  if (session.phase === 'roll') {
-    return processLudoRoll(supabase, gameId, playerId)
-  }
+  // Server-side deadline guard: only expire once the stored deadline has passed.
+  // The deadline is set by the server, so this is checked against the server clock
+  // regardless of the caller — without it any client could POST /expire-turn early
+  // and skip the active player's turn. No deadline (untimed game) = never expires.
+  // Small grace covers sub-second skew between the deadline write and this read.
+  const deadlineMs = session.turn_deadline_at ? new Date(session.turn_deadline_at).getTime() : null
+  if (deadlineMs == null || Date.now() < deadlineMs - 750) return {}
 
-  const playerRow = states.find((s) => s.player_id === playerId)
-  if (!playerRow || !session.last_dice) return { error: 'Invalid state' }
-
-  const remaining = resolveRemainingDice(session)
-  const moves = getLegalMovesFromRemaining(playerRow.color, playerRow.pieces, remaining, states, playerId)
-  const auto = pickAutoMove(moves)
-  if (!auto) {
-    const nextIndex = advanceTurnIndex(session)
-    const nextId = session.turn_order[nextIndex]
-    await persistSession(
-      supabase,
-      gameId,
-      {
-        last_dice: null,
-        remaining_dice: null,
-        phase: 'roll',
-        current_turn_index: nextIndex,
-        consecutive_sixes: 0,
-        status_message: `Time's up — ${playerNames.get(nextId ?? '') ?? 'Next player'}'s turn`,
-      },
-      timerSeconds,
-      session.updated_at
-    )
-    return {}
-  }
-
-  return persistMove(supabase, gameId, session, states, playerId, auto, timerSeconds, playerNames)
+  // Timeout forfeits the turn — we never roll or move on a player's behalf.
+  // Play simply passes to the next player (their dice/roll are reset).
+  const nextIndex = advanceTurnIndex(session)
+  const nextId = session.turn_order[nextIndex]
+  await persistSession(
+    supabase,
+    gameId,
+    {
+      last_dice: null,
+      remaining_dice: null,
+      phase: 'roll',
+      current_turn_index: nextIndex,
+      consecutive_sixes: 0,
+      status_message: `Time's up — ${playerNames.get(nextId ?? '') ?? 'Next player'}'s turn`,
+    },
+    timerSeconds,
+    session.updated_at
+  )
+  return {}
 }
 
 export type LudoHostMode = 'spectator' | 'player'

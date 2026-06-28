@@ -3,8 +3,8 @@ import { START_POS } from '@/lib/ludo'
 
 /**
  * Standard 15×15 Ludo board (0-indexed rows/cols).
- * Corners: red TL · green TR · blue BL · yellow BR.
- * 52-cell outer track clockwise from red ★ at (6,1).
+ * Corners: green TL · red TR · blue BR · yellow BL.
+ * 52-cell outer track clockwise from green ★ at (6,1).
  */
 export const LUDO_TRACK_COORDS: ReadonlyArray<readonly [number, number]> = [
   [6, 1],
@@ -67,50 +67,54 @@ export const TRACK_GRID: Record<number, { row: number; col: number }> = Object.f
 
 /** Coloured home lanes — pos 0 is the cell where pieces enter from the track. */
 export const HOME_GRID: Record<LudoColor, { row: number; col: number }[]> = {
-  red: [
+  // green (TL) runs inward from the left edge along row 7
+  green: [
     { row: 7, col: 1 },
     { row: 7, col: 2 },
     { row: 7, col: 3 },
     { row: 7, col: 4 },
     { row: 7, col: 5 },
   ],
-  green: [
+  // red (TR) runs inward from the top edge along col 7
+  red: [
     { row: 1, col: 7 },
     { row: 2, col: 7 },
     { row: 3, col: 7 },
     { row: 4, col: 7 },
     { row: 5, col: 7 },
   ],
-  yellow: [
+  // blue (BR) runs inward from the right edge along row 7
+  blue: [
     { row: 7, col: 13 },
     { row: 7, col: 12 },
     { row: 7, col: 11 },
     { row: 7, col: 10 },
     { row: 7, col: 9 },
   ],
-  blue: [
-    { row: 9, col: 7 },
-    { row: 10, col: 7 },
-    { row: 11, col: 7 },
-    { row: 12, col: 7 },
+  // yellow (BL) runs inward from the bottom edge along col 7 (pos 0 nearest the edge)
+  yellow: [
     { row: 13, col: 7 },
+    { row: 12, col: 7 },
+    { row: 11, col: 7 },
+    { row: 10, col: 7 },
+    { row: 9, col: 7 },
   ],
 }
 
 /** ★ at each colour's spawn square on the outer track. */
 export const START_CELL: Record<LudoColor, { row: number; col: number }> = {
-  red: { row: 6, col: 1 },
-  green: { row: 1, col: 8 },
-  yellow: { row: 8, col: 13 },
-  blue: { row: 13, col: 6 },
+  green: { row: 6, col: 1 },
+  red: { row: 1, col: 8 },
+  blue: { row: 8, col: 13 },
+  yellow: { row: 13, col: 6 },
 }
 
 /** ★ where each home column meets the outer track (safe entry). */
 export const SAFE_ENTRY_CELL: Record<LudoColor, { row: number; col: number }> = {
-  red: { row: 7, col: 0 },
-  green: { row: 0, col: 7 },
-  yellow: { row: 7, col: 14 },
-  blue: { row: 14, col: 7 },
+  green: { row: 7, col: 0 },
+  red: { row: 0, col: 7 },
+  blue: { row: 7, col: 14 },
+  yellow: { row: 14, col: 7 },
 }
 
 /**
@@ -120,25 +124,29 @@ export const SAFE_ENTRY_CELL: Record<LudoColor, { row: number; col: number }> = 
  * centred inside the yard. Purely a rendering concern.
  */
 export const BASE_SLOTS: Record<LudoColor, { row: number; col: number }[]> = {
-  red: [
+  // green — top-left corner
+  green: [
     { row: 1.5, col: 1.5 },
     { row: 1.5, col: 3.5 },
     { row: 3.5, col: 1.5 },
     { row: 3.5, col: 3.5 },
   ],
-  green: [
+  // red — top-right corner
+  red: [
     { row: 1.5, col: 10.5 },
     { row: 1.5, col: 12.5 },
     { row: 3.5, col: 10.5 },
     { row: 3.5, col: 12.5 },
   ],
-  yellow: [
+  // blue — bottom-right corner
+  blue: [
     { row: 10.5, col: 10.5 },
     { row: 10.5, col: 12.5 },
     { row: 12.5, col: 10.5 },
     { row: 12.5, col: 12.5 },
   ],
-  blue: [
+  // yellow — bottom-left corner
+  yellow: [
     { row: 10.5, col: 1.5 },
     { row: 10.5, col: 3.5 },
     { row: 12.5, col: 1.5 },
@@ -169,10 +177,10 @@ for (const [color, cell] of Object.entries(SAFE_ENTRY_CELL) as [LudoColor, { row
 const JUNCTION_CELLS = new Set(['6,6', '6,7', '6,8', '8,6', '8,8'])
 
 export function baseColorAt(row: number, col: number): LudoColor | null {
-  if (row >= 0 && row <= 5 && col >= 0 && col <= 5) return 'red'
-  if (row >= 0 && row <= 5 && col >= 9 && col <= 14) return 'green'
-  if (row >= 9 && row <= 14 && col >= 9 && col <= 14) return 'yellow'
-  if (row >= 9 && row <= 14 && col >= 0 && col <= 5) return 'blue'
+  if (row >= 0 && row <= 5 && col >= 0 && col <= 5) return 'green'
+  if (row >= 0 && row <= 5 && col >= 9 && col <= 14) return 'red'
+  if (row >= 9 && row <= 14 && col >= 9 && col <= 14) return 'blue'
+  if (row >= 9 && row <= 14 && col >= 0 && col <= 5) return 'yellow'
   return null
 }
 
@@ -241,11 +249,12 @@ export function moveDestinationCell(
   return null
 }
 
+/** Where a finished piece sits in the centre — on the edge its home lane enters from. */
 export const FINISHED_DISPLAY: Record<LudoColor, { row: number; col: number }> = {
-  green: { row: 6, col: 7 },
-  yellow: { row: 7, col: 8 },
-  red: { row: 8, col: 7 },
-  blue: { row: 7, col: 6 },
+  red: { row: 6, col: 7 }, // top — red home lane enters from the top
+  green: { row: 7, col: 6 }, // left — green home lane enters from the left
+  yellow: { row: 8, col: 7 }, // bottom — yellow home lane enters from the bottom
+  blue: { row: 7, col: 8 }, // right — blue home lane enters from the right
 }
 
 export type TrackDirection = 'up' | 'down' | 'left' | 'right'
@@ -297,10 +306,10 @@ export function pathArrowAt(row: number, col: number): TrackDirection | null {
 
 export const CORNER_BOUNDS: Record<LudoColor, { rowStart: number; rowEnd: number; colStart: number; colEnd: number }> =
   {
-    red: { rowStart: 0, rowEnd: 5, colStart: 0, colEnd: 5 },
-    green: { rowStart: 0, rowEnd: 5, colStart: 9, colEnd: 14 },
-    yellow: { rowStart: 9, rowEnd: 14, colStart: 9, colEnd: 14 },
-    blue: { rowStart: 9, rowEnd: 14, colStart: 0, colEnd: 5 },
+    green: { rowStart: 0, rowEnd: 5, colStart: 0, colEnd: 5 },
+    red: { rowStart: 0, rowEnd: 5, colStart: 9, colEnd: 14 },
+    blue: { rowStart: 9, rowEnd: 14, colStart: 9, colEnd: 14 },
+    yellow: { rowStart: 9, rowEnd: 14, colStart: 0, colEnd: 5 },
   }
 
 export function pieceStatusLabel(piece: { zone: string; pos: number }): string {
