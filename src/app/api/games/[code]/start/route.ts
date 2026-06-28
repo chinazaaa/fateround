@@ -1,3 +1,4 @@
+import type { EliminationConfig } from '@/types/elimination'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generateRoundsByGender, generateNRounds } from '@/lib/utils'
@@ -311,6 +312,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .eq('id', code.toUpperCase())
 
     if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
+
+    // Initialize lives for elimination mode
+    if (game.elimination_config) {
+      const elimConfig = game.elimination_config as EliminationConfig
+      if (elimConfig.mode === 'lives' && elimConfig.startingLives) {
+        await getSupabaseAdmin()
+          .from('players')
+          .update({ lives_remaining: elimConfig.startingLives })
+          .eq('game_id', code.toUpperCase())
+          .eq('spectator', false)
+      }
+    }
+
     return NextResponse.json({ success: true })
   }
 
@@ -743,6 +757,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .eq('id', code.toUpperCase())
 
     if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
+
+    // Initialize lives for elimination mode
+    if (game.elimination_config) {
+      const elimConfig = game.elimination_config as EliminationConfig
+      if (elimConfig.mode === 'lives' && elimConfig.startingLives) {
+        await getSupabaseAdmin()
+          .from('players')
+          .update({ lives_remaining: elimConfig.startingLives })
+          .eq('game_id', code.toUpperCase())
+          .eq('spectator', false)
+      }
+    }
+
     return NextResponse.json({ success: true })
   }
 
@@ -773,6 +800,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .eq('id', code.toUpperCase())
 
     if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
+
+    // Initialize lives for elimination mode
+    if (game.elimination_config) {
+      const elimConfig = game.elimination_config as EliminationConfig
+      if (elimConfig.mode === 'lives' && elimConfig.startingLives) {
+        await getSupabaseAdmin()
+          .from('players')
+          .update({ lives_remaining: elimConfig.startingLives })
+          .eq('game_id', code.toUpperCase())
+          .eq('spectator', false)
+      }
+    }
+
     return NextResponse.json({ success: true })
   }
 

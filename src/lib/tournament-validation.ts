@@ -5,6 +5,14 @@ export const createTournamentSchema = z.object({
   title: sanitizedString(1, 100),
   placementPoints: z.array(z.number().int().min(0)).min(1).max(20).optional(),
   targetGameCount: z.coerce.number().int().min(1).max(100).optional().nullable(),
+  eliminationConfig: z
+    .object({
+      mode: z.literal('lives'),
+      startingLives: z.coerce.number().int().min(1).max(10),
+      livesLostRule: z.literal('bottom-n'),
+      eliminateCount: z.coerce.number().int().min(1).max(10),
+    })
+    .optional(),
 })
 
 export const updateTournamentSchema = z.object({

@@ -244,6 +244,8 @@ export async function POST(req: NextRequest) {
     chess_piece_set: rawChessPieceSet,
   } = parsed.data
 
+  const eliminationConfig = (body as Record<string, unknown>).elimination_config ?? null
+
   const game_type = parseGameType(rawGameType)
   const gender_based = supportsGenderToggle(game_type)
     ? (rawGenderBased ??
@@ -652,6 +654,7 @@ export async function POST(req: NextRequest) {
           },
         }
       : {}),
+    elimination_config: eliminationConfig,
   })
 
   if (gameError) {
