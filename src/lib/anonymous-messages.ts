@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import type { Game, Player } from '@/types'
 
@@ -164,13 +165,7 @@ export async function clearAnonymousRoomSessionData(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
-  const { error: messagesError } = await supabase.from('anonymous_messages').delete().eq('game_id', gameId)
-  if (messagesError) return { error: messagesError.message }
-
-  const { error: bansError } = await supabase.from('anonymous_room_bans').delete().eq('game_id', gameId)
-  if (bansError) return { error: bansError.message }
-
-  return { error: null }
+  return clearSessionTables(supabase, gameId, ['anonymous_messages', 'anonymous_room_bans'])
 }
 
 export async function finishAnonymousRoomSession(

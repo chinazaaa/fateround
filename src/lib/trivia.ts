@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearSessionTables } from './session-clear'
 import type { Player, Round, TriviaAnswer, TriviaCategory, TriviaMetadata, TriviaQuestion } from '@/types'
 import { triviaQuestionKey } from '@/lib/trivia-questions'
 
@@ -173,7 +174,5 @@ export async function clearTriviaSessionData(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
-  const { error } = await supabase.from('trivia_answers').delete().eq('game_id', gameId)
-  if (error) return { error: error.message }
-  return { error: null }
+  return clearSessionTables(supabase, gameId, ['trivia_answers'])
 }

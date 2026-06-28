@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import type {
   MonopolyAuctionState,
@@ -994,17 +995,7 @@ export async function clearMonopolySessionData(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
-  for (const table of ['monopoly_player_state', 'monopoly_boards'] as const) {
-    const { error } = await supabase.from(table).delete().eq('game_id', gameId)
-    if (error) return { error: error.message }
-  }
-  const { error: spectatorError } = await supabase
-    .from('players')
-    .update({ spectator: false })
-    .eq('game_id', gameId)
-    .eq('spectator', true)
-  if (spectatorError) return { error: spectatorError.message }
-  return { error: null }
+  return clearSessionTables(supabase, gameId, ['monopoly_player_state', 'monopoly_boards'], { resetSpectators: true })
 }
 
 export async function processMonopolyRoll(

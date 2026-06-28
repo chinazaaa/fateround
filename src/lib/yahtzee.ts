@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import type { YahtzeeCategory, YahtzeeCategoryPoints, YahtzeePlayerScore, YahtzeeSession } from '@/types'
 
@@ -283,21 +284,11 @@ export async function initializeYahtzeeGame(
   return {}
 }
 
-export async function clearYahtzeeSessionData(supabase: SupabaseClient, gameId: string): Promise<{ error?: string }> {
-  const { error: sessionError } = await supabase.from('yahtzee_sessions').delete().eq('game_id', gameId)
-  if (sessionError) return { error: sessionError.message }
-
-  const { error: scoresError } = await supabase.from('yahtzee_player_scores').delete().eq('game_id', gameId)
-  if (scoresError) return { error: scoresError.message }
-
-  const { error: spectatorError } = await supabase
-    .from('players')
-    .update({ spectator: false })
-    .eq('game_id', gameId)
-    .eq('spectator', true)
-  if (spectatorError) return { error: spectatorError.message }
-
-  return {}
+export async function clearYahtzeeSessionData(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error: string | null }> {
+  return clearSessionTables(supabase, gameId, ['yahtzee_sessions', 'yahtzee_player_scores'], { resetSpectators: true })
 }
 
 export async function processYahtzeeRoll(
