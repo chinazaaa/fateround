@@ -1,10 +1,22 @@
 name: Build & Push Image
 
-# Builds the app image natively on an amd64 runner (no local QEMU/SWC segfault)
-# and pushes it to ECR, authenticating to AWS via OIDC (no stored access keys).
-# All values below are non-secret (NEXT_PUBLIC_* ship in the client bundle; the
-# role ARN / region / repo are public identifiers).
+# Builds the app image natively on an amd64 runner (no local QEMU/SWC segfault),
+# pushes it to ECR via OIDC (no stored keys), then triggers an in-place redeploy
+# on the instance via SSM. All values below are non-secret (NEXT_PUBLIC_* ship in
+# the client bundle; role ARN / region / repo are public identifiers).
 on:
+  # Auto-build the dev image when app code lands on dev (infra/docs-only changes skip it).
+  push:
+    branches: [dev]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "next.config.ts"
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/build-push-image.yml"
   workflow_dispatch:
     inputs:
       image_tag:
@@ -47,10 +59,42 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ inputs.image_tag }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ inputs.image_tag || 'latest' }}
             ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
           build-args: |
             NEXT_PUBLIC_SUPABASE_URL=https://skhvbzitwvnbhqxfitgh.supabase.co
             NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_daKXZ2-HKxB6k3rAy1tmGw_jQuACg0K
             NEXT_PUBLIC_APP_URL=https://dev.fateround.com
             NEXT_PUBLIC_LIVEKIT_URL=wss://fateround-dxjn0oj0.livekit.cloud
+
+      - name: Redeploy on the instance (SSM)
+        env:
+          STACK: ${{ env.ECR_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          IID=$(aws ec2 describe-instances --region "$AWS_REGION" \
+            --filters "Name=tag:Stack,Values=$STACK" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+          if [ -z "$IID" ]; then
+            echo "No running instance tagged Stack=$STACK; nothing to redeploy."
+            exit 0
+          fi
+          echo "Redeploying on: $IID"
+          CMD=$(aws ssm send-command --region "$AWS_REGION" \
+            --document-name AWS-RunShellScript \
+            --instance-ids $IID \
+            --comment "CI redeploy ${GITHUB_SHA::7}" \
+            --parameters commands="/usr/local/bin/redeploy.sh" \
+            --query 'Command.CommandId' --output text)
+          echo "SSM command: $CMD"
+          rc=0
+          for iid in $IID; do
+            aws ssm wait command-executed --region "$AWS_REGION" --command-id "$CMD" --instance-id "$iid" || true
+            status=$(aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$CMD" --instance-id "$iid" --query 'Status' --output text)
+            echo "::group::redeploy output on $iid (status=$status)"
+            aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$CMD" --instance-id "$iid" --query 'StandardOutputContent' --output text || true
+            aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$CMD" --instance-id "$iid" --query 'StandardErrorContent' --output text || true
+            echo "::endgroup::"
+            [ "$status" = "Success" ] || { echo "redeploy failed on $iid: $status"; rc=1; }
+          done
+          exit $rc

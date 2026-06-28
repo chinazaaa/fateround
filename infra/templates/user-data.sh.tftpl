@@ -2,12 +2,6 @@
 set -euo pipefail
 exec > >(tee /var/log/user-data.log) 2>&1
 
-REGION="${aws_region}"
-REPO="${ecr_repo_url}"
-TAG="${image_tag}"
-PREFIX="${name_prefix}"
-APP_PORT="${app_port}"
-
 retry() {
   local i
   for i in 1 2 3 4 5; do
@@ -26,6 +20,29 @@ if ! command -v aws >/dev/null 2>&1; then
   unzip -q /tmp/awscliv2.zip -d /tmp
   /tmp/aws/install
 fi
+
+# Redeploy script: pull the latest image and (re)create the container. Run once
+# at boot and re-invoked by CI via SSM Run Command for zero-touch redeploys, so
+# the env-wiring lives in exactly one place.
+cat > /usr/local/bin/redeploy.sh <<'REDEPLOY'
+#!/usr/bin/env bash
+set -euo pipefail
+
+REGION="${aws_region}"
+REPO="${ecr_repo_url}"
+TAG="${image_tag}"
+PREFIX="${name_prefix}"
+APP_PORT="${app_port}"
+
+retry() {
+  local i
+  for i in 1 2 3 4 5; do
+    "$@" && return 0
+    echo "retry $i failed: $*" >&2
+    sleep $((i * 5))
+  done
+  return 1
+}
 
 REGISTRY="$${REPO%%/*}"
 ecr_login() { aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$REGISTRY"; }
@@ -65,7 +82,16 @@ docker run -d --name app --restart always \
   -e LIVEKIT_API_SECRET="$LIVEKIT_API_SECRET" \
   "$REPO:$TAG"
 
+# Reclaim disk from the now-untagged previous image.
+docker image prune -f >/dev/null 2>&1 || true
+REDEPLOY
+chmod 750 /usr/local/bin/redeploy.sh
+
+# Initial deploy.
+/usr/local/bin/redeploy.sh
+
 # Freeze-recovery tick via systemd (replaces Lambda/EventBridge).
+CRON_SECRET=$(retry aws ssm get-parameter --region "${aws_region}" --with-decryption --name "/${name_prefix}/CRON_SECRET" --query 'Parameter.Value' --output text)
 cat > /etc/systemd/system/fateround-tick.service <<EOF
 [Unit]
 Description=FateRound freeze-recovery tick

@@ -94,6 +94,42 @@ resource "aws_iam_role_policy" "gha_ecr" {
   policy = data.aws_iam_policy_document.gha_ecr.json
 }
 
+# Let CI trigger an in-place redeploy on the box via SSM Run Command — scoped to
+# this stack's instances (by tag) and the AWS-RunShellScript document only.
+data "aws_iam_policy_document" "gha_deploy_ssm" {
+  statement {
+    sid       = "DescribeInstances"
+    actions   = ["ec2:DescribeInstances"]
+    resources = ["*"]
+  }
+  statement {
+    sid       = "SendCommandToStackInstances"
+    actions   = ["ssm:SendCommand"]
+    resources = ["arn:aws:ec2:*:*:instance/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "ssm:resourceTag/Stack"
+      values   = [var.name_prefix]
+    }
+  }
+  statement {
+    sid       = "SendCommandDocument"
+    actions   = ["ssm:SendCommand"]
+    resources = ["arn:aws:ssm:*:*:document/AWS-RunShellScript"]
+  }
+  statement {
+    sid       = "ReadCommandResult"
+    actions   = ["ssm:GetCommandInvocation", "ssm:ListCommandInvocations"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "gha_deploy_ssm" {
+  name   = "${var.name_prefix}-gha-deploy-ssm"
+  role   = aws_iam_role.gha_deploy.id
+  policy = data.aws_iam_policy_document.gha_deploy_ssm.json
+}
+
 output "github_actions_role_arn" {
   description = "Set as the GitHub repo variable AWS_DEPLOY_ROLE_ARN for the build workflow."
   value       = aws_iam_role.gha_deploy.arn
