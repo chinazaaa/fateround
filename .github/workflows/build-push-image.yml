@@ -57,13 +57,12 @@ jobs:
               } >> "$GITHUB_ENV"
               ;;
             dev)
-              # NOTE: dev still uses the PROD Supabase project until the dev project
-              # (xzvsrzbbgxbaagqwtpts) has its migrations pushed; flipped in a follow-up.
+              # dev targets its own (preview) Supabase project — isolated from prod.
               {
                 echo "ECR_REPOSITORY=fateround-dev"
                 echo "DEPLOY_ROLE_ARN=arn:aws:iam::772316781095:role/fateround-dev-gha-deploy"
-                echo "NEXT_PUBLIC_SUPABASE_URL=https://skhvbzitwvnbhqxfitgh.supabase.co"
-                echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_daKXZ2-HKxB6k3rAy1tmGw_jQuACg0K"
+                echo "NEXT_PUBLIC_SUPABASE_URL=https://xzvsrzbbgxbaagqwtpts.supabase.co"
+                echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_4U7akfEx_4sxtLrxeCU_Rw_VpSeFRAu"
                 echo "NEXT_PUBLIC_APP_URL=https://dev.fateround.com"
                 echo "NEXT_PUBLIC_LIVEKIT_URL=wss://fateround-dxjn0oj0.livekit.cloud"
               } >> "$GITHUB_ENV"
