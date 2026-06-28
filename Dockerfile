@@ -1,26 +1,27 @@
 # syntax=docker/dockerfile:1
 
-# Stage 1: install dependencies
-FROM node:22-bookworm-slim AS deps
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
-
-# Stage 2: build the application
+# Build the Next.js standalone output with pnpm (the project's package manager;
+# matches CI: pnpm install --frozen-lockfile).
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+RUN npm install -g pnpm@10
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 COPY . .
 
-# Public env required at build time for Next.js NEXT_PUBLIC_* inlining
+# Public env required at build time for Next.js NEXT_PUBLIC_* inlining.
 ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ARG NEXT_PUBLIC_APP_URL
+ARG NEXT_PUBLIC_LIVEKIT_URL
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_LIVEKIT_URL=$NEXT_PUBLIC_LIVEKIT_URL
 
-RUN npm run build
+RUN pnpm build
 
-# Stage 3: minimal runtime image
+# Minimal runtime image (Next.js standalone output).
 FROM node:22-bookworm-slim AS run
 WORKDIR /app
 ENV NODE_ENV=production

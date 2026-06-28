@@ -35,6 +35,15 @@ get_param() { retry aws ssm get-parameter --region "$REGION" "$@" --query 'Param
 SUPABASE_URL=$(get_param --name "/$PREFIX/NEXT_PUBLIC_SUPABASE_URL")
 SUPABASE_ANON_KEY=$(get_param --with-decryption --name "/$PREFIX/NEXT_PUBLIC_SUPABASE_ANON_KEY")
 CRON_SECRET=$(get_param --with-decryption --name "/$PREFIX/CRON_SECRET")
+NEXT_PUBLIC_APP_URL=$(get_param --name "/$PREFIX/NEXT_PUBLIC_APP_URL")
+NEXT_PUBLIC_LIVEKIT_URL=$(get_param --name "/$PREFIX/NEXT_PUBLIC_LIVEKIT_URL")
+ADMIN_EMAIL=$(get_param --name "/$PREFIX/ADMIN_EMAIL")
+SUPABASE_SERVICE_ROLE_KEY=$(get_param --with-decryption --name "/$PREFIX/SUPABASE_SERVICE_ROLE_KEY")
+ADMIN_PASSWORD=$(get_param --with-decryption --name "/$PREFIX/ADMIN_PASSWORD")
+ADMIN_SESSION_SECRET=$(get_param --with-decryption --name "/$PREFIX/ADMIN_SESSION_SECRET")
+KLIPY_API_KEY=$(get_param --with-decryption --name "/$PREFIX/KLIPY_API_KEY")
+LIVEKIT_API_KEY=$(get_param --with-decryption --name "/$PREFIX/LIVEKIT_API_KEY")
+LIVEKIT_API_SECRET=$(get_param --with-decryption --name "/$PREFIX/LIVEKIT_API_SECRET")
 
 retry docker pull "$REPO:$TAG"
 docker rm -f app 2>/dev/null || true
@@ -45,6 +54,15 @@ docker run -d --name app --restart always \
   -e NEXT_PUBLIC_SUPABASE_URL="$SUPABASE_URL" \
   -e NEXT_PUBLIC_SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
   -e CRON_SECRET="$CRON_SECRET" \
+  -e NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
+  -e NEXT_PUBLIC_LIVEKIT_URL="$NEXT_PUBLIC_LIVEKIT_URL" \
+  -e ADMIN_EMAIL="$ADMIN_EMAIL" \
+  -e SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
+  -e ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+  -e ADMIN_SESSION_SECRET="$ADMIN_SESSION_SECRET" \
+  -e KLIPY_API_KEY="$KLIPY_API_KEY" \
+  -e LIVEKIT_API_KEY="$LIVEKIT_API_KEY" \
+  -e LIVEKIT_API_SECRET="$LIVEKIT_API_SECRET" \
   "$REPO:$TAG"
 
 # Freeze-recovery tick via systemd (replaces Lambda/EventBridge).

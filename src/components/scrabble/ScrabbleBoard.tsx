@@ -524,7 +524,11 @@ export function ScrabbleGamePanel({
       if (overCells.length > 0) return overCells
       const overTiles = within.filter((c) => String(c.id).startsWith(TILE_PREFIX))
       if (overTiles.length > 0) return overTiles
+      // Pointer/touch drag that's over nothing (a gap or border) → no target. Don't fall through
+      // to closestCenter, which would resolve by the dragged tile's rect and snap to a far cell/tile.
+      if (args.pointerCoordinates) return []
     }
+    // Keyboard / non-pointer drags have no pointer coordinates, so resolve them by rect proximity.
     return closestCenter(args)
   }, [])
 

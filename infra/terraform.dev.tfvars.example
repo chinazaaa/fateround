@@ -26,3 +26,14 @@ cloudflare_zone_id     = "fff141dbd5d5f15aadf4497bcd46f3fc" # fateround.com zone
 cloudflare_record_name = "dev"                              # -> dev.fateround.com
 cloudflare_proxied     = true
 # restrict_to_cloudflare = true   # optional: lock the instance SG to Cloudflare IPs
+
+# App env. All of these except the NEXT_PUBLIC_* values are secrets stored in SSM.
+next_public_app_url       = "https://dev.fateround.com"   # prod example: "https://fateround.com"
+next_public_livekit_url   = "wss://YOUR-LIVEKIT-HOST"
+supabase_service_role_key = "REPLACE_WITH_SERVICE_ROLE_KEY"
+admin_email               = "admin@fateround.com"
+admin_password            = "REPLACE_WITH_ADMIN_PASSWORD"
+admin_session_secret      = "REPLACE_WITH_SESSION_SECRET"
+klipy_api_key             = "REPLACE_WITH_KLIPY_KEY"
+livekit_api_key           = "REPLACE_WITH_LIVEKIT_KEY"
+livekit_api_secret        = "REPLACE_WITH_LIVEKIT_SECRET"

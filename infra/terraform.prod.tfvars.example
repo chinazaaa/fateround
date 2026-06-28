@@ -30,3 +30,14 @@ restrict_to_cloudflare = true # lock the origin to Cloudflare's edge IPs
 
 # TLS: with the record proxied, use Cloudflare SSL "Full" and put a free
 # Cloudflare Origin Certificate on the box for end-to-end encryption.
+
+# App env. All of these except the NEXT_PUBLIC_* values are secrets stored in SSM.
+next_public_app_url       = "https://fateround.com"   # prod example: "https://fateround.com"
+next_public_livekit_url   = "wss://YOUR-LIVEKIT-HOST"
+supabase_service_role_key = "REPLACE_WITH_SERVICE_ROLE_KEY"
+admin_email               = "admin@fateround.com"
+admin_password            = "REPLACE_WITH_ADMIN_PASSWORD"
+admin_session_secret      = "REPLACE_WITH_SESSION_SECRET"
+klipy_api_key             = "REPLACE_WITH_KLIPY_KEY"
+livekit_api_key           = "REPLACE_WITH_LIVEKIT_KEY"
+livekit_api_secret        = "REPLACE_WITH_LIVEKIT_SECRET"

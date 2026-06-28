@@ -118,3 +118,59 @@ variable "restrict_to_cloudflare" {
   type        = bool
   default     = false
 }
+
+variable "next_public_app_url" {
+  description = "NEXT_PUBLIC_APP_URL — public base URL of the app (e.g. https://dev.fateround.com)."
+  type        = string
+
+  validation {
+    condition     = trimspace(var.next_public_app_url) != ""
+    error_message = "next_public_app_url is required."
+  }
+}
+
+variable "next_public_livekit_url" {
+  description = "NEXT_PUBLIC_LIVEKIT_URL — LiveKit server URL (public)."
+  type        = string
+}
+
+variable "supabase_service_role_key" {
+  description = "SUPABASE_SERVICE_ROLE_KEY — server-side Supabase key."
+  type        = string
+  sensitive   = true
+}
+
+variable "admin_email" {
+  description = "ADMIN_EMAIL — admin login email."
+  type        = string
+}
+
+variable "admin_password" {
+  description = "ADMIN_PASSWORD — admin login password."
+  type        = string
+  sensitive   = true
+}
+
+variable "admin_session_secret" {
+  description = "ADMIN_SESSION_SECRET — admin session signing secret."
+  type        = string
+  sensitive   = true
+}
+
+variable "klipy_api_key" {
+  description = "KLIPY_API_KEY — Klipy API key."
+  type        = string
+  sensitive   = true
+}
+
+variable "livekit_api_key" {
+  description = "LIVEKIT_API_KEY — LiveKit API key."
+  type        = string
+  sensitive   = true
+}
+
+variable "livekit_api_secret" {
+  description = "LIVEKIT_API_SECRET — LiveKit API secret."
+  type        = string
+  sensitive   = true
+}
