@@ -75,6 +75,27 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
+  migrate:
+    name: DB Migrate
+    needs: [build]
+    # Only deploy migrations on merge/push to dev or main — never from an
+    # unmerged PR (and PRs from forks can't read secrets anyway).
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+      # --include-all pushes migrations whose version is older than the latest
+      # one already applied remotely — needed because migrations land from
+      # separate PRs and can merge out of order.
+      - run: supabase db push --include-all
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
