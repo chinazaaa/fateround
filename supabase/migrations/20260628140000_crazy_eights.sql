@@ -61,12 +61,6 @@ COMMENT ON COLUMN games.crazy8_action_cards IS 'Crazy Eights: enable 2/J/Q/A act
 COMMENT ON COLUMN games.crazy8_jokers IS 'Crazy Eights: include 2 Jokers (wild + draw 5) in the deck.';
 COMMENT ON COLUMN games.crazy8_pick2_stacking IS 'Crazy Eights: allow stacking/defending a Pick Two (2) instead of forcing the draw.';
 
--- Migration 0122 switched `games` to COLUMN-level SELECT grants for the public roles, so
--- newly added columns are NOT readable by anon/authenticated until granted — without this,
--- the host page's games select errors with 42501 (surfaced as a bogus "Access Denied").
--- These are non-secret game config, safe to expose.
-GRANT SELECT (crazy8_action_cards, crazy8_jokers, crazy8_pick2_stacking) ON public.games TO anon, authenticated;
-
 ALTER TABLE games DROP CONSTRAINT IF EXISTS games_game_type_check;
 ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (
   'smash_marry_kill',
