@@ -30,9 +30,21 @@ describe('assertHost* shared checks', () => {
     expect(r.error).toBe('Unauthorized')
     expect(r.game).toBeNull()
   })
-  it('uppercases the game code into id', async () => {
-    const r = await assertHostGame(mockSupabase(game('waiting')), 'abcd', TOKEN)
+  it('uppercases the game code into the queried id', async () => {
+    let queriedId: unknown
+    const supabase = {
+      from: () => ({
+        select: () => ({
+          eq: (_col: string, value: unknown) => {
+            queriedId = value
+            return { maybeSingle: async () => ({ data: game('waiting') }) }
+          },
+        }),
+      }),
+    } as unknown as SupabaseClient
+    const r = await assertHostGame(supabase, 'abcd', TOKEN)
     expect(r.id).toBe('ABCD')
+    expect(queriedId).toBe('ABCD') // the Supabase query is actually filtered by the upper-cased id
   })
 })
 
