@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import { secondsUntilDeadline } from '@/lib/round-timing'
 import type { Game, WhotCard, WhotPlayerHand, WhotSession, WhotShape } from '@/types'
@@ -454,21 +455,11 @@ export async function initializeWhotGame(
   return {}
 }
 
-export async function clearWhotSessionData(supabase: SupabaseClient, gameId: string): Promise<{ error?: string }> {
-  const { error: sessionError } = await supabase.from('whot_sessions').delete().eq('game_id', gameId)
-  if (sessionError) return { error: sessionError.message }
-
-  const { error: handsError } = await supabase.from('whot_player_hands').delete().eq('game_id', gameId)
-  if (handsError) return { error: handsError.message }
-
-  const { error: spectatorError } = await supabase
-    .from('players')
-    .update({ spectator: false })
-    .eq('game_id', gameId)
-    .eq('spectator', true)
-  if (spectatorError) return { error: spectatorError.message }
-
-  return {}
+export async function clearWhotSessionData(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error: string | null }> {
+  return clearSessionTables(supabase, gameId, ['whot_sessions', 'whot_player_hands'], { resetSpectators: true })
 }
 
 async function loadGameState(

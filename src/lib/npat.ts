@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearSessionTables } from './session-clear'
 import { secondsUntilDeadline } from '@/lib/round-timing'
 import type { Game, NpatAnswer, NpatCategory, NpatMark, NpatMetadata, NpatPhase, Player, Round } from '@/types'
 import { catalogueAutoValid } from '@/lib/npat-catalogue'
@@ -795,15 +796,5 @@ export async function clearNpatSessionData(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
-  for (const table of ['npat_marks', 'npat_answers'] as const) {
-    const { error } = await supabase.from(table).delete().eq('game_id', gameId)
-    if (error) return { error: error.message }
-  }
-  const { error: spectatorError } = await supabase
-    .from('players')
-    .update({ spectator: false })
-    .eq('game_id', gameId)
-    .eq('spectator', true)
-  if (spectatorError) return { error: spectatorError.message }
-  return { error: null }
+  return clearSessionTables(supabase, gameId, ['npat_marks', 'npat_answers'], { resetSpectators: true })
 }

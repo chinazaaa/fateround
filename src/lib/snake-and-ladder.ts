@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import type { Player, SnakeLadderColor, SnakeLadderEvent, SnakeLadderPlayerState, SnakeLadderSession } from '@/types'
 
@@ -216,21 +217,10 @@ export async function initializeSnakeAndLadderGame(
 export async function clearSnakeAndLadderSessionData(
   supabase: SupabaseClient,
   gameId: string
-): Promise<{ error?: string }> {
-  const { error: sessionError } = await supabase.from('snake_ladder_sessions').delete().eq('game_id', gameId)
-  if (sessionError) return { error: sessionError.message }
-
-  const { error: statesError } = await supabase.from('snake_ladder_player_state').delete().eq('game_id', gameId)
-  if (statesError) return { error: statesError.message }
-
-  const { error: spectatorError } = await supabase
-    .from('players')
-    .update({ spectator: false })
-    .eq('game_id', gameId)
-    .eq('spectator', true)
-  if (spectatorError) return { error: spectatorError.message }
-
-  return {}
+): Promise<{ error: string | null }> {
+  return clearSessionTables(supabase, gameId, ['snake_ladder_sessions', 'snake_ladder_player_state'], {
+    resetSpectators: true,
+  })
 }
 
 /**

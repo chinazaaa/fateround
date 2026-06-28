@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import { msUntilDeadline, secondsUntilDeadline } from '@/lib/round-timing'
 import type { Game } from '@/types'
@@ -282,9 +283,7 @@ export async function clearWordHuntSessionData(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
-  const { error } = await supabase.from('word_hunt_submissions').delete().eq('game_id', gameId)
-  if (error) return { error: error.message }
-  return { error: null }
+  return clearSessionTables(supabase, gameId, ['word_hunt_submissions'])
 }
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────

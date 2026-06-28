@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearSessionTables } from './session-clear'
 import type { Player, Round, TtlGuess, TtlMetadata, TtlStatement } from '@/types'
 
 export type TtlHostMode = 'spectator' | 'player'
@@ -181,16 +182,5 @@ export async function clearTwoTruthsSessionData(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
-  for (const table of ['ttl_guesses', 'ttl_statements'] as const) {
-    const { error } = await supabase.from(table).delete().eq('game_id', gameId)
-    if (error) return { error: error.message }
-  }
-  // Reset spectator flag so everyone can participate in the next round
-  const { error: spectatorError } = await supabase
-    .from('players')
-    .update({ spectator: false })
-    .eq('game_id', gameId)
-    .eq('spectator', true)
-  if (spectatorError) return { error: spectatorError.message }
-  return { error: null }
+  return clearSessionTables(supabase, gameId, ['ttl_guesses', 'ttl_statements'], { resetSpectators: true })
 }

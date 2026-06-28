@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import type { LudoColor, LudoDiceRoll, LudoPiece, LudoPlayerState, LudoSession, Player } from '@/types'
 
@@ -599,21 +600,11 @@ export async function initializeLudoGame(
   return {}
 }
 
-export async function clearLudoSessionData(supabase: SupabaseClient, gameId: string): Promise<{ error?: string }> {
-  const { error: sessionError } = await supabase.from('ludo_sessions').delete().eq('game_id', gameId)
-  if (sessionError) return { error: sessionError.message }
-
-  const { error: statesError } = await supabase.from('ludo_player_state').delete().eq('game_id', gameId)
-  if (statesError) return { error: statesError.message }
-
-  const { error: spectatorError } = await supabase
-    .from('players')
-    .update({ spectator: false })
-    .eq('game_id', gameId)
-    .eq('spectator', true)
-  if (spectatorError) return { error: spectatorError.message }
-
-  return {}
+export async function clearLudoSessionData(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error: string | null }> {
+  return clearSessionTables(supabase, gameId, ['ludo_sessions', 'ludo_player_state'], { resetSpectators: true })
 }
 
 /**

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearSessionTables } from './session-clear'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -223,9 +224,7 @@ export async function clearSudokuSessionData(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
-  const { error } = await supabase.from('sudoku_submissions').delete().eq('game_id', gameId)
-  if (error) return { error: error.message }
-  return { error: null }
+  return clearSessionTables(supabase, gameId, ['sudoku_submissions'])
 }
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearSessionTables } from './session-clear'
 
 export const BINGO_COLUMNS = ['B', 'I', 'N', 'G', 'O'] as const
 export type BingoColumn = (typeof BINGO_COLUMNS)[number]
@@ -234,12 +235,7 @@ export async function clearBingoSessionData(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error: string | null }> {
-  const tables = ['bingo_claims', 'bingo_called_numbers', 'bingo_cards'] as const
-  for (const table of tables) {
-    const { error } = await supabase.from(table).delete().eq('game_id', gameId)
-    if (error) return { error: error.message }
-  }
-  return { error: null }
+  return clearSessionTables(supabase, gameId, ['bingo_claims', 'bingo_called_numbers', 'bingo_cards'])
 }
 
 export type BingoHostMode = 'spectator' | 'player'

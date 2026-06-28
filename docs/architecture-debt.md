@@ -30,7 +30,9 @@ Legend: `[ ]` todo · `[x]` done · `[~]` in progress
 - [~] **Introduce `GAME_REGISTRY: Record<GameType, GameDefinition>`** carrying `{ config, slug, landing, rules, selects, maxPlayers, validation, initialize, clearSession, canPlayAgain, PlayerView, HostView, score }`. Migrate incrementally: **(a)** client view dispatch first (mechanical — the views take uniform props: player views `gameCode`, host views `gameCode` + `hostToken`), **(b)** config/landing/selects, **(c)** server `start`/`clearSession`. Collapses ~22 edit-sites → ~1. **Sev High · Eff L**
   - [x] **(a) client view dispatch** — `PLAYER_VIEW_REGISTRY` (`game-player-views.ts`) + `HOST_VIEW_REGISTRY` (`game-host-views.ts`) replace the two 18-branch `if (isXGame) return <XView/>` chains with a `parseGameType` lookup (behavior-identical: every guard was `parseGameType(x) === literal`). Removed ~196 lines from the two god files; adding a game's views is now one registry entry each.
   - [ ] (b) config/landing/selects · [ ] (c) server `start`/`clearSession`
-- [ ] **`GameEngine` interface + `clearSessionTables(supabase, gameId, tables[])` helper** — replaces ~12 copy-pasted `clear*SessionData` and the duplicated `initialize*Game`/`can*PlayAgain` shapes; fixes `{error?}` vs `{error:null}` return drift. **Sev Med-High · Eff M**
+- [~] **`GameEngine` interface + `clearSessionTables(supabase, gameId, tables[])` helper** — replaces ~12 copy-pasted `clear*SessionData` and the duplicated `initialize*Game`/`can*PlayAgain` shapes; fixes `{error?}` vs `{error:null}` return drift. **Sev Med-High · Eff M**
+  - [x] **`clearSessionTables` helper** (`session-clear.ts`) — the 12 table-deleting `clear*SessionData` functions (± a spectator reset) are now one-liners delegating to it; unified their return type to `{ error: string | null }`. −77 lines; verified behaviour-identical with a mock-Supabase test. (3 no-op stubs + `describe_it`'s pool-usage logic left as-is.)
+  - [ ] `GameEngine` interface unifying `initialize*Game`/`can*PlayAgain` shapes
 
 ## Phase 4 — Decompose god files & adopt existing abstractions
 
