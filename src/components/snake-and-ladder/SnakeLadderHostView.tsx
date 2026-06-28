@@ -452,7 +452,9 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
             />
           )}
 
-          {session && game.status !== 'finished' && (
+          {/* Only show the board on Manage when there's no Play tab (spectator host).
+              When the host is playing, the board already lives on the Play tab. */}
+          {session && game.status !== 'finished' && !showPlayTab && (
             <SnakeLadderGamePanel
               session={session}
               states={states}

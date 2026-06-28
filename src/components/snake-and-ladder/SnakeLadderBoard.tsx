@@ -217,59 +217,67 @@ export function SnakeLadderGamePanel({
         />
       )}
 
-      <SnakeLadderBoard states={states} players={players} highlightSquare={session.last_to} />
-
-      {session.status_message && (
-        <p className="text-center text-sm font-semibold text-[var(--foreground)] min-h-[1.25rem]">
-          {session.status_message}
-        </p>
-      )}
-
-      {!finished && (
-        <div className="flex items-center justify-center gap-3">
-          <SnakeLadderDie value={dieValue} rolling={rolling} />
-          {onRoll && isMyTurn && (
-            <button
-              type="button"
-              onClick={onRoll}
-              disabled={acting || rolling}
-              className="rounded-xl bg-amber-400 px-5 py-3 text-base font-black text-slate-900 shadow-md transition-colors hover:bg-amber-300 disabled:opacity-40"
-            >
-              {acting || rolling ? '…' : '🎲 Roll'}
-            </button>
-          )}
+      {/* Mobile: single stacked column. Desktop (lg+): board left, controls right
+          so the dice, roll button and leaderboard stay visible without scrolling. */}
+      <div className="space-y-3 lg:flex lg:items-start lg:gap-4 lg:space-y-0">
+        <div className="lg:flex-[0_0_50%] lg:min-w-0">
+          <SnakeLadderBoard states={states} players={players} highlightSquare={session.last_to} />
         </div>
-      )}
 
-      <div className="grid grid-cols-2 gap-2">
-        {roster.map((s) => {
-          const isTurn = s.player_id === turnPlayerId && !finished
-          const isMe = s.player_id === myPlayerId
-          return (
-            <div
-              key={s.player_id}
-              className={[
-                'flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-sm',
-                isTurn
-                  ? 'border-[var(--primary)]/50 bg-[var(--primary)]/10'
-                  : 'border-[var(--border)] bg-[var(--surface-inset-bg)]',
-              ].join(' ')}
-            >
-              <span className="flex items-center gap-1.5 min-w-0">
-                <span
-                  className="h-3 w-3 shrink-0 rounded-full border border-white/60"
-                  style={{ backgroundColor: SNAKE_LADDER_COLOR_HEX[s.color] }}
-                  title={SNAKE_LADDER_COLOR_LABELS[s.color]}
-                />
-                <span className="truncate font-medium">
-                  {players.find((p) => p.id === s.player_id)?.name ?? 'Player'}
-                  {isMe ? ' (you)' : ''}
-                </span>
-              </span>
-              <span className="shrink-0 tabular-nums font-bold text-muted">{s.position}</span>
+        <div className="space-y-3 lg:min-w-0 lg:flex-1">
+          {session.status_message && (
+            <p className="text-center text-sm font-semibold text-[var(--foreground)] min-h-[1.25rem]">
+              {session.status_message}
+            </p>
+          )}
+
+          {!finished && (
+            <div className="flex items-center justify-center gap-3">
+              <SnakeLadderDie value={dieValue} rolling={rolling} />
+              {onRoll && isMyTurn && (
+                <button
+                  type="button"
+                  onClick={onRoll}
+                  disabled={acting || rolling}
+                  className="rounded-xl bg-amber-400 px-5 py-3 text-base font-black text-slate-900 shadow-md transition-colors hover:bg-amber-300 disabled:opacity-40"
+                >
+                  {acting || rolling ? '…' : '🎲 Roll'}
+                </button>
+              )}
             </div>
-          )
-        })}
+          )}
+
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+            {roster.map((s) => {
+              const isTurn = s.player_id === turnPlayerId && !finished
+              const isMe = s.player_id === myPlayerId
+              return (
+                <div
+                  key={s.player_id}
+                  className={[
+                    'flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-sm',
+                    isTurn
+                      ? 'border-[var(--primary)]/50 bg-[var(--primary)]/10'
+                      : 'border-[var(--border)] bg-[var(--surface-inset-bg)]',
+                  ].join(' ')}
+                >
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className="h-3 w-3 shrink-0 rounded-full border border-white/60"
+                      style={{ backgroundColor: SNAKE_LADDER_COLOR_HEX[s.color] }}
+                      title={SNAKE_LADDER_COLOR_LABELS[s.color]}
+                    />
+                    <span className="truncate font-medium">
+                      {players.find((p) => p.id === s.player_id)?.name ?? 'Player'}
+                      {isMe ? ' (you)' : ''}
+                    </span>
+                  </span>
+                  <span className="shrink-0 tabular-nums font-bold text-muted">{s.position}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
       </div>
     </SnakeLadderCard>
   )
