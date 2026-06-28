@@ -87,7 +87,8 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
           <button
             onClick={() => setIsOpen(!isOpen)}
             className="flex items-center justify-center w-10 h-10 rounded-full bg-theme text-body border border-theme shadow-md active:scale-95 transition-all"
-            title="Toggle Voice Panel"
+            title={isOpen ? 'Minimize voice panel (stays connected)' : 'Open voice panel'}
+            aria-label={isOpen ? 'Minimize voice panel (stays connected)' : 'Open voice panel'}
           >
             {isOpen ? '❌' : '🔊'}
           </button>
@@ -104,35 +105,39 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
         </div>
       )}
 
-      {/* Voice Chat Control Panel */}
-      {token && isOpen && (
-        <div className="glass-card-strong w-72 p-4 shadow-xl flex flex-col gap-3 max-h-87.5">
-          <div className="flex items-center justify-between border-b border-theme pb-2">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <h3 className="text-sm font-bold text-body">Voice Chat</h3>
-            </div>
-            <button
-              onClick={leaveAudio}
-              className="text-xs text-red-500 hover:text-red-400 font-semibold px-2 py-0.5 rounded hover:bg-red-500/10 transition-colors"
-            >
-              Disconnect
-            </button>
-          </div>
-
-          <LiveKitRoom
-            video={false}
-            audio={true}
-            token={token}
-            serverUrl={serverUrl}
-            connect={true}
-            onDisconnected={leaveAudio}
-            className="flex flex-col gap-3 flex-1"
-          >
-            <RoomAudioRenderer />
-            <AudioChatInner localPlayerName={playerName} />
-          </LiveKitRoom>
-        </div>
+      {/* Voice Chat Control Panel — the LiveKitRoom stays mounted whenever a
+       * token exists so the call keeps running while minimized. The ❌ toggle
+       * only flips `isOpen`, which hides the panel UI without tearing down the
+       * connection; Disconnect is the single way to actually leave the room. */}
+      {token && (
+        <LiveKitRoom
+          video={false}
+          audio={true}
+          token={token}
+          serverUrl={serverUrl}
+          connect={true}
+          onDisconnected={leaveAudio}
+          className={isOpen ? 'glass-card-strong w-72 p-4 shadow-xl flex flex-col gap-3 max-h-87.5' : 'hidden'}
+        >
+          <RoomAudioRenderer />
+          {isOpen && (
+            <>
+              <div className="flex items-center justify-between border-b border-theme pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <h3 className="text-sm font-bold text-body">Voice Chat</h3>
+                </div>
+                <button
+                  onClick={leaveAudio}
+                  className="text-xs text-red-500 hover:text-red-400 font-semibold px-2 py-0.5 rounded hover:bg-red-500/10 transition-colors"
+                >
+                  Disconnect
+                </button>
+              </div>
+              <AudioChatInner localPlayerName={playerName} />
+            </>
+          )}
+        </LiveKitRoom>
       )}
     </div>
   )
