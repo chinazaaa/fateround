@@ -18,12 +18,12 @@ Legend: `[ ]` todo · `[x]` done · `[~]` in progress
 
 ## Phase 1 — Safety net (prerequisite for everything below)
 
-- [ ] **No automated tests at all** (no vitest/jest; only lint+typecheck). → Add Vitest; unit-test the _pure_ engine/scoring helpers (scrabble/chess/monopoly/ludo rules, `room-points.ts` 31 branches, `game-types.ts` pairing logic) — no DB needed. **Sev High · Eff M**
+- [x] **No automated tests** → fixed (#144). Added Vitest (node env) + a CI `Test` job; 29 unit tests over pure logic (scrabble scoring/geometry, language tile sets, `parseGameType`/guards, round generation). The harness everything below relies on.
 
 ## Phase 2 — Make dispatch fail-fast (cheap safety, surfaces existing gaps)
 
-- [ ] **Silent-fallthrough dispatch.** `start/route.ts`, `play-again/route.ts`, `PollGamePlayerExperience.tsx`, `host/[code]/page.tsx` are `if (isXGame) … return` chains with no `default`/`assertNever` — a missing branch compiles and silently renders the wrong UI / seeds no session. → `switch (gameType) + default: assertNever`. **Sev High · Eff M**
-- [ ] **Partial enums drift from `GameType`.** `validation.ts` `gameTypeEnum` (:48), `feedbackGameTypeEnum` (:973), `LOBBY_LIMIT_GAME_TYPES` are hand-copied lists. → Derive from one source. **Sev Med · Eff S**
+- [~] **Silent-fallthrough dispatch.** Delivered a fail-fast **coverage guard** instead (#147): a test that fails CI when a new game is half-wired across the hand-maintained surfaces. _The audit's `switch + assertNever` does **not** fit these chains — they have a legitimate default (poll-family games render inline), so a naive `assertNever` would be wrong. Consolidating the dispatch is folded into Phase 3 (registry)._
+- [x] **Partial enums drift from `GameType`** → addressed. `feedbackGameTypeEnum` now derives from `gameTypeEnum.options` (#142); `GAME_TYPE_OPTIONS`, `gameTypeEnum` (via `createGameSchema`), config, and landing slug/content/rules drift is now caught by the Phase 2 coverage test (#147). _`LOBBY_LIMIT_GAME_TYPES` is an intentional subset, left as-is._
 
 ## Phase 3 — Game registry (the structural fix)
 
