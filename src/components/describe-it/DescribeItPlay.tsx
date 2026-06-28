@@ -236,6 +236,9 @@ export function DescribeItPlayPanel({
               {onClue && (
                 <ClueOrGuessInput placeholder="Type a clue…" buttonLabel="Send" onSubmit={onClue} disabled={!!acting} />
               )}
+              {isIndividual && clues.length === 0 && (
+                <p className="text-faint text-[11px]">The guessers&apos; timer starts when you send your first clue.</p>
+              )}
               {clues.length > 0 && (
                 <div className="text-left space-y-1">
                   <p className="text-faint text-[11px] font-semibold uppercase tracking-wide">
@@ -286,6 +289,9 @@ export function DescribeItPlayPanel({
               </div>
               {isIndividual && myGuessedThisTurn ? (
                 <p className="text-center text-emerald-400 text-sm font-bold">✅ You got it! Waiting for the others…</p>
+              ) : canGuess && isIndividual && clues.length === 0 ? (
+                // Individual mode: the guessing timer only starts on the first clue.
+                <p className="text-center text-faint text-xs">Guessing opens with the first clue…</p>
               ) : canGuess && onGuess ? (
                 <ClueOrGuessInput
                   placeholder="Type your guess…"

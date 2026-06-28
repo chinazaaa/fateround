@@ -56,6 +56,7 @@ import { NHIE_QUESTION_COUNT } from '@/lib/never-have-i-ever-questions'
 import { PAN_MIN_POOL, PAN_QUESTION_COUNT } from '@/lib/pick-a-number-questions'
 import { clampPanRounds, PAN_MAX_ROUNDS } from '@/lib/pick-a-number'
 import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
+import { parseStoredDescribeItWords } from '@/lib/describe-it-words'
 import {
   parseQuestionSource,
   parseStoredWyrQuestions,
@@ -202,6 +203,10 @@ function parseCustomQuestionsBody(
     const parsed = parseStoredCodewordsWords(raw)
     return parsed.length > 0 ? parsed : null
   }
+  if (isDescribeItGame(gameType)) {
+    const parsed = parseStoredDescribeItWords(raw)
+    return parsed.length > 0 ? parsed : null
+  }
   return null
 }
 
@@ -280,11 +285,15 @@ export async function POST(req: NextRequest) {
       isNeverHaveIEver(game_type) ||
       isPickANumber(game_type) ||
       isTriviaGame(game_type) ||
-      isCodewordsGame(game_type))
+      isCodewordsGame(game_type) ||
+      isDescribeItGame(game_type))
   ) {
     const cqParsed = parseCustomQuestionsBody(rawCustomQuestions, game_type)
     if (!cqParsed) {
-      return NextResponse.json({ error: 'Upload at least one custom question' }, { status: 400 })
+      return NextResponse.json(
+        { error: isDescribeItGame(game_type) ? 'Upload at least one word' : 'Upload at least one custom question' },
+        { status: 400 }
+      )
     }
     custom_questions = cqParsed
   }
@@ -594,7 +603,8 @@ export async function POST(req: NextRequest) {
       isPickANumber(game_type) ||
       isMostLikelyTo(game_type) ||
       isTriviaGame(game_type) ||
-      isCodewordsGame(game_type)
+      isCodewordsGame(game_type) ||
+      isDescribeItGame(game_type)
         ? question_source
         : 'platform',
     custom_questions,

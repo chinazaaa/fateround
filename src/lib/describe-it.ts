@@ -14,8 +14,8 @@ export const DESCRIBE_IT_DEFAULT_MAX_PLAYERS = 12
 export const DESCRIBE_IT_GUESS_BASE_POINTS = 10
 /** Extra points for an instant guess, decaying linearly to 0 at time-up. */
 export const DESCRIBE_IT_GUESS_SPEED_BONUS = 40
-/** Points the describer earns for each player who guesses their word. */
-export const DESCRIBE_IT_DESCRIBER_POINTS_PER_GUESS = 5
+// The describer is paid the mirror of their guessers' points (see endIndividualTurn),
+// not a flat per-guess rate, so describing and guessing are worth the same on average.
 
 export function clampDescribeItMode(value: unknown): DescribeItMode {
   return value === 'individual' ? 'individual' : 'team'
@@ -62,6 +62,15 @@ export function clampDescribeItMaxPlayers(value: unknown): number {
   const n = Math.round(Number(value))
   if (!Number.isFinite(n)) return DESCRIBE_IT_DEFAULT_MAX_PLAYERS
   return Math.min(DESCRIBE_IT_MAX_PLAYERS, Math.max(DESCRIBE_IT_MIN_PLAYERS, n))
+}
+
+/**
+ * Individual mode splits each turn 50/50: the describer gets the first half to
+ * send a first clue, then an equal guessing half that starts the moment that
+ * clue lands (see `processDescribeItClue`). Team mode keeps the full turn.
+ */
+export function describeItHalfSeconds(turnSeconds: number): number {
+  return Math.max(1, Math.round(turnSeconds / 2))
 }
 
 export const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3', 'Team 4'] as const
@@ -328,7 +337,9 @@ function buildTurn(opts: {
     current_clue: null,
     current_clues: [],
     used_words: [...opts.usedWords, word],
-    turn_deadline_at: deadline(turnSeconds),
+    // Individual mode only counts down the describer's half until a first clue
+    // lands; the clue then restarts the clock for the guessing half.
+    turn_deadline_at: deadline(mode === 'individual' ? describeItHalfSeconds(turnSeconds) : turnSeconds),
     break_deadline_at: null,
   }
 
@@ -471,11 +482,22 @@ export async function processDescribeItClue(
   const history = session.current_clues ?? []
   const nextClues = history.some((c) => normalizeGuess(c) === normalizeGuess(trimmed)) ? history : [...history, trimmed]
 
+  // Individual mode: the very first clue opens the guessing window, so restart
+  // the clock at the guesser half. Later clues leave that window running.
+  const update: Partial<DescribeItSession> = {
+    current_clue: trimmed,
+    current_clues: nextClues,
+    updated_at: new Date().toISOString(),
+  }
+  if (session.mode === 'individual' && history.length === 0) {
+    update.turn_deadline_at = deadline(describeItHalfSeconds(session.turn_seconds))
+  }
+
   // Scope the write to the turn we loaded; if the turn already ended, drop the
   // stale clue rather than stamping it onto the next turn.
   const { error: updateError } = await supabase
     .from('describe_it_sessions')
-    .update({ current_clue: trimmed, current_clues: nextClues, updated_at: new Date().toISOString() })
+    .update(update)
     .eq('game_id', gameId)
     .eq('phase', 'turn')
     .eq('turn_index', session.turn_index)
@@ -577,6 +599,8 @@ async function processIndividualGuess(
   session: DescribeItSession
 ): Promise<{ error?: string; correct?: boolean }> {
   if (!session.roster.includes(playerId)) return { error: 'You are not in this game' }
+  // The guessing window only opens once the describer's first clue lands.
+  if ((session.current_clues?.length ?? 0) === 0) return { error: 'Wait for the describer’s first clue' }
 
   const guess = text.trim()
   if (!guess) return { error: 'Guess is empty' }
@@ -595,7 +619,8 @@ async function processIndividualGuess(
     return { correct: false }
   }
 
-  const points = describeItGuessPoints(session.turn_deadline_at, session.turn_seconds)
+  // Speed bonus decays across the guesser half (the window the clock now counts).
+  const points = describeItGuessPoints(session.turn_deadline_at, describeItHalfSeconds(session.turn_seconds))
   // Record the scored guess and credit the points atomically (single round-trip). The
   // partial unique index keeps it idempotent — a re-submit returns false and never
   // double-awards — and there's no insert→score gap where a crash could drop a point.
@@ -625,37 +650,53 @@ async function processIndividualGuess(
 
 /**
  * Close out an individual-mode turn (timer expiry or everyone guessed): claim the
- * turn→break transition once, log the word, and pay the describer per correct guesser.
+ * turn→break transition once, log the word, and pay the describer the mirror of
+ * their guessers' points (one point per point those guessers scored this turn).
  */
-async function endIndividualTurn(supabase: SupabaseClient, gameId: string, session: DescribeItSession): Promise<void> {
-  const { count } = await supabase
+async function endIndividualTurn(
+  supabase: SupabaseClient,
+  gameId: string,
+  session: DescribeItSession,
+  opts?: { noClue?: boolean }
+): Promise<void> {
+  // Pull each correct guess's points so the describer can be paid the mirror of
+  // what they generated (see the payout below), and to count how many got it.
+  const { data: correctGuesses } = await supabase
     .from('describe_it_guesses')
-    .select('id', { count: 'exact', head: true })
+    .select('points')
     .eq('game_id', gameId)
     .eq('turn_index', session.turn_index)
     .eq('correct', true)
-  const guessedCount = count ?? 0
+  const guessedCount = correctGuesses?.length ?? 0
+  const describerPoints = (correctGuesses ?? []).reduce((sum, g) => sum + (g.points ?? 0), 0)
 
   const last = describeItTotalTurns('individual', session.num_teams, session.roster.length, session.total_rounds) - 1
   const isLastTurn = session.turn_index >= last
   const describerName = await playerName(supabase, gameId, session.describer_player_id)
+  const tail = isLastTurn ? '' : ' · next describer soon'
+  const statusMessage = opts?.noClue
+    ? `${describerName} didn't send a clue in time — word was "${session.current_word}"${tail}`
+    : `${describerName}'s word was "${session.current_word}" — ${guessedCount} guessed it${tail}`
 
   // Scope the transition to the turn we observed so the early-finish and the timer
   // can't both close it — only the first to flip phase 'turn'→'break' pays out.
-  const { data: claimed } = await supabase
+  // The no-clue (describer-timeout) close also requires the clue slot still empty,
+  // so a first clue landing in the same instant wins instead of being cut off.
+  let claim = supabase
     .from('describe_it_sessions')
     .update({
       phase: 'break',
       turn_deadline_at: null,
       break_deadline_at: deadline(DESCRIBE_IT_BREAK_SECONDS),
       current_clue: null,
-      status_message: `${describerName}'s word was "${session.current_word}" — ${guessedCount} guessed it${isLastTurn ? '' : ' · next describer soon'}`,
+      status_message: statusMessage,
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
     .eq('phase', 'turn')
     .eq('turn_index', session.turn_index)
-    .select('id')
+  if (opts?.noClue) claim = claim.is('current_clue', null)
+  const { data: claimed } = await claim.select('id')
   if (!claimed || claimed.length === 0) return
 
   await supabase.from('describe_it_words').insert({
@@ -670,11 +711,15 @@ async function endIndividualTurn(supabase: SupabaseClient, gameId: string, sessi
     guesser_player_id: null,
   })
 
-  if (guessedCount > 0 && session.describer_player_id) {
+  // Mirror scoring: the describer earns one point for every point their guessers
+  // scored this turn. Over a game (everyone describes and guesses equally) this
+  // makes the two roles contribute the same on average, so strong describers
+  // aren't stranded at the bottom — and fast guesses reward the describer too.
+  if (describerPoints > 0 && session.describer_player_id) {
     await supabase.rpc('describe_it_add_score', {
       p_game_id: gameId,
       p_player_id: session.describer_player_id,
-      p_delta: guessedCount * DESCRIBE_IT_DESCRIBER_POINTS_PER_GUESS,
+      p_delta: describerPoints,
     })
   }
 }
@@ -744,7 +789,9 @@ export async function processDescribeItExpireTurn(
   if (!session.turn_deadline_at || new Date(session.turn_deadline_at).getTime() > Date.now()) return {}
 
   if (session.mode === 'individual') {
-    await endIndividualTurn(supabase, gameId, session)
+    // No clue ever landed → the describer's half lapsed; end the turn as a skip.
+    const noClue = (session.current_clues?.length ?? 0) === 0
+    await endIndividualTurn(supabase, gameId, session, { noClue })
     return {}
   }
 

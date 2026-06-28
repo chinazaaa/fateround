@@ -375,7 +375,8 @@ export function parseQuestionSource(raw: unknown, gameType?: GameType | string):
     isWouldYouRather(gameType) ||
     isMostLikelyTo(gameType) ||
     isNeverHaveIEver(gameType) ||
-    isPickANumber(gameType)
+    isPickANumber(gameType) ||
+    isDescribeItGame(gameType)
   ) {
     if (raw === 'custom') return 'custom'
     if (raw === 'library') return 'library'

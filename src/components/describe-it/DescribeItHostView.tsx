@@ -540,8 +540,8 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
               {isIndividual && (
                 <div className="text-faint text-[11px] space-y-1">
                   <p>
-                    Everyone takes turns describing one word; guessers score by speed and the describer scores per
-                    correct guess.
+                    Everyone takes turns describing one word; guessers score by speed and the describer earns the same
+                    points their guessers do — so describing and guessing are worth the same.
                   </p>
                   <p
                     className={readyPlayers.length * currentRounds > 40 ? 'text-amber-400 font-semibold' : 'text-faint'}
