@@ -1,13 +1,12 @@
 # Supabase CLI config. Used by the "DB Migrate" CI job (supabase link + db push)
-# to apply supabase/migrations to each environment's own project.
+# to apply supabase/migrations.
 #
 # Two-project setup (not Branching):
-#   - prod = skhvbzitwvnbhqxfitgh
-#   - dev  = its own project (free project in a separate org)
-# The migrate job selects the project per branch via `supabase link --project-ref`,
-# so project_id below is only the default/fallback for local CLI use.
-#
-# `supabase init` regenerates the full default file if you want finer control.
+#   - prod = skhvbzitwvnbhqxfitgh — migrated by the CI job on push to `main`.
+#   - dev  = its own project in a separate free org. NOT yet wired: dev pushes
+#     currently skip migration until its ref + secrets are configured.
+# project_id below is only the default/fallback for local CLI use; the migrate job
+# links the target project explicitly via `supabase link --project-ref`.
 
 project_id = "skhvbzitwvnbhqxfitgh"
 
