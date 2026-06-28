@@ -55,6 +55,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
+  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [myPlayerName, setMyPlayerName] = useState('')
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
@@ -145,6 +146,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     const playerId = session?.playerId ?? null
     if (session) {
       setMyPlayerId(session.playerId)
+      setMyResumeToken(session.resumeToken ?? null)
       setMyPlayerName(session.playerName)
       if (gameData.status === 'waiting') {
         setCard(null)
@@ -153,6 +155,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
       }
     } else {
       setMyPlayerId(null)
+      setMyResumeToken(null)
       setMyPlayerName('')
       setCard(null)
     }
@@ -269,6 +272,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
 
         setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
         setMyPlayerId(data.playerId)
+        setMyResumeToken(data.resumeToken ?? null)
         setMyPlayerName(data.playerName)
         await load()
         success(`Joined as ${data.playerName}`)
@@ -293,12 +297,16 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
 
   const markCell = async (index: number) => {
     if (!myPlayerId || marking) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setMarking(true)
     try {
       const res = await fetch('/api/bingo/mark', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, cellIndex: index }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, cellIndex: index }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to mark')
@@ -314,12 +322,16 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
 
   const claimBingo = async () => {
     if (!myPlayerId || claiming) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setClaiming(true)
     try {
       const res = await fetch('/api/bingo/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Not a valid bingo')
@@ -335,6 +347,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const handlePlayerLeft = () => {
     clearPlayerSession(gameCode)
     setMyPlayerId(null)
+    setMyResumeToken(null)
     setMyPlayerName('')
     setJoinName('')
     setScreen('join')

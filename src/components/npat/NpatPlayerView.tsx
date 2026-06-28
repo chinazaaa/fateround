@@ -33,6 +33,7 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
   const [answers, setAnswers] = useState<NpatAnswer[]>([])
   const [marks, setMarks] = useState<NpatMark[]>([])
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
+  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [myPlayerName, setMyPlayerName] = useState('')
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
@@ -67,9 +68,11 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
     const playerId = session?.playerId ?? null
     if (session) {
       setMyPlayerId(session.playerId)
+      setMyResumeToken(session.resumeToken ?? null)
       setMyPlayerName(session.playerName)
     } else {
       setMyPlayerId(null)
+      setMyResumeToken(null)
       setMyPlayerName('')
     }
 
@@ -149,6 +152,7 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
         if (!res.ok) throw new Error(data.error ?? 'Failed to join')
         setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
         setMyPlayerId(data.playerId)
+        setMyResumeToken(data.resumeToken ?? null)
         setMyPlayerName(data.playerName)
         await load()
         success(`Joined as ${data.playerName}`)
@@ -174,6 +178,7 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
   const handlePlayerLeft = () => {
     clearPlayerSession(gameCode)
     setMyPlayerId(null)
+    setMyResumeToken(null)
     setMyPlayerName('')
     setJoinName('')
     setScreen('join')
@@ -289,6 +294,7 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
             answers={answers}
             marks={marks}
             myPlayerId={myPlayerId}
+            myResumeToken={myResumeToken}
             playerName={myPlayerName}
             onReload={load}
             readOnly={isViewer}

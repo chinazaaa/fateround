@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { bingoMarkSchema } from '@/lib/validation'
 import { parseGameType, isBingoGame } from '@/lib/game-types'
 import { canMarkCell } from '@/lib/bingo'
 import { playerIsViewer } from '@/lib/viewers'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -14,8 +13,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId, cellIndex } = parsed.data
+  const { gameId, resumeToken, cellIndex } = parsed.data
   const code = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase
     .from('games')
@@ -28,14 +28,11 @@ export async function POST(req: NextRequest) {
   }
   if (game.status !== 'active') return NextResponse.json({ error: 'Game not active' }, { status: 400 })
 
-  const { data: player } = await supabase
-    .from('players')
-    .select('id, joined_at, spectator')
-    .eq('id', playerId)
-    .eq('game_id', code)
-    .maybeSingle()
-  if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
-  if (playerIsViewer(player, game)) {
+  // Authorize by the secret resume_token; the resolved player.id is authoritative.
+  const auth = await assertPlayer(supabase, code, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const playerId = auth.player.id
+  if (playerIsViewer(auth.player, game)) {
     return NextResponse.json({ error: 'Viewers cannot mark their card' }, { status: 403 })
   }
 

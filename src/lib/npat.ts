@@ -670,14 +670,14 @@ export function trimNpatAnswerFields(fields: Partial<Record<NpatCategory, string
 
 export function npatAnswerRequestPayload(opts: {
   gameId: string
-  playerId: string
+  resumeToken: string
   roundId: string
   answers: Partial<Record<NpatCategory, string>>
 }) {
   const fields = trimNpatAnswerFields(opts.answers)
   return {
     gameId: opts.gameId,
-    playerId: opts.playerId,
+    resumeToken: opts.resumeToken,
     roundId: opts.roundId,
     name: fields.name,
     animal: fields.animal,

@@ -5,6 +5,7 @@ import { parseGameType, isBingoGame, isCodewordsGame } from '@/lib/game-types'
 import { createBingoCardForPlayer } from '@/lib/bingo'
 import { assignCodewordsLateJoinOperative } from '@/lib/codewords'
 import { allowLatePlayers, playerIsViewer } from '@/lib/viewers'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { Game } from '@/types'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     if (!existingCard) {
-      const { error: cardError } = await createBingoCardForPlayer(supabase, gameId, playerId)
+      const { error: cardError } = await createBingoCardForPlayer(getSupabaseAdmin(), gameId, playerId)
       if (cardError) {
         await supabase.from('players').update({ spectator: true }).eq('id', playerId)
         return NextResponse.json({ error: cardError }, { status: 500 })
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (isCodewordsGame(gameType)) {
-    const { role, error: assignError } = await assignCodewordsLateJoinOperative(supabase, gameId, playerId)
+    const { role, error: assignError } = await assignCodewordsLateJoinOperative(getSupabaseAdmin(), gameId, playerId)
     if (assignError) {
       await supabase.from('players').update({ spectator: true }).eq('id', playerId)
       return NextResponse.json({ error: assignError }, { status: 500 })

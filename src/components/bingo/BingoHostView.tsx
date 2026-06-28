@@ -64,6 +64,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
   // Host+play mode
   const [hostMode, setHostMode] = useState<BingoHostMode>('spectator')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
+  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
@@ -122,6 +123,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
     const session = getPlayerSession(gameCode)
     if (session) {
       setHostPlayerId(session.playerId)
+      setHostResumeToken(session.resumeToken ?? null)
       setHostPlayerName(session.playerName)
     }
   }, [gameCode, load])
@@ -192,6 +194,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
     (playerId: string) => {
       if (playerId === hostPlayerId) {
         setHostPlayerId(null)
+        setHostResumeToken(null)
         setHostPlayerName('')
         setHostCard(null)
         clearPlayerSession(gameCode)
@@ -235,6 +238,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
       setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
       setHostPlayerId(data.playerId)
+      setHostResumeToken(data.resumeToken ?? null)
       setHostPlayerName(data.playerName)
       setHostMode('player')
       setBingoHostMode(gameCode, 'player')
@@ -249,12 +253,16 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   const markHostNumber = async (cellIndex: number) => {
     if (!hostPlayerId || !hostCard || hostMarking) return
+    if (!hostResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setHostMarking(true)
     try {
       const res = await fetch('/api/bingo/mark', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: hostPlayerId, cellIndex }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, cellIndex }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to mark')
@@ -270,12 +278,16 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   const claimHostBingo = async () => {
     if (!hostPlayerId || hostClaiming) return
+    if (!hostResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setHostClaiming(true)
     try {
       const res = await fetch('/api/bingo/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: hostPlayerId }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to claim')

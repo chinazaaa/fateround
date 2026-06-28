@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
 import { clampCodewordsTimer } from '@/lib/codewords'
 import { clampLobbyMaxPlayers, fetchGamePlayerLimits } from '@/lib/game-limits'
 import { codewordsLobbySettingsSchema } from '@/lib/validation'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -16,6 +14,7 @@ export async function POST(req: NextRequest) {
 
   const { gameId, hostToken, max_players, spymasterTimerSeconds, operativeTimerSeconds } = parsed.data
   const code = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   if (max_players === undefined && spymasterTimerSeconds === undefined && operativeTimerSeconds === undefined) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })

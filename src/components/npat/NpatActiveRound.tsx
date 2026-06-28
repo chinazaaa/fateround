@@ -75,6 +75,7 @@ export function NpatActiveRound({
   answers,
   marks,
   myPlayerId,
+  myResumeToken,
   playerName,
   onReload,
   skipGameSync = false,
@@ -87,6 +88,7 @@ export function NpatActiveRound({
   answers: NpatAnswer[]
   marks: NpatMark[]
   myPlayerId: string
+  myResumeToken: string | null
   playerName: string
   onReload?: () => void
   skipGameSync?: boolean
@@ -150,13 +152,14 @@ export function NpatActiveRound({
     draftTimerRef.current = window.setTimeout(() => {
       draftTimerRef.current = null
       if (readOnly || !currentRound || metadata?.phase !== 'writing' || myAnswer?.submitted_at) return
+      if (!myResumeToken) return
       void fetch('/api/npat/draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           npatAnswerRequestPayload({
             gameId: gameCode,
-            playerId: myPlayerId,
+            resumeToken: myResumeToken,
             roundId: currentRound.id,
             answers: answerFormRef.current,
           })
@@ -294,12 +297,16 @@ export function NpatActiveRound({
 
   const pickLetter = async (letter: string) => {
     if (!currentRound || readOnly || pickingLetter) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setPickingLetter(true)
     try {
       const res = await fetch('/api/npat/letter', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, roundId: currentRound.id, letter }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, roundId: currentRound.id, letter }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to pick letter')
@@ -314,6 +321,10 @@ export function NpatActiveRound({
 
   const submitAnswersWithForm = async (values: Record<NpatCategory, string>, opts?: { silent?: boolean }) => {
     if (!currentRound || readOnly || submittingRef.current) return
+    if (!myResumeToken) {
+      if (!opts?.silent) toastError('Your player session expired — rejoin to continue')
+      return
+    }
     submittingRef.current = true
     setSubmitting(true)
     try {
@@ -323,7 +334,7 @@ export function NpatActiveRound({
         body: JSON.stringify(
           npatAnswerRequestPayload({
             gameId: gameCode,
-            playerId: myPlayerId,
+            resumeToken: myResumeToken,
             roundId: currentRound.id,
             answers: values,
           })
@@ -375,6 +386,10 @@ export function NpatActiveRound({
 
   const submitMarks = async () => {
     if (!currentRound || readOnly || submitting || !reviewTargetAnswer) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setSubmitting(true)
     try {
       const dupes = duplicateKeysByCategory(roundAnswers)
@@ -390,7 +405,7 @@ export function NpatActiveRound({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          playerId: myPlayerId,
+          resumeToken: myResumeToken,
           roundId: currentRound.id,
           ...Object.fromEntries(
             NPAT_CATEGORIES.map((category) => [
@@ -413,6 +428,10 @@ export function NpatActiveRound({
 
   const submitDispute = async (targetPlayerId: string, category: NpatCategory) => {
     if (!currentRound || readOnly || disputing) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setDisputing(true)
     try {
       const res = await fetch('/api/npat/dispute', {
@@ -420,7 +439,7 @@ export function NpatActiveRound({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          playerId: myPlayerId,
+          resumeToken: myResumeToken,
           roundId: currentRound.id,
           targetPlayerId,
           category,
@@ -599,6 +618,7 @@ export function NpatActiveRound({
           <NpatCallerReviewPanel
             gameCode={gameCode}
             playerId={myPlayerId}
+            myResumeToken={myResumeToken}
             round={currentRound}
             players={players}
             answers={answers}

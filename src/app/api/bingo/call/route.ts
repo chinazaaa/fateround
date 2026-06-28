@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { bingoCallSchema } from '@/lib/validation'
 import { parseGameType, isBingoGame } from '@/lib/game-types'
 import { isValidBingoNumber, pickRandomUncalledNumber } from '@/lib/bingo'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -15,6 +13,7 @@ export async function POST(req: NextRequest) {
 
   const { gameId, hostToken, number: rawNumber, random } = parsed.data
   const code = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })

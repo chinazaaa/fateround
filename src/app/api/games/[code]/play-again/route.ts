@@ -262,7 +262,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   if (isCodewordsGame(gameType)) {
-    const { error: clearError } = await clearCodewordsRoundData(supabase, gameId)
+    const { error: clearError } = await clearCodewordsRoundData(getSupabaseAdmin(), gameId)
     if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
   }
 
@@ -302,7 +302,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
   }
   if (isDescribeItGame(gameType)) {
-    const { error: clearError } = await clearDescribeItSessionData(supabase, gameId)
+    const { error: clearError } = await clearDescribeItSessionData(getSupabaseAdmin(), gameId)
     if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
   }
   if (isScrabbleGame(gameType)) {

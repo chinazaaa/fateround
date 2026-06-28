@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { codewordsGuessSchema } from '@/lib/validation'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
 import { finishCodewordsGame } from '@/lib/codewords'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 import type { CodewordsBoard, CodewordsCellType } from '@/types'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -14,8 +13,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId, cellIndex } = parsed.data
+  const { gameId, resumeToken, cellIndex } = parsed.data
   const code = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase.from('games').select('game_type, status').eq('id', code).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -23,6 +23,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not a codewords game' }, { status: 400 })
   }
   if (game.status !== 'active') return NextResponse.json({ error: 'Game not active' }, { status: 400 })
+
+  // Authorize by the secret resume_token; the resolved player.id is authoritative.
+  const auth = await assertPlayer(supabase, code, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const playerId = auth.player.id
 
   const { data: role } = await supabase
     .from('codewords_player_roles')

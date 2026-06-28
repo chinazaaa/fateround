@@ -342,7 +342,7 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     if (gameRow.status === 'waiting' || (gameRow.status === 'active' && !isSpectator)) {
-      const { error: cardError } = await createBingoCardForPlayer(supabase, gameId, player.id)
+      const { error: cardError } = await createBingoCardForPlayer(getSupabaseAdmin(), gameId, player.id)
       if (cardError) return NextResponse.json({ error: cardError }, { status: 500 })
     }
 
@@ -640,7 +640,7 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     if (gameRow.status === 'active' && !isSpectator) {
-      const { role, error: assignError } = await assignCodewordsLateJoinOperative(supabase, gameId, player.id)
+      const { role, error: assignError } = await assignCodewordsLateJoinOperative(getSupabaseAdmin(), gameId, player.id)
       if (assignError) {
         await supabase.from('players').delete().eq('id', player.id)
         return NextResponse.json({ error: assignError }, { status: 500 })
@@ -1403,7 +1403,7 @@ export async function DELETE(req: NextRequest) {
   const gameType = parseGameType((game as { game_type?: string }).game_type)
 
   if (isCodewordsGame(gameType)) {
-    const { error } = await removeCodewordsPlayer(supabase, id, playerId)
+    const { error } = await removeCodewordsPlayer(getSupabaseAdmin(), id, playerId)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }

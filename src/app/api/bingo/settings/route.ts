@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { bingoSettingsSchema } from '@/lib/validation'
 import { parseGameType, isBingoGame } from '@/lib/game-types'
 import { parseBingoCallMode, clampBingoCallInterval } from '@/lib/bingo'
 import { clampLobbyMaxPlayers, fetchGamePlayerLimits } from '@/lib/game-limits'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -16,6 +14,7 @@ export async function POST(req: NextRequest) {
 
   const { gameId, hostToken, bingo_call_mode, bingo_call_interval_seconds, max_players } = parsed.data
   const code = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   if (bingo_call_mode === undefined && bingo_call_interval_seconds === undefined && max_players === undefined) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })

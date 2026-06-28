@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
 import { codewordsAllowsPlayerChanges, removeCodewordsPlayerRole } from '@/lib/codewords'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const hostRoleSchema = z.object({
   gameId: z.string().min(4).max(10),
@@ -29,6 +27,7 @@ export async function POST(req: NextRequest) {
 
   const { gameId, hostToken, playerId, team, role } = parsed.data
   const code = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase
     .from('games')
@@ -89,6 +88,7 @@ export async function DELETE(req: NextRequest) {
 
   const { gameId, hostToken, playerId } = parsed.data
   const code = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase
     .from('games')

@@ -18,6 +18,7 @@ export function CodewordsActiveRound({
   game,
   board,
   myPlayerId,
+  myResumeToken,
   myPlayerName,
   myRole,
   players,
@@ -32,6 +33,7 @@ export function CodewordsActiveRound({
   game: Game
   board: CodewordsBoard
   myPlayerId: string
+  myResumeToken: string | null
   myPlayerName: string
   myRole: CodewordsPlayerRole
   players: Player[]
@@ -102,6 +104,10 @@ export function CodewordsActiveRound({
       toastError('Enter a clue number from 0 to 9')
       return
     }
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setSubmittingClue(true)
     try {
       const res = await fetch('/api/codewords/clue', {
@@ -109,7 +115,7 @@ export function CodewordsActiveRound({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          playerId: myPlayerId,
+          resumeToken: myResumeToken,
           clueWord: clueWord.trim(),
           clueNumber,
         }),
@@ -129,12 +135,16 @@ export function CodewordsActiveRound({
 
   const guessCell = async (index: number) => {
     if (guessing) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setGuessing(true)
     try {
       const res = await fetch('/api/codewords/guess', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, cellIndex: index }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, cellIndex: index }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to guess')
@@ -149,12 +159,16 @@ export function CodewordsActiveRound({
 
   const endTurn = async () => {
     if (endingTurn) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setEndingTurn(true)
     try {
       const res = await fetch('/api/codewords/end-turn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to end turn')
@@ -289,6 +303,7 @@ export function CodewordsActiveRound({
                 <CodewordsTeamChat
                   gameCode={gameCode}
                   playerId={myPlayerId}
+                  myResumeToken={myResumeToken}
                   team={myTeam}
                   players={players}
                   enabled={active}

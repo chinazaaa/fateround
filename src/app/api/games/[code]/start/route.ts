@@ -318,7 +318,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     const { error: cardsError } = await createBingoCardsForPlayers(
-      supabase,
+      getSupabaseAdmin(),
       code.toUpperCase(),
       playersData.map((p) => p.id)
     )
@@ -541,7 +541,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     const { error: initError } = await initializeDescribeItGame(
-      supabase,
+      getSupabaseAdmin(),
       code.toUpperCase(),
       playingPlayers.map((p) => p.id)
     )
@@ -602,7 +602,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     if (randomizeTeams && teamsNeedRandomization(playerIds, roles)) {
       const { roles: shuffled, error: shuffleError } = await persistRandomizedRoles(
-        supabase,
+        getSupabaseAdmin(),
         code.toUpperCase(),
         playerIds,
         roles
@@ -639,7 +639,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const spymasterTimer = clampCodewordsTimer(game.timer_seconds ?? CODEWORDS_DEFAULT_SPYMASTER_TIMER)
     const operativeTimer = clampCodewordsTimer(game.operative_timer_seconds ?? CODEWORDS_DEFAULT_OPERATIVE_TIMER)
 
-    const { error: boardError } = await supabase.from('codewords_boards').insert({
+    const { error: boardError } = await getSupabaseAdmin().from('codewords_boards').insert({
       game_id: code.toUpperCase(),
       words,
       key,

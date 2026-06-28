@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { processDescribeItExpireTurn, processDescribeItAdvance } from '@/lib/describe-it'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 // Cap how many stale sessions a single tick advances, so a backlog can't run the
 // serverless function past its time limit (the next tick picks up the rest).
@@ -23,6 +21,9 @@ export async function POST(req: NextRequest) {
   if (req.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  // System/timer route: writes go through the service role.
+  const supabase = getSupabaseAdmin()
 
   const nowIso = new Date().toISOString()
   const [{ data: staleTurns, error: turnsError }, { data: staleBreaks, error: breaksError }] = await Promise.all([

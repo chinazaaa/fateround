@@ -84,6 +84,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
 
   const [hostMode, setHostMode] = useState<HostMode>('spectator')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
+  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
@@ -134,6 +135,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     const stored = getPlayerSession(gameCode)
     if (stored) {
       setHostPlayerId(stored.playerId)
+      setHostResumeToken(stored.resumeToken ?? null)
       setHostPlayerName(stored.playerName)
     }
   }, [gameCode, load])
@@ -194,6 +196,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, (id) => {
     if (id === hostPlayerId) {
       setHostPlayerId(null)
+      setHostResumeToken(null)
       setHostPlayerName('')
       clearPlayerSession(gameCode)
     }
@@ -218,6 +221,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
       setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
       setHostPlayerId(data.playerId)
+      setHostResumeToken(data.resumeToken ?? null)
       setHostPlayerName(data.playerName)
       await load()
     } catch (err) {
@@ -239,9 +243,13 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
 
   const pickTeam = async (team: number) => {
     if (!hostPlayerId) return
+    if (!hostResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setPicking(true)
     try {
-      await post('team', { playerId: hostPlayerId, team })
+      await post('team', { resumeToken: hostResumeToken, team })
       await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to pick team')
@@ -252,9 +260,13 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
 
   const sendAction = async (path: string, body: Record<string, unknown>) => {
     if (!hostPlayerId) return
+    if (!hostResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setActing(true)
     try {
-      await post(path, { playerId: hostPlayerId, ...body })
+      await post(path, { resumeToken: hostResumeToken, ...body })
       await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Action failed')
@@ -266,7 +278,8 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   const moveTeam = async (playerId: string, team: number) => {
     setMoving(true)
     try {
-      await post('team', { playerId, team })
+      // Host reassigning another player's team — authorized by hostToken, not the host's own token.
+      await post('team', { hostToken, playerId, team })
       await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to move player')
