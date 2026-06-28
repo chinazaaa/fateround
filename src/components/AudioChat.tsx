@@ -147,9 +147,21 @@ interface AudioChatInnerProps {
   localPlayerName: string
 }
 
+/** The host joins with a `host-` prefixed LiveKit identity (see
+ * HostAudioWrapper); players/members use server-generated UUIDs, so this
+ * prefix uniquely marks the host. */
+function isHostIdentity(identity?: string): boolean {
+  return !!identity?.startsWith('host-')
+}
+
+function HostBadge() {
+  return <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1 rounded font-semibold">Host</span>
+}
+
 function AudioChatInner({ localPlayerName }: AudioChatInnerProps) {
   const { isMicrophoneEnabled, localParticipant } = useLocalParticipant()
   const participants = useParticipants()
+  const localIsHost = isHostIdentity(localParticipant?.identity)
 
   const toggleMute = () => {
     if (localParticipant) {
@@ -168,6 +180,7 @@ function AudioChatInner({ localPlayerName }: AudioChatInnerProps) {
           <div className="flex items-center gap-2 truncate">
             <span className="text-xs">👤</span>
             <span className="font-semibold text-body truncate">{localPlayerName} (You)</span>
+            {localIsHost && <HostBadge />}
             {isLocalSpeaking && (
               <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1 rounded animate-pulse">
                 Speaking
@@ -195,6 +208,7 @@ function AudioChatInner({ localPlayerName }: AudioChatInnerProps) {
                 <div className="flex items-center gap-2 truncate">
                   <span className="text-xs">👥</span>
                   <span className="text-body truncate">{p.name || p.identity}</span>
+                  {isHostIdentity(p.identity) && <HostBadge />}
                   {isSpeaking && (
                     <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1 rounded animate-pulse">
                       Speaking
