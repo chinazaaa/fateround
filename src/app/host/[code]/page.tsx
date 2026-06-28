@@ -54,45 +54,10 @@ import {
   isPlayerOnlyJoinLobby,
   isNameOnlyPlayerJoin,
   isCustomGame,
-  isAnonymousMessagesGame,
-  isSecretMessageGame,
-  isBingoGame,
-  isCodewordsGame,
-  isTriviaGame,
-  isTwoTruthsGame,
-  isMonopolyGame,
-  isYahtzeeGame,
-  isWhotGame,
-  isLudoGame,
-  isSnakeAndLadderGame,
-  isTicTacToeGame,
-  isChessGame,
-  isScrabbleGame,
-  isDescribeItGame,
-  isICallOnGame,
-  isSudokuGame,
-  isWordHuntGame,
   pairVoteModeOptions,
   parsePairVoteMode,
 } from '@/lib/game-types'
-import { AnonymousMessagesHostView } from '@/components/anonymous-messages/AnonymousMessagesHostView'
-import { SecretMessageHostView } from '@/components/secret-message/SecretMessageHostView'
-import { BingoHostView } from '@/components/bingo/BingoHostView'
-import { TriviaHostView } from '@/components/trivia/TriviaHostView'
-import { TwoTruthsHostView } from '@/components/two-truths/TwoTruthsHostView'
-import { CodewordsHostView } from '@/components/codewords/CodewordsHostView'
-import { MonopolyHostView } from '@/components/monopoly/MonopolyHostView'
-import { YahtzeeHostView } from '@/components/yahtzee/YahtzeeHostView'
-import { WhotHostView } from '@/components/whot/WhotHostView'
-import { LudoHostView } from '@/components/ludo/LudoHostView'
-import { SnakeLadderHostView } from '@/components/snake-and-ladder/SnakeLadderHostView'
-import { TicTacToeHostView } from '@/components/tic-tac-toe/TicTacToeHostView'
-import { ChessHostView } from '@/components/chess/ChessHostView'
-import { ScrabbleHostView } from '@/components/scrabble/ScrabbleHostView'
-import { DescribeItHostView } from '@/components/describe-it/DescribeItHostView'
-import { NpatHostView } from '@/components/npat/NpatHostView'
-import { SudokuHostView } from '@/components/sudoku/SudokuHostView'
-import { WordHuntHostView } from '@/components/word-hunt/WordHuntHostView'
+import { HOST_VIEW_REGISTRY } from '@/components/game-host-views'
 import {
   getCustomSlots,
   tallyCustomVotes,
@@ -1568,76 +1533,9 @@ export default function HostPage() {
     )
   }
 
-  if (game && isSecretMessageGame(game.game_type)) {
-    return <SecretMessageHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isBingoGame(game.game_type)) {
-    return <BingoHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isCodewordsGame(game.game_type)) {
-    return <CodewordsHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isTriviaGame(game.game_type)) {
-    return <TriviaHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isTwoTruthsGame(game.game_type)) {
-    return <TwoTruthsHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isICallOnGame(game.game_type)) {
-    return <NpatHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isMonopolyGame(game.game_type)) {
-    return <MonopolyHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isYahtzeeGame(game.game_type)) {
-    return <YahtzeeHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isWhotGame(game.game_type)) {
-    return <WhotHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isLudoGame(game.game_type)) {
-    return <LudoHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isSnakeAndLadderGame(game.game_type)) {
-    return <SnakeLadderHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isSudokuGame(game.game_type)) {
-    return <SudokuHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isWordHuntGame(game.game_type)) {
-    return <WordHuntHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isTicTacToeGame(game.game_type)) {
-    return <TicTacToeHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isChessGame(game.game_type)) {
-    return <ChessHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isScrabbleGame(game.game_type)) {
-    return <ScrabbleHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isDescribeItGame(game.game_type)) {
-    return <DescribeItHostView gameCode={gameCode} hostToken={hostToken} />
-  }
-
-  if (game && isAnonymousMessagesGame(game.game_type)) {
-    return <AnonymousMessagesHostView gameCode={gameCode} hostToken={hostToken} />
+  if (game) {
+    const DedicatedHostView = HOST_VIEW_REGISTRY[parseGameType(game.game_type)]
+    if (DedicatedHostView) return <DedicatedHostView gameCode={gameCode} hostToken={hostToken} />
   }
 
   // ── WAITING ───────────────────────────────────────────────────────────────
