@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { markGameFinished } from '@/lib/game-finish'
 import { isICallOnGame, parseGameType } from '@/lib/game-types'
+import { applyEliminationRule } from './elimination'
+import type { EliminationConfig } from '@/types/elimination'
 import {
   buildNpatNextRound,
   clampNpatMarkingTimer,
@@ -44,7 +46,12 @@ export type NpatAdvanceResult = {
 }
 
 async function countActivePlayers(supabase: SupabaseClient, gameId: string): Promise<string[]> {
-  const { data } = await supabase.from('players').select('id').eq('game_id', gameId).eq('spectator', false)
+  const { data } = await supabase
+    .from('players')
+    .select('id')
+    .eq('game_id', gameId)
+    .eq('spectator', false)
+    .eq('is_eliminated', false)
   return (data ?? []).map((p) => p.id)
 }
 
@@ -351,8 +358,35 @@ async function startNextLetterCycle(
   const liveGame = freshGame ?? game
 
   if (await shouldFinishNpatSession(supabase, liveGame)) {
-    await markGameFinished(supabase, code)
+    const { error: finishError } = await markGameFinished(supabase, code)
+    if (finishError) console.error('Failed to mark game finished:', finishError)
     return { ok: true, code: 'advanced_finish' }
+  }
+
+  // Elimination hook
+  const { data: gameForElim, error: elimConfigError } = await supabase
+    .from('games')
+    .select('elimination_config')
+    .eq('id', code)
+    .maybeSingle()
+  if (elimConfigError) {
+    console.error('Failed to load elimination config:', elimConfigError.message)
+  }
+
+  if (gameForElim?.elimination_config) {
+    const elimConfig = gameForElim.elimination_config as EliminationConfig
+    const result = await applyEliminationRule(supabase, code, 'npat', finishedRound.round_number, elimConfig)
+    if (result.gameFinished) {
+      const { error: finishError } = await markGameFinished(supabase, code)
+      if (finishError) console.error('Failed to mark game finished after elimination:', finishError)
+      return { ok: true, code: 'advanced_finish' }
+    }
+
+    // Strip eliminated players from caller_order
+    const eliminatedSet = new Set(result.eliminated)
+    const filteredPlayerIds = playerIds.filter((id) => !eliminatedSet.has(id))
+    // Re-assign playerIds for the rest of this function
+    playerIds = filteredPlayerIds
   }
 
   const nextRoundNumber = finishedRound.round_number + 1
@@ -371,7 +405,8 @@ async function startNextLetterCycle(
     const timedOut = duration > 0 && npatSessionExpired(liveGame.session_started_at, duration)
     const callerOrderEmpty = metadata.caller_order.length === 0
     if (lettersPlayed >= NPAT_MAX_LETTERS || timedOut || (playerIds.length === 0 && callerOrderEmpty)) {
-      await markGameFinished(supabase, code)
+      const { error: finishError } = await markGameFinished(supabase, code)
+      if (finishError) console.error('Failed to mark game finished:', finishError)
       return { ok: true, code: 'advanced_finish' }
     }
     return { ok: false, code: 'not_finished' }

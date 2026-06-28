@@ -27,6 +27,7 @@ import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { EliminationBanner } from '@/components/EliminationBanner'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 
@@ -268,7 +269,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
           onLeft={handlePlayerLeft}
           title="Lobby"
           rulesLink={<GameRulesLink gameType="two_truths" variant="subtle" />}
-          isSpectator={me?.spectator === true}
+          isSpectator={me?.spectator === true || me?.is_eliminated === true}
           onReady={async () => {
             if (!myResumeToken) return
             await fetch('/api/players/ready', {
@@ -327,6 +328,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
             <div className="text-3xl">{cfg.headerEmoji}</div>
             <h1 className="text-xl font-black gradient-title">{game.title}</h1>
           </div>
+          {me && <EliminationBanner player={me} />}
           {isViewer && (
             <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={me} onPromoted={load} />
           )}

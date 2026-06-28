@@ -24,6 +24,7 @@ import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { playerIsViewer, preJoinScreen, allowLatePlayers } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { EliminationBanner } from '@/components/EliminationBanner'
 import { GameLobbyPlayerList } from '@/components/ui/GameLobbyPlayerList'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
@@ -284,6 +285,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           <p className="text-muted text-sm sm:text-base">{cfg.label}</p>
         </div>
 
+        {me && <EliminationBanner player={me} />}
         {isViewer && (
           <ViewerModeBanner
             gameCode={gameCode}

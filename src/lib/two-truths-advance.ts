@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { markGameFinished } from '@/lib/game-finish'
 import { isTwoTruthsGame, parseGameType } from '@/lib/game-types'
+import { applyEliminationRule } from './elimination'
+import type { EliminationConfig } from '@/types/elimination'
 import { TTL_DEFAULT_TIMER, TTL_REVEAL_SECONDS } from '@/lib/two-truths'
 import type { Game, Round } from '@/types'
 
@@ -128,14 +130,76 @@ export async function syncTwoTruthsGameState(
   }
 
   if (pointerRound && pointerRound.status === 'finished') {
+    // Elimination hook: run before isLast so final-round eliminations are recorded
+    const { data: gameForElim, error: elimConfigError } = await supabase
+      .from('games')
+      .select('elimination_config')
+      .eq('id', gameId)
+      .maybeSingle()
+    if (elimConfigError) {
+      console.error('Failed to load elimination config:', elimConfigError.message)
+    }
+
+    if (gameForElim?.elimination_config) {
+      const elimConfig = gameForElim.elimination_config as EliminationConfig
+      const result = await applyEliminationRule(supabase, gameId, 'two-truths', pointerRound.round_number, elimConfig)
+      if (result.gameFinished) {
+        const { error: finishError } = await markGameFinished(supabase, gameId)
+        if (finishError) console.error('Failed to mark game finished after elimination:', finishError)
+        return { ok: true, code: 'advanced_finish' }
+      }
+    }
+
     const isLast = pointerRound.round_number >= game.rounds_count
     if (isLast) {
-      await markGameFinished(supabase, gameId)
+      const { error: finishError } = await markGameFinished(supabase, gameId)
+      if (finishError) console.error('Failed to mark game finished:', finishError)
       return { ok: true, code: 'advanced_finish' }
     }
 
     const nextRound = roundList.find((r) => r.round_number === pointerRound.round_number + 1)
     if (!nextRound) return { ok: false, code: 'not_finished' }
+
+    // Skip eliminated submitters
+    if (nextRound.submitter_player_id) {
+      const { data: submitter } = await supabase
+        .from('players')
+        .select('is_eliminated')
+        .eq('id', nextRound.submitter_player_id)
+        .maybeSingle()
+
+      if (submitter?.is_eliminated) {
+        // Find the next non-eliminated round in sequence
+        const laterRounds = roundList
+          .filter((r) => r.round_number > pointerRound.round_number)
+          .sort((a, b) => a.round_number - b.round_number)
+
+        let replacement: typeof nextRound | undefined
+        for (const r of laterRounds) {
+          if (!r.submitter_player_id) continue
+          const { data: sub } = await supabase
+            .from('players')
+            .select('is_eliminated')
+            .eq('id', r.submitter_player_id)
+            .maybeSingle()
+          if (!sub?.is_eliminated) {
+            replacement = r
+            break
+          }
+        }
+
+        if (!replacement) {
+          const { error: finishError } = await markGameFinished(supabase, gameId)
+          if (finishError) console.error('Failed to mark game finished after elimination:', finishError)
+          return { ok: true, code: 'advanced_finish' }
+        }
+
+        const activated = await activateRound(supabase, replacement.id)
+        if (!activated) return { ok: false, code: 'not_finished' }
+        await syncGamePointer(supabase, gameId, replacement.round_number)
+        return { ok: true, code: 'advanced_next', nextRound: replacement.round_number }
+      }
+    }
 
     const activated = await activateRound(supabase, nextRound.id)
     if (!activated) return { ok: false, code: 'not_finished' }

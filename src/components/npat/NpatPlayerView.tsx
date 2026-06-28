@@ -20,6 +20,7 @@ import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
+import { EliminationBanner } from '@/components/EliminationBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 
 type Screen = 'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'lobby' | 'playing' | 'not_found'
@@ -245,7 +246,7 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
           onLeft={handlePlayerLeft}
           title="Lobby"
           rulesLink={<GameRulesLink gameType="i_call_on" variant="subtle" />}
-          isSpectator={me?.spectator === true}
+          isSpectator={me?.spectator === true || me?.is_eliminated === true}
           onReady={async () => {
             if (!myResumeToken) return
             await fetch('/api/players/ready', {
@@ -284,6 +285,7 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
               <h1 className="text-xl font-black gradient-title">{game.title}</h1>
             </div>
           )}
+          {me && <EliminationBanner player={me} />}
           {isViewer && game.status !== 'finished' && (
             <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={me} onPromoted={load} />
           )}

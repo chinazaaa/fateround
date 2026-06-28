@@ -879,6 +879,12 @@ export interface Player {
   monopoly_token?: string | null
   /** Short code to resume this player on another device. */
   resume_token?: string | null
+  /** True when player has been eliminated (elimination mode). */
+  is_eliminated?: boolean
+  /** When the player was eliminated. */
+  eliminated_at?: string | null
+  /** Remaining lives (lives mode only, null otherwise). */
+  lives_remaining?: number | null
 }
 
 export interface Round {

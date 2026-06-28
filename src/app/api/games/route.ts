@@ -110,6 +110,19 @@ import {
 } from '@/lib/describe-it'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, type LateJoinPolicy } from '@/lib/viewers'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { z } from 'zod/v4'
+import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
+
+const eliminationConfigSchema = z
+  .object({
+    mode: z.enum(['per-round', 'lives']),
+    rule: z.enum(['bottom-n', 'score-threshold']).optional(),
+    eliminateCount: z.coerce.number().int().min(1).max(10).optional(),
+    threshold: z.coerce.number().min(0).optional(),
+    startingLives: z.coerce.number().int().min(1).max(10).optional(),
+    livesLostRule: z.literal('bottom-n').optional(),
+  })
+  .optional()
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -244,7 +257,13 @@ export async function POST(req: NextRequest) {
     chess_piece_set: rawChessPieceSet,
   } = parsed.data
 
+  const elimParsed = eliminationConfigSchema.safeParse((body as Record<string, unknown>).elimination_config)
+  let eliminationConfig = elimParsed.success ? (elimParsed.data ?? null) : null
+
   const game_type = parseGameType(rawGameType)
+  if (eliminationConfig && !ELIMINATION_COMPATIBLE_TYPES.includes(game_type as any)) {
+    eliminationConfig = null
+  }
   const gender_based = supportsGenderToggle(game_type)
     ? (rawGenderBased ??
       (isCustomGame(game_type) ? custom_slots?.gender_based === true : defaultGenderBasedForType(game_type)))
@@ -652,6 +671,7 @@ export async function POST(req: NextRequest) {
           },
         }
       : {}),
+    elimination_config: eliminationConfig,
   })
 
   if (gameError) {

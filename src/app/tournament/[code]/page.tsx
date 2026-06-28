@@ -264,7 +264,10 @@ export default function TournamentLobbyPage() {
         ) : (
           <div className="space-y-2">
             {players.map((p, i) => (
-              <div key={p.id} className="flex items-center justify-between rounded-xl bg-surface px-4 py-2">
+              <div
+                key={p.id}
+                className={`flex items-center justify-between rounded-xl bg-surface px-4 py-2 ${p.is_eliminated ? 'opacity-50' : ''}`}
+              >
                 <div className="flex items-center gap-3">
                   <span
                     className={`text-lg font-black ${
@@ -280,6 +283,10 @@ export default function TournamentLobbyPage() {
                     {i + 1}
                   </span>
                   <span className="font-medium text-body">{p.player_name}</span>
+                  {p.lives_remaining != null && !p.is_eliminated && (
+                    <span className="text-xs text-yellow-400 ml-1">{'❤️'.repeat(Math.max(0, p.lives_remaining))}</span>
+                  )}
+                  {p.is_eliminated && <span className="text-xs text-red-400 ml-1">Eliminated</span>}
                 </div>
                 <div className="text-right">
                   <span className="font-bold text-accent">{p.total_points}pts</span>

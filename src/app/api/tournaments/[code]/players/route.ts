@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { joinTournamentSchema } from '@/lib/tournament-validation'
+import type { EliminationConfig } from '@/types/elimination'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { data: tournament } = await supabase
     .from('tournaments')
-    .select('id, status')
+    .select('id, status, elimination_config')
     .eq('id', tournamentId)
     .maybeSingle()
 
@@ -31,12 +32,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { data: existing } = await supabase
     .from('tournament_players')
-    .select('id')
+    .select('id, is_eliminated')
     .eq('tournament_id', tournamentId)
     .ilike('player_name', playerName)
     .maybeSingle()
 
   if (existing) {
+    if (existing.is_eliminated) {
+      return NextResponse.json({ error: 'You have been eliminated from this tournament' }, { status: 403 })
+    }
     return NextResponse.json({ error: 'Name already taken' }, { status: 409 })
   }
 
@@ -51,6 +55,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // Initialize lives if tournament has lives elimination config
+  if (tournament.elimination_config) {
+    const elimConfig = tournament.elimination_config as EliminationConfig
+    if (elimConfig.mode === 'lives' && elimConfig.startingLives && player) {
+      await supabase
+        .from('tournament_players')
+        .update({ lives_remaining: elimConfig.startingLives })
+        .eq('id', player.id)
+    }
   }
 
   return NextResponse.json({ player })

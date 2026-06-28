@@ -9,6 +9,9 @@ export default function TournamentCreatePage() {
   const router = useRouter()
   const [title, setTitle] = useState('')
   const [targetGameCount, setTargetGameCount] = useState<string>('')
+  const [livesEnabled, setLivesEnabled] = useState(false)
+  const [startingLives, setStartingLives] = useState(3)
+  const [eliminateCount, setEliminateCount] = useState(1)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -29,6 +32,14 @@ export default function TournamentCreatePage() {
       const count = parseInt(targetGameCount, 10)
       if (!isNaN(count) && count > 0) {
         body.targetGameCount = count
+      }
+      if (livesEnabled) {
+        body.eliminationConfig = {
+          mode: 'lives',
+          startingLives,
+          livesLostRule: 'bottom-n',
+          eliminateCount,
+        }
       }
 
       const res = await fetch('/api/tournaments', {
@@ -85,6 +96,45 @@ export default function TournamentCreatePage() {
               className="w-full rounded-xl border border-theme bg-surface px-4 py-3 text-body placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-accent"
             />
             <p className="text-faint text-xs mt-1">Tournament ends after this many games, or you can end it manually</p>
+          </div>
+
+          <div className="space-y-3">
+            <label className="flex items-center gap-2 text-body text-sm">
+              <input
+                type="checkbox"
+                checked={livesEnabled}
+                onChange={(e) => setLivesEnabled(e.target.checked)}
+                className="accent-accent"
+              />
+              Enable lives mode
+            </label>
+
+            {livesEnabled && (
+              <div className="surface-inset rounded-xl p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <label className="text-muted text-sm">Starting lives</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={startingLives}
+                    onChange={(e) => setStartingLives(Number(e.target.value) || 3)}
+                    className="w-20 rounded-lg bg-surface border border-theme px-3 py-1.5 text-body text-sm"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="text-muted text-sm">Lose life (bottom N per game)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={eliminateCount}
+                    onChange={(e) => setEliminateCount(Number(e.target.value) || 1)}
+                    className="w-20 rounded-lg bg-surface border border-theme px-3 py-1.5 text-body text-sm"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="glass-card p-4 space-y-2">

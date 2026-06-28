@@ -186,6 +186,7 @@ import { playerGameUrl, shareOrigin } from '@/lib/site'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { scrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useToast } from '@/components/ui/Toast'
+import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
 
 interface Settings {
   title: string
@@ -306,6 +307,12 @@ function CreateGameInner() {
   const [wordHuntTimer, setWordHuntTimer] = useState(WORD_HUNT_DEFAULT_TIMER)
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
+  const [eliminationEnabled, setEliminationEnabled] = useState(false)
+  const [eliminationMode, setEliminationMode] = useState<'per-round' | 'lives'>('per-round')
+  const [eliminationRule, setEliminationRule] = useState<'bottom-n' | 'score-threshold'>('bottom-n')
+  const [eliminateCount, setEliminateCount] = useState(1)
+  const [scoreThreshold, setScoreThreshold] = useState(50)
+  const [startingLives, setStartingLives] = useState(3)
   const [customTriviaQuestions, setCustomTriviaQuestions] = useState<TriviaQuestion[]>([])
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
   const [libraryPackQuestions, setLibraryPackQuestions] = useState<unknown[]>([])
@@ -572,6 +579,9 @@ function CreateGameInner() {
   const panRoundOptions = panRoundPickerOptions(PAN_MAX_ROUNDS)
   const isPair = isPairGame(settings.game_type)
   const isCustom = isCustomGame(settings.game_type)
+  const isEliminationCompatible = ELIMINATION_COMPATIBLE_TYPES.includes(
+    settings.game_type as (typeof ELIMINATION_COMPATIBLE_TYPES)[number]
+  )
   const isCustomTwoSlot = isCustom && (customSlots?.slots.length ?? 0) === 2
   const supportsGender = supportsGenderToggle(settings.game_type)
   const participantOpts = {
@@ -1231,6 +1241,23 @@ function CreateGameInner() {
           scrabble_dictionary_id: isScrabble ? scrabbleDictionary : undefined,
           chess_board_theme: isChess ? chessBoardTheme : undefined,
           chess_piece_set: isChess ? chessPieceSet : undefined,
+          elimination_config:
+            eliminationEnabled && isEliminationCompatible
+              ? eliminationMode === 'per-round'
+                ? {
+                    mode: 'per-round' as const,
+                    rule: eliminationRule,
+                    ...(eliminationRule === 'bottom-n'
+                      ? { eliminateCount: Math.min(10, Math.max(1, Math.trunc(eliminateCount) || 1)) }
+                      : { threshold: Math.max(0, Math.trunc(scoreThreshold) || 0) }),
+                  }
+                : {
+                    mode: 'lives' as const,
+                    startingLives: Math.min(10, Math.max(1, Math.trunc(startingLives) || 1)),
+                    livesLostRule: 'bottom-n' as const,
+                    eliminateCount: Math.min(10, Math.max(1, Math.trunc(eliminateCount) || 1)),
+                  }
+              : undefined,
         }),
       })
       const data = await res.json()
@@ -3239,6 +3266,124 @@ function CreateGameInner() {
                   </SettingsGroup>
                 )}
               </>
+            )}
+
+            {isEliminationCompatible && (
+              <SettingsGroup title="Elimination">
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2 text-body text-sm">
+                    <input
+                      type="checkbox"
+                      checked={eliminationEnabled}
+                      onChange={(e) => setEliminationEnabled(e.target.checked)}
+                      className="accent-accent"
+                    />
+                    Enable elimination
+                  </label>
+
+                  {eliminationEnabled && (
+                    <div className="surface-inset rounded-xl p-4 space-y-3">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          aria-pressed={eliminationMode === 'per-round'}
+                          onClick={() => setEliminationMode('per-round')}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+                            eliminationMode === 'per-round' ? 'bg-accent text-white' : 'bg-surface text-muted'
+                          }`}
+                        >
+                          Per-Round
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={eliminationMode === 'lives'}
+                          onClick={() => setEliminationMode('lives')}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+                            eliminationMode === 'lives' ? 'bg-accent text-white' : 'bg-surface text-muted'
+                          }`}
+                        >
+                          Lives
+                        </button>
+                      </div>
+
+                      {eliminationMode === 'per-round' && (
+                        <div className="space-y-2">
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              aria-pressed={eliminationRule === 'bottom-n'}
+                              onClick={() => setEliminationRule('bottom-n')}
+                              className={`px-3 py-1.5 rounded-lg text-xs ${
+                                eliminationRule === 'bottom-n' ? 'bg-accent text-white' : 'bg-surface text-muted'
+                              }`}
+                            >
+                              Bottom N
+                            </button>
+                            <button
+                              type="button"
+                              aria-pressed={eliminationRule === 'score-threshold'}
+                              onClick={() => setEliminationRule('score-threshold')}
+                              className={`px-3 py-1.5 rounded-lg text-xs ${
+                                eliminationRule === 'score-threshold' ? 'bg-accent text-white' : 'bg-surface text-muted'
+                              }`}
+                            >
+                              Score Threshold
+                            </button>
+                          </div>
+
+                          {eliminationRule === 'bottom-n' ? (
+                            <Field label="Eliminate per round">
+                              <input
+                                type="number"
+                                min={1}
+                                max={10}
+                                value={eliminateCount}
+                                onChange={(e) => setEliminateCount(Number(e.target.value) || 1)}
+                                className="w-20 rounded-lg bg-surface border border-theme px-3 py-1.5 text-body text-sm"
+                              />
+                            </Field>
+                          ) : (
+                            <Field label="Score threshold">
+                              <input
+                                type="number"
+                                min={0}
+                                value={scoreThreshold}
+                                onChange={(e) => setScoreThreshold(Number(e.target.value) || 0)}
+                                className="w-20 rounded-lg bg-surface border border-theme px-3 py-1.5 text-body text-sm"
+                              />
+                            </Field>
+                          )}
+                        </div>
+                      )}
+
+                      {eliminationMode === 'lives' && (
+                        <div className="space-y-2">
+                          <Field label="Starting lives">
+                            <input
+                              type="number"
+                              min={1}
+                              max={10}
+                              value={startingLives}
+                              onChange={(e) => setStartingLives(Number(e.target.value) || 3)}
+                              className="w-20 rounded-lg bg-surface border border-theme px-3 py-1.5 text-body text-sm"
+                            />
+                          </Field>
+                          <Field label="Lose life (bottom N)">
+                            <input
+                              type="number"
+                              min={1}
+                              max={10}
+                              value={eliminateCount}
+                              onChange={(e) => setEliminateCount(Number(e.target.value) || 1)}
+                              className="w-20 rounded-lg bg-surface border border-theme px-3 py-1.5 text-body text-sm"
+                            />
+                          </Field>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </SettingsGroup>
             )}
 
             <SettingsGroup title="How it works">

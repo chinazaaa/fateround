@@ -118,9 +118,10 @@ export function allowViewers(
 
 /** True when the player is watching read-only (not participating). */
 export function playerIsViewer(
-  player: Pick<Player, 'joined_at' | 'spectator'>,
+  player: Pick<Player, 'joined_at' | 'spectator' | 'is_eliminated'>,
   game: Pick<Game, 'status' | 'session_started_at'>
 ): boolean {
+  if (player.is_eliminated) return true
   if (player.spectator === true) return true
   if (player.spectator === false) return false
   if (game.status !== 'active') return false
@@ -129,7 +130,7 @@ export function playerIsViewer(
 }
 
 export function playerCanParticipate(
-  player: Pick<Player, 'joined_at' | 'spectator'>,
+  player: Pick<Player, 'joined_at' | 'spectator' | 'is_eliminated'>,
   game: Pick<Game, 'status' | 'session_started_at'>
 ): boolean {
   return !playerIsViewer(player, game)
@@ -137,12 +138,13 @@ export function playerCanParticipate(
 
 /** True when a spectator can switch to an active player mid-game. */
 export function canSwitchViewerToPlayer(
-  player: Pick<Player, 'joined_at' | 'spectator'>,
+  player: Pick<Player, 'joined_at' | 'spectator' | 'is_eliminated'>,
   game: Pick<
     Game,
     'status' | 'session_started_at' | 'allow_viewers' | 'allow_late_players' | 'codewords_late_join' | 'game_type'
   >
 ): boolean {
+  if (player.is_eliminated) return false
   if (game.status !== 'active') return false
   if (!playerIsViewer(player, game)) return false
   return allowLatePlayers(game)
@@ -217,6 +219,7 @@ export async function resetSpectatorsForLobby(
     .from('players')
     .update({ spectator: false })
     .eq('game_id', gameId)
+    .eq('is_eliminated', false)
     .in('id', exceptPlayerIds)
 
   return { error: readyError?.message ?? null }

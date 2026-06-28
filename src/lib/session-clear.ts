@@ -26,6 +26,7 @@ export async function clearSessionTables(
       .update({ spectator: false })
       .eq('game_id', gameId)
       .eq('spectator', true)
+      .eq('is_eliminated', false)
     if (error) return { error: error.message }
   }
 
