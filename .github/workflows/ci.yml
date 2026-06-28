@@ -114,12 +114,27 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: 2.108.0
-      # Project ref is not secret — it's already committed in supabase/config.toml.
-      - run: supabase link --project-ref skhvbzitwvnbhqxfitgh
-      # --include-all pushes migrations whose version is older than the latest
-      # one already applied remotely — needed because migrations land from
-      # separate PRs and can merge out of order.
-      - run: supabase db push --include-all
+      # Apply migrations to the environment's own Supabase project. Skips cleanly
+      # until the secrets are configured. Only main targets prod; dev is wired to
+      # its own project once it exists (two-project setup) — never migrate prod
+      # from a dev push.
+      # --include-all pushes migrations whose version is older than the latest one
+      # already applied remotely (migrations land from separate PRs, out of order).
+      - name: Apply migrations
+        run: |
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ] || [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
+            echo "Supabase secrets not configured — skipping DB migrate."
+            exit 0
+          fi
+          case "${GITHUB_REF_NAME}" in
+            main) REF="skhvbzitwvnbhqxfitgh" ;;  # prod
+            *)
+              echo "No Supabase project wired for '${GITHUB_REF_NAME}' yet — skipping."
+              exit 0
+              ;;
+          esac
+          supabase link --project-ref "$REF"
+          supabase db push --include-all
 
   security:
     name: Security Scan
