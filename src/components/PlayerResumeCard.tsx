@@ -26,10 +26,10 @@ export function PlayerResumeCard({
 
   if (compact) {
     return (
-      <div className={`text-center space-y-1 ${className}`}>
-        <p className="text-faint text-[10px] uppercase tracking-wider">Your player code</p>
-        <p className="font-mono font-bold text-sm tracking-[0.2em]">{resumeToken}</p>
-      </div>
+      <p className={`text-faint text-xs ${className}`}>
+        <span className="uppercase tracking-wider text-[10px]">Player code</span>{' '}
+        <span className="font-mono font-semibold tracking-[0.15em] text-muted">{resumeToken}</span>
+      </p>
     )
   }
 

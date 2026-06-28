@@ -101,13 +101,11 @@ jobs:
             NEXT_PUBLIC_LIVEKIT_URL=${{ env.NEXT_PUBLIC_LIVEKIT_URL }}
 
       - name: Redeploy on the instance (SSM)
-        # Gated: an automatic push to dev only builds + pushes the image — it does NOT
-        # auto-redeploy. Trigger the redeploy as a deliberate `workflow_dispatch` run, and
-        # only AFTER the matching runtime Supabase vars are in place (Terraform/SSM).
-        # Otherwise the first deploy of the dev-project flip ships a browser bundle on the
-        # new dev project while the server runtime still uses the old project/key — a
-        # split-brain data path. (Re-enable auto-redeploy once dev runtime is confirmed.)
-        if: github.event_name == 'workflow_dispatch'
+        # Auto-redeploy on every build: a push to dev deploys the dev box; a
+        # workflow_dispatch deploys the chosen environment. The dev-project flip is
+        # complete (image + runtime SSM both on the preview project), so the earlier
+        # workflow_dispatch-only gate is removed. Runtime Supabase vars are kept in
+        # sync via Terraform/SSM, so there's no split-brain.
         env:
           STACK: ${{ env.ECR_REPOSITORY }}
         run: |
