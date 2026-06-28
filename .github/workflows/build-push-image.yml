@@ -53,7 +53,7 @@ jobs:
                 echo "NEXT_PUBLIC_SUPABASE_URL=https://skhvbzitwvnbhqxfitgh.supabase.co"
                 echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_daKXZ2-HKxB6k3rAy1tmGw_jQuACg0K"
                 echo "NEXT_PUBLIC_APP_URL=https://fateround.com"
-                echo "NEXT_PUBLIC_LIVEKIT_URL=wss://fateround-dxjn0oj0.livekit.cloud"
+                echo "NEXT_PUBLIC_LIVEKIT_URL=wss://livekit.fateround.com"
               } >> "$GITHUB_ENV"
               ;;
             dev)
@@ -64,7 +64,7 @@ jobs:
                 echo "NEXT_PUBLIC_SUPABASE_URL=https://xzvsrzbbgxbaagqwtpts.supabase.co"
                 echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_4U7akfEx_4sxtLrxeCU_Rw_VpSeFRAu"
                 echo "NEXT_PUBLIC_APP_URL=https://dev.fateround.com"
-                echo "NEXT_PUBLIC_LIVEKIT_URL=wss://fateround-dxjn0oj0.livekit.cloud"
+                echo "NEXT_PUBLIC_LIVEKIT_URL=wss://livekit.fateround.com"
               } >> "$GITHUB_ENV"
               ;;
             *) echo "Unknown environment: $ENV" >&2; exit 1 ;;
