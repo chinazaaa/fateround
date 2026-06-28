@@ -56,6 +56,7 @@ import {
   gameHowItWorks,
   isYahtzeeGame,
   isWhotGame,
+  isCrazyEightsGame,
   isLudoGame,
   isSnakeAndLadderGame,
   isTicTacToeGame,
@@ -147,6 +148,11 @@ import {
 } from '@/lib/scrabble-dictionary-meta'
 import { YAHTZEE_DEFAULT_MAX_PLAYERS } from '@/lib/yahtzee'
 import { WHOT_DEFAULT_MAX_PLAYERS, WHOT_GAME_DURATION_OPTIONS, formatWhotGameDuration } from '@/lib/whot'
+import {
+  CRAZY8_DEFAULT_MAX_PLAYERS,
+  CRAZY8_GAME_DURATION_OPTIONS,
+  formatCrazyEightsGameDuration,
+} from '@/lib/crazy-eights'
 import { turnTimerOptionsFor, formatBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { LUDO_DEFAULT_MAX_PLAYERS } from '@/lib/ludo'
 import { SNAKE_LADDER_DEFAULT_MAX_PLAYERS } from '@/lib/snake-and-ladder'
@@ -287,6 +293,11 @@ function CreateGameInner() {
   const [whotPick2Stacking, setWhotPick2Stacking] = useState(true)
   const [whotCardsEnabled, setWhotCardsEnabled] = useState(true)
   const [whotNumberCallsEnabled, setWhotNumberCallsEnabled] = useState(true)
+  const [crazy8MaxPlayers, setCrazy8MaxPlayers] = useState(CRAZY8_DEFAULT_MAX_PLAYERS)
+  const [crazy8GameDuration, setCrazy8GameDuration] = useState(0)
+  const [crazy8ActionCards, setCrazy8ActionCards] = useState(true)
+  const [crazy8Jokers, setCrazy8Jokers] = useState(false)
+  const [crazy8Pick2Stacking, setCrazy8Pick2Stacking] = useState(true)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [snakeLadderMaxPlayers, setSnakeLadderMaxPlayers] = useState(SNAKE_LADDER_DEFAULT_MAX_PLAYERS)
   const [npatMaxPlayers, setNpatMaxPlayers] = useState(NPAT_DEFAULT_MAX_PLAYERS)
@@ -359,6 +370,7 @@ function CreateGameInner() {
     setMonopolyMaxPlayers((v) => clamp('monopoly', v))
     setYahtzeeMaxPlayers((v) => clamp('yahtzee', v))
     setWhotMaxPlayers((v) => clamp('whot', v))
+    setCrazy8MaxPlayers((v) => clamp('crazy_eights', v))
     setLudoMaxPlayers((v) => clamp('ludo', v))
     setSnakeLadderMaxPlayers((v) => clamp('snake_and_ladder', v))
     setNpatMaxPlayers((v) => clamp('i_call_on', v))
@@ -423,6 +435,13 @@ function CreateGameInner() {
             }
           : {}),
         ...(isWhotGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+            }
+          : {}),
+        ...(isCrazyEightsGame(type)
           ? {
               participant_mode: 'joiners' as const,
               anonymous: true,
@@ -535,6 +554,7 @@ function CreateGameInner() {
   useEffect(() => {
     if (!whotCardsEnabled) setWhotNumberCallsEnabled(false)
   }, [whotCardsEnabled])
+  const isCrazy8 = isCrazyEightsGame(settings.game_type)
   const isLudo = isLudoGame(settings.game_type)
   const isSnakeLadder = isSnakeAndLadderGame(settings.game_type)
   const isTicTacToe = isTicTacToeGame(settings.game_type)
@@ -633,6 +653,7 @@ function CreateGameInner() {
     isMonopoly ||
     isYahtzee ||
     isWhot ||
+    isCrazy8 ||
     isLudo ||
     isSnakeLadder ||
     isTicTacToe ||
@@ -730,6 +751,14 @@ function CreateGameInner() {
           }
         : {}),
       ...(isWhotGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 0,
+          }
+        : {}),
+      ...(isCrazyEightsGame(type)
         ? {
             participant_mode: 'joiners' as const,
             anonymous: true,
@@ -1157,17 +1186,19 @@ function CreateGameInner() {
                         ? yahtzeeMaxPlayers
                         : isWhot
                           ? whotMaxPlayers
-                          : isLudo
-                            ? ludoMaxPlayers
-                            : isSnakeLadder
-                              ? snakeLadderMaxPlayers
-                              : isNpat
-                                ? npatMaxPlayers
-                                : isSudoku
-                                  ? sudokuMaxPlayers
-                                  : isWordHunt
-                                    ? wordHuntMaxPlayers
-                                    : undefined,
+                          : isCrazy8
+                            ? crazy8MaxPlayers
+                            : isLudo
+                              ? ludoMaxPlayers
+                              : isSnakeLadder
+                                ? snakeLadderMaxPlayers
+                                : isNpat
+                                  ? npatMaxPlayers
+                                  : isSudoku
+                                    ? sudokuMaxPlayers
+                                    : isWordHunt
+                                      ? wordHuntMaxPlayers
+                                      : undefined,
           operative_timer_seconds: isCodewords ? codewordsOperativeTimer : isNpat ? npatMarkingTimer : undefined,
           codewords_player_picks: isCodewords ? codewordsPlayerPicks : undefined,
           codewords_late_join: isCodewords ? lateJoinPolicy === 'viewers_and_players' : undefined,
@@ -1183,15 +1214,20 @@ function CreateGameInner() {
             ? monopolyGameDuration
             : isWhot
               ? whotGameDuration
-              : isNpat
-                ? npatGameDuration
-                : isScrabble
-                  ? scrabbleGameDuration
-                  : undefined,
+              : isCrazy8
+                ? crazy8GameDuration
+                : isNpat
+                  ? npatGameDuration
+                  : isScrabble
+                    ? scrabbleGameDuration
+                    : undefined,
           whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
           whot_pick2_stacking: isWhot ? whotPick2Stacking : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
           whot_number_calls_enabled: isWhot ? whotNumberCallsEnabled : undefined,
+          crazy8_action_cards: isCrazy8 ? crazy8ActionCards : undefined,
+          crazy8_jokers: isCrazy8 ? crazy8Jokers : undefined,
+          crazy8_pick2_stacking: isCrazy8 ? crazy8Pick2Stacking : undefined,
           scrabble_dictionary_id: isScrabble ? scrabbleDictionary : undefined,
           chess_board_theme: isChess ? chessBoardTheme : undefined,
           chess_piece_set: isChess ? chessPieceSet : undefined,
@@ -1582,6 +1618,81 @@ function CreateGameInner() {
                   {whotPick3Enabled ? ' and Pick 3 stacks are separate' : ' is active'}. First to empty their hand wins!
                   With a game length set, time running out ends the game — whoever has the lowest total on the cards
                   left in their hand wins.
+                </p>
+              </SettingsGroup>
+            ) : isCrazy8 ? (
+              <SettingsGroup title="Crazy Eights room">
+                <Field label={`Max players (${effectiveLimits.crazy_eights.min}–${effectiveLimits.crazy_eights.max})`}>
+                  <select
+                    value={crazy8MaxPlayers}
+                    onChange={(e) => setCrazy8MaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(effectiveLimits.crazy_eights.min, effectiveLimits.crazy_eights.max).map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Turn timer">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {turnTimerOptionsFor('crazy_eights').map((s) => (
+                      <option key={s} value={s}>
+                        {formatBoardGameTurnTimer(s)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Game length">
+                  <select
+                    value={crazy8GameDuration}
+                    onChange={(e) => setCrazy8GameDuration(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {CRAZY8_GAME_DURATION_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {formatCrazyEightsGameDuration(s)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Late joiners">
+                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="crazy_eights" />
+                </Field>
+                <Field label="House rules">
+                  <div className="space-y-2">
+                    <Toggle
+                      label="Action cards"
+                      description="Enable 2 (Pick Two), J & A (Skip), Q (Reverse). Off: only the 8 is wild."
+                      value={crazy8ActionCards}
+                      onChange={setCrazy8ActionCards}
+                    />
+                    <Toggle
+                      label="Jokers"
+                      description="Add 2 Jokers — wild cards that make the next player draw 5"
+                      value={crazy8Jokers}
+                      onChange={setCrazy8Jokers}
+                    />
+                    <div className={crazy8ActionCards ? undefined : 'opacity-50 pointer-events-none'}>
+                      <Toggle
+                        label="Stack Pick 2"
+                        description="On: defend a 2 with your own 2 (next player draws more). Off: you must draw it."
+                        value={crazy8Pick2Stacking}
+                        onChange={setCrazy8Pick2Stacking}
+                      />
+                    </div>
+                  </div>
+                </Field>
+                <p className="text-faint text-sm leading-relaxed">
+                  The worldwide card classic — match the top card by rank or suit. Play an 8 anytime to name the next
+                  suit{crazy8ActionCards ? '; 2 makes them draw, J & A skip, Q reverses' : ''}. First to empty their
+                  hand wins! With a game length set, time running out ends the game — whoever has the lowest total on
+                  the cards left in their hand wins.
                 </p>
               </SettingsGroup>
             ) : isLudo ? (

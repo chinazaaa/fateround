@@ -5,6 +5,7 @@ import {
   isMonopolyGame,
   isYahtzeeGame,
   isWhotGame,
+  isCrazyEightsGame,
   isMostLikelyTo,
   isNeverHaveIEver,
   isThisOrThat,
@@ -151,6 +152,14 @@ export async function fetchLateJoinContext(
     return {
       statusLine: 'Game in progress',
       playerDetail: 'Whot does not allow late players — watch only.',
+      viewerDetail: "Watch the table and hands live — you can't play.",
+    }
+  }
+
+  if (isCrazyEightsGame(type)) {
+    return {
+      statusLine: 'Game in progress',
+      playerDetail: 'Crazy Eights does not allow late players — watch only.',
       viewerDetail: "Watch the table and hands live — you can't play.",
     }
   }

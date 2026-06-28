@@ -67,6 +67,7 @@ const gameTypeEnum = z.enum([
   'monopoly',
   'yahtzee',
   'whot',
+  'crazy_eights',
   'ludo',
   'i_call_on',
   'sudoku',
@@ -150,6 +151,9 @@ export const createGameSchema = z.object({
     .optional()
     .nullable(),
   whot_pick2_stacking: z.boolean().optional(),
+  crazy8_action_cards: z.boolean().optional(),
+  crazy8_jokers: z.boolean().optional(),
+  crazy8_pick2_stacking: z.boolean().optional(),
   scrabble_dictionary_id: z.enum(SCRABBLE_DICTIONARY_OPTIONS).optional(),
   chess_board_theme: z.string().optional(),
   chess_piece_set: z.string().optional(),
@@ -500,6 +504,9 @@ export const boardGameLobbySettingsSchema = z.object({
   whot_cards_enabled: z.boolean().optional(),
   whot_number_calls_enabled: z.boolean().optional(),
   whot_pick2_stacking: z.boolean().optional(),
+  crazy8_action_cards: z.boolean().optional(),
+  crazy8_jokers: z.boolean().optional(),
+  crazy8_pick2_stacking: z.boolean().optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>
@@ -764,6 +771,30 @@ export const whotChooseSchema = whotActionSchema.extend({
 export type WhotPlayInput = z.infer<typeof whotPlaySchema>
 export type WhotDrawInput = z.infer<typeof whotDrawSchema>
 export type WhotChooseInput = z.infer<typeof whotChooseSchema>
+
+// Crazy Eights (POST /api/crazy-eights/*)
+
+const crazyEightsSuitEnum = z.enum(['spades', 'clubs', 'hearts', 'diamonds'])
+
+export const crazyEightsActionSchema = z.object({
+  gameId: gameCodeString(),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
+})
+
+export const crazyEightsPlaySchema = crazyEightsActionSchema.extend({
+  cardId: z.string().min(1),
+})
+
+export const crazyEightsDrawSchema = crazyEightsActionSchema
+
+export const crazyEightsChooseSchema = crazyEightsActionSchema.extend({
+  suit: crazyEightsSuitEnum,
+})
+
+export type CrazyEightsPlayInput = z.infer<typeof crazyEightsPlaySchema>
+export type CrazyEightsDrawInput = z.infer<typeof crazyEightsDrawSchema>
+export type CrazyEightsChooseInput = z.infer<typeof crazyEightsChooseSchema>
 
 // Ludo (POST /api/ludo/*)
 

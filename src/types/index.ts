@@ -39,6 +39,7 @@ export type GameType =
   | 'describe_it'
   | 'scrabble'
   | 'snake_and_ladder'
+  | 'crazy_eights'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -279,6 +280,12 @@ export interface Game {
   ai_generated_questions?: AiGeneratedQuestions | null
   /** Whot — whether a Pick 2 can be stacked/defended (true) or must be drawn (false). */
   whot_pick2_stacking?: boolean
+  /** Crazy Eights — enable 2/J/Q/A action cards (false = only the 8 is wild). */
+  crazy8_action_cards?: boolean
+  /** Crazy Eights — include 2 Jokers (wild + draw 4) in the deck. */
+  crazy8_jokers?: boolean
+  /** Crazy Eights — allow stacking/defending a Pick Two (2) instead of forcing the draw. */
+  crazy8_pick2_stacking?: boolean
 }
 
 export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'auction' | 'raise_funds' | 'finished'
@@ -461,6 +468,52 @@ export interface WhotPlayerHand {
   game_id: string
   player_id: string
   cards: WhotCard[]
+  player_order: number
+  created_at: string
+}
+
+export type CrazyEightsSuit = 'spades' | 'clubs' | 'hearts' | 'diamonds' | 'joker'
+
+/** A demandable suit — what an 8 or Joker names for the next player. */
+export type CrazyEightsCalledSuit = 'spades' | 'clubs' | 'hearts' | 'diamonds'
+
+export type CrazyEightsPhase = 'playing' | 'choose_suit' | 'finished'
+
+export interface CrazyEightsCard {
+  id: string
+  suit: CrazyEightsSuit
+  /** Ace = 1 … King = 13. Jokers carry rank 0. */
+  rank: number
+}
+
+export interface CrazyEightsSession {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  /** 1 = forward through turn_order, -1 = reversed (Queen flips it). */
+  direction: number
+  phase: CrazyEightsPhase
+  draw_pile: CrazyEightsCard[]
+  discard_pile: CrazyEightsCard[]
+  top_card: CrazyEightsCard | null
+  required_suit: CrazyEightsCalledSuit | null
+  /** Stackable, defendable-with-a-2 penalty (Pick Two). */
+  pick_two_stack: number
+  /** Non-defendable forced draw left by a Joker. */
+  joker_penalty: number
+  status_message: string | null
+  winner_player_id: string | null
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CrazyEightsPlayerHand {
+  id: string
+  game_id: string
+  player_id: string
+  cards: CrazyEightsCard[]
   player_order: number
   created_at: string
 }

@@ -11,6 +11,7 @@ import { CodewordsPlayerView } from '@/components/codewords/CodewordsPlayerView'
 import { MonopolyPlayerView } from '@/components/monopoly/MonopolyPlayerView'
 import { YahtzeePlayerView } from '@/components/yahtzee/YahtzeePlayerView'
 import { WhotPlayerView } from '@/components/whot/WhotPlayerView'
+import { CrazyEightsPlayerView } from '@/components/crazy-eights/CrazyEightsPlayerView'
 import { LudoPlayerView } from '@/components/ludo/LudoPlayerView'
 import { SnakeLadderPlayerView } from '@/components/snake-and-ladder/SnakeLadderPlayerView'
 import { TicTacToePlayerView } from '@/components/tic-tac-toe/TicTacToePlayerView'
@@ -39,6 +40,7 @@ export const PLAYER_VIEW_REGISTRY: Partial<Record<GameType, GamePlayerView>> = {
   monopoly: MonopolyPlayerView,
   yahtzee: YahtzeePlayerView,
   whot: WhotPlayerView,
+  crazy_eights: CrazyEightsPlayerView,
   ludo: LudoPlayerView,
   snake_and_ladder: SnakeLadderPlayerView,
   tic_tac_toe: TicTacToePlayerView,

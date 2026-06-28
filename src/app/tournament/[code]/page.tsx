@@ -12,6 +12,7 @@ const GAME_TYPE_LABELS: Record<string, string> = {
   yahtzee: 'Yahtzee',
   ludo: 'Ludo',
   whot: 'Whot',
+  'crazy-eights': 'Crazy Eights',
   monopoly: 'Monopoly',
   'word-hunt': 'Word Hunt',
   'i-call-on': 'I Call On',

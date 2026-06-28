@@ -32,6 +32,7 @@ import {
   isMonopolyGame,
   isYahtzeeGame,
   isWhotGame,
+  isCrazyEightsGame,
   isLudoGame,
   isTicTacToeGame,
   isChessGame,
@@ -95,6 +96,7 @@ import {
 } from '@/lib/game-limits'
 import { clampMonopolyGameDuration, clampMonopolyTurnTimer } from '@/lib/monopoly'
 import { clampWhotGameDuration } from '@/lib/whot'
+import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
@@ -234,6 +236,9 @@ export async function POST(req: NextRequest) {
     whot_cards_enabled: rawWhotCardsEnabled,
     whot_number_calls_enabled: rawWhotNumberCallsEnabled,
     whot_pick2_stacking: rawWhotPick2Stacking,
+    crazy8_action_cards: rawCrazy8ActionCards,
+    crazy8_jokers: rawCrazy8Jokers,
+    crazy8_pick2_stacking: rawCrazy8Pick2Stacking,
     scrabble_dictionary_id: rawScrabbleDictionaryId,
     chess_board_theme: rawChessBoardTheme,
     chess_piece_set: rawChessPieceSet,
@@ -273,6 +278,7 @@ export async function POST(req: NextRequest) {
     isMonopolyGame(game_type) ||
     isYahtzeeGame(game_type) ||
     isWhotGame(game_type) ||
+    isCrazyEightsGame(game_type) ||
     isLudoGame(game_type) ||
     isSnakeAndLadderGame(game_type) ||
     isSudokuGame(game_type) ||
@@ -330,6 +336,7 @@ export async function POST(req: NextRequest) {
     isMonopolyGame(game_type) ||
     isYahtzeeGame(game_type) ||
     isWhotGame(game_type) ||
+    isCrazyEightsGame(game_type) ||
     isLudoGame(game_type) ||
     isSnakeAndLadderGame(game_type) ||
     isSudokuGame(game_type) ||
@@ -420,53 +427,59 @@ export async function POST(req: NextRequest) {
                 ? resolveMaxPlayers('yahtzee', rawMaxPlayers, lobbyDefaultMaxPlayers('yahtzee', lobbyLimits))
                 : isWhotGame(game_type)
                   ? resolveMaxPlayers('whot', rawMaxPlayers, lobbyDefaultMaxPlayers('whot', lobbyLimits))
-                  : isLudoGame(game_type)
-                    ? resolveMaxPlayers('ludo', rawMaxPlayers, lobbyDefaultMaxPlayers('ludo', lobbyLimits))
-                    : isSnakeAndLadderGame(game_type)
-                      ? resolveMaxPlayers(
-                          'snake_and_ladder',
-                          rawMaxPlayers,
-                          lobbyDefaultMaxPlayers('snake_and_ladder', lobbyLimits)
-                        )
-                      : isICallOnGame(game_type)
+                  : isCrazyEightsGame(game_type)
+                    ? resolveMaxPlayers(
+                        'crazy_eights',
+                        rawMaxPlayers,
+                        lobbyDefaultMaxPlayers('crazy_eights', lobbyLimits)
+                      )
+                    : isLudoGame(game_type)
+                      ? resolveMaxPlayers('ludo', rawMaxPlayers, lobbyDefaultMaxPlayers('ludo', lobbyLimits))
+                      : isSnakeAndLadderGame(game_type)
                         ? resolveMaxPlayers(
-                            'i_call_on',
+                            'snake_and_ladder',
                             rawMaxPlayers,
-                            lobbyDefaultMaxPlayers('i_call_on', lobbyLimits)
+                            lobbyDefaultMaxPlayers('snake_and_ladder', lobbyLimits)
                           )
-                        : isSudokuGame(game_type)
-                          ? resolveMaxPlayers('sudoku', rawMaxPlayers, lobbyDefaultMaxPlayers('sudoku', lobbyLimits))
-                          : isWordHuntGame(game_type)
-                            ? resolveMaxPlayers(
-                                'word_hunt',
-                                rawMaxPlayers,
-                                lobbyDefaultMaxPlayers('word_hunt', lobbyLimits)
-                              )
-                            : isTicTacToeGame(game_type)
+                        : isICallOnGame(game_type)
+                          ? resolveMaxPlayers(
+                              'i_call_on',
+                              rawMaxPlayers,
+                              lobbyDefaultMaxPlayers('i_call_on', lobbyLimits)
+                            )
+                          : isSudokuGame(game_type)
+                            ? resolveMaxPlayers('sudoku', rawMaxPlayers, lobbyDefaultMaxPlayers('sudoku', lobbyLimits))
+                            : isWordHuntGame(game_type)
                               ? resolveMaxPlayers(
-                                  'tic_tac_toe',
+                                  'word_hunt',
                                   rawMaxPlayers,
-                                  lobbyDefaultMaxPlayers('tic_tac_toe', lobbyLimits)
+                                  lobbyDefaultMaxPlayers('word_hunt', lobbyLimits)
                                 )
-                              : isChessGame(game_type)
+                              : isTicTacToeGame(game_type)
                                 ? resolveMaxPlayers(
-                                    'chess',
+                                    'tic_tac_toe',
                                     rawMaxPlayers,
-                                    lobbyDefaultMaxPlayers('chess', lobbyLimits)
+                                    lobbyDefaultMaxPlayers('tic_tac_toe', lobbyLimits)
                                   )
-                                : isScrabbleGame(game_type)
+                                : isChessGame(game_type)
                                   ? resolveMaxPlayers(
-                                      'scrabble',
+                                      'chess',
                                       rawMaxPlayers,
-                                      lobbyDefaultMaxPlayers('scrabble', lobbyLimits)
+                                      lobbyDefaultMaxPlayers('chess', lobbyLimits)
                                     )
-                                  : isDescribeItGame(game_type)
+                                  : isScrabbleGame(game_type)
                                     ? resolveMaxPlayers(
-                                        'describe_it',
+                                        'scrabble',
                                         rawMaxPlayers,
-                                        lobbyDefaultMaxPlayers('describe_it', lobbyLimits)
+                                        lobbyDefaultMaxPlayers('scrabble', lobbyLimits)
                                       )
-                                    : null
+                                    : isDescribeItGame(game_type)
+                                      ? resolveMaxPlayers(
+                                          'describe_it',
+                                          rawMaxPlayers,
+                                          lobbyDefaultMaxPlayers('describe_it', lobbyLimits)
+                                        )
+                                      : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
@@ -506,9 +519,11 @@ export async function POST(req: NextRequest) {
                       ? clampDescribeItTurnSeconds(timer_seconds)
                       : isWhotGame(game_type)
                         ? clampBoardGameTurnTimer(timer_seconds, 'whot')
-                        : [15, 30, 60].includes(Number(timer_seconds))
-                          ? Number(timer_seconds)
-                          : 30,
+                        : isCrazyEightsGame(game_type)
+                          ? clampBoardGameTurnTimer(timer_seconds, 'crazy_eights')
+                          : [15, 30, 60].includes(Number(timer_seconds))
+                            ? Number(timer_seconds)
+                            : 30,
     ...(isCodewordsGame(game_type)
       ? {
           operative_timer_seconds: clampCodewordsTimer(
@@ -621,7 +636,14 @@ export async function POST(req: NextRequest) {
             whot_number_calls_enabled: rawWhotNumberCallsEnabled !== false,
             whot_pick2_stacking: rawWhotPick2Stacking !== false,
           }
-        : {}),
+        : isCrazyEightsGame(game_type)
+          ? {
+              game_duration_seconds: clampCrazyEightsGameDuration(rawGameDurationSeconds),
+              crazy8_action_cards: rawCrazy8ActionCards !== false,
+              crazy8_jokers: rawCrazy8Jokers === true,
+              crazy8_pick2_stacking: rawCrazy8Pick2Stacking !== false,
+            }
+          : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {

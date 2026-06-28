@@ -10,6 +10,7 @@ import { CodewordsHostView } from '@/components/codewords/CodewordsHostView'
 import { MonopolyHostView } from '@/components/monopoly/MonopolyHostView'
 import { YahtzeeHostView } from '@/components/yahtzee/YahtzeeHostView'
 import { WhotHostView } from '@/components/whot/WhotHostView'
+import { CrazyEightsHostView } from '@/components/crazy-eights/CrazyEightsHostView'
 import { LudoHostView } from '@/components/ludo/LudoHostView'
 import { SnakeLadderHostView } from '@/components/snake-and-ladder/SnakeLadderHostView'
 import { TicTacToeHostView } from '@/components/tic-tac-toe/TicTacToeHostView'
@@ -39,6 +40,7 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   monopoly: MonopolyHostView,
   yahtzee: YahtzeeHostView,
   whot: WhotHostView,
+  crazy_eights: CrazyEightsHostView,
   ludo: LudoHostView,
   snake_and_ladder: SnakeLadderHostView,
   tic_tac_toe: TicTacToeHostView,

@@ -932,6 +932,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  crazy_eights: {
+    id: 'crazy_eights',
+    label: 'Crazy Eights',
+    tagline: 'The worldwide card classic — match rank or suit, 8s are wild',
+    headerEmoji: '🎴8️⃣',
+    card: {
+      accent: '#7c3aed',
+      accentSoft: 'rgba(124, 58, 237, 0.15)',
+      emoji: '🎴',
+      players: '2–6 players',
+      vibe: 'Card night classic',
+      featured: false,
+    },
+    slots: {
+      kiss: {
+        emoji: '🎴',
+        label: 'Cards left',
+        color: '#7c3aed',
+        leaderboardLabel: 'Fewest cards',
+        activeClass: 'bg-violet-500/20 text-violet-100 border-violet-400',
+        borderClass: 'border-violet-500/50 bg-violet-500/10',
+        textColor: '#c4b5fd',
+      },
+      marry: {
+        emoji: '8️⃣',
+        label: 'Crazy 8',
+        color: '#f97316',
+        leaderboardLabel: 'Wild 8 plays',
+        activeClass: 'bg-orange-500/20 text-orange-100 border-orange-400',
+        borderClass: 'border-orange-500/50 bg-orange-500/10',
+        textColor: '#fdba74',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
   ludo: {
     id: 'ludo',
     label: 'Ludo',
@@ -1355,6 +1398,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'describe_it',
   'scrabble',
   'snake_and_ladder',
+  'crazy_eights',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -1416,6 +1460,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'describe_it' || raw === 'text-charades') return 'describe_it'
   if (raw === 'scrabble') return 'scrabble'
   if (raw === 'snake_and_ladder' || raw === 'snakes-and-ladders') return 'snake_and_ladder'
+  if (raw === 'crazy_eights' || raw === 'crazy-eights') return 'crazy_eights'
   return 'smash_marry_kill'
 }
 
@@ -1716,6 +1761,7 @@ export function isNameOnlyPlayerJoin(gameType: GameType | string | undefined): b
     type === 'monopoly' ||
     type === 'yahtzee' ||
     type === 'whot' ||
+    type === 'crazy_eights' ||
     type === 'ludo' ||
     type === 'i_call_on' ||
     type === 'sudoku' ||
@@ -1809,6 +1855,10 @@ export function isYahtzeeGame(gameType: GameType | string | undefined): boolean 
 
 export function isWhotGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'whot'
+}
+
+export function isCrazyEightsGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'crazy_eights'
 }
 
 export function isLudoGame(gameType: GameType | string | undefined): boolean {

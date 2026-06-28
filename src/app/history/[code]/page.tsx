@@ -33,6 +33,7 @@ import {
   isMonopolyGame,
   isYahtzeeGame,
   isWhotGame,
+  isCrazyEightsGame,
   isLudoGame,
   isSnakeAndLadderGame,
 } from '@/lib/game-types'
@@ -51,6 +52,8 @@ import {
   TTL_STATEMENT_SELECT,
   WHOT_PLAYER_HANDS_SELECT,
   WHOT_SESSION_SELECT,
+  CRAZY8_PLAYER_HANDS_SELECT,
+  CRAZY8_SESSION_SELECT,
   YAHTZEE_PLAYER_SCORES_SELECT,
   YAHTZEE_SESSION_SELECT,
 } from '@/lib/supabase-selects'
@@ -63,6 +66,7 @@ import { TwoTruthsSessionSummary } from '@/components/two-truths/TwoTruthsSessio
 import { MonopolySessionSummary } from '@/components/monopoly/MonopolySessionSummary'
 import { YahtzeeSessionSummary } from '@/components/yahtzee/YahtzeeSessionSummary'
 import { WhotSessionSummary } from '@/components/whot/WhotSessionSummary'
+import { CrazyEightsSessionSummary } from '@/components/crazy-eights/CrazyEightsSessionSummary'
 import { RematchHistory } from '@/components/RematchHistory'
 import { LudoSessionSummary } from '@/components/ludo/LudoSessionSummary'
 import { SnakeLadderSessionSummary } from '@/components/snake-and-ladder/SnakeLadderSessionSummary'
@@ -104,6 +108,8 @@ import type {
   Vote,
   WhotPlayerHand,
   WhotSession,
+  CrazyEightsPlayerHand,
+  CrazyEightsSession,
   YahtzeePlayerScore,
   YahtzeeSession,
 } from '@/types'
@@ -201,6 +207,8 @@ export default function GameHistoryPage() {
   const [yahtzeeScores, setYahtzeeScores] = useState<YahtzeePlayerScore[]>([])
   const [whotSession, setWhotSession] = useState<WhotSession | null>(null)
   const [whotHands, setWhotHands] = useState<WhotPlayerHand[]>([])
+  const [crazy8Session, setCrazy8Session] = useState<CrazyEightsSession | null>(null)
+  const [crazy8Hands, setCrazy8Hands] = useState<CrazyEightsPlayerHand[]>([])
   const [ludoSession, setLudoSession] = useState<LudoSession | null>(null)
   const [ludoStates, setLudoStates] = useState<LudoPlayerState[]>([])
   const [snakeLadderSession, setSnakeLadderSession] = useState<SnakeLadderSession | null>(null)
@@ -234,6 +242,8 @@ export default function GameHistoryPage() {
         setYahtzeeScores([])
         setWhotSession(null)
         setWhotHands([])
+        setCrazy8Session(null)
+        setCrazy8Hands([])
         setLudoSession(null)
         setLudoStates([])
         setSnakeLadderSession(null)
@@ -388,6 +398,30 @@ export default function GameHistoryPage() {
         resetSpecializedState()
         setWhotSession((sessionData as WhotSession | null) ?? null)
         setWhotHands((handRows as WhotPlayerHand[]) ?? [])
+        setLoadState('ready')
+        return
+      }
+
+      if (isCrazyEightsGame(gameType)) {
+        const [{ data: plrs }, { data: sessionData }, { data: handRows }] = await Promise.all([
+          supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+          supabase.from('crazy_eights_sessions').select(CRAZY8_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
+          supabase
+            .from('crazy_eights_player_hands')
+            .select(CRAZY8_PLAYER_HANDS_SELECT)
+            .eq('game_id', gameCode)
+            .order('player_order'),
+        ])
+        setGame(gameData)
+        setPlayers(plrs ?? [])
+        setParticipants([])
+        setRounds([])
+        setVotes([])
+        setConfessions([])
+        setHotSeatSubmissions([])
+        resetSpecializedState()
+        setCrazy8Session((sessionData as CrazyEightsSession | null) ?? null)
+        setCrazy8Hands((handRows as CrazyEightsPlayerHand[]) ?? [])
         setLoadState('ready')
         return
       }
@@ -601,6 +635,14 @@ export default function GameHistoryPage() {
     return (
       <HistoryPageShell game={game} gameType={gameType}>
         <WhotSessionSummary game={game} players={players} hands={whotHands} session={whotSession} />
+      </HistoryPageShell>
+    )
+  }
+
+  if (isCrazyEightsGame(gameType)) {
+    return (
+      <HistoryPageShell game={game} gameType={gameType}>
+        <CrazyEightsSessionSummary game={game} players={players} hands={crazy8Hands} session={crazy8Session} />
       </HistoryPageShell>
     )
   }

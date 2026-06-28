@@ -89,6 +89,7 @@ export function hostPoolSetupAvailable(game: Game): boolean {
     type === 'monopoly' ||
     type === 'yahtzee' ||
     type === 'whot' ||
+    type === 'crazy_eights' ||
     type === 'ludo'
   )
     return false

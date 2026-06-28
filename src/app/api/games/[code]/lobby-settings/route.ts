@@ -6,6 +6,7 @@ import {
   isMonopolyGame,
   isSnakeAndLadderGame,
   isWhotGame,
+  isCrazyEightsGame,
   isYahtzeeGame,
   isWordHuntGame,
   parseGameType,
@@ -13,6 +14,7 @@ import {
 import { clampBoardGameTurnTimer, type BoardGameLobbyType } from '@/lib/board-game-lobby-settings'
 import { clampMonopolyGameDuration } from '@/lib/monopoly'
 import { clampWhotGameDuration } from '@/lib/whot'
+import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampLobbyMaxPlayers, fetchGamePlayerLimits, type LobbyLimitGameType } from '@/lib/game-limits'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -24,6 +26,7 @@ function boardGameLobbyType(gameType: string): BoardGameLobbyType | null {
   if (isMonopolyGame(parsed)) return 'monopoly'
   if (isYahtzeeGame(parsed)) return 'yahtzee'
   if (isWhotGame(parsed)) return 'whot'
+  if (isCrazyEightsGame(parsed)) return 'crazy_eights'
   if (isLudoGame(parsed)) return 'ludo'
   if (isSnakeAndLadderGame(parsed)) return 'snake_and_ladder'
   return null
@@ -52,6 +55,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     whot_cards_enabled,
     whot_number_calls_enabled,
     whot_pick2_stacking,
+    crazy8_action_cards,
+    crazy8_jokers,
+    crazy8_pick2_stacking,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -62,7 +68,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     whot_pick3_enabled === undefined &&
     whot_cards_enabled === undefined &&
     whot_number_calls_enabled === undefined &&
-    whot_pick2_stacking === undefined
+    whot_pick2_stacking === undefined &&
+    crazy8_action_cards === undefined &&
+    crazy8_jokers === undefined &&
+    crazy8_pick2_stacking === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -118,6 +127,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.game_duration_seconds = clampMonopolyGameDuration(game_duration_seconds)
     } else if (boardLobbyType === 'whot') {
       gameUpdate.game_duration_seconds = clampWhotGameDuration(game_duration_seconds)
+    } else if (boardLobbyType === 'crazy_eights') {
+      gameUpdate.game_duration_seconds = clampCrazyEightsGameDuration(game_duration_seconds)
     } else {
       return NextResponse.json({ error: 'This game type does not support game length settings' }, { status: 400 })
     }
@@ -137,6 +148,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     whot_pick2_stacking !== undefined
   ) {
     return NextResponse.json({ error: 'House rules only apply to Whot games' }, { status: 400 })
+  }
+
+  if (boardLobbyType === 'crazy_eights') {
+    if (crazy8_action_cards !== undefined) gameUpdate.crazy8_action_cards = crazy8_action_cards
+    if (crazy8_jokers !== undefined) gameUpdate.crazy8_jokers = crazy8_jokers
+    if (crazy8_pick2_stacking !== undefined) gameUpdate.crazy8_pick2_stacking = crazy8_pick2_stacking
+  } else if (crazy8_action_cards !== undefined || crazy8_jokers !== undefined || crazy8_pick2_stacking !== undefined) {
+    return NextResponse.json({ error: 'House rules only apply to Crazy Eights games' }, { status: 400 })
   }
 
   const { data: updated, error } = await getSupabaseAdmin()

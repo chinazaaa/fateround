@@ -15,6 +15,7 @@ import {
   isYahtzeeGame,
   isMonopolyGame,
   isWhotGame,
+  isCrazyEightsGame,
   isLudoGame,
   isSnakeAndLadderGame,
   isTicTacToeGame,
@@ -174,7 +175,7 @@ function buildShareText({
     return lines.join('\n')
   }
 
-  if (isWhotGame(gameType) && whotStandings && whotStandings.length > 0) {
+  if ((isWhotGame(gameType) || isCrazyEightsGame(gameType)) && whotStandings && whotStandings.length > 0) {
     const lines = [
       ...gameHeader,
       whotWinnerName ? `🏆 ${whotWinnerName} wins!` : '🏆 Game over',

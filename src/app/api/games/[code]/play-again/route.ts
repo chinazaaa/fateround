@@ -22,6 +22,7 @@ import { clearCodewordsRoundData, CODEWORDS_MIN_CUSTOM_POOL } from '@/lib/codewo
 import { clearMonopolySessionData } from '@/lib/monopoly'
 import { clearYahtzeeSessionData } from '@/lib/yahtzee'
 import { clearWhotSessionData } from '@/lib/whot'
+import { clearCrazyEightsSessionData } from '@/lib/crazy-eights'
 import { clearLudoSessionData } from '@/lib/ludo'
 import { clearSnakeAndLadderSessionData } from '@/lib/snake-and-ladder'
 import { clearTicTacToeSessionData, canTicTacToePlayAgain } from '@/lib/tic-tac-toe'
@@ -70,6 +71,7 @@ type ClearableSessionGameType = Extract<
   | 'monopoly'
   | 'yahtzee'
   | 'whot'
+  | 'crazy_eights'
   | 'ludo'
   | 'snake_and_ladder'
   | 'chess'
@@ -95,6 +97,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   monopoly: clearMonopolySessionData,
   yahtzee: clearYahtzeeSessionData,
   whot: clearWhotSessionData,
+  crazy_eights: clearCrazyEightsSessionData,
   ludo: clearLudoSessionData,
   snake_and_ladder: clearSnakeAndLadderSessionData,
   chess: clearChessSessionData,

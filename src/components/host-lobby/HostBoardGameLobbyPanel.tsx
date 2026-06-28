@@ -9,6 +9,7 @@ import {
 } from '@/lib/board-game-lobby-settings'
 import { formatMonopolyGameDuration, MONOPOLY_GAME_DURATION_OPTIONS } from '@/lib/monopoly'
 import { formatWhotGameDuration, WHOT_GAME_DURATION_OPTIONS } from '@/lib/whot'
+import { formatCrazyEightsGameDuration, CRAZY8_GAME_DURATION_OPTIONS } from '@/lib/crazy-eights'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { gameSupportsViewerSetting, lateJoinPolicyFromGame } from '@/lib/viewers'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
@@ -60,6 +61,9 @@ export function HostBoardGameLobbyPanel({
   const [whotPick2Stacking, setWhotPick2Stacking] = useState(true)
   const [whotCardsEnabled, setWhotCardsEnabled] = useState(true)
   const [whotNumberCallsEnabled, setWhotNumberCallsEnabled] = useState(true)
+  const [crazy8ActionCards, setCrazy8ActionCards] = useState(true)
+  const [crazy8Jokers, setCrazy8Jokers] = useState(false)
+  const [crazy8Pick2Stacking, setCrazy8Pick2Stacking] = useState(true)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -82,6 +86,11 @@ export function HostBoardGameLobbyPanel({
       setWhotPick2Stacking(game.whot_pick2_stacking !== false)
       setWhotCardsEnabled(game.whot_cards_enabled !== false)
       setWhotNumberCallsEnabled(game.whot_number_calls_enabled !== false)
+    }
+    if (boardGameType === 'crazy_eights') {
+      setCrazy8ActionCards(game.crazy8_action_cards !== false)
+      setCrazy8Jokers(game.crazy8_jokers === true)
+      setCrazy8Pick2Stacking(game.crazy8_pick2_stacking !== false)
     }
   }, [boardGameType, game, limits])
 
@@ -149,6 +158,13 @@ export function HostBoardGameLobbyPanel({
     void patchSettings(patch)
   }
 
+  const onCrazy8RuleChange = (patch: Record<string, boolean>) => {
+    if (patch.crazy8_action_cards !== undefined) setCrazy8ActionCards(patch.crazy8_action_cards)
+    if (patch.crazy8_jokers !== undefined) setCrazy8Jokers(patch.crazy8_jokers)
+    if (patch.crazy8_pick2_stacking !== undefined) setCrazy8Pick2Stacking(patch.crazy8_pick2_stacking)
+    void patchSettings(patch)
+  }
+
   const maxPlayerOptions = useMemo(
     () =>
       playerCountOptions(minPlayers, maxCap).map((n) => ({
@@ -167,8 +183,18 @@ export function HostBoardGameLobbyPanel({
     [boardGameType]
   )
 
-  const durationFormatter = boardGameType === 'whot' ? formatWhotGameDuration : formatMonopolyGameDuration
-  const durationOptionsSource = boardGameType === 'whot' ? WHOT_GAME_DURATION_OPTIONS : MONOPOLY_GAME_DURATION_OPTIONS
+  const durationFormatter =
+    boardGameType === 'whot'
+      ? formatWhotGameDuration
+      : boardGameType === 'crazy_eights'
+        ? formatCrazyEightsGameDuration
+        : formatMonopolyGameDuration
+  const durationOptionsSource =
+    boardGameType === 'whot'
+      ? WHOT_GAME_DURATION_OPTIONS
+      : boardGameType === 'crazy_eights'
+        ? CRAZY8_GAME_DURATION_OPTIONS
+        : MONOPOLY_GAME_DURATION_OPTIONS
 
   const durationOptions = useMemo(
     () =>
@@ -181,7 +207,7 @@ export function HostBoardGameLobbyPanel({
 
   const summary = useMemo(() => {
     const parts = [`${maxPlayers} max`, formatBoardGameTurnTimer(turnTimer)]
-    if (boardGameType === 'monopoly' || boardGameType === 'whot') {
+    if (boardGameType === 'monopoly' || boardGameType === 'whot' || boardGameType === 'crazy_eights') {
       parts.push(durationFormatter(gameDuration))
     }
     if (gameSupportsViewerSetting(game.game_type)) {
@@ -203,7 +229,7 @@ export function HostBoardGameLobbyPanel({
         <HostLobbyOptionChips value={turnTimer} options={turnTimerOptions} onChange={onTurnTimerChange} />
       </HostLobbySettingBlock>
 
-      {(boardGameType === 'monopoly' || boardGameType === 'whot') && (
+      {(boardGameType === 'monopoly' || boardGameType === 'whot' || boardGameType === 'crazy_eights') && (
         <HostLobbySettingBlock title="Game length">
           <HostLobbyOptionChips value={gameDuration} options={durationOptions} onChange={onGameDurationChange} />
         </HostLobbySettingBlock>
@@ -236,6 +262,33 @@ export function HostBoardGameLobbyPanel({
                 description="Call a number when playing WHOT"
                 value={whotNumberCallsEnabled}
                 onChange={(v) => onWhotRuleChange({ whot_number_calls_enabled: v })}
+              />
+            </div>
+          </div>
+        </HostLobbySettingBlock>
+      )}
+
+      {boardGameType === 'crazy_eights' && (
+        <HostLobbySettingBlock title="House rules">
+          <div className="space-y-1.5">
+            <Toggle
+              label="Action cards"
+              description="Enable 2 (Pick Two), J & A (Skip), Q (Reverse). Off: only the 8 is wild."
+              value={crazy8ActionCards}
+              onChange={(v) => onCrazy8RuleChange({ crazy8_action_cards: v })}
+            />
+            <Toggle
+              label="Jokers"
+              description="Add 2 Jokers — wild cards that make the next player draw 5"
+              value={crazy8Jokers}
+              onChange={(v) => onCrazy8RuleChange({ crazy8_jokers: v })}
+            />
+            <div className={crazy8ActionCards ? undefined : 'opacity-50 pointer-events-none'}>
+              <Toggle
+                label="Stack Pick 2"
+                description="On: defend a 2 with your own 2. Off: you must draw it."
+                value={crazy8Pick2Stacking}
+                onChange={(v) => onCrazy8RuleChange({ crazy8_pick2_stacking: v })}
               />
             </div>
           </div>

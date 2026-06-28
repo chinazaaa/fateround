@@ -649,6 +649,52 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  crazy_eights: [
+    {
+      title: 'Objective',
+      points: [
+        'Be the first player to get rid of all the cards in your hand.',
+        'Match the top of the discard pile by rank or suit — or play an 8 to name the suit opponents must follow.',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        '2–6 players join a room. Each player receives 5 cards (7 for a 2-player game).',
+        'The rest form the draw pile, with one card turned face-up to start the discard pile. An 8 (or Joker) starter is reshuffled.',
+      ],
+    },
+    {
+      title: 'How to play',
+      points: [
+        "On your turn, play a card that matches the top card's rank or suit.",
+        'If you cannot (or choose not to) play, draw a card — or draw the full Pick Two penalty when a 2 stack is active.',
+        'When the draw pile runs out, played cards (except the current top card) are shuffled back in as a new draw pile.',
+        'If nobody can play and no cards can be drawn, the game ends — lowest hand total wins.',
+      ],
+    },
+    {
+      title: 'Special cards',
+      points: [
+        '8 — Wild: play on anything and name the suit the next player must follow (the only always-on special).',
+        '2 — Pick Two: next player draws 2 and is skipped, unless they stack their own 2 to grow and pass the penalty.',
+        'Jack — Skip: the next player loses their turn.',
+        'Queen — Reverse: the direction of play flips (acts as a skip in a 2-player game).',
+        'Ace — Skip: the next player loses their turn.',
+        'Joker (optional) — Wild + Draw: the next player draws 5 (the Joker penalty cannot be stacked), then you name the new suit.',
+        'The 2 / Jack / Queen / Ace powers are an optional host setting — turn them off to play with only the 8 as wild.',
+      ],
+    },
+    {
+      title: 'Game length',
+      points: [
+        'The host can set a game length (10, 15, 30 minutes, etc.) or play with no limit.',
+        'First to empty their hand wins during normal play (no game clock).',
+        'With a game clock, time running out ends the game — lowest hand total wins (each 8 and Joker counts as 50, face cards 10, aces 1).',
+      ],
+    },
+  ],
+
   ludo: [
     {
       title: 'Objective',
