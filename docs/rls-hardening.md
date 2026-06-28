@@ -57,17 +57,31 @@ expands to privacy (which would be the point to consider anonymous Supabase auth
   - [x] `assertPlayer(supabase, gameCode, resumeToken)` authz helper added
     (`src/lib/game-admin.ts`), mirroring the existing `assertHost*` helpers.
   - [x] This tracking doc / write inventory.
-- [ ] **Phase 1 — Authorization boundary in routes**: switch the 61 anon write routes to the
-  service-role client; enforce `assertHost` / `assertPlayer` on every write route; add
-  `resumeToken` to player-write schemas; derive `playerId` from the token server-side.
-- [ ] **Phase 2 — Move browser writes server-side**: convert direct browser writes (game-logic
-  libs + components/hooks) to `fetch` calls to routes. Game-by-game.
-- [ ] **Phase 3 — Hide tokens from reads**: drop `host_token`/`resume_token` from client
-  SELECTs; `REVOKE SELECT (host_token) ON games FROM anon;` and likewise for
-  `players.resume_token`.
-- [ ] **Phase 4 — RLS lockdown**: per-game migrations replacing `FOR ALL USING(true)` with a
-  SELECT-only `_read` policy and no anon write policy. Ship a game's lockdown **only after**
-  its writes are server-side. Each lockdown ships with a drafted restore-permissive rollback.
+- [x] **Phase 1 — Authorization boundary in routes** (per-game tables): every game's write
+  routes use the service-role client and enforce `assertHost`/`assertPlayer`; player schemas
+  carry `resumeToken`; the actor `playerId` is derived from the token server-side.
+- [x] **Phase 2 — Writes server-side** (per-game tables): confirmed all game-state-table
+  writes already flow through API routes (no direct browser writes were found for the locked
+  tables); shared writers in start/play-again/players/promote switched to the service role.
+- [x] **Phase 4 — RLS lockdown** for all 16 game-state table groups (migrations 0106–0121):
+  `FOR ALL USING(true)` replaced with SELECT-only `_read` policies; rollbacks drafted in-file.
+- [ ] **Phase 3 — Hide tokens from reads** ⚠️ **NOT DONE — critical gap.** `host_token` is still
+  in `GAME_SELECT` and `resume_token` in `PLAYER_SELECT` (`src/lib/supabase-selects.ts`), and
+  the `players`/`games` tables are still readable, so anon can `select resume_token from
+  players` and **impersonate** a player through the (now token-gated) APIs. Until this is done,
+  the lockdown blocks direct table tampering but NOT impersonation-via-read-token. Must: drop
+  those columns from client SELECTs, refactor the few client reads, and
+  `REVOKE SELECT (host_token) ON games / (resume_token) ON players FROM anon`.
+- [ ] **Core tables** still permissive: `games`, `players`, `participants`, `rounds`, `votes`,
+  `confessions`, `player_questions`, `wst_quote_pool`, `anime_quote_pool`,
+  `hot_seat_submissions`, `game_snapshots`, and `rooms`/`room_*`. These back the original
+  voting games (SMK/WYR/MLT/who-said-this/hot-seat/etc.) and shared infra — not yet locked.
+
+### Games hardened (Phase 1+2+4 done): migrations 0106–0121
+snake-and-ladder, tic-tac-toe, yahtzee, whot, ludo, chess, monopoly, scrabble, trivia,
+two-truths, sudoku, word-hunt, codewords, describe-it, bingo, npat/i-call-on. Snake & Ladder
+verified live (happy path, cross-device resume, anon-write rejected). The other 15 are
+typecheck/lint/audit-clean but **not yet verified live** — apply 0107–0121 and smoke-test.
 
 ## Branch & scope
 
