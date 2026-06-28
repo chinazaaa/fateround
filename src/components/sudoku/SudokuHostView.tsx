@@ -7,7 +7,7 @@ import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { SudokuPlayerView } from '@/components/sudoku/SudokuPlayerView'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
-import { parseSudokuMetadata, tallySudokuScores } from '@/lib/sudoku'
+import { parseSudokuMetadata, tallySudokuScores, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
 import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } from '@/lib/supabase-selects'
 import { markGameFinished } from '@/lib/game-finish'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
@@ -356,7 +356,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
 
           <button
             type="button"
-            disabled={players.filter((p) => p.spectator !== true).length < 2 || starting}
+            disabled={players.filter((p) => p.spectator !== true).length < SUDOKU_MIN_PLAYERS || starting}
             onClick={handleStart}
             className="btn-primary w-full py-4 text-lg font-bold disabled:opacity-50"
           >
