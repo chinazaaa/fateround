@@ -10,10 +10,15 @@ export const GAME_SELECT =
 
 export const PLAYER_SELECT = 'id,game_id,name,gender,identity_gender,participant_id,joined_at,spectator,monopoly_token'
 
-/** Host-side game read: GAME_SELECT plus the extra (non-secret) fields the host UI needs
- *  (AI-question config + finished_at). Still excludes host_token — the host page now
- *  validates its token via /api/games/[code]/verify-host instead of reading it. */
-export const HOST_GAME_SELECT = `${GAME_SELECT},finished_at,ai_questions_enabled,ai_questions_config,ai_generated_questions`
+/** Host-side game read. Same columns as GAME_SELECT (still excludes host_token — the host
+ *  page validates its token via /api/games/[code]/verify-host instead of reading it).
+ *  NOTE: the host UI also reads the optional ai_questions_* fields, but those are NOT
+ *  selected here because they aren't present in every database (base schema declares them
+ *  via ADD COLUMN IF NOT EXISTS, but some DBs are missing them) — an explicit select on a
+ *  missing column errors, whereas the host UI already treats them as optional/undefined.
+ *  If a DB has those columns and you want the host AI settings to reflect them, append
+ *  them here AND grant anon SELECT on them (column grants from migration 0122). */
+export const HOST_GAME_SELECT = GAME_SELECT
 
 export const PARTICIPANT_SELECT =
   'id,game_id,name,gender,photo_url,description,display_order,in_mlt_poll,submitted_by_player_id'
