@@ -920,11 +920,18 @@ export async function canDescribeItPlayAgain(
   return data?.status === 'finished'
 }
 
-/** Play again — wipe the session, word log, and guesses; keep team assignments. */
+/**
+ * Play again — wipe the session, word log, and guesses; keep team assignments.
+ *
+ * Returns a `poolUsage` patch (the merged `describe_it_used` word log) for the
+ * caller to fold into its final `games` update, rather than writing `games`
+ * here — a separate write would be clobbered by the route's own `pool_usage`
+ * update that runs afterwards.
+ */
 export async function clearDescribeItSessionData(
   supabase: SupabaseClient,
   gameId: string
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; poolUsage?: Record<string, unknown> }> {
   // Remember the words used this game so the next Play again prefers fresh ones.
   const { data: session } = await supabase
     .from('describe_it_sessions')
@@ -932,16 +939,12 @@ export async function clearDescribeItSessionData(
     .eq('game_id', gameId)
     .maybeSingle()
   const usedThisGame = Array.isArray(session?.used_words) ? (session!.used_words as string[]) : []
+  let poolUsage: Record<string, unknown> | undefined
   if (usedThisGame.length > 0) {
     const { data: game } = await supabase.from('games').select('pool_usage').eq('id', gameId).maybeSingle()
     const prior = readUsedFromPoolUsage(game?.pool_usage)
     const merged = dedupeWords([...prior, ...usedThisGame])
-    const poolUsage =
-      game?.pool_usage && typeof game.pool_usage === 'object' ? (game.pool_usage as Record<string, unknown>) : {}
-    await supabase
-      .from('games')
-      .update({ pool_usage: { ...poolUsage, describe_it_used: merged } })
-      .eq('id', gameId)
+    poolUsage = { describe_it_used: merged }
   }
 
   await supabase.from('describe_it_guesses').delete().eq('game_id', gameId)
@@ -949,5 +952,5 @@ export async function clearDescribeItSessionData(
   await supabase.from('describe_it_sessions').delete().eq('game_id', gameId)
   // Reset individual-mode scores so the next game starts from zero.
   await supabase.from('describe_it_players').update({ score: 0 }).eq('game_id', gameId)
-  return {}
+  return poolUsage ? { poolUsage } : {}
 }
