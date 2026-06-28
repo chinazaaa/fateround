@@ -60,7 +60,8 @@ describe('scorePlacement (English)', () => {
     }))
     const r = scorePlacement(emptyScrabbleBoard(), seven, EN)
     expect(r.valid).toBe(true)
-    expect(r.score).toBeGreaterThan(50)
+    // 7 one-point letters × 2 (centre double-word) + 50 bingo bonus
+    expect(r.score).toBe(64)
   })
 
   it('scores a blank tile as 0 within the word', () => {
