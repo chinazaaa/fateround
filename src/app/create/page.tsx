@@ -3638,9 +3638,7 @@ function CreateGameInner() {
             🎉
           </div>
           <h1 className="text-3xl font-black tracking-tight gradient-title-subtle">You&apos;re live!</h1>
-          <p className="text-muted text-sm">
-            Share the invite to get players in — then open your host panel to start.
-          </p>
+          <p className="text-muted text-sm">Share the invite to get players in — then open your host panel to start.</p>
         </div>
       }
     >
@@ -3700,17 +3698,7 @@ function Avatar({ name }: { name: string }) {
   return <div className="avatar w-7 h-7 text-xs shrink-0">{name.charAt(0).toUpperCase()}</div>
 }
 
-function CopyCard({
-  label,
-  value,
-  accent,
-  hint,
-}: {
-  label: string
-  value: string
-  accent?: boolean
-  hint?: string
-}) {
+function CopyCard({ label, value, accent, hint }: { label: string; value: string; accent?: boolean; hint?: string }) {
   return (
     <div className={`glass-card p-4 space-y-2 ${accent ? 'border-[var(--primary)]/35' : ''}`}>
       <p className={`label-caps ${accent ? 'text-[var(--primary)]' : ''}`}>{label}</p>

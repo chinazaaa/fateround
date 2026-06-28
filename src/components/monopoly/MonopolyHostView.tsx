@@ -349,9 +349,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
         const manageStatus = board.last_rent_event
           ? formatRentMessageForPlayer(board.last_rent_event, hostPlayerId, players)
           : board.status_message
-        return manageStatus ? (
-          <p className="text-sm text-muted text-center leading-relaxed">{manageStatus}</p>
-        ) : null
+        return manageStatus ? <p className="text-sm text-muted text-center leading-relaxed">{manageStatus}</p> : null
       })()}
       {(() => {
         const hostOwners = parsePropertyOwners(board.property_owners)

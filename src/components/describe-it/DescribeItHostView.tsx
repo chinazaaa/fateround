@@ -506,255 +506,251 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
       {game.status === 'waiting' && (
         <>
           <DescribeItCard className="p-4 space-y-3">
-                <p className="text-sm font-bold">Game settings</p>
-                <div className="space-y-1.5">
-                  <p className="text-xs font-semibold text-faint">Mode</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void saveSettings({ mode: 'team' })}
-                      className={[
-                        'rounded-xl border-2 px-3 py-2.5 text-left',
-                        !isIndividual
-                          ? 'border-[var(--primary)]/60 bg-[var(--primary)]/10'
-                          : 'border-[var(--border-strong)] text-muted',
-                      ].join(' ')}
-                    >
-                      <span className="font-bold block text-sm">Teams</span>
-                      <span className="text-faint text-[11px]">Teams race for words</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void saveSettings({ mode: 'individual' })}
-                      className={[
-                        'rounded-xl border-2 px-3 py-2.5 text-left',
-                        isIndividual
-                          ? 'border-[var(--primary)]/60 bg-[var(--primary)]/10'
-                          : 'border-[var(--border-strong)] text-muted',
-                      ].join(' ')}
-                    >
-                      <span className="font-bold block text-sm">Individual</span>
-                      <span className="text-faint text-[11px]">Solo — fastest guess wins</span>
-                    </button>
-                  </div>
-                  {isIndividual && (
-                    <div className="text-faint text-[11px] space-y-1">
-                      <p>
-                        Everyone takes turns describing one word; guessers score by speed and the describer scores per
-                        correct guess.
-                      </p>
-                      <p
-                        className={
-                          readyPlayers.length * currentRounds > 40 ? 'text-amber-400 font-semibold' : 'text-faint'
-                        }
-                      >
-                        Every player describes once per round, so {readyPlayers.length}{' '}
-                        {readyPlayers.length === 1 ? 'player' : 'players'} × {currentRounds}{' '}
-                        {currentRounds === 1 ? 'round' : 'rounds'} = {readyPlayers.length * currentRounds} turns.
-                        {readyPlayers.length * currentRounds > 40 ? ' That’s a long game — try fewer rounds.' : ''}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                {!isIndividual && biggestTeamSize > currentRounds && (
-                  <p className="text-amber-400 text-xs">
-                    A new teammate describes each round. Your biggest team has {biggestTeamSize} players — pick{' '}
-                    {biggestTeamSize}+ rounds so everyone gets a turn to describe.
+            <p className="text-sm font-bold">Game settings</p>
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-faint">Mode</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void saveSettings({ mode: 'team' })}
+                  className={[
+                    'rounded-xl border-2 px-3 py-2.5 text-left',
+                    !isIndividual
+                      ? 'border-[var(--primary)]/60 bg-[var(--primary)]/10'
+                      : 'border-[var(--border-strong)] text-muted',
+                  ].join(' ')}
+                >
+                  <span className="font-bold block text-sm">Teams</span>
+                  <span className="text-faint text-[11px]">Teams race for words</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveSettings({ mode: 'individual' })}
+                  className={[
+                    'rounded-xl border-2 px-3 py-2.5 text-left',
+                    isIndividual
+                      ? 'border-[var(--primary)]/60 bg-[var(--primary)]/10'
+                      : 'border-[var(--border-strong)] text-muted',
+                  ].join(' ')}
+                >
+                  <span className="font-bold block text-sm">Individual</span>
+                  <span className="text-faint text-[11px]">Solo — fastest guess wins</span>
+                </button>
+              </div>
+              {isIndividual && (
+                <div className="text-faint text-[11px] space-y-1">
+                  <p>
+                    Everyone takes turns describing one word; guessers score by speed and the describer scores per
+                    correct guess.
                   </p>
-                )}
-                <div className={`grid gap-2 ${isIndividual ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                  {!isIndividual && (
-                    <label className="text-xs font-semibold text-faint space-y-1">
-                      <span>Teams</span>
-                      <select
-                        value={numTeams}
-                        onChange={(e) => void saveSettings({ numTeams: Number(e.target.value) })}
-                        className="input-field w-full text-sm"
-                      >
-                        {DESCRIBE_IT_TEAM_OPTIONS.map((n) => (
-                          <option key={n} value={n}>
-                            {n}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                  <label className="text-xs font-semibold text-faint space-y-1">
-                    <span>Rounds</span>
-                    <select
-                      value={clampDescribeItRounds(game.rounds_count)}
-                      onChange={(e) => void saveSettings({ rounds: Number(e.target.value) })}
-                      className="input-field w-full text-sm"
-                    >
-                      {DESCRIBE_IT_ROUND_OPTIONS.map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="text-xs font-semibold text-faint space-y-1">
-                    <span>Turn</span>
-                    <select
-                      value={game.timer_seconds}
-                      onChange={(e) => void saveSettings({ turnSeconds: Number(e.target.value) })}
-                      className="input-field w-full text-sm"
-                    >
-                      {DESCRIBE_IT_TURN_OPTIONS.map((n) => (
-                        <option key={n} value={n}>
-                          {n === 60 ? '1m' : n === 120 ? '2m' : `${n}s`}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <p
+                    className={readyPlayers.length * currentRounds > 40 ? 'text-amber-400 font-semibold' : 'text-faint'}
+                  >
+                    Every player describes once per round, so {readyPlayers.length}{' '}
+                    {readyPlayers.length === 1 ? 'player' : 'players'} × {currentRounds}{' '}
+                    {currentRounds === 1 ? 'round' : 'rounds'} = {readyPlayers.length * currentRounds} turns.
+                    {readyPlayers.length * currentRounds > 40 ? ' That’s a long game — try fewer rounds.' : ''}
+                  </p>
                 </div>
-                <label className="text-xs font-semibold text-faint space-y-1 block">
-                  <span>Max players</span>
+              )}
+            </div>
+            {!isIndividual && biggestTeamSize > currentRounds && (
+              <p className="text-amber-400 text-xs">
+                A new teammate describes each round. Your biggest team has {biggestTeamSize} players — pick{' '}
+                {biggestTeamSize}+ rounds so everyone gets a turn to describe.
+              </p>
+            )}
+            <div className={`grid gap-2 ${isIndividual ? 'grid-cols-2' : 'grid-cols-3'}`}>
+              {!isIndividual && (
+                <label className="text-xs font-semibold text-faint space-y-1">
+                  <span>Teams</span>
                   <select
-                    value={clampDescribeItMaxPlayers(game.max_players ?? DESCRIBE_IT_DEFAULT_MAX_PLAYERS)}
-                    onChange={(e) => void saveSettings({ maxPlayers: Number(e.target.value) })}
+                    value={numTeams}
+                    onChange={(e) => void saveSettings({ numTeams: Number(e.target.value) })}
                     className="input-field w-full text-sm"
                   >
-                    {DESCRIBE_IT_MAX_PLAYER_OPTIONS.map((n) => (
+                    {DESCRIBE_IT_TEAM_OPTIONS.map((n) => (
                       <option key={n} value={n}>
-                        {n} players
+                        {n}
                       </option>
                     ))}
                   </select>
                 </label>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-faint">Your words (one per line, optional)</p>
-                  <textarea
-                    value={wordsDraft}
-                    onChange={(e) => setWordsDraft(e.target.value)}
-                    placeholder="pizza&#10;rainbow&#10;astronaut"
-                    rows={3}
-                    className="input-field w-full resize-y text-sm"
-                  />
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => wordsFileRef.current?.click()}
-                      className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
-                    >
-                      Upload CSV / Excel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={saveWords}
-                      disabled={savingWords}
-                      className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
-                    >
-                      {savingWords ? 'Saving…' : 'Save words'}
-                    </button>
-                  </div>
-                  <input
-                    ref={wordsFileRef}
-                    type="file"
-                    accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0]
-                      e.target.value = ''
-                      if (!file) return
-                      setWordsUploadError(null)
-                      const ext = file.name.split('.').pop()?.toLowerCase()
-                      try {
-                        const rows =
-                          ext === 'csv'
-                            ? parseDescribeItWords(await file.text())
-                            : ext === 'xlsx' || ext === 'xls'
-                              ? await parseExcelDescribeItWords(await file.arrayBuffer())
-                              : []
-                        if (rows.length === 0) {
-                          setWordsUploadError('No words found. Use one word per line or row.')
-                          return
-                        }
-                        const merged = parseDescribeItWords(`${wordsDraft}\n${rows.join('\n')}`)
-                        setWordsDraft(merged.join('\n'))
-                        await saveSettings({ words: merged.join('\n') })
-                      } catch {
-                        setWordsUploadError('Could not read that file. Try a .csv or .xlsx.')
-                      }
-                    }}
-                  />
-                  {wordsUploadError && <p className="text-rose-400 text-xs">{wordsUploadError}</p>}
-                </div>
-                <div className="pt-1 border-t border-[var(--border)]">
-                  <HostAllowViewersField gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-                </div>
-              </DescribeItCard>
-
-              {isIndividual ? (
-                <DescribeItCard className="p-4 space-y-2 text-center">
-                  <p className="text-sm font-bold">Everyone plays solo 🏆</p>
-                  <p className="text-faint text-xs">
-                    No teams — players take turns describing and race to guess. Need at least{' '}
-                    {DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL} players. See the full list below.
-                  </p>
-                  <p>
-                    <GameRulesLink gameType="describe_it" variant="subtle" />
-                  </p>
-                </DescribeItCard>
-              ) : (
-                <DescribeItCard className="p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-bold">Teams ({numTeams})</p>
-                    <button
-                      type="button"
-                      onClick={balanceTeams}
-                      disabled={balancing}
-                      className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
-                    >
-                      {balancing ? 'Balancing…' : 'Auto-balance'}
-                    </button>
-                  </div>
-                  <DescribeItTeamRoster
-                    numTeams={numTeams}
-                    teamRows={teamPlain}
-                    players={players}
-                    myPlayerId={hostPlays ? hostPlayerId : null}
-                    onPick={hostPlays ? pickTeam : undefined}
-                    picking={picking}
-                    onMoveTeam={moveTeam}
-                    moving={moving}
-                  />
-                  <p className="text-faint text-[11px] text-center">
-                    Tap a colored number to move a player to that team.
-                  </p>
-                  {!ready.ok && <p className="text-amber-400 text-xs text-center">{ready.error}</p>}
-                  <p className="text-center">
-                    <GameRulesLink gameType="describe_it" variant="subtle" />
-                  </p>
-                </DescribeItCard>
               )}
+              <label className="text-xs font-semibold text-faint space-y-1">
+                <span>Rounds</span>
+                <select
+                  value={clampDescribeItRounds(game.rounds_count)}
+                  onChange={(e) => void saveSettings({ rounds: Number(e.target.value) })}
+                  className="input-field w-full text-sm"
+                >
+                  {DESCRIBE_IT_ROUND_OPTIONS.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-faint space-y-1">
+                <span>Turn</span>
+                <select
+                  value={game.timer_seconds}
+                  onChange={(e) => void saveSettings({ turnSeconds: Number(e.target.value) })}
+                  className="input-field w-full text-sm"
+                >
+                  {DESCRIBE_IT_TURN_OPTIONS.map((n) => (
+                    <option key={n} value={n}>
+                      {n === 60 ? '1m' : n === 120 ? '2m' : `${n}s`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label className="text-xs font-semibold text-faint space-y-1 block">
+              <span>Max players</span>
+              <select
+                value={clampDescribeItMaxPlayers(game.max_players ?? DESCRIBE_IT_DEFAULT_MAX_PLAYERS)}
+                onChange={(e) => void saveSettings({ maxPlayers: Number(e.target.value) })}
+                className="input-field w-full text-sm"
+              >
+                {DESCRIBE_IT_MAX_PLAYER_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n} players
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-faint">Your words (one per line, optional)</p>
+              <textarea
+                value={wordsDraft}
+                onChange={(e) => setWordsDraft(e.target.value)}
+                placeholder="pizza&#10;rainbow&#10;astronaut"
+                rows={3}
+                className="input-field w-full resize-y text-sm"
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => wordsFileRef.current?.click()}
+                  className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
+                >
+                  Upload CSV / Excel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveWords}
+                  disabled={savingWords}
+                  className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
+                >
+                  {savingWords ? 'Saving…' : 'Save words'}
+                </button>
+              </div>
+              <input
+                ref={wordsFileRef}
+                type="file"
+                accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  e.target.value = ''
+                  if (!file) return
+                  setWordsUploadError(null)
+                  const ext = file.name.split('.').pop()?.toLowerCase()
+                  try {
+                    const rows =
+                      ext === 'csv'
+                        ? parseDescribeItWords(await file.text())
+                        : ext === 'xlsx' || ext === 'xls'
+                          ? await parseExcelDescribeItWords(await file.arrayBuffer())
+                          : []
+                    if (rows.length === 0) {
+                      setWordsUploadError('No words found. Use one word per line or row.')
+                      return
+                    }
+                    const merged = parseDescribeItWords(`${wordsDraft}\n${rows.join('\n')}`)
+                    setWordsDraft(merged.join('\n'))
+                    await saveSettings({ words: merged.join('\n') })
+                  } catch {
+                    setWordsUploadError('Could not read that file. Try a .csv or .xlsx.')
+                  }
+                }}
+              />
+              {wordsUploadError && <p className="text-rose-400 text-xs">{wordsUploadError}</p>}
+            </div>
+            <div className="pt-1 border-t border-[var(--border)]">
+              <HostAllowViewersField gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+            </div>
+          </DescribeItCard>
 
-              <HostLobbyPlayersSection
+          {isIndividual ? (
+            <DescribeItCard className="p-4 space-y-2 text-center">
+              <p className="text-sm font-bold">Everyone plays solo 🏆</p>
+              <p className="text-faint text-xs">
+                No teams — players take turns describing and race to guess. Need at least{' '}
+                {DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL} players. See the full list below.
+              </p>
+              <p>
+                <GameRulesLink gameType="describe_it" variant="subtle" />
+              </p>
+            </DescribeItCard>
+          ) : (
+            <DescribeItCard className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold">Teams ({numTeams})</p>
+                <button
+                  type="button"
+                  onClick={balanceTeams}
+                  disabled={balancing}
+                  className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
+                >
+                  {balancing ? 'Balancing…' : 'Auto-balance'}
+                </button>
+              </div>
+              <DescribeItTeamRoster
+                numTeams={numTeams}
+                teamRows={teamPlain}
                 players={players}
-                removingPlayerId={removingPlayerId}
-                onRemovePlayer={removePlayer}
-                highlightPlayerId={hostPlayerId}
-                alwaysShowReady
+                myPlayerId={hostPlays ? hostPlayerId : null}
+                onPick={hostPlays ? pickTeam : undefined}
+                picking={picking}
+                onMoveTeam={moveTeam}
+                moving={moving}
               />
-
-              <HostLobbyWaitingFooter
-                gameCode={gameCode}
-                hostToken={hostToken}
-                onStart={startGame}
-                onEnded={load}
-                canStart={canStart}
-                starting={starting}
-                startDisabledHint={
-                  canStart
-                    ? null
-                    : readyPlayers.length < DESCRIBE_IT_MIN_PLAYERS
-                      ? `Need at least ${DESCRIBE_IT_MIN_PLAYERS} players (${readyPlayers.length})`
-                      : (ready.error ?? 'Every team needs at least 2 players')
-                }
-                className="space-y-3"
-              />
-            </>
+              <p className="text-faint text-[11px] text-center">Tap a colored number to move a player to that team.</p>
+              {!ready.ok && <p className="text-amber-400 text-xs text-center">{ready.error}</p>}
+              <p className="text-center">
+                <GameRulesLink gameType="describe_it" variant="subtle" />
+              </p>
+            </DescribeItCard>
           )}
+
+          <HostLobbyPlayersSection
+            players={players}
+            removingPlayerId={removingPlayerId}
+            onRemovePlayer={removePlayer}
+            highlightPlayerId={hostPlayerId}
+            alwaysShowReady
+          />
+
+          <HostLobbyWaitingFooter
+            gameCode={gameCode}
+            hostToken={hostToken}
+            onStart={startGame}
+            onEnded={load}
+            canStart={canStart}
+            starting={starting}
+            startDisabledHint={
+              canStart
+                ? null
+                : readyPlayers.length < DESCRIBE_IT_MIN_PLAYERS
+                  ? `Need at least ${DESCRIBE_IT_MIN_PLAYERS} players (${readyPlayers.length})`
+                  : (ready.error ?? 'Every team needs at least 2 players')
+            }
+            className="space-y-3"
+          />
+        </>
+      )}
     </div>
   )
 

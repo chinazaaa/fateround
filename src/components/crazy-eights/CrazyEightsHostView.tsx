@@ -324,7 +324,10 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
             onPlay={(cardId) => void postHostAction('/api/crazy-eights/play', { cardId })}
           />
           {isHostTurn && !(drawDepleted && hostCanPlay) && (
-            <CrazyEightsPrimaryButton onClick={() => void postHostAction('/api/crazy-eights/draw')} loading={hostActing}>
+            <CrazyEightsPrimaryButton
+              onClick={() => void postHostAction('/api/crazy-eights/draw')}
+              loading={hostActing}
+            >
               {drawDepleted
                 ? 'Pass turn'
                 : penalties.pickTwo > 0

@@ -473,8 +473,8 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           )}
           {hostPlayerId && (
             <div className="glass-card p-4 text-center text-sm text-muted">
-              You&apos;re playing as <strong className="text-body">{hostPlayerName}</strong> — switch to the Play tab
-              to pick letters and submit answers.
+              You&apos;re playing as <strong className="text-body">{hostPlayerName}</strong> — switch to the Play tab to
+              pick letters and submit answers.
             </div>
           )}
           <div className="glass-card-strong p-5 sm:p-6 space-y-3">

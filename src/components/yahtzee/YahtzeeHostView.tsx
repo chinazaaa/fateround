@@ -456,7 +456,12 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
           scores={scores}
           winnerName={winner?.name}
           playAgainButton={
-            <button type="button" onClick={() => void playAgain()} disabled={playingAgain} className="btn-primary w-full py-3">
+            <button
+              type="button"
+              onClick={() => void playAgain()}
+              disabled={playingAgain}
+              className="btn-primary w-full py-3"
+            >
               {playingAgain ? 'Resetting…' : 'Play again'}
             </button>
           }

@@ -299,12 +299,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
 
       <div className="grid md:grid-cols-2 gap-6">
         {puzzle && (
-          <SudokuBoard
-            puzzle={puzzle}
-            solution={solution ?? undefined}
-            blockScorers={blockScorers}
-            readOnly
-          />
+          <SudokuBoard puzzle={puzzle} solution={solution ?? undefined} blockScorers={blockScorers} readOnly />
         )}
 
         <div className="space-y-3">

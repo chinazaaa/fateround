@@ -608,8 +608,8 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
             <p className="label-caps">{isAuto ? 'Automatic calling' : 'Call numbers'}</p>
             {isAuto ? (
               <p className="text-center text-muted text-sm sm:text-base">
-                Numbers are called automatically every <span className="font-bold text-body">{callInterval}s</span>. Keep
-                this tab open or let players stay connected — anyone in the game keeps it running.
+                Numbers are called automatically every <span className="font-bold text-body">{callInterval}s</span>.
+                Keep this tab open or let players stay connected — anyone in the game keeps it running.
               </p>
             ) : (
               <div className="flex flex-wrap gap-2">
@@ -625,8 +625,8 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
             )}
             {lastCalled != null && (
               <p className="text-center text-muted text-sm">
-                Last: <span className="font-bold text-blue-300">{formatBingoNumber(lastCalled)}</span> ·{' '}
-                {called.length}/75 called
+                Last: <span className="font-bold text-blue-300">{formatBingoNumber(lastCalled)}</span> · {called.length}
+                /75 called
               </p>
             )}
           </div>

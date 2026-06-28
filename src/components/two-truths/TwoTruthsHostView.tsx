@@ -304,8 +304,11 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
   }
 
   // Host-player's own statement setup (lobby only) — their input, so it lives with Manage.
-  const hostStatementSetup = hostPlays && hostPlayerId && game.status === 'waiting' && (
-    myStatement && !editingStatements ? (
+  const hostStatementSetup =
+    hostPlays &&
+    hostPlayerId &&
+    game.status === 'waiting' &&
+    (myStatement && !editingStatements ? (
       <div className="glass-card p-5 space-y-4">
         <EditNameInline
           gameCode={gameCode}
@@ -319,7 +322,9 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
         <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-5 text-center space-y-1">
           <p className="text-2xl">✓</p>
           <p className="font-semibold text-emerald-800 dark:text-emerald-200">Statements submitted</p>
-          <p className="text-sm text-emerald-700 dark:text-emerald-300">Start the game below when everyone&apos;s ready.</p>
+          <p className="text-sm text-emerald-700 dark:text-emerald-300">
+            Start the game below when everyone&apos;s ready.
+          </p>
         </div>
         <button type="button" onClick={() => setEditingStatements(true)} className="btn-secondary w-full">
           Edit my statements
@@ -353,8 +358,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
           </button>
         )}
       </div>
-    )
-  )
+    ))
 
   // Primary tab: interactive round for a host-player, read-only gameplay for a host-only host.
   const interactivePlay = hostPlayerId && (
