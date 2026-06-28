@@ -203,7 +203,12 @@ export async function initializeSnakeAndLadderGame(
   }))
 
   const { error: statesError } = await supabase.from('snake_ladder_player_state').insert(stateRows)
-  if (statesError) return { error: statesError.message }
+  if (statesError) {
+    // `snake_ladder_sessions.game_id` is unique — clean up the orphaned session
+    // so a retry can start fresh instead of colliding with this row.
+    await supabase.from('snake_ladder_sessions').delete().eq('game_id', gameId)
+    return { error: statesError.message }
+  }
 
   return {}
 }
@@ -390,6 +395,11 @@ export async function processSnakeAndLadderExpireTurn(
 ): Promise<{ error?: string }> {
   const { session } = await loadGameState(supabase, gameId)
   if (!session || session.phase === 'finished') return {}
+
+  // Only auto-roll once the turn has genuinely expired — never let a caller force
+  // the current player's move early.
+  if (!session.turn_deadline_at) return {}
+  if (snakeLadderSecondsLeft(session.turn_deadline_at) > 0) return { error: 'Turn has not expired' }
 
   const playerId = currentPlayerId(session)
   if (!playerId) return { error: 'No current player' }

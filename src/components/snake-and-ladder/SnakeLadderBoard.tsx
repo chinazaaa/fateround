@@ -193,8 +193,17 @@ export function SnakeLadderGamePanel({
 
   // Roster sorted by furthest along, with the player on the move first if tied.
   const roster = useMemo(() => {
-    return [...states].sort((a, b) => b.position - a.position || a.player_order - b.player_order)
-  }, [states])
+    return [...states].sort((a, b) => {
+      const byPosition = b.position - a.position
+      if (byPosition !== 0) return byPosition
+
+      const aIsTurn = a.player_id === turnPlayerId ? 1 : 0
+      const bIsTurn = b.player_id === turnPlayerId ? 1 : 0
+      if (aIsTurn !== bIsTurn) return bIsTurn - aIsTurn
+
+      return a.player_order - b.player_order
+    })
+  }, [states, turnPlayerId])
 
   return (
     <SnakeLadderCard className="p-3 sm:p-4 space-y-3">

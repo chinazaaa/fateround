@@ -95,7 +95,13 @@ export function useSnakeLadderNotifications({
       playRoundStartSound()
     }
 
-    if (prevStatus === 'active' && (game.status === 'finished' || session?.phase === 'finished')) {
+    // `game.status` and `session.phase` can flip to finished in separate realtime
+    // updates — guard on both so the sound/toast fire only on the first transition.
+    const justFinished =
+      (prevStatus !== 'finished' && game.status === 'finished') ||
+      (prevPhase !== 'finished' && session?.phase === 'finished')
+
+    if (justFinished) {
       playGameFinishedSound()
       const winner = players.find((p) => p.id === session?.winner_player_id)
       if (session?.winner_player_id === myPlayerId) {
@@ -103,10 +109,6 @@ export function useSnakeLadderNotifications({
       } else if (winner) {
         info(`${winner.name} wins! 🏆`)
       }
-    }
-
-    if (prevPhase !== 'finished' && session?.phase === 'finished' && prevStatus !== 'active') {
-      playGameFinishedSound()
     }
 
     if (

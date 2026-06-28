@@ -155,6 +155,11 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
       )
       .on(
         'postgres_changes',
+        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+        scheduleLoad
+      )
+      .on(
+        'postgres_changes',
         { event: '*', schema: 'public', table: 'snake_ladder_sessions', filter: `game_id=eq.${gameCode}` },
         scheduleLoad
       )
@@ -200,6 +205,8 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
         setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
         setMyPlayerId(data.playerId)
         await load()
+      } catch {
+        toastError('Failed to join')
       } finally {
         setJoining(false)
       }
@@ -244,6 +251,8 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
         playSnakeLadderActionSound()
         await load()
       }
+    } catch {
+      toastError('Action failed')
     } finally {
       setActing(false)
       const wait = Math.max(0, ROLL_MIN_MS - (Date.now() - rollStartedRef.current))
@@ -348,12 +357,21 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
           isSpectator={me?.spectator === true}
           onReady={async () => {
             if (!myPlayerId) return
-            await fetch('/api/players/ready', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
-            })
-            await load()
+            try {
+              const res = await fetch('/api/players/ready', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+              })
+              if (!res.ok) {
+                const data = await res.json().catch(() => ({}))
+                toastError(data.error ?? 'Failed to ready up')
+                return
+              }
+              await load()
+            } catch {
+              toastError('Failed to ready up')
+            }
           }}
         />
       </GameJoinLobbyShell>

@@ -954,7 +954,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'Objective',
       points: [
         'Be the first player to move your token to square 100 on the 1–100 board.',
-        'You must land on 100 with an exact roll. Other players keep playing for runner-up places.',
+        'You must land on 100 with an exact roll. The first player to do that wins immediately.',
       ],
     },
     {

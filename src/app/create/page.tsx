@@ -360,6 +360,7 @@ function CreateGameInner() {
     setYahtzeeMaxPlayers((v) => clamp('yahtzee', v))
     setWhotMaxPlayers((v) => clamp('whot', v))
     setLudoMaxPlayers((v) => clamp('ludo', v))
+    setSnakeLadderMaxPlayers((v) => clamp('snake_and_ladder', v))
     setNpatMaxPlayers((v) => clamp('i_call_on', v))
   }, [lobbyLimits])
 
@@ -440,6 +441,7 @@ function CreateGameInner() {
               participant_mode: 'joiners' as const,
               anonymous: true,
               rounds_count: 1,
+              timer_seconds: 30,
             }
           : {}),
         ...(isTicTacToeGame(type)

@@ -48,6 +48,7 @@ type HostTab = 'play' | 'manage'
 export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
   const [game, setGame] = useState<Game | null>(null)
+  const [notFound, setNotFound] = useState(false)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<SnakeLadderSession | null>(null)
   const [states, setStates] = useState<SnakeLadderPlayerState[]>([])
@@ -80,6 +81,11 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
         .order('player_order'),
     ])
     if (!supabasePollOk(gameRes, plrsRes, sessionRes, statesRes)) return false
+    if (!gameRes.data) {
+      setNotFound(true)
+      return true
+    }
+    setNotFound(false)
     setGame(gameRes.data)
     setPlayers(plrsRes.data ?? [])
     setSession(sessionRes.data as SnakeLadderSession | null)
@@ -119,6 +125,11 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
+        scheduleLoad
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         scheduleLoad
       )
       .on(
@@ -290,6 +301,18 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
   })
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+
+  if (notFound) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-center px-6">
+        <p className="text-2xl font-black">Game not found</p>
+        <p className="text-muted">This host link is invalid or the game no longer exists.</p>
+        <a href="/" className="btn-secondary px-5 py-2.5 text-sm">
+          Go home
+        </a>
+      </div>
+    )
+  }
 
   if (!game) {
     return (
