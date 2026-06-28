@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { isMonopolyGame, parseGameType } from '@/lib/game-types'
 import { processMonopolyMortgage } from '@/lib/monopoly'
 import { monopolyMortgageSchema } from '@/lib/validation'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -13,8 +12,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId, spaceIndex, action } = parsed.data
+  const { gameId, resumeToken, spaceIndex, action } = parsed.data
   const code = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -23,7 +23,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not a Monopoly game' }, { status: 400 })
   }
 
-  const { error } = await processMonopolyMortgage(supabase, code, playerId, spaceIndex, action)
+  // Authorize by the secret resume_token; the resolved player.id is authoritative.
+  const auth = await assertPlayer(supabase, code, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
+  const { error } = await processMonopolyMortgage(supabase, code, auth.player.id, spaceIndex, action)
   if (error) return NextResponse.json({ error }, { status: 400 })
 
   return NextResponse.json({ success: true })

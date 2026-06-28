@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { parseGameType, isYahtzeeGame } from '@/lib/game-types'
 import { processYahtzeeExpireTurn } from '@/lib/yahtzee'
 import { yahtzeeRollSchema } from '@/lib/validation'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 // We only need gameId — reuse the roll schema's gameId shape
 const schema = yahtzeeRollSchema.pick({ gameId: true })
 
+// System/timer route: any client may poke it, but it only acts once the turn
+// deadline has genuinely passed (enforced in processYahtzeeExpireTurn), so
+// there's no per-player token to authorize. Writes go through the service role.
 export async function POST(req: NextRequest) {
   const raw = await req.json()
   const parsed = schema.safeParse(raw)
@@ -17,6 +18,7 @@ export async function POST(req: NextRequest) {
   }
 
   const code = parsed.data.gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase.from('games').select('status,game_type').eq('id', code).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })

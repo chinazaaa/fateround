@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { codewordsRoleSchema } from '@/lib/validation'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -12,8 +11,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId, team, role } = parsed.data
+  const { gameId, resumeToken, team, role } = parsed.data
   const code = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase
     .from('games')
@@ -34,6 +34,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'The host assigns teams and roles for this game' }, { status: 403 })
   }
 
+  // Authorize by the secret resume_token; the resolved player.id is authoritative.
+  const auth = await assertPlayer(supabase, code, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const playerId = auth.player.id
+
   const { data: existingRole } = await supabase
     .from('codewords_player_roles')
     .select('id')
@@ -47,14 +52,6 @@ export async function POST(req: NextRequest) {
   if (game.status !== 'waiting') {
     return NextResponse.json({ error: 'Team picks are locked after the game starts' }, { status: 400 })
   }
-
-  const { data: player } = await supabase
-    .from('players')
-    .select('id')
-    .eq('id', playerId)
-    .eq('game_id', code)
-    .maybeSingle()
-  if (!player) return NextResponse.json({ error: 'Player not found in this game' }, { status: 404 })
 
   if (role === 'spymaster') {
     const { data: existingSpymaster } = await supabase

@@ -445,13 +445,15 @@ export const bingoCallSchema = z.object({
 
 export const bingoMarkSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   cellIndex: z.coerce.number().int().min(0).max(24),
 })
 
 export const bingoClaimSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
 })
 
 export type BingoCallInput = z.infer<typeof bingoCallSchema>
@@ -509,7 +511,8 @@ export type PatchGamePlayerLimitsInput = z.infer<typeof patchGamePlayerLimitsSch
 
 export const triviaAnswerSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   roundId: uuidString('roundId'),
   choiceIndex: z.coerce.number().int().min(0).max(3),
 })
@@ -528,7 +531,8 @@ const ttlStatementText = sanitizedString(1, 200)
 
 export const ttlStatementSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   statementA: ttlStatementText,
   statementB: ttlStatementText,
   statementC: ttlStatementText,
@@ -539,7 +543,8 @@ export type TtlStatementInput = z.infer<typeof ttlStatementSchema>
 
 export const ttlGuessSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   roundId: uuidString('roundId'),
   guessedIndex: z.coerce.number().int().min(0).max(2),
 })
@@ -556,7 +561,8 @@ export type TtlAdvanceInput = z.infer<typeof ttlAdvanceSchema>
 
 export const npatSubmitSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   roundId: uuidString('roundId'),
   name: z.string().max(80),
   animal: z.string().max(80),
@@ -573,7 +579,8 @@ export type NpatDraftInput = z.infer<typeof npatDraftSchema>
 
 export const npatMarkSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   roundId: uuidString('roundId'),
   validName: z.boolean(),
   validAnimal: z.boolean(),
@@ -595,7 +602,9 @@ const npatHostOverrideEntrySchema = z.object({
 
 export const npatCallerApproveSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Caller (a player) authorized by the secret resume_token; nested overrides[].playerId
+  // below are review TARGETS, not the actor, so they stay as ids.
+  resumeToken: z.string().min(4),
   roundId: uuidString('roundId'),
   overrides: z.array(npatHostOverrideEntrySchema),
 })
@@ -611,7 +620,9 @@ export type NpatAdvanceInput = z.infer<typeof npatAdvanceSchema>
 
 export const npatDisputeSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Disputing player authorized by the secret resume_token; targetPlayerId is the
+  // disputed answer's owner (a TARGET), so it stays an id.
+  resumeToken: z.string().min(4),
   roundId: uuidString('roundId'),
   targetPlayerId: uuidString('targetPlayerId'),
   category: z.enum(['name', 'animal', 'place', 'thing', 'food']),
@@ -621,7 +632,8 @@ export type NpatDisputeInput = z.infer<typeof npatDisputeSchema>
 
 export const monopolyActionSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
 })
 
 export const monopolyBuySchema = monopolyActionSchema.extend({
@@ -684,7 +696,8 @@ export type MonopolyJailInput = z.infer<typeof monopolyJailSchema>
 
 export const yahtzeeRollSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
 })
 
 export const yahtzeeHoldSchema = yahtzeeRollSchema.extend({
@@ -721,7 +734,8 @@ const whotShapeEnum = z.enum(['circle', 'cross', 'triangle', 'square', 'star', '
 
 export const whotActionSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
 })
 
 export const whotPlaySchema = whotActionSchema.extend({
@@ -743,7 +757,8 @@ export type WhotChooseInput = z.infer<typeof whotChooseSchema>
 
 export const ludoActionSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
 })
 
 export const ludoMoveSchema = ludoActionSchema.extend({
@@ -761,7 +776,10 @@ export type LudoMoveInput = z.infer<typeof ludoMoveSchema>
 
 export const snakeLadderActionSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Authorization is by the secret resume_token (resolved to a player server-side),
+  // not a client-supplied playerId. The token travels with the player across devices,
+  // so cross-device resume keeps working.
+  resumeToken: z.string().min(4),
 })
 
 export const snakeLadderExpireSchema = z.object({
@@ -772,7 +790,10 @@ export const snakeLadderExpireSchema = z.object({
 
 export const ticTacToeMoveSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Authorization is by the secret resume_token (resolved to a player server-side),
+  // not a client-supplied playerId. The token travels with the player across devices,
+  // so cross-device resume keeps working.
+  resumeToken: z.string().min(4),
   // 0-80: sub-board = floor(cellIndex/9), cell within board = cellIndex % 9.
   cellIndex: z.coerce.number().int().min(0).max(80),
 })
@@ -787,7 +808,8 @@ const chessSquare = z.string().regex(/^[a-h][1-8]$/, 'Invalid square')
 
 export const chessMoveSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   from: chessSquare,
   to: chessSquare,
   promotion: z.enum(['q', 'r', 'b', 'n']).optional(),
@@ -799,32 +821,41 @@ export const chessExpireSchema = z.object({
 
 export const chessResignSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
 })
 
 export type ChessMoveInput = z.infer<typeof chessMoveSchema>
 
 export const describeItTeamSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
   team: z.coerce.number().int().min(1).max(4),
+  // Two auth paths (route enforces exactly one):
+  //  - self-pick: player authorized by their resume_token
+  //  - host reassign of another player: hostToken + target playerId
+  resumeToken: z.string().min(4).optional(),
+  hostToken: z.string().min(1).optional(),
+  playerId: uuidString('playerId').optional(),
 })
 
 export const describeItClueSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   clue: z.string().trim().min(1).max(100),
 })
 
 export const describeItGuessSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   text: z.string().trim().min(1).max(80),
 })
 
 export const describeItPlayerActionSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
 })
 
 export const describeItGameSchema = z.object({
@@ -845,7 +876,8 @@ export const describeItSettingsSchema = z.object({
 
 export const scrabbleActionSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
 })
 
 export const scrabblePlaySchema = scrabbleActionSchema.extend({
@@ -894,32 +926,37 @@ const codewordsRoleEnum = z.enum(['spymaster', 'operative'])
 
 export const codewordsRoleSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   team: codewordsTeamEnum,
   role: codewordsRoleEnum,
 })
 
 export const codewordsClueSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   clueWord: sanitizedString(1, 40).refine((s) => !/\s/.test(s), 'Clue must be one word (no spaces)'),
   clueNumber: z.coerce.number().int().min(0).max(9),
 })
 
 export const codewordsGuessSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   cellIndex: z.coerce.number().int().min(0).max(24),
 })
 
 export const codewordsEndTurnSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
 })
 
 export const codewordsChatSchema = z.object({
   gameId: gameCodeString(),
-  playerId: uuidString('playerId'),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
   text: z
     .string()
     .transform((s) => stripBidiControls(stripHtml(s.trim())))

@@ -27,6 +27,7 @@ export function TwoTruthsActiveRound({
   rounds,
   guesses,
   myPlayerId,
+  myResumeToken,
   playerName,
   onReload,
   skipGameSync = false,
@@ -38,6 +39,7 @@ export function TwoTruthsActiveRound({
   rounds: Round[]
   guesses: TtlGuess[]
   myPlayerId: string
+  myResumeToken: string | null
   playerName: string
   onReload?: () => void
   skipGameSync?: boolean
@@ -107,6 +109,10 @@ export function TwoTruthsActiveRound({
 
   const submitGuess = async (index: number) => {
     if (!currentRound || readOnly || submitting) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setSubmitting(true)
     setSubmittingIndex(index)
     try {
@@ -115,7 +121,7 @@ export function TwoTruthsActiveRound({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          playerId: myPlayerId,
+          resumeToken: myResumeToken,
           roundId: currentRound.id,
           guessedIndex: index,
         }),

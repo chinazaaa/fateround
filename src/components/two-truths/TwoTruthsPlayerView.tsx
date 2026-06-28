@@ -41,6 +41,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const [rounds, setRounds] = useState<Round[]>([])
   const [guesses, setGuesses] = useState<TtlGuess[]>([])
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
+  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [myPlayerName, setMyPlayerName] = useState('')
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
@@ -77,9 +78,11 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     if (session) {
       setMyPlayerId(session.playerId)
       setMyPlayerName(session.playerName)
+      setMyResumeToken(session.resumeToken ?? null)
     } else {
       setMyPlayerId(null)
       setMyPlayerName('')
+      setMyResumeToken(null)
     }
 
     if (!playerId) {
@@ -163,6 +166,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         if (!res.ok) throw new Error(data.error ?? 'Failed to join')
         setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
         setMyPlayerId(data.playerId)
+        setMyResumeToken(data.resumeToken ?? null)
         setMyPlayerName(data.playerName)
         await load()
         success(`Joined as ${data.playerName}`)
@@ -293,7 +297,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
               <div className="space-y-4">
                 <TwoTruthsLobbySubmit
                   gameCode={gameCode}
-                  playerId={myPlayerId}
+                  resumeToken={myResumeToken}
                   existingLieIndex={myStatement.lie_index}
                   existingStatements={existingStatements}
                   onSaved={() => {
@@ -306,7 +310,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
                 </button>
               </div>
             ) : (
-              <TwoTruthsLobbySubmit gameCode={gameCode} playerId={myPlayerId} onSaved={load} />
+              <TwoTruthsLobbySubmit gameCode={gameCode} resumeToken={myResumeToken} onSaved={load} />
             )
           }
         />
@@ -342,6 +346,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
             rounds={rounds}
             guesses={guesses}
             myPlayerId={myPlayerId}
+            myResumeToken={myResumeToken}
             playerName={myPlayerName}
             onReload={load}
             readOnly={isViewer}

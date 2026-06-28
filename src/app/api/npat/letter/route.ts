@@ -1,22 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { isICallOnGame, parseGameType } from '@/lib/game-types'
 import { parseNpatMetadata, availableLettersForPick, ensureBlankAnswers } from '@/lib/npat'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 
 const LETTER_RE = /^[A-Za-z]$/
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
   const gameId = typeof raw.gameId === 'string' ? raw.gameId.toUpperCase() : ''
-  const playerId = typeof raw.playerId === 'string' ? raw.playerId : ''
+  const resumeToken = typeof raw.resumeToken === 'string' ? raw.resumeToken : ''
   const roundId = typeof raw.roundId === 'string' ? raw.roundId : ''
   const letter = typeof raw.letter === 'string' ? raw.letter.trim().toUpperCase() : ''
 
-  if (!gameId || !playerId || !roundId || !LETTER_RE.test(letter)) {
+  if (!gameId || !roundId || !LETTER_RE.test(letter)) {
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
+
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase.from('games').select('*').eq('id', gameId).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -34,7 +35,13 @@ export async function POST(req: NextRequest) {
   if (!round || round.status !== 'active') {
     return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
   }
-  if (round.submitter_player_id !== playerId) {
+
+  // Authorize by the secret resume_token; the resolved player.id is authoritative.
+  const auth = await assertPlayer(supabase, gameId, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
+  // The caller is the player whose turn it is — only they may pick the letter.
+  if (round.submitter_player_id !== auth.player.id) {
     return NextResponse.json({ error: 'Only the letter caller can pick the letter' }, { status: 403 })
   }
 

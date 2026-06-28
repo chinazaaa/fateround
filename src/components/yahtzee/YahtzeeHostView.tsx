@@ -55,6 +55,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
   // Host+play mode
   const [hostMode, setHostMode] = useState<YahtzeeHostMode>('spectator')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
+  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
@@ -91,6 +92,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
     const session = getPlayerSession(gameCode)
     if (session) {
       setHostPlayerId(session.playerId)
+      setHostResumeToken(session.resumeToken ?? null)
       setHostPlayerName(session.playerName)
     }
   }, [gameCode, load])
@@ -153,6 +155,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
     (playerId: string) => {
       if (playerId === hostPlayerId) {
         setHostPlayerId(null)
+        setHostResumeToken(null)
         setHostPlayerName('')
         setLocalHostHeld([false, false, false, false, false])
         clearPlayerSession(gameCode)
@@ -194,6 +197,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
       setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
       setHostPlayerId(data.playerId)
+      setHostResumeToken(data.resumeToken ?? null)
       setHostPlayerName(data.playerName)
       setHostMode('player')
       setYahtzeeHostMode(gameCode, 'player')
@@ -208,12 +212,16 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
 
   const postHostAction = async (url: string, body: Record<string, unknown> = {}) => {
     if (!hostPlayerId || hostActing) return
+    if (!hostResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setHostActing(true)
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: hostPlayerId, ...body }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, ...body }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Action failed')
@@ -228,13 +236,17 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
   const toggleHostHold = (index: number) => {
     if (!session || !hostPlayerId || currentPlayerId(session) !== hostPlayerId) return
     if ((session.rolls_this_turn ?? 0) < 1) return
+    if (!hostResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     const next = [...localHostHeld]
     next[index] = !next[index]
     setLocalHostHeld(next)
     void fetch('/api/yahtzee/hold', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId: gameCode, playerId: hostPlayerId, held: next }),
+      body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, held: next }),
     }).then(async (res) => {
       const data = await res.json()
       if (!res.ok) {

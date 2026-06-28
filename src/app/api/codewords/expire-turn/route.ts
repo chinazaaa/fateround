@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
 import { cluePhaseUpdate, isTurnExpired, otherTeam } from '@/lib/codewords'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { CodewordsBoard, CodewordsTeam } from '@/types'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 function passTurn(board: CodewordsBoard) {
   const nextTeam = otherTeam(board.current_turn)
   return cluePhaseUpdate(nextTeam, board.spymaster_timer_seconds)
 }
 
+// System/timer route: any client may poke it, but it only acts once the turn
+// deadline has genuinely passed (enforced below via isTurnExpired), so there's
+// no per-player token to authorize. Writes go through the service role.
 export async function POST(req: NextRequest) {
   const raw = await req.json()
   const gameId = typeof raw.gameId === 'string' ? raw.gameId.toUpperCase() : ''
   if (!gameId) return NextResponse.json({ error: 'gameId is required' }, { status: 400 })
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase.from('games').select('game_type, status').eq('id', gameId).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })

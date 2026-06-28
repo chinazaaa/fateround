@@ -64,6 +64,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const [states, setStates] = useState<MonopolyPlayerState[]>([])
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [myPlayerName, setMyPlayerName] = useState<string | null>(null)
+  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [joinName, setJoinName] = useState('')
   const [joinToken, setJoinToken] = useState<MonopolyTokenId | null>(null)
   const [joining, setJoining] = useState(false)
@@ -134,6 +135,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       setMyPlayerId(null)
       setMyPlayerName(null)
     }
+    setMyResumeToken(session?.resumeToken ?? null)
     syncScreen(gameData, playerId)
     return true
   }, [gameCode, syncScreen])
@@ -206,6 +208,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
         setMyPlayerId(data.playerId)
         setMyPlayerName(data.playerName)
+        setMyResumeToken(data.resumeToken ?? null)
         await load()
       } catch (err) {
         toastError(err instanceof Error ? err.message : 'Failed to join')
@@ -219,13 +222,17 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
 
   const postAction = async (url: string, body: Record<string, unknown> = {}) => {
     if (!myPlayerId || actingRef.current) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     actingRef.current = true
     setActing(true)
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, ...body }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ...body }),
       })
       let data: { error?: string }
       try {
@@ -248,6 +255,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     clearPlayerSession(gameCode)
     setMyPlayerId(null)
     setMyPlayerName(null)
+    setMyResumeToken(null)
     setJoinName('')
     setScreen('join')
   }

@@ -63,6 +63,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   const [benchingPlayerId, setBenchingPlayerId] = useState<string | null>(null)
   const [hostMode, setHostMode] = useState<CodewordsHostMode>('spectator')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
+  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
@@ -127,6 +128,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     const session = getPlayerSession(gameCode)
     if (session) {
       setHostPlayerId(session.playerId)
+      setHostResumeToken(session.resumeToken ?? null)
       setHostPlayerName(session.playerName)
     }
   }, [gameCode, load])
@@ -159,6 +161,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     (playerId: string) => {
       if (playerId === hostPlayerId) {
         setHostPlayerId(null)
+        setHostResumeToken(null)
         setHostPlayerName('')
         clearPlayerSession(gameCode)
         setHostMode('spectator')
@@ -257,6 +260,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
       setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
       setHostPlayerId(data.playerId)
+      setHostResumeToken(data.resumeToken ?? null)
       setHostPlayerName(data.playerName)
       setHostMode('player')
       setCodewordsHostMode(gameCode, 'player')
@@ -320,6 +324,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       if (!res.ok) throw new Error(data.error ?? 'Failed to move player to waiting room')
       if (playerId === hostPlayerId) {
         setHostPlayerId(null)
+        setHostResumeToken(null)
         setHostPlayerName('')
         clearPlayerSession(gameCode)
       }
@@ -611,6 +616,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
             game={game}
             board={board}
             myPlayerId={hostPlayerId!}
+            myResumeToken={hostResumeToken}
             myPlayerName={hostPlayerName}
             myRole={hostMyRole}
             players={players}

@@ -65,6 +65,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<SnakeLadderSession | null>(null)
   const [states, setStates] = useState<SnakeLadderPlayerState[]>([])
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
+  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
@@ -130,6 +131,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
     const playerSession = await resolvePlayerSession(gameCode, plrs)
     const playerId = playerSession?.playerId ?? null
     setMyPlayerId(playerId)
+    setMyResumeToken(playerSession?.resumeToken ?? null)
 
     syncScreen(gameData, playerId)
     return true
@@ -232,6 +234,10 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
 
   const roll = async () => {
     if (!myPlayerId) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setActing(true)
     rollStartedRef.current = Date.now()
     setRolling(true)
@@ -241,7 +247,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
       const res = await fetch('/api/snake-and-ladder/roll', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
       })
       const data = await res.json()
       if (!res.ok) {

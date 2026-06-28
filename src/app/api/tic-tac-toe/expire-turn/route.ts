@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { parseGameType, isTicTacToeGame } from '@/lib/game-types'
 import { processTicTacToeExpireTurn } from '@/lib/tic-tac-toe'
 import { ticTacToeExpireSchema } from '@/lib/validation'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-
+// System/timer route: any client may poke it, but it only acts once the turn
+// deadline has genuinely passed (enforced in processTicTacToeExpireTurn), so
+// there's no per-player token to authorize. Writes go through the service role.
 export async function POST(req: NextRequest) {
   const raw = await req.json()
   const parsed = ticTacToeExpireSchema.safeParse(raw)
@@ -14,6 +15,7 @@ export async function POST(req: NextRequest) {
   }
 
   const code = parsed.data.gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase.from('games').select('status, game_type').eq('id', code).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })

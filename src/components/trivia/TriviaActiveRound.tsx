@@ -33,6 +33,7 @@ interface TriviaActiveRoundProps {
   rounds: Round[]
   answers: TriviaAnswer[]
   myPlayerId: string
+  myResumeToken: string | null
   playerName: string
   onReload?: () => void
   /** Host play tab runs sync via useTriviaHostRoundAutomation — skip duplicate polling */
@@ -47,6 +48,7 @@ export function TriviaActiveRound({
   rounds,
   answers,
   myPlayerId,
+  myResumeToken,
   playerName,
   onReload,
   skipGameSync = false,
@@ -156,6 +158,10 @@ export function TriviaActiveRound({
   const submitAnswer = useCallback(
     async (choiceIndex: number) => {
       if (!currentRound || readOnly || submitting || myAnswer || answerLockRef.current) return
+      if (!myResumeToken) {
+        toastError('Your player session expired — rejoin to continue')
+        return
+      }
       answerLockRef.current = true
       setSubmitting(true)
       setSubmittingChoice(choiceIndex)
@@ -165,7 +171,7 @@ export function TriviaActiveRound({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             gameId: gameCode,
-            playerId: myPlayerId,
+            resumeToken: myResumeToken,
             roundId: currentRound.id,
             choiceIndex,
           }),
@@ -185,7 +191,7 @@ export function TriviaActiveRound({
         setSubmittingChoice(null)
       }
     },
-    [currentRound, readOnly, submitting, myAnswer, gameCode, myPlayerId, toastError, onReload]
+    [currentRound, readOnly, submitting, myAnswer, gameCode, myResumeToken, toastError, onReload]
   )
 
   const points = myAnswer?.points ?? lastResult?.points ?? 0

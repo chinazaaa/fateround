@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { parseGameType, isMonopolyGame } from '@/lib/game-types'
 import { finishExpiredMonopolyGame, monopolyGameSessionExpired } from '@/lib/monopoly'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-
+// System/timer route: any client may poke it, but it only finishes the game once
+// the session duration has genuinely elapsed (enforced via
+// monopolyGameSessionExpired), so there's no per-player token to authorize.
+// Writes go through the service role.
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const gameId = code.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase
     .from('games')

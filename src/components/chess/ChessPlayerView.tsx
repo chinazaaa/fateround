@@ -50,6 +50,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<ChessSession | null>(null)
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
+  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
@@ -118,6 +119,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     const playerSession = await resolvePlayerSession(gameCode, plrs)
     const playerId = playerSession?.playerId ?? null
     setMyPlayerId(playerId)
+    setMyResumeToken(playerSession?.resumeToken ?? null)
 
     syncScreen(gameData, playerId, sessionData)
     return supabasePollOk(sessionRes)
@@ -182,6 +184,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
         }
         setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
         setMyPlayerId(data.playerId)
+        setMyResumeToken(data.resumeToken ?? null)
         await load()
       } finally {
         setJoining(false)
@@ -208,6 +211,10 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
 
   const movePiece = async (from: string, to: string, promotion?: 'q' | 'r' | 'b' | 'n') => {
     if (!myPlayerId || !session) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     const prevSession = session
 
     // Optimistic: apply the move locally so the board responds instantly instead of
@@ -237,7 +244,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       const res = await fetch('/api/chess/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, from, to, promotion }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, from, to, promotion }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -256,6 +263,10 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
 
   const resign = async () => {
     if (!myPlayerId) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     const ok = await confirm({
       title: 'Resign this game?',
       message: 'Your opponent will be awarded the win.',
@@ -268,7 +279,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       const res = await fetch('/api/chess/resign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken }),
       })
       const data = await res.json()
       if (!res.ok) {

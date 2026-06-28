@@ -59,6 +59,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
+  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [myPlayerName, setMyPlayerName] = useState('')
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
@@ -126,9 +127,11 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     if (session) {
       setMyPlayerId(session.playerId)
       setMyPlayerName(session.playerName)
+      setMyResumeToken(session.resumeToken ?? null)
     } else {
       setMyPlayerId(null)
       setMyPlayerName('')
+      setMyResumeToken(null)
     }
 
     if (gameData.status === 'finished' && playerId) {
@@ -300,6 +303,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
         )
         setMyPlayerId(json.playerId)
         setMyPlayerName(json.playerName)
+        setMyResumeToken(json.resumeToken ?? null)
         await load()
       } finally {
         setJoining(false)
@@ -329,6 +333,11 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     (pathOverride?: number[]) => {
       const path = pathOverride ?? selectedPath
       if (!myPlayerId || !roundId || !grid || timeUp || path.length < WORD_HUNT_MIN_WORD_LENGTH) return
+
+      if (!myResumeToken) {
+        showToast('Reconnecting… try again in a moment', false)
+        return
+      }
 
       const foundSet = new Set(submissions.filter((s) => s.player_id === myPlayerId).map((s) => s.word))
       const validation = validateWordHuntSubmissionClient(grid, path, validWords, foundSet)
@@ -374,7 +383,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          playerId: myPlayerId,
+          resumeToken: myResumeToken,
           word: validation.normalized,
           path,
         }),
@@ -431,7 +440,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
           inFlightWordsRef.current.delete(validation.normalized)
         })
     },
-    [gameCode, grid, myPlayerId, roundId, selectedPath, submissions, timeUp, validWords]
+    [gameCode, grid, myPlayerId, myResumeToken, roundId, selectedPath, submissions, timeUp, validWords]
   )
 
   const mySubmissions = myPlayerId ? submissions.filter((s) => s.player_id === myPlayerId) : []

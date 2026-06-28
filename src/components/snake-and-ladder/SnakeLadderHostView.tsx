@@ -57,6 +57,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
   const [ending, setEnding] = useState(false)
   const [hostMode, setHostModeState] = useState<SnakeLadderHostMode>('spectator')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
+  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
@@ -99,6 +100,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
     const stored = getPlayerSession(gameCode)
     if (stored) {
       setHostPlayerId(stored.playerId)
+      setHostResumeToken(stored.resumeToken ?? null)
       setHostPlayerName(stored.playerName)
     }
   }, [gameCode, load])
@@ -183,6 +185,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
       setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
       setHostPlayerId(data.playerId)
+      setHostResumeToken(data.resumeToken ?? null)
       setHostPlayerName(data.playerName)
       await load()
     } catch (err) {
@@ -194,6 +197,10 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
 
   const hostRoll = async () => {
     if (!hostPlayerId) return
+    if (!hostResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setHostActing(true)
     rollStartedRef.current = Date.now()
     setRolling(true)
@@ -203,7 +210,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
       const res = await fetch('/api/snake-and-ladder/roll', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: hostPlayerId }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Action failed')

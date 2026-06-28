@@ -57,6 +57,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<LudoSession | null>(null)
   const [states, setStates] = useState<LudoPlayerState[]>([])
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
+  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
@@ -122,6 +123,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
     } else {
       setMyPlayerId(null)
     }
+    setMyResumeToken(session?.resumeToken ?? null)
 
     syncScreen(gameData, playerId)
     return true
@@ -194,6 +196,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         }
         setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
         setMyPlayerId(data.playerId)
+        setMyResumeToken(data.resumeToken ?? null)
         await load()
       } finally {
         setJoining(false)
@@ -220,6 +223,10 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
 
   const postAction = async (path: string, body: Record<string, unknown> = {}) => {
     if (!myPlayerId) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setActing(true)
     if (path.includes('/roll')) {
       rollStartedRef.current = Date.now()
@@ -231,7 +238,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
       const res = await fetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, ...body }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ...body }),
       })
       const data = await res.json()
       if (!res.ok) {

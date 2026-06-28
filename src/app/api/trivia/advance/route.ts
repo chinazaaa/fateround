@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { triviaAdvanceSchema } from '@/lib/validation'
 import { syncTriviaGameState } from '@/lib/trivia-advance'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -14,6 +12,7 @@ export async function POST(req: NextRequest) {
 
   const code = parsed.data.gameId.toUpperCase()
   const force = parsed.data.force === true
+  const supabase = getSupabaseAdmin()
 
   if (force) {
     if (!parsed.data.hostToken) {

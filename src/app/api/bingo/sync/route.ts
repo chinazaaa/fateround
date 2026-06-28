@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { syncBingoAutoCall } from '@/lib/bingo'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const bingoSyncSchema = z.object({
   gameId: z.string().min(4).max(10),
 })
 
+// System/auto-call route: any client may poke it, but it only auto-calls numbers
+// once the configured interval has genuinely elapsed (enforced in
+// syncBingoAutoCall), so there's no per-player token to authorize. Writes go
+// through the service role.
 export async function POST(req: NextRequest) {
   const raw = await req.json()
   const parsed = bingoSyncSchema.safeParse(raw)
@@ -16,6 +18,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
+  const supabase = getSupabaseAdmin()
   const result = await syncBingoAutoCall(supabase, parsed.data.gameId)
 
   if (result.code === 'game_not_found') {

@@ -43,6 +43,7 @@ function validityToPayload(validity: ValidityMap) {
 export function NpatCallerReviewPanel({
   gameCode,
   playerId,
+  myResumeToken,
   round,
   players,
   answers,
@@ -51,6 +52,7 @@ export function NpatCallerReviewPanel({
 }: {
   gameCode: string
   playerId: string
+  myResumeToken: string | null
   round: Round
   players: Player[]
   answers: NpatAnswer[]
@@ -93,6 +95,10 @@ export function NpatCallerReviewPanel({
   }
 
   const approveRound = async () => {
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setApproving(true)
     try {
       const res = await fetch('/api/npat/caller-approve', {
@@ -100,7 +106,7 @@ export function NpatCallerReviewPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          playerId,
+          resumeToken: myResumeToken,
           roundId: round.id,
           overrides: validityToPayload(validity),
         }),

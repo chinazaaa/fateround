@@ -1,5 +1,34 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeGender, type ParticipantGender } from '@/lib/participants'
+import { normalizeResumeToken } from '@/lib/utils'
+
+/**
+ * Authorize a player action by its secret resume_token.
+ *
+ * This is the player-side authorization boundary for server-authoritative
+ * writes (Option A). The caller MUST pass a service-role client: once anon
+ * loses SELECT on players.resume_token, only the service role can match the
+ * token. The resolved `player.id` is authoritative — routes must act on this
+ * id, NOT on any client-supplied playerId (which is a public, forgeable value).
+ *
+ * The resume_token travels with the player across devices, so this preserves
+ * cross-device resume: any device presenting the correct token is authorized.
+ */
+export async function assertPlayer(supabase: SupabaseClient, gameCode: string, resumeToken: string | null | undefined) {
+  const id = gameCode.toUpperCase()
+  const token = normalizeResumeToken(String(resumeToken ?? ''))
+  if (token.length < 4) {
+    return { error: 'Missing or invalid player code', status: 403 as const, player: null, id }
+  }
+  const { data: player } = await supabase
+    .from('players')
+    .select('*')
+    .eq('game_id', id)
+    .eq('resume_token', token)
+    .maybeSingle()
+  if (!player) return { error: 'Unauthorized', status: 403 as const, player: null, id }
+  return { error: null, status: 200 as const, player, id }
+}
 
 export async function assertHostGame(supabase: SupabaseClient, gameCode: string, hostToken: string) {
   const id = gameCode.toUpperCase()

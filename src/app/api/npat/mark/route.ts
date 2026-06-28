@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { isICallOnGame, parseGameType } from '@/lib/game-types'
 import {
   parseNpatMetadata,
@@ -11,8 +10,8 @@ import {
 } from '@/lib/npat'
 import { npatMarkSchema } from '@/lib/validation'
 import type { NpatCategory } from '@/types'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -21,8 +20,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId, roundId, validName, validAnimal, validPlace, validThing, validFood } = parsed.data
+  const { gameId, resumeToken, roundId, validName, validAnimal, validPlace, validThing, validFood } = parsed.data
   const code = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -41,7 +41,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not in marking phase' }, { status: 400 })
   }
 
-  const targetId = reviewTargetForMarker(metadata, playerId)
+  // Authorize by the secret resume_token; the resolved player.id is authoritative.
+  const auth = await assertPlayer(supabase, code, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const markerId = auth.player.id
+
+  const targetId = reviewTargetForMarker(metadata, markerId)
   if (!targetId) return NextResponse.json({ error: 'No review assignment for this player' }, { status: 400 })
 
   const { data: targetAnswer } = await supabase
@@ -70,20 +75,12 @@ export async function POST(req: NextRequest) {
     return requested
   }
 
-  const { data: player } = await supabase
-    .from('players')
-    .select('id')
-    .eq('id', playerId)
-    .eq('game_id', code)
-    .maybeSingle()
-  if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
-
   const now = new Date().toISOString()
   const { error } = await supabase.from('npat_marks').upsert(
     {
       game_id: code,
       round_id: roundId,
-      marker_player_id: playerId,
+      marker_player_id: markerId,
       target_player_id: targetId,
       valid_name: clampValid('name', validName),
       valid_animal: clampValid('animal', validAnimal),

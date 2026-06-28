@@ -294,6 +294,7 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   chess: '/og/chess.png',
   scrabble: '/og/scrabble.png',
   'text-charades': '/og/text-charades.png',
+  'snakes-and-ladders': '/og/snakes-and-ladders.png',
 }
 
 export function gameLandingOgPath(slug: string): string {

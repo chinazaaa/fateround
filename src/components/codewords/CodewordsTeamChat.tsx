@@ -9,12 +9,14 @@ import { useToast } from '@/components/ui/Toast'
 export function CodewordsTeamChat({
   gameCode,
   playerId,
+  myResumeToken,
   team,
   players,
   enabled,
 }: {
   gameCode: string
   playerId: string
+  myResumeToken: string | null
   team: CodewordsTeam
   players: Player[]
   enabled: boolean
@@ -34,12 +36,16 @@ export function CodewordsTeamChat({
   const sendMessage = async () => {
     const text = draft.trim()
     if (!text || sending) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setSending(true)
     try {
       const res = await fetch('/api/codewords/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId, text }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, text }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to send message')

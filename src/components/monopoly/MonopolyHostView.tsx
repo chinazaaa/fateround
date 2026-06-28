@@ -68,6 +68,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [hostMode, setHostMode] = useState<MonopolyHostMode>('spectator')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
+  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoinToken, setHostJoinToken] = useState<MonopolyTokenId | null>(null)
   const [hostJoining, setHostJoining] = useState(false)
@@ -104,6 +105,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
     if (session) {
       setHostPlayerId(session.playerId)
       setHostPlayerName(session.playerName)
+      setHostResumeToken(session.resumeToken ?? null)
     }
   }, [gameCode, load])
 
@@ -153,6 +155,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
       if (playerId === hostPlayerId) {
         setHostPlayerId(null)
         setHostPlayerName('')
+        setHostResumeToken(null)
         clearPlayerSession(gameCode)
       }
       setPlayers((prev) => prev.filter((p) => p.id !== playerId))
@@ -194,6 +197,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
       setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
       setHostPlayerId(data.playerId)
       setHostPlayerName(data.playerName)
+      setHostResumeToken(data.resumeToken ?? null)
       setHostMode('player')
       setMonopolyHostMode(gameCode, 'player')
       await load()
@@ -208,13 +212,17 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   const postHostAction = async (url: string, body: Record<string, unknown> = {}) => {
     if (!hostPlayerId || hostActingRef.current) return
+    if (!hostResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     hostActingRef.current = true
     setHostActing(true)
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: hostPlayerId, ...body }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, ...body }),
       })
       let data: { error?: string }
       try {

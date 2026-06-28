@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { parseGameType, isDescribeItGame } from '@/lib/game-types'
 import { processDescribeItGuess } from '@/lib/describe-it'
 import { describeItGuessSchema } from '@/lib/validation'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
   const parsed = describeItGuessSchema.safeParse(await req.json())
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
-  const { gameId, playerId, text } = parsed.data
+  const { gameId, resumeToken, text } = parsed.data
   const code = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase.from('games').select('status, game_type').eq('id', code).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -21,7 +21,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not a Text Charades game' }, { status: 400 })
   }
 
-  const { error, correct } = await processDescribeItGuess(supabase, code, playerId, text)
+  // Authorize by the secret resume_token; the resolved player.id is authoritative.
+  // The guesser-only role check (describer can't guess) is enforced inside processDescribeItGuess.
+  const auth = await assertPlayer(supabase, code, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
+  const { error, correct } = await processDescribeItGuess(supabase, code, auth.player.id, text)
   if (error) return NextResponse.json({ error }, { status: 400 })
   return NextResponse.json({ success: true, correct: !!correct })
 }

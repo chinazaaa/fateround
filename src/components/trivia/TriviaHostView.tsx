@@ -36,6 +36,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
   const [settingsModal, setSettingsModal] = useState<'lobby' | 'play-again' | null>(null)
   const [hostMode, setHostMode] = useState<TriviaHostMode>('spectator')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
+  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
@@ -66,6 +67,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
     const session = getPlayerSession(gameCode)
     if (session) {
       setHostPlayerId(session.playerId)
+      setHostResumeToken(session.resumeToken ?? null)
       setHostPlayerName(session.playerName)
     }
   }, [gameCode, load])
@@ -74,6 +76,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
     (playerId: string) => {
       if (playerId === hostPlayerId) {
         setHostPlayerId(null)
+        setHostResumeToken(null)
         setHostPlayerName('')
         clearPlayerSession(gameCode)
       }
@@ -164,6 +167,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
       setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
       setHostPlayerId(data.playerId)
+      setHostResumeToken(data.resumeToken ?? null)
       setHostPlayerName(data.playerName)
       setHostMode('player')
       setTriviaHostMode(gameCode, 'player')
@@ -413,6 +417,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
           rounds={rounds}
           answers={answers}
           myPlayerId={hostPlayerId}
+          myResumeToken={hostResumeToken}
           playerName={hostPlayerName}
           onReload={load}
           skipGameSync

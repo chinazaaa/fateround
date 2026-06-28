@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { isICallOnGame, parseGameType } from '@/lib/game-types'
 import { parseNpatMetadata, isForcedInvalidAnswer, normalizeAnswer, duplicateKeysByCategory } from '@/lib/npat'
 import { npatDisputeSchema } from '@/lib/validation'
 import type { NpatCategory, NpatDispute } from '@/types'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -14,12 +13,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId, roundId, targetPlayerId, category } = parsed.data
+  const { gameId, resumeToken, roundId, targetPlayerId, category } = parsed.data
   const code = gameId.toUpperCase()
-
-  if (playerId === targetPlayerId) {
-    return NextResponse.json({ error: 'Cannot dispute your own answer' }, { status: 400 })
-  }
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -34,6 +30,15 @@ export async function POST(req: NextRequest) {
   const metadata = parseNpatMetadata(round.npat_metadata)
   if (!metadata || metadata.phase !== 'host_review') {
     return NextResponse.json({ error: 'Disputes can only be raised during the approval phase' }, { status: 400 })
+  }
+
+  // Authorize by the secret resume_token; the resolved player.id is authoritative.
+  const auth = await assertPlayer(supabase, code, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const playerId = auth.player.id
+
+  if (playerId === targetPlayerId) {
+    return NextResponse.json({ error: 'Cannot dispute your own answer' }, { status: 400 })
   }
 
   const { data: allAnswers } = await supabase

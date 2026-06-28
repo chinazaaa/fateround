@@ -50,6 +50,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [ending, setEnding] = useState(false)
   const [hostMode, setHostModeState] = useState<LudoHostMode>('spectator')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
+  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
@@ -83,6 +84,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     const stored = getPlayerSession(gameCode)
     if (stored) {
       setHostPlayerId(stored.playerId)
+      setHostResumeToken(stored.resumeToken ?? null)
       setHostPlayerName(stored.playerName)
     }
   }, [gameCode, load])
@@ -164,6 +166,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
       setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
       setHostPlayerId(data.playerId)
+      setHostResumeToken(data.resumeToken ?? null)
       setHostPlayerName(data.playerName)
       await load()
     } catch (err) {
@@ -175,6 +178,10 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   const postHostAction = async (path: string, body: Record<string, unknown> = {}) => {
     if (!hostPlayerId) return
+    if (!hostResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setHostActing(true)
     if (path.includes('/roll')) {
       rollStartedRef.current = Date.now()
@@ -186,7 +193,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       const res = await fetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: hostPlayerId, ...body }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, ...body }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Action failed')

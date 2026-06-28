@@ -49,6 +49,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const [ending, setEnding] = useState(false)
   const [hostMode, setHostModeState] = useState<ChessHostMode>('spectator')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
+  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
@@ -87,6 +88,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
     const stored = getPlayerSession(gameCode)
     if (stored) {
       setHostPlayerId(stored.playerId)
+      setHostResumeToken(stored.resumeToken ?? null)
       setHostPlayerName(stored.playerName)
     }
   }, [gameCode, load])
@@ -163,6 +165,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
       setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
       setHostPlayerId(data.playerId)
+      setHostResumeToken(data.resumeToken ?? null)
       setHostPlayerName(data.playerName)
       await load()
     } catch (err) {
@@ -174,12 +177,16 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   const movePiece = async (from: string, to: string, promotion?: 'q' | 'r' | 'b' | 'n') => {
     if (!hostPlayerId) return
+    if (!hostResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setHostActing(true)
     try {
       const res = await fetch('/api/chess/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: hostPlayerId, from, to, promotion }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, from, to, promotion }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Move failed')
@@ -193,6 +200,10 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   const resign = async () => {
     if (!hostPlayerId) return
+    if (!hostResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     const ok = await confirm({
       title: 'Resign this game?',
       message: 'Your opponent will be awarded the win.',
@@ -205,7 +216,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
       const res = await fetch('/api/chess/resign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: hostPlayerId }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to resign')

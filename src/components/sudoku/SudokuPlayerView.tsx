@@ -72,6 +72,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   const myPlayerIdRef = useRef<string | null>(null)
+  const myResumeTokenRef = useRef<string | null>(null)
 
   const myPlayerId = myPlayerIdRef.current
 
@@ -100,6 +101,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       return
     }
     myPlayerIdRef.current = session.playerId
+    myResumeTokenRef.current = session.resumeToken ?? null
 
     if (gameData.status === 'waiting') {
       setView('waiting')
@@ -321,12 +323,18 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       return
     }
 
+    const resumeToken = myResumeTokenRef.current
+    if (!resumeToken) {
+      showToast('Your session has expired — please rejoin', false)
+      return
+    }
+
     setSubmitting(blockIndex)
     try {
       const res = await fetch('/api/sudoku/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, blockIndex, cells }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken, blockIndex, cells }),
       })
       const json = await res.json()
       if (!res.ok) {

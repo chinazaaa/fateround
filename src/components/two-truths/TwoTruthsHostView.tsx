@@ -41,6 +41,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
   const [savingTimer, setSavingTimer] = useState(false)
   const [timerSeconds, setTimerSeconds] = useState(45)
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
+  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
@@ -90,6 +91,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
     const session = getPlayerSession(gameCode)
     if (session) {
       setHostPlayerId(session.playerId)
+      setHostResumeToken(session.resumeToken ?? null)
       setHostPlayerName(session.playerName)
     }
   }, [gameCode, load])
@@ -168,6 +170,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
       setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
       setHostPlayerId(data.playerId)
+      setHostResumeToken(data.resumeToken ?? null)
       setHostPlayerName(data.playerName)
       setHostMode('player')
       setTtlHostMode(gameCode, 'player')
@@ -374,6 +377,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
             rounds={rounds}
             guesses={guesses}
             myPlayerId={hostPlayerId}
+            myResumeToken={hostResumeToken}
             playerName={hostPlayerName}
             onReload={load}
             skipGameSync
@@ -415,7 +419,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
               <p className="label-caps">Your statements</p>
               <TwoTruthsLobbySubmit
                 gameCode={gameCode}
-                playerId={hostPlayerId}
+                resumeToken={hostResumeToken}
                 existingLieIndex={myStatement?.lie_index}
                 existingStatements={existingStatements}
                 onSaved={() => {

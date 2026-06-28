@@ -63,6 +63,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<YahtzeeSession | null>(null)
   const [scores, setScores] = useState<YahtzeePlayerScore[]>([])
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
+  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
@@ -132,6 +133,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     } else {
       setMyPlayerId(null)
     }
+    setMyResumeToken(session?.resumeToken ?? null)
 
     if (sessionData) {
       const turnChanged = turnIndexRef.current !== sessionData.current_turn_index
@@ -201,6 +203,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
         if (!res.ok) throw new Error(data.error ?? 'Failed to join')
         setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
         setMyPlayerId(data.playerId)
+        setMyResumeToken(data.resumeToken ?? null)
         await load()
       } catch (err) {
         toastError(err instanceof Error ? err.message : 'Failed to join')
@@ -223,12 +226,16 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
 
   const postAction = async (url: string, body: Record<string, unknown> = {}) => {
     if (!myPlayerId) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setActing(true)
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, ...body }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ...body }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Action failed')
@@ -243,6 +250,10 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const toggleHold = (index: number) => {
     if (!session || !myPlayerId || currentPlayerId(session) !== myPlayerId) return
     if ((session.rolls_this_turn ?? 0) < 1) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
 
     const next = [...localHeld]
     next[index] = !next[index]
@@ -251,7 +262,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     void fetch('/api/yahtzee/hold', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, held: next }),
+      body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, held: next }),
     }).then(async (res) => {
       const data = await res.json()
       if (!res.ok) {

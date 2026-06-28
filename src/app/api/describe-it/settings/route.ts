@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { parseGameType, isDescribeItGame } from '@/lib/game-types'
 import { describeItSettingsSchema } from '@/lib/validation'
 import {
@@ -9,8 +8,7 @@ import {
   clampDescribeItTurnSeconds,
 } from '@/lib/describe-it'
 import { parseDescribeItWords } from '@/lib/describe-it-words'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(req: NextRequest) {
   const parsed = describeItSettingsSchema.safeParse(await req.json())
@@ -19,6 +17,7 @@ export async function POST(req: NextRequest) {
   }
   const { gameId, hostToken, mode, numTeams, turnSeconds, rounds, maxPlayers, words } = parsed.data
   const code = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase
     .from('games')

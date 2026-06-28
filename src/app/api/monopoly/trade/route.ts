@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { isMonopolyGame, parseGameType } from '@/lib/game-types'
 import {
   processMonopolyTradeCancel,
@@ -13,12 +12,13 @@ import {
   monopolyTradeRepairSchema,
   monopolyTradeRespondSchema,
 } from '@/lib/validation'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
   const code = String(raw.gameId ?? '').toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -32,6 +32,9 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
     }
+    // Authorize by the secret resume_token (any player in the game may trigger repair).
+    const auth = await assertPlayer(supabase, code, parsed.data.resumeToken)
+    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
     await repairMonopolyStalePendingTrade(supabase, code)
     return NextResponse.json({ success: true })
   }
@@ -41,8 +44,10 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
     }
-    const { playerId } = parsed.data
-    const { error } = await processMonopolyTradeCancel(supabase, code, playerId)
+    // Authorize by the secret resume_token; the resolved player.id is authoritative.
+    const auth = await assertPlayer(supabase, code, parsed.data.resumeToken)
+    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+    const { error } = await processMonopolyTradeCancel(supabase, code, auth.player.id)
     if (error) return NextResponse.json({ error }, { status: 400 })
     return NextResponse.json({ success: true })
   }
@@ -54,8 +59,11 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
     }
-    const { playerId, accept } = parsed.data
-    const { error } = await processMonopolyTradeRespond(supabase, code, playerId, accept)
+    // Authorize by the secret resume_token; the resolved player.id is authoritative.
+    const auth = await assertPlayer(supabase, code, parsed.data.resumeToken)
+    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+    const { accept } = parsed.data
+    const { error } = await processMonopolyTradeRespond(supabase, code, auth.player.id, accept)
     if (error) return NextResponse.json({ error }, { status: 400 })
     return NextResponse.json({ success: true })
   }
@@ -65,8 +73,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
+  // Authorize by the secret resume_token; the resolved player.id is authoritative.
+  const auth = await assertPlayer(supabase, code, parsed.data.resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
   const {
-    playerId,
     toPlayerId,
     offerCash,
     offerProperties,
@@ -78,7 +89,7 @@ export async function POST(req: NextRequest) {
   const { error } = await processMonopolyTradePropose(
     supabase,
     code,
-    playerId,
+    auth.player.id,
     toPlayerId,
     {
       cash: offerCash,

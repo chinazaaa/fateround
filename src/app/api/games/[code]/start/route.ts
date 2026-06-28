@@ -108,6 +108,7 @@ import { buildSudokuRoundRow, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { buildWordHuntMetadata } from '@/lib/word-hunt-dictionary'
 import { appearanceCountsForParticipants, mergeUsageMaps, parsePoolUsage, poolUsageToMap } from '@/lib/pool-usage'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -317,7 +318,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     const { error: cardsError } = await createBingoCardsForPlayers(
-      supabase,
+      getSupabaseAdmin(),
       code.toUpperCase(),
       playersData.map((p) => p.id)
     )
@@ -372,7 +373,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     const { error: initError } = await initializeYahtzeeGame(
-      supabase,
+      getSupabaseAdmin(),
       code.toUpperCase(),
       playingPlayers.map((p) => p.id)
     )
@@ -399,7 +400,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     const { error: initError } = await initializeWhotGame(
-      supabase,
+      getSupabaseAdmin(),
       code.toUpperCase(),
       playingPlayers.map((p) => p.id)
     )
@@ -426,7 +427,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     const { error: initError } = await initializeLudoGame(
-      supabase,
+      getSupabaseAdmin(),
       code.toUpperCase(),
       playingPlayers.map((p) => p.id)
     )
@@ -452,8 +453,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return NextResponse.json({ error: `Need at least ${SNAKE_LADDER_MIN_PLAYERS} players to start` }, { status: 400 })
     }
 
+    // Snake & Ladder tables are RLS-locked to anon writes — initialize via the
+    // service role. (Host authority is already enforced above for this route.)
     const { error: initError } = await initializeSnakeAndLadderGame(
-      supabase,
+      getSupabaseAdmin(),
       code.toUpperCase(),
       playingPlayers.map((p) => p.id)
     )
@@ -479,8 +482,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return NextResponse.json({ error: `Need exactly ${TIC_TAC_TOE_MIN_PLAYERS} players to start` }, { status: 400 })
     }
 
+    // Tic-Tac-Toe tables are RLS-locked to anon writes — initialize via the
+    // service role. (Host authority is already enforced above for this route.)
     const { error: initError } = await initializeTicTacToeGame(
-      supabase,
+      getSupabaseAdmin(),
       code.toUpperCase(),
       playingPlayers.map((p) => p.id)
     )
@@ -507,7 +512,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     const { error: initError } = await initializeChessGame(
-      supabase,
+      getSupabaseAdmin(),
       code.toUpperCase(),
       playingPlayers.map((p) => p.id)
     )
@@ -536,7 +541,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     const { error: initError } = await initializeDescribeItGame(
-      supabase,
+      getSupabaseAdmin(),
       code.toUpperCase(),
       playingPlayers.map((p) => p.id)
     )
@@ -597,7 +602,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     if (randomizeTeams && teamsNeedRandomization(playerIds, roles)) {
       const { roles: shuffled, error: shuffleError } = await persistRandomizedRoles(
-        supabase,
+        getSupabaseAdmin(),
         code.toUpperCase(),
         playerIds,
         roles
@@ -634,17 +639,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const spymasterTimer = clampCodewordsTimer(game.timer_seconds ?? CODEWORDS_DEFAULT_SPYMASTER_TIMER)
     const operativeTimer = clampCodewordsTimer(game.operative_timer_seconds ?? CODEWORDS_DEFAULT_OPERATIVE_TIMER)
 
-    const { error: boardError } = await supabase.from('codewords_boards').insert({
-      game_id: code.toUpperCase(),
-      words,
-      key,
-      starting_team: startingTeam,
-      current_turn: startingTeam,
-      spymaster_timer_seconds: spymasterTimer,
-      operative_timer_seconds: operativeTimer,
-      turn_phase: 'clue',
-      turn_deadline_at: turnDeadline(spymasterTimer),
-    })
+    const { error: boardError } = await getSupabaseAdmin()
+      .from('codewords_boards')
+      .insert({
+        game_id: code.toUpperCase(),
+        words,
+        key,
+        starting_team: startingTeam,
+        current_turn: startingTeam,
+        spymaster_timer_seconds: spymasterTimer,
+        operative_timer_seconds: operativeTimer,
+        turn_phase: 'clue',
+        turn_deadline_at: turnDeadline(spymasterTimer),
+      })
 
     if (boardError) return NextResponse.json({ error: boardError.message }, { status: 500 })
 

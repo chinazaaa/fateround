@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { parseGameType, isMonopolyGame } from '@/lib/game-types'
 import { extendMonopolyGameDuration, clampMonopolyTimeExtension } from '@/lib/monopoly'
 import { monopolyExtendTimeSchema } from '@/lib/validation'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -16,6 +14,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { hostToken, extensionSeconds } = parsed.data
   const gameId = code.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase
     .from('games')

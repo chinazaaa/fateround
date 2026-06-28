@@ -6,13 +6,13 @@ import { useToast } from '@/components/ui/Toast'
 
 export function TwoTruthsLobbySubmit({
   gameCode,
-  playerId,
+  resumeToken,
   existingLieIndex,
   existingStatements,
   onSaved,
 }: {
   gameCode: string
-  playerId: string
+  resumeToken: string | null
   existingLieIndex?: number | null
   existingStatements?: [string, string, string] | null
   onSaved?: () => void
@@ -29,6 +29,10 @@ export function TwoTruthsLobbySubmit({
       toastError('Fill in all three statements and pick which one is the lie')
       return
     }
+    if (!resumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setSaving(true)
     try {
       const res = await fetch('/api/two-truths/statements', {
@@ -36,7 +40,7 @@ export function TwoTruthsLobbySubmit({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: gameCode,
-          playerId,
+          resumeToken,
           statementA: a.trim(),
           statementB: b.trim(),
           statementC: c.trim(),

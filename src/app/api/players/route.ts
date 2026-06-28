@@ -56,6 +56,7 @@ import {
 } from '@/lib/viewers'
 import type { Game } from '@/types'
 import { linkPlayerToRoomMember, resolveRoomMemberForGame } from '@/lib/room-points'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -341,7 +342,7 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     if (gameRow.status === 'waiting' || (gameRow.status === 'active' && !isSpectator)) {
-      const { error: cardError } = await createBingoCardForPlayer(supabase, gameId, player.id)
+      const { error: cardError } = await createBingoCardForPlayer(getSupabaseAdmin(), gameId, player.id)
       if (cardError) return NextResponse.json({ error: cardError }, { status: 500 })
     }
 
@@ -639,7 +640,7 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     if (gameRow.status === 'active' && !isSpectator) {
-      const { role, error: assignError } = await assignCodewordsLateJoinOperative(supabase, gameId, player.id)
+      const { role, error: assignError } = await assignCodewordsLateJoinOperative(getSupabaseAdmin(), gameId, player.id)
       if (assignError) {
         await supabase.from('players').delete().eq('id', player.id)
         return NextResponse.json({ error: assignError }, { status: 500 })
@@ -1402,7 +1403,7 @@ export async function DELETE(req: NextRequest) {
   const gameType = parseGameType((game as { game_type?: string }).game_type)
 
   if (isCodewordsGame(gameType)) {
-    const { error } = await removeCodewordsPlayer(supabase, id, playerId)
+    const { error } = await removeCodewordsPlayer(getSupabaseAdmin(), id, playerId)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }
@@ -1420,37 +1421,41 @@ export async function DELETE(req: NextRequest) {
   }
 
   if (isWhotGame(gameType)) {
-    const { error } = await removeWhotPlayer(supabase, id, playerId, player.name)
+    const { error } = await removeWhotPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }
 
   if (isLudoGame(gameType)) {
-    const { error } = await removeLudoPlayer(supabase, id, playerId, player.name)
+    const { error } = await removeLudoPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }
 
   if (isSnakeAndLadderGame(gameType)) {
-    const { error } = await removeSnakeAndLadderPlayer(supabase, id, playerId, player.name)
+    // Snake & Ladder tables are RLS-locked to anon writes — remove via service role.
+    // (Caller authority — host, or the player removing themselves — is enforced above.)
+    const { error } = await removeSnakeAndLadderPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }
 
   if (isYahtzeeGame(gameType)) {
-    const { error } = await removeYahtzeePlayer(supabase, id, playerId, player.name)
+    const { error } = await removeYahtzeePlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }
 
   if (isChessGame(gameType)) {
-    const { error } = await removeChessPlayer(supabase, id, playerId, player.name)
+    const { error } = await removeChessPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }
 
   if (isTicTacToeGame(gameType)) {
-    const { error } = await removeTicTacToePlayer(supabase, id, playerId, player.name)
+    // Tic-Tac-Toe tables are RLS-locked to anon writes — remove via service role.
+    // (Caller authority — host, or the player removing themselves — is enforced above.)
+    const { error } = await removeTicTacToePlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }

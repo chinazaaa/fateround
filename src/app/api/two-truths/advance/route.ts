@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { ttlAdvanceSchema } from '@/lib/validation'
 import { syncTwoTruthsGameState } from '@/lib/two-truths-advance'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(req: NextRequest) {
   const raw = await req.json()
@@ -14,6 +12,7 @@ export async function POST(req: NextRequest) {
 
   const { gameId, hostToken, force } = parsed.data
   const code = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
 
   if (hostToken) {
     const { data: game } = await supabase.from('games').select('host_token').eq('id', code).maybeSingle()

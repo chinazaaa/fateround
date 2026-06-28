@@ -63,6 +63,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   const [words, setWords] = useState<DescribeItWord[]>([])
   const [guesses, setGuesses] = useState<DescribeItGuess[]>([])
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
+  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
   const [acting, setActing] = useState(false)
@@ -122,6 +123,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     const sess = await resolvePlayerSession(gameCode, plrsRes.data)
     const playerId = sess?.playerId ?? null
     setMyPlayerId(playerId)
+    setMyResumeToken(sess?.resumeToken ?? null)
     syncScreen(gameData, playerId, sessionData)
     return true
   }, [gameCode, syncScreen])
@@ -180,6 +182,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
         }
         setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
         setMyPlayerId(data.playerId)
+        setMyResumeToken(data.resumeToken ?? null)
         await load()
       } finally {
         setJoining(false)
@@ -190,12 +193,16 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
 
   const pickTeam = async (team: number) => {
     if (!myPlayerId) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setPicking(true)
     try {
       const res = await fetch('/api/describe-it/team', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, team }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, team }),
       })
       const data = await res.json()
       if (!res.ok) toastError(data.error ?? 'Failed to pick team')
@@ -207,12 +214,16 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
 
   const sendAction = async (path: string, body: Record<string, unknown>) => {
     if (!myPlayerId) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setActing(true)
     try {
       const res = await fetch(`/api/describe-it/${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, playerId: myPlayerId, ...body }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ...body }),
       })
       const data = await res.json()
       if (!res.ok) toastError(data.error ?? 'Action failed')
@@ -225,6 +236,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   const handlePlayerLeft = () => {
     clearPlayerSession(gameCode)
     setMyPlayerId(null)
+    setMyResumeToken(null)
     void load()
   }
 

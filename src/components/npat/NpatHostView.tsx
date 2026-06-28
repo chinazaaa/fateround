@@ -56,6 +56,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [markingTimerSeconds, setMarkingTimerSeconds] = useState(45)
   const [gameDurationSeconds, setGameDurationSeconds] = useState(0)
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
+  const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
@@ -68,6 +69,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     (playerId: string) => {
       if (playerId === hostPlayerId) {
         setHostPlayerId(null)
+        setHostResumeToken(null)
         setHostPlayerName('')
         clearPlayerSession(gameCode)
       }
@@ -106,6 +108,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     const session = getPlayerSession(gameCode)
     if (session) {
       setHostPlayerId(session.playerId)
+      setHostResumeToken(session.resumeToken ?? null)
       setHostPlayerName(session.playerName)
     }
   }, [gameCode, load])
@@ -190,6 +193,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       if (!res.ok) throw new Error(data.error ?? 'Failed to join')
       setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
       setHostPlayerId(data.playerId)
+      setHostResumeToken(data.resumeToken ?? null)
       setHostPlayerName(data.playerName)
       setHostMode('player')
       setNpatHostMode(gameCode, 'player')
@@ -383,6 +387,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           answers={answers}
           marks={marks}
           myPlayerId={hostPlayerId}
+          myResumeToken={hostResumeToken}
           playerName={hostPlayerName}
           onReload={load}
           skipGameSync

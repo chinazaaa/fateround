@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { markGameFinished } from '@/lib/game-finish'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertPlayer } from '@/lib/game-admin'
 
 const submitSchema = z.object({
   gameId: z.string().min(1).max(10).toUpperCase(),
-  playerId: z.string().uuid(),
+  resumeToken: z.string().min(4),
   blockIndex: z.number().int().min(0).max(8),
   cells: z.array(z.array(z.number().int().min(1).max(9)).length(3)).length(3),
 })
@@ -29,13 +28,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameId, playerId, blockIndex, cells } = parsed.data
+  const { gameId, resumeToken, blockIndex, cells } = parsed.data
+  const code = gameId.toUpperCase()
+  const supabase = getSupabaseAdmin()
+
+  const { data: game } = await supabase.from('games').select('status').eq('id', code).maybeSingle()
+  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
+  if (game.status !== 'active') return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
+
+  // Authorize by the secret resume_token; the resolved player.id is authoritative.
+  const auth = await assertPlayer(supabase, code, resumeToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   // Validation, scoring, and recording all happen inside a SECURITY DEFINER function
   // so the solution never has to be sent to (or readable by) any client.
   const { data, error } = await supabase.rpc('sudoku_submit_block', {
-    p_game_id: gameId,
-    p_player_id: playerId,
+    p_game_id: code,
+    p_player_id: auth.player.id,
     p_block_index: blockIndex,
     p_cells: cells,
   })
@@ -50,7 +59,7 @@ export async function POST(req: NextRequest) {
 
   // Auto-finish once every block is solved.
   if (result.all_solved) {
-    await markGameFinished(supabase, gameId)
+    await markGameFinished(supabase, code)
   }
 
   return NextResponse.json({ success: true, isCorrect: result.is_correct, pointsAwarded: result.points_awarded })
