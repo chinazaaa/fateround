@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { clearSessionTables } from './session-clear'
 import { clearBingoSessionData } from './bingo'
 import { clearAnonymousRoomSessionData } from './anonymous-messages'
@@ -58,14 +59,15 @@ describe('clearSessionTables', () => {
 })
 
 describe('engine clear functions delegate the correct tables', () => {
-  const cases: Array<[string, (s: unknown, g: string) => Promise<unknown>, string[], boolean]> = [
-    ['bingo', clearBingoSessionData, ['bingo_claims', 'bingo_called_numbers', 'bingo_cards'], false],
-    ['anonymous', clearAnonymousRoomSessionData, ['anonymous_messages', 'anonymous_room_bans'], false],
-    ['ludo', clearLudoSessionData, ['ludo_sessions', 'ludo_player_state'], true],
-    ['monopoly', clearMonopolySessionData, ['monopoly_player_state', 'monopoly_boards'], true],
-    ['npat', clearNpatSessionData, ['npat_marks', 'npat_answers'], true],
-    ['two_truths', clearTwoTruthsSessionData, ['ttl_guesses', 'ttl_statements'], true],
-  ]
+  const cases: Array<[string, (s: SupabaseClient, g: string) => Promise<{ error: string | null }>, string[], boolean]> =
+    [
+      ['bingo', clearBingoSessionData, ['bingo_claims', 'bingo_called_numbers', 'bingo_cards'], false],
+      ['anonymous', clearAnonymousRoomSessionData, ['anonymous_messages', 'anonymous_room_bans'], false],
+      ['ludo', clearLudoSessionData, ['ludo_sessions', 'ludo_player_state'], true],
+      ['monopoly', clearMonopolySessionData, ['monopoly_player_state', 'monopoly_boards'], true],
+      ['npat', clearNpatSessionData, ['npat_marks', 'npat_answers'], true],
+      ['two_truths', clearTwoTruthsSessionData, ['ttl_guesses', 'ttl_statements'], true],
+    ]
   for (const [name, fn, tables, resetsSpectators] of cases) {
     it(`${name} clears ${tables.join(', ')}${resetsSpectators ? ' + resets spectators' : ''}`, async () => {
       const m = makeMockSupabase()
