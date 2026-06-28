@@ -770,14 +770,6 @@ function CreateGameInner() {
             timer_seconds: NPAT_DEFAULT_TIMER,
           }
         : {}),
-      ...(isICallOnGame(type)
-        ? {
-            participant_mode: 'joiners' as const,
-            anonymous: true,
-            rounds_count: 1,
-            timer_seconds: NPAT_DEFAULT_TIMER,
-          }
-        : {}),
       ...(isSudokuGame(type)
         ? {
             participant_mode: 'joiners' as const,
