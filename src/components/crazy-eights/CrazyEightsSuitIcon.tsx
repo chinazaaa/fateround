@@ -1,5 +1,5 @@
 import type { CrazyEightsCard, CrazyEightsSuit } from '@/types'
-import { CRAZY8_SUIT_SYMBOLS } from '@/lib/crazy-eights'
+import { CRAZY8_SUIT_SYMBOLS, isWildCard } from '@/lib/crazy-eights'
 
 /** Suit accent colors — hearts/diamonds red, spades/clubs near-black, joker violet. */
 export const CRAZY8_SUIT_COLORS: Record<CrazyEightsSuit, string> = {
@@ -38,7 +38,9 @@ export function CrazyEightsSuitIcon({
   className?: string
 }) {
   const px = SIZE_PX[size]
-  const onVioletFace = card.suit === 'joker' || card.rank === 8
+  // Wild cards (8 + Jokers) get the violet face in CrazyEightsBoard — reuse the shared
+  // helper so face and pip colors stay in sync if the wild-card rule ever changes.
+  const onVioletFace = isWildCard(card)
   const color = variant === 'on-card' && onVioletFace ? '#ffffff' : CRAZY8_SUIT_COLORS[card.suit]
 
   return (
