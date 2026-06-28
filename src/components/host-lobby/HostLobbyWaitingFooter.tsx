@@ -2,6 +2,7 @@
 
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
+import { ExitIcon } from '@/components/host/host-icons'
 
 type Props = {
   gameCode: string
@@ -46,9 +47,10 @@ export function HostLobbyWaitingFooter({
         hostToken={hostToken}
         onEnded={onEnded}
         label={endLabel}
+        icon={<ExitIcon size={16} />}
         confirmTitle="Close this lobby?"
         confirmMessage="Players will be disconnected. You can start a new game from Play again afterward."
-        className="btn-secondary w-full"
+        className="btn-danger-soft"
       />
     </div>
   )

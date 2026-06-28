@@ -3,9 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CodewordsActiveRound } from '@/components/codewords/CodewordsActiveRound'
 import { CodewordsHostManagePanel } from '@/components/codewords/CodewordsHostManagePanel'
-import { CodewordsWaitingPanel } from '@/components/codewords/CodewordsWaitingPanel'
+import { CodewordsSpectatorBoard } from '@/components/codewords/CodewordsSpectatorBoard'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
-import { HostPageShell, hostPlayLayoutFlags } from '@/components/host/HostPageShell'
+import { HostGameLayout } from '@/components/host/HostGameLayout'
+import { HostModeSelector } from '@/components/host/HostModeSelector'
+import { HostRulesRow } from '@/components/host/HostRulesRow'
+import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
+import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   CODEWORDS_DEFAULT_OPERATIVE_TIMER,
@@ -480,7 +484,6 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   const hostMyRole = hostPlayerId ? roles.find((r) => r.player_id === hostPlayerId) : undefined
   const hostPlays = hostMode === 'player' && !!hostPlayerId
   const inLobby = game ? codewordsInLobby(game.status, board) : false
-  const showPlayTab = hostPlays && !!hostMyRole && game?.status !== 'finished'
   const inActivePlay = game?.status === 'active' && !!board
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
@@ -489,7 +492,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     game,
     board,
     myRole: hostMyRole,
-    enabled: !!game && game.status === 'active' && hostMode === 'spectator' && tab === 'manage',
+    enabled: !!game && game.status === 'active' && hostMode === 'spectator',
   })
 
   useEffect(() => {
@@ -508,134 +511,60 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     )
   }
 
-  const layout = hostPlayLayoutFlags(tab, showPlayTab, game.status)
+  const showTabs = game.status !== 'finished'
+  const gameStarted = inActivePlay // active && board present — respects the lobby-reopen window
+  const primaryKind: 'play' | 'watch' = hostPlays ? 'play' : 'watch'
 
-  return (
-    <HostPageShell gameCode={gameCode} {...layout}>
-      <HostGameHeader game={game} />
+  // Primary tab: interactive round for a host-player with a role, read-only board otherwise.
+  const primary = board ? (
+    hostPlays && hostMyRole ? (
+      <CodewordsActiveRound
+        gameCode={gameCode}
+        game={game}
+        board={board}
+        myPlayerId={hostPlayerId!}
+        myResumeToken={hostResumeToken}
+        myPlayerName={hostPlayerName}
+        myRole={hostMyRole}
+        players={players}
+        roles={roles}
+        guesses={guesses}
+        onBoardChange={setBoard}
+        onReload={load}
+      />
+    ) : (
+      <CodewordsSpectatorBoard board={board} players={players} roles={roles} guesses={guesses} />
+    )
+  ) : null
 
+  const manage = (
+    <div className="space-y-4 sm:space-y-5 animate-stagger">
       {game.status === 'waiting' && (
-        <div className="glass-card p-4 space-y-3">
-          <p className="label-caps">Host mode</p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => changeHostMode('spectator')}
-              className={[
-                'rounded-xl border-2 px-3 py-3 text-left text-sm',
-                hostMode === 'spectator'
-                  ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
-                  : 'border-[var(--border-strong)] text-muted',
-              ].join(' ')}
-            >
-              <span className="font-bold block">Host only</span>
-              <span className="text-faint text-xs">Run the game from Manage tab</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => changeHostMode('player')}
-              className={[
-                'rounded-xl border-2 px-3 py-3 text-left text-sm',
-                hostMode === 'player'
-                  ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
-                  : 'border-[var(--border-strong)] text-muted',
-              ].join(' ')}
-            >
-              <span className="font-bold block">Host + play</span>
-              <span className="text-faint text-xs">Join a team here · Play tab opens once the round starts</span>
-            </button>
-          </div>
-          {hostMode === 'player' && !hostPlayerId && (
-            <div className="flex items-center gap-2">
-              <div className="w-36 sm:w-44 shrink-0">
-                <input
-                  type="text"
-                  value={hostJoinName}
-                  onChange={(e) => setHostJoinName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && hostJoinGame()}
-                  placeholder="Your name"
-                  className="input-field w-full"
-                  maxLength={40}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={hostJoinGame}
-                disabled={!hostJoinName.trim() || hostJoining}
-                className="btn-primary btn-fit shrink-0 px-4 py-2.5 text-sm whitespace-nowrap"
-              >
-                {hostJoining ? 'Joining…' : 'Join'}
-              </button>
-            </div>
-          )}
-          {hostMode === 'player' && hostPlayerId && (
+        <HostModeSelector
+          mode={hostMode}
+          onChange={changeHostMode}
+          joinedPlayerId={hostPlayerId}
+          joinedPlayerName={hostPlayerName}
+          joinName={hostJoinName}
+          onJoinNameChange={setHostJoinName}
+          onJoin={() => void hostJoinGame()}
+          joining={hostJoining}
+          spectatorHint="Watch from the Watch tab"
+          playerHint="Join a team below · Play tab opens once the round starts"
+          playingNote={
             <p className="text-xs text-muted">
               Playing as <strong>{hostPlayerName}</strong> —{' '}
               {randomizeTeams
-                ? 'pick spymasters in Manage → Teams, then shuffle or start.'
+                ? 'pick spymasters in Teams below, then shuffle or start.'
                 : playersPickTeams
-                  ? 'pick your team in Manage → Teams, or assign yourself there.'
-                  : 'assign yourself in Manage → Teams.'}
+                  ? 'pick your team in Teams below, or assign yourself there.'
+                  : 'assign yourself in Teams below.'}
             </p>
-          )}
-        </div>
+          }
+        />
       )}
 
-      <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-
-      {showPlayTab && (
-        <div className="flex gap-2 p-1 rounded-xl bg-[var(--surface-inset-bg)] border border-[var(--border-strong)]">
-          <button
-            type="button"
-            onClick={() => setTab('play')}
-            className={[
-              'flex-1 rounded-lg py-2.5 text-sm font-bold transition-colors',
-              tab === 'play' ? 'bg-[var(--card-strong)] shadow-sm' : 'text-muted',
-            ].join(' ')}
-          >
-            Play
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('manage')}
-            className={[
-              'flex-1 rounded-lg py-2.5 text-sm font-bold transition-colors',
-              tab === 'manage' ? 'bg-[var(--card-strong)] shadow-sm' : 'text-muted',
-            ].join(' ')}
-          >
-            Manage
-          </button>
-        </div>
-      )}
-
-      {tab === 'play' &&
-        showPlayTab &&
-        hostMyRole &&
-        (inActivePlay && board ? (
-          <CodewordsActiveRound
-            gameCode={gameCode}
-            game={game}
-            board={board}
-            myPlayerId={hostPlayerId!}
-            myResumeToken={hostResumeToken}
-            myPlayerName={hostPlayerName}
-            myRole={hostMyRole}
-            players={players}
-            roles={roles}
-            guesses={guesses}
-            onBoardChange={setBoard}
-            onReload={load}
-          />
-        ) : (
-          <CodewordsWaitingPanel
-            playerName={hostPlayerName}
-            myRole={hostMyRole}
-            players={players}
-            myPlayerId={hostPlayerId}
-            variant={game.status === 'active' ? 'starting' : 'lobby'}
-            manageHint="Use Manage below to assign teams and start the game."
-          />
-        ))}
+      <HostRulesRow gameType="codewords" />
 
       <CodewordsHostManagePanel
         game={game}
@@ -671,7 +600,6 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
         onRemovePlayer={removePlayer}
         benchingPlayerId={benchingPlayerId}
         removingPlayerId={removingPlayerId}
-        showSpectatorBoard={hostMode === 'spectator'}
         customWordCount={
           game && parseQuestionSource(game.question_source, parseGameType(game.game_type)) === 'custom'
             ? customQuestionCount(game)
@@ -683,7 +611,43 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
             : undefined
         }
         savingWordPool={savingLobbyPool}
+        settingsBottom={
+          game.status === 'waiting' ? (
+            <HostLobbySettingBlock title="Late joiners">
+              <HostAllowViewersField
+                embedded
+                hideHeader
+                gameCode={gameCode}
+                hostToken={hostToken}
+                game={game}
+                onGameUpdate={setGame}
+              />
+            </HostLobbySettingBlock>
+          ) : undefined
+        }
       />
+
+      {game.status === 'active' && (
+        <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+      )}
+    </div>
+  )
+
+  return (
+    <>
+      <HostGameLayout
+        gameCode={gameCode}
+        status={game.status}
+        tab={tab}
+        onTabChange={setTab}
+        primaryKind={primaryKind}
+        showTabs={showTabs}
+        gameStarted={gameStarted}
+        header={<HostGameHeader game={game} />}
+        primary={primary}
+        manage={manage}
+      />
+
       {game && (
         <PlayAgainSetup
           open={playAgainOpen}
@@ -705,6 +669,6 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
           onConfirm={(payload) => handleLobbyPoolSave(payload)}
         />
       )}
-    </HostPageShell>
+    </>
   )
 }

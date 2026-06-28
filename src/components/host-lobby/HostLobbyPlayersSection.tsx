@@ -1,6 +1,7 @@
 'use client'
 
 import { HostPlayerManageList } from '@/components/host/HostPlayerManageList'
+import { EyeIcon, UsersIcon } from '@/components/host/host-icons'
 import type { Player } from '@/types'
 
 type Props = {
@@ -13,6 +14,8 @@ type Props = {
   hint?: string
   className?: string
   alwaysShowReady?: boolean
+  /** 'viewers' tints the header icon and uses an eye glyph. */
+  tone?: 'players' | 'viewers'
   children?: React.ReactNode
 }
 
@@ -26,8 +29,11 @@ export function HostLobbyPlayersSection({
   hint,
   className = '',
   alwaysShowReady,
+  tone = 'players',
   children,
 }: Props) {
+  const Icon = tone === 'viewers' ? EyeIcon : UsersIcon
+
   return (
     <div
       className={[
@@ -36,9 +42,15 @@ export function HostLobbyPlayersSection({
         className,
       ].join(' ')}
     >
-      <p className="label-caps">
-        {label} — {players.length}
-      </p>
+      <div className="flex items-center gap-2">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]">
+          <Icon size={15} />
+        </span>
+        <p className="label-caps !text-[var(--muted)]">{label}</p>
+        <span className="ml-auto rounded-full bg-[var(--surface-inset-bg)] px-2.5 py-0.5 text-xs font-bold text-body">
+          {players.length}
+        </span>
+      </div>
       <HostPlayerManageList
         players={players}
         removingPlayerId={removingPlayerId}

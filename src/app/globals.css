@@ -433,6 +433,43 @@ body {
   cursor: not-allowed;
 }
 
+/* Destructive secondary action — end game / close lobby. Muted by default,
+   warms to red on hover. Reads premium without shouting. */
+.btn-danger-soft {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  border-radius: 0.875rem;
+  border: 1px solid color-mix(in srgb, #ef4444 26%, var(--border-strong));
+  background: color-mix(in srgb, #ef4444 5%, transparent);
+  padding: 0.8125rem 1.25rem;
+  font-weight: 600;
+  color: #dc2626;
+  transition: border-color 0.15s, color 0.15s, background 0.15s, transform 0.1s;
+}
+
+.btn-danger-soft:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #ef4444 55%, transparent);
+  background: color-mix(in srgb, #ef4444 11%, transparent);
+  transform: translateY(-1px);
+}
+
+.btn-danger-soft:active:not(:disabled) {
+  transform: translateY(0) scale(0.99);
+}
+
+.btn-danger-soft:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+[data-theme='dark'] .btn-danger-soft {
+  color: #fca5a5;
+  border-color: color-mix(in srgb, #ef4444 30%, var(--border-strong));
+}
+
 .btn-ghost {
   border-radius: 0.75rem;
   border: none;

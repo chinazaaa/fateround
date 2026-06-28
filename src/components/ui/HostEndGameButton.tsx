@@ -10,6 +10,7 @@ export function HostEndGameButton({
   onEnded,
   className = 'btn-secondary w-full',
   label = 'End game',
+  icon,
   confirmTitle = 'End this game?',
   confirmMessage = 'Players will see the final results. You can start a new round from the lobby afterward.',
 }: {
@@ -18,6 +19,7 @@ export function HostEndGameButton({
   onEnded?: () => void | Promise<unknown>
   className?: string
   label?: string
+  icon?: React.ReactNode
   confirmTitle?: string
   confirmMessage?: string
 }) {
@@ -54,6 +56,7 @@ export function HostEndGameButton({
 
   return (
     <button type="button" onClick={() => void endGame()} disabled={ending} className={className}>
+      {!ending && icon}
       {ending ? 'Ending…' : label}
     </button>
   )

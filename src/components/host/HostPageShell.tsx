@@ -11,9 +11,12 @@ type Props = {
   className?: string
 }
 
-export function hostPlayLayoutFlags(tab: 'play' | 'manage', showPlayTab: boolean, status: GameStatus | undefined) {
-  const onPlayScreen = tab === 'play' && showPlayTab && status === 'active'
-  return { showInvite: !onPlayScreen, wide: onPlayScreen }
+// The primary tab ('play') holds the board for BOTH host+player (Play) and host-only
+// (Watch). Pass `showTabs` (true whenever the tab bar is shown) so the wide / no-invite
+// layout engages for the Watch board too — not only when the host is playing.
+export function hostPlayLayoutFlags(tab: 'play' | 'manage', showTabs: boolean, status: GameStatus | undefined) {
+  const onPrimaryScreen = tab !== 'manage' && showTabs && status === 'active'
+  return { showInvite: !onPrimaryScreen, wide: onPrimaryScreen }
 }
 
 export function HostPageShell({ gameCode, children, showInvite = true, wide = false, className = '' }: Props) {

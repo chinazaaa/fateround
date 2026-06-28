@@ -7,9 +7,11 @@ import { CodewordsBoardGrid } from '@/components/codewords/CodewordsBoardGrid'
 import { CodewordsLobbyRoster } from '@/components/codewords/CodewordsLobbyRoster'
 import { CodewordsScoreboard } from '@/components/codewords/CodewordsScoreboard'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
+import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { ExitIcon } from '@/components/host/host-icons'
 import { useToast } from '@/components/ui/Toast'
 import {
   CODEWORDS_MIN_PLAYERS,
@@ -23,7 +25,6 @@ import {
   lobbyReadyForGame,
   teamsNeedRandomization,
   teamLabel,
-  waitingTurnMessage,
 } from '@/lib/codewords'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import type { CodewordsBoard, CodewordsGuess, CodewordsPlayerRole, CodewordsTeam, Game, Player } from '@/types'
@@ -60,12 +61,13 @@ export function CodewordsHostManagePanel({
   benchingPlayerId,
   removingPlayerId,
   randomizingTeams = false,
-  showSpectatorBoard = true,
   firstTeam = 'random' as 'random' | 'red' | 'blue',
   onFirstTeamChange,
   customWordCount = 0,
   onEditWordPool,
   savingWordPool = false,
+  settingsTop,
+  settingsBottom,
 }: {
   game: Game
   gameCode: string
@@ -98,12 +100,15 @@ export function CodewordsHostManagePanel({
   benchingPlayerId?: string | null
   removingPlayerId?: string | null
   randomizingTeams?: boolean
-  showSpectatorBoard?: boolean
   firstTeam?: 'random' | 'red' | 'blue'
   onFirstTeamChange?: (team: 'random' | 'red' | 'blue') => void
   customWordCount?: number
   onEditWordPool?: () => void
   savingWordPool?: boolean
+  /** Rendered first inside the "Before you start" section (e.g. host-mode selector). */
+  settingsTop?: React.ReactNode
+  /** Rendered last inside the "Before you start" section (e.g. late-joiners). */
+  settingsBottom?: React.ReactNode
 }) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
@@ -180,13 +185,14 @@ export function CodewordsHostManagePanel({
   const lateJoin = codewordsLateJoin(game)
   const playerNameById = new Map(players.map((p) => [p.id, p.name]))
   const cellAttribution = board ? guessAttributionMap(guesses, playerNameById) : {}
-  const turnStatus = board ? waitingTurnMessage(board, roles, playerNameById) : ''
 
   const handleSetSpymaster = (playerId: string, team: CodewordsTeam) => {
     const current = roles.find((r) => r.player_id === playerId)
     const makeSpymaster = current?.role !== 'spymaster'
     onSetSpymaster(playerId, team, makeSpymaster)
   }
+
+  const settingsSummary = `${lobbyMaxPlayers} max · Spymaster ${spymasterTimer}s · Operative ${operativeTimer}s${lateJoin ? ' · Late join on' : ''}`
 
   const startDisabled = starting || players.length < CODEWORDS_MIN_PLAYERS || !ready.ok
   const startDisabledHint =
@@ -256,90 +262,7 @@ export function CodewordsHostManagePanel({
         </div>
       )}
 
-      {inLobby && (
-        <div className="glass-card p-5 space-y-3 border-[color-mix(in_srgb,var(--primary)_18%,var(--border))]">
-          <p className="label-caps">Lobby</p>
-          <p className="text-faint text-xs leading-relaxed">Assign teams below, then start when everyone is ready.</p>
-          <HostLobbySettingBlock title={`Max players · ${players.length} joined`}>
-            <HostLobbyOptionChips
-              value={lobbyMaxPlayers}
-              options={maxPlayerOptions}
-              onChange={onMaxPlayersChange}
-              disabled={savingMaxPlayers}
-            />
-          </HostLobbySettingBlock>
-          {onEditWordPool && (
-            <div className="space-y-2 pt-1">
-              <p className="text-body text-sm">
-                {customWordCount} word{customWordCount === 1 ? '' : 's'} in your library
-              </p>
-              <p className="text-faint text-xs leading-relaxed">
-                Upload a new CSV to replace the list. After saving, the next board uses your updated words.
-              </p>
-              <button
-                type="button"
-                onClick={onEditWordPool}
-                disabled={savingWordPool}
-                className="btn-secondary w-full py-3"
-              >
-                {savingWordPool ? 'Saving…' : 'Change words or upload CSV'}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="glass-card p-5 space-y-4">
-        <p className="label-caps">Timers</p>
-        {inLobby ? (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label className="space-y-1">
-                <span className="text-faint text-xs">Spymaster timer</span>
-                <select
-                  value={spymasterTimer}
-                  onChange={(e) => onSpymasterTimerChange(Number(e.target.value))}
-                  className="input-field w-full"
-                >
-                  {CODEWORDS_TIMER_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s} seconds
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="space-y-1">
-                <span className="text-faint text-xs">Operative timer</span>
-                <select
-                  value={operativeTimer}
-                  onChange={(e) => onOperativeTimerChange(Number(e.target.value))}
-                  className="input-field w-full"
-                >
-                  {CODEWORDS_TIMER_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s} seconds
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <button
-              type="button"
-              onClick={onSaveTimers}
-              disabled={savingTimers}
-              className="btn-secondary w-full sm:w-auto"
-            >
-              {savingTimers ? 'Saving…' : 'Save timers'}
-            </button>
-          </>
-        ) : (
-          <p className="text-sm text-muted">
-            Spymaster {spymasterTimer}s · Operative {operativeTimer}s
-            <span className="block text-faint text-xs mt-1">Timer settings are locked once the game starts.</span>
-          </p>
-        )}
-      </div>
-
+      {/* Teams + Unassigned roster — the lineup, kept up top */}
       {(inLobby || game.status === 'active' || game.status === 'finished') && (
         <div className="glass-card p-5 space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-2">
@@ -410,63 +333,130 @@ export function CodewordsHostManagePanel({
               {randomizingTeams ? 'Shuffling…' : 'Shuffle teams'}
             </button>
           )}
-
-          {inLobby && (
-            <>
-              {onFirstTeamChange && (
-                <div className="space-y-1.5">
-                  <p className="label-caps">Goes first</p>
-                  <div className="flex rounded-xl border border-[var(--border)] overflow-hidden text-sm">
-                    {(['random', 'red', 'blue'] as const).map((opt) => (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() => onFirstTeamChange(opt)}
-                        className={`flex-1 py-1.5 font-semibold capitalize transition-colors ${
-                          firstTeam === opt ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
-                        }`}
-                      >
-                        {opt === 'random' ? '🎲 Random' : opt === 'red' ? '🔴 Red' : '🔵 Blue'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <HostLobbyStartButton
-                onClick={onStartGame}
-                disabled={startDisabled}
-                starting={starting}
-                disabledHint={startDisabledHint}
-              />
-              <HostEndGameButton
-                gameCode={gameCode}
-                hostToken={hostToken}
-                onEnded={onReload}
-                label="End lobby"
-                confirmTitle="Close this lobby?"
-                confirmMessage="Players will be disconnected. You can start a new game from Play again afterward."
-                className="btn-secondary w-full"
-              />
-            </>
-          )}
         </div>
       )}
 
-      {showSpectatorBoard && board && game.status === 'active' && !board.winner && (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4 items-start">
-          <div className="glass-card p-4 space-y-3">
-            <p className="label-caps">Live board (host view)</p>
-            <p className="text-center text-sm text-muted">{turnStatus}</p>
-            {board.current_clue_word && (
-              <p className="text-center text-sm">
-                Clue: <strong>{board.current_clue_word}</strong> {board.current_clue_number}
+      {/* Before you start — every other setup option lives here */}
+      {inLobby && (
+        <HostLobbySettingsSection
+          title="Before you start"
+          defaultOpen
+          summary={settingsSummary}
+          status={savingMaxPlayers || savingTimers ? 'Saving…' : null}
+        >
+          {settingsTop}
+
+          <HostLobbySettingBlock title={`Max players · ${players.length} joined`}>
+            <HostLobbyOptionChips
+              value={lobbyMaxPlayers}
+              options={maxPlayerOptions}
+              onChange={onMaxPlayersChange}
+              disabled={savingMaxPlayers}
+            />
+          </HostLobbySettingBlock>
+
+          {onEditWordPool && (
+            <HostLobbySettingBlock title="Word list">
+              <p className="text-body text-sm">
+                {customWordCount} word{customWordCount === 1 ? '' : 's'} in your library
               </p>
-            )}
-            <CodewordsBoardGrid board={board} showKey cellAttribution={cellAttribution} />
-          </div>
-          <aside className="space-y-3">
-            <CodewordsScoreboard board={board} players={players} roles={roles} />
-          </aside>
+              <p className="text-faint text-xs leading-relaxed">
+                Upload a new CSV to replace the list. After saving, the next board uses your updated words.
+              </p>
+              <button
+                type="button"
+                onClick={onEditWordPool}
+                disabled={savingWordPool}
+                className="btn-secondary w-full py-3"
+              >
+                {savingWordPool ? 'Saving…' : 'Change words or upload CSV'}
+              </button>
+            </HostLobbySettingBlock>
+          )}
+
+          <HostLobbySettingBlock title="Timers">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="space-y-1">
+                <span className="text-faint text-xs">Spymaster timer</span>
+                <select
+                  value={spymasterTimer}
+                  onChange={(e) => onSpymasterTimerChange(Number(e.target.value))}
+                  className="input-field w-full"
+                >
+                  {CODEWORDS_TIMER_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s} seconds
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-faint text-xs">Operative timer</span>
+                <select
+                  value={operativeTimer}
+                  onChange={(e) => onOperativeTimerChange(Number(e.target.value))}
+                  className="input-field w-full"
+                >
+                  {CODEWORDS_TIMER_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s} seconds
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={onSaveTimers}
+              disabled={savingTimers}
+              className="btn-secondary w-full sm:w-auto"
+            >
+              {savingTimers ? 'Saving…' : 'Save timers'}
+            </button>
+          </HostLobbySettingBlock>
+
+          {onFirstTeamChange && (
+            <HostLobbySettingBlock title="Goes first">
+              <div className="flex rounded-xl border border-[var(--border)] overflow-hidden text-sm">
+                {(['random', 'red', 'blue'] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => onFirstTeamChange(opt)}
+                    className={`flex-1 py-1.5 font-semibold capitalize transition-colors ${
+                      firstTeam === opt ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
+                    }`}
+                  >
+                    {opt === 'random' ? '🎲 Random' : opt === 'red' ? '🔴 Red' : '🔵 Blue'}
+                  </button>
+                ))}
+              </div>
+            </HostLobbySettingBlock>
+          )}
+
+          {settingsBottom}
+        </HostLobbySettingsSection>
+      )}
+
+      {/* Start + close — actions */}
+      {inLobby && (
+        <div className="space-y-3">
+          <HostLobbyStartButton
+            onClick={onStartGame}
+            disabled={startDisabled}
+            starting={starting}
+            disabledHint={startDisabledHint}
+          />
+          <HostEndGameButton
+            gameCode={gameCode}
+            hostToken={hostToken}
+            onEnded={onReload}
+            label="End lobby"
+            icon={<ExitIcon size={16} />}
+            confirmTitle="Close this lobby?"
+            confirmMessage="Players will be disconnected. You can start a new game from Play again afterward."
+            className="btn-danger-soft"
+          />
         </div>
       )}
 
@@ -486,8 +476,9 @@ export function CodewordsHostManagePanel({
               type="button"
               onClick={onEndSession}
               disabled={playingAgain || ending}
-              className="btn-secondary flex-1"
+              className="btn-danger-soft flex-1"
             >
+              <ExitIcon size={16} />
               {ending ? 'Closing…' : 'Close session'}
             </button>
           </div>
