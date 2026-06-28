@@ -58,6 +58,7 @@ import {
   parsePairVoteMode,
 } from '@/lib/game-types'
 import { HOST_VIEW_REGISTRY } from '@/components/game-host-views'
+import { WstQuotePoolStatus } from '@/components/who-said-this/WstQuotePoolStatus'
 import {
   getCustomSlots,
   tallyCustomVotes,
@@ -2037,69 +2038,7 @@ export default function HostPage() {
               </div>
               <p className="text-faint text-xs">Remind anyone still waiting — each submitted quote becomes a round.</p>
 
-              {wstPoolStatus.submitted.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-muted text-[10px] uppercase tracking-wider">Submitted</p>
-                  <div className="flex flex-wrap gap-2">
-                    {wstPoolStatus.submitted.map((p) => {
-                      const count = wstPoolStatus.quoteCounts.get(p.id) ?? 0
-                      return (
-                        <span key={p.id} className="chip text-xs py-1 px-2 border-emerald-500/40 text-emerald-300">
-                          ✓ {p.name}
-                          {count > 1 ? ` (${count})` : ''}
-                        </span>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {wstPoolStatus.awaitingQuote.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-amber-400/90 text-[10px] uppercase tracking-wider font-semibold">
-                    Waiting for quote ({wstPoolStatus.awaitingQuote.length})
-                  </p>
-                  <div className="space-y-1.5">
-                    {wstPoolStatus.awaitingQuote.map((p) => (
-                      <div
-                        key={p.id}
-                        className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2"
-                      >
-                        <span className="text-amber-300 text-sm shrink-0">⏳</span>
-                        <span className="text-body text-sm font-medium flex-1 min-w-0 truncate">{p.name}</span>
-                        <span className="text-faint text-[10px] uppercase tracking-wider shrink-0">No quote yet</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {wstPoolStatus.notClaimed.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-muted text-[10px] uppercase tracking-wider">
-                    Hasn&apos;t claimed a name ({wstPoolStatus.notClaimed.length})
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {wstPoolStatus.notClaimed.map((p) => (
-                      <span key={p.id} className="chip text-xs py-1 px-2 opacity-70">
-                        {p.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {wstPoolStatus.eligible.length === 0 && wstPoolStatus.notClaimed.length === 0 && (
-                <p className="text-faint text-xs text-center py-2">No players joined yet</p>
-              )}
-
-              {wstPoolStatus.eligible.length > 0 &&
-                wstPoolStatus.awaitingQuote.length === 0 &&
-                wstPoolStatus.submitted.length >= 2 && (
-                  <p className="text-green-400 text-sm text-center">
-                    Everyone who claimed a name has submitted — ready to start
-                  </p>
-                )}
+              <WstQuotePoolStatus status={wstPoolStatus} />
 
               {participants.length > 0 && (
                 <div className="space-y-3 pt-3 border-t border-theme">
