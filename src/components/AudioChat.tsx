@@ -112,12 +112,22 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <h3 className="text-sm font-bold text-body">Voice Chat</h3>
             </div>
-            <button
-              onClick={leaveAudio}
-              className="text-xs text-red-500 hover:text-red-400 font-semibold px-2 py-0.5 rounded hover:bg-red-500/10 transition-colors"
-            >
-              Disconnect
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={leaveAudio}
+                className="text-xs text-red-500 hover:text-red-400 font-semibold px-2 py-0.5 rounded hover:bg-red-500/10 transition-colors"
+              >
+                Disconnect
+              </button>
+              <button
+                onClick={() => setIsOpen(false)}
+                title="Minimize"
+                aria-label="Minimize voice panel"
+                className="flex items-center justify-center w-6 h-6 rounded text-faint hover:text-body hover:bg-surface-inset-bg transition-colors"
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
           <LiveKitRoom
