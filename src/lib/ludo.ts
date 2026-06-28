@@ -913,6 +913,14 @@ export async function processLudoExpireTurn(supabase: SupabaseClient, gameId: st
   const playerId = currentPlayerId(session)
   if (!playerId) return { error: 'No current player' }
 
+  // Server-side deadline guard: only expire once the stored deadline has passed.
+  // The deadline is set by the server, so this is checked against the server clock
+  // regardless of the caller — without it any client could POST /expire-turn early
+  // and skip the active player's turn. No deadline (untimed game) = never expires.
+  // Small grace covers sub-second skew between the deadline write and this read.
+  const deadlineMs = session.turn_deadline_at ? new Date(session.turn_deadline_at).getTime() : null
+  if (deadlineMs == null || Date.now() < deadlineMs - 750) return {}
+
   // Timeout forfeits the turn — we never roll or move on a player's behalf.
   // Play simply passes to the next player (their dice/roll are reset).
   const nextIndex = advanceTurnIndex(session)
