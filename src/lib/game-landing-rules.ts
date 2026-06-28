@@ -948,4 +948,44 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
   ],
+
+  snake_and_ladder: [
+    {
+      title: 'Objective',
+      points: [
+        'Be the first player to move your token to square 100 on the 1–100 board.',
+        'You must land on 100 with an exact roll. Other players keep playing for runner-up places.',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        '2–6 players join a room and each gets a colored token starting just off square 1.',
+        'Turn order is set when the host starts. An optional per-turn timer keeps the game moving.',
+        'On your turn you roll a single die and move forward that many squares.',
+      ],
+    },
+    {
+      title: 'Ladders & snakes',
+      points: [
+        'Finish your move on the bottom of a ladder to climb up to its top.',
+        'Finish your move on a snake’s head to slide down to its tail.',
+        'You only jump when you land exactly on that square — passing over it does nothing.',
+      ],
+    },
+    {
+      title: 'Rolling a 6',
+      points: [
+        'Roll a 6 and you take another turn straight away.',
+        'Roll three 6s in a row and your turn is forfeited — no move on the third six.',
+      ],
+    },
+    {
+      title: 'Winning',
+      points: [
+        'You must reach square 100 exactly. If a roll would take you past 100, your token stays put.',
+        'The first token to land on 100 wins the game.',
+      ],
+    },
+  ],
 }

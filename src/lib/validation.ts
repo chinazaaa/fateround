@@ -75,6 +75,7 @@ const gameTypeEnum = z.enum([
   'chess',
   'describe_it',
   'scrabble',
+  'snake_and_ladder',
 ])
 
 const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
@@ -755,6 +756,17 @@ export const ludoExpireSchema = z.object({
 })
 
 export type LudoMoveInput = z.infer<typeof ludoMoveSchema>
+
+// Snake & Ladder (POST /api/snake-and-ladder/*)
+
+export const snakeLadderActionSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+})
+
+export const snakeLadderExpireSchema = z.object({
+  gameId: gameCodeString(),
+})
 
 // Tic-Tac-Toe (POST /api/tic-tac-toe/*)
 

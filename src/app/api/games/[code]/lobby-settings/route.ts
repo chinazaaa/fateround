@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { boardGameLobbySettingsSchema } from '@/lib/validation'
-import { isLudoGame, isMonopolyGame, isWhotGame, isYahtzeeGame, isWordHuntGame, parseGameType } from '@/lib/game-types'
+import {
+  isLudoGame,
+  isMonopolyGame,
+  isSnakeAndLadderGame,
+  isWhotGame,
+  isYahtzeeGame,
+  isWordHuntGame,
+  parseGameType,
+} from '@/lib/game-types'
 import { clampBoardGameTurnTimer, type BoardGameLobbyType } from '@/lib/board-game-lobby-settings'
 import { clampMonopolyGameDuration } from '@/lib/monopoly'
 import { clampWhotGameDuration } from '@/lib/whot'
@@ -16,6 +24,7 @@ function boardGameLobbyType(gameType: string): BoardGameLobbyType | null {
   if (isYahtzeeGame(parsed)) return 'yahtzee'
   if (isWhotGame(parsed)) return 'whot'
   if (isLudoGame(parsed)) return 'ludo'
+  if (isSnakeAndLadderGame(parsed)) return 'snake_and_ladder'
   return null
 }
 

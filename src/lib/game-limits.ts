@@ -19,6 +19,11 @@ import { CHESS_DEFAULT_MAX_PLAYERS, CHESS_MAX_PLAYERS, CHESS_MIN_PLAYERS } from 
 import { SCRABBLE_MAX_PLAYERS, SCRABBLE_MIN_PLAYERS } from '@/lib/scrabble'
 import { SUDOKU_MAX_PLAYERS, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
 import { DESCRIBE_IT_DEFAULT_MAX_PLAYERS, DESCRIBE_IT_MAX_PLAYERS, DESCRIBE_IT_MIN_PLAYERS } from '@/lib/describe-it'
+import {
+  SNAKE_LADDER_DEFAULT_MAX_PLAYERS,
+  SNAKE_LADDER_MAX_PLAYERS,
+  SNAKE_LADDER_MIN_PLAYERS,
+} from '@/lib/snake-and-ladder'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
   'anonymous_messages',
@@ -37,6 +42,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'chess',
   'scrabble',
   'describe_it',
+  'snake_and_ladder',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -133,6 +139,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: DESCRIBE_IT_MAX_PLAYERS,
     default: DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
   },
+  snake_and_ladder: {
+    min: SNAKE_LADDER_MIN_PLAYERS,
+    max: SNAKE_LADDER_MAX_PLAYERS,
+    default: SNAKE_LADDER_DEFAULT_MAX_PLAYERS,
+  },
 }
 
 export function isLobbyLimitGameType(value: string): value is LobbyLimitGameType {
@@ -157,6 +168,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     chess: { ...GAME_LIMIT_CODE_DEFAULTS.chess },
     scrabble: { ...GAME_LIMIT_CODE_DEFAULTS.scrabble },
     describe_it: { ...GAME_LIMIT_CODE_DEFAULTS.describe_it },
+    snake_and_ladder: { ...GAME_LIMIT_CODE_DEFAULTS.snake_and_ladder },
   }
 }
 

@@ -29,6 +29,7 @@ import {
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
+  isSnakeAndLadderGame,
 } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
@@ -93,6 +94,7 @@ import { initializeMonopolyGame, MONOPOLY_MIN_PLAYERS } from '@/lib/monopoly'
 import { initializeYahtzeeGame, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
 import { initializeWhotGame, WHOT_MIN_PLAYERS } from '@/lib/whot'
 import { initializeLudoGame, LUDO_MIN_PLAYERS } from '@/lib/ludo'
+import { initializeSnakeAndLadderGame, SNAKE_LADDER_MIN_PLAYERS } from '@/lib/snake-and-ladder'
 import { initializeTicTacToeGame, TIC_TAC_TOE_MIN_PLAYERS } from '@/lib/tic-tac-toe'
 import { initializeChessGame, CHESS_MIN_PLAYERS } from '@/lib/chess'
 import {
@@ -424,6 +426,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     const { error: initError } = await initializeLudoGame(
+      supabase,
+      code.toUpperCase(),
+      playingPlayers.map((p) => p.id)
+    )
+    if (initError) return NextResponse.json({ error: initError }, { status: 500 })
+
+    const { error: gameError } = await supabase
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+        rounds_count: 1,
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isSnakeAndLadderGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    if (playingPlayers.length < SNAKE_LADDER_MIN_PLAYERS) {
+      return NextResponse.json({ error: `Need at least ${SNAKE_LADDER_MIN_PLAYERS} players to start` }, { status: 400 })
+    }
+
+    const { error: initError } = await initializeSnakeAndLadderGame(
       supabase,
       code.toUpperCase(),
       playingPlayers.map((p) => p.id)

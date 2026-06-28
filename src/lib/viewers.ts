@@ -6,6 +6,7 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isLudoGame,
+  isSnakeAndLadderGame,
   isTicTacToeGame,
   isChessGame,
   isScrabbleGame,
@@ -64,6 +65,7 @@ export function gameAllowsLatePlayerJoin(gameType: GameType): boolean {
     !isYahtzeeGame(gameType) &&
     !isWhotGame(gameType) &&
     !isLudoGame(gameType) &&
+    !isSnakeAndLadderGame(gameType) &&
     !isTicTacToeGame(gameType) &&
     !isChessGame(gameType) &&
     !isScrabbleGame(gameType)

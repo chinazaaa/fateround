@@ -40,6 +40,7 @@ import {
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
+  isSnakeAndLadderGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import {
@@ -272,6 +273,7 @@ export async function POST(req: NextRequest) {
     isYahtzeeGame(game_type) ||
     isWhotGame(game_type) ||
     isLudoGame(game_type) ||
+    isSnakeAndLadderGame(game_type) ||
     isSudokuGame(game_type) ||
     isWordHuntGame(game_type) ||
     isTicTacToeGame(game_type) ||
@@ -328,6 +330,7 @@ export async function POST(req: NextRequest) {
     isYahtzeeGame(game_type) ||
     isWhotGame(game_type) ||
     isLudoGame(game_type) ||
+    isSnakeAndLadderGame(game_type) ||
     isSudokuGame(game_type) ||
     isWordHuntGame(game_type) ||
     isTicTacToeGame(game_type) ||
@@ -418,6 +421,12 @@ export async function POST(req: NextRequest) {
                   ? resolveMaxPlayers('whot', rawMaxPlayers, lobbyDefaultMaxPlayers('whot', lobbyLimits))
                   : isLudoGame(game_type)
                     ? resolveMaxPlayers('ludo', rawMaxPlayers, lobbyDefaultMaxPlayers('ludo', lobbyLimits))
+                    : isSnakeAndLadderGame(game_type)
+                    ? resolveMaxPlayers(
+                        'snake_and_ladder',
+                        rawMaxPlayers,
+                        lobbyDefaultMaxPlayers('snake_and_ladder', lobbyLimits)
+                      )
                     : isICallOnGame(game_type)
                       ? resolveMaxPlayers('i_call_on', rawMaxPlayers, lobbyDefaultMaxPlayers('i_call_on', lobbyLimits))
                       : isSudokuGame(game_type)

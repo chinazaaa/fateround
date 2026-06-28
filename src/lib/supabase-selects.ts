@@ -52,6 +52,11 @@ export const LUDO_SESSION_SELECT =
 
 export const LUDO_PLAYER_STATE_SELECT = 'id,game_id,player_id,color,pieces,player_order,created_at'
 
+export const SNAKE_LADDER_SESSION_SELECT =
+  'id,game_id,turn_order,current_turn_index,phase,last_roll,last_from,last_to,last_event,last_player_id,consecutive_sixes,status_message,winner_player_id,turn_deadline_at,created_at,updated_at'
+
+export const SNAKE_LADDER_PLAYER_STATE_SELECT = 'id,game_id,player_id,color,position,player_order,created_at'
+
 export const TIC_TAC_TOE_SESSION_SELECT =
   'id,game_id,player_x_id,player_o_id,board,board_winners,active_board,current_turn_mark,status,winner_player_id,is_draw,status_message,turn_deadline_at,created_at,updated_at'
 

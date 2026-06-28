@@ -56,6 +56,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   chess: 'chess',
   describe_it: 'text-charades',
   scrabble: 'scrabble',
+  snake_and_ladder: 'snakes-and-ladders',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -1463,6 +1464,64 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How many people can play?',
         answer: 'Scrabble supports 2 to 4 players. The host can join as one of the players.',
+      },
+    ],
+  }),
+  snake_and_ladder: landing('snake_and_ladder', {
+    seoTitle: 'Snakes and Ladders Online — Play the Classic Board Game with Friends',
+    seoDescription:
+      'Play Snakes and Ladders online with friends. Roll the die, climb ladders, dodge snakes, and race to square 100. Classic rules, real-time multiplayer, no sign-up.',
+    keywords: [
+      'snakes and ladders online',
+      'snake and ladder game',
+      'snakes and ladders rules',
+      'how to play snakes and ladders',
+      'play snakes and ladders friends',
+      'snakes and ladders multiplayer',
+    ],
+    heroSubtitle: 'The timeless race to 100 — roll the die, ride the ladders, slip down the snakes.',
+    bodyParagraph:
+      'Snakes and Ladders on Fate Round follows classic rules: take turns rolling a single die and moving along the 1–100 board. Land on the bottom of a ladder to climb up; land on a snake’s head to slide down to its tail. Roll a 6 to take another turn. You must land on square 100 exactly to win — overshoot and your token stays put.',
+    highlights: ['2–6 players', 'Classic rules', 'Real-time board'],
+    features: [
+      {
+        title: 'Roll & race',
+        description: 'One die, one token. Move up the board and be the first to reach square 100 exactly.',
+        emoji: '🎲',
+      },
+      {
+        title: 'Ladders & snakes',
+        description: 'Ladders shoot you up the board; snakes drag you back down. The board can change everything in one roll.',
+        emoji: '🪜',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join a room', description: 'Enter your name and get your color when the host starts.' },
+      { title: 'Roll the die', description: 'On your turn, tap to roll and move forward. Roll a 6 to go again.' },
+      { title: 'Reach 100', description: 'Climb ladders, dodge snakes, and land on 100 exactly to win.' },
+    ],
+    perfectFor: ['Family game night', 'Kids & all ages', 'Friend groups'],
+    extraFaqs: [
+      {
+        question: 'How do you win at Snakes and Ladders?',
+        answer:
+          'Be the first player to land on square 100. You must reach it with an exact roll — if your roll would take you past 100, your token stays where it is and you try again next turn.',
+      },
+      {
+        question: 'What happens when you land on a snake or a ladder?',
+        answer:
+          'Land on the bottom of a ladder and you climb straight to its top. Land on a snake’s head and you slide down to its tail. You only jump when you finish your move on that exact square.',
+      },
+      {
+        question: 'Does rolling a 6 do anything special?',
+        answer:
+          'Yes — rolling a 6 earns you another roll. But roll three 6s in a row and your turn is forfeited, so press your luck carefully.',
+      },
+      {
+        question: 'How many people can play?',
+        answer: 'Snakes and Ladders supports 2 to 6 players. The host can join as one of the players.',
       },
     ],
   }),

@@ -64,6 +64,7 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isLudoGame,
+  isSnakeAndLadderGame,
   isTicTacToeGame,
   isChessGame,
   isScrabbleGame,
@@ -84,6 +85,7 @@ import { MonopolyHostView } from '@/components/monopoly/MonopolyHostView'
 import { YahtzeeHostView } from '@/components/yahtzee/YahtzeeHostView'
 import { WhotHostView } from '@/components/whot/WhotHostView'
 import { LudoHostView } from '@/components/ludo/LudoHostView'
+import { SnakeLadderHostView } from '@/components/snake-and-ladder/SnakeLadderHostView'
 import { TicTacToeHostView } from '@/components/tic-tac-toe/TicTacToeHostView'
 import { ChessHostView } from '@/components/chess/ChessHostView'
 import { ScrabbleHostView } from '@/components/scrabble/ScrabbleHostView'
@@ -1586,6 +1588,10 @@ export default function HostPage() {
 
   if (game && isLudoGame(game.game_type)) {
     return <LudoHostView gameCode={gameCode} hostToken={hostToken} />
+  }
+
+  if (game && isSnakeAndLadderGame(game.game_type)) {
+    return <SnakeLadderHostView gameCode={gameCode} hostToken={hostToken} />
   }
 
   if (game && isSudokuGame(game.game_type)) {

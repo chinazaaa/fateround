@@ -975,6 +975,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  snake_and_ladder: {
+    id: 'snake_and_ladder',
+    label: 'Snake & Ladder',
+    tagline: 'Roll the die, climb the ladders, dodge the snakes — first to 100 wins',
+    headerEmoji: '🐍🪜',
+    card: {
+      accent: '#16a34a',
+      accentSoft: 'rgba(22, 163, 74, 0.12)',
+      emoji: '🐍',
+      players: '2–6 players',
+      vibe: 'Board game classic',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🪜',
+        label: 'Position',
+        color: '#22c55e',
+        leaderboardLabel: 'Furthest along',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      marry: {
+        emoji: '🎲',
+        label: 'Last roll',
+        color: '#0ea5e9',
+        leaderboardLabel: 'Last roll',
+        activeClass: 'bg-sky-500/20 text-sky-100 border-sky-400',
+        borderClass: 'border-sky-500/50 bg-sky-500/10',
+        textColor: '#7dd3fc',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
   tic_tac_toe: {
     id: 'tic_tac_toe',
     label: 'Tic-Tac-Toe',
@@ -1311,6 +1354,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'chess',
   'describe_it',
   'scrabble',
+  'snake_and_ladder',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -1322,6 +1366,7 @@ const PINNED_GAME_TYPES: GameType[] = [
   'trivia',
   'whot',
   'ludo',
+  'snake_and_ladder',
   'tic_tac_toe',
   'sudoku',
   'chess',
@@ -1370,6 +1415,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'chess') return 'chess'
   if (raw === 'describe_it' || raw === 'text-charades') return 'describe_it'
   if (raw === 'scrabble') return 'scrabble'
+  if (raw === 'snake_and_ladder' || raw === 'snakes-and-ladders') return 'snake_and_ladder'
   return 'smash_marry_kill'
 }
 
@@ -1428,6 +1474,8 @@ export function gameHowItWorks(
       return 'Players join with their name. Match the top card by shape or number — WHOT lets you call the next match. Pick 2 and Pick 3 stacks are separate. First to empty their hand wins — or lowest hand total when the game clock runs out.'
     case 'ludo':
       return 'Players join with their name. Roll two dice each turn and use each die separately — a 6 brings pieces out; doubles earn another roll after both dice are played. Capture opponents, block with pairs — first to finish all four pieces wins!'
+    case 'snake_and_ladder':
+      return 'Players join with their name — 2 to 6 play. Take turns rolling one die and racing up the 1–100 board. Land on a ladder to climb, a snake to slide down. Roll a 6 to go again. You must land on 100 exactly to win!'
     case 'tic_tac_toe':
       return 'Two players join with their name. The host can play too. Ultimate Tic-Tac-Toe is nine small 3x3 boards in one big grid — the cell you play sends your opponent to the matching board. Win a small board with three in a row, and win the game by taking three boards in a row.'
     case 'word_hunt':
@@ -1781,6 +1829,10 @@ export function isDescribeItGame(gameType: GameType | string | undefined): boole
 
 export function isScrabbleGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'scrabble'
+}
+
+export function isSnakeAndLadderGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'snake_and_ladder'
 }
 
 export function isICallOnGame(gameType: GameType | string | undefined): boolean {

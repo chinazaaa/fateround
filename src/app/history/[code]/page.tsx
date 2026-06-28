@@ -34,12 +34,15 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isLudoGame,
+  isSnakeAndLadderGame,
 } from '@/lib/game-types'
 import {
   BINGO_CALLED_NUMBER_SELECT,
   BINGO_CLAIM_SELECT,
   LUDO_PLAYER_STATE_SELECT,
   LUDO_SESSION_SELECT,
+  SNAKE_LADDER_PLAYER_STATE_SELECT,
+  SNAKE_LADDER_SESSION_SELECT,
   MONOPOLY_BOARD_SELECT,
   MONOPOLY_PLAYER_STATE_SELECT,
   TTL_GUESS_SELECT,
@@ -60,6 +63,7 @@ import { YahtzeeSessionSummary } from '@/components/yahtzee/YahtzeeSessionSummar
 import { WhotSessionSummary } from '@/components/whot/WhotSessionSummary'
 import { RematchHistory } from '@/components/RematchHistory'
 import { LudoSessionSummary } from '@/components/ludo/LudoSessionSummary'
+import { SnakeLadderSessionSummary } from '@/components/snake-and-ladder/SnakeLadderSessionSummary'
 import { mergeCodewordsGuesses } from '@/lib/codewords'
 import { hotSeatPlayerDisplayName } from '@/lib/hot-seat'
 import { isMltImportGame, mltVoteTargets } from '@/lib/mlt'
@@ -85,6 +89,8 @@ import type {
   Game,
   LudoPlayerState,
   LudoSession,
+  SnakeLadderPlayerState,
+  SnakeLadderSession,
   MonopolyBoard,
   MonopolyPlayerState,
   Participant,
@@ -195,6 +201,8 @@ export default function GameHistoryPage() {
   const [whotHands, setWhotHands] = useState<WhotPlayerHand[]>([])
   const [ludoSession, setLudoSession] = useState<LudoSession | null>(null)
   const [ludoStates, setLudoStates] = useState<LudoPlayerState[]>([])
+  const [snakeLadderSession, setSnakeLadderSession] = useState<SnakeLadderSession | null>(null)
+  const [snakeLadderStates, setSnakeLadderStates] = useState<SnakeLadderPlayerState[]>([])
 
   useEffect(() => {
     if (!gameCode || gameCode.length < 4) {
@@ -226,6 +234,8 @@ export default function GameHistoryPage() {
         setWhotHands([])
         setLudoSession(null)
         setLudoStates([])
+        setSnakeLadderSession(null)
+        setSnakeLadderStates([])
         setCodewordsBoard(null)
         setCodewordsRoles([])
         setCodewordsGuesses([])
@@ -400,6 +410,34 @@ export default function GameHistoryPage() {
         return
       }
 
+      if (isSnakeAndLadderGame(gameType)) {
+        const [{ data: plrs }, { data: sessionData }, { data: stateRows }] = await Promise.all([
+          supabase.from('players').select('*').eq('game_id', gameCode).order('joined_at'),
+          supabase
+            .from('snake_ladder_sessions')
+            .select(SNAKE_LADDER_SESSION_SELECT)
+            .eq('game_id', gameCode)
+            .maybeSingle(),
+          supabase
+            .from('snake_ladder_player_state')
+            .select(SNAKE_LADDER_PLAYER_STATE_SELECT)
+            .eq('game_id', gameCode)
+            .order('player_order'),
+        ])
+        setGame(gameData)
+        setPlayers(plrs ?? [])
+        setParticipants([])
+        setRounds([])
+        setVotes([])
+        setConfessions([])
+        setHotSeatSubmissions([])
+        resetSpecializedState()
+        setSnakeLadderSession((sessionData as SnakeLadderSession | null) ?? null)
+        setSnakeLadderStates((stateRows as SnakeLadderPlayerState[]) ?? [])
+        setLoadState('ready')
+        return
+      }
+
       if (isBingoGame(gameType)) {
         const [{ data: plrs }, { data: claimRows }, { data: calledRows }] = await Promise.all([
           supabase.from('players').select('*').eq('game_id', gameCode).order('joined_at'),
@@ -565,6 +603,19 @@ export default function GameHistoryPage() {
     return (
       <HistoryPageShell game={game} gameType={gameType}>
         <LudoSessionSummary game={game} players={players} states={ludoStates} session={ludoSession} />
+      </HistoryPageShell>
+    )
+  }
+
+  if (isSnakeAndLadderGame(gameType)) {
+    return (
+      <HistoryPageShell game={game} gameType={gameType}>
+        <SnakeLadderSessionSummary
+          game={game}
+          players={players}
+          states={snakeLadderStates}
+          session={snakeLadderSession}
+        />
       </HistoryPageShell>
     )
   }

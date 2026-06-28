@@ -13,6 +13,7 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isLudoGame,
+  isSnakeAndLadderGame,
   isTicTacToeGame,
   isChessGame,
   isDescribeItGame,
@@ -28,6 +29,7 @@ import { clearMonopolySessionData } from '@/lib/monopoly'
 import { clearYahtzeeSessionData } from '@/lib/yahtzee'
 import { clearWhotSessionData } from '@/lib/whot'
 import { clearLudoSessionData } from '@/lib/ludo'
+import { clearSnakeAndLadderSessionData } from '@/lib/snake-and-ladder'
 import { clearTicTacToeSessionData, canTicTacToePlayAgain } from '@/lib/tic-tac-toe'
 import { clearChessSessionData, canChessPlayAgain } from '@/lib/chess'
 import { clearDescribeItSessionData, canDescribeItPlayAgain } from '@/lib/describe-it'
@@ -285,6 +287,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (isLudoGame(gameType)) {
     const { error: clearError } = await clearLudoSessionData(supabase, gameId)
+    if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
+  }
+
+  if (isSnakeAndLadderGame(gameType)) {
+    const { error: clearError } = await clearSnakeAndLadderSessionData(supabase, gameId)
     if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
   }
 

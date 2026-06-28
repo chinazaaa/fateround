@@ -57,6 +57,7 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isLudoGame,
+  isSnakeAndLadderGame,
   isTicTacToeGame,
   isChessGame,
   isScrabbleGame,
@@ -148,6 +149,7 @@ import { YAHTZEE_DEFAULT_MAX_PLAYERS } from '@/lib/yahtzee'
 import { WHOT_DEFAULT_MAX_PLAYERS, WHOT_GAME_DURATION_OPTIONS, formatWhotGameDuration } from '@/lib/whot'
 import { turnTimerOptionsFor, formatBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { LUDO_DEFAULT_MAX_PLAYERS } from '@/lib/ludo'
+import { SNAKE_LADDER_DEFAULT_MAX_PLAYERS } from '@/lib/snake-and-ladder'
 import {
   formatNpatGameDuration,
   NPAT_DEFAULT_GAME_DURATION,
@@ -286,6 +288,7 @@ function CreateGameInner() {
   const [whotCardsEnabled, setWhotCardsEnabled] = useState(true)
   const [whotNumberCallsEnabled, setWhotNumberCallsEnabled] = useState(true)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
+  const [snakeLadderMaxPlayers, setSnakeLadderMaxPlayers] = useState(SNAKE_LADDER_DEFAULT_MAX_PLAYERS)
   const [npatMaxPlayers, setNpatMaxPlayers] = useState(NPAT_DEFAULT_MAX_PLAYERS)
   const [sudokuMaxPlayers, setSudokuMaxPlayers] = useState(20)
   const [wordHuntMaxPlayers, setWordHuntMaxPlayers] = useState(WORD_HUNT_DEFAULT_MAX_PLAYERS)
@@ -432,6 +435,13 @@ function CreateGameInner() {
               rounds_count: 1,
             }
           : {}),
+        ...(isSnakeAndLadderGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+            }
+          : {}),
         ...(isTicTacToeGame(type)
           ? {
               participant_mode: 'joiners' as const,
@@ -524,6 +534,7 @@ function CreateGameInner() {
     if (!whotCardsEnabled) setWhotNumberCallsEnabled(false)
   }, [whotCardsEnabled])
   const isLudo = isLudoGame(settings.game_type)
+  const isSnakeLadder = isSnakeAndLadderGame(settings.game_type)
   const isTicTacToe = isTicTacToeGame(settings.game_type)
   const isChess = isChessGame(settings.game_type)
   const isScrabble = isScrabbleGame(settings.game_type)
@@ -621,6 +632,7 @@ function CreateGameInner() {
     isYahtzee ||
     isWhot ||
     isLudo ||
+    isSnakeLadder ||
     isTicTacToe ||
     isChess ||
     isScrabble ||
@@ -729,6 +741,14 @@ function CreateGameInner() {
             anonymous: true,
             rounds_count: 1,
             timer_seconds: 60,
+          }
+        : {}),
+      ...(isSnakeAndLadderGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 30,
           }
         : {}),
       ...(isChessGame(type)
@@ -1145,8 +1165,10 @@ function CreateGameInner() {
                           ? whotMaxPlayers
                           : isLudo
                             ? ludoMaxPlayers
-                            : isNpat
-                              ? npatMaxPlayers
+                            : isSnakeLadder
+                              ? snakeLadderMaxPlayers
+                              : isNpat
+                                ? npatMaxPlayers
                               : isSudoku
                                 ? sudokuMaxPlayers
                                 : isWordHunt
@@ -1601,6 +1623,51 @@ function CreateGameInner() {
                 <p className="text-faint text-sm leading-relaxed">
                   Classic Ludo — roll two dice to enter, race around the board, capture opponents, and block with pairs.
                   Exact rolls needed to finish. First to get all four pieces home wins!
+                </p>
+              </SettingsGroup>
+            ) : isSnakeLadder ? (
+              <SettingsGroup title="Snake & Ladder room">
+                <Field
+                  label={`Max players (${effectiveLimits.snake_and_ladder.min}–${effectiveLimits.snake_and_ladder.max})`}
+                >
+                  <select
+                    value={snakeLadderMaxPlayers}
+                    onChange={(e) => setSnakeLadderMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(
+                      effectiveLimits.snake_and_ladder.min,
+                      effectiveLimits.snake_and_ladder.max
+                    ).map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Turn timer">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={0}>No timer</option>
+                    <option value={15}>15 seconds</option>
+                    <option value={30}>30 seconds</option>
+                    <option value={60}>60 seconds</option>
+                    <option value={90}>90 seconds</option>
+                  </select>
+                </Field>
+                <Field label="Late joiners">
+                  <LateJoinPolicyToggle
+                    value={lateJoinPolicy}
+                    onChange={setLateJoinPolicy}
+                    gameType="snake_and_ladder"
+                  />
+                </Field>
+                <p className="text-faint text-sm leading-relaxed">
+                  Classic Snakes &amp; Ladders — roll one die, climb the ladders, dodge the snakes. Roll a 6 to go again.
+                  First to land on 100 exactly wins!
                 </p>
               </SettingsGroup>
             ) : isTicTacToe ? (

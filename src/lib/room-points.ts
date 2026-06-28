@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { buildLudoStandings } from '@/lib/ludo'
+import { buildSnakeLadderStandings } from '@/lib/snake-and-ladder'
 import { totalScore } from '@/lib/yahtzee'
 import { tallyTriviaPlayerScores } from '@/lib/trivia'
 import { tallySudokuScores } from '@/lib/sudoku'
@@ -10,13 +11,21 @@ import {
   isYahtzeeGame,
   isWhotGame,
   isLudoGame,
+  isSnakeAndLadderGame,
   isBingoGame,
   isCodewordsGame,
   isSudokuGame,
   isWordHuntGame,
   isTriviaGame,
 } from '@/lib/game-types'
-import type { GameType, LudoPlayerState, Player, TriviaAnswer, YahtzeeCategoryPoints } from '@/types'
+import type {
+  GameType,
+  LudoPlayerState,
+  Player,
+  SnakeLadderPlayerState,
+  TriviaAnswer,
+  YahtzeeCategoryPoints,
+} from '@/types'
 
 export const ROOM_POINTS = {
   first: 100,
@@ -43,6 +52,7 @@ export function isCompetitiveRoomGame(gameType: GameType): boolean {
     isYahtzeeGame(gameType) ||
     isWhotGame(gameType) ||
     isLudoGame(gameType) ||
+    isSnakeAndLadderGame(gameType) ||
     isBingoGame(gameType) ||
     isCodewordsGame(gameType) ||
     isSudokuGame(gameType) ||
@@ -180,6 +190,20 @@ async function getCompetitiveStandings(
     return buildLudoStandings(states as LudoPlayerState[], playerRows, session?.winner_player_id ?? null).map(
       (row) => row.playerId
     )
+  }
+
+  if (isSnakeAndLadderGame(gameType)) {
+    const [{ data: session }, { data: states }] = await Promise.all([
+      supabase.from('snake_ladder_sessions').select('winner_player_id').eq('game_id', gameId).maybeSingle(),
+      supabase.from('snake_ladder_player_state').select('*').eq('game_id', gameId),
+    ])
+    if (!states?.length) return session?.winner_player_id ? [session.winner_player_id] : []
+    const playerRows = players.map((p) => ({ id: p.id, name: p.name })) as Player[]
+    return buildSnakeLadderStandings(
+      states as SnakeLadderPlayerState[],
+      playerRows,
+      session?.winner_player_id ?? null
+    ).map((row) => row.playerId)
   }
 
   if (isBingoGame(gameType)) {

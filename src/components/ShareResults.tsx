@@ -16,6 +16,7 @@ import {
   isMonopolyGame,
   isWhotGame,
   isLudoGame,
+  isSnakeAndLadderGame,
   isTicTacToeGame,
   isChessGame,
   isICallOnGame,
@@ -37,6 +38,7 @@ import type { MonopolyStanding } from '@/lib/monopoly'
 import { formatMonopolyMoney } from '@/lib/monopoly'
 import type { WhotStanding } from '@/lib/whot'
 import type { LudoStanding } from '@/lib/ludo'
+import type { SnakeLadderStanding } from '@/lib/snake-and-ladder'
 
 function buildShareText({
   game,
@@ -55,6 +57,9 @@ function buildShareText({
   ludoStandings,
   ludoWinnerName,
   ludoEndedEarly,
+  snakeLadderStandings,
+  snakeLadderWinnerName,
+  snakeLadderEndedEarly,
   ticTacToeWinnerName,
   ticTacToeIsDraw,
   ticTacToeEndedEarly,
@@ -81,6 +86,9 @@ function buildShareText({
   ludoStandings?: LudoStanding[]
   ludoWinnerName?: string
   ludoEndedEarly?: boolean
+  snakeLadderStandings?: SnakeLadderStanding[]
+  snakeLadderWinnerName?: string
+  snakeLadderEndedEarly?: boolean
   ticTacToeWinnerName?: string
   ticTacToeIsDraw?: boolean
   ticTacToeEndedEarly?: boolean
@@ -143,6 +151,23 @@ function buildShareText({
       '',
       'Final standings:',
       ...ludoStandings.slice(0, 8).map((row) => `  ${row.rank}. ${row.name} — ${row.finishedCount}/4 home`),
+      '',
+      `Play at ${appDomain()}`,
+    ]
+    return lines.join('\n')
+  }
+
+  if (isSnakeAndLadderGame(gameType) && snakeLadderStandings && snakeLadderStandings.length > 0) {
+    const lines = [
+      ...gameHeader,
+      snakeLadderWinnerName
+        ? `🏆 ${snakeLadderWinnerName} wins!`
+        : snakeLadderEndedEarly
+          ? '🏁 Game ended early'
+          : '🏁 Game over',
+      '',
+      'Final standings:',
+      ...snakeLadderStandings.slice(0, 8).map((row) => `  ${row.rank}. ${row.name} — square ${row.position}`),
       '',
       `Play at ${appDomain()}`,
     ]
@@ -348,6 +373,9 @@ export function ShareResults({
   ludoStandings,
   ludoWinnerName,
   ludoEndedEarly,
+  snakeLadderStandings,
+  snakeLadderWinnerName,
+  snakeLadderEndedEarly,
   ticTacToeWinnerName,
   ticTacToeIsDraw,
   ticTacToeEndedEarly,
@@ -375,6 +403,9 @@ export function ShareResults({
   ludoStandings?: LudoStanding[]
   ludoWinnerName?: string
   ludoEndedEarly?: boolean
+  snakeLadderStandings?: SnakeLadderStanding[]
+  snakeLadderWinnerName?: string
+  snakeLadderEndedEarly?: boolean
   ticTacToeWinnerName?: string
   ticTacToeIsDraw?: boolean
   ticTacToeEndedEarly?: boolean
@@ -434,6 +465,9 @@ export function ShareResults({
         ludoStandings,
         ludoWinnerName,
         ludoEndedEarly,
+        snakeLadderStandings,
+        snakeLadderWinnerName,
+        snakeLadderEndedEarly,
         ticTacToeWinnerName,
         ticTacToeIsDraw,
         ticTacToeEndedEarly,
