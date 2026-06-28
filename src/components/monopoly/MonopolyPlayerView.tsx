@@ -414,7 +414,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               currentName={displayName}
               onRenamed={(name) => {
                 setMyPlayerName(name)
-                setPlayerSession(gameCode, myPlayerId, name, 'both')
+                setPlayerSession(gameCode, myPlayerId, name, 'both', myResumeToken)
               }}
               onLeft={handlePlayerLeft}
               inLobby
@@ -487,7 +487,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               currentName={sessionName}
               onRenamed={(name) => {
                 setMyPlayerName(name)
-                setPlayerSession(gameCode, myPlayerId, name, 'both')
+                setPlayerSession(gameCode, myPlayerId, name, 'both', myResumeToken)
               }}
               onLeft={handlePlayerLeft}
               align="center"

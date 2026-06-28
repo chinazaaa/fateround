@@ -241,13 +241,24 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
   async function handleEndGame() {
     if (ending) return
     setEnding(true)
-    // End via the host-authorized server route (games is RLS-locked to anon writes).
-    await fetch(`/api/games/${gameCode}/finish-game`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hostToken }),
-    })
-    setEnding(false)
+    try {
+      // End via the host-authorized server route (games is RLS-locked to anon writes).
+      const res = await fetch(`/api/games/${gameCode}/finish-game`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toastError(data.error || 'Failed to end the game')
+        return
+      }
+      await load()
+    } catch {
+      toastError('Network error — try again')
+    } finally {
+      setEnding(false)
+    }
   }
 
   async function handlePlayAgain() {

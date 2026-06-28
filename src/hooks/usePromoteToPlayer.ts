@@ -26,7 +26,7 @@ export function usePromoteToPlayer(
       const res = await fetch('/api/players/promote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameCode, playerId, resumeToken }),
+        body: JSON.stringify({ gameCode, resumeToken }),
       })
       const data = (await res.json()) as {
         error?: string

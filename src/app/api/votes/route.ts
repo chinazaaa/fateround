@@ -67,7 +67,13 @@ export async function POST(req: NextRequest) {
   const playerId = player.id
 
   const [{ data: round }, { data: game }] = await Promise.all([
-    supabase.from('rounds').select('participant_ids, submitter_player_id, quote_text').eq('id', roundId).maybeSingle(),
+    // Scope the round to the authorized game so a known roundId from another game is rejected.
+    supabase
+      .from('rounds')
+      .select('participant_ids, submitter_player_id, quote_text')
+      .eq('id', roundId)
+      .eq('game_id', gameId.toUpperCase())
+      .maybeSingle(),
     supabase
       .from('games')
       .select(

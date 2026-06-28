@@ -60,7 +60,12 @@ export function usePhotoUpload({
   }
 
   const handlePhotoDelete = async () => {
-    if (!participantId || !playerId || photoUploading) return
+    if (!participantId || photoUploading) return
+    const resumeToken = getPlayerSession(gameCode)?.resumeToken
+    if (!resumeToken) {
+      toast.error('Your session expired — rejoin to remove your photo')
+      return
+    }
     setPhotoUploading(true)
     try {
       const res = await fetch('/api/photos', {
@@ -69,7 +74,7 @@ export function usePhotoUpload({
         body: JSON.stringify({
           gameId: gameCode,
           participantId,
-          playerId,
+          resumeToken,
         }),
       })
       const data = await res.json()

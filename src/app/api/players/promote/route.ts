@@ -14,19 +14,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { gameCode, playerId, resumeToken } = parsed.data
+  const { gameCode, resumeToken } = parsed.data
   const gameId = gameCode.toUpperCase()
 
   const supabase = getSupabaseAdmin()
 
-  // Authorize by the secret resume_token; the resolved player is authoritative.
+  // Authorize by the secret resume_token; the resolved player is the (self) actor — a caller
+  // can only ever promote themselves.
   const auth = await assertPlayer(supabase, gameId, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
-
-  // A caller may only promote themselves; never trust the client playerId.
-  if (auth.player.id !== playerId) {
-    return NextResponse.json({ error: 'You can only promote yourself' }, { status: 403 })
-  }
   const authPlayerId = auth.player.id
 
   const { data: gameRow } = await supabase.from('games').select('*').eq('id', gameId).maybeSingle()

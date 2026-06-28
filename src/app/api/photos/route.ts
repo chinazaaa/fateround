@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { supabase } from '@/lib/supabase'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 
@@ -146,7 +145,8 @@ export async function POST(req: NextRequest) {
 const deleteSchema = z.object({
   gameId: z.string().min(1),
   participantId: z.string().min(1),
-  playerId: z.string().uuid(),
+  // Owner authorized by the secret resume_token (resolved server-side), not a client playerId.
+  resumeToken: z.string().min(4),
 })
 
 export async function DELETE(req: NextRequest) {
@@ -157,25 +157,23 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
     }
 
-    const { gameId, participantId, playerId } = parsed.data
+    const { gameId, participantId, resumeToken } = parsed.data
+    const supabaseAdmin = getSupabaseAdmin()
 
-    // Authorization: verify the requester owns this participant
-    const { data: player } = await supabase
-      .from('players')
-      .select('id, participant_id')
-      .eq('id', playerId)
-      .eq('game_id', gameId)
-      .maybeSingle()
-    if (!player || player.participant_id !== participantId) {
+    // Authorization: resolve the requester from their resume_token; they may only delete the
+    // photo of the participant linked to their own player row.
+    const auth = await assertPlayer(supabaseAdmin, gameId, resumeToken)
+    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+    if (auth.player.participant_id !== participantId) {
       return NextResponse.json({ error: 'You can only delete your own photo' }, { status: 403 })
     }
 
     // Find existing photo to determine storage path
-    const { data: participant } = await supabase
+    const { data: participant } = await supabaseAdmin
       .from('participants')
       .select('id, photo_url')
       .eq('id', participantId)
-      .eq('game_id', gameId)
+      .eq('game_id', auth.id)
       .maybeSingle()
 
     if (!participant) {
@@ -184,11 +182,11 @@ export async function DELETE(req: NextRequest) {
 
     // Delete from storage — try all extensions since we don't know the original
     const extensions = ['jpg', 'png', 'webp', 'gif']
-    const paths = extensions.map((ext) => `${gameId}/${participantId}.${ext}`)
-    await supabase.storage.from('avatars').remove(paths)
+    const paths = extensions.map((ext) => `${auth.id}/${participantId}.${ext}`)
+    await supabaseAdmin.storage.from('avatars').remove(paths)
 
     // Set photo_url to null
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from('participants')
       .update({ photo_url: null })
       .eq('id', participantId)

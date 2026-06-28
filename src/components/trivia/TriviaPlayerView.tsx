@@ -300,7 +300,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
           currentName={myPlayerName}
           onRenamed={(name) => {
             setMyPlayerName(name)
-            setPlayerSession(gameCode, myPlayerId, name, 'both')
+            setPlayerSession(gameCode, myPlayerId, name, 'both', myResumeToken)
           }}
           onLeft={handlePlayerLeft}
           inLobby={game.status === 'waiting'}

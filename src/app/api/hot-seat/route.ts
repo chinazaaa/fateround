@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hotSeatSubmissionSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { supabase as supabaseReadonly } from '@/lib/supabase'
 import { assertPlayer } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
@@ -70,7 +71,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'roundId and gameId are required' }, { status: 400 })
   }
 
-  const supabase = getSupabaseAdmin()
+  // Public read — use the anon client (anon SELECT stays open); no need for the service role.
+  const supabase = supabaseReadonly
 
   // Check round status — only return submissions if round is finished
   const { data: round } = await supabase

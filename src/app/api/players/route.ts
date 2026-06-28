@@ -694,7 +694,7 @@ export async function POST(req: NextRequest) {
 
     // Late joiner as a player → auto-assign to the smallest team so they can play.
     if (gameRow.status === 'active' && !isSpectator) {
-      const { error: assignError } = await assignDescribeItLateJoinTeam(supabase, gameId, player.id)
+      const { error: assignError } = await assignDescribeItLateJoinTeam(getSupabaseAdmin(), gameId, player.id)
       if (assignError) {
         await getSupabaseAdmin().from('players').delete().eq('id', player.id)
         return NextResponse.json({ error: assignError }, { status: 500 })

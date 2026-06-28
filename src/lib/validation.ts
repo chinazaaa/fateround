@@ -354,9 +354,8 @@ export type DeletePlayerInput = z.infer<typeof deletePlayerSchema>
 
 export const promotePlayerSchema = z.object({
   gameCode: gameCodeString(),
-  playerId: uuidString('playerId'),
-  // Self-promotion (spectator → player) is authorized by the caller's resume_token, which
-  // must resolve to the same playerId.
+  // Self-promotion (spectator → player): the caller is resolved from their resume_token; no
+  // client-supplied playerId (the actor is always the token's own player).
   resumeToken: z.string().min(4),
 })
 

@@ -73,16 +73,27 @@ export async function DELETE(req: NextRequest) {
   const gameCode = gameId.toUpperCase()
   const admin = getSupabaseAdmin()
 
-  const { data: game } = await admin.from('games').select('host_token').eq('id', gameCode).maybeSingle()
+  const { data: game } = await admin
+    .from('games')
+    .select('host_token, status, game_type')
+    .eq('id', gameCode)
+    .maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  if (game.status !== 'waiting') return NextResponse.json({ error: 'Game already started' }, { status: 400 })
+  if (game.game_type !== 'who_said_this')
+    return NextResponse.json({ error: 'Game is not Who Said This' }, { status: 400 })
 
-  const { error } = await admin
+  const { data: removed, error } = await admin
     .from('anime_quote_pool')
     .update({ removed: true })
     .eq('id', quoteId)
     .eq('game_id', gameCode)
+    .select('id')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!removed || removed.length === 0) {
+    return NextResponse.json({ error: 'Quote not found' }, { status: 404 })
+  }
 
   return NextResponse.json({ success: true })
 }
