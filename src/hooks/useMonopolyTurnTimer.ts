@@ -2,11 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { MonopolyBoard, MonopolyPhase } from '@/types'
-
-function secondsUntil(deadlineAt: string | null | undefined): number {
-  if (!deadlineAt) return 0
-  return Math.max(0, Math.ceil((new Date(deadlineAt).getTime() - Date.now()) / 1000))
-}
+import { secondsUntil } from '@/lib/timer-format'
 
 const TIMED_PHASES: MonopolyPhase[] = ['roll', 'jail', 'buy', 'pay_rent', 'raise_funds', 'auction']
 

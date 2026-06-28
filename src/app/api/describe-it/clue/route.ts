@@ -4,13 +4,12 @@ import { processDescribeItClue } from '@/lib/describe-it'
 import { describeItClueSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const parsed = describeItClueSchema.safeParse(await req.json())
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
-  const { gameId, resumeToken, clue } = parsed.data
+  const { data, error: bodyError } = await parseJsonBody(req, describeItClueSchema)
+  if (bodyError) return bodyError
+  const { gameId, resumeToken, clue } = data
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

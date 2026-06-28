@@ -1,5 +1,5 @@
 import type { CrazyEightsCard, CrazyEightsSuit } from '@/types'
-import { CRAZY8_SUIT_SYMBOLS } from '@/lib/crazy-eights'
+import { CRAZY8_SUIT_SYMBOLS, isWildCard } from '@/lib/crazy-eights'
 
 /** Suit accent colors — hearts/diamonds red, spades/clubs near-black, joker violet. */
 export const CRAZY8_SUIT_COLORS: Record<CrazyEightsSuit, string> = {
@@ -22,9 +22,9 @@ const SIZE_PX = { sm: 16, md: 20, lg: 24 } as const
 const FONT_SIZE = { sm: 'text-[10px]', md: 'text-xs', lg: 'text-sm' } as const
 
 /**
- * Renders a card's suit symbol plus its rank label. Mirrors WhotShapeIcon: drive
- * everything off the card. On a dark card face (`variant="on-card"`) the glyphs go
- * white; otherwise hearts/diamonds are red and spades/clubs near-black.
+ * Renders a card's suit symbol plus its rank label. Drive everything off the card.
+ * Pips use real suit colors (hearts/diamonds red, spades/clubs near-black) on the light
+ * card faces; only the violet wild faces — the 8 and Jokers — get white pips for contrast.
  */
 export function CrazyEightsSuitIcon({
   card,
@@ -38,7 +38,10 @@ export function CrazyEightsSuitIcon({
   className?: string
 }) {
   const px = SIZE_PX[size]
-  const color = variant === 'on-card' ? '#ffffff' : CRAZY8_SUIT_COLORS[card.suit]
+  // Wild cards (8 + Jokers) get the violet face in CrazyEightsBoard — reuse the shared
+  // helper so face and pip colors stay in sync if the wild-card rule ever changes.
+  const onVioletFace = isWildCard(card)
+  const color = variant === 'on-card' && onVioletFace ? '#ffffff' : CRAZY8_SUIT_COLORS[card.suit]
 
   return (
     <span

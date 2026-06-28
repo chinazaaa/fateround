@@ -4,12 +4,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { wordHuntTimerSeconds } from '@/lib/word-hunt'
 import type { Game } from '@/types'
-
-function formatCountdown(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
+import { formatMinutesSeconds } from '@/lib/timer-format'
 
 export function useWordHuntGameTimer(
   gameCode: string,
@@ -82,6 +77,6 @@ export function useWordHuntGameTimer(
     secondsLeft,
     durationSeconds: duration,
     timeUp: active && secondsLeft <= 0,
-    label: formatCountdown(secondsLeft),
+    label: formatMinutesSeconds(secondsLeft),
   }
 }

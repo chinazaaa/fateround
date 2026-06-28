@@ -9,13 +9,12 @@ import {
 } from '@/lib/describe-it'
 import { parseDescribeItWords } from '@/lib/describe-it-words'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const parsed = describeItSettingsSchema.safeParse(await req.json())
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
-  const { gameId, hostToken, mode, numTeams, turnSeconds, rounds, maxPlayers, words } = parsed.data
+  const { data, error: bodyError } = await parseJsonBody(req, describeItSettingsSchema)
+  if (bodyError) return bodyError
+  const { gameId, hostToken, mode, numTeams, turnSeconds, rounds, maxPlayers, words } = data
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

@@ -1,10 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-
-function secondsUntil(deadlineAt: string): number {
-  return Math.max(0, Math.ceil((new Date(deadlineAt).getTime() - Date.now()) / 1000))
-}
+import { secondsUntil } from '@/lib/timer-format'
 
 /** Fixed-length countdown; resets whenever `enabled` becomes true. */
 export function useMonopolyFixedTimer(seconds: number, enabled: boolean, onExpire: () => void): number {

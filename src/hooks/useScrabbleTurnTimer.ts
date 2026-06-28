@@ -2,11 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { ScrabbleSession } from '@/types'
-
-function secondsUntil(at: string | null | undefined): number {
-  if (!at) return 0
-  return Math.max(0, Math.ceil((new Date(at).getTime() - Date.now()) / 1000))
-}
+import { secondsUntil } from '@/lib/timer-format'
 
 /**
  * Per-turn countdown for Scrabble. Shows the time left on the current turn and,

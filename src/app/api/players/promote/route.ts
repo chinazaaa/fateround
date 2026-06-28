@@ -7,14 +7,13 @@ import { allowLatePlayers, playerIsViewer } from '@/lib/viewers'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import type { Game } from '@/types'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const parsed = promotePlayerSchema.safeParse(await req.json())
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data, error: bodyError } = await parseJsonBody(req, promotePlayerSchema)
+  if (bodyError) return bodyError
 
-  const { gameCode, resumeToken } = parsed.data
+  const { gameCode, resumeToken } = data
   const gameId = gameCode.toUpperCase()
 
   const supabase = getSupabaseAdmin()

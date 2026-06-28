@@ -2,11 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { DescribeItSession } from '@/types'
-
-function secondsUntil(at: string | null | undefined): number {
-  if (!at) return 0
-  return Math.max(0, Math.ceil((new Date(at).getTime() - Date.now()) / 1000))
-}
+import { secondsUntil } from '@/lib/timer-format'
 
 /**
  * Drives the Describe It clocks. The countdown is displayed for everyone watching

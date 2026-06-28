@@ -85,3 +85,35 @@ resource "aws_ssm_parameter" "livekit_api_secret" {
   value = var.livekit_api_secret
   tags  = { Name = "${var.name_prefix}-livekit-api-secret" }
 }
+
+# Cloudflare Origin Certificate for Caddy (only when origin TLS is enabled).
+# base64-encoded so multi-line PEM survives SSM/CLI round-trips intact.
+resource "aws_ssm_parameter" "origin_cert" {
+  count = var.enable_origin_tls ? 1 : 0
+  name  = "/${var.name_prefix}/ORIGIN_CERT_B64"
+  type  = "SecureString"
+  value = base64encode(var.origin_cert)
+  tags  = { Name = "${var.name_prefix}-origin-cert" }
+
+  lifecycle {
+    precondition {
+      condition     = trimspace(var.origin_cert) != ""
+      error_message = "origin_cert is required when enable_origin_tls = true (set TF_VAR_origin_cert)."
+    }
+  }
+}
+
+resource "aws_ssm_parameter" "origin_key" {
+  count = var.enable_origin_tls ? 1 : 0
+  name  = "/${var.name_prefix}/ORIGIN_KEY_B64"
+  type  = "SecureString"
+  value = base64encode(var.origin_key)
+  tags  = { Name = "${var.name_prefix}-origin-key" }
+
+  lifecycle {
+    precondition {
+      condition     = trimspace(var.origin_key) != ""
+      error_message = "origin_key is required when enable_origin_tls = true (set TF_VAR_origin_key)."
+    }
+  }
+}

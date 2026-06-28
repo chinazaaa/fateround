@@ -50,6 +50,7 @@ resource "aws_instance" "app" {
     name_prefix           = var.name_prefix
     app_port              = var.app_port
     tick_interval_seconds = var.tick_interval_seconds
+    enable_caddy          = var.enable_origin_tls
   })
 
   # Re-run the bootstrap when config changes (app_image_tag, app_port, tick): a

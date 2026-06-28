@@ -2,11 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { LudoSession } from '@/types'
-
-function secondsUntil(deadlineAt: string | null | undefined): number {
-  if (!deadlineAt) return 0
-  return Math.max(0, Math.ceil((new Date(deadlineAt).getTime() - Date.now()) / 1000))
-}
+import { secondsUntil } from '@/lib/timer-format'
 
 export function useLudoTurnTimer(gameCode: string, session: LudoSession | null, enabled: boolean) {
   const [secondsLeft, setSecondsLeft] = useState(0)

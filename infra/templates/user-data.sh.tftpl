@@ -2,6 +2,8 @@
 set -euo pipefail
 exec > >(tee /var/log/user-data.log) 2>&1
 
+ENABLE_CADDY="${enable_caddy}"
+
 retry() {
   local i
   for i in 1 2 3 4 5; do
@@ -35,6 +37,7 @@ REPO="${ecr_repo_url}"
 TAG="$${1:-${image_tag}}"
 PREFIX="${name_prefix}"
 APP_PORT="${app_port}"
+ENABLE_CADDY="${enable_caddy}"
 
 retry() {
   local i
@@ -64,10 +67,14 @@ KLIPY_API_KEY=$(get_param --with-decryption --name "/$PREFIX/KLIPY_API_KEY")
 LIVEKIT_API_KEY=$(get_param --with-decryption --name "/$PREFIX/LIVEKIT_API_KEY")
 LIVEKIT_API_SECRET=$(get_param --with-decryption --name "/$PREFIX/LIVEKIT_API_SECRET")
 
+# With Caddy (origin TLS) the app is private behind Caddy on localhost:8080.
+# Without it, the app is published directly on :80.
+if [ "$ENABLE_CADDY" = "true" ]; then PORT_PUBLISH="127.0.0.1:8080:$APP_PORT"; else PORT_PUBLISH="80:$APP_PORT"; fi
+
 retry docker pull "$REPO:$TAG"
 docker rm -f app 2>/dev/null || true
 docker run -d --name app --restart always \
-  -p "80:$APP_PORT" \
+  -p "$PORT_PUBLISH" \
   -e NODE_ENV=production \
   -e PORT="$APP_PORT" \
   -e NEXT_PUBLIC_SUPABASE_URL="$SUPABASE_URL" \
@@ -92,7 +99,47 @@ chmod 750 /usr/local/bin/redeploy.sh
 # Initial deploy.
 /usr/local/bin/redeploy.sh
 
-# Freeze-recovery tick via systemd (replaces Lambda/EventBridge).
+# Origin TLS via Caddy: terminate HTTPS on :443 with the Cloudflare Origin
+# Certificate and reverse-proxy to the app on localhost:8080 (Full-strict).
+if [ "$ENABLE_CADDY" = "true" ]; then
+  retry curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=amd64" -o /usr/bin/caddy
+  chmod +x /usr/bin/caddy
+  mkdir -p /etc/caddy
+  aws ssm get-parameter --region "${aws_region}" --with-decryption --name "/${name_prefix}/ORIGIN_CERT_B64" --query 'Parameter.Value' --output text | base64 -d > /etc/caddy/origin.crt
+  aws ssm get-parameter --region "${aws_region}" --with-decryption --name "/${name_prefix}/ORIGIN_KEY_B64" --query 'Parameter.Value' --output text | base64 -d > /etc/caddy/origin.key
+  chmod 600 /etc/caddy/origin.key
+  cat > /etc/caddy/Caddyfile <<'CADDY'
+{
+  auto_https off
+}
+:443 {
+  tls /etc/caddy/origin.crt /etc/caddy/origin.key
+  reverse_proxy 127.0.0.1:8080
+}
+:80 {
+  redir https://{host}{uri} permanent
+}
+CADDY
+  cat > /etc/systemd/system/caddy.service <<'CADDYSVC'
+[Unit]
+Description=Caddy origin TLS proxy
+After=network.target docker.service
+
+[Service]
+ExecStart=/usr/bin/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+Restart=on-failure
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+CADDYSVC
+  systemctl daemon-reload
+  systemctl enable --now caddy
+fi
+
+# Freeze-recovery tick via systemd (replaces Lambda/EventBridge). Hit the app
+# directly (8080 behind Caddy, else 80) — bypassing the HTTPS redirect.
+if [ "$ENABLE_CADDY" = "true" ]; then TICK_URL="http://localhost:8080"; else TICK_URL="http://localhost:80"; fi
 CRON_SECRET=$(retry aws ssm get-parameter --region "${aws_region}" --with-decryption --name "/${name_prefix}/CRON_SECRET" --query 'Parameter.Value' --output text)
 cat > /etc/systemd/system/fateround-tick.service <<EOF
 [Unit]
@@ -102,7 +149,7 @@ After=docker.service
 [Service]
 Type=oneshot
 TimeoutStartSec=30
-ExecStart=/usr/bin/curl -fsS --max-time 20 -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:80/api/describe-it/tick
+ExecStart=/usr/bin/curl -fsS --max-time 20 -X POST -H "Authorization: Bearer $CRON_SECRET" $TICK_URL/api/describe-it/tick
 EOF
 chmod 600 /etc/systemd/system/fateround-tick.service
 

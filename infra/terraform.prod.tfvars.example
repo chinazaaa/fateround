@@ -41,3 +41,8 @@ admin_session_secret      = "REPLACE_WITH_SESSION_SECRET"
 klipy_api_key             = "REPLACE_WITH_KLIPY_KEY"
 livekit_api_key           = "REPLACE_WITH_LIVEKIT_KEY"
 livekit_api_secret        = "REPLACE_WITH_LIVEKIT_SECRET"
+
+# Origin TLS (Caddy + Cloudflare Origin Certificate) for Full (strict).
+# The cert + key are NOT placed here — export them as TF_VAR_origin_cert /
+# TF_VAR_origin_key (e.g. in ~/.config/shell/secrets.sh) so they never touch a file.
+enable_origin_tls = true

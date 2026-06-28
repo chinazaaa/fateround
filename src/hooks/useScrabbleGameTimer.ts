@@ -3,14 +3,7 @@
 import { useEffect } from 'react'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import type { Game } from '@/types'
-
-function formatCountdown(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${m}:${String(s).padStart(2, '0')}`
-}
+import { formatCountdown } from '@/lib/timer-format'
 
 /** Whole-game countdown for Scrabble. Mirrors the Monopoly game clock: shows the
  *  time left and, once it expires, repeatedly asks the server to end the game

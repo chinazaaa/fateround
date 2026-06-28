@@ -4,13 +4,12 @@ import { processDescribeItSkip } from '@/lib/describe-it'
 import { describeItPlayerActionSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const parsed = describeItPlayerActionSchema.safeParse(await req.json())
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
-  const { gameId, resumeToken } = parsed.data
+  const { data, error: bodyError } = await parseJsonBody(req, describeItPlayerActionSchema)
+  if (bodyError) return bodyError
+  const { gameId, resumeToken } = data
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

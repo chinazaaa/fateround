@@ -174,3 +174,23 @@ variable "livekit_api_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "enable_origin_tls" {
+  description = "Run Caddy on the instance to terminate HTTPS with a Cloudflare Origin Certificate (Full-strict). When false, the app serves plain HTTP:80 (Flexible)."
+  type        = bool
+  default     = false
+}
+
+variable "origin_cert" {
+  description = "Cloudflare Origin Certificate (PEM). Required when enable_origin_tls = true. Provide via TF_VAR_origin_cert."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "origin_key" {
+  description = "Private key (PEM) for the Origin Certificate. Required when enable_origin_tls = true. Provide via TF_VAR_origin_key."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

@@ -5,11 +5,7 @@ import { playRoundStartSound, playRoundEndSound, playGameFinishedSound, playDice
 import { useToast } from '@/components/ui/Toast'
 import type { Game, SnakeLadderSession } from '@/types'
 import { currentPlayerId } from '@/lib/snake-and-ladder'
-
-function secondsUntil(deadlineAt: string | null | undefined): number {
-  if (!deadlineAt) return 0
-  return Math.max(0, Math.ceil((new Date(deadlineAt).getTime() - Date.now()) / 1000))
-}
+import { secondsUntil } from '@/lib/timer-format'
 
 export function useSnakeLadderTurnTimer(gameCode: string, session: SnakeLadderSession | null, enabled: boolean) {
   const [secondsLeft, setSecondsLeft] = useState(0)

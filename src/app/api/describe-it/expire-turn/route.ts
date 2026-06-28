@@ -3,16 +3,15 @@ import { parseGameType, isDescribeItGame } from '@/lib/game-types'
 import { processDescribeItExpireTurn } from '@/lib/describe-it'
 import { describeItGameSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 // System/timer route: any client may poke it, but processDescribeItExpireTurn
 // only acts once the turn deadline has genuinely passed, so there's no
 // per-player token to authorize. Writes go through the service role.
 export async function POST(req: NextRequest) {
-  const parsed = describeItGameSchema.safeParse(await req.json())
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
-  const code = parsed.data.gameId.toUpperCase()
+  const { data, error: bodyError } = await parseJsonBody(req, describeItGameSchema)
+  if (bodyError) return bodyError
+  const code = data.gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase.from('games').select('game_type').eq('id', code).maybeSingle()

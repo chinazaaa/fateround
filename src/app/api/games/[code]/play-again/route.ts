@@ -325,8 +325,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
+  // Service role: `players` is RLS read-only for anon (core-gameplay lockdown), so the
+  // anon client silently updates 0 rows here — leaving everyone auto-ready. Use admin.
   const { error: spectatorResetError } = await resetSpectatorsForLobby(
-    supabase,
+    getSupabaseAdmin(),
     gameId,
     hostPlayerId ? [hostPlayerId] : []
   )
