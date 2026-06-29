@@ -149,6 +149,10 @@ function lateJoinChoiceError(
 }
 
 function spectatorOnJoin(game: Game, joinAsViewer: boolean | undefined): boolean {
+  // An explicit "watch only" join (e.g. tournament spectators) is always a spectator,
+  // even while the game is still in the lobby — spectatorForActiveJoin only spectates
+  // active games, which would otherwise make a lobby watcher a real player.
+  if (joinAsViewer === true) return true
   return spectatorForActiveJoin(game, joinAsViewer)
 }
 

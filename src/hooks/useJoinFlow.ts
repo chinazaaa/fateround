@@ -165,13 +165,17 @@ export function useJoinFlow(deps: JoinFlowDeps) {
 
       const gameType = parseGameType(game?.game_type)
       const activeJoinExtras =
-        game?.status === 'active'
-          ? gameOffersLateJoinChoice(gameType)
-            ? { joinAsViewer }
-            : allowLatePlayers(game!)
-              ? {}
-              : { joinAsViewer: true }
-          : {}
+        // An explicit viewer join must mark spectator even before the game is active
+        // (tournament watchers arrive while the game is still in the lobby).
+        joinAsViewer === true
+          ? { joinAsViewer: true }
+          : game?.status === 'active'
+            ? gameOffersLateJoinChoice(gameType)
+              ? { joinAsViewer }
+              : allowLatePlayers(game!)
+                ? {}
+                : { joinAsViewer: true }
+            : {}
 
       const isSelfEdit = Boolean(editingJoin && myPlayerId)
       let editResumeToken: string | null = null
