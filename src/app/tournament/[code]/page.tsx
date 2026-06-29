@@ -59,6 +59,7 @@ export default function TournamentLobbyPage() {
   const [uploadMsg, setUploadMsg] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const forwardedGameRef = useRef<string | null>(null)
 
   const hostToken = typeof window !== 'undefined' ? localStorage.getItem(`tournament_host_${tournamentId}`) : null
   const isHost = Boolean(hostToken)
@@ -94,6 +95,18 @@ export default function TournamentLobbyPage() {
       setJoined(true)
     }
   }, [tournamentId])
+
+  // Auto-forward joined players into a game as soon as the host starts it, so
+  // they don't have to find it themselves. The host stays on the lobby to manage.
+  useEffect(() => {
+    if (!joined || isHost || tournament?.status === 'finished') return
+    const active = games.find((g) => g.status === 'active')
+    if (!active || forwardedGameRef.current === active.game_id) return
+    forwardedGameRef.current = active.game_id
+    const name = localStorage.getItem(`tournament_player_${tournamentId}`)
+    const suffix = name ? `?name=${encodeURIComponent(name)}&tournament=${tournamentId}` : ''
+    router.push(`/game/${active.game_id}${suffix}`)
+  }, [joined, isHost, tournament?.status, games, tournamentId, router])
 
   async function handleJoin() {
     if (!playerName.trim()) return
