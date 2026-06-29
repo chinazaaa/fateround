@@ -29,6 +29,7 @@ import type { Game, Player, WhotPlayerHand, WhotSession, WhotShape } from '@/typ
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
@@ -136,29 +137,8 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     load()
   }, [load])
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`whot-player-${gameCode}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        () => void load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'whot_sessions', filter: `game_id=eq.${gameCode}` },
-        () => void load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'whot_player_hands', filter: `game_id=eq.${gameCode}` },
-        () => void load()
-      )
-      .subscribe()
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, load])
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'whot_sessions', 'whot_player_hands'], load)
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

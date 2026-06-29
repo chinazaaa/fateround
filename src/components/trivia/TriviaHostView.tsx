@@ -20,6 +20,7 @@ import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/ut
 import type { Game, Player, Round, TriviaAnswer } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 
 type HostTab = 'play' | 'manage'
@@ -88,55 +89,8 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`trivia-host-${gameCode}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        (p) => {
-          setGame(p.new as Game)
-          void load()
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        (p) => {
-          const player = p.new as Player
-          setPlayers((prev) => (prev.some((x) => x.id === player.id) ? prev : [...prev, player]))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        (p) => {
-          const player = p.old as Player
-          setPlayers((prev) => prev.filter((x) => x.id !== player.id))
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
-        () => {
-          load()
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'trivia_answers', filter: `game_id=eq.${gameCode}` },
-        (p) => {
-          const row = p.new as TriviaAnswer
-          setAnswers((prev) => (prev.some((a) => a.id === row.id) ? prev : [...prev, row]))
-          load()
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, load])
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'players', 'rounds', 'trivia_answers'], load)
 
   usePolling(
     async () => {

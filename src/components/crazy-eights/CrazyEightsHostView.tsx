@@ -28,6 +28,7 @@ import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/ut
 import type { Game, Player, CrazyEightsPlayerHand, CrazyEightsSession, CrazyEightsCalledSuit } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
@@ -102,34 +103,12 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
     else if (game?.status === 'finished') setTab('manage')
   }, [game?.status])
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`crazy-eights-host-${gameCode}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        () => void load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        () => void load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'crazy_eights_sessions', filter: `game_id=eq.${gameCode}` },
-        () => void load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'crazy_eights_player_hands', filter: `game_id=eq.${gameCode}` },
-        () => void load()
-      )
-      .subscribe()
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, load])
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(
+    gameCode,
+    ['players', { table: 'games', column: 'id' }, 'crazy_eights_sessions', 'crazy_eights_player_hands'],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

@@ -42,6 +42,7 @@ import {
 import type { Game, MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useMonopolyNotifications } from '@/hooks/useMonopolyNotifications'
@@ -114,34 +115,12 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
     else if (game?.status === 'finished') setTab('manage')
   }, [game?.status])
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`monopoly-host-${gameCode}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        () => void load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        () => void load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'monopoly_boards', filter: `game_id=eq.${gameCode}` },
-        () => void load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'monopoly_player_state', filter: `game_id=eq.${gameCode}` },
-        () => void load()
-      )
-      .subscribe()
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, load])
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'players', 'monopoly_boards', 'monopoly_player_state'],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

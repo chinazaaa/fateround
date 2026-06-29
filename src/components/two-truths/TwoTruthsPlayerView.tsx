@@ -21,6 +21,7 @@ import { resolvePlayerSession } from '@/lib/player-resume'
 import type { Game, Player, Round, TtlGuess, TtlStatement } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
@@ -104,33 +105,8 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     load()
   }, [load])
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`ttl-player-${gameCode}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` }, () =>
-        load()
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
-        () => load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'ttl_statements', filter: `game_id=eq.${gameCode}` },
-        () => load()
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'ttl_guesses', filter: `game_id=eq.${gameCode}` },
-        () => load()
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, load])
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'rounds', 'ttl_statements', 'ttl_guesses'], load)
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

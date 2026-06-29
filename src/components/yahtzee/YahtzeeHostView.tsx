@@ -32,6 +32,7 @@ import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/ut
 import type { Game, Player, YahtzeeCategory, YahtzeePlayerScore, YahtzeeSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useYahtzeeTurnTimer } from '@/hooks/useYahtzeeTurnTimer'
@@ -115,34 +116,12 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
     else if (game?.status === 'finished') setTab('manage')
   }, [game?.status])
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`yahtzee-host-${gameCode}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        () => void load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        () => void load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'yahtzee_sessions', filter: `game_id=eq.${gameCode}` },
-        () => void load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'yahtzee_player_scores', filter: `game_id=eq.${gameCode}` },
-        () => void load()
-      )
-      .subscribe()
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, load])
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'players', 'yahtzee_sessions', 'yahtzee_player_scores'],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

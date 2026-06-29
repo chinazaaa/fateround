@@ -14,6 +14,7 @@ import { resolvePlayerSession } from '@/lib/player-resume'
 import type { Game, NpatAnswer, NpatMark, Player, Round } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
@@ -91,33 +92,8 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
     load()
   }, [load])
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`npat-player-${gameCode}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` }, () =>
-        load()
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
-        () => load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'npat_answers', filter: `game_id=eq.${gameCode}` },
-        () => load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'npat_marks', filter: `game_id=eq.${gameCode}` },
-        () => load()
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, load])
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'rounds', 'npat_answers', 'npat_marks'], load)
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

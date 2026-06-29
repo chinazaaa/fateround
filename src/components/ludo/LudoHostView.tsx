@@ -25,6 +25,7 @@ import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/ut
 import type { Game, LudoDiceRoll, LudoPlayerState, LudoSession, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
@@ -95,38 +96,8 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     else if (game?.status === 'finished') setTab('manage')
   }, [game?.status])
 
-  // Coalesce the burst of postgres_changes events a single move produces into
-  // one reload, avoiding refetch storms and flicker from partial snapshots.
-  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const scheduleLoad = useCallback(() => {
-    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
-    reloadTimerRef.current = setTimeout(() => void load(), 90)
-  }, [load])
-
-  useEffect(() => {
-    const channel = supabase
-      .channel(`ludo-host-${gameCode}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        scheduleLoad
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'ludo_sessions', filter: `game_id=eq.${gameCode}` },
-        scheduleLoad
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'ludo_player_state', filter: `game_id=eq.${gameCode}` },
-        scheduleLoad
-      )
-      .subscribe()
-    return () => {
-      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, scheduleLoad])
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'ludo_sessions', 'ludo_player_state'], load)
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

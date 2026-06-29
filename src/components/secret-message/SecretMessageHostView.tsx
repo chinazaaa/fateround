@@ -17,6 +17,7 @@ import { useToast } from '@/components/ui/Toast'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 
 export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
@@ -45,20 +46,8 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
     load()
   }, [load])
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`secret-host-${gameCode}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        (payload) => setGame(payload.new as Game)
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode])
+  // Realtime push: reload on any change to this game's row.
+  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }], load)
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.slow })
 

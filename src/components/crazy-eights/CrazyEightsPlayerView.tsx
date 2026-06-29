@@ -29,6 +29,7 @@ import type { Game, Player, CrazyEightsPlayerHand, CrazyEightsSession, CrazyEigh
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
@@ -144,34 +145,12 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     load()
   }, [load])
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`crazy-eights-player-${gameCode}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        () => void load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        () => void load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'crazy_eights_sessions', filter: `game_id=eq.${gameCode}` },
-        () => void load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'crazy_eights_player_hands', filter: `game_id=eq.${gameCode}` },
-        () => void load()
-      )
-      .subscribe()
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, load])
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(
+    gameCode,
+    ['players', { table: 'games', column: 'id' }, 'crazy_eights_sessions', 'crazy_eights_player_hands'],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

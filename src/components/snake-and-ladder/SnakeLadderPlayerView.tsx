@@ -25,6 +25,7 @@ import type { Game, Player, SnakeLadderPlayerState, SnakeLadderSession } from '@
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
@@ -147,41 +148,12 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
     load()
   }, [load])
 
-  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const scheduleLoad = useCallback(() => {
-    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
-    reloadTimerRef.current = setTimeout(() => void load(), 90)
-  }, [load])
-
-  useEffect(() => {
-    const channel = supabase
-      .channel(`snake-ladder-player-${gameCode}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        scheduleLoad
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        scheduleLoad
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'snake_ladder_sessions', filter: `game_id=eq.${gameCode}` },
-        scheduleLoad
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'snake_ladder_player_state', filter: `game_id=eq.${gameCode}` },
-        scheduleLoad
-      )
-      .subscribe()
-    return () => {
-      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, scheduleLoad])
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'players', 'snake_ladder_sessions', 'snake_ladder_player_state'],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

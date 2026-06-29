@@ -27,6 +27,7 @@ import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import type { Game, Player, Round, TtlGuess, TtlStatement } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 
 type HostTab = 'play' | 'manage'
@@ -98,43 +99,12 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
     }
   }, [gameCode, load])
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`ttl-host-${gameCode}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        (p) => {
-          setGame(p.new as Game)
-          void load()
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        () => load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'ttl_statements', filter: `game_id=eq.${gameCode}` },
-        () => load()
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
-        () => load()
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'ttl_guesses', filter: `game_id=eq.${gameCode}` },
-        () => load()
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, load])
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'players', 'ttl_statements', 'rounds', 'ttl_guesses'],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

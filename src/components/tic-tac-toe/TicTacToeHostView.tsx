@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
@@ -17,6 +17,7 @@ import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/ut
 import type { Game, Player, TicTacToeSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTicTacToeTurnTimer } from '@/hooks/useTicTacToeTurnTimer'
@@ -98,31 +99,8 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
     else if (game?.status === 'active') setTab('play')
   }, [game?.status, session])
 
-  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const scheduleLoad = useCallback(() => {
-    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
-    reloadTimerRef.current = setTimeout(() => void load(), 90)
-  }, [load])
-
-  useEffect(() => {
-    const channel = supabase
-      .channel(`tic-tac-toe-host-${gameCode}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        scheduleLoad
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tic_tac_toe_sessions', filter: `game_id=eq.${gameCode}` },
-        scheduleLoad
-      )
-      .subscribe()
-    return () => {
-      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, scheduleLoad])
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'tic_tac_toe_sessions'], load)
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

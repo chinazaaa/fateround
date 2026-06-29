@@ -37,6 +37,7 @@ import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import type { Game, NpatAnswer, NpatMark, Player, Round } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
@@ -114,38 +115,12 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     }
   }, [gameCode, load])
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`npat-host-${gameCode}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` }, () =>
-        load()
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
-        () => load()
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
-        () => load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'npat_answers', filter: `game_id=eq.${gameCode}` },
-        () => load()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'npat_marks', filter: `game_id=eq.${gameCode}` },
-        () => load()
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, load])
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'players', 'rounds', 'npat_answers', 'npat_marks'],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
