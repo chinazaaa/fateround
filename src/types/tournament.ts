@@ -1,3 +1,10 @@
+export interface TournamentEliminationConfig {
+  mode: 'lives'
+  startingLives: number
+  livesLostRule: 'bottom-n'
+  eliminateCount: number
+}
+
 export interface Tournament {
   id: string
   host_token: string
@@ -5,6 +12,7 @@ export interface Tournament {
   status: 'waiting' | 'active' | 'finished'
   placement_points: number[]
   target_game_count: number | null
+  elimination_config: TournamentEliminationConfig | null
   created_at: string
 }
 

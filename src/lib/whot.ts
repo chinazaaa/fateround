@@ -56,29 +56,58 @@ export type WhotStanding = {
   rank: number
 }
 
-export function buildWhotStandings(
-  hands: WhotPlayerHand[],
-  players: { id: string; name: string }[],
-  turnOrder: string[]
-): WhotStanding[] {
+/** Minimal hand shape `whotPlacementOrder` needs — works for both `WhotPlayerHand`
+ *  rows and the trimmed `{ player_id, cards }` rows the room-points query selects. */
+type WhotRankableHand = { player_id: string; cards: WhotCard[] }
+
+/**
+ * Final placement order (1st → last), the single source of truth for who placed where.
+ *
+ * Players who emptied their hand rank FIRST, in the exact order they finished
+ * (`finishOrder`) — in Whot, first to empty wins, and in a timed game the runners-up
+ * are credited by when they went out. Everyone still holding cards follows, ordered by
+ * lowest hand total then fewest cards. Without this, all finished players tie at
+ * 0 cards / hand-sum 0 and the sort ordered them arbitrarily.
+ */
+export function whotPlacementOrder(hands: WhotRankableHand[], turnOrder: string[], finishOrder: string[]): string[] {
   const activeIds = new Set(turnOrder ?? [])
-  const rows = hands
-    .filter((h) => activeIds.has(h.player_id))
+  const finished = (finishOrder ?? []).filter((id) => activeIds.has(id))
+  const finishedSet = new Set(finished)
+  const remaining = hands
+    .filter((h) => activeIds.has(h.player_id) && !finishedSet.has(h.player_id))
     .map((h) => {
       const cards = (h.cards as WhotCard[]) ?? []
-      return {
-        playerId: h.player_id,
-        name: players.find((p) => p.id === h.player_id)?.name ?? 'Player',
-        cardCount: cards.length,
-        handSum: whotHandSum(cards),
-      }
+      return { playerId: h.player_id, handSum: whotHandSum(cards), cardCount: cards.length }
     })
     .sort((a, b) => {
       if (a.handSum !== b.handSum) return a.handSum - b.handSum
-      return a.cardCount - b.cardCount
+      if (a.cardCount !== b.cardCount) return a.cardCount - b.cardCount
+      // Stable final tiebreak on a unique field so the finisher and the room-points call
+      // sites — which read hands from separate queries — always agree on tied boards.
+      return a.playerId.localeCompare(b.playerId)
     })
+    .map((r) => r.playerId)
+  return [...finished, ...remaining]
+}
 
-  return rows.map((row, index) => ({ ...row, rank: index + 1 }))
+export function buildWhotStandings(
+  hands: WhotPlayerHand[],
+  players: { id: string; name: string }[],
+  turnOrder: string[],
+  finishOrder: string[] = []
+): WhotStanding[] {
+  const activeIds = new Set(turnOrder ?? [])
+  const byId = new Map(hands.filter((h) => activeIds.has(h.player_id)).map((h) => [h.player_id, h]))
+  return whotPlacementOrder(hands, turnOrder, finishOrder).map((playerId, index) => {
+    const cards = (byId.get(playerId)?.cards as WhotCard[]) ?? []
+    return {
+      playerId,
+      name: players.find((p) => p.id === playerId)?.name ?? 'Player',
+      cardCount: cards.length,
+      handSum: whotHandSum(cards),
+      rank: index + 1,
+    }
+  })
 }
 
 export function whotGameSessionExpired(
@@ -567,31 +596,28 @@ async function finishWhotByLowestHand(
   playerNames: Map<string, string>,
   reasonPrefix: string
 ): Promise<boolean> {
-  const activeIds = new Set(session.turn_order ?? [])
-  let winnerId: string | null = null
-  let winnerSum = Infinity
-  let winnerCount = Infinity
-
-  for (const hand of hands) {
-    if (!activeIds.has(hand.player_id)) continue
-    const cards = (hand.cards as WhotCard[]) ?? []
-    const sum = whotHandSum(cards)
-    const count = cards.length
-    if (sum < winnerSum || (sum === winnerSum && count < winnerCount)) {
-      winnerSum = sum
-      winnerCount = count
-      winnerId = hand.player_id
-    }
-  }
-
+  // Placement: whoever emptied their hand first wins (finish_order), then everyone
+  // still holding cards by lowest hand total. This keeps the timer/no-moves endings
+  // consistent with the in-game results — the first to go out is never demoted below
+  // a player who merely had a small hand when the clock ran out.
+  const finishOrder = session.finish_order ?? []
+  const winnerId = whotPlacementOrder(hands, session.turn_order ?? [], finishOrder)[0] ?? null
   const winnerName = winnerId ? playerName(playerNames, winnerId) : 'Nobody'
+
+  let detail = 'lowest hand total'
+  if (winnerId && finishOrder.includes(winnerId)) {
+    detail = 'emptied their hand first'
+  } else if (winnerId) {
+    const winnerHand = hands.find((h) => h.player_id === winnerId)
+    detail = `lowest hand total (${whotHandSum((winnerHand?.cards as WhotCard[]) ?? [])})`
+  }
 
   const { data } = await supabase
     .from('whot_sessions')
     .update({
       phase: 'finished',
       winner_player_id: winnerId,
-      status_message: `${reasonPrefix} ${winnerName} wins — lowest hand total (${winnerSum}).`,
+      status_message: `${reasonPrefix} ${winnerName} wins — ${detail}.`,
       turn_deadline_at: null,
       updated_at: new Date().toISOString(),
     })
@@ -621,17 +647,23 @@ function playerOutPatch(
   board: Partial<WhotSession>
 ): Partial<WhotSession> {
   const remaining = (session.turn_order ?? []).filter((id) => id !== playerId && whotHandCount(hands, id) > 0)
+  // Append this player to the finish order the moment they empty their hand, so a timed
+  // game can rank everyone by WHEN they went out (not just by hand size at the buzzer).
+  const finishOrder = [...(session.finish_order ?? []), playerId]
+  // First to empty wins — even when a later finisher triggers the end condition below.
+  const winnerId = finishOrder[0]
 
-  // The game ends — and the player who just emptied their hand wins — when it can't
-  // meaningfully continue: an untimed game finishes the moment someone goes out, and
-  // ANY game finishes once fewer than 2 players still hold cards (heads-up: the last
-  // remaining player can't play on alone, so don't strand them waiting for the timer).
+  // The game ends when it can't meaningfully continue: an untimed game finishes the
+  // moment someone goes out, and ANY game finishes once fewer than 2 players still hold
+  // cards (heads-up: the last remaining player can't play on alone, so don't strand them
+  // waiting for the timer). The winner is whoever emptied first, not the current player.
   if (gameDurationSeconds <= 0 || remaining.length < 2) {
     return {
       ...board,
       phase: 'finished',
-      winner_player_id: playerId,
-      status_message: `${name} wins!`,
+      finish_order: finishOrder,
+      winner_player_id: winnerId,
+      status_message: `${playerName(playerNames, winnerId)} wins!`,
     }
   }
 
@@ -643,6 +675,7 @@ function playerOutPatch(
     ...board,
     current_turn_index: nextIndex,
     phase: 'playing',
+    finish_order: finishOrder,
     status_message: `${playerName(playerNames, nextId)}'s turn${matchHint} — ${name} is out (${remaining.length} left)`,
   }
 }

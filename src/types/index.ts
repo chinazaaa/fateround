@@ -207,6 +207,8 @@ export interface Game {
   /** Secret host credential. Only present on server-side (service-role) reads; never
    *  exposed to clients (migration 0122), so optional on this shared type. */
   host_token?: string
+  /** Set when this game belongs to a tournament (links back to tournaments.id). */
+  tournament_id?: string | null
   rounds_count: number
   timer_seconds: number
   /** Scrabble — which word list to validate plays against (default 'enable'). */
@@ -458,6 +460,8 @@ export interface WhotSession {
   pick_five_stack: number
   status_message: string | null
   winner_player_id: string | null
+  /** Player ids in the order they emptied their hands. Drives final placement. */
+  finish_order: string[]
   turn_deadline_at: string | null
   created_at: string
   updated_at: string
@@ -504,6 +508,8 @@ export interface CrazyEightsSession {
   joker_penalty: number
   status_message: string | null
   winner_player_id: string | null
+  /** Player ids in the order they emptied their hands. Drives final placement. */
+  finish_order: string[]
   turn_deadline_at: string | null
   created_at: string
   updated_at: string

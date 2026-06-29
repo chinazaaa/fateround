@@ -39,6 +39,10 @@ export const addTournamentGameSchema = z.object({
       timer_seconds: z.coerce.number().optional(),
     })
     .optional(),
+  questionSource: z.enum(['platform', 'custom']).optional(),
+  // Custom trivia questions uploaded by the host. Loosely typed here and
+  // re-validated server-side at game start via parseStoredTriviaQuestions.
+  customQuestions: z.array(z.unknown()).max(1000).optional().nullable(),
 })
 
 export const TOURNAMENT_ELIGIBLE_TYPES = ['trivia'] as const
