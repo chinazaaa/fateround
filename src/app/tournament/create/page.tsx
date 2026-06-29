@@ -188,7 +188,10 @@ export default function TournamentCreatePage() {
                 <div>
                   <p className="text-body text-sm font-medium">Players who lose a life each game</p>
                   <p className="text-faint text-xs mt-0.5">
-                    The bottom {eliminateCount} finisher{eliminateCount === 1 ? '' : 's'} each lose 1 life
+                    {eliminateCount === 1
+                      ? 'The bottom finisher loses 1 life'
+                      : `The bottom ${eliminateCount} finishers each lose 1 life`}
+                  </p>
                   </p>
                 </div>
                 <Stepper value={eliminateCount} min={1} max={10} onChange={setEliminateCount} />
