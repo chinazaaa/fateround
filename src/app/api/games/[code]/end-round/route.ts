@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { hostActionSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
