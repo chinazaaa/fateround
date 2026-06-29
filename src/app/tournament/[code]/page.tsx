@@ -601,8 +601,10 @@ export default function TournamentLobbyPage() {
         <div className="glass-card-strong p-5 text-center space-y-2">
           <p className="font-bold text-body">Tournament full</p>
           <p className="text-muted text-sm">
-            This tournament has reached its {tournament.max_players}-player limit.
-            {activeGame ? ' You can still watch.' : ''}
+            This tournament has reached its {tournament.max_players}-player limit.{' '}
+            {activeGame
+              ? 'You can watch the live game below.'
+              : 'Stay on this page — you can watch once a game starts.'}
           </p>
           {activeGame && (
             <button
