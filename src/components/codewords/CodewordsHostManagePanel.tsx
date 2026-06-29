@@ -7,6 +7,7 @@ import { CodewordsBoardGrid } from '@/components/codewords/CodewordsBoardGrid'
 import { CodewordsLobbyRoster } from '@/components/codewords/CodewordsLobbyRoster'
 import { CodewordsScoreboard } from '@/components/codewords/CodewordsScoreboard'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
+import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
@@ -331,6 +332,10 @@ export function CodewordsHostManagePanel({
             </button>
           )}
         </div>
+      )}
+
+      {inLobby && players.length > 0 && (
+        <HostLobbyPlayersSection players={players} highlightPlayerId={null} alwaysShowReady />
       )}
 
       {/* Before you start — every other setup option lives here, collapsed by default */}
