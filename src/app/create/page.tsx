@@ -3061,7 +3061,9 @@ function CreateGameInner() {
                                     ? 'Paste questions:\nCoffee or Tea?\nBeach vacation or Mountain getaway?'
                                     : isNhie
                                       ? 'Paste prompts:\nbeen skydiving\nkissed a stranger\nsung karaoke sober'
-                                      : 'Paste questions:\nWho is most likely to become famous?\nWho is most likely to win a dance-off?'
+                                      : isTrivia
+                                        ? 'Paste questions (question, option A, B, C, D, correct):\nWhat is the capital of France?, London, Paris, Rome, Berlin, Paris'
+                                        : 'Paste questions:\nWho is most likely to become famous?\nWho is most likely to win a dance-off?'
                               }
                               rows={4}
                               className="input-field resize-none font-medium text-sm"
@@ -3269,113 +3271,99 @@ function CreateGameInner() {
             {isEliminationCompatible && (
               <SettingsGroup title="Elimination">
                 <div className="space-y-3">
-                  <label className="flex items-center gap-2 text-body text-sm">
-                    <input
-                      type="checkbox"
-                      checked={eliminationEnabled}
-                      onChange={(e) => setEliminationEnabled(e.target.checked)}
-                      className="accent-accent"
-                    />
-                    Enable elimination
-                  </label>
+                  <Toggle
+                    label="Enable elimination"
+                    description="Knock players out as the game goes on"
+                    value={eliminationEnabled}
+                    onChange={setEliminationEnabled}
+                  />
 
                   {eliminationEnabled && (
-                    <div className="surface-inset rounded-xl p-4 space-y-3">
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          aria-pressed={eliminationMode === 'per-round'}
-                          onClick={() => setEliminationMode('per-round')}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
-                            eliminationMode === 'per-round' ? 'bg-accent text-white' : 'bg-surface text-muted'
-                          }`}
-                        >
-                          Per-Round
-                        </button>
-                        <button
-                          type="button"
-                          aria-pressed={eliminationMode === 'lives'}
-                          onClick={() => setEliminationMode('lives')}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
-                            eliminationMode === 'lives' ? 'bg-accent text-white' : 'bg-surface text-muted'
-                          }`}
-                        >
-                          Lives
-                        </button>
-                      </div>
+                    <div className="surface-inset rounded-xl p-4 space-y-4 animate-stagger">
+                      <SegmentedControl
+                        value={eliminationMode}
+                        onChange={setEliminationMode}
+                        options={[
+                          { value: 'per-round', label: 'Per-Round', hint: 'Eliminate players every round' },
+                          { value: 'lives', label: 'Lives', hint: 'Players start with lives and lose them over time' },
+                        ]}
+                      />
 
                       {eliminationMode === 'per-round' && (
-                        <div className="space-y-2">
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              aria-pressed={eliminationRule === 'bottom-n'}
-                              onClick={() => setEliminationRule('bottom-n')}
-                              className={`px-3 py-1.5 rounded-lg text-xs ${
-                                eliminationRule === 'bottom-n' ? 'bg-accent text-white' : 'bg-surface text-muted'
-                              }`}
-                            >
-                              Bottom N
-                            </button>
-                            <button
-                              type="button"
-                              aria-pressed={eliminationRule === 'score-threshold'}
-                              onClick={() => setEliminationRule('score-threshold')}
-                              className={`px-3 py-1.5 rounded-lg text-xs ${
-                                eliminationRule === 'score-threshold' ? 'bg-accent text-white' : 'bg-surface text-muted'
-                              }`}
-                            >
-                              Score Threshold
-                            </button>
-                          </div>
+                        <div className="space-y-3">
+                          <SegmentedControl
+                            value={eliminationRule}
+                            onChange={setEliminationRule}
+                            options={[
+                              { value: 'bottom-n', label: 'Bottom N' },
+                              { value: 'score-threshold', label: 'Score Threshold' },
+                            ]}
+                          />
 
                           {eliminationRule === 'bottom-n' ? (
-                            <Field label="Eliminate per round">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-body text-sm font-medium">Eliminate per round</p>
+                                <p className="text-faint text-xs mt-0.5">Lowest scorers each round are out</p>
+                              </div>
                               <input
                                 type="number"
                                 min={1}
                                 max={10}
                                 value={eliminateCount}
                                 onChange={(e) => setEliminateCount(Number(e.target.value) || 1)}
-                                className="w-20 rounded-lg bg-surface border border-theme px-3 py-1.5 text-body text-sm"
+                                className="input-field w-20 text-center"
                               />
-                            </Field>
+                            </div>
                           ) : (
-                            <Field label="Score threshold">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-body text-sm font-medium">Score threshold</p>
+                                <p className="text-faint text-xs mt-0.5">Players below this score are out</p>
+                              </div>
                               <input
                                 type="number"
                                 min={0}
                                 value={scoreThreshold}
                                 onChange={(e) => setScoreThreshold(Number(e.target.value) || 0)}
-                                className="w-20 rounded-lg bg-surface border border-theme px-3 py-1.5 text-body text-sm"
+                                className="input-field w-24 text-center"
                               />
-                            </Field>
+                            </div>
                           )}
                         </div>
                       )}
 
                       {eliminationMode === 'lives' && (
-                        <div className="space-y-2">
-                          <Field label="Starting lives">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-body text-sm font-medium">Starting lives</p>
+                              <p className="text-faint text-xs mt-0.5">How many each player begins with</p>
+                            </div>
                             <input
                               type="number"
                               min={1}
                               max={10}
                               value={startingLives}
                               onChange={(e) => setStartingLives(Number(e.target.value) || 3)}
-                              className="w-20 rounded-lg bg-surface border border-theme px-3 py-1.5 text-body text-sm"
+                              className="input-field w-20 text-center"
                             />
-                          </Field>
-                          <Field label="Lose life (bottom N)">
+                          </div>
+                          <div className="divider-soft" />
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-body text-sm font-medium">Lose life (bottom N)</p>
+                              <p className="text-faint text-xs mt-0.5">Lowest scorers lose a life each round</p>
+                            </div>
                             <input
                               type="number"
                               min={1}
                               max={10}
                               value={eliminateCount}
                               onChange={(e) => setEliminateCount(Number(e.target.value) || 1)}
-                              className="w-20 rounded-lg bg-surface border border-theme px-3 py-1.5 text-body text-sm"
+                              className="input-field w-20 text-center"
                             />
-                          </Field>
+                          </div>
                         </div>
                       )}
                     </div>

@@ -207,6 +207,8 @@ export interface Game {
   /** Secret host credential. Only present on server-side (service-role) reads; never
    *  exposed to clients (migration 0122), so optional on this shared type. */
   host_token?: string
+  /** Set when this game belongs to a tournament (links back to tournaments.id). */
+  tournament_id?: string | null
   rounds_count: number
   timer_seconds: number
   /** Scrabble — which word list to validate plays against (default 'enable'). */
