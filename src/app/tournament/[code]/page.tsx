@@ -5,6 +5,10 @@ import { useParams, useRouter } from 'next/navigation'
 import { useTournamentRealtime } from '@/hooks/useTournamentRealtime'
 import type { Tournament, TournamentPlayer, TournamentGame } from '@/types/tournament'
 import { TOURNAMENT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
+import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
+
+const MEDAL = ['🥇', '🥈', '🥉']
+const RANK_COLOR = ['var(--marry)', '#64748b', '#b45309']
 
 const GAME_TYPE_LABELS: Record<string, string> = {
   trivia: 'Trivia',
@@ -165,16 +169,16 @@ export default function TournamentLobbyPage() {
 
   if (loading) {
     return (
-      <main className="min-h-dvh flex items-center justify-center">
-        <p className="text-muted">Loading tournament...</p>
+      <main className="page-wrap min-h-dvh flex items-center justify-center">
+        <p className="text-muted text-sm">Loading tournament…</p>
       </main>
     )
   }
 
   if (error && !tournament) {
     return (
-      <main className="min-h-dvh flex items-center justify-center">
-        <p className="text-red-400">{error}</p>
+      <main className="page-wrap min-h-dvh flex items-center justify-center">
+        <p className="text-red-400 text-sm">{error}</p>
       </main>
     )
   }
@@ -186,12 +190,15 @@ export default function TournamentLobbyPage() {
   const isFinished = tournament.status === 'finished'
 
   return (
-    <main className="min-h-dvh p-6 space-y-6 max-w-lg mx-auto">
+    <PageShell>
       {/* Header */}
-      <div className="text-center space-y-1">
-        <h1 className="text-2xl font-black text-heading">{tournament.title}</h1>
+      <div className="text-center space-y-2">
+        <h1 className="text-3xl font-black gradient-title leading-tight">{tournament.title}</h1>
         <p className="text-faint text-sm">
-          Code: <span className="font-mono font-bold text-accent">{tournament.id}</span>
+          Code:{' '}
+          <span className="font-mono font-bold tracking-wider" style={{ color: 'var(--primary)' }}>
+            {tournament.id}
+          </span>
           {tournament.target_game_count && (
             <span>
               {' '}
@@ -200,8 +207,8 @@ export default function TournamentLobbyPage() {
           )}
         </p>
         {isFinished && (
-          <span className="inline-block mt-2 rounded-full bg-green-500/20 px-3 py-1 text-xs font-bold text-green-400">
-            Tournament Complete
+          <span className="premium-badge" style={{ marginTop: '0.25rem' }}>
+            🏆 Tournament Complete
           </span>
         )}
       </div>
@@ -210,8 +217,8 @@ export default function TournamentLobbyPage() {
 
       {/* Join Form */}
       {!joined && !isHost && !isFinished && (
-        <div className="glass-card p-4 space-y-3">
-          <p className="text-sm font-medium text-body">Join Tournament</p>
+        <div className="glass-card-strong p-5 space-y-3">
+          <p className="label-caps">Join Tournament</p>
           <div className="flex gap-2">
             <input
               type="text"
@@ -219,12 +226,12 @@ export default function TournamentLobbyPage() {
               onChange={(e) => setPlayerName(e.target.value)}
               placeholder="Your name"
               maxLength={50}
-              className="flex-1 rounded-xl border border-theme bg-surface px-4 py-2 text-body placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-accent"
+              className="input-field flex-1"
               onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
             />
-            <button onClick={handleJoin} className="rounded-xl bg-accent px-4 py-2 font-bold text-white">
+            <PrimaryBtn onClick={handleJoin} className="btn-fit">
               Join
-            </button>
+            </PrimaryBtn>
           </div>
           {joinError && <p className="text-red-400 text-xs">{joinError}</p>}
         </div>
@@ -232,24 +239,28 @@ export default function TournamentLobbyPage() {
 
       {/* Active Game Banner */}
       {activeGame && (
-        <div className="glass-card border-2 border-accent p-4 space-y-3">
+        <div
+          className="glass-card-strong p-5 space-y-3"
+          style={{ boxShadow: '0 0 0 1px var(--primary), var(--card-shadow-glow)' }}
+        >
           <div className="flex items-center justify-between">
-            <p className="text-sm font-bold text-accent">Game In Progress</p>
+            <p className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--primary)' }}>
+              <span className="relative flex h-2 w-2">
+                <span
+                  className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
+                  style={{ background: 'var(--primary)' }}
+                />
+                <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: 'var(--primary)' }} />
+              </span>
+              Game In Progress
+            </p>
             <span className="text-xs text-faint">Game {activeGame.game_order}</span>
           </div>
           {joined && (
-            <button
-              onClick={() => handleJoinGame(activeGame.game_id)}
-              className="w-full rounded-xl bg-accent px-4 py-3 font-bold text-white transition hover:brightness-110"
-            >
-              Join Game
-            </button>
+            <PrimaryBtn onClick={() => handleJoinGame(activeGame.game_id)}>Join Game</PrimaryBtn>
           )}
           {isHost && (
-            <button
-              onClick={() => router.push(`/host/${activeGame.game_id}`)}
-              className="w-full rounded-xl bg-accent/20 px-4 py-2 text-sm font-bold text-accent"
-            >
+            <button onClick={() => router.push(`/host/${activeGame.game_id}`)} className="btn-secondary w-full">
               Host Dashboard
             </button>
           )}
@@ -257,8 +268,8 @@ export default function TournamentLobbyPage() {
       )}
 
       {/* Leaderboard */}
-      <div className="glass-card p-4 space-y-3">
-        <p className="text-sm font-bold text-body uppercase tracking-wider">Leaderboard</p>
+      <div className="glass-card p-5 space-y-3">
+        <p className="label-caps">Leaderboard</p>
         {players.length === 0 ? (
           <p className="text-faint text-sm">No players yet</p>
         ) : (
@@ -266,30 +277,28 @@ export default function TournamentLobbyPage() {
             {players.map((p, i) => (
               <div
                 key={p.id}
-                className={`flex items-center justify-between rounded-xl bg-surface px-4 py-2 ${p.is_eliminated ? 'opacity-50' : ''}`}
+                className={`result-row flex items-center justify-between px-4 py-2.5 ${
+                  i === 0 ? 'result-row-winner-amber' : ''
+                } ${p.is_eliminated ? 'opacity-50' : ''}`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <span
-                    className={`text-lg font-black ${
-                      i === 0
-                        ? 'text-yellow-400'
-                        : i === 1
-                          ? 'text-gray-300'
-                          : i === 2
-                            ? 'text-amber-600'
-                            : 'text-faint'
-                    }`}
+                    className="w-6 text-center text-base font-black tabular-nums shrink-0"
+                    style={{ color: i < 3 ? RANK_COLOR[i] : 'var(--faint)' }}
                   >
-                    {i + 1}
+                    {i < 3 ? MEDAL[i] : i + 1}
                   </span>
-                  <span className="font-medium text-body">{p.player_name}</span>
+                  <span className="font-medium text-body truncate">{p.player_name}</span>
                   {p.lives_remaining != null && !p.is_eliminated && (
-                    <span className="text-xs text-yellow-400 ml-1">{'❤️'.repeat(Math.max(0, p.lives_remaining))}</span>
+                    <span className="text-xs shrink-0">{'❤️'.repeat(Math.max(0, p.lives_remaining))}</span>
                   )}
-                  {p.is_eliminated && <span className="text-xs text-red-400 ml-1">Eliminated</span>}
+                  {p.is_eliminated && <span className="text-xs text-red-400 ml-1 shrink-0">Eliminated</span>}
                 </div>
-                <div className="text-right">
-                  <span className="font-bold text-accent">{p.total_points}pts</span>
+                <div className="text-right shrink-0">
+                  <span className="font-bold tabular-nums" style={{ color: 'var(--primary)' }}>
+                    {p.total_points}
+                    <span className="text-xs font-semibold">pts</span>
+                  </span>
                   <span className="text-faint text-xs ml-2">{p.games_played}g</span>
                 </div>
               </div>
@@ -300,12 +309,12 @@ export default function TournamentLobbyPage() {
 
       {/* Game History */}
       {finishedGames.length > 0 && (
-        <div className="glass-card p-4 space-y-3">
-          <p className="text-sm font-bold text-body uppercase tracking-wider">Game History</p>
+        <div className="glass-card p-5 space-y-3">
+          <p className="label-caps">Game History</p>
           <div className="space-y-2">
             {finishedGames.map((g) => (
-              <div key={g.id} className="flex items-center justify-between rounded-xl bg-surface px-4 py-2">
-                <span className="text-sm text-body">Game {g.game_order}</span>
+              <div key={g.id} className="result-row flex items-center justify-between px-4 py-2.5">
+                <span className="text-sm font-medium text-body">Game {g.game_order}</span>
                 <span className="text-xs text-faint">
                   {g.placements ? `${Object.keys(g.placements).length} players` : 'No results'}
                 </span>
@@ -317,15 +326,14 @@ export default function TournamentLobbyPage() {
 
       {/* Host Controls */}
       {isHost && !isFinished && !activeGame && (
-        <div className="glass-card p-4 space-y-4">
-          <p className="text-sm font-bold text-body uppercase tracking-wider">Start Next Game</p>
+        <div className="glass-card-strong p-5 space-y-4">
+          <p className="label-caps">Start Next Game</p>
 
-          <div>
-            <label className="block text-xs text-muted mb-1">Game Type</label>
+          <Field label="Game Type">
             <select
               value={selectedGameType}
               onChange={(e) => setSelectedGameType(e.target.value)}
-              className="w-full rounded-xl border border-theme bg-surface px-4 py-2 text-body focus:outline-none focus:ring-2 focus:ring-accent"
+              className="input-field"
             >
               {TOURNAMENT_ELIGIBLE_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -333,50 +341,40 @@ export default function TournamentLobbyPage() {
                 </option>
               ))}
             </select>
-          </div>
+          </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-muted mb-1">Rounds</label>
+            <Field label="Rounds">
               <input
                 type="number"
                 value={roundsCount}
                 onChange={(e) => setRoundsCount(e.target.value)}
                 min={1}
                 max={100}
-                className="w-full rounded-xl border border-theme bg-surface px-4 py-2 text-body focus:outline-none focus:ring-2 focus:ring-accent"
+                className="input-field"
               />
-            </div>
-            <div>
-              <label className="block text-xs text-muted mb-1">Timer (s)</label>
+            </Field>
+            <Field label="Timer (s)">
               <input
                 type="number"
                 value={timerSeconds}
                 onChange={(e) => setTimerSeconds(e.target.value)}
                 min={5}
                 max={300}
-                className="w-full rounded-xl border border-theme bg-surface px-4 py-2 text-body focus:outline-none focus:ring-2 focus:ring-accent"
+                className="input-field"
               />
-            </div>
+            </Field>
           </div>
 
-          <button
-            onClick={handleStartGame}
-            disabled={actionLoading}
-            className="w-full rounded-2xl bg-accent px-6 py-3 font-bold text-white shadow-lg transition hover:brightness-110 disabled:opacity-50"
-          >
-            {actionLoading ? 'Starting...' : 'Start Game'}
-          </button>
+          <PrimaryBtn onClick={handleStartGame} disabled={actionLoading}>
+            {actionLoading ? 'Starting…' : 'Start Game'}
+          </PrimaryBtn>
 
-          <button
-            onClick={handleEndTournament}
-            disabled={actionLoading}
-            className="w-full rounded-2xl border border-red-500/50 px-6 py-2 text-sm font-bold text-red-400 transition hover:bg-red-500/10"
-          >
+          <button onClick={handleEndTournament} disabled={actionLoading} className="btn-danger-soft">
             End Tournament
           </button>
         </div>
       )}
-    </main>
+    </PageShell>
   )
 }
