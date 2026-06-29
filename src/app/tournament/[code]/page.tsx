@@ -403,9 +403,7 @@ export default function TournamentLobbyPage() {
   const isFull = tournament.max_players != null && players.length >= tournament.max_players
   const myName = typeof window !== 'undefined' ? localStorage.getItem(`tournament_player_${tournamentId}`) : null
   const me =
-    isParticipant && myName
-      ? players.find((p) => p.player_name.toLowerCase() === myName.toLowerCase()) ?? null
-      : null
+    isParticipant && myName ? (players.find((p) => p.player_name.toLowerCase() === myName.toLowerCase()) ?? null) : null
   const iAmEliminated = Boolean(me?.is_eliminated)
   // Show a personal lives readout whenever the tournament runs in lives mode and the
   // player still has a tracked life count (null means lives mode is off for them).
