@@ -4,15 +4,13 @@ import { clampCodewordsTimer } from '@/lib/codewords'
 import { clampLobbyMaxPlayers, fetchGamePlayerLimits } from '@/lib/game-limits'
 import { codewordsLobbySettingsSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = codewordsLobbySettingsSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, codewordsLobbySettingsSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, hostToken, max_players, spymasterTimerSeconds, operativeTimerSeconds } = parsed.data
+  const { gameId, hostToken, max_players, spymasterTimerSeconds, operativeTimerSeconds } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

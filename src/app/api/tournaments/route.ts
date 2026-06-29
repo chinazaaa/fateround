@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { parseJsonBody } from '@/lib/parse-body'
 import { createClient } from '@supabase/supabase-js'
 import { generateGameCode, generateToken } from '@/lib/utils'
 import { createTournamentSchema } from '@/lib/tournament-validation'
@@ -6,13 +7,10 @@ import { createTournamentSchema } from '@/lib/tournament-validation'
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = createTournamentSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, createTournamentSchema)
+  if (bodyError) return bodyError
 
-  const { title, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = parsed.data
+  const { title, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = body
   const hostToken = generateToken()
 
   let tournamentCode = ''

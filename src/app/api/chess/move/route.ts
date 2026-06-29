@@ -4,15 +4,13 @@ import { processChessMove } from '@/lib/chess'
 import { chessMoveSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = chessMoveSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, chessMoveSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, from, to, promotion } = parsed.data
+  const { gameId, resumeToken, from, to, promotion } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

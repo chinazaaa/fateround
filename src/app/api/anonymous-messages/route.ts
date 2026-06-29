@@ -11,19 +11,17 @@ import {
   truncateReplyPreview,
 } from '@/lib/anonymous-messages'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = createAnonymousMessageSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, createAnonymousMessageSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, playerId, text, replyToId } = parsed.data
-  const messageType = parsed.data.messageType ?? 'text'
-  const mediaUrl = parsed.data.mediaUrl ?? null
+  const { gameId, playerId, text, replyToId } = body
+  const messageType = body.messageType ?? 'text'
+  const mediaUrl = body.mediaUrl ?? null
   const gameCode = gameId.toUpperCase()
 
   const { data: game } = await supabase
@@ -127,13 +125,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = deleteAnonymousMessageSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, deleteAnonymousMessageSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, messageId, hostToken } = parsed.data
+  const { gameId, messageId, hostToken } = body
   const gameCode = gameId.toUpperCase()
 
   const { data: game } = await getSupabaseAdmin()

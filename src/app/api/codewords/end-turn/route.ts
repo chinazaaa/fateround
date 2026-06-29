@@ -4,16 +4,14 @@ import { parseGameType, isCodewordsGame } from '@/lib/game-types'
 import { cluePhaseUpdate, otherTeam } from '@/lib/codewords'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 import type { CodewordsBoard } from '@/types'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = codewordsEndTurnSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, codewordsEndTurnSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken } = parsed.data
+  const { gameId, resumeToken } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

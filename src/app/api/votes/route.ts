@@ -26,6 +26,7 @@ import { parseCustomAssignments, isCustomAssignmentValid, customAssignmentMode }
 import { playerIsViewer } from '@/lib/viewers'
 import { parsePickANumberPool, pickANumberQuestionAt } from '@/lib/pick-a-number'
 import type { PairFlag, WyrChoice } from '@/types'
+import { parseJsonBody } from '@/lib/parse-body'
 
 function parsePairAssignments(raw: unknown): Record<string, PairFlag> | null {
   if (!raw || typeof raw !== 'object') return null
@@ -37,11 +38,8 @@ function parsePairAssignments(raw: unknown): Record<string, PairFlag> | null {
 }
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = createVoteSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, createVoteSchema)
+  if (bodyError) return bodyError
 
   const {
     resumeToken,
@@ -55,7 +53,7 @@ export async function POST(req: NextRequest) {
     targetPlayerId: rawTargetPlayerId,
     targetParticipantId: rawTargetParticipantId,
     pickedNumber: rawPickedNumber,
-  } = parsed.data
+  } = body
 
   const supabase = getSupabaseAdmin()
 
@@ -116,7 +114,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Waiting for the quote' }, { status: 400 })
       }
 
-      const animeChoice = typeof parsed.data.animeChoice === 'string' ? parsed.data.animeChoice : null
+      const animeChoice = typeof body.animeChoice === 'string' ? body.animeChoice : null
       if (!animeChoice) {
         return NextResponse.json({ error: 'Pick a character' }, { status: 400 })
       }
@@ -295,7 +293,7 @@ export async function POST(req: NextRequest) {
       target_participant_id: null,
     }
   } else if (isCustomGame(gameType)) {
-    const customAssignments = parseCustomAssignments(parsed.data.customAssignments)
+    const customAssignments = parseCustomAssignments(body.customAssignments)
     if (!customAssignments) {
       return NextResponse.json({ error: 'Assign everyone to a category' }, { status: 400 })
     }

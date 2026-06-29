@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
 import { lobbyReady, persistRandomizedRoles, teamsNeedRandomization } from '@/lib/codewords'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 const schema = z.object({
   gameId: z.string().min(4).max(10),
@@ -10,13 +11,10 @@ const schema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = schema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, schema)
+  if (bodyError) return bodyError
 
-  const { gameId, hostToken } = parsed.data
+  const { gameId, hostToken } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { parseJsonBody } from '@/lib/parse-body'
 import { createClient } from '@supabase/supabase-js'
 import { joinTournamentSchema } from '@/lib/tournament-validation'
 
@@ -17,13 +18,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { code } = await params
   const tournamentId = code.toUpperCase()
 
-  const raw = await req.json()
-  const parsed = joinTournamentSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, joinTournamentSchema)
+  if (bodyError) return bodyError
 
-  const { playerName } = parsed.data
+  const { playerName } = body
 
   // Atomic join: the RPC locks the tournament row and checks name + capacity
   // before inserting, so concurrent joins can't exceed max_players. Initializing

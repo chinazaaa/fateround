@@ -4,15 +4,13 @@ import { processWhotChoose } from '@/lib/whot'
 import { whotChooseSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = whotChooseSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, whotChooseSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, shape, number } = parsed.data
+  const { gameId, resumeToken, shape, number } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

@@ -3,15 +3,13 @@ import { hotSeatSubmissionSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { supabase as supabaseReadonly } from '@/lib/supabase'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = hotSeatSubmissionSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, hotSeatSubmissionSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, roundId, resumeToken, text, submissionType } = parsed.data
+  const { gameId, roundId, resumeToken, text, submissionType } = body
 
   const supabase = getSupabaseAdmin()
 

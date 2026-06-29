@@ -3,16 +3,14 @@ import { parseGameType, isScrabbleGame } from '@/lib/game-types'
 import { extendScrabbleGameDuration, clampScrabbleTimeExtension } from '@/lib/scrabble'
 import { scrabbleExtendTimeSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
-  const raw = await req.json()
-  const parsed = scrabbleExtendTimeSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, scrabbleExtendTimeSchema)
+  if (bodyError) return bodyError
 
-  const { hostToken, extensionSeconds } = parsed.data
+  const { hostToken, extensionSeconds } = body
   const gameId = code.toUpperCase()
   const supabase = getSupabaseAdmin()
 

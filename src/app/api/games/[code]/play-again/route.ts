@@ -48,6 +48,7 @@ import { extractRoundUsage, extractCodewordsBoardUsage, mergePoolUsageState, par
 import { isGameGenderBased } from '@/lib/gender-based'
 import { resetSpectatorsForLobby } from '@/lib/viewers'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameType } from '@/types'
 
@@ -111,11 +112,8 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
-  const raw = await req.json()
-  const parsed = playAgainSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, playAgainSchema)
+  if (bodyError) return bodyError
 
   const {
     hostToken,
@@ -126,7 +124,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     trivia_category,
     timer_seconds,
     rounds_count,
-  } = parsed.data
+  } = body
   const gameId = code.toUpperCase()
 
   const { data: game } = await getSupabaseAdmin().from('games').select('*').eq('id', gameId).maybeSingle()

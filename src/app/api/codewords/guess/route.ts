@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { codewordsGuessSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
 import { finishCodewordsGame } from '@/lib/codewords'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -7,13 +8,10 @@ import { assertPlayer } from '@/lib/game-admin'
 import type { CodewordsBoard, CodewordsCellType } from '@/types'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = codewordsGuessSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, codewordsGuessSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, cellIndex } = parsed.data
+  const { gameId, resumeToken, cellIndex } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

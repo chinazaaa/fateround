@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { assertHostGameSettings, assertHostLateJoinSettings } from '@/lib/game-admin'
 import { questionPoolCap } from '@/lib/custom-questions'
 import { parseTimerSeconds, updateGameSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 import { HOST_GAME_SELECT } from '@/lib/supabase-selects'
 import {
   parseGameType,
@@ -33,11 +34,8 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
-  const raw = await req.json()
-  const parsed = updateGameSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, updateGameSchema)
+  if (bodyError) return bodyError
 
   const {
     hostToken,
@@ -47,21 +45,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     game_duration_seconds: rawGameDurationSeconds,
     scrabble_dictionary_id: rawScrabbleDictionaryId,
     participant_filter,
-  } = parsed.data
+  } = body
 
   const lateJoinOnly =
-    (parsed.data.late_join_policy !== undefined ||
-      parsed.data.allow_viewers !== undefined ||
-      parsed.data.allow_late_players !== undefined) &&
+    (body.late_join_policy !== undefined ||
+      body.allow_viewers !== undefined ||
+      body.allow_late_players !== undefined) &&
     rawRoundsCount === undefined &&
     rawTimerSeconds === undefined &&
     rawOperativeTimerSeconds === undefined &&
     rawGameDurationSeconds === undefined &&
     participant_filter === undefined &&
-    parsed.data.pair_vote_mode === undefined &&
-    parsed.data.player_questions_enabled === undefined &&
-    parsed.data.player_questions_order === undefined &&
-    parsed.data.gender_based === undefined
+    body.pair_vote_mode === undefined &&
+    body.player_questions_enabled === undefined &&
+    body.player_questions_order === undefined &&
+    body.gender_based === undefined
 
   const auth = lateJoinOnly
     ? await assertHostLateJoinSettings(getSupabaseAdmin(), code, hostToken)
@@ -141,19 +139,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     updatePayload.participant_filter = participant_filter === 'joined' ? 'joined' : 'all'
   }
 
-  if (parsed.data.gender_based !== undefined) {
+  if (body.gender_based !== undefined) {
     return NextResponse.json(
       { error: "Who's in each round is set when the game is created — create a new game to change it" },
       { status: 400 }
     )
   }
 
-  if (parsed.data.pair_vote_mode !== undefined) {
+  if (body.pair_vote_mode !== undefined) {
     const gameType = parseGameType(auth.game!.game_type)
     if (!isPairGame(gameType) && !isCustomTwoSlotGame(auth.game!)) {
       return NextResponse.json({ error: 'This game type does not support pair voting settings' }, { status: 400 })
     }
-    updatePayload.pair_vote_mode = parsePairVoteMode(parsed.data.pair_vote_mode)
+    updatePayload.pair_vote_mode = parsePairVoteMode(body.pair_vote_mode)
   }
 
   const gameTypeForLobby = gameType
@@ -162,33 +160,33 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     isLobbyQuestions ||
     supportsPlayerNameSubmissions({ game_type: gameType, participant_mode: auth.game!.participant_mode })
 
-  if (parsed.data.player_questions_enabled !== undefined) {
+  if (body.player_questions_enabled !== undefined) {
     if (!supportsPlayerSubmissions) {
       return NextResponse.json({ error: 'This game type does not support player submission settings' }, { status: 400 })
     }
-    updatePayload.player_questions_enabled = parsePlayerQuestionsEnabled(parsed.data.player_questions_enabled)
+    updatePayload.player_questions_enabled = parsePlayerQuestionsEnabled(body.player_questions_enabled)
   }
 
-  if (parsed.data.player_questions_order !== undefined) {
+  if (body.player_questions_order !== undefined) {
     if (!supportsPlayerSubmissions) {
       return NextResponse.json({ error: 'This game type does not support player submission settings' }, { status: 400 })
     }
-    updatePayload.player_questions_order = parsePlayerQuestionsOrder(parsed.data.player_questions_order)
+    updatePayload.player_questions_order = parsePlayerQuestionsOrder(body.player_questions_order)
   }
 
-  if (parsed.data.ai_questions_enabled !== undefined) {
-    updatePayload.ai_questions_enabled = parsed.data.ai_questions_enabled
+  if (body.ai_questions_enabled !== undefined) {
+    updatePayload.ai_questions_enabled = body.ai_questions_enabled
   }
 
-  if (parsed.data.ai_questions_config !== undefined) {
-    updatePayload.ai_questions_config = parsed.data.ai_questions_config
+  if (body.ai_questions_config !== undefined) {
+    updatePayload.ai_questions_config = body.ai_questions_config
   }
 
-  if (parsed.data.late_join_policy !== undefined) {
+  if (body.late_join_policy !== undefined) {
     if (!gameSupportsViewerSetting(gameType)) {
       return NextResponse.json({ error: 'This game type does not support late join settings' }, { status: 400 })
     }
-    let policy = parsed.data.late_join_policy
+    let policy = body.late_join_policy
     if (!gameAllowsLatePlayerJoin(gameType) && policy === 'viewers_and_players') {
       policy = 'viewers_only'
     }
@@ -198,15 +196,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     if (isCodewordsGame(gameType)) {
       updatePayload.codewords_late_join = fields.allow_late_players
     }
-  } else if (parsed.data.allow_viewers !== undefined || parsed.data.allow_late_players !== undefined) {
+  } else if (body.allow_viewers !== undefined || body.allow_late_players !== undefined) {
     if (!gameSupportsViewerSetting(gameType)) {
       return NextResponse.json({ error: 'This game type does not support late join settings' }, { status: 400 })
     }
     const allowViewersValue =
-      parsed.data.allow_viewers !== undefined ? parsed.data.allow_viewers !== false : auth.game!.allow_viewers !== false
+      body.allow_viewers !== undefined ? body.allow_viewers !== false : auth.game!.allow_viewers !== false
     const allowLatePlayersValue =
-      parsed.data.allow_late_players !== undefined
-        ? parsed.data.allow_late_players !== false
+      body.allow_late_players !== undefined
+        ? body.allow_late_players !== false
         : auth.game!.allow_late_players !== false
     updatePayload.allow_viewers = allowViewersValue
     updatePayload.allow_late_players = allowViewersValue && allowLatePlayersValue
@@ -217,18 +215,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
 
   if (
     isLobbyQuestions &&
-    (parsed.data.player_questions_enabled !== undefined || parsed.data.player_questions_order !== undefined) &&
+    (body.player_questions_enabled !== undefined || body.player_questions_order !== undefined) &&
     rawRoundsCount === undefined
   ) {
     const nextGame = {
       ...auth.game!,
       player_questions_enabled:
-        parsed.data.player_questions_enabled !== undefined
-          ? parsePlayerQuestionsEnabled(parsed.data.player_questions_enabled)
+        body.player_questions_enabled !== undefined
+          ? parsePlayerQuestionsEnabled(body.player_questions_enabled)
           : auth.game!.player_questions_enabled,
       player_questions_order:
-        parsed.data.player_questions_order !== undefined
-          ? parsePlayerQuestionsOrder(parsed.data.player_questions_order)
+        body.player_questions_order !== undefined
+          ? parsePlayerQuestionsOrder(body.player_questions_order)
           : auth.game!.player_questions_order,
     }
     const questionType = isMostLikelyTo(gameType) ? 'mlt' : 'wyr'

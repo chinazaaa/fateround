@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { syncBingoAutoCall } from '@/lib/bingo'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 const bingoSyncSchema = z.object({
   gameId: z.string().min(4).max(10),
@@ -12,14 +13,11 @@ const bingoSyncSchema = z.object({
 // syncBingoAutoCall), so there's no per-player token to authorize. Writes go
 // through the service role.
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = bingoSyncSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, bingoSyncSchema)
+  if (bodyError) return bodyError
 
   const supabase = getSupabaseAdmin()
-  const result = await syncBingoAutoCall(supabase, parsed.data.gameId)
+  const result = await syncBingoAutoCall(supabase, body.gameId)
 
   if (result.code === 'game_not_found') {
     return NextResponse.json({ error: 'Game not found', code: result.code }, { status: 404 })

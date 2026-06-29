@@ -2,17 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { parseGameType, isLudoGame } from '@/lib/game-types'
 import { processLudoRoll } from '@/lib/ludo'
 import { ludoActionSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = ludoActionSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, ludoActionSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken } = parsed.data
+  const { gameId, resumeToken } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { markGameFinished } from '@/lib/game-finish'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 const submitSchema = z.object({
   gameId: z.string().min(1).max(10).toUpperCase(),
@@ -22,13 +23,10 @@ const ERROR_STATUS: Record<string, { status: number; message: string }> = {
 }
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = submitSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, submitSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, blockIndex, cells } = parsed.data
+  const { gameId, resumeToken, blockIndex, cells } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

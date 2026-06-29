@@ -4,15 +4,13 @@ import { parseGameType, isTwoTruthsGame } from '@/lib/game-types'
 import { TTL_MAX_STATEMENT_LENGTH } from '@/lib/two-truths'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = ttlStatementSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, ttlStatementSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, statementA, statementB, statementC, lieIndex } = parsed.data
+  const { gameId, resumeToken, statementA, statementB, statementC, lieIndex } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

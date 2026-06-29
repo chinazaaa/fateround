@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { parseJsonBody } from '@/lib/parse-body'
 import { createClient } from '@supabase/supabase-js'
 import { updateTournamentSchema } from '@/lib/tournament-validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -42,13 +43,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   const { code } = await params
   const tournamentId = code.toUpperCase()
 
-  const raw = await req.json()
-  const parsed = updateTournamentSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, updateTournamentSchema)
+  if (bodyError) return bodyError
 
-  const { hostToken, title, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = parsed.data
+  const { hostToken, title, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = body
 
   const admin = getSupabaseAdmin()
   const { data: tournament } = await admin

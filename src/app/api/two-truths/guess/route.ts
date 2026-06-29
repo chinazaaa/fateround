@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ttlGuessSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 import { parseGameType, isTwoTruthsGame } from '@/lib/game-types'
 import { parseTtlMetadata, TTL_GUESS_POINTS } from '@/lib/two-truths'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = ttlGuessSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, ttlGuessSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, roundId, guessedIndex } = parsed.data
+  const { gameId, resumeToken, roundId, guessedIndex } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

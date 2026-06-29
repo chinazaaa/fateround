@@ -5,15 +5,13 @@ import { computeTriviaPoints, parseTriviaMetadata, TRIVIA_DEFAULT_TIMER } from '
 import { playerIsViewer } from '@/lib/viewers'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = triviaAnswerSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, triviaAnswerSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, roundId, choiceIndex } = parsed.data
+  const { gameId, resumeToken, roundId, choiceIndex } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

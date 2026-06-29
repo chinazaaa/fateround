@@ -2,17 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { parseGameType, isWhotGame } from '@/lib/game-types'
 import { processWhotPlay } from '@/lib/whot'
 import { whotPlaySchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = whotPlaySchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, whotPlaySchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, cardId } = parsed.data
+  const { gameId, resumeToken, cardId } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

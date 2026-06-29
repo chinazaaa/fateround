@@ -4,15 +4,13 @@ import { parseGameType, isBingoGame } from '@/lib/game-types'
 import { parseBingoCallMode, clampBingoCallInterval } from '@/lib/bingo'
 import { clampLobbyMaxPlayers, fetchGamePlayerLimits } from '@/lib/game-limits'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = bingoSettingsSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, bingoSettingsSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, hostToken, bingo_call_mode, bingo_call_interval_seconds, max_players } = parsed.data
+  const { gameId, hostToken, bingo_call_mode, bingo_call_interval_seconds, max_players } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

@@ -60,6 +60,7 @@ import {
 import type { Game } from '@/types'
 import { linkPlayerToRoomMember, resolveRoomMemberForGame } from '@/lib/room-points'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -182,11 +183,8 @@ function resolveIdentityGender(
 }
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = createPlayerSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, createPlayerSchema)
+  if (bodyError) return bodyError
 
   const {
     gameCode,
@@ -198,7 +196,7 @@ export async function POST(req: NextRequest) {
     joinAsViewer: rawJoinAsViewer,
     monopolyToken: rawMonopolyToken,
     roomMemberCode,
-  } = parsed.data
+  } = body
 
   let name = playerName?.trim() ?? ''
   const gameId = gameCode.toUpperCase()
@@ -1023,11 +1021,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const rawBody = await req.json()
-  const parsedPatch = updatePlayerSchema.safeParse(rawBody)
-  if (!parsedPatch.success) {
-    return NextResponse.json({ error: parsedPatch.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, updatePlayerSchema)
+  if (bodyError) return bodyError
 
   const {
     gameCode,
@@ -1039,7 +1034,7 @@ export async function PATCH(req: NextRequest) {
     participantId: rawParticipantId,
     hostToken,
     resumeToken,
-  } = parsedPatch.data
+  } = body
 
   let game: { participant_mode: string } | null
   let id: string
@@ -1355,13 +1350,10 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const rawDel = await req.json()
-  const parsedDel = deletePlayerSchema.safeParse(rawDel)
-  if (!parsedDel.success) {
-    return NextResponse.json({ error: parsedDel.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, deletePlayerSchema)
+  if (bodyError) return bodyError
 
-  const { gameCode, playerId, hostToken, resumeToken } = parsedDel.data
+  const { gameCode, playerId, hostToken, resumeToken } = body
 
   let game: { participant_mode: string } | null
   let id: string

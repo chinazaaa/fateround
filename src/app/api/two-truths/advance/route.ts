@@ -2,15 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ttlAdvanceSchema } from '@/lib/validation'
 import { syncTwoTruthsGameState } from '@/lib/two-truths-advance'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = ttlAdvanceSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, ttlAdvanceSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, hostToken, force } = parsed.data
+  const { gameId, hostToken, force } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

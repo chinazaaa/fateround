@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 const schema = z.object({
   gameId: z.string().min(2).max(12),
@@ -10,13 +11,10 @@ const schema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = schema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, schema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken } = parsed.data
+  const { gameId, resumeToken } = body
   const gameCode = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

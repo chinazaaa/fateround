@@ -5,6 +5,7 @@ import { normalizeResumeToken } from '@/lib/utils'
 import { playerIsViewer } from '@/lib/viewers'
 import type { Game } from '@/types'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -14,14 +15,11 @@ const resumeSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = resumeSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, resumeSchema)
+  if (bodyError) return bodyError
 
-  const gameId = parsed.data.gameCode.toUpperCase()
-  const resumeToken = normalizeResumeToken(parsed.data.resumeToken)
+  const gameId = body.gameCode.toUpperCase()
+  const resumeToken = normalizeResumeToken(body.resumeToken)
   if (resumeToken.length < 4) {
     return NextResponse.json({ error: 'Enter a valid player code' }, { status: 400 })
   }

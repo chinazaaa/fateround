@@ -4,6 +4,7 @@ import { parseGameType, isBinaryChoiceGame, isMostLikelyTo, isNeverHaveIEver, is
 import { lobbyAllowsPlayerQuestions } from '@/lib/player-question-pool'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, '').trim()
 
@@ -22,13 +23,10 @@ const deleteQuestionSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = submitQuestionSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, submitQuestionSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, questionType, optionA, optionB, questionText } = parsed.data
+  const { gameId, resumeToken, questionType, optionA, optionB, questionText } = body
   const upperGameId = gameId.toUpperCase()
 
   const supabase = getSupabaseAdmin()
@@ -119,13 +117,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = deleteQuestionSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, deleteQuestionSchema)
+  if (bodyError) return bodyError
 
-  const { questionId, resumeToken } = parsed.data
+  const { questionId, resumeToken } = body
 
   const supabase = getSupabaseAdmin()
 

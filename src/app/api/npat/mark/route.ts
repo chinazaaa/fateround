@@ -12,15 +12,13 @@ import { npatMarkSchema } from '@/lib/validation'
 import type { NpatCategory } from '@/types'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = npatMarkSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, npatMarkSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, roundId, validName, validAnimal, validPlace, validThing, validFood } = parsed.data
+  const { gameId, resumeToken, roundId, validName, validAnimal, validPlace, validThing, validFood } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

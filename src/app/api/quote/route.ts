@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createQuoteSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = createQuoteSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, createQuoteSchema)
+  if (bodyError) return bodyError
 
-  const { resumeToken, roundId, gameId, quoteText, authorParticipantId } = parsed.data
+  const { resumeToken, roundId, gameId, quoteText, authorParticipantId } = body
 
   const supabase = getSupabaseAdmin()
 

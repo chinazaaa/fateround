@@ -3,6 +3,7 @@ import { parseGameType, isYahtzeeGame } from '@/lib/game-types'
 import { processYahtzeeExpireTurn } from '@/lib/yahtzee'
 import { yahtzeeRollSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 // We only need gameId — reuse the roll schema's gameId shape
 const schema = yahtzeeRollSchema.pick({ gameId: true })
@@ -11,13 +12,10 @@ const schema = yahtzeeRollSchema.pick({ gameId: true })
 // deadline has genuinely passed (enforced in processYahtzeeExpireTurn), so
 // there's no per-player token to authorize. Writes go through the service role.
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = schema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, schema)
+  if (bodyError) return bodyError
 
-  const code = parsed.data.gameId.toUpperCase()
+  const code = body.gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
   const { data: game } = await supabase.from('games').select('status,game_type').eq('id', code).maybeSingle()

@@ -6,6 +6,7 @@ import { normalizeGender } from '@/lib/participants'
 import { lobbyAllowsPlayerNameSubmissions } from '@/lib/player-participant-pool'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, '').trim()
 
@@ -22,13 +23,10 @@ const deleteNameSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = submitNameSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, submitNameSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, name: rawName, gender: rawGender } = parsed.data
+  const { gameId, resumeToken, name: rawName, gender: rawGender } = body
   const upperGameId = gameId.toUpperCase()
   const name = stripHtml(rawName)
   if (!name) {
@@ -120,13 +118,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = deleteNameSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, deleteNameSchema)
+  if (bodyError) return bodyError
 
-  const { participantId, resumeToken } = parsed.data
+  const { participantId, resumeToken } = body
 
   const supabase = getSupabaseAdmin()
 

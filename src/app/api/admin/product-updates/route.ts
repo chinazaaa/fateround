@@ -3,6 +3,7 @@ import { assertAdminRequest } from '@/lib/admin-api'
 import { sortProductUpdates } from '@/lib/product-updates'
 import { getSupabaseAdmin, hasServiceRoleKey } from '@/lib/supabase-admin'
 import { createProductUpdateSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function GET(req: NextRequest) {
   const session = await assertAdminRequest(req)
@@ -34,13 +35,10 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const raw = await req.json()
-  const parsed = createProductUpdateSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, createProductUpdateSchema)
+  if (bodyError) return bodyError
 
-  const { type, title, description, month, year, sortOrder } = parsed.data
+  const { type, title, description, month, year, sortOrder } = body
   const supabase = getSupabaseAdmin()
   const { data, error } = await supabase
     .from('product_updates')

@@ -5,6 +5,7 @@ import { parseWordHuntMetadata, wordHuntPoints, wordHuntSessionExpired } from '@
 import { playerIsViewer } from '@/lib/viewers'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 const submitSchema = z.object({
   gameId: z.string().min(1).max(10).toUpperCase(),
@@ -14,13 +15,10 @@ const submitSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = submitSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, submitSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, word, path } = parsed.data
+  const { gameId, resumeToken, word, path } = body
   const supabase = getSupabaseAdmin()
 
   const [{ data: game }, { data: round }] = await Promise.all([

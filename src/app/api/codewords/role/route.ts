@@ -3,15 +3,13 @@ import { codewordsRoleSchema } from '@/lib/validation'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = codewordsRoleSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, codewordsRoleSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, team, role } = parsed.data
+  const { gameId, resumeToken, team, role } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

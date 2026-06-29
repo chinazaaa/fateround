@@ -6,15 +6,13 @@ import { markGameFinished } from '@/lib/game-finish'
 import { playerIsViewer } from '@/lib/viewers'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = bingoClaimSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, bingoClaimSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken } = parsed.data
+  const { gameId, resumeToken } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

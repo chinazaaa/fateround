@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { anonymousRoomBanSchema, anonymousRoomUnbanSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 import { parseGameType, isAnonymousMessagesGame } from '@/lib/game-types'
 import { isPlayerBanned } from '@/lib/anonymous-messages'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -27,13 +28,10 @@ async function assertHostAnonymousRoom(gameCode: string, hostToken: string) {
 }
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = anonymousRoomBanSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, anonymousRoomBanSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, playerId, hostToken, durationMinutes } = parsed.data
+  const { gameId, playerId, hostToken, durationMinutes } = body
   const auth = await assertHostAnonymousRoom(gameId, hostToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
@@ -69,13 +67,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = anonymousRoomUnbanSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, anonymousRoomUnbanSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, playerId, hostToken } = parsed.data
+  const { gameId, playerId, hostToken } = body
   const auth = await assertHostAnonymousRoom(gameId, hostToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 

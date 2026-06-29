@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getSupabaseAdmin, hasServiceRoleKey } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 import { updateProductUpdateSchema } from '@/lib/validation'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -17,14 +18,11 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params
-  const raw = await req.json()
-  const parsed = updateProductUpdateSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, updateProductUpdateSchema)
+  if (bodyError) return bodyError
 
   const payload: Record<string, unknown> = { updated_at: new Date().toISOString() }
-  const { type, title, description, month, year, sortOrder } = parsed.data
+  const { type, title, description, month, year, sortOrder } = body
 
   if (type !== undefined) payload.type = type
   if (title !== undefined) payload.title = title

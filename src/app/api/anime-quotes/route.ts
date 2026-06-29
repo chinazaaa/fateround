@@ -3,17 +3,15 @@ import { createClient } from '@supabase/supabase-js'
 import { fetchAnimeQuotes } from '@/lib/anime-quotes'
 import { fetchAnimeQuotesSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = fetchAnimeQuotesSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, fetchAnimeQuotesSchema)
+  if (bodyError) return bodyError
 
-  const { count, gameId, hostToken } = parsed.data
+  const { count, gameId, hostToken } = body
   const gameCode = gameId.toUpperCase()
 
   const admin = getSupabaseAdmin()

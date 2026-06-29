@@ -3,15 +3,13 @@ import { bingoCallSchema } from '@/lib/validation'
 import { parseGameType, isBingoGame } from '@/lib/game-types'
 import { isValidBingoNumber, pickRandomUncalledNumber } from '@/lib/bingo'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = bingoCallSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, bingoCallSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, hostToken, number: rawNumber, random } = parsed.data
+  const { gameId, hostToken, number: rawNumber, random } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

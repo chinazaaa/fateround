@@ -5,19 +5,17 @@ import { effectiveTurnPhase, guessPhaseUpdate } from '@/lib/codewords'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import type { CodewordsBoard } from '@/types'
+import { parseJsonBody } from '@/lib/parse-body'
 
 function normalizeWord(word: string): string {
   return word.trim().toLowerCase()
 }
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = codewordsClueSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, codewordsClueSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, clueWord, clueNumber } = parsed.data
+  const { gameId, resumeToken, clueWord, clueNumber } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

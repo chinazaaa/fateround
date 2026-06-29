@@ -8,6 +8,7 @@ import {
 } from '@/lib/game-limits'
 import { getSupabaseAdmin, hasServiceRoleKey } from '@/lib/supabase-admin'
 import { patchGamePlayerLimitsSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function GET(req: NextRequest) {
   const session = await assertAdminRequest(req)
@@ -30,16 +31,13 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required to manage game limits.' }, { status: 503 })
   }
 
-  const raw = await req.json()
-  const parsed = patchGamePlayerLimitsSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, patchGamePlayerLimitsSchema)
+  if (bodyError) return bodyError
 
   const supabase = getSupabaseAdmin()
   const now = new Date().toISOString()
 
-  for (const entry of parsed.data.limits) {
+  for (const entry of body.limits) {
     const gameType = entry.game_type as LobbyLimitGameType
     const { min, max } = GAME_LIMIT_CODE_DEFAULTS[gameType]
     if (entry.max_players < min) {

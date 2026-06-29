@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
 import { codewordsAllowsPlayerChanges, removeCodewordsPlayerRole } from '@/lib/codewords'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 const hostRoleSchema = z.object({
   gameId: z.string().min(4).max(10),
@@ -19,13 +20,10 @@ const hostUnassignSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = hostRoleSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, hostRoleSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, hostToken, playerId, team, role } = parsed.data
+  const { gameId, hostToken, playerId, team, role } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
@@ -80,13 +78,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = hostUnassignSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, hostUnassignSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, hostToken, playerId } = parsed.data
+  const { gameId, hostToken, playerId } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

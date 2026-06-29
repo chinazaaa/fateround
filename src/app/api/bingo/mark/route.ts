@@ -5,15 +5,13 @@ import { canMarkCell } from '@/lib/bingo'
 import { playerIsViewer } from '@/lib/viewers'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = bingoMarkSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, bingoMarkSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, resumeToken, cellIndex } = parsed.data
+  const { gameId, resumeToken, cellIndex } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 

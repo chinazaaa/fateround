@@ -2,17 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { parseGameType, isMonopolyGame } from '@/lib/game-types'
 import { extendMonopolyGameDuration, clampMonopolyTimeExtension } from '@/lib/monopoly'
 import { monopolyExtendTimeSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
-  const raw = await req.json()
-  const parsed = monopolyExtendTimeSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, monopolyExtendTimeSchema)
+  if (bodyError) return bodyError
 
-  const { hostToken, extensionSeconds } = parsed.data
+  const { hostToken, extensionSeconds } = body
   const gameId = code.toUpperCase()
   const supabase = getSupabaseAdmin()
 
