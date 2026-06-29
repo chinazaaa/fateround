@@ -7,6 +7,7 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env
 const JOIN_ERRORS: Record<string, { message: string; status: number }> = {
   not_found: { message: 'Tournament not found', status: 404 },
   ended: { message: 'Tournament has ended', status: 400 },
+  started: { message: 'Tournament has already started — joining is closed', status: 409 },
   eliminated: { message: 'You have been eliminated from this tournament', status: 403 },
   name_taken: { message: 'Name already taken', status: 409 },
   full: { message: 'Tournament is full', status: 409 },

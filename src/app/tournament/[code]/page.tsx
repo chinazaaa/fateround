@@ -364,6 +364,7 @@ export default function TournamentLobbyPage() {
   const activeGame = games.find((g) => g.status === 'active')
   const finishedGames = games.filter((g) => g.status === 'finished')
   const isFinished = tournament.status === 'finished'
+  const hasStarted = tournament.status !== 'waiting'
   const points = tournament.placement_points ?? [10, 7, 5, 3, 2, 1]
   const lives = tournament.elimination_config
   const isParticipant = joined && !isHost
@@ -542,14 +543,21 @@ export default function TournamentLobbyPage() {
       {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
       {/* Join Form */}
-      {!joined && !isHost && !isFinished && isFull && (
+      {!joined && !isHost && !isFinished && hasStarted && (
+        <div className="glass-card-strong p-5 text-center space-y-1">
+          <p className="font-bold text-body">Tournament already started</p>
+          <p className="text-muted text-sm">Joining is closed once the first game begins.</p>
+        </div>
+      )}
+
+      {!joined && !isHost && !isFinished && !hasStarted && isFull && (
         <div className="glass-card-strong p-5 text-center space-y-1">
           <p className="font-bold text-body">Tournament full</p>
           <p className="text-muted text-sm">This tournament has reached its {tournament.max_players}-player limit.</p>
         </div>
       )}
 
-      {!joined && !isHost && !isFinished && !isFull && (
+      {!joined && !isHost && !isFinished && !hasStarted && !isFull && (
         <div className="glass-card-strong p-5 space-y-3">
           <p className="label-caps">Join Tournament</p>
           <div className="flex gap-2">

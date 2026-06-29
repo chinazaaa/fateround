@@ -335,9 +335,11 @@ export function useJoinFlow(deps: JoinFlowDeps) {
   }, [view])
 
   // Auto-join when arriving with a name already chosen (e.g. from a tournament
-  // lobby's "Join Game" link) so free-name players aren't asked to re-enter it.
-  // Only for games still in the lobby — late deep links to an active game keep
-  // the normal player/viewer choice rather than force-joining as a player.
+  // lobby's "Join Game" link) so the player isn't asked to re-enter it — including
+  // when they arrive after the host already started the game. joinGame() still
+  // honors the late-join policy (it joins as a viewer when late play isn't allowed),
+  // so this doesn't force player-join where it shouldn't. The ?name= param is only
+  // produced by the tournament flow, so this never affects ordinary share links.
   const nameAutoJoinRef = useRef(false)
   useEffect(() => {
     if (
@@ -347,7 +349,6 @@ export function useJoinFlow(deps: JoinFlowDeps) {
       joinNeedsGender ||
       view !== 'join' ||
       !game ||
-      game.status !== 'waiting' ||
       myPlayerId ||
       joining ||
       editingJoin ||
