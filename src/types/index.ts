@@ -506,6 +506,8 @@ export interface CrazyEightsSession {
   joker_penalty: number
   status_message: string | null
   winner_player_id: string | null
+  /** Player ids in the order they emptied their hands. Drives final placement. */
+  finish_order: string[]
   turn_deadline_at: string | null
   created_at: string
   updated_at: string

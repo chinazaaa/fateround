@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { buildLudoStandings } from '@/lib/ludo'
 import { whotPlacementOrder } from '@/lib/whot'
-import { crazyEightsHandSum } from '@/lib/crazy-eights'
+import { crazyEightsPlacementOrder } from '@/lib/crazy-eights'
 import { buildSnakeLadderStandings } from '@/lib/snake-and-ladder'
 import { totalScore } from '@/lib/yahtzee'
 import { tallyTriviaPlayerScores } from '@/lib/trivia'
@@ -183,28 +183,21 @@ async function getCompetitiveStandings(
 
   if (isCrazyEightsGame(gameType)) {
     const [{ data: session }, { data: hands }] = await Promise.all([
-      supabase.from('crazy_eights_sessions').select('winner_player_id').eq('game_id', gameId).maybeSingle(),
+      supabase
+        .from('crazy_eights_sessions')
+        .select('winner_player_id, turn_order, finish_order')
+        .eq('game_id', gameId)
+        .maybeSingle(),
       supabase.from('crazy_eights_player_hands').select('player_id, cards').eq('game_id', gameId),
     ])
     if (!hands?.length) return session?.winner_player_id ? [session.winner_player_id] : []
-    const winnerId = session?.winner_player_id ?? null
-    return [...hands]
-      .sort((a, b) => {
-        if (winnerId) {
-          if (a.player_id === winnerId) return -1
-          if (b.player_id === winnerId) return 1
-        }
-        // Non-winners rank by lowest hand points, then fewest cards (matches the engine).
-        const aSum = crazyEightsHandSum(Array.isArray(a.cards) ? (a.cards as CrazyEightsCard[]) : [])
-        const bSum = crazyEightsHandSum(Array.isArray(b.cards) ? (b.cards as CrazyEightsCard[]) : [])
-        if (aSum !== bSum) return aSum - bSum
-        const aCount = Array.isArray(a.cards) ? a.cards.length : 0
-        const bCount = Array.isArray(b.cards) ? b.cards.length : 0
-        if (aCount !== bCount) return aCount - bCount
-        // Stable final tiebreak so equal hands rank deterministically.
-        return String(a.player_id).localeCompare(String(b.player_id))
-      })
-      .map((h) => h.player_id as string)
+    // Same placement rule as the in-game results: first-to-empty (finish_order) ranks ahead
+    // of everyone, then lowest hand total — never card count alone.
+    return crazyEightsPlacementOrder(
+      hands as { player_id: string; cards: CrazyEightsCard[] }[],
+      session?.turn_order ?? [],
+      session?.finish_order ?? []
+    )
   }
 
   if (isLudoGame(gameType)) {
