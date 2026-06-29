@@ -75,6 +75,29 @@ async function resumeFromApi(gameCode: string, resumeToken: string): Promise<Res
   }
 }
 
+/**
+ * Probe whether a player still exists for this resume token.
+ * - `true`  — the server confirms the player exists.
+ * - `false` — the server positively reports it gone (404 not-found).
+ * - `null`  — unverifiable (network error, 5xx, 429, 400…) → caller must NOT clear.
+ */
+async function confirmPlayerExists(gameCode: string, resumeToken: string): Promise<boolean | null> {
+  try {
+    const res = await fetch('/api/players/resume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameCode, resumeToken }),
+    })
+    if (res.ok) return true
+    // 404 = game or player genuinely not found → definitively gone. Any other status
+    // is a transient/ambiguous failure and must not end the session.
+    if (res.status === 404) return false
+    return null
+  } catch {
+    return null
+  }
+}
+
 /** Restore player identity from URL code or localStorage; validates the player still exists. */
 export async function resolvePlayerSession(
   gameCode: string,
@@ -90,8 +113,20 @@ export async function resolvePlayerSession(
   if (!session) return null
 
   if (players && !players.some((p) => p.id === session.playerId)) {
-    clearPlayerSession(gameCode)
-    return null
+    // The passed `players` list can be a STALE snapshot — e.g. a load() that started
+    // before this player's own join row replicated. This is common when a tournament
+    // forwards everyone into a fresh game at once: a racing load resolves the session
+    // against a list captured pre-join, the player isn't in it, and we'd wrongly nuke
+    // their session — bouncing them to the join screen, where re-joining hits "name
+    // already taken" on their own orphaned row. Confirm with the server before clearing,
+    // and ONLY clear on a positive "player gone" — a transient/ambiguous failure
+    // (network, 5xx, 429) must keep the session so the next load can retry.
+    const exists = session.resumeToken ? await confirmPlayerExists(gameCode, session.resumeToken) : null
+    if (exists === false) {
+      clearPlayerSession(gameCode)
+      return null
+    }
+    // exists === true (confirmed) or null (unverifiable) — keep the local session.
   }
 
   // resume_token is the player's secret credential and is no longer readable from the DB

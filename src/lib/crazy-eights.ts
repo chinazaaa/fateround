@@ -1121,6 +1121,17 @@ export async function removeCrazyEightsPlayer(
     .eq('game_id', gameId)
     .maybeSingle()
   const session = sessionRaw as CrazyEightsSession | null
+
+  // A player who already emptied their hand has a locked placement (they're in
+  // finish_order). Leaving must NOT erase that — otherwise the winner who leaves is
+  // dropped from the leaderboard: removing them from turn_order filters them out of
+  // the finishers, and deleting their hand/player row breaks name + tournament-point
+  // mapping. So preserve their session slot, hand, and row; the client clears only its
+  // own local session.
+  if (session?.finish_order?.includes(playerId)) {
+    return { error: null }
+  }
+
   const order = session ? [...(session.turn_order ?? [])] : []
   const removedIndex = order.indexOf(playerId)
 

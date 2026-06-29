@@ -18,11 +18,24 @@ export async function POST(req: NextRequest) {
   const gameCode = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
-  const { data: game } = await supabase.from('games').select('id, status').eq('id', gameCode).maybeSingle()
+  const { data: game } = await supabase
+    .from('games')
+    .select('id, status, tournament_id')
+    .eq('id', gameCode)
+    .maybeSingle()
 
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.status !== 'waiting') {
     return NextResponse.json({ error: 'Game is not in the lobby' }, { status: 400 })
+  }
+  // Tournament rosters lock when the first game starts. Watchers (and eliminated
+  // players) enter later games as spectators — they must not be able to un-spectator
+  // themselves into the locked roster.
+  if (game.tournament_id) {
+    return NextResponse.json(
+      { error: "You're watching this tournament — the player roster is locked" },
+      { status: 403 }
+    )
   }
 
   const auth = await assertPlayer(supabase, gameCode, resumeToken)

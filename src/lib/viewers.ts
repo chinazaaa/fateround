@@ -141,10 +141,19 @@ export function canSwitchViewerToPlayer(
   player: Pick<Player, 'joined_at' | 'spectator' | 'is_eliminated'>,
   game: Pick<
     Game,
-    'status' | 'session_started_at' | 'allow_viewers' | 'allow_late_players' | 'codewords_late_join' | 'game_type'
+    | 'status'
+    | 'session_started_at'
+    | 'allow_viewers'
+    | 'allow_late_players'
+    | 'codewords_late_join'
+    | 'game_type'
+    | 'tournament_id'
   >
 ): boolean {
   if (player.is_eliminated) return false
+  // Tournament rosters lock when the first game starts — watchers and eliminated
+  // players follow as spectators and can never switch into the game.
+  if (game.tournament_id) return false
   if (game.status !== 'active') return false
   if (!playerIsViewer(player, game)) return false
   return allowLatePlayers(game)

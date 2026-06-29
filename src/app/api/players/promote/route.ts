@@ -31,6 +31,14 @@ export async function POST(req: NextRequest) {
   if (game.status !== 'active') {
     return NextResponse.json({ error: 'Game is not in progress' }, { status: 400 })
   }
+  // Tournament rosters lock when the first game starts — watchers and eliminated
+  // players follow along as spectators and can't promote themselves into the game.
+  if (game.tournament_id) {
+    return NextResponse.json(
+      { error: "You're watching this tournament — the player roster is locked" },
+      { status: 403 }
+    )
+  }
 
   if (!allowLatePlayers(game)) {
     return NextResponse.json({ error: 'This game only allows late joiners to watch' }, { status: 400 })

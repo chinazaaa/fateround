@@ -122,6 +122,11 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const me = players.find((p) => p.id === myPlayerId)
   // In the lobby, everyone can participate regardless of spectator flag (gets cleared on reset)
   const isViewer = !!(game && me && game.status !== 'waiting' && playerIsViewer(me, game))
+  // …but a genuine spectator/eliminated player sitting in the lobby must NOT fall into the
+  // statement-submit flow. isViewer is intentionally false during 'waiting', so guard the
+  // submit path explicitly on the spectator/eliminated flags (normal play clears spectator
+  // on reset, so this only bites an actual watch-only viewer).
+  const isLobbyWatcher = !!(me && (me.spectator === true || me.is_eliminated === true))
 
   const joinGame = useCallback(
     async (opts?: { joinAsViewer?: boolean; name?: string }) => {
@@ -256,7 +261,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
             await load()
           }}
           activity={
-            isViewer ? (
+            isViewer || isLobbyWatcher ? (
               <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={me} onPromoted={load} />
             ) : myStatement && !editingStatements ? (
               <div className="space-y-4">
