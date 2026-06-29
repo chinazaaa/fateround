@@ -77,12 +77,12 @@ export default function TournamentCreatePage() {
         title: title.trim(),
         placementPoints: DEFAULT_POINTS,
       }
-      const count = parseInt(targetGameCount, 10)
-      if (!isNaN(count) && count > 0) {
+      const count = Number(targetGameCount)
+      if (Number.isInteger(count) && count >= 1 && count <= 100) {
         body.targetGameCount = count
       }
-      const cap = parseInt(maxPlayers, 10)
-      if (!isNaN(cap) && cap >= 2) {
+      const cap = Number(maxPlayers)
+      if (Number.isInteger(cap) && cap >= 2 && cap <= 100) {
         body.maxPlayers = cap
       }
       if (livesEnabled) {
@@ -145,6 +145,7 @@ export default function TournamentCreatePage() {
             placeholder="Leave empty for unlimited"
             min={1}
             max={100}
+            step={1}
             className="input-field"
           />
           <p className="text-faint text-xs mt-1.5">Tournament ends after this many games, or you can end it manually</p>
@@ -159,6 +160,7 @@ export default function TournamentCreatePage() {
             placeholder="Leave empty for unlimited"
             min={2}
             max={100}
+            step={1}
             className="input-field"
           />
           <p className="text-faint text-xs mt-1.5">Once full, new players can&apos;t join</p>

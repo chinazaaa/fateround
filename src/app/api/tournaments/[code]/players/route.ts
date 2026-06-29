@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { joinTournamentSchema } from '@/lib/tournament-validation'
-import type { EliminationConfig } from '@/types/elimination'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+
+const JOIN_ERRORS: Record<string, { message: string; status: number }> = {
+  not_found: { message: 'Tournament not found', status: 404 },
+  ended: { message: 'Tournament has ended', status: 400 },
+  eliminated: { message: 'You have been eliminated from this tournament', status: 403 },
+  name_taken: { message: 'Name already taken', status: 409 },
+  full: { message: 'Tournament is full', status: 409 },
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -17,67 +24,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { playerName } = parsed.data
 
-  const { data: tournament } = await supabase
-    .from('tournaments')
-    .select('id, status, elimination_config, max_players')
-    .eq('id', tournamentId)
-    .maybeSingle()
+  // Atomic join: the RPC locks the tournament row and checks name + capacity
+  // before inserting, so concurrent joins can't exceed max_players. Initializing
+  // lives also happens inside the same transaction.
+  const { data, error } = await supabase.rpc('join_tournament', {
+    p_tournament_id: tournamentId,
+    p_player_name: playerName,
+  })
 
-  if (!tournament) {
-    return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
-  }
-  if (tournament.status === 'finished') {
-    return NextResponse.json({ error: 'Tournament has ended' }, { status: 400 })
-  }
-
-  const { data: existing } = await supabase
-    .from('tournament_players')
-    .select('id, is_eliminated')
-    .eq('tournament_id', tournamentId)
-    .ilike('player_name', playerName)
-    .maybeSingle()
-
-  if (existing) {
-    if (existing.is_eliminated) {
-      return NextResponse.json({ error: 'You have been eliminated from this tournament' }, { status: 403 })
-    }
-    return NextResponse.json({ error: 'Name already taken' }, { status: 409 })
-  }
-
-  // Enforce the optional player cap (this is a new name, so it would add a slot).
-  if (tournament.max_players) {
-    const { count } = await supabase
-      .from('tournament_players')
-      .select('id', { count: 'exact', head: true })
-      .eq('tournament_id', tournamentId)
-    if ((count ?? 0) >= tournament.max_players) {
-      return NextResponse.json({ error: 'Tournament is full' }, { status: 409 })
-    }
-  }
-
-  const { data: player, error } = await supabase
-    .from('tournament_players')
-    .insert({
-      tournament_id: tournamentId,
-      player_name: playerName,
-    })
-    .select()
-    .single()
-
+  // Fail closed — never treat a DB error as "there's room".
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to join' }, { status: 500 })
   }
 
-  // Initialize lives if tournament has lives elimination config
-  if (tournament.elimination_config) {
-    const elimConfig = tournament.elimination_config as EliminationConfig
-    if (elimConfig.mode === 'lives' && elimConfig.startingLives && player) {
-      await supabase
-        .from('tournament_players')
-        .update({ lives_remaining: elimConfig.startingLives })
-        .eq('id', player.id)
-    }
+  const result = (data ?? {}) as { error?: string; player?: unknown }
+  if (result.error) {
+    const mapped = JOIN_ERRORS[result.error] ?? { message: 'Failed to join', status: 400 }
+    return NextResponse.json({ error: mapped.message }, { status: mapped.status })
   }
 
-  return NextResponse.json({ player })
+  return NextResponse.json({ player: result.player })
 }
