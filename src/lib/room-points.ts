@@ -168,7 +168,11 @@ async function getCompetitiveStandings(
 
   if (isWhotGame(gameType)) {
     const [{ data: session }, { data: hands }] = await Promise.all([
-      supabase.from('whot_sessions').select('winner_player_id, turn_order, finish_order').eq('game_id', gameId).maybeSingle(),
+      supabase
+        .from('whot_sessions')
+        .select('winner_player_id, turn_order, finish_order')
+        .eq('game_id', gameId)
+        .maybeSingle(),
       supabase.from('whot_player_hands').select('player_id, cards').eq('game_id', gameId),
     ])
     if (!hands?.length) return session?.winner_player_id ? [session.winner_player_id] : []

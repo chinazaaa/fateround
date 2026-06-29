@@ -69,11 +69,7 @@ type WhotRankableHand = { player_id: string; cards: WhotCard[] }
  * lowest hand total then fewest cards. Without this, all finished players tie at
  * 0 cards / hand-sum 0 and the sort ordered them arbitrarily.
  */
-export function whotPlacementOrder(
-  hands: WhotRankableHand[],
-  turnOrder: string[],
-  finishOrder: string[]
-): string[] {
+export function whotPlacementOrder(hands: WhotRankableHand[], turnOrder: string[], finishOrder: string[]): string[] {
   const activeIds = new Set(turnOrder ?? [])
   const finished = (finishOrder ?? []).filter((id) => activeIds.has(id))
   const finishedSet = new Set(finished)
