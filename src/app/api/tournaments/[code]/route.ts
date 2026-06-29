@@ -62,37 +62,35 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
   }
 
+  // Lives settings can only change before the first game — afterwards players
+  // already hold live counts and changing the rule mid-run would desync them.
+  const editingLives = eliminationConfig !== undefined
+  if (editingLives && tournament.status !== 'waiting') {
+    return NextResponse.json(
+      { error: 'Lives settings can only be changed before the first game starts' },
+      { status: 400 }
+    )
+  }
+
   const updates: Record<string, unknown> = {}
   if (title !== undefined) updates.title = title
   if (placementPoints !== undefined) updates.placement_points = placementPoints
   if (targetGameCount !== undefined) updates.target_game_count = targetGameCount
   if (maxPlayers !== undefined) updates.max_players = maxPlayers
 
-  // Lives settings can only change before the first game — afterwards players
-  // already hold live counts and changing the rule mid-run would desync them.
-  const editingLives = eliminationConfig !== undefined
-  if (editingLives) {
-    if (tournament.status !== 'waiting') {
-      return NextResponse.json(
-        { error: 'Lives settings can only be changed before the first game starts' },
-        { status: 400 }
-      )
-    }
-    updates.elimination_config = eliminationConfig
-  }
-
   if (Object.keys(updates).length > 0) {
     const { error } = await admin.from('tournaments').update(updates).eq('id', tournamentId)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Re-sync players' lives to match the new config (only reachable while waiting).
+  // Write the elimination config and re-sync players' lives atomically, so a
+  // failed resync can never leave new rules paired with stale lives.
   if (editingLives) {
-    const lives = eliminationConfig?.mode === 'lives' ? eliminationConfig.startingLives : null
-    await admin
-      .from('tournament_players')
-      .update({ lives_remaining: lives, is_eliminated: false, eliminated_at: null })
-      .eq('tournament_id', tournamentId)
+    const { error } = await admin.rpc('apply_tournament_lives', {
+      p_tournament_id: tournamentId,
+      p_config: eliminationConfig ?? null,
+    })
+    if (error) return NextResponse.json({ error: 'Failed to update lives settings' }, { status: 500 })
   }
 
   return NextResponse.json({ success: true })

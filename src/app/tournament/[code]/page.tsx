@@ -175,16 +175,27 @@ export default function TournamentLobbyPage() {
       setEditError('Enter a tournament title')
       return
     }
+    // Blank clears the setting; a non-blank value must be a valid integer in range
+    // (otherwise surface an error rather than silently clearing it).
+    const target = Number(editTarget)
+    if (editTarget.trim() && !(Number.isInteger(target) && target >= 1 && target <= 100)) {
+      setEditError('Target games must be a whole number between 1 and 100')
+      return
+    }
+    const cap = Number(editMax)
+    if (editMax.trim() && !(Number.isInteger(cap) && cap >= 2 && cap <= 100)) {
+      setEditError('Max players must be a whole number between 2 and 100')
+      return
+    }
+
     setSavingEdit(true)
     setEditError('')
 
-    const target = parseInt(editTarget, 10)
-    const cap = parseInt(editMax, 10)
     const body: Record<string, unknown> = {
       hostToken,
       title: editTitle.trim(),
-      targetGameCount: editTarget.trim() && !isNaN(target) && target > 0 ? target : null,
-      maxPlayers: editMax.trim() && !isNaN(cap) && cap >= 2 ? cap : null,
+      targetGameCount: editTarget.trim() ? target : null,
+      maxPlayers: editMax.trim() ? cap : null,
     }
     // Lives can only be edited before the first game starts.
     if (tournament.status === 'waiting') {
@@ -448,6 +459,7 @@ export default function TournamentLobbyPage() {
                 placeholder="Unlimited"
                 min={1}
                 max={100}
+                step={1}
                 className="input-field"
               />
             </Field>
@@ -460,6 +472,7 @@ export default function TournamentLobbyPage() {
                 placeholder="Unlimited"
                 min={2}
                 max={100}
+                step={1}
                 className="input-field"
               />
             </Field>
