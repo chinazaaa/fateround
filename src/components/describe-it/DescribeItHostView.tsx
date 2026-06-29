@@ -46,6 +46,8 @@ import {
   isDescribeItResultsPhase,
 } from '@/lib/describe-it'
 import { parseDescribeItWords, parseExcelDescribeItWords, parseStoredDescribeItWords } from '@/lib/describe-it-words'
+import { questionSampleFile, questionUploadHint } from '@/lib/custom-questions'
+import { SegmentedControl } from '@/components/ui/CreateWizard'
 import {
   DescribeItCard,
   DescribeItPlayerScoreboard,
@@ -93,6 +95,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
   const [wordsDraft, setWordsDraft] = useState('')
+  const [wordsMode, setWordsMode] = useState<'keep' | 'replace'>('keep')
   const [savingWords, setSavingWords] = useState(false)
   const [wordsUploadError, setWordsUploadError] = useState<string | null>(null)
   const wordsInitRef = useRef(false)
@@ -620,8 +623,20 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
                 ))}
               </select>
             </label>
-            <div className="space-y-1">
-              <p className="text-xs font-semibold text-faint">Your words (one per line, optional)</p>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-faint">Your words (one per row, optional)</p>
+              <SegmentedControl
+                value={wordsMode}
+                onChange={(v) => setWordsMode(v as 'keep' | 'replace')}
+                options={[
+                  {
+                    value: 'keep',
+                    label: 'Keep current',
+                    hint: `${parseDescribeItWords(wordsDraft).length} loaded — uploads add to these`,
+                  },
+                  { value: 'replace', label: 'Replace', hint: 'Upload swaps in only the new list' },
+                ]}
+              />
               <textarea
                 value={wordsDraft}
                 onChange={(e) => setWordsDraft(e.target.value)}
@@ -629,7 +644,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
                 rows={3}
                 className="input-field w-full resize-y text-sm"
               />
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => wordsFileRef.current?.click()}
@@ -637,6 +652,13 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
                 >
                   Upload CSV / Excel
                 </button>
+                <a
+                  href={questionSampleFile('describe_it').href}
+                  download={questionSampleFile('describe_it').download}
+                  className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10 no-underline"
+                >
+                  Sample CSV
+                </a>
                 <button
                   type="button"
                   onClick={saveWords}
@@ -646,6 +668,10 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
                   {savingWords ? 'Saving…' : 'Save words'}
                 </button>
               </div>
+              <p className="text-faint text-[11px]">
+                {questionUploadHint('describe_it')}{' '}
+                {wordsMode === 'replace' ? 'Uploading replaces the current list.' : 'Uploading adds to the current list.'}
+              </p>
               <input
                 ref={wordsFileRef}
                 type="file"
@@ -665,18 +691,50 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
                           ? await parseExcelDescribeItWords(await file.arrayBuffer())
                           : []
                     if (rows.length === 0) {
-                      setWordsUploadError('No words found. Use one word per line or row.')
+                      setWordsUploadError('No words found. Use one word per row.')
                       return
                     }
-                    const merged = parseDescribeItWords(`${wordsDraft}\n${rows.join('\n')}`)
-                    setWordsDraft(merged.join('\n'))
-                    await saveSettings({ words: merged.join('\n') })
+                    const next =
+                      wordsMode === 'replace' ? rows : parseDescribeItWords(`${wordsDraft}\n${rows.join('\n')}`)
+                    setWordsDraft(next.join('\n'))
+                    await saveSettings({ words: next.join('\n') })
                   } catch {
                     setWordsUploadError('Could not read that file. Try a .csv or .xlsx.')
                   }
                 }}
               />
               {wordsUploadError && <p className="text-rose-400 text-xs">{wordsUploadError}</p>}
+              {parseDescribeItWords(wordsDraft).length > 0 && (
+                <div className="surface-inset border border-theme rounded-xl p-3 space-y-2 max-h-48 overflow-y-auto">
+                  <p className="text-muted text-xs uppercase tracking-wider">
+                    Loaded ({parseDescribeItWords(wordsDraft).length})
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {parseDescribeItWords(wordsDraft).map((w, i) => (
+                      <span
+                        key={`${w}-${i}`}
+                        className="inline-flex items-center gap-1 rounded-md border border-theme bg-[var(--surface-inset-bg)] px-2 py-1 text-xs"
+                      >
+                        {w}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWordsDraft(
+                              parseDescribeItWords(wordsDraft)
+                                .filter((_, idx) => idx !== i)
+                                .join('\n')
+                            )
+                          }
+                          className="text-faint hover:text-red-300"
+                          aria-label={`Remove ${w}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="pt-1 border-t border-[var(--border)]">
               <HostAllowViewersField gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
