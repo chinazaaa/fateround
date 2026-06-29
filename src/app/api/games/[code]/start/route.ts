@@ -19,19 +19,10 @@ import {
   isCodewordsGame,
   isTriviaGame,
   isTwoTruthsGame,
-  isMonopolyGame,
-  isYahtzeeGame,
-  isWhotGame,
-  isCrazyEightsGame,
-  isLudoGame,
-  isTicTacToeGame,
-  isChessGame,
   isDescribeItGame,
-  isScrabbleGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
-  isSnakeAndLadderGame,
 } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
@@ -92,20 +83,12 @@ import {
   CODEWORDS_MIN_CUSTOM_POOL,
 } from '@/lib/codewords'
 import { buildTtlRoundRows, lobbyReadyForTwoTruths, shufflePlayerOrder, TTL_MIN_PLAYERS } from '@/lib/two-truths'
-import { initializeMonopolyGame, MONOPOLY_MIN_PLAYERS } from '@/lib/monopoly'
-import { initializeYahtzeeGame, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
-import { initializeWhotGame, WHOT_MIN_PLAYERS } from '@/lib/whot'
-import { initializeCrazyEightsGame, CRAZY8_MIN_PLAYERS } from '@/lib/crazy-eights'
-import { initializeLudoGame, LUDO_MIN_PLAYERS } from '@/lib/ludo'
-import { initializeSnakeAndLadderGame, SNAKE_LADDER_MIN_PLAYERS } from '@/lib/snake-and-ladder'
-import { initializeTicTacToeGame, TIC_TAC_TOE_MIN_PLAYERS } from '@/lib/tic-tac-toe'
-import { initializeChessGame, CHESS_MIN_PLAYERS } from '@/lib/chess'
+import { GAME_START_SPECS, startCountError } from '@/lib/game-start'
 import {
   initializeDescribeItGame,
   DESCRIBE_IT_MIN_PLAYERS,
   DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
 } from '@/lib/describe-it'
-import { initializeScrabbleGame, SCRABBLE_MIN_PLAYERS, SCRABBLE_MAX_PLAYERS } from '@/lib/scrabble'
 import { buildNpatInitialRound, NPAT_MIN_PLAYERS, shufflePlayerOrder as npatShufflePlayerOrder } from '@/lib/npat'
 import { buildSudokuRoundRow, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
@@ -362,210 +345,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ success: true })
   }
 
-  if (isMonopolyGame(gameType)) {
+  const startSpec = GAME_START_SPECS[gameType]
+  if (startSpec) {
     const playingPlayers = playersData.filter((p) => p.spectator !== true)
-    if (playingPlayers.length < MONOPOLY_MIN_PLAYERS) {
-      return NextResponse.json({ error: `Need at least ${MONOPOLY_MIN_PLAYERS} players to start` }, { status: 400 })
-    }
+    const countError = startCountError(playingPlayers.length, startSpec)
+    if (countError) return NextResponse.json({ error: countError }, { status: 400 })
 
-    const { error: initError } = await initializeMonopolyGame(
+    // Board games seed their tables via the service role (RLS-locked to anon writes);
+    // host authority is already enforced above for this route.
+    const { error: initError } = await startSpec.initialize(
       getSupabaseAdmin(),
       code.toUpperCase(),
       playingPlayers.map((p) => p.id),
-      (game.timer_seconds ?? 0) as number
-    )
-    if (initError) return NextResponse.json({ error: initError }, { status: 500 })
-
-    const { error: gameError } = await getSupabaseAdmin()
-      .from('games')
-      .update({
-        status: 'active',
-        session_started_at: sessionStartedAt,
-        current_round_number: 1,
-        rounds_count: 1,
-      })
-      .eq('id', code.toUpperCase())
-
-    if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isYahtzeeGame(gameType)) {
-    const playingPlayers = playersData.filter((p) => p.spectator !== true)
-    if (playingPlayers.length < YAHTZEE_MIN_PLAYERS) {
-      return NextResponse.json({ error: `Need at least ${YAHTZEE_MIN_PLAYERS} players to start` }, { status: 400 })
-    }
-
-    const { error: initError } = await initializeYahtzeeGame(
-      getSupabaseAdmin(),
-      code.toUpperCase(),
-      playingPlayers.map((p) => p.id)
-    )
-    if (initError) return NextResponse.json({ error: initError }, { status: 500 })
-
-    const { error: gameError } = await getSupabaseAdmin()
-      .from('games')
-      .update({
-        status: 'active',
-        session_started_at: sessionStartedAt,
-        current_round_number: 1,
-        rounds_count: 1,
-      })
-      .eq('id', code.toUpperCase())
-
-    if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isWhotGame(gameType)) {
-    const playingPlayers = playersData.filter((p) => p.spectator !== true)
-    if (playingPlayers.length < WHOT_MIN_PLAYERS) {
-      return NextResponse.json({ error: `Need at least ${WHOT_MIN_PLAYERS} players to start` }, { status: 400 })
-    }
-
-    const { error: initError } = await initializeWhotGame(
-      getSupabaseAdmin(),
-      code.toUpperCase(),
-      playingPlayers.map((p) => p.id)
-    )
-    if (initError) return NextResponse.json({ error: initError }, { status: 500 })
-
-    const { error: gameError } = await getSupabaseAdmin()
-      .from('games')
-      .update({
-        status: 'active',
-        session_started_at: sessionStartedAt,
-        current_round_number: 1,
-        rounds_count: 1,
-      })
-      .eq('id', code.toUpperCase())
-
-    if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isCrazyEightsGame(gameType)) {
-    const playingPlayers = playersData.filter((p) => p.spectator !== true)
-    if (playingPlayers.length < CRAZY8_MIN_PLAYERS) {
-      return NextResponse.json({ error: `Need at least ${CRAZY8_MIN_PLAYERS} players to start` }, { status: 400 })
-    }
-
-    const { error: initError } = await initializeCrazyEightsGame(
-      getSupabaseAdmin(),
-      code.toUpperCase(),
-      playingPlayers.map((p) => p.id)
-    )
-    if (initError) return NextResponse.json({ error: initError }, { status: 500 })
-
-    const { error: gameError } = await getSupabaseAdmin()
-      .from('games')
-      .update({
-        status: 'active',
-        session_started_at: sessionStartedAt,
-        current_round_number: 1,
-        rounds_count: 1,
-      })
-      .eq('id', code.toUpperCase())
-
-    if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isLudoGame(gameType)) {
-    const playingPlayers = playersData.filter((p) => p.spectator !== true)
-    if (playingPlayers.length < LUDO_MIN_PLAYERS) {
-      return NextResponse.json({ error: `Need at least ${LUDO_MIN_PLAYERS} players to start` }, { status: 400 })
-    }
-
-    const { error: initError } = await initializeLudoGame(
-      getSupabaseAdmin(),
-      code.toUpperCase(),
-      playingPlayers.map((p) => p.id)
-    )
-    if (initError) return NextResponse.json({ error: initError }, { status: 500 })
-
-    const { error: gameError } = await getSupabaseAdmin()
-      .from('games')
-      .update({
-        status: 'active',
-        session_started_at: sessionStartedAt,
-        current_round_number: 1,
-        rounds_count: 1,
-      })
-      .eq('id', code.toUpperCase())
-
-    if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isSnakeAndLadderGame(gameType)) {
-    const playingPlayers = playersData.filter((p) => p.spectator !== true)
-    if (playingPlayers.length < SNAKE_LADDER_MIN_PLAYERS) {
-      return NextResponse.json({ error: `Need at least ${SNAKE_LADDER_MIN_PLAYERS} players to start` }, { status: 400 })
-    }
-
-    // Snake & Ladder tables are RLS-locked to anon writes — initialize via the
-    // service role. (Host authority is already enforced above for this route.)
-    const { error: initError } = await initializeSnakeAndLadderGame(
-      getSupabaseAdmin(),
-      code.toUpperCase(),
-      playingPlayers.map((p) => p.id)
-    )
-    if (initError) return NextResponse.json({ error: initError }, { status: 500 })
-
-    const { error: gameError } = await getSupabaseAdmin()
-      .from('games')
-      .update({
-        status: 'active',
-        session_started_at: sessionStartedAt,
-        current_round_number: 1,
-        rounds_count: 1,
-      })
-      .eq('id', code.toUpperCase())
-
-    if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isTicTacToeGame(gameType)) {
-    const playingPlayers = playersData.filter((p) => p.spectator !== true)
-    if (playingPlayers.length !== TIC_TAC_TOE_MIN_PLAYERS) {
-      return NextResponse.json({ error: `Need exactly ${TIC_TAC_TOE_MIN_PLAYERS} players to start` }, { status: 400 })
-    }
-
-    // Tic-Tac-Toe tables are RLS-locked to anon writes — initialize via the
-    // service role. (Host authority is already enforced above for this route.)
-    const { error: initError } = await initializeTicTacToeGame(
-      getSupabaseAdmin(),
-      code.toUpperCase(),
-      playingPlayers.map((p) => p.id)
-    )
-    if (initError) return NextResponse.json({ error: initError }, { status: 500 })
-
-    const { error: gameError } = await getSupabaseAdmin()
-      .from('games')
-      .update({
-        status: 'active',
-        session_started_at: sessionStartedAt,
-        current_round_number: 1,
-        rounds_count: 1,
-      })
-      .eq('id', code.toUpperCase())
-
-    if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isChessGame(gameType)) {
-    const playingPlayers = playersData.filter((p) => p.spectator !== true)
-    if (playingPlayers.length !== CHESS_MIN_PLAYERS) {
-      return NextResponse.json({ error: `Need exactly ${CHESS_MIN_PLAYERS} players to start` }, { status: 400 })
-    }
-
-    const { error: initError } = await initializeChessGame(
-      getSupabaseAdmin(),
-      code.toUpperCase(),
-      playingPlayers.map((p) => p.id)
+      game
     )
     if (initError) return NextResponse.json({ error: initError }, { status: 500 })
 
@@ -601,36 +393,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({ status: 'active', session_started_at: sessionStartedAt, current_round_number: 1 })
-      .eq('id', code.toUpperCase())
-
-    if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
-    return NextResponse.json({ success: true })
-  }
-
-  if (isScrabbleGame(gameType)) {
-    const playingPlayers = playersData.filter((p) => p.spectator !== true)
-    if (playingPlayers.length < SCRABBLE_MIN_PLAYERS || playingPlayers.length > SCRABBLE_MAX_PLAYERS) {
-      return NextResponse.json(
-        { error: `Need ${SCRABBLE_MIN_PLAYERS}–${SCRABBLE_MAX_PLAYERS} players to start` },
-        { status: 400 }
-      )
-    }
-
-    const { error: initError } = await initializeScrabbleGame(
-      getSupabaseAdmin(),
-      code.toUpperCase(),
-      playingPlayers.map((p) => p.id)
-    )
-    if (initError) return NextResponse.json({ error: initError }, { status: 500 })
-
-    const { error: gameError } = await getSupabaseAdmin()
-      .from('games')
-      .update({
-        status: 'active',
-        session_started_at: sessionStartedAt,
-        current_round_number: 1,
-        rounds_count: 1,
-      })
       .eq('id', code.toUpperCase())
 
     if (gameError) return NextResponse.json({ error: gameError.message }, { status: 500 })
