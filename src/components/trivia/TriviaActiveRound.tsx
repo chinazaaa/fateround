@@ -261,16 +261,20 @@ export function TriviaActiveRound({
         {screen === 'waiting' && (
           <div className="glass-card-strong p-8 sm:p-10 text-center space-y-3">
             <p className="text-xl sm:text-2xl font-bold text-body">
-              {currentRound?.status === 'finished' && game.status === 'active'
-                ? isLastRound
-                  ? 'Wrapping up…'
-                  : 'Starting next question…'
-                : 'Get ready…'}
+              {game.status !== 'active'
+                ? 'Waiting for the host to start'
+                : currentRound?.status === 'finished'
+                  ? isLastRound
+                    ? 'Wrapping up…'
+                    : 'Starting next question…'
+                  : 'Get ready…'}
             </p>
             <p className="text-muted text-base">
-              {currentRound?.status === 'finished' && game.status === 'active' && !isLastRound
-                ? 'Hang tight — the next round is loading'
-                : 'Waiting for the next question'}
+              {game.status !== 'active'
+                ? 'The game will begin shortly'
+                : currentRound?.status === 'finished' && !isLastRound
+                  ? 'Hang tight — the next round is loading'
+                  : 'Waiting for the next question'}
             </p>
           </div>
         )}

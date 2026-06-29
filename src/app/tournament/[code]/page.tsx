@@ -193,8 +193,9 @@ export default function TournamentLobbyPage() {
         return
       }
       localStorage.setItem(`host_token_${data.gameCode}`, data.gameHostToken)
-      // Take the host straight to the dashboard, where they actually start the game.
-      router.push(`/host/${data.gameCode}?token=${data.gameHostToken}`)
+      // Stay on the lobby (it now shows the active-game banner); the host opens the
+      // dashboard from there in a new tab to actually start the game.
+      fetchState()
     } catch {
       setError('Something went wrong')
     } finally {
@@ -235,7 +236,8 @@ export default function TournamentLobbyPage() {
 
   function openHostDashboard(gameCode: string) {
     const token = localStorage.getItem(`host_token_${gameCode}`) ?? ''
-    router.push(`/host/${gameCode}?token=${token}`)
+    // Open in a new tab so the host keeps this lobby tab open across games.
+    window.open(`/host/${gameCode}?token=${token}`, '_blank', 'noopener,noreferrer')
   }
 
   if (loading) {
@@ -612,7 +614,7 @@ export default function TournamentLobbyPage() {
               {actionLoading ? 'Starting…' : isFirstGame ? 'Start Tournament' : 'Start Next Game'}
             </PrimaryBtn>
             <p className="text-faint text-xs text-center">
-              Opens the host dashboard, where you start the game once players have joined.
+              Creates the game room. Open the host dashboard (new tab) to start it once players have joined.
             </p>
           </div>
 
