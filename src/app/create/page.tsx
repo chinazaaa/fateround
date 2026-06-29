@@ -3017,40 +3017,46 @@ function CreateGameInner() {
                           </div>
                         ) : (
                           <div className="space-y-3">
-                            {isWyr ? (
-                              <div className="space-y-2">
-                                <input
-                                  value={wyrOptionA}
-                                  onChange={(e) => setWyrOptionA(e.target.value)}
-                                  placeholder="Option A"
-                                  className="input-field py-2.5 text-sm"
-                                />
-                                <input
-                                  value={wyrOptionB}
-                                  onChange={(e) => setWyrOptionB(e.target.value)}
-                                  onKeyDown={(e) => e.key === 'Enter' && addManualQuestion()}
-                                  placeholder="Option B"
-                                  className="input-field py-2.5 text-sm"
-                                />
-                              </div>
-                            ) : (
-                              <input
-                                value={mltQuestionInput}
-                                onChange={(e) => setMltQuestionInput(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && addManualQuestion()}
-                                placeholder={
-                                  isTot ? 'Coffee or Tea?' : isNhie ? 'been skydiving' : 'Who is most likely to…'
-                                }
-                                className="input-field py-2.5 text-sm"
-                              />
+                            {/* Trivia needs structured input (question + 4 options + correct answer),
+                                so it has no single-field add — use bulk paste or CSV upload below. */}
+                            {!isTrivia && (
+                              <>
+                                {isWyr ? (
+                                  <div className="space-y-2">
+                                    <input
+                                      value={wyrOptionA}
+                                      onChange={(e) => setWyrOptionA(e.target.value)}
+                                      placeholder="Option A"
+                                      className="input-field py-2.5 text-sm"
+                                    />
+                                    <input
+                                      value={wyrOptionB}
+                                      onChange={(e) => setWyrOptionB(e.target.value)}
+                                      onKeyDown={(e) => e.key === 'Enter' && addManualQuestion()}
+                                      placeholder="Option B"
+                                      className="input-field py-2.5 text-sm"
+                                    />
+                                  </div>
+                                ) : (
+                                  <input
+                                    value={mltQuestionInput}
+                                    onChange={(e) => setMltQuestionInput(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && addManualQuestion()}
+                                    placeholder={
+                                      isTot ? 'Coffee or Tea?' : isNhie ? 'been skydiving' : 'Who is most likely to…'
+                                    }
+                                    className="input-field py-2.5 text-sm"
+                                  />
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={addManualQuestion}
+                                  className="btn-secondary w-full text-sm py-2.5"
+                                >
+                                  Add question
+                                </button>
+                              </>
                             )}
-                            <button
-                              type="button"
-                              onClick={addManualQuestion}
-                              className="btn-secondary w-full text-sm py-2.5"
-                            >
-                              Add question
-                            </button>
                             <textarea
                               value={questionsBulkPaste}
                               onChange={(e) => setQuestionsBulkPaste(e.target.value)}
@@ -3308,6 +3314,7 @@ function CreateGameInner() {
                               </div>
                               <input
                                 type="number"
+                                aria-label="Players eliminated per round"
                                 min={1}
                                 max={10}
                                 value={eliminateCount}
@@ -3323,6 +3330,7 @@ function CreateGameInner() {
                               </div>
                               <input
                                 type="number"
+                                aria-label="Elimination score threshold"
                                 min={0}
                                 value={scoreThreshold}
                                 onChange={(e) => setScoreThreshold(Number(e.target.value) || 0)}
@@ -3342,6 +3350,7 @@ function CreateGameInner() {
                             </div>
                             <input
                               type="number"
+                              aria-label="Starting lives"
                               min={1}
                               max={10}
                               value={startingLives}
@@ -3357,6 +3366,7 @@ function CreateGameInner() {
                             </div>
                             <input
                               type="number"
+                              aria-label="Players who lose a life each round"
                               min={1}
                               max={10}
                               value={eliminateCount}
