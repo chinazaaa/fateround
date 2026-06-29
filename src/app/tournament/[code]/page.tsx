@@ -582,7 +582,10 @@ export default function TournamentLobbyPage() {
       {!joined && !isHost && !isFinished && hasStarted && !spectating && (
         <div className="glass-card-strong p-5 text-center space-y-2">
           <p className="font-bold text-body">Tournament already started</p>
-          <p className="text-muted text-sm">Joining is closed once the first game begins — but you can watch.</p>
+          <p className="text-muted text-sm">
+            Joining is closed once the first game begins.
+            {activeGame ? ' You can watch the live game below.' : ' Check back when the next game starts.'}
+          </p>
           {activeGame && (
             <button
               onClick={() => handleWatchGame(activeGame.game_id)}

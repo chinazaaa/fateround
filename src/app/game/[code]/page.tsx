@@ -86,7 +86,12 @@ export default function GamePage() {
     const key = `watcher_name_${gameCode}`
     let w = window.localStorage.getItem(key)
     if (!w) {
-      w = `Watcher-${Math.random().toString(36).slice(2, 6)}`
+      // Use a high-entropy suffix so concurrent watchers don't collide on the name.
+      const rand =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID().slice(0, 8)
+          : `${Math.random().toString(36).slice(2, 10)}${Math.random().toString(36).slice(2, 6)}`
+      w = `Watcher-${rand}`
       window.localStorage.setItem(key, w)
     }
     return w
