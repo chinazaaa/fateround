@@ -28,15 +28,19 @@ export function Field({
   label,
   children,
   action,
+  htmlFor,
 }: {
   label: string
   children: React.ReactNode
   action?: React.ReactNode
+  htmlFor?: string
 }) {
   return (
     <div>
       <div className={`mb-2 ${action ? 'flex items-center justify-between gap-3' : ''}`}>
-        <label className="text-muted text-sm font-medium">{label}</label>
+        <label htmlFor={htmlFor} className="text-muted text-sm font-medium">
+          {label}
+        </label>
         {action}
       </div>
       {children}
@@ -100,10 +104,18 @@ export function Toggle({
 }) {
   return (
     <div
-      className="surface-inset flex items-center justify-between px-4 py-3 cursor-pointer hover:border-[var(--border-strong)] transition-colors"
+      className="surface-inset flex items-center justify-between px-4 py-3 cursor-pointer hover:border-[var(--border-strong)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
       onClick={() => onChange(!value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onChange(!value)
+        }
+      }}
       role="switch"
       aria-checked={value}
+      aria-label={label}
+      tabIndex={0}
     >
       <div>
         <p className="font-medium text-sm">{label}</p>

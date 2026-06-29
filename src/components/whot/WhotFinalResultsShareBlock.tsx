@@ -27,8 +27,8 @@ export function WhotFinalResultsShareBlock({
   const captureRef = useRef<HTMLDivElement>(null)
 
   const standings = useMemo(
-    () => buildWhotStandings(hands, players, session?.turn_order ?? []),
-    [hands, players, session?.turn_order]
+    () => buildWhotStandings(hands, players, session?.turn_order ?? [], session?.finish_order ?? []),
+    [hands, players, session?.turn_order, session?.finish_order]
   )
 
   const winnerPlayerId = session?.winner_player_id ?? null

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
@@ -55,6 +56,9 @@ export function TriviaActiveRound({
   readOnly = false,
 }: TriviaActiveRoundProps) {
   const { error: toastError } = useToast()
+  // The tournament id rides in the URL (?tournament=) when a player came from a
+  // tournament lobby — used to offer a clear way back after the game ends.
+  const tournamentId = useSearchParams().get('tournament')
   const [submitting, setSubmitting] = useState(false)
   const [submittingChoice, setSubmittingChoice] = useState<number | null>(null)
   const [lastResult, setLastResult] = useState<{ isCorrect: boolean; points: number } | null>(null)
@@ -212,6 +216,11 @@ export function TriviaActiveRound({
   if (screen === 'finished') {
     return (
       <div className="space-y-5">
+        {tournamentId && (
+          <a href={`/tournament/${tournamentId}`} className="btn-primary block text-center">
+            ← Back to Tournament
+          </a>
+        )}
         <FinalResultsShareBlock
           game={game}
           participants={[]}
@@ -261,16 +270,20 @@ export function TriviaActiveRound({
         {screen === 'waiting' && (
           <div className="glass-card-strong p-8 sm:p-10 text-center space-y-3">
             <p className="text-xl sm:text-2xl font-bold text-body">
-              {currentRound?.status === 'finished' && game.status === 'active'
-                ? isLastRound
-                  ? 'Wrapping up…'
-                  : 'Starting next question…'
-                : 'Get ready…'}
+              {game.status !== 'active'
+                ? 'Waiting for the host to start'
+                : currentRound?.status === 'finished'
+                  ? isLastRound
+                    ? 'Wrapping up…'
+                    : 'Starting next question…'
+                  : 'Get ready…'}
             </p>
             <p className="text-muted text-base">
-              {currentRound?.status === 'finished' && game.status === 'active' && !isLastRound
-                ? 'Hang tight — the next round is loading'
-                : 'Waiting for the next question'}
+              {game.status !== 'active'
+                ? 'The game will begin shortly'
+                : currentRound?.status === 'finished' && !isLastRound
+                  ? 'Hang tight — the next round is loading'
+                  : 'Waiting for the next question'}
             </p>
           </div>
         )}
