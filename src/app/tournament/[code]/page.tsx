@@ -645,7 +645,8 @@ export default function TournamentLobbyPage() {
         <div className="glass-card-strong p-5 text-center space-y-2">
           <p className="font-bold text-body">👁 You&apos;re watching</p>
           <p className="text-muted text-sm">
-            You won&apos;t play — the game will open here for you to watch once the host starts it.
+            You won&apos;t play — stay on this page and the game will open here for you to watch once the host starts
+            it.
           </p>
           <button onClick={stopSpectating} className="btn-ghost text-xs">
             Actually, let me play
