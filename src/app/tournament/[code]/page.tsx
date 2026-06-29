@@ -284,6 +284,7 @@ export default function TournamentLobbyPage() {
   const points = tournament.placement_points ?? [10, 7, 5, 3, 2, 1]
   const lives = tournament.elimination_config
   const isParticipant = joined && !isHost
+  const isFull = tournament.max_players != null && players.length >= tournament.max_players
 
   // Host-control derived state
   const rounds = parseInt(roundsCount, 10) || 10
@@ -321,6 +322,10 @@ export default function TournamentLobbyPage() {
               ❤️ {lives.startingLives} {lives.startingLives === 1 ? 'life' : 'lives'}
             </span>
           )}
+          <span className="chip text-xs">
+            👥 {players.length}
+            {tournament.max_players ? `/${tournament.max_players}` : ''} player{players.length === 1 ? '' : 's'}
+          </span>
         </div>
         {isFinished ? (
           <span className="premium-badge" style={{ marginTop: '0.25rem' }}>
@@ -336,7 +341,14 @@ export default function TournamentLobbyPage() {
       {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
       {/* Join Form */}
-      {!joined && !isHost && !isFinished && (
+      {!joined && !isHost && !isFinished && isFull && (
+        <div className="glass-card-strong p-5 text-center space-y-1">
+          <p className="font-bold text-body">Tournament full</p>
+          <p className="text-muted text-sm">This tournament has reached its {tournament.max_players}-player limit.</p>
+        </div>
+      )}
+
+      {!joined && !isHost && !isFinished && !isFull && (
         <div className="glass-card-strong p-5 space-y-3">
           <p className="label-caps">Join Tournament</p>
           <div className="flex gap-2">
@@ -628,11 +640,13 @@ export default function TournamentLobbyPage() {
           )}
 
           <div className="space-y-1.5">
-            <PrimaryBtn onClick={handleStartGame} disabled={actionLoading || !canStartCustom}>
+            <PrimaryBtn onClick={handleStartGame} disabled={actionLoading || !canStartCustom || players.length === 0}>
               {actionLoading ? 'Starting…' : isFirstGame ? 'Start Tournament' : 'Start Next Game'}
             </PrimaryBtn>
             <p className="text-faint text-xs text-center">
-              Creates the game room. Open the host dashboard (new tab) to start it once players have joined.
+              {players.length === 0
+                ? 'Waiting for players to join before you can start.'
+                : 'Creates the game room. Open the host dashboard (new tab) to start it once players have joined.'}
             </p>
           </div>
 

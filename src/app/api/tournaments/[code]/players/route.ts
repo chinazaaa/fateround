@@ -19,7 +19,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { data: tournament } = await supabase
     .from('tournaments')
-    .select('id, status, elimination_config')
+    .select('id, status, elimination_config, max_players')
     .eq('id', tournamentId)
     .maybeSingle()
 
@@ -42,6 +42,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       return NextResponse.json({ error: 'You have been eliminated from this tournament' }, { status: 403 })
     }
     return NextResponse.json({ error: 'Name already taken' }, { status: 409 })
+  }
+
+  // Enforce the optional player cap (this is a new name, so it would add a slot).
+  if (tournament.max_players) {
+    const { count } = await supabase
+      .from('tournament_players')
+      .select('id', { count: 'exact', head: true })
+      .eq('tournament_id', tournamentId)
+    if ((count ?? 0) >= tournament.max_players) {
+      return NextResponse.json({ error: 'Tournament is full' }, { status: 409 })
+    }
   }
 
   const { data: player, error } = await supabase

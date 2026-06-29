@@ -56,6 +56,7 @@ export default function TournamentCreatePage() {
   const router = useRouter()
   const [title, setTitle] = useState('')
   const [targetGameCount, setTargetGameCount] = useState<string>('')
+  const [maxPlayers, setMaxPlayers] = useState<string>('')
   const [livesEnabled, setLivesEnabled] = useState(false)
   const [startingLives, setStartingLives] = useState(3)
   const [eliminateCount, setEliminateCount] = useState(1)
@@ -79,6 +80,10 @@ export default function TournamentCreatePage() {
       const count = parseInt(targetGameCount, 10)
       if (!isNaN(count) && count > 0) {
         body.targetGameCount = count
+      }
+      const cap = parseInt(maxPlayers, 10)
+      if (!isNaN(cap) && cap >= 2) {
+        body.maxPlayers = cap
       }
       if (livesEnabled) {
         body.eliminationConfig = {
@@ -143,6 +148,20 @@ export default function TournamentCreatePage() {
             className="input-field"
           />
           <p className="text-faint text-xs mt-1.5">Tournament ends after this many games, or you can end it manually</p>
+        </Field>
+
+        <Field label="Max Players (optional)" htmlFor="tournament-max-players">
+          <input
+            id="tournament-max-players"
+            type="number"
+            value={maxPlayers}
+            onChange={(e) => setMaxPlayers(e.target.value)}
+            placeholder="Leave empty for unlimited"
+            min={2}
+            max={100}
+            className="input-field"
+          />
+          <p className="text-faint text-xs mt-1.5">Once full, new players can&apos;t join</p>
         </Field>
 
         <div className="space-y-3">

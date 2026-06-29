@@ -12,6 +12,7 @@ export interface Tournament {
   status: 'waiting' | 'active' | 'finished'
   placement_points: number[]
   target_game_count: number | null
+  max_players: number | null
   elimination_config: TournamentEliminationConfig | null
   created_at: string
 }

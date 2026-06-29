@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
   }
 
-  const { title, placementPoints, targetGameCount, eliminationConfig } = parsed.data
+  const { title, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = parsed.data
   const hostToken = generateToken()
 
   let tournamentCode = ''
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
     title,
     placement_points: placementPoints ?? [10, 7, 5, 3, 2, 1],
     target_game_count: targetGameCount ?? null,
+    max_players: maxPlayers ?? null,
     elimination_config: eliminationConfig ?? null,
   })
 
