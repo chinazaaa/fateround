@@ -136,7 +136,13 @@ export function crazyEightsPlacementOrder(
       const cards = (h.cards as CrazyEightsCard[]) ?? []
       return { playerId: h.player_id, handSum: crazyEightsHandSum(cards), cardCount: cards.length }
     })
-    .sort((a, b) => (a.handSum !== b.handSum ? a.handSum - b.handSum : a.cardCount - b.cardCount))
+    .sort((a, b) => {
+      if (a.handSum !== b.handSum) return a.handSum - b.handSum
+      if (a.cardCount !== b.cardCount) return a.cardCount - b.cardCount
+      // Stable final tiebreak on a unique field so the finisher and the room-points call
+      // sites — which read hands from separate queries — always agree on tied boards.
+      return a.playerId.localeCompare(b.playerId)
+    })
     .map((r) => r.playerId)
   return [...finished, ...remaining]
 }
