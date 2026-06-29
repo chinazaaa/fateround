@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { parseJsonBody } from '@/lib/parse-body'
 import { createClient } from '@supabase/supabase-js'
 import { generateGameCode, generateToken } from '@/lib/utils'
 import { createTournamentSchema } from '@/lib/tournament-validation'
-import { parseJsonBody } from '@/lib/parse-body'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, createTournamentSchema)
   if (bodyError) return bodyError
 
-  const { title, placementPoints, targetGameCount, eliminationConfig } = body
+  const { title, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = body
   const hostToken = generateToken()
 
   let tournamentCode = ''
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     title,
     placement_points: placementPoints ?? [10, 7, 5, 3, 2, 1],
     target_game_count: targetGameCount ?? null,
+    max_players: maxPlayers ?? null,
     elimination_config: eliminationConfig ?? null,
   })
 

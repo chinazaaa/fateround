@@ -163,11 +163,19 @@ export async function awardTournamentPlacements(supabase: SupabaseClient, gameId
 
   const points = computePlacementPoints(placements, tournament.placement_points as number[])
 
-  await supabase
+  // Claim this game atomically: only the first call to flip it from a non-finished
+  // state to 'finished' proceeds with scoring/lives. This is reachable from both the
+  // manual finish-game route and the auto-advance path (which players can trigger by
+  // polling), so without this guard points/lives could be applied more than once.
+  const { data: claimed } = await supabase
     .from('tournament_games')
     .update({ status: 'finished', placements })
     .eq('tournament_id', tournamentId)
     .eq('game_id', gameId)
+    .neq('status', 'finished')
+    .select('id')
+
+  if (!claimed || claimed.length === 0) return
 
   for (const [tpId, earned] of Object.entries(points)) {
     const { error: rpcError } = await supabase.rpc('increment_tournament_points', {

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { markGameFinished } from '@/lib/game-finish'
+import { awardTournamentPlacements } from '@/lib/tournament-scoring'
 import { isTriviaGame, parseGameType } from '@/lib/game-types'
 import { TRIVIA_DEFAULT_TIMER, TRIVIA_REVEAL_SECONDS } from '@/lib/trivia'
 import type { Game, Round } from '@/types'
@@ -117,6 +118,12 @@ async function advanceAfterReveal(supabase: SupabaseClient, game: Game, force: b
     if (result.gameFinished) {
       const { error: finishError } = await markGameFinished(supabase, code)
       if (finishError) console.error('Failed to mark game finished after elimination:', finishError)
+      // Score the tournament when a game ends on its own (not just via finish-game).
+      try {
+        await awardTournamentPlacements(supabase, code)
+      } catch {
+        // Best-effort — never block finishing the game.
+      }
       return { ok: true, code: 'advanced_finish' }
     }
   }
@@ -137,6 +144,12 @@ async function advanceAfterReveal(supabase: SupabaseClient, game: Game, force: b
 
     const { error } = await markGameFinished(supabase, code)
     if (error) return { ok: false, code: 'not_finished' }
+    // Score the tournament when the last round completes on its own.
+    try {
+      await awardTournamentPlacements(supabase, code)
+    } catch {
+      // Best-effort — never block finishing the game.
+    }
     return { ok: true, code: 'advanced_finish' }
   }
 

@@ -1,18 +1,19 @@
 import { z } from 'zod/v4'
 import { sanitizedString, hostTokenString } from './validation'
 
+const eliminationConfigSchema = z.object({
+  mode: z.literal('lives'),
+  startingLives: z.coerce.number().int().min(1).max(10),
+  livesLostRule: z.literal('bottom-n'),
+  eliminateCount: z.coerce.number().int().min(1).max(10),
+})
+
 export const createTournamentSchema = z.object({
   title: sanitizedString(1, 100),
   placementPoints: z.array(z.number().int().min(0)).min(1).max(20).optional(),
   targetGameCount: z.coerce.number().int().min(1).max(100).optional().nullable(),
-  eliminationConfig: z
-    .object({
-      mode: z.literal('lives'),
-      startingLives: z.coerce.number().int().min(1).max(10),
-      livesLostRule: z.literal('bottom-n'),
-      eliminateCount: z.coerce.number().int().min(1).max(10),
-    })
-    .optional(),
+  maxPlayers: z.coerce.number().int().min(2).max(100).optional().nullable(),
+  eliminationConfig: eliminationConfigSchema.optional(),
 })
 
 export const updateTournamentSchema = z.object({
@@ -20,6 +21,10 @@ export const updateTournamentSchema = z.object({
   title: sanitizedString(1, 100).optional(),
   placementPoints: z.array(z.number().int().min(0)).min(1).max(20).optional(),
   targetGameCount: z.coerce.number().int().min(1).max(100).optional().nullable(),
+  maxPlayers: z.coerce.number().int().min(2).max(100).optional().nullable(),
+  // Provided only when editing lives: an object enables/updates lives, null disables.
+  // The route rejects this unless the tournament is still in 'waiting'.
+  eliminationConfig: eliminationConfigSchema.nullable().optional(),
 })
 
 export const joinTournamentSchema = z.object({

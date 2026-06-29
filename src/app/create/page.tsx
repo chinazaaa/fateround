@@ -115,6 +115,8 @@ import { LateJoinPolicyToggle } from '@/components/AllowViewersToggle'
 import { gameSupportsViewerSetting, clampLateJoinPolicyForGameType, type LateJoinPolicy } from '@/lib/viewers'
 import { getParticipantCustomContentHint, getQuestionCustomContentHint } from '@/lib/custom-content-hints'
 import { CustomContentAiTip } from '@/components/ui/CustomContentAiTip'
+import { AiQuestionsGenerator } from '@/components/ui/AiQuestionsGenerator'
+import type { AiQuestionGameType } from '@/lib/ai-questions'
 import { clampHotSeatMaxCap, hotSeatMaxCapUpperBound, HOT_SEAT_MIN_PLAYERS } from '@/lib/hot-seat'
 import { ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS } from '@/lib/anonymous-messages'
 import {
@@ -205,7 +207,7 @@ interface Settings {
 
 type Step = 'settings' | 'participants' | 'done'
 type ParticipantTab = 'upload' | 'manual'
-type QuestionTab = 'upload' | 'manual'
+type QuestionTab = 'upload' | 'manual' | 'ai'
 
 function CreateGameInner() {
   const router = useRouter()
@@ -247,11 +249,6 @@ function CreateGameInner() {
   const [questionSource, setQuestionSource] = useState<QuestionSource>('platform')
   const [playerQuestionsEnabled, setPlayerQuestionsEnabled] = useState(true)
   const [playerQuestionsOrder, setPlayerQuestionsOrder] = useState<PlayerQuestionsOrder>('players_first')
-  const [aiQuestionsEnabled, setAiQuestionsEnabled] = useState(false)
-  const [aiQuestionsRatio, setAiQuestionsRatio] = useState<'all_ai' | 'mostly_ai' | 'half' | 'mostly_platform'>('half')
-  const [aiQuestionsTheme, setAiQuestionsTheme] = useState('')
-  const [aiQuestionsCustomPrompt, setAiQuestionsCustomPrompt] = useState('')
-  const [aiQuestionsApiKey, setAiQuestionsApiKey] = useState('')
   const [questionTab, setQuestionTab] = useState<QuestionTab>('upload')
   const [customWyrQuestions, setCustomWyrQuestions] = useState<WyrQuestion[]>([])
   const [customMltQuestions, setCustomMltQuestions] = useState<string[]>([])
@@ -1169,15 +1166,6 @@ function CreateGameInner() {
           gender_based: supportsGender ? settings.gender_based : undefined,
           player_questions_enabled: isPlayerSubmissions ? playerQuestionsEnabled : undefined,
           player_questions_order: isPlayerSubmissions ? playerQuestionsOrder : undefined,
-          ai_questions_enabled: isLobbyQuestions && !isTrivia ? aiQuestionsEnabled : undefined,
-          ai_questions_config:
-            isLobbyQuestions && !isTrivia && aiQuestionsEnabled
-              ? {
-                  ratio: aiQuestionsRatio,
-                  ...(aiQuestionsTheme ? { theme: aiQuestionsTheme } : {}),
-                  ...(aiQuestionsCustomPrompt ? { customPrompt: aiQuestionsCustomPrompt } : {}),
-                }
-              : undefined,
           max_players: isAnonymousRoom
             ? anonymousMaxPlayers
             : isBingo
@@ -2072,10 +2060,25 @@ function CreateGameInner() {
                       options={[
                         { value: 'upload', label: 'Upload file', hint: questionUploadHint('describe_it') },
                         { value: 'manual', label: 'Add manually', hint: 'Type or paste one word per line.' },
+                        {
+                          value: 'ai',
+                          label: 'Generate with AI',
+                          hint: 'Generate words with your own Claude API key.',
+                        },
                       ]}
                     />
 
-                    {questionTab === 'upload' ? (
+                    {questionTab === 'ai' ? (
+                      <AiQuestionsGenerator
+                        gameType="describe_it"
+                        noun="words"
+                        defaultCount={30}
+                        onGenerated={(questions) => {
+                          setDescribeItUploadError(null)
+                          setDescribeItWords(parseDescribeItWords((questions as string[]).join('\n')).join('\n'))
+                        }}
+                      />
+                    ) : questionTab === 'upload' ? (
                       <div className="space-y-3">
                         <div className="grid grid-cols-2 gap-2">
                           <button
@@ -2138,7 +2141,7 @@ function CreateGameInner() {
 
                     {describeItUploadError && <p className="text-red-400 text-sm">{describeItUploadError}</p>}
 
-                    {questionTab === 'upload' && parseDescribeItWords(describeItWords).length > 0 && (
+                    {questionTab !== 'manual' && parseDescribeItWords(describeItWords).length > 0 && (
                       <div className="surface-inset border border-theme rounded-xl p-3 space-y-2 max-h-48 overflow-y-auto">
                         <p className="text-muted text-xs uppercase tracking-wider">
                           Loaded ({parseDescribeItWords(describeItWords).length})
@@ -2413,6 +2416,15 @@ function CreateGameInner() {
                         Import pasted list
                       </button>
                     )}
+                    <AiQuestionsGenerator
+                      gameType="codewords"
+                      noun="words"
+                      defaultCount={Math.max(CODEWORDS_MIN_CUSTOM_POOL, 25)}
+                      onGenerated={(questions) => {
+                        setQuestionsUploadError(null)
+                        setCustomCodewordsWords(mergeCodewordsWords([], questions as string[]))
+                      }}
+                    />
                     {questionsUploadError && <p className="text-red-400 text-sm">{questionsUploadError}</p>}
                     {customCodewordsWords.length > 0 && (
                       <div className="max-h-36 overflow-y-auto space-y-1.5">
@@ -2778,83 +2790,6 @@ function CreateGameInner() {
                             </p>
                           </Field>
                         )}
-
-                        {(isWyr || isMlt || isNhie) && (
-                          <Field label="AI-generated questions">
-                            <SegmentedControl
-                              value={aiQuestionsEnabled ? 'on' : 'off'}
-                              onChange={(v) => setAiQuestionsEnabled(v === 'on')}
-                              options={[
-                                { value: 'off', label: 'Off' },
-                                { value: 'on', label: 'Enabled' },
-                              ]}
-                            />
-                            <p className="text-faint text-xs mt-2">
-                              {aiQuestionsEnabled
-                                ? 'AI will generate personalized questions using player names in the lobby.'
-                                : 'Only platform and player-submitted questions will be used.'}
-                            </p>
-                          </Field>
-                        )}
-
-                        {(isWyr || isMlt || isNhie) && aiQuestionsEnabled && (
-                          <>
-                            <Field label="AI question ratio">
-                              <SegmentedControl
-                                value={aiQuestionsRatio}
-                                onChange={(v) =>
-                                  setAiQuestionsRatio(v as 'all_ai' | 'mostly_ai' | 'half' | 'mostly_platform')
-                                }
-                                options={[
-                                  { value: 'all_ai', label: 'All AI' },
-                                  { value: 'mostly_ai', label: 'Mostly AI' },
-                                  { value: 'half', label: 'Half & Half' },
-                                  { value: 'mostly_platform', label: 'Mostly Platform' },
-                                ]}
-                              />
-                            </Field>
-
-                            <Field label="Theme (optional)">
-                              <select
-                                className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-body"
-                                value={aiQuestionsTheme}
-                                onChange={(e) => setAiQuestionsTheme(e.target.value)}
-                              >
-                                <option value="">General / Fun</option>
-                                <option value="Work party">Work party</option>
-                                <option value="College friends">College friends</option>
-                                <option value="Family reunion">Family reunion</option>
-                                <option value="Birthday party">Birthday party</option>
-                                <option value="Date night">Date night</option>
-                              </select>
-                            </Field>
-
-                            <Field label="Custom prompt (optional)">
-                              <textarea
-                                className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-body resize-none"
-                                rows={2}
-                                maxLength={500}
-                                placeholder="e.g. We're all coworkers at a tech company who love hiking"
-                                value={aiQuestionsCustomPrompt}
-                                onChange={(e) => setAiQuestionsCustomPrompt(e.target.value)}
-                              />
-                              <p className="text-faint text-xs mt-1">{aiQuestionsCustomPrompt.length}/500</p>
-                            </Field>
-
-                            <Field label="Your Claude API key (optional)">
-                              <input
-                                type="password"
-                                className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-body"
-                                placeholder="sk-ant-..."
-                                value={aiQuestionsApiKey}
-                                onChange={(e) => setAiQuestionsApiKey(e.target.value)}
-                              />
-                              <p className="text-faint text-xs mt-1">
-                                Leave blank to use the server&apos;s key. Your key is never stored.
-                              </p>
-                            </Field>
-                          </>
-                        )}
                       </>
                     )}
 
@@ -2985,6 +2920,11 @@ function CreateGameInner() {
                                   ? 'Type “Coffee or Tea?” style prompts.'
                                   : 'Type or paste one question per line.',
                             },
+                            {
+                              value: 'ai',
+                              label: 'Generate with AI',
+                              hint: 'Generate questions with your own Claude API key.',
+                            },
                           ]}
                         />
 
@@ -3015,6 +2955,19 @@ function CreateGameInner() {
                             />
                             <p className="text-faint text-xs text-center">{questionUploadHint(settings.game_type)}</p>
                           </div>
+                        ) : questionTab === 'ai' ? (
+                          <AiQuestionsGenerator
+                            gameType={settings.game_type as AiQuestionGameType}
+                            triviaCategory={isTrivia ? triviaCategory : undefined}
+                            noun={isTrivia ? 'questions' : 'prompts'}
+                            defaultCount={Math.min(50, Math.max(settings.rounds_count ?? 10, 10))}
+                            onGenerated={(questions) => {
+                              setQuestionsUploadError(null)
+                              if (isWyr || isTot) setCustomWyrQuestions(questions as WyrQuestion[])
+                              else if (isTrivia) setCustomTriviaQuestions(questions as TriviaQuestion[])
+                              else setCustomMltQuestions(questions as string[])
+                            }}
+                          />
                         ) : (
                           <div className="space-y-3">
                             {/* Trivia needs structured input (question + 4 options + correct answer),

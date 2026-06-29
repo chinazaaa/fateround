@@ -217,9 +217,11 @@ export function TriviaActiveRound({
     return (
       <div className="space-y-5">
         {tournamentId && (
-          <a href={`/tournament/${tournamentId}`} className="btn-primary block text-center">
-            ← Back to Tournament
-          </a>
+          <div className="flex justify-center">
+            <a href={`/tournament/${tournamentId}`} className="btn-secondary btn-fit text-sm">
+              ← Back to Tournament
+            </a>
+          </div>
         )}
         <FinalResultsShareBlock
           game={game}

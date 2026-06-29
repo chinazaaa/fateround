@@ -56,6 +56,7 @@ export default function TournamentCreatePage() {
   const router = useRouter()
   const [title, setTitle] = useState('')
   const [targetGameCount, setTargetGameCount] = useState<string>('')
+  const [maxPlayers, setMaxPlayers] = useState<string>('')
   const [livesEnabled, setLivesEnabled] = useState(false)
   const [startingLives, setStartingLives] = useState(3)
   const [eliminateCount, setEliminateCount] = useState(1)
@@ -76,9 +77,13 @@ export default function TournamentCreatePage() {
         title: title.trim(),
         placementPoints: DEFAULT_POINTS,
       }
-      const count = parseInt(targetGameCount, 10)
-      if (!isNaN(count) && count > 0) {
+      const count = Number(targetGameCount)
+      if (Number.isInteger(count) && count >= 1 && count <= 100) {
         body.targetGameCount = count
+      }
+      const cap = Number(maxPlayers)
+      if (Number.isInteger(cap) && cap >= 2 && cap <= 100) {
+        body.maxPlayers = cap
       }
       if (livesEnabled) {
         body.eliminationConfig = {
@@ -140,9 +145,25 @@ export default function TournamentCreatePage() {
             placeholder="Leave empty for unlimited"
             min={1}
             max={100}
+            step={1}
             className="input-field"
           />
           <p className="text-faint text-xs mt-1.5">Tournament ends after this many games, or you can end it manually</p>
+        </Field>
+
+        <Field label="Max Players (optional)" htmlFor="tournament-max-players">
+          <input
+            id="tournament-max-players"
+            type="number"
+            value={maxPlayers}
+            onChange={(e) => setMaxPlayers(e.target.value)}
+            placeholder="Leave empty for unlimited"
+            min={2}
+            max={100}
+            step={1}
+            className="input-field"
+          />
+          <p className="text-faint text-xs mt-1.5">Once full, new players can&apos;t join</p>
         </Field>
 
         <div className="space-y-3">
@@ -165,8 +186,12 @@ export default function TournamentCreatePage() {
               <div className="divider-soft" />
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-body text-sm font-medium">Lives lost per game</p>
-                  <p className="text-faint text-xs mt-0.5">Bottom-N players lose a life</p>
+                  <p className="text-body text-sm font-medium">Players who lose a life each game</p>
+                  <p className="text-faint text-xs mt-0.5">
+                    {eliminateCount === 1
+                      ? 'The bottom finisher loses 1 life'
+                      : `The bottom ${eliminateCount} finishers each lose 1 life`}
+                  </p>
                 </div>
                 <Stepper value={eliminateCount} min={1} max={10} onChange={setEliminateCount} />
               </div>

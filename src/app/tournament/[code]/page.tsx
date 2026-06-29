@@ -61,6 +61,17 @@ export default function TournamentLobbyPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const forwardedGameRef = useRef<string | null>(null)
 
+  // Host edit-settings panel
+  const [showEdit, setShowEdit] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editTarget, setEditTarget] = useState('')
+  const [editMax, setEditMax] = useState('')
+  const [editLives, setEditLives] = useState(false)
+  const [editStartingLives, setEditStartingLives] = useState(3)
+  const [editEliminate, setEditEliminate] = useState(1)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editError, setEditError] = useState('')
+
   const hostToken = typeof window !== 'undefined' ? localStorage.getItem(`tournament_host_${tournamentId}`) : null
   const isHost = Boolean(hostToken)
 
@@ -143,6 +154,78 @@ export default function TournamentLobbyPage() {
     } catch {
       // Clipboard blocked (e.g. non-secure context) — let the host copy manually.
       window.prompt('Copy this invite link:', url)
+    }
+  }
+
+  function openEditSettings() {
+    if (!tournament) return
+    setEditTitle(tournament.title)
+    setEditTarget(tournament.target_game_count?.toString() ?? '')
+    setEditMax(tournament.max_players?.toString() ?? '')
+    setEditLives(Boolean(tournament.elimination_config))
+    setEditStartingLives(tournament.elimination_config?.startingLives ?? 3)
+    setEditEliminate(tournament.elimination_config?.eliminateCount ?? 1)
+    setEditError('')
+    setShowEdit(true)
+  }
+
+  async function handleSaveSettings() {
+    if (!hostToken || !tournament) return
+    if (!editTitle.trim()) {
+      setEditError('Enter a tournament title')
+      return
+    }
+    // Blank clears the setting; a non-blank value must be a valid integer in range
+    // (otherwise surface an error rather than silently clearing it).
+    const target = Number(editTarget)
+    if (editTarget.trim() && !(Number.isInteger(target) && target >= 1 && target <= 100)) {
+      setEditError('Target games must be a whole number between 1 and 100')
+      return
+    }
+    const cap = Number(editMax)
+    if (editMax.trim() && !(Number.isInteger(cap) && cap >= 2 && cap <= 100)) {
+      setEditError('Max players must be a whole number between 2 and 100')
+      return
+    }
+
+    setSavingEdit(true)
+    setEditError('')
+
+    const body: Record<string, unknown> = {
+      hostToken,
+      title: editTitle.trim(),
+      targetGameCount: editTarget.trim() ? target : null,
+      maxPlayers: editMax.trim() ? cap : null,
+    }
+    // Lives can only be edited before the first game starts.
+    if (tournament.status === 'waiting') {
+      body.eliminationConfig = editLives
+        ? {
+            mode: 'lives',
+            startingLives: editStartingLives,
+            livesLostRule: 'bottom-n',
+            eliminateCount: editEliminate,
+          }
+        : null
+    }
+
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setEditError(data.error ?? 'Failed to save settings')
+        return
+      }
+      setShowEdit(false)
+      fetchState()
+    } catch {
+      setEditError('Something went wrong')
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -256,8 +339,9 @@ export default function TournamentLobbyPage() {
 
   function openHostDashboard(gameCode: string) {
     const token = localStorage.getItem(`host_token_${gameCode}`) ?? ''
+    // Pass the tournament so the host's game-over screen can offer "Back to Tournament".
     // Open in a new tab so the host keeps this lobby tab open across games.
-    window.open(`/host/${gameCode}?token=${token}`, '_blank', 'noopener,noreferrer')
+    window.open(`/host/${gameCode}?token=${token}&tournament=${tournamentId}`, '_blank', 'noopener,noreferrer')
   }
 
   if (loading) {
@@ -281,9 +365,11 @@ export default function TournamentLobbyPage() {
   const activeGame = games.find((g) => g.status === 'active')
   const finishedGames = games.filter((g) => g.status === 'finished')
   const isFinished = tournament.status === 'finished'
+  const hasStarted = tournament.status !== 'waiting'
   const points = tournament.placement_points ?? [10, 7, 5, 3, 2, 1]
   const lives = tournament.elimination_config
   const isParticipant = joined && !isHost
+  const isFull = tournament.max_players != null && players.length >= tournament.max_players
 
   // Host-control derived state
   const rounds = parseInt(roundsCount, 10) || 10
@@ -321,22 +407,158 @@ export default function TournamentLobbyPage() {
               ❤️ {lives.startingLives} {lives.startingLives === 1 ? 'life' : 'lives'}
             </span>
           )}
+          <span className="chip text-xs">
+            👥 {players.length}
+            {tournament.max_players ? `/${tournament.max_players}` : ''} player{players.length === 1 ? '' : 's'}
+          </span>
         </div>
         {isFinished ? (
           <span className="premium-badge" style={{ marginTop: '0.25rem' }}>
             🏆 Tournament Complete
           </span>
         ) : (
-          <button onClick={handleShare} className="btn-secondary btn-fit mx-auto text-sm">
-            {copied ? '✓ Link copied' : '🔗 Copy invite link'}
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button onClick={handleShare} className="btn-secondary btn-fit text-sm">
+              {copied ? '✓ Link copied' : '🔗 Copy invite link'}
+            </button>
+            {isHost && (
+              <button onClick={openEditSettings} className="btn-secondary btn-fit text-sm">
+                ⚙️ Edit settings
+              </button>
+            )}
+          </div>
         )}
       </div>
+
+      {/* Edit settings (host) */}
+      {isHost && showEdit && !isFinished && (
+        <div className="glass-card-strong p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="label-caps">Edit Settings</p>
+            <button onClick={() => setShowEdit(false)} className="btn-ghost text-xs">
+              Cancel
+            </button>
+          </div>
+
+          <Field label="Tournament Title" htmlFor="edit-title">
+            <input
+              id="edit-title"
+              type="text"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              maxLength={100}
+              className="input-field"
+            />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Target Games" htmlFor="edit-target">
+              <input
+                id="edit-target"
+                type="number"
+                value={editTarget}
+                onChange={(e) => setEditTarget(e.target.value)}
+                placeholder="Unlimited"
+                min={1}
+                max={100}
+                step={1}
+                className="input-field"
+              />
+            </Field>
+            <Field label="Max Players" htmlFor="edit-max">
+              <input
+                id="edit-max"
+                type="number"
+                value={editMax}
+                onChange={(e) => setEditMax(e.target.value)}
+                placeholder="Unlimited"
+                min={2}
+                max={100}
+                step={1}
+                className="input-field"
+              />
+            </Field>
+          </div>
+
+          {tournament.status === 'waiting' ? (
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-body text-sm">
+                <input
+                  type="checkbox"
+                  checked={editLives}
+                  onChange={(e) => setEditLives(e.target.checked)}
+                  className="accent-[var(--primary)]"
+                />
+                Lives mode
+              </label>
+              {editLives && (
+                <div className="surface-inset p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-muted text-sm" htmlFor="edit-starting-lives">
+                      Starting lives
+                    </label>
+                    <input
+                      id="edit-starting-lives"
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={editStartingLives}
+                      onChange={(e) => setEditStartingLives(Number(e.target.value) || 3)}
+                      className="input-field w-20 text-center"
+                    />
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <label className="text-muted text-sm" htmlFor="edit-eliminate">
+                      Players who lose a life each game
+                      <span className="block text-faint text-xs mt-0.5">
+                        {editEliminate === 1
+                          ? 'The bottom finisher loses 1 life'
+                          : `The bottom ${editEliminate} finishers each lose 1 life`}
+                      </span>
+                    </label>
+                    <input
+                      id="edit-eliminate"
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={editEliminate}
+                      onChange={(e) => setEditEliminate(Number(e.target.value) || 1)}
+                      className="input-field w-20 text-center"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-faint text-xs">Lives settings are locked once the first game starts.</p>
+          )}
+
+          {editError && <p className="text-red-400 text-sm">{editError}</p>}
+
+          <PrimaryBtn onClick={handleSaveSettings} disabled={savingEdit}>
+            {savingEdit ? 'Saving…' : 'Save settings'}
+          </PrimaryBtn>
+        </div>
+      )}
 
       {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
       {/* Join Form */}
-      {!joined && !isHost && !isFinished && (
+      {!joined && !isHost && !isFinished && hasStarted && (
+        <div className="glass-card-strong p-5 text-center space-y-1">
+          <p className="font-bold text-body">Tournament already started</p>
+          <p className="text-muted text-sm">Joining is closed once the first game begins.</p>
+        </div>
+      )}
+
+      {!joined && !isHost && !isFinished && !hasStarted && isFull && (
+        <div className="glass-card-strong p-5 text-center space-y-1">
+          <p className="font-bold text-body">Tournament full</p>
+          <p className="text-muted text-sm">This tournament has reached its {tournament.max_players}-player limit.</p>
+        </div>
+      )}
+
+      {!joined && !isHost && !isFinished && !hasStarted && !isFull && (
         <div className="glass-card-strong p-5 space-y-3">
           <p className="label-caps">Join Tournament</p>
           <div className="flex gap-2">
@@ -628,11 +850,13 @@ export default function TournamentLobbyPage() {
           )}
 
           <div className="space-y-1.5">
-            <PrimaryBtn onClick={handleStartGame} disabled={actionLoading || !canStartCustom}>
+            <PrimaryBtn onClick={handleStartGame} disabled={actionLoading || !canStartCustom || players.length === 0}>
               {actionLoading ? 'Starting…' : isFirstGame ? 'Start Tournament' : 'Start Next Game'}
             </PrimaryBtn>
             <p className="text-faint text-xs text-center">
-              Creates the game room. Open the host dashboard (new tab) to start it once players have joined.
+              {players.length === 0
+                ? 'Waiting for players to join before you can start.'
+                : 'Creates the game room. Open the host dashboard (new tab) to start it once players have joined.'}
             </p>
           </div>
 
