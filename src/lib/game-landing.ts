@@ -55,6 +55,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   tic_tac_toe: 'tic-tac-toe',
   word_hunt: 'word-hunt',
   chess: 'chess',
+  checkers: 'checkers',
   describe_it: 'text-charades',
   scrabble: 'scrabble',
   snake_and_ladder: 'snakes-and-ladders',
@@ -1420,6 +1421,60 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Can more than 2 people play?',
         answer: 'No — chess is strictly 2 players. The host can play as one of the two if they want in on the match.',
+      },
+    ],
+  }),
+
+  checkers: landing('checkers', {
+    seoTitle: 'Checkers Online — Play Draughts with a Friend',
+    seoDescription:
+      'Play checkers (draughts) online with a friend. Two players, forced jumps, multi-jump chains and king promotion — capture every piece to win. No sign-up.',
+    keywords: ['checkers online', 'play checkers with friends', 'online draughts 2 player', 'checkers with a friend'],
+    heroSubtitle: 'Classic checkers, head-to-head — jump your friend’s pieces and crown your kings.',
+    bodyParagraph:
+      'Checkers on Fate Round is a clean two-player game of standard American (8×8) draughts. One player joins a room as Red, the other as Black, and Red moves first. Men slide one square diagonally forward; jump an adjacent opponent to capture it — and if a jump is on offer you must take it, chaining multiple jumps in a single turn. Reach the far row to crown a king that moves and captures both directions. Capture all of your opponent’s pieces, or leave them with no legal move, to win. Add an optional clock — each player gets their own time bank (3, 5, or 10 minutes) that only ticks on their turn, and the first to flag loses.',
+    highlights: ['2 players', 'Forced jumps', 'Real-time board'],
+    features: [
+      {
+        title: 'Real checkers rules',
+        description: 'Forced captures, multi-jump chains, and king promotion all handled for you.',
+        emoji: '⛀',
+      },
+      {
+        title: 'Capture to win',
+        description: 'Take every enemy piece, or block their last move — wins and draws are detected automatically.',
+        emoji: '👑',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join a room', description: 'Two players join with their name — the host can join as a player too.' },
+      {
+        title: 'Red moves first',
+        description: 'One player is Red, the other Black. Tap a piece, then its diagonal destination.',
+      },
+      {
+        title: 'Capture to win',
+        description: 'Jump every enemy piece or leave them no move. Crown kings by reaching the far row.',
+      },
+    ],
+    perfectFor: ['Quick matches', 'Friend rivalries', 'Checkers fans'],
+    extraFaqs: [
+      {
+        question: 'Do I have to take a jump?',
+        answer:
+          'Yes — checkers uses forced captures. If any of your pieces can jump, you must make a jump that turn, and if the same piece can keep jumping you must continue the chain until it can’t.',
+      },
+      {
+        question: 'How does the clock work?',
+        answer:
+          'Each player has their own time bank that only counts down while it is their turn — making a move stops your clock and starts your opponent’s. The first player to run out of time loses. Pick 3, 5, or 10 minutes each, or leave it off for an untimed match.',
+      },
+      {
+        question: 'Can more than 2 people play?',
+        answer:
+          'No — checkers is strictly 2 players. The host can play as one of the two if they want in on the match.',
       },
     ],
   }),
