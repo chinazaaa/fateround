@@ -473,6 +473,15 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
       )}
       {!gameFinished && <HostRulesRow gameType="describe_it" />}
 
+      {game.status === 'active' && !gameFinished && (
+        <HostLobbyPlayersSection
+          players={players}
+          removingPlayerId={removingPlayerId}
+          onRemovePlayer={removePlayer}
+          highlightPlayerId={hostPlayerId}
+        />
+      )}
+
       {game.status === 'active' && !gameFinished && session && (
         <>
           {/* Host-player gets the scoreboard here (Play tab has the full game). Spectator
