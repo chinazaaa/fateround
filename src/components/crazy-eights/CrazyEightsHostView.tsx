@@ -20,7 +20,7 @@ import {
   type CrazyEightsHostMode,
 } from '@/lib/crazy-eights'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
+import { CRAZY8_SESSION_SELECT, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -41,8 +41,6 @@ import { CrazyEightsFinalResultsShareBlock } from '@/components/crazy-eights/Cra
 import { CrazyEightsCard, CrazyEightsPrimaryButton } from '@/components/crazy-eights/CrazyEightsChrome'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 
-const CRAZY8_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,turn_deadline_at,created_at,updated_at'
 const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 type HostTab = 'play' | 'manage'

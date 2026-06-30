@@ -25,7 +25,9 @@ export function Modal({ open, onClose, title, subtitle, children, size = 'md' }:
   // search results and inputs end up hidden behind it. Track the visual viewport
   // and shrink the backdrop to the area above the keyboard so the sheet sits on top.
   useEffect(() => {
-    if (!open) return
+    // Depend on `mounted` too: the backdrop only renders once mounted is true, so
+    // a Modal that first mounts already-open needs this to re-run to grab the ref.
+    if (!open || !mounted) return
     const vv = window.visualViewport
     const el = backdropRef.current
     if (!vv || !el) return
@@ -53,7 +55,7 @@ export function Modal({ open, onClose, title, subtitle, children, size = 'md' }:
       el.style.top = ''
       el.style.bottom = ''
     }
-  }, [open])
+  }, [open, mounted])
 
   useEffect(() => {
     if (!open) return
