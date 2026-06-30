@@ -1473,7 +1473,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         question: 'Can more than 2 people play?',
-        answer: 'No — checkers is strictly 2 players. The host can play as one of the two if they want in on the match.',
+        answer:
+          'No — checkers is strictly 2 players. The host can play as one of the two if they want in on the match.',
       },
     ],
   }),

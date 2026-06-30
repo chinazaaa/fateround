@@ -141,9 +141,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     ? await canTicTacToePlayAgain(supabase, gameId, game.status)
     : false
   const chessCanReplay = isChessGame(gameType) ? await canChessPlayAgain(supabase, gameId, game.status) : false
-  const checkersCanReplay = isCheckersGame(gameType)
-    ? await canCheckersPlayAgain(supabase, gameId, game.status)
-    : false
+  const checkersCanReplay = isCheckersGame(gameType) ? await canCheckersPlayAgain(supabase, gameId, game.status) : false
   const describeItCanReplay = isDescribeItGame(gameType)
     ? await canDescribeItPlayAgain(supabase, gameId, game.status)
     : false

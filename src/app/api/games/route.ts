@@ -508,18 +508,18 @@ export async function POST(req: NextRequest) {
                                         lobbyDefaultMaxPlayers('checkers', lobbyLimits)
                                       )
                                     : isScrabbleGame(game_type)
-                                    ? resolveMaxPlayers(
-                                        'scrabble',
-                                        rawMaxPlayers,
-                                        lobbyDefaultMaxPlayers('scrabble', lobbyLimits)
-                                      )
-                                    : isDescribeItGame(game_type)
                                       ? resolveMaxPlayers(
-                                          'describe_it',
+                                          'scrabble',
                                           rawMaxPlayers,
-                                          lobbyDefaultMaxPlayers('describe_it', lobbyLimits)
+                                          lobbyDefaultMaxPlayers('scrabble', lobbyLimits)
                                         )
-                                      : null
+                                      : isDescribeItGame(game_type)
+                                        ? resolveMaxPlayers(
+                                            'describe_it',
+                                            rawMaxPlayers,
+                                            lobbyDefaultMaxPlayers('describe_it', lobbyLimits)
+                                          )
+                                        : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
@@ -556,16 +556,16 @@ export async function POST(req: NextRequest) {
                   : isCheckersGame(game_type)
                     ? clampCheckersTimer(timer_seconds)
                     : isScrabbleGame(game_type)
-                    ? clampScrabbleTimer(timer_seconds)
-                    : isDescribeItGame(game_type)
-                      ? clampDescribeItTurnSeconds(timer_seconds)
-                      : isWhotGame(game_type)
-                        ? clampBoardGameTurnTimer(timer_seconds, 'whot')
-                        : isCrazyEightsGame(game_type)
-                          ? clampBoardGameTurnTimer(timer_seconds, 'crazy_eights')
-                          : [15, 30, 60].includes(Number(timer_seconds))
-                            ? Number(timer_seconds)
-                            : 30,
+                      ? clampScrabbleTimer(timer_seconds)
+                      : isDescribeItGame(game_type)
+                        ? clampDescribeItTurnSeconds(timer_seconds)
+                        : isWhotGame(game_type)
+                          ? clampBoardGameTurnTimer(timer_seconds, 'whot')
+                          : isCrazyEightsGame(game_type)
+                            ? clampBoardGameTurnTimer(timer_seconds, 'crazy_eights')
+                            : [15, 30, 60].includes(Number(timer_seconds))
+                              ? Number(timer_seconds)
+                              : 30,
     ...(isCodewordsGame(game_type)
       ? {
           operative_timer_seconds: clampCodewordsTimer(

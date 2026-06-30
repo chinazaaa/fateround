@@ -2,7 +2,12 @@
 
 import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckersCard, CheckersLoadingScreen, CheckersSecondaryButton, CheckersShell } from '@/components/checkers/CheckersChrome'
+import {
+  CheckersCard,
+  CheckersLoadingScreen,
+  CheckersSecondaryButton,
+  CheckersShell,
+} from '@/components/checkers/CheckersChrome'
 import { CheckersFinalResultsShareBlock } from '@/components/checkers/CheckersFinalResultsShareBlock'
 import { CheckersGamePanel } from '@/components/checkers/CheckersBoard'
 import { gameTypeConfig } from '@/lib/game-types'

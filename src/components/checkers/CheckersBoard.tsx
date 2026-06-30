@@ -181,7 +181,10 @@ export function CheckersGamePanel({
       setSelected(null)
       return
     }
-    if (colorOfPiece(session.board[Number(square[0]) * 8 + Number(square[1])]) === myColor && !session.must_continue_from) {
+    if (
+      colorOfPiece(session.board[Number(square[0]) * 8 + Number(square[1])]) === myColor &&
+      !session.must_continue_from
+    ) {
       setSelected(square)
     }
   }

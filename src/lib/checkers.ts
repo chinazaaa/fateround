@@ -13,8 +13,7 @@ export const CHECKERS_DEFAULT_MAX_PLAYERS = 2
 // 'R'/'B' = Red/Black king, '.' = empty. Black starts on the top three rows,
 // Red on the bottom three. Red moves first (toward row 0); Black moves toward
 // row 7. A man reaching the far rank is crowned a king.
-export const CHECKERS_STARTING_BOARD =
-  '.b.b.b.bb.b.b.b..b.b.b.b................r.r.r.r..r.r.r.rr.r.r.r.'
+export const CHECKERS_STARTING_BOARD = '.b.b.b.bb.b.b.b..b.b.b.b................r.r.r.r..r.r.r.rr.r.r.r.'
 
 /** Draw after this many consecutive king-only, non-capture plies (40 per side). */
 export const CHECKERS_DRAW_PLY = 80
@@ -173,7 +172,11 @@ export function legalStepsFromSquare(
 }
 
 /** Every legal hop available to `color` right now (used for stalemate detection). */
-export function legalMovesForColor(board: string, color: CheckersColor, mustContinue: string | null = null): CheckersStep[] {
+export function legalMovesForColor(
+  board: string,
+  color: CheckersColor,
+  mustContinue: string | null = null
+): CheckersStep[] {
   if (mustContinue) return captureStepsFrom(board, mustContinue)
   const all: CheckersStep[] = []
   const forced = hasAnyCapture(board, color)
@@ -604,7 +607,10 @@ export async function processCheckersResign(
 }
 
 /** Play again — keep finished session so the next start can swap who opens as Red. */
-export async function clearCheckersSessionData(_supabase: SupabaseClient, _gameId: string): Promise<{ error?: string }> {
+export async function clearCheckersSessionData(
+  _supabase: SupabaseClient,
+  _gameId: string
+): Promise<{ error?: string }> {
   return {}
 }
 
