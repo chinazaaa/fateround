@@ -562,10 +562,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">
         {/* Player status header */}
         <div className="flex items-center gap-3 px-1">
-          <div
-            className="w-4 h-4 rounded-sm shrink-0"
-            style={{ backgroundColor: SUDOKU_MY_CELL_COLOR }}
-          />
+          <div className="w-4 h-4 rounded-sm shrink-0" style={{ backgroundColor: SUDOKU_MY_CELL_COLOR }} />
           <div>
             <p className="font-bold text-slate-800 dark:text-slate-100 leading-tight">{me?.name ?? 'Me'}</p>
             <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -611,17 +608,16 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
                 }`}
               >
                 <MiniGrid puzzle={puzzle} playerSolved={playerSolved} color={color} />
-                <div
-                  className="w-3 h-3 rounded-sm shrink-0"
-                  style={{ backgroundColor: color }}
-                />
+                <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: color }} />
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">{row.name}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     {ordinal(i + 1)} of {leaderboard.length} · Completed: {pct}%
                   </p>
                 </div>
-                <span className="text-sm font-bold text-slate-600 dark:text-slate-300 tabular-nums">{row.points} pts</span>
+                <span className="text-sm font-bold text-slate-600 dark:text-slate-300 tabular-nums">
+                  {row.points} pts
+                </span>
               </div>
             )
           })}

@@ -215,9 +215,7 @@ export function playerHasSolvedCell(
   row: number,
   col: number
 ): boolean {
-  return submissions.some(
-    (s) => s.player_id === playerId && s.cell_row === row && s.cell_col === col && s.is_correct
-  )
+  return submissions.some((s) => s.player_id === playerId && s.cell_row === row && s.cell_col === col && s.is_correct)
 }
 
 export type SudokuUnitType = 'row' | 'col' | 'block'
@@ -266,10 +264,7 @@ export function getNewlyCompletedUnits(
   )
   const after = playerHasSolvedCell(submissions, playerId, solvedRow, solvedCol)
     ? submissions
-    : [
-        ...submissions,
-        { player_id: playerId, cell_row: solvedRow, cell_col: solvedCol, is_correct: true },
-      ]
+    : [...submissions, { player_id: playerId, cell_row: solvedRow, cell_col: solvedCol, is_correct: true }]
 
   const candidates: SudokuUnitFlash[] = [
     { type: 'row', index: solvedRow },
@@ -305,10 +300,7 @@ export function buildPlayerSolvedGrid(
 }
 
 export function buildPlayerSolvedValueGrid(
-  submissions: Pick<
-    SudokuSubmission,
-    'player_id' | 'cell_row' | 'cell_col' | 'submitted_value' | 'is_correct'
-  >[],
+  submissions: Pick<SudokuSubmission, 'player_id' | 'cell_row' | 'cell_col' | 'submitted_value' | 'is_correct'>[],
   playerId: string
 ): number[][] {
   const grid = Array.from({ length: 9 }, () => Array(9).fill(0))
@@ -332,10 +324,7 @@ export function buildPlayerSolvedValueGrid(
  */
 export function buildPlayerDisplayGrid(
   puzzle: number[][],
-  submissions: Pick<
-    SudokuSubmission,
-    'player_id' | 'cell_row' | 'cell_col' | 'submitted_value' | 'is_correct'
-  >[],
+  submissions: Pick<SudokuSubmission, 'player_id' | 'cell_row' | 'cell_col' | 'submitted_value' | 'is_correct'>[],
   playerId: string,
   localDrafts: number[][]
 ): number[][] {

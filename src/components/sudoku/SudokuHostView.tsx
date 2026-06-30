@@ -253,10 +253,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
 
   const activePlayers = useMemo(() => players.filter((p) => p.spectator !== true), [players])
   const cellOwners = useMemo(() => buildCellOwnerGrid(submissions), [submissions])
-  const claimedGrid = useMemo(
-    () => (puzzle ? buildClaimedValueGrid(puzzle, submissions) : null),
-    [puzzle, submissions]
-  )
+  const claimedGrid = useMemo(() => (puzzle ? buildClaimedValueGrid(puzzle, submissions) : null), [puzzle, submissions])
   const playerColors = useMemo(() => {
     const map: Record<string, string> = {}
     activePlayers.forEach((p, i) => {
@@ -352,9 +349,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
             starting={starting}
             startLabel="Start puzzle"
             startDisabledHint={
-              activePlayers.length >= SUDOKU_MIN_PLAYERS
-                ? null
-                : `Need at least ${SUDOKU_MIN_PLAYERS} players to start`
+              activePlayers.length >= SUDOKU_MIN_PLAYERS ? null : `Need at least ${SUDOKU_MIN_PLAYERS} players to start`
             }
             className="space-y-3"
           />

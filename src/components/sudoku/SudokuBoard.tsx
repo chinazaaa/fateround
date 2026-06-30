@@ -58,10 +58,10 @@ export function SudokuBoard({
           Array.from({ length: 9 }, (_, col) => {
             const given = puzzle[row]?.[col] !== 0
             const firstSolverId = cellOwners?.[row]?.[col] ?? null
-            const iSolved = !!(mySolvedCells?.[row]?.[col])
+            const iSolved = !!mySolvedCells?.[row]?.[col]
             const isSelected = selectedCell?.[0] === row && selectedCell?.[1] === col
 
-            let displayValue: number | string = ''
+            let displayValue: number | string
             if (given) {
               displayValue = puzzle[row]![col]!
             } else if (solution) {
