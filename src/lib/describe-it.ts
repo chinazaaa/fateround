@@ -153,6 +153,28 @@ export function describerForIndividualTurn(roster: string[], turnIndex: number):
   return roster[turnIndex % roster.length] ?? null
 }
 
+/**
+ * First turn at or after `startIndex` whose describer is still present, given the
+ * fixed roster snapshot. A player who left mid-game is gone from `liveIds`, so
+ * rotating onto their turn would write a dangling describer_player_id and trip the
+ * session FK — skip those turns. Returns `totalTurns` (a non-turn) when no live
+ * describer remains, which the caller treats as "match over".
+ */
+export function nextIndividualDescriberIndex(
+  roster: string[],
+  startIndex: number,
+  liveIds: Set<string>,
+  totalTurns: number
+): number {
+  let index = startIndex
+  while (index < totalTurns) {
+    const describer = describerForIndividualTurn(roster, index)
+    if (describer && liveIds.has(describer)) break
+    index += 1
+  }
+  return index
+}
+
 export function roundForTurn(turnIndex: number, numTeams: number): number {
   return Math.floor(turnIndex / numTeams) + 1
 }
@@ -857,9 +879,28 @@ export async function processDescribeItAdvance(
     return {}
   }
 
-  const nextIndex = session.turn_index + 1
+  let nextIndex = session.turn_index + 1
   const teamRows = await loadTeamRows(supabase, gameId)
   const roster = teamRoster(teamRows)
+
+  // Individual mode: the describer rotation is a snapshot locked at game start
+  // (`session.roster`). A player who has since left no longer has a `players` row,
+  // so rotating onto their turn would write a dangling describer_player_id and
+  // violate the FK. Skip past any turns whose describer has left — keeping the
+  // roster (and so the turn_index → round mapping) fixed. If none remain, the
+  // build below returns null and the match ends. (`describe_it_players` rows are
+  // cascade-deleted with the player, so present rows are the live roster.)
+  if (session.mode === 'individual') {
+    const liveIds = new Set(teamRows.map((r) => r.player_id))
+    const totalTurns = describeItTotalTurns(
+      'individual',
+      session.num_teams,
+      session.roster.length,
+      session.total_rounds
+    )
+    nextIndex = nextIndividualDescriberIndex(session.roster, nextIndex, liveIds, totalTurns)
+  }
+
   const { data: game } = await supabase
     .from('games')
     .select('question_source, custom_questions')
