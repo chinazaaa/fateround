@@ -6,11 +6,12 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 type AudioAuth = { kind: 'player' } | { kind: 'member' } | { kind: 'host'; token?: string }
 
 /**
- * Verify the caller is genuinely associated with the room they're requesting a
- * token for, using trusted server-side state. `identity` is the caller's
- * server-generated secret id (player/member UUID); the host proves itself with
- * the game's host_token. Returns true only when the membership/credential
- * matches the requested room.
+ * Verifies whether the caller is authorized to join the requested room.
+ *
+ * @param roomName - The room or game identifier being requested.
+ * @param identity - The caller's server-assigned identity.
+ * @param auth - The authorization claim provided by the caller.
+ * @returns `true` if the caller is associated with the requested room, `false` otherwise.
  */
 async function isAuthorized(roomName: string, identity: string, auth: AudioAuth | undefined): Promise<boolean> {
   if (!auth) return false
