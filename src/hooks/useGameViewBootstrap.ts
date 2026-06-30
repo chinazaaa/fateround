@@ -82,6 +82,12 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     const plrs = (plrsRes.data ?? []) as Player[]
 
     if (!gameData) {
+      // Clear any cached state from a prior successful load so consumers don't render
+      // (or `join()` branch on) a stale game once it's gone.
+      setGame(null)
+      setPlayers([])
+      setMyPlayerId(null)
+      setMyResumeToken(null)
       setScreen(notFoundScreen)
       return true
     }
@@ -129,6 +135,10 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         setMyPlayerId(data.playerId)
         setMyResumeToken(data.resumeToken ?? null)
         await load()
+      } catch {
+        // Network failure / non-JSON body throws before the HTTP-status check above —
+        // surface it through the documented error callback rather than rejecting silently.
+        onJoinError?.('Failed to join')
       } finally {
         setJoining(false)
       }
