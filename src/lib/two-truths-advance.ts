@@ -26,7 +26,14 @@ export type TtlAdvanceResult = {
 }
 
 async function countPlayers(supabase: SupabaseClient, gameId: string): Promise<number> {
-  const { count } = await supabase.from('players').select('id', { count: 'exact', head: true }).eq('game_id', gameId)
+  // Only participants guess — non-submitters are marked spectators at start, so a round
+  // ends once every participating guesser has answered (don't wait on watch-only viewers).
+  const { count } = await supabase
+    .from('players')
+    .select('id', { count: 'exact', head: true })
+    .eq('game_id', gameId)
+    .not('spectator', 'is', true)
+    .eq('is_eliminated', false)
   return count ?? 0
 }
 

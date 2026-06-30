@@ -52,6 +52,7 @@ export function HostManageSection({
         onRemovePlayer={onRemovePlayer}
         highlightPlayerId={highlightPlayerId}
         label={playersLabel}
+        alwaysShowReady={game.status === 'waiting'}
       />
 
       {viewers.length > 0 && (

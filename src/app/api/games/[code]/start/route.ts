@@ -527,6 +527,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (roundError)
       return NextResponse.json({ error: internalErrorMessage('games/code/start', roundError) }, { status: 500 })
 
+    // Only players who submitted statements enter the game; everyone else (the "Waiting…"
+    // players in the lobby) becomes a watch-only viewer so they don't count as guessers.
+    // Mirror resetSpectatorsForLobby: mark everyone a spectator, then un-spectator submitters.
+    const { error: spectatorError } = await getSupabaseAdmin()
+      .from('players')
+      .update({ spectator: true })
+      .eq('game_id', code.toUpperCase())
+    if (spectatorError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', spectatorError) }, { status: 500 })
+
+    const { error: participantError } = await getSupabaseAdmin()
+      .from('players')
+      .update({ spectator: false })
+      .eq('game_id', code.toUpperCase())
+      .in('id', submittedPlayerIds)
+    if (participantError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', participantError) }, { status: 500 })
+
     const { error: gameError } = await getSupabaseAdmin()
       .from('games')
       .update({
