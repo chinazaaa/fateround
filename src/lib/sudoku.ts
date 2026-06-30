@@ -8,10 +8,13 @@ export const SUDOKU_MIN_PLAYERS = 1
 export const SUDOKU_MAX_PLAYERS = 20
 export const SUDOKU_DEFAULT_DURATION = 900 // 15 minutes
 
-/** Points awarded by order of correct submission: 1st=10, 2nd=6, 3rd=3, 4th+=1 */
-export const SUDOKU_SCORING = [10, 6, 3, 1] as const
-/** Penalty points for a wrong block submission. */
+/** Points by order of correct submission per cell: 1st=10, 2nd=6, 3rd=4, 4th+=2 */
+export const SUDOKU_CELL_SCORING = [10, 6, 4, 2] as const
+/** Penalty points for a wrong cell submission. */
 export const SUDOKU_WRONG_PENALTY = -3
+
+/** @deprecated Legacy block scoring */
+export const SUDOKU_SCORING = [10, 6, 3, 1] as const
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,7 +31,10 @@ export interface SudokuSubmission {
   game_id: string
   round_id: string
   player_id: string
-  block_index: number
+  block_index: number | null
+  cell_row: number | null
+  cell_col: number | null
+  submitted_value: number | null
   is_correct: boolean
   points_awarded: number
   submitted_at: string
@@ -193,9 +199,257 @@ export function validateBlock(submission: number[][], solution: number[][], bloc
 
 // ── Scoring ───────────────────────────────────────────────────────────────────
 
-/** Points for being the `position`-th correct solver (0-indexed). */
+/** Points for being the `position`-th correct solver (0-indexed). Legacy block scoring. */
 export function sudokuBlockPoints(position: number): number {
   return SUDOKU_SCORING[Math.min(position, SUDOKU_SCORING.length - 1)]
+}
+
+/** Points for being the `position`-th correct solver on a cell (0-indexed). */
+export function sudokuCellPoints(position: number): number {
+  return SUDOKU_CELL_SCORING[Math.min(position, SUDOKU_CELL_SCORING.length - 1)]
+}
+
+export function playerHasSolvedCell(
+  submissions: Pick<SudokuSubmission, 'player_id' | 'cell_row' | 'cell_col' | 'is_correct'>[],
+  playerId: string,
+  row: number,
+  col: number
+): boolean {
+  return submissions.some((s) => s.player_id === playerId && s.cell_row === row && s.cell_col === col && s.is_correct)
+}
+
+export type SudokuUnitType = 'row' | 'col' | 'block'
+
+export type SudokuUnitFlash = {
+  type: SudokuUnitType
+  index: number
+}
+
+function cellInUnit(row: number, col: number, type: SudokuUnitType, index: number): boolean {
+  if (type === 'row') return row === index
+  if (type === 'col') return col === index
+  const br = Math.floor(index / 3) * 3
+  const bc = (index % 3) * 3
+  return row >= br && row < br + 3 && col >= bc && col < bc + 3
+}
+
+/** True when every non-given cell in the unit is correctly solved by this player. */
+export function isPlayerUnitComplete(
+  puzzle: number[][],
+  submissions: Pick<SudokuSubmission, 'player_id' | 'cell_row' | 'cell_col' | 'is_correct'>[],
+  playerId: string,
+  type: SudokuUnitType,
+  index: number
+): boolean {
+  for (let row = 0; row < 9; row++) {
+    for (let col = 0; col < 9; col++) {
+      if (!cellInUnit(row, col, type, index)) continue
+      if (puzzle[row]![col] !== 0) continue
+      if (!playerHasSolvedCell(submissions, playerId, row, col)) return false
+    }
+  }
+  return true
+}
+
+/** Units that became complete for this player with the solve at (solvedRow, solvedCol). */
+export function getNewlyCompletedUnits(
+  puzzle: number[][],
+  submissions: Pick<SudokuSubmission, 'player_id' | 'cell_row' | 'cell_col' | 'is_correct'>[],
+  playerId: string,
+  solvedRow: number,
+  solvedCol: number
+): SudokuUnitFlash[] {
+  const before = submissions.filter(
+    (s) => !(s.player_id === playerId && s.cell_row === solvedRow && s.cell_col === solvedCol && s.is_correct)
+  )
+  const after = playerHasSolvedCell(submissions, playerId, solvedRow, solvedCol)
+    ? submissions
+    : [...submissions, { player_id: playerId, cell_row: solvedRow, cell_col: solvedCol, is_correct: true }]
+
+  const candidates: SudokuUnitFlash[] = [
+    { type: 'row', index: solvedRow },
+    { type: 'col', index: solvedCol },
+    { type: 'block', index: cellBlockIndex(solvedRow, solvedCol) },
+  ]
+
+  return candidates.filter(
+    (u) =>
+      !isPlayerUnitComplete(puzzle, before, playerId, u.type, u.index) &&
+      isPlayerUnitComplete(puzzle, after, playerId, u.type, u.index)
+  )
+}
+
+export function isCellInFlashingUnits(row: number, col: number, units: SudokuUnitFlash[]): boolean {
+  return units.some((u) => cellInUnit(row, col, u.type, u.index))
+}
+
+/** Green highlight for cells the current player has correctly solved. */
+export const SUDOKU_MY_CELL_COLOR = '#86efac'
+
+export function buildPlayerSolvedGrid(
+  submissions: Pick<SudokuSubmission, 'player_id' | 'cell_row' | 'cell_col' | 'is_correct'>[],
+  playerId: string
+): boolean[][] {
+  const grid = Array.from({ length: 9 }, () => Array(9).fill(false))
+  for (const s of submissions) {
+    if (s.player_id === playerId && s.is_correct && s.cell_row != null && s.cell_col != null) {
+      grid[s.cell_row]![s.cell_col]! = true
+    }
+  }
+  return grid
+}
+
+export function buildPlayerSolvedValueGrid(
+  submissions: Pick<SudokuSubmission, 'player_id' | 'cell_row' | 'cell_col' | 'submitted_value' | 'is_correct'>[],
+  playerId: string
+): number[][] {
+  const grid = Array.from({ length: 9 }, () => Array(9).fill(0))
+  for (const s of submissions) {
+    if (
+      s.player_id === playerId &&
+      s.is_correct &&
+      s.cell_row != null &&
+      s.cell_col != null &&
+      s.submitted_value != null
+    ) {
+      grid[s.cell_row]![s.cell_col]! = s.submitted_value
+    }
+  }
+  return grid
+}
+
+/**
+ * Per-player board values: givens, your own correct answers, and local drafts only.
+ * Other players' solutions are never shown — only their color (via getCellDisplayColor).
+ */
+export function buildPlayerDisplayGrid(
+  puzzle: number[][],
+  submissions: Pick<SudokuSubmission, 'player_id' | 'cell_row' | 'cell_col' | 'submitted_value' | 'is_correct'>[],
+  playerId: string,
+  localDrafts: number[][]
+): number[][] {
+  const mySolved = buildPlayerSolvedGrid(submissions, playerId)
+  const myValues = buildPlayerSolvedValueGrid(submissions, playerId)
+
+  return puzzle.map((row, r) =>
+    row.map((cell, c) => {
+      if (cell !== 0) return cell
+      if (mySolved[r]![c]) return myValues[r]![c] || localDrafts[r]?.[c] || 0
+      return localDrafts[r]?.[c] || 0
+    })
+  )
+}
+
+/** Cell background color: green if I solved it, else first solver's color, else none. */
+export function getCellDisplayColor(
+  row: number,
+  col: number,
+  opts: {
+    myPlayerId?: string | null
+    mySolvedCells?: boolean[][]
+    firstSolverId?: string | null
+    playerColors?: Record<string, string>
+  }
+): string | undefined {
+  const { myPlayerId, mySolvedCells, firstSolverId, playerColors = {} } = opts
+  if (myPlayerId && mySolvedCells?.[row]?.[col]) return SUDOKU_MY_CELL_COLOR
+  if (firstSolverId) return playerColors[firstSolverId] ?? SUDOKU_PLAYER_COLORS[0]
+  return undefined
+}
+
+/** Distinct accent colors for up to 20 players (by join order). */
+export const SUDOKU_PLAYER_COLORS = [
+  '#c7d2fe',
+  '#93c5fd',
+  '#fcd34d',
+  '#f9a8d4',
+  '#c4b5fd',
+  '#fdba74',
+  '#67e8f9',
+  '#fca5a5',
+  '#a3e635',
+  '#e879f9',
+  '#5eead4',
+  '#fbbf24',
+  '#fb7185',
+  '#818cf8',
+  '#4ade80',
+  '#38bdf8',
+  '#f472b6',
+  '#a78bfa',
+  '#34d399',
+  '#facc15',
+] as const
+
+export function sudokuPlayerColor(index: number): string {
+  return SUDOKU_PLAYER_COLORS[index % SUDOKU_PLAYER_COLORS.length]!
+}
+
+export type CellOwnerGrid = (string | null)[][]
+
+/** First correct solver per cell wins ownership. */
+export function buildCellOwnerGrid(
+  submissions: Pick<
+    SudokuSubmission,
+    'player_id' | 'cell_row' | 'cell_col' | 'submitted_value' | 'is_correct' | 'submitted_at'
+  >[]
+): CellOwnerGrid {
+  const owners: CellOwnerGrid = Array.from({ length: 9 }, () => Array(9).fill(null))
+  const sorted = [...submissions]
+    .filter((s) => s.is_correct && s.cell_row != null && s.cell_col != null)
+    .sort((a, b) => new Date(a.submitted_at).getTime() - new Date(b.submitted_at).getTime())
+
+  for (const s of sorted) {
+    const row = s.cell_row!
+    const col = s.cell_col!
+    if (!owners[row]![col]) owners[row]![col] = s.player_id
+  }
+  return owners
+}
+
+export function countEmptyCells(puzzle: number[][]): number {
+  return puzzle.flat().filter((v) => v === 0).length
+}
+
+export function playerCompletionPercent(
+  puzzle: number[][],
+  submissions: Pick<SudokuSubmission, 'player_id' | 'cell_row' | 'cell_col' | 'is_correct'>[],
+  playerId: string
+): number {
+  const empty = countEmptyCells(puzzle)
+  if (empty === 0) return 100
+  const claimed = submissions.filter(
+    (s) => s.player_id === playerId && s.is_correct && s.cell_row != null && s.cell_col != null
+  ).length
+  return Math.round((claimed / empty) * 100)
+}
+
+export function boardCompletionPercent(puzzle: number[][], cellOwners: CellOwnerGrid): number {
+  const empty = countEmptyCells(puzzle)
+  if (empty === 0) return 100
+  let solved = 0
+  for (let r = 0; r < 9; r++) {
+    for (let c = 0; c < 9; c++) {
+      if (puzzle[r]![c] === 0 && cellOwners[r]![c]) solved++
+    }
+  }
+  return Math.round((solved / empty) * 100)
+}
+
+/** Build a 9×9 display grid from puzzle givens + claimed cell values. */
+export function buildClaimedValueGrid(
+  puzzle: number[][],
+  submissions: Pick<SudokuSubmission, 'cell_row' | 'cell_col' | 'submitted_value' | 'is_correct' | 'submitted_at'>[]
+): number[][] {
+  const grid = puzzle.map((r) => [...r])
+  const sorted = [...submissions]
+    .filter((s) => s.is_correct && s.cell_row != null && s.cell_col != null && s.submitted_value != null)
+    .sort((a, b) => new Date(a.submitted_at).getTime() - new Date(b.submitted_at).getTime())
+
+  for (const s of sorted) {
+    grid[s.cell_row!]![s.cell_col!] = s.submitted_value!
+  }
+  return grid
 }
 
 // ── Session data ──────────────────────────────────────────────────────────────

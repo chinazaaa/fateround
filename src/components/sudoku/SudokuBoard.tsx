@@ -1,156 +1,186 @@
 'use client'
 
-import { cellBlockIndex } from '@/lib/sudoku'
-
-export type BlockStatus = 'idle' | 'claimed' | 'pending'
+import { cellBlockIndex, getCellDisplayColor, isCellInFlashingUnits, type SudokuUnitFlash } from '@/lib/sudoku'
 
 interface SudokuBoardProps {
-  puzzle: number[][] // 9×9, 0 = editable cell
-  solution?: number[][] // host-only: show solution
-  userGrid?: number[][] // player's current entries (9×9, 0 = empty)
-  onCellChange?: (row: number, col: number, value: number) => void
-  onSubmitBlock?: (blockIndex: number) => void
-  blockStatuses?: BlockStatus[] // per-block status for the local player (length 9)
-  blockScorers?: string[][] // per-block list of scorer names
-  submitting?: number | null // blockIndex currently being submitted
+  puzzle: number[][]
+  solution?: number[][]
+  userGrid?: number[][]
+  cellOwners?: (string | null)[][]
+  mySolvedCells?: boolean[][]
+  playerColors?: Record<string, string>
+  myPlayerId?: string | null
+  selectedCell?: [number, number] | null
+  onCellSelect?: (row: number, col: number) => void
+  onNumberPress?: (value: number) => void
+  onErase?: () => void
+  onUndo?: () => void
+  undoDisabled?: boolean
+  draftWrongCells?: boolean[][]
+  completionPercent?: number
   readOnly?: boolean
+  /** When set, controls which cells the player can tap (overrides default claimed-cell lock). */
+  canSelectCell?: (row: number, col: number) => boolean
+  /** Brief highlight on rows/cols/boxes the player just completed. */
+  flashUnits?: SudokuUnitFlash[]
 }
 
-const BLOCK_BORDER = 'border-[var(--foreground)]/50'
-const INPUT_BASE = 'w-full h-full flex items-center justify-center text-lg font-bold select-none cursor-default'
+const BLOCK_BORDER = 'border-slate-400/70'
 
 export function SudokuBoard({
   puzzle,
   solution,
   userGrid,
-  onCellChange,
-  onSubmitBlock,
-  blockStatuses = Array(9).fill('idle'),
-  blockScorers = Array(9).fill([]),
-  submitting,
+  cellOwners,
+  mySolvedCells,
+  playerColors = {},
+  myPlayerId,
+  selectedCell,
+  onCellSelect,
+  onNumberPress,
+  onErase,
+  onUndo,
+  undoDisabled = false,
+  draftWrongCells,
+  completionPercent = 0,
   readOnly = false,
+  canSelectCell,
+  flashUnits = [],
 }: SudokuBoardProps) {
-  const grid = solution ?? puzzle
-
   return (
-    <div className="w-full max-w-[min(440px,100%)] mx-auto space-y-3">
+    <div className="w-full max-w-[min(400px,100%)] mx-auto space-y-4">
       {/* Grid */}
       <div
-        className="grid border-2 border-[var(--foreground)]/60 rounded-lg overflow-hidden"
+        className="grid border-2 border-slate-500/80 rounded-sm overflow-hidden bg-white dark:bg-slate-900"
         style={{ gridTemplateColumns: 'repeat(9, 1fr)', aspectRatio: '1' }}
       >
         {Array.from({ length: 9 }, (_, row) =>
           Array.from({ length: 9 }, (_, col) => {
-            const blockIdx = cellBlockIndex(row, col)
-            const status = blockStatuses[blockIdx]
             const given = puzzle[row]?.[col] !== 0
-            const displayValue = given ? puzzle[row][col] : solution ? solution[row][col] : userGrid?.[row]?.[col] || ''
+            const firstSolverId = cellOwners?.[row]?.[col] ?? null
+            const iSolved = !!mySolvedCells?.[row]?.[col]
+            const isSelected = selectedCell?.[0] === row && selectedCell?.[1] === col
+
+            let displayValue: number | string
+            if (given) {
+              displayValue = puzzle[row]![col]!
+            } else if (solution) {
+              displayValue = solution[row]![col]!
+            } else {
+              const v = userGrid?.[row]?.[col]
+              displayValue = v && v > 0 ? v : ''
+            }
+
+            const hasValue = given || (typeof displayValue === 'number' ? displayValue > 0 : !!displayValue)
+
+            const displayColor = getCellDisplayColor(row, col, {
+              myPlayerId,
+              mySolvedCells,
+              firstSolverId,
+              playerColors,
+            })
 
             const borderRight =
-              (col + 1) % 3 === 0 && col < 8 ? `border-r-2 ${BLOCK_BORDER}` : 'border-r border-[var(--border)]/40'
+              (col + 1) % 3 === 0 && col < 8 ? `border-r-2 ${BLOCK_BORDER}` : 'border-r border-slate-300/60'
             const borderBottom =
-              (row + 1) % 3 === 0 && row < 8 ? `border-b-2 ${BLOCK_BORDER}` : 'border-b border-[var(--border)]/40'
+              (row + 1) % 3 === 0 && row < 8 ? `border-b-2 ${BLOCK_BORDER}` : 'border-b border-slate-300/60'
 
-            const blockBg = status === 'claimed' ? 'bg-emerald-500/10' : status === 'pending' ? 'bg-amber-500/10' : ''
+            const isWrongDraft = draftWrongCells?.[row]?.[col]
+            const isFlashing = isCellInFlashingUnits(row, col, flashUnits)
+
+            const baseBg = displayColor
+              ? { backgroundColor: `${displayColor}${iSolved ? '55' : '35'}` }
+              : isSelected
+                ? { backgroundColor: 'rgba(148, 163, 184, 0.25)' }
+                : undefined
+
+            const bgStyle = isFlashing
+              ? { backgroundColor: 'rgba(251, 191, 36, 0.55)', transition: 'background-color 0.5s ease-out' }
+              : baseBg
+                ? { ...baseBg, transition: 'background-color 0.5s ease-out' }
+                : undefined
+
+            const cellDisabled = readOnly || given || (canSelectCell ? !canSelectCell(row, col) : false)
+
+            const cellLabel = [
+              `Row ${row + 1}, column ${col + 1}`,
+              given
+                ? `given ${displayValue}`
+                : hasValue
+                  ? `value ${displayValue}`
+                  : firstSolverId
+                    ? 'claimed'
+                    : 'empty',
+            ].join(', ')
 
             return (
-              <div
+              <button
                 key={`${row}-${col}`}
-                className={`relative ${borderRight} ${borderBottom} ${blockBg}`}
-                style={{ aspectRatio: '1' }}
+                type="button"
+                disabled={cellDisabled}
+                aria-label={cellLabel}
+                aria-pressed={isSelected || undefined}
+                onClick={() => onCellSelect?.(row, col)}
+                className={[
+                  'relative flex items-center justify-center select-none transition-colors',
+                  borderRight,
+                  borderBottom,
+                  cellDisabled ? 'cursor-default' : 'cursor-pointer hover:bg-slate-100/80 dark:hover:bg-slate-800/60',
+                  given ? 'bg-white dark:bg-slate-900' : '',
+                ].join(' ')}
+                style={{ aspectRatio: '1', ...bgStyle }}
               >
-                {given || solution || readOnly ? (
-                  <div
-                    className={`${INPUT_BASE} ${given ? 'text-[var(--foreground)]' : 'text-violet-500 dark:text-violet-400'}`}
-                  >
-                    {displayValue}
-                  </div>
-                ) : (
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={1}
-                    value={userGrid?.[row]?.[col] || ''}
-                    disabled={status === 'claimed'}
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/[^1-9]/g, '')
-                      const num = raw ? parseInt(raw.slice(-1)) : 0
-                      onCellChange?.(row, col, num)
-                    }}
-                    className={[
-                      'w-full h-full text-center text-lg font-bold bg-transparent outline-none',
-                      'focus:bg-violet-500/10',
-                      given ? 'text-[var(--foreground)] cursor-default' : 'text-violet-600 dark:text-violet-400',
-                      status === 'claimed' ? 'cursor-not-allowed opacity-60' : '',
-                    ].join(' ')}
-                  />
-                )}
-              </div>
+                <span
+                  className={[
+                    'text-lg sm:text-xl font-semibold tabular-nums',
+                    given ? 'text-slate-800 dark:text-slate-100' : '',
+                    isWrongDraft ? 'text-red-500 dark:text-red-400' : '',
+                    !isWrongDraft && hasValue ? 'text-slate-800 dark:text-slate-100' : '',
+                    !isWrongDraft && !hasValue ? 'text-slate-700 dark:text-slate-200' : '',
+                    solution && !given ? 'text-violet-600 dark:text-violet-400' : '',
+                  ].join(' ')}
+                >
+                  {displayValue}
+                </span>
+              </button>
             )
           })
         )}
       </div>
 
-      {/* Block submit buttons */}
-      {!readOnly && onSubmitBlock && (
-        <div className="grid grid-cols-3 gap-2">
-          {Array.from({ length: 9 }, (_, blockIdx) => {
-            const status = blockStatuses[blockIdx]
-            const scorers = blockScorers[blockIdx] ?? []
-            const isSubmitting = submitting === blockIdx
-
-            if (status === 'claimed') {
-              return (
-                <div
-                  key={blockIdx}
-                  className="rounded-lg bg-emerald-500/15 border border-emerald-500/40 px-2 py-1.5 text-center"
-                >
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                    ✓ Solved
-                  </p>
-                  {scorers.length > 0 && (
-                    <p className="text-[9px] text-emerald-700 dark:text-emerald-300 truncate">{scorers[0]}</p>
-                  )}
-                </div>
-              )
-            }
-
-            return (
-              <button
-                key={blockIdx}
-                type="button"
-                disabled={isSubmitting}
-                onClick={() => onSubmitBlock(blockIdx)}
-                className="rounded-lg border border-[var(--border)] px-2 py-1.5 text-[11px] font-semibold text-[var(--muted)] hover:border-violet-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors disabled:opacity-50"
-              >
-                {isSubmitting ? '…' : `Block ${blockIdx + 1}`}
-              </button>
-            )
-          })}
+      {/* Toolbar: progress, undo, erase */}
+      {!readOnly && (
+        <div className="flex items-center justify-around px-1">
+          <ToolbarButton label={`${completionPercent}%`} disabled>
+            <StarIcon />
+          </ToolbarButton>
+          {onUndo && (
+            <ToolbarButton label="Undo" onClick={onUndo} disabled={undoDisabled}>
+              <UndoIcon />
+            </ToolbarButton>
+          )}
+          {onErase && (
+            <ToolbarButton label="Erase" onClick={onErase}>
+              <EraseIcon />
+            </ToolbarButton>
+          )}
         </div>
       )}
 
-      {/* Read-only block status summary (host or solved view) */}
-      {readOnly && (
-        <div className="grid grid-cols-3 gap-2">
-          {Array.from({ length: 9 }, (_, blockIdx) => {
-            const scorers = blockScorers[blockIdx] ?? []
+      {/* Number pad */}
+      {!readOnly && onNumberPress && (
+        <div className="flex items-center justify-between gap-1 px-0.5">
+          {Array.from({ length: 9 }, (_, i) => {
+            const num = i + 1
             return (
-              <div
-                key={blockIdx}
-                className="rounded-lg border border-[var(--border)] px-2 py-1.5 text-center min-h-[2.5rem]"
+              <button
+                key={num}
+                type="button"
+                onClick={() => onNumberPress(num)}
+                className="flex-1 py-3 text-xl font-semibold text-slate-700 dark:text-slate-200 bg-slate-100/80 dark:bg-slate-800/50 hover:bg-slate-200/90 dark:hover:bg-slate-700/60 rounded-md transition-colors active:scale-95 cursor-pointer"
               >
-                <p className="text-[9px] font-bold uppercase tracking-wider text-[var(--muted)]">
-                  Block {blockIdx + 1}
-                </p>
-                {scorers.length > 0 ? (
-                  <p className="text-[9px] text-emerald-600 dark:text-emerald-400 truncate">
-                    {scorers[0]} +{scorers.length - 1 > 0 ? ` ${scorers.length - 1} more` : ''}
-                  </p>
-                ) : (
-                  <p className="text-[9px] text-[var(--faint)]">—</p>
-                )}
-              </div>
+                {num}
+              </button>
             )
           })}
         </div>
@@ -158,3 +188,59 @@ export function SudokuBoard({
     </div>
   )
 }
+
+function StarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="w-5 h-5">
+      <path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7-6.3-4.6L5.7 21l2.3-7-6-4.6h7.6L12 2z" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function ToolbarButton({
+  children,
+  label,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode
+  label: string
+  onClick?: () => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={[
+        'flex flex-col items-center gap-0.5 min-w-[3.25rem] py-1 rounded-lg transition-colors',
+        'text-slate-500 dark:text-slate-400',
+        disabled ? 'opacity-50 cursor-default' : 'hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer',
+      ].join(' ')}
+    >
+      <span className="w-6 h-6 flex items-center justify-center">{children}</span>
+      <span className="text-[10px] font-medium leading-tight">{label}</span>
+    </button>
+  )
+}
+
+function UndoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="w-5 h-5">
+      <path d="M9 7H5v4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 11a7 7 0 107 7" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function EraseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="w-5 h-5">
+      <path d="M20 20H8L4 16l8-8 8 8-4 4z" strokeLinejoin="round" />
+      <path d="M12 6l6 6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+export { cellBlockIndex }

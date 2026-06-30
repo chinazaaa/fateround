@@ -1150,7 +1150,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   sudoku: {
     id: 'sudoku',
     label: 'Sudoku',
-    tagline: 'Race to claim blocks — first to solve a block scores big',
+    tagline: 'Race to claim cells — first to solve correctly scores big',
     headerEmoji: '🔢🧩',
     card: {
       accent: '#8b5cf6',

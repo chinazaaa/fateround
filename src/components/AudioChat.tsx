@@ -72,21 +72,28 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
 
   return (
     <div className="fixed bottom-20 right-4 z-50 flex flex-col items-end gap-2">
-      {/* Floating Join/Leave Button — offset up so it clears the feedback button */}
+      {/* Floating voice-chat control — a compact round icon so it stays out of the
+       * way during play (offset up so it clears the feedback button). */}
       {!token ? (
         <button
+          data-audio-chat-trigger
           onClick={joinAudio}
           disabled={isConnecting}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-lg shadow-emerald-950/20 active:scale-95 transition-all duration-150"
+          title="Join voice chat"
+          aria-label="Join voice chat"
+          className="flex items-center justify-center w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xl shadow-lg shadow-emerald-950/20 active:scale-95 transition-all duration-150 disabled:opacity-70"
         >
-          <span>🎙️</span>
-          {isConnecting ? 'Connecting...' : 'Join Voice'}
+          {isConnecting ? (
+            <span className="inline-block w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+          ) : (
+            <span>🎙️</span>
+          )}
         </button>
       ) : (
         <div className="flex gap-2">
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className="flex items-center justify-center w-10 h-10 rounded-full bg-theme text-body border border-theme shadow-md active:scale-95 transition-all"
+            className="flex items-center justify-center w-12 h-12 rounded-full bg-theme text-body border border-theme shadow-md active:scale-95 transition-all"
             title={isOpen ? 'Minimize voice panel (stays connected)' : 'Open voice panel'}
             aria-label={isOpen ? 'Minimize voice panel (stays connected)' : 'Open voice panel'}
           >

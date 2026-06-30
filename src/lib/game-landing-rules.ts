@@ -787,8 +787,8 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'Objective',
       points: [
         'Everyone races to solve the same 9×9 Sudoku puzzle.',
-        'Score points by being the first to correctly fill in a 3×3 block.',
-        'The player with the most points when the game ends wins.',
+        'Fill cells one at a time — the first correct answer on a cell earns the most points.',
+        'The player with the highest total score when the puzzle is complete wins.',
       ],
     },
     {
@@ -796,25 +796,21 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'The host shares a game code — everyone joins with their name.',
         'When the host starts, all players see the same partially-filled 9×9 grid.',
-        'Fill in the numbers for any 3×3 block in your local view, then tap “Lock in Block” to submit.',
-        'The server validates your submission instantly against the unique solution.',
+        'Tap a cell, then tap a number to submit. Erase clears a wrong draft; undo reverses your last local change.',
       ],
     },
     {
       title: 'Scoring',
       points: [
-        '1st correct submission for a block = 10 points.',
-        '2nd correct = 6 points.',
-        '3rd correct = 3 points.',
-        '4th+ correct = 1 point.',
-        'Wrong submission = −3 points, but you can try that block again.',
-        "You can keep attempting every block you haven't already solved.",
+        'Per cell: 1st correct = +10, 2nd = +6, 3rd = +4, 4th+ = +2.',
+        'Wrong answer = −3 points; the cell stays open for you to try again.',
+        'Each player can score from a cell at most once. First correct answer sets the cell color.',
       ],
     },
     {
       title: 'Game end',
       points: [
-        'The game ends when the host taps “End Game” or the timer runs out.',
+        'The game ends when every empty cell has been solved correctly or the host taps “End Game”.',
         'The player with the highest total score wins.',
         "Players who didn't ready up for a rematch are excluded from the next game's leaderboard.",
       ],
