@@ -220,6 +220,74 @@ export function playerHasSolvedCell(
   )
 }
 
+export type SudokuUnitType = 'row' | 'col' | 'block'
+
+export type SudokuUnitFlash = {
+  type: SudokuUnitType
+  index: number
+}
+
+function cellInUnit(row: number, col: number, type: SudokuUnitType, index: number): boolean {
+  if (type === 'row') return row === index
+  if (type === 'col') return col === index
+  const br = Math.floor(index / 3) * 3
+  const bc = (index % 3) * 3
+  return row >= br && row < br + 3 && col >= bc && col < bc + 3
+}
+
+/** True when every non-given cell in the unit is correctly solved by this player. */
+export function isPlayerUnitComplete(
+  puzzle: number[][],
+  submissions: Pick<SudokuSubmission, 'player_id' | 'cell_row' | 'cell_col' | 'is_correct'>[],
+  playerId: string,
+  type: SudokuUnitType,
+  index: number
+): boolean {
+  for (let row = 0; row < 9; row++) {
+    for (let col = 0; col < 9; col++) {
+      if (!cellInUnit(row, col, type, index)) continue
+      if (puzzle[row]![col] !== 0) continue
+      if (!playerHasSolvedCell(submissions, playerId, row, col)) return false
+    }
+  }
+  return true
+}
+
+/** Units that became complete for this player with the solve at (solvedRow, solvedCol). */
+export function getNewlyCompletedUnits(
+  puzzle: number[][],
+  submissions: Pick<SudokuSubmission, 'player_id' | 'cell_row' | 'cell_col' | 'is_correct'>[],
+  playerId: string,
+  solvedRow: number,
+  solvedCol: number
+): SudokuUnitFlash[] {
+  const before = submissions.filter(
+    (s) => !(s.player_id === playerId && s.cell_row === solvedRow && s.cell_col === solvedCol && s.is_correct)
+  )
+  const after = playerHasSolvedCell(submissions, playerId, solvedRow, solvedCol)
+    ? submissions
+    : [
+        ...submissions,
+        { player_id: playerId, cell_row: solvedRow, cell_col: solvedCol, is_correct: true },
+      ]
+
+  const candidates: SudokuUnitFlash[] = [
+    { type: 'row', index: solvedRow },
+    { type: 'col', index: solvedCol },
+    { type: 'block', index: cellBlockIndex(solvedRow, solvedCol) },
+  ]
+
+  return candidates.filter(
+    (u) =>
+      !isPlayerUnitComplete(puzzle, before, playerId, u.type, u.index) &&
+      isPlayerUnitComplete(puzzle, after, playerId, u.type, u.index)
+  )
+}
+
+export function isCellInFlashingUnits(row: number, col: number, units: SudokuUnitFlash[]): boolean {
+  return units.some((u) => cellInUnit(row, col, u.type, u.index))
+}
+
 /** Green highlight for cells the current player has correctly solved. */
 export const SUDOKU_MY_CELL_COLOR = '#86efac'
 
@@ -234,6 +302,53 @@ export function buildPlayerSolvedGrid(
     }
   }
   return grid
+}
+
+export function buildPlayerSolvedValueGrid(
+  submissions: Pick<
+    SudokuSubmission,
+    'player_id' | 'cell_row' | 'cell_col' | 'submitted_value' | 'is_correct'
+  >[],
+  playerId: string
+): number[][] {
+  const grid = Array.from({ length: 9 }, () => Array(9).fill(0))
+  for (const s of submissions) {
+    if (
+      s.player_id === playerId &&
+      s.is_correct &&
+      s.cell_row != null &&
+      s.cell_col != null &&
+      s.submitted_value != null
+    ) {
+      grid[s.cell_row]![s.cell_col]! = s.submitted_value
+    }
+  }
+  return grid
+}
+
+/**
+ * Per-player board values: givens, your own correct answers, and local drafts only.
+ * Other players' solutions are never shown — only their color (via getCellDisplayColor).
+ */
+export function buildPlayerDisplayGrid(
+  puzzle: number[][],
+  submissions: Pick<
+    SudokuSubmission,
+    'player_id' | 'cell_row' | 'cell_col' | 'submitted_value' | 'is_correct'
+  >[],
+  playerId: string,
+  localDrafts: number[][]
+): number[][] {
+  const mySolved = buildPlayerSolvedGrid(submissions, playerId)
+  const myValues = buildPlayerSolvedValueGrid(submissions, playerId)
+
+  return puzzle.map((row, r) =>
+    row.map((cell, c) => {
+      if (cell !== 0) return cell
+      if (mySolved[r]![c]) return myValues[r]![c] || localDrafts[r]?.[c] || 0
+      return localDrafts[r]?.[c] || 0
+    })
+  )
 }
 
 /** Cell background color: green if I solved it, else first solver's color, else none. */

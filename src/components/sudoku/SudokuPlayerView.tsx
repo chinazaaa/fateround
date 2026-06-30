@@ -3,14 +3,14 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { GamePlayerChrome } from '@/components/GamePlayerChrome'
-import { SudokuBoard, emptyNotesGrid, type NotesGrid } from '@/components/sudoku/SudokuBoard'
+import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import {
   parseSudokuMetadata,
   tallySudokuScores,
   buildCellOwnerGrid,
-  buildClaimedValueGrid,
-  buildPlayerSolvedGrid,
+  buildPlayerDisplayGrid,
+  getNewlyCompletedUnits,
   playerCompletionPercent,
   boardCompletionPercent,
   sudokuPlayerColor,
@@ -19,6 +19,7 @@ import {
   SUDOKU_MY_CELL_COLOR,
   SUDOKU_WRONG_PENALTY,
   type SudokuSubmission,
+  type SudokuUnitFlash,
 } from '@/lib/sudoku'
 import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } from '@/lib/supabase-selects'
 import { getPlayerSession, setPlayerSession } from '@/lib/utils'
@@ -26,7 +27,6 @@ import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } fr
 import type { Game, Player } from '@/types'
 
 const GRID_KEY = (roundId: string, playerId: string) => `sudoku_grid_${roundId}_${playerId}`
-const NOTES_KEY = (roundId: string, playerId: string) => `sudoku_notes_${roundId}_${playerId}`
 
 function loadSavedGrid(roundId: string, playerId: string): number[][] | null {
   if (typeof window === 'undefined') return null
@@ -47,19 +47,6 @@ function loadSavedGrid(roundId: string, playerId: string): number[][] | null {
   return null
 }
 
-function loadSavedNotes(roundId: string, playerId: string): NotesGrid | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const raw = localStorage.getItem(NOTES_KEY(roundId, playerId))
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (Array.isArray(parsed) && parsed.length === 9) return parsed as NotesGrid
-  } catch {
-    // ignore
-  }
-  return null
-}
-
 function saveGrid(roundId: string, playerId: string, grid: number[][]) {
   if (typeof window === 'undefined') return
   try {
@@ -69,20 +56,13 @@ function saveGrid(roundId: string, playerId: string, grid: number[][]) {
   }
 }
 
-function saveNotes(roundId: string, playerId: string, notes: NotesGrid) {
-  if (typeof window === 'undefined') return
-  try {
-    localStorage.setItem(NOTES_KEY(roundId, playerId), JSON.stringify(notes))
-  } catch {
-    // non-fatal
-  }
-}
-
 type View = 'loading' | 'join' | 'waiting' | 'playing' | 'finished'
 
-type UndoAction =
-  | { type: 'cell'; row: number; col: number; prev: number }
-  | { type: 'note'; row: number; col: number; prev: number[] }
+type DraftUndo = { row: number; col: number; prev: number; prevWrong: boolean }
+
+function emptyWrongGrid(): boolean[][] {
+  return Array.from({ length: 9 }, () => Array(9).fill(false))
+}
 
 export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const [view, setView] = useState<View>('loading')
@@ -91,13 +71,14 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const [roundId, setRoundId] = useState<string | null>(null)
   const [puzzle, setPuzzle] = useState<number[][] | null>(null)
   const [userGrid, setUserGrid] = useState<number[][]>(Array.from({ length: 9 }, () => Array(9).fill(0)))
-  const [notes, setNotes] = useState<NotesGrid>(emptyNotesGrid())
-  const [notesMode, setNotesMode] = useState(false)
+  const [wrongDrafts, setWrongDrafts] = useState<boolean[][]>(emptyWrongGrid)
+  const [undoStack, setUndoStack] = useState<DraftUndo[]>([])
   const [selectedCell, setSelectedCell] = useState<[number, number] | null>(null)
   const [submissions, setSubmissions] = useState<SudokuSubmission[]>([])
   const [submitting, setSubmitting] = useState(false)
-  const [undoStack, setUndoStack] = useState<UndoAction[]>([])
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
+  const [flashUnits, setFlashUnits] = useState<SudokuUnitFlash[]>([])
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
@@ -111,6 +92,22 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     setToast({ msg, ok })
     setTimeout(() => setToast(null), 3000)
   }
+
+  function triggerUnitFlash(units: SudokuUnitFlash[]) {
+    if (units.length === 0) return
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
+    setFlashUnits(units)
+    flashTimerRef.current = setTimeout(() => {
+      setFlashUnits([])
+      flashTimerRef.current = null
+    }, 550)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
+    }
+  }, [])
 
   const load = useCallback(async () => {
     const session = getPlayerSession(gameCode)
@@ -176,9 +173,8 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     setSubmissions((subs ?? []) as SudokuSubmission[])
 
     const savedGrid = loadSavedGrid(roundData.id as string, session.playerId)
-    const savedNotes = loadSavedNotes(roundData.id as string, session.playerId)
     setUserGrid(savedGrid ?? Array.from({ length: 9 }, () => Array(9).fill(0)))
-    setNotes(savedNotes ?? emptyNotesGrid())
+    setWrongDrafts(emptyWrongGrid())
     setUndoStack([])
     setView('playing')
   }, [gameCode])
@@ -308,10 +304,10 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     () => (myPlayerId ? buildPlayerSolvedGrid(submissions, myPlayerId) : undefined),
     [submissions, myPlayerId]
   )
-  const claimedGrid = useMemo(
-    () => (puzzle ? buildClaimedValueGrid(puzzle, submissions) : null),
-    [puzzle, submissions]
-  )
+  const displayGrid = useMemo(() => {
+    if (!puzzle || !myPlayerId) return userGrid
+    return buildPlayerDisplayGrid(puzzle, submissions, myPlayerId, userGrid)
+  }, [puzzle, userGrid, submissions, myPlayerId])
 
   const activePlayers = useMemo(() => players.filter((p) => p.spectator !== true), [players])
   const playerColors = useMemo(() => {
@@ -321,18 +317,6 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     })
     return map
   }, [activePlayers])
-
-  const displayGrid = useMemo(() => {
-    if (!puzzle) return userGrid
-    return puzzle.map((row, r) =>
-      row.map((cell, c) => {
-        if (cell !== 0) return cell
-        if (cellOwners[r]![c]) return claimedGrid?.[r]?.[c] ?? 0
-        if (myPlayerId && mySolvedCells?.[r]?.[c]) return userGrid[r]?.[c] ?? claimedGrid?.[r]?.[c] ?? 0
-        return userGrid[r]?.[c] ?? 0
-      })
-    )
-  }, [puzzle, userGrid, cellOwners, claimedGrid, myPlayerId, mySolvedCells])
 
   function isCellEditable(row: number, col: number): boolean {
     if (!puzzle || !myPlayerId) return false
@@ -345,7 +329,29 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     setSelectedCell([row, col])
   }
 
-  async function submitCell(row: number, col: number, value: number) {
+  function setWrongDraft(row: number, col: number, wrong: boolean) {
+    setWrongDrafts((prev) => {
+      const next = prev.map((r) => [...r])
+      next[row]![col] = wrong
+      return next
+    })
+  }
+
+  function pushDraftUndo(row: number, col: number, prev: number, prevWrong: boolean) {
+    setUndoStack((stack) => [...stack, { row, col, prev, prevWrong }])
+  }
+
+  function clearLocalDraft(row: number, col: number) {
+    setUserGrid((prev) => {
+      const next = prev.map((r) => [...r])
+      next[row][col] = 0
+      if (roundId && myPlayerId) saveGrid(roundId, myPlayerId, next)
+      return next
+    })
+    setWrongDraft(row, col, false)
+  }
+
+  async function submitCell(row: number, col: number, value: number, hideDraftWhileSolving: boolean) {
     if (!myPlayerId || !roundId || submitting) return
 
     const resumeToken = myResumeTokenRef.current
@@ -369,26 +375,29 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
 
       if (json.isCorrect) {
         showToast(`✓ Correct! +${json.pointsAwarded} pts`, true)
+        if (puzzle && myPlayerId) {
+          triggerUnitFlash(getNewlyCompletedUnits(puzzle, submissions, myPlayerId, row, col))
+        }
         setUserGrid((prev) => {
           const next = prev.map((r) => [...r])
-          next[row][col] = 0
+          next[row][col] = value
           if (roundId && myPlayerId) saveGrid(roundId, myPlayerId, next)
           return next
         })
-        setNotes((prev) => {
-          const next = prev.map((r) => r.map((c) => [...c]))
-          next[row]![col] = []
-          if (roundId && myPlayerId) saveNotes(roundId, myPlayerId, next)
-          return next
-        })
+        setWrongDraft(row, col, false)
       } else {
         showToast(`✗ Wrong! ${SUDOKU_WRONG_PENALTY} pts`, false)
-        setUserGrid((prev) => {
-          const next = prev.map((r) => [...r])
-          next[row][col] = 0
-          if (roundId && myPlayerId) saveGrid(roundId, myPlayerId, next)
-          return next
-        })
+        if (hideDraftWhileSolving) {
+          clearLocalDraft(row, col)
+        } else {
+          setUserGrid((prev) => {
+            const next = prev.map((r) => [...r])
+            next[row][col] = value
+            if (roundId && myPlayerId) saveGrid(roundId, myPlayerId, next)
+            return next
+          })
+          setWrongDraft(row, col, true)
+        }
       }
     } finally {
       setSubmitting(false)
@@ -400,75 +409,52 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     const [row, col] = selectedCell
     if (!isCellEditable(row, col)) return
 
-    if (notesMode) {
-      setNotes((prev) => {
-        const next = prev.map((r) => r.map((c) => [...c]))
-        const cellNotes = next[row]![col]!
-        const idx = cellNotes.indexOf(value)
-        const prevNotes = [...cellNotes]
-        if (idx >= 0) cellNotes.splice(idx, 1)
-        else cellNotes.push(value)
-        cellNotes.sort((a, b) => a - b)
-        setUndoStack((stack) => [...stack, { type: 'note', row, col, prev: prevNotes }])
-        if (roundId && myPlayerId) saveNotes(roundId, myPlayerId, next)
+    const owner = cellOwners[row]![col]
+    const someoneElseSolvedFirst = !!(owner && owner !== myPlayerId)
+    if (!someoneElseSolvedFirst) {
+      const prev = userGrid[row]?.[col] ?? 0
+      const prevWrong = wrongDrafts[row]?.[col] ?? false
+      setUserGrid((prevGrid) => {
+        const next = prevGrid.map((r) => [...r])
+        next[row][col] = value
+        if (roundId && myPlayerId) saveGrid(roundId, myPlayerId, next)
         return next
       })
-      return
+      setWrongDraft(row, col, false)
+      pushDraftUndo(row, col, prev, prevWrong)
     }
 
-    void submitCell(row, col, value)
+    void submitCell(row, col, value, someoneElseSolvedFirst)
   }
 
   function handleErase() {
     if (!selectedCell) return
     const [row, col] = selectedCell
     if (!isCellEditable(row, col)) return
+    const current = userGrid[row]?.[col] ?? 0
+    const isWrong = wrongDrafts[row]?.[col] ?? false
+    if (!current && !isWrong) return
 
-    const prevValue = userGrid[row]?.[col] ?? 0
-    const prevNotes = [...(notes[row]?.[col] ?? [])]
-
-    if (prevValue) {
-      setUserGrid((prev) => {
-        const next = prev.map((r) => [...r])
-        next[row][col] = 0
-        if (roundId && myPlayerId) saveGrid(roundId, myPlayerId, next)
-        return next
-      })
-      setUndoStack((stack) => [...stack, { type: 'cell', row, col, prev: prevValue }])
-    }
-
-    if (prevNotes.length > 0) {
-      setNotes((prev) => {
-        const next = prev.map((r) => r.map((c) => [...c]))
-        next[row]![col] = []
-        if (roundId && myPlayerId) saveNotes(roundId, myPlayerId, next)
-        return next
-      })
-      setUndoStack((stack) => [...stack, { type: 'note', row, col, prev: prevNotes }])
-    }
+    pushDraftUndo(row, col, current, isWrong)
+    clearLocalDraft(row, col)
   }
 
   function handleUndo() {
-    const last = undoStack[undoStack.length - 1]
-    if (!last) return
-    setUndoStack((stack) => stack.slice(0, -1))
+    const stack = [...undoStack]
+    while (stack.length > 0) {
+      const last = stack.pop()!
+      if (!isCellEditable(last.row, last.col)) continue
 
-    if (last.type === 'cell') {
+      setUndoStack(stack)
       setUserGrid((prev) => {
-        const next = prev.map((r) => [...r])
-        next[last.row][last.col] = last.prev
-        if (roundId && myPlayerId) saveGrid(roundId, myPlayerId, next)
-        return next
+        const grid = prev.map((r) => [...r])
+        grid[last.row][last.col] = last.prev
+        if (roundId && myPlayerId) saveGrid(roundId, myPlayerId, grid)
+        return grid
       })
+      setWrongDraft(last.row, last.col, last.prevWrong)
       setSelectedCell([last.row, last.col])
-    } else {
-      setNotes((prev) => {
-        const next = prev.map((r) => r.map((c) => [...c]))
-        next[last.row]![last.col] = [...last.prev]
-        if (roundId && myPlayerId) saveNotes(roundId, myPlayerId, next)
-        return next
-      })
-      setSelectedCell([last.row, last.col])
+      return
     }
   }
 
@@ -592,20 +578,20 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
           <SudokuBoard
             puzzle={puzzle}
             userGrid={displayGrid}
-            notes={notes}
             cellOwners={cellOwners}
             mySolvedCells={mySolvedCells}
             playerColors={playerColors}
             myPlayerId={myPlayerId}
             selectedCell={selectedCell}
-            notesMode={notesMode}
+            draftWrongCells={wrongDrafts}
             onCellSelect={handleCellSelect}
             onNumberPress={handleNumberPress}
             onErase={handleErase}
-            onUndo={undoStack.length > 0 ? handleUndo : undefined}
-            onToggleNotes={() => setNotesMode((v) => !v)}
+            onUndo={handleUndo}
+            undoDisabled={undoStack.length === 0}
             completionPercent={boardCompletion}
             canSelectCell={(r, c) => isCellEditable(r, c)}
+            flashUnits={flashUnits}
           />
         )}
 

@@ -796,8 +796,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'The host shares a game code — everyone joins with their name.',
         'When the host starts, all players see the same partially-filled 9×9 grid.',
-        'Tap a cell, then tap a number to submit. Other players can still solve the same cell later for fewer points.',
-        'Use Notes mode for pencil marks, Erase to clear, and Undo to reverse local changes.',
+        'Tap a cell, then tap a number to submit. Erase clears a wrong draft; undo reverses your last local change.',
       ],
     },
     {
