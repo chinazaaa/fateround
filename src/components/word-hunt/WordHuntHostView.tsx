@@ -398,6 +398,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
           removingPlayerId={removingPlayerId}
           onRemovePlayer={removePlayer}
           highlightPlayerId={hostPlayerId}
+          alwaysShowReady={game.status === 'waiting'}
         />
       )}
 

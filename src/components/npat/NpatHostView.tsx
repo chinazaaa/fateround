@@ -299,6 +299,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         onRemovePlayer={removePlayer}
         removingPlayerId={removingPlayerId}
         highlightPlayerId={hostPlayerId}
+        alwaysShowReady={game.status === 'waiting'}
       />
     ) : null
 
