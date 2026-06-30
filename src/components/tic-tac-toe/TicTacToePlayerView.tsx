@@ -193,6 +193,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
       )
     }
 
+    const joiningAsViewer = game?.status === 'active'
     return (
       <GameJoinLobbyShell
         gameCode={gameCode}
@@ -201,7 +202,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
             emoji={cfg.headerEmoji}
             title={game?.title ?? cfg.label}
             gameType="tic_tac_toe"
-            subtitle={cfg.tagline}
+            subtitle={joiningAsViewer ? 'Game in progress — join as a viewer (read-only).' : cfg.tagline}
           />
         }
       >
@@ -210,6 +211,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
           footer={
             <p className="text-center pt-1">
               <GameRulesLink gameType="tic_tac_toe" variant="subtle" />

@@ -600,7 +600,9 @@ body {
 .modal-panel {
   width: 100%;
   max-width: 42rem;
-  max-height: 90vh;
+  /* Cap against the backdrop too — when the keyboard shrinks the backdrop, the
+     sheet must stay within it so the sticky header and results remain visible. */
+  max-height: min(90vh, 100%);
   overflow-y: auto;
   border-radius: 1.5rem 1.5rem 0 0;
   border: 1px solid var(--border-strong);

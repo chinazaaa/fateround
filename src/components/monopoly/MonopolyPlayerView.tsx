@@ -360,9 +360,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           <GameRulesLink gameType="monopoly" variant="subtle" />
           <div className="glass-card-strong p-4 text-center">
             <p className="text-3xl font-black text-[var(--primary)]">{players.length}</p>
-            <p className="text-sm text-muted">
-              player{players.length === 1 ? '' : 's'} joined · need {MONOPOLY_MIN_PLAYERS}+
-            </p>
+            <p className="text-sm text-muted">player{players.length === 1 ? '' : 's'} joined</p>
           </div>
           {players.length > 0 && (
             <div className="space-y-2">

@@ -20,6 +20,8 @@ import {
   isSecretMessageGame,
   isThisOrThat,
   isTriviaGame,
+  isTwoTruthsGame,
+  isICallOnGame,
   isWouldYouRather,
   parseGameType,
 } from '@/lib/game-types'
@@ -88,7 +90,9 @@ export function gameOffersLateJoinChoice(gameType: GameType): boolean {
     isWouldYouRather(gameType) ||
     isNeverHaveIEver(gameType) ||
     isThisOrThat(gameType) ||
-    isMostLikelyTo(gameType)
+    isMostLikelyTo(gameType) ||
+    isTwoTruthsGame(gameType) ||
+    isICallOnGame(gameType)
   )
 }
 

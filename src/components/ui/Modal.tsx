@@ -13,11 +13,49 @@ interface ModalProps {
 
 export function Modal({ open, onClose, title, subtitle, children, size = 'md' }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const backdropRef = useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // The sheet is anchored to the bottom of the screen. On mobile the on-screen
+  // keyboard overlays the bottom (vh / fixed positioning don't shrink for it), so
+  // search results and inputs end up hidden behind it. Track the visual viewport
+  // and shrink the backdrop to the area above the keyboard so the sheet sits on top.
+  useEffect(() => {
+    // Depend on `mounted` too: the backdrop only renders once mounted is true, so
+    // a Modal that first mounts already-open needs this to re-run to grab the ref.
+    if (!open || !mounted) return
+    const vv = window.visualViewport
+    const el = backdropRef.current
+    if (!vv || !el) return
+    const apply = () => {
+      const h = vv.height
+      // Only intervene when the keyboard meaningfully shrinks the viewport. Guard
+      // against bogus/zero readings that would otherwise collapse the sheet.
+      if (h && window.innerHeight - h > 120) {
+        el.style.height = `${h}px`
+        el.style.top = `${vv.offsetTop}px`
+        el.style.bottom = 'auto'
+      } else {
+        el.style.height = ''
+        el.style.top = ''
+        el.style.bottom = ''
+      }
+    }
+    apply()
+    vv.addEventListener('resize', apply)
+    vv.addEventListener('scroll', apply)
+    return () => {
+      vv.removeEventListener('resize', apply)
+      vv.removeEventListener('scroll', apply)
+      el.style.height = ''
+      el.style.top = ''
+      el.style.bottom = ''
+    }
+  }, [open, mounted])
 
   useEffect(() => {
     if (!open) return
@@ -41,6 +79,7 @@ export function Modal({ open, onClose, title, subtitle, children, size = 'md' }:
 
   return createPortal(
     <div
+      ref={backdropRef}
       className="modal-backdrop"
       onClick={(e) => e.target === e.currentTarget && onClose()}
       role="dialog"

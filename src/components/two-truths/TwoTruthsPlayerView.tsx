@@ -26,13 +26,22 @@ import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
-import { playerIsViewer, preJoinScreen } from '@/lib/viewers'
+import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
+import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { EliminationBanner } from '@/components/EliminationBanner'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 
-type Screen = 'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'lobby' | 'playing' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'lobby'
+  | 'playing'
+  | 'not_found'
 
 export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const { error: toastError, success } = useToast()
@@ -89,7 +98,15 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
     if (!playerId) {
       const pre = preJoinScreen(gameData, false)
-      setScreen(pre === 'game_started_waiting' ? 'game_started_waiting' : pre === 'game_ended' ? 'game_ended' : 'join')
+      setScreen(
+        pre === 'game_started_waiting'
+          ? 'game_started_waiting'
+          : pre === 'late_join_choice'
+            ? 'late_join_choice'
+            : pre === 'game_ended'
+              ? 'game_ended'
+              : 'join'
+      )
       return true
     }
 
@@ -213,6 +230,22 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'game_ended') {
     return <GameEndedScreen game={game} />
+  }
+
+  if (screen === 'late_join_choice' && game) {
+    return (
+      <LateJoinChoice
+        gameCode={gameCode}
+        game={game}
+        playersAllowed={allowLatePlayers(game)}
+        showNameField
+        nameInput={joinName}
+        onNameChange={setJoinName}
+        joining={joining}
+        onJoinAsViewer={() => void joinGame({ joinAsViewer: true })}
+        onJoinAsPlayer={() => void joinGame({ joinAsViewer: false })}
+      />
+    )
   }
 
   if (screen === 'join') {

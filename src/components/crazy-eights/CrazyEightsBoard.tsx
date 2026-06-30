@@ -254,10 +254,19 @@ export function CrazyEightsStandings({
   const activePlayers = players.filter((p) => !isCrazyEightsPlayerOut(handCounts[p.id] ?? 0, p.spectator))
   const watchingPlayers = players.filter((p) => isCrazyEightsPlayerOut(handCounts[p.id] ?? 0, p.spectator))
 
+  const finishOrder = session.finish_order ?? []
+
   function renderPlayerRow(p: { id: string; name: string; spectator?: boolean | null }, watching: boolean) {
     const count = handCounts[p.id] ?? 0
     const isTurn = !watching && p.id === turnId
     const isMe = p.id === myPlayerId
+    // Players who emptied their hand are in finish_order (the rest of the "watching"
+    // group are pure viewers who never played). Show their finishing place — the first
+    // out is the winner.
+    const finishIdx = finishOrder.indexOf(p.id)
+    const finished = finishIdx >= 0
+    const place = finishIdx + 1
+    const placeLabel = finishIdx === 0 ? '🏆 Winner' : `${place}${place === 2 ? 'nd' : place === 3 ? 'rd' : 'th'}`
 
     return (
       <div
@@ -281,13 +290,28 @@ export function CrazyEightsStandings({
               Turn
             </span>
           )}
-          {watching && (
-            <span className="rounded-full bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">
-              Watching
+          {finished ? (
+            <span
+              className={[
+                'rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
+                finishIdx === 0
+                  ? 'bg-[color-mix(in_srgb,var(--marry)_22%,transparent)] text-(--marry)'
+                  : 'bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-muted',
+              ].join(' ')}
+            >
+              {placeLabel}
             </span>
+          ) : (
+            watching && (
+              <span className="rounded-full bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">
+                Watching
+              </span>
+            )
           )}
         </div>
-        <span className="text-muted ml-2 shrink-0 tabular-nums">{watching ? '👀' : `${count} 🃏`}</span>
+        <span className="text-muted ml-2 shrink-0 tabular-nums">
+          {finished ? (finishIdx === 0 ? '🏆' : '👀') : watching ? '👀' : `${count} 🃏`}
+        </span>
       </div>
     )
   }
