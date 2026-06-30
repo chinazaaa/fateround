@@ -500,6 +500,7 @@ async function loadGameState(
   hands: WhotPlayerHand[]
   timerSeconds: number
   gameDurationSeconds: number
+  sessionStartedAt: string | null
   rules: WhotRules
   playerNames: Map<string, string>
 }> {
@@ -509,7 +510,7 @@ async function loadGameState(
     supabase
       .from('games')
       .select(
-        'timer_seconds, game_duration_seconds, whot_pick3_enabled, whot_cards_enabled, whot_number_calls_enabled, whot_pick2_stacking'
+        'timer_seconds, game_duration_seconds, session_started_at, whot_pick3_enabled, whot_cards_enabled, whot_number_calls_enabled, whot_pick2_stacking'
       )
       .eq('id', gameId)
       .maybeSingle(),
@@ -526,6 +527,7 @@ async function loadGameState(
     hands: (handsRes.data as WhotPlayerHand[]) ?? [],
     timerSeconds: gameRes.data?.timer_seconds ?? 0,
     gameDurationSeconds: gameRes.data?.game_duration_seconds ?? 0,
+    sessionStartedAt: gameRes.data?.session_started_at ?? null,
     rules: parseWhotRules(gameRes.data),
     playerNames,
   }
@@ -628,6 +630,29 @@ async function finishWhotByLowestHand(
 
   if ((data?.length ?? 0) === 0) return false // lost the race — another request already moved the game
   await markGameFinished(supabase, gameId)
+  return true
+}
+
+/**
+ * Server-authoritative game-clock guard. The game-duration deadline must never depend
+ * on a client firing the dedicated /expire-whot route: that fires off the client's clock,
+ * so a fast/skewed/throttled tab (or a dropped request) lets turns keep advancing past
+ * time while the display reads 0:00. Every turn-processing path runs this first, using the
+ * server clock — so the next turn poke or move after the buzzer finalizes the game by
+ * lowest hand. Returns true when it ended the game (caller should stop).
+ */
+async function finalizeIfGameExpired(
+  supabase: SupabaseClient,
+  gameId: string,
+  session: WhotSession,
+  hands: WhotPlayerHand[],
+  playerNames: Map<string, string>,
+  sessionStartedAt: string | null,
+  gameDurationSeconds: number
+): Promise<boolean> {
+  if (session.phase === 'finished') return false
+  if (!whotGameSessionExpired(sessionStartedAt, gameDurationSeconds)) return false
+  await finishWhotByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!")
   return true
 }
 
@@ -781,13 +806,19 @@ export async function processWhotPlay(
   playerId: string,
   cardId: string
 ): Promise<{ error?: string }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, rules, playerNames } = await loadGameState(
-    supabase,
-    gameId
-  )
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
   if (session.phase === 'choose_whot') return { error: 'Choose WHOT shape or number first' }
+
+  // The buzzer wins ties with a player's move: once the game clock is spent, no further
+  // card may be played — finalize by lowest hand instead.
+  if (
+    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
 
   const currentId = currentPlayerId(session)
   if (currentId !== playerId) return { error: 'Not your turn' }
@@ -901,10 +932,19 @@ export async function processWhotDraw(
   gameId: string,
   playerId: string
 ): Promise<{ error?: string }> {
-  const { session, hands, timerSeconds, rules, playerNames } = await loadGameState(supabase, gameId)
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
   if (session.phase === 'choose_whot') return { error: 'Choose WHOT shape or number first' }
+
+  // The buzzer wins ties with a player's move: once the game clock is spent, no further
+  // draw may happen — finalize by lowest hand instead.
+  if (
+    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
 
   const currentId = currentPlayerId(session)
   if (currentId !== playerId) return { error: 'Not your turn' }
@@ -1000,9 +1040,18 @@ export async function processWhotChoose(
   playerId: string,
   choice: { shape?: WhotShape; number?: number }
 ): Promise<{ error?: string }> {
-  const { session, hands, timerSeconds, rules, playerNames } = await loadGameState(supabase, gameId)
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase !== 'choose_whot') return { error: 'Not choosing WHOT' }
+
+  // The buzzer wins ties with a player's move: once the game clock is spent, finalize by
+  // lowest hand instead of resolving the WHOT call.
+  if (
+    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
 
   const currentId = currentPlayerId(session)
   if (currentId !== playerId) return { error: 'Not your turn' }
@@ -1049,9 +1098,18 @@ export async function processWhotExpireTurn(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands, rules, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
+  const { session, hands, rules, timerSeconds, gameDurationSeconds, sessionStartedAt, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { skipped: true }
+
+  // Game clock takes precedence over the turn clock: if the session ran out of time,
+  // end it now by lowest hand rather than auto-playing another turn.
+  if (
+    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+  ) {
+    return {}
+  }
 
   if (!session.turn_deadline_at || new Date(session.turn_deadline_at as string) > new Date()) {
     return { skipped: true }
