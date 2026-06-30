@@ -25,8 +25,7 @@ const PIECE_PATHS: Record<ChessPieceType, string> = {
     'M22.5 9c-2.8 0-5.1 2.3-5.1 5.1 0 1.8.9 3.4 2.3 4.3-2.9 1.5-4.9 4.6-4.9 8.2L13.5 35.5h18l-1.3-8.9c0-3.6-2-6.7-4.9-8.2 1.4-.9 2.3-2.5 2.3-4.3 0-2.8-2.3-5.1-5.1-5.1Z ' +
     BASE,
   // Rook — battlemented top, straight body, base.
-  r:
-    'M13.5 35.5h18L30.3 21.5H32V14h-4v3h-3.5v-3h-4v3H17v-3h-4v7.5h1.7Z ' + BASE,
+  r: 'M13.5 35.5h18L30.3 21.5H32V14h-4v3h-3.5v-3h-4v3H17v-3h-4v7.5h1.7Z ' + BASE,
   // Bishop — top ball, mitre with a diagonal slit, collar, base.
   b:
     'M22.5 11.5c2.7 0 4.7 2.7 4.7 5.8 0 2.3-1.2 4.4-3 6.1 2.4 1.2 4.3 3.9 4.5 6.6H16.3c.2-2.7 2.1-5.4 4.5-6.6-1.8-1.7-3-3.8-3-6.1 0-3.1 2-5.8 4.7-5.8Z ' +

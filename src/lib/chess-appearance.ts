@@ -38,15 +38,31 @@ export const PIECE_SETS: ChessPieceSet[] = [
   {
     id: 'classic',
     name: 'Classic',
-    white: { variant: 'filled', color: '#f8fafc', filter: 'drop-shadow(0 0 1px #0f172a) drop-shadow(0 1px 2px rgba(0,0,0,0.45))' },
-    black: { variant: 'filled', color: '#1e293b', filter: 'drop-shadow(0 0 1px #f8fafc) drop-shadow(0 1px 2px rgba(0,0,0,0.35))' },
+    white: {
+      variant: 'filled',
+      color: '#f8fafc',
+      filter: 'drop-shadow(0 0 1px #0f172a) drop-shadow(0 1px 2px rgba(0,0,0,0.45))',
+    },
+    black: {
+      variant: 'filled',
+      color: '#1e293b',
+      filter: 'drop-shadow(0 0 1px #f8fafc) drop-shadow(0 1px 2px rgba(0,0,0,0.35))',
+    },
   },
   {
     id: 'outline',
     name: 'Outline',
     // White side hollow, black side solid — a clean, modern two-tone look.
-    white: { variant: 'outline', color: '#f8fafc', filter: 'drop-shadow(0 0 1px #0f172a) drop-shadow(0 1px 2px rgba(0,0,0,0.5))' },
-    black: { variant: 'filled', color: '#111827', filter: 'drop-shadow(0 0 1px rgba(255,255,255,0.6)) drop-shadow(0 1px 2px rgba(0,0,0,0.35))' },
+    white: {
+      variant: 'outline',
+      color: '#f8fafc',
+      filter: 'drop-shadow(0 0 1px #0f172a) drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
+    },
+    black: {
+      variant: 'filled',
+      color: '#111827',
+      filter: 'drop-shadow(0 0 1px rgba(255,255,255,0.6)) drop-shadow(0 1px 2px rgba(0,0,0,0.35))',
+    },
   },
   {
     id: 'ink',
@@ -59,14 +75,30 @@ export const PIECE_SETS: ChessPieceSet[] = [
   {
     id: 'neon',
     name: 'Neon',
-    white: { variant: 'filled', color: '#67e8f9', filter: 'drop-shadow(0 0 4px #22d3ee) drop-shadow(0 0 8px rgba(34,211,238,0.7))' },
-    black: { variant: 'filled', color: '#f0abfc', filter: 'drop-shadow(0 0 4px #e879f9) drop-shadow(0 0 8px rgba(232,121,249,0.7))' },
+    white: {
+      variant: 'filled',
+      color: '#67e8f9',
+      filter: 'drop-shadow(0 0 4px #22d3ee) drop-shadow(0 0 8px rgba(34,211,238,0.7))',
+    },
+    black: {
+      variant: 'filled',
+      color: '#f0abfc',
+      filter: 'drop-shadow(0 0 4px #e879f9) drop-shadow(0 0 8px rgba(232,121,249,0.7))',
+    },
   },
   {
     id: 'gold',
     name: 'Royal',
-    white: { variant: 'filled', color: '#fde68a', filter: 'drop-shadow(0 0 1px #78350f) drop-shadow(0 1px 2px rgba(0,0,0,0.5))' },
-    black: { variant: 'filled', color: '#7f1d1d', filter: 'drop-shadow(0 0 1px #fde68a) drop-shadow(0 1px 2px rgba(0,0,0,0.4))' },
+    white: {
+      variant: 'filled',
+      color: '#fde68a',
+      filter: 'drop-shadow(0 0 1px #78350f) drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
+    },
+    black: {
+      variant: 'filled',
+      color: '#7f1d1d',
+      filter: 'drop-shadow(0 0 1px #fde68a) drop-shadow(0 1px 2px rgba(0,0,0,0.4))',
+    },
   },
 ]
 

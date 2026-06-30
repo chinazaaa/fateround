@@ -1,12 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import {
-  BOARD_THEMES,
-  PIECE_SETS,
-  useChessAppearance,
-  type ChessAppearanceDefaults,
-} from '@/lib/chess-appearance'
+import { BOARD_THEMES, PIECE_SETS, useChessAppearance, type ChessAppearanceDefaults } from '@/lib/chess-appearance'
 import { ChessPieceIcon } from '@/components/chess/ChessPieceIcon'
 
 /**
