@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Chess } from 'chess.js'
 import { useRouter } from 'next/navigation'
 import { ChessCard, ChessLoadingScreen, ChessSecondaryButton, ChessShell } from '@/components/chess/ChessChrome'
@@ -9,14 +9,14 @@ import { ChessGamePanel } from '@/components/chess/ChessBoard'
 import { gameTypeConfig } from '@/lib/game-types'
 import { currentTurnPlayerId, isChessResultsPhase } from '@/lib/chess'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT, CHESS_SESSION_SELECT } from '@/lib/supabase-selects'
-import { setPlayerSession, clearPlayerSession } from '@/lib/utils'
-import { resolvePlayerSession } from '@/lib/player-resume'
-import type { Game, Player, ChessSession } from '@/types'
+import { CHESS_SESSION_SELECT } from '@/lib/supabase-selects'
+import { clearPlayerSession } from '@/lib/utils'
+import type { Game, ChessSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -46,67 +46,13 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const { confirm } = useConfirm()
-  const [screen, setScreen] = useState<Screen>('loading')
-  const [game, setGame] = useState<Game | null>(null)
-  const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<ChessSession | null>(null)
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
-  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
-  const [joinName, setJoinName] = useState('')
-  const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
-  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   const [acting, setActing] = useState(false)
 
-  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
-
-  const syncScreen = useCallback((gameData: Game, playerId: string | null, sessionData: ChessSession | null) => {
-    if (!playerId) {
-      const pre = preJoinScreen(gameData, false)
-      if (pre === 'game_started_waiting') {
-        setScreen('game_started_waiting')
-        return
-      }
-      if (pre === 'game_ended') {
-        setScreen('game_ended')
-        return
-      }
-      setScreen('join')
-      return
-    }
-    if (gameData.status === 'waiting') {
-      setScreen('waiting')
-      return
-    }
-    if (gameData.status === 'active' && sessionData?.status !== 'finished') {
-      setScreen('active')
-      return
-    }
-    if (isChessResultsPhase(gameData.status, sessionData)) {
-      setScreen('finished')
-      return
-    }
-    setScreen('waiting')
-  }, [])
-
-  const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-    ])
-    if (!supabasePollOk(gameRes, plrsRes)) return false
-
-    const gameData = gameRes.data
-    const plrs = plrsRes.data
-
-    if (!gameData) {
-      setScreen('not_found')
-      return true
-    }
-
-    setGame(gameData)
-    setPlayers(plrs ?? [])
-
+  // Game-specific load: fetch the chess session (the shared game/players fetch +
+  // session resolution lives in useGameViewBootstrap).
+  const loadGameState = useCallback(async (): Promise<{ state: ChessSession | null; ok: boolean }> => {
     const sessionRes = await supabase
       .from('chess_sessions')
       .select(CHESS_SESSION_SELECT)
@@ -116,19 +62,49 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     if (sessionData) {
       setSession(sessionData)
     }
+    return { state: sessionData, ok: supabasePollOk(sessionRes) }
+  }, [gameCode])
 
-    const playerSession = await resolvePlayerSession(gameCode, plrs)
-    const playerId = playerSession?.playerId ?? null
-    setMyPlayerId(playerId)
-    setMyResumeToken(playerSession?.resumeToken ?? null)
+  const computeScreen = useCallback(
+    (gameData: Game, playerId: string | null, sessionData: ChessSession | null): Screen => {
+      if (!playerId) {
+        const pre = preJoinScreen(gameData, false)
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'game_ended') return 'game_ended'
+        return 'join'
+      }
+      if (gameData.status === 'waiting') return 'waiting'
+      if (gameData.status === 'active' && sessionData?.status !== 'finished') return 'active'
+      if (isChessResultsPhase(gameData.status, sessionData)) return 'finished'
+      return 'waiting'
+    },
+    []
+  )
 
-    syncScreen(gameData, playerId, sessionData)
-    return supabasePollOk(sessionRes)
-  }, [gameCode, syncScreen])
+  const {
+    screen,
+    game,
+    players,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<Screen, ChessSession | null>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'not_found',
+    loadGameState,
+    computeScreen,
+    joinExtras,
+    onJoinError: toastError,
+  })
 
-  useEffect(() => {
-    load()
-  }, [load])
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'chess_sessions'], load)
@@ -138,38 +114,6 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
   })
-
-  const join = useCallback(
-    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-      const name = (opts?.name ?? joinName).trim()
-      if (!name) return
-      setJoining(true)
-      try {
-        const res = await fetch('/api/players', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameCode,
-            playerName: name,
-            ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer ?? true } : {}),
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-          toastError(data.error ?? 'Failed to join')
-          return
-        }
-        setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-        setMyPlayerId(data.playerId)
-        setMyResumeToken(data.resumeToken ?? null)
-        await load()
-      } finally {
-        setJoining(false)
-      }
-    },
-    [game?.status, gameCode, joinExtras, joinName, load, toastError]
-  )
 
   useRoomMemberAutoJoin({
     displayName: roomDisplayName,

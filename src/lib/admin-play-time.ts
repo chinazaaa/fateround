@@ -4,15 +4,21 @@ type PlaySession = {
   finished_at: string | null
 }
 
-export type AveragePlayTime = {
-  averageSeconds: number | null
+export type PlayTimeStat = {
+  /** Typical (median) session length in seconds, or null when there's no sample. */
+  typicalSeconds: number | null
   sampleCount: number
 }
 
-export function computeAveragePlayTime(
+// Sessions longer than this are almost always abandoned games that were only
+// marked finished much later (host closed the tab, etc.) — not real play time —
+// so we exclude them from the stat.
+const MAX_PLAUSIBLE_SESSION_SECONDS = 6 * 60 * 60
+
+export function computeTypicalPlayTime(
   sessions: PlaySession[],
   latestRoundEndedAtByGame: Map<string, string>
-): AveragePlayTime {
+): PlayTimeStat {
   const durations: number[] = []
 
   for (const session of sessions) {
@@ -20,15 +26,22 @@ export function computeAveragePlayTime(
     if (!endedAt) continue
 
     const seconds = (new Date(endedAt).getTime() - new Date(session.session_started_at).getTime()) / 1000
-    if (seconds > 0) durations.push(seconds)
+    if (seconds > 0 && seconds <= MAX_PLAUSIBLE_SESSION_SECONDS) durations.push(seconds)
   }
 
   if (durations.length === 0) {
-    return { averageSeconds: null, sampleCount: 0 }
+    return { typicalSeconds: null, sampleCount: 0 }
   }
 
-  const averageSeconds = Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)
-  return { averageSeconds, sampleCount: durations.length }
+  // Median, not mean: session durations are heavily right-skewed — a handful of
+  // games left open for hours dragged the mean up to implausible values. The
+  // median reflects a typical session and is robust to that long tail.
+  durations.sort((a, b) => a - b)
+  const mid = Math.floor(durations.length / 2)
+  const typicalSeconds =
+    durations.length % 2 === 0 ? Math.round((durations[mid - 1] + durations[mid]) / 2) : Math.round(durations[mid])
+
+  return { typicalSeconds, sampleCount: durations.length }
 }
 
 export function formatPlayDuration(totalSeconds: number): string {

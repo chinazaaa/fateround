@@ -119,9 +119,9 @@ export function clueContainsWord(clue: string, word: string): boolean {
 /**
  * Words for the game as two tiers: `primary` is used first, `fallback` only tops
  * up once the primary words run out within a game. When the host supplies their
- * own words, those are the primary and the built-in bank is the overflow (so a
- * short custom list still works across many rounds, but a big one — e.g. 80 —
- * plays through on its own). With no custom words, the built-in bank is primary.
+ * own words, ONLY those are used — the built-in bank is never mixed in (so players
+ * never see words the host didn't add; a short list recycles rather than pulling
+ * defaults). With no custom words, the built-in bank is primary.
  */
 export function describeItWordPools(game: Pick<Game, 'question_source' | 'custom_questions'>): {
   primary: readonly string[]
@@ -130,9 +130,7 @@ export function describeItWordPools(game: Pick<Game, 'question_source' | 'custom
   if (game.question_source !== 'custom') return { primary: DESCRIBE_IT_WORD_POOL, fallback: [] }
   const custom = parseStoredDescribeItWords(game.custom_questions as unknown)
   if (custom.length === 0) return { primary: DESCRIBE_IT_WORD_POOL, fallback: [] }
-  const customSet = new Set(custom.map((w) => w.toLowerCase()))
-  const fallback = DESCRIBE_IT_WORD_POOL.filter((w) => !customSet.has(w.toLowerCase()))
-  return { primary: custom, fallback }
+  return { primary: custom, fallback: [] }
 }
 
 export function totalDescribeItTurns(numTeams: number, totalRounds: number): number {

@@ -6,14 +6,29 @@
 
 ## TL;DR
 
-- **Playing is free, forever.** Joining a room and playing any game never costs anything.
-- **Hosting gets a paid upgrade.** A host can buy a one-time **Pro Host** unlock that
-  removes limits and adds host-only powers.
-- **Pay once, keep it.** Pro Host is a one-time purchase (e.g. **$2**), not a subscription.
-  Buy it once, that account is Pro forever.
+There are **two separate things we sell** — keep them distinct in your head, because
+they earn money in completely different ways:
 
-The only thing we ever charge for is the **host** experience. Everything a *player*
-touches stays free so rooms always fill up.
+1. **The $2 Pro Host unlock (utility).** A host pays once to remove limits and get
+   host-only powers — bigger rooms, more concurrent rooms, add-time, longer games,
+   bigger imports. **Pay once, owned on your account.** This is the *floor*: it's what
+   makes the app worth a couple of dollars to a serious host. It is **not** a promise of
+   "every future feature free forever" — it unlocks the **Pro Host feature set** (the
+   utility rows below).
+2. **Cosmetics (status & self-expression).** Themes, board/piece/card/dice skins, and
+   **limited-time seasonal drops** (e.g. a "Wednesday"-style themed skin tied to whatever's
+   trending that month). These are bought **individually**, are **cheap and impulse-priced**,
+   and — unlike the unlock — can be sold to **players too, not just hosts**. This is the
+   *repeatable, long-term* revenue line that keeps the app alive for years.
+
+Guardrails that never move:
+
+- **Playing is free, forever.** Joining a room and playing any game never costs anything.
+- **We never charge to *play* — only to *unlock host powers* or to *look good*.** Selling
+  an optional skin doesn't gate play (the default look stays free), so cosmetics can reach
+  the whole player base without breaking this rule.
+- **Cosmetic only — never pay-for-power.** No purchase ever buys a gameplay advantage. The
+  app works because friends play *fairly*; selling an edge would poison that.
 
 ---
 
@@ -31,13 +46,19 @@ touches stays free so rooms always fill up.
 
 ---
 
-## The Free vs. Pro split — master list
+## What the $2 Pro Host unlock includes — master list
+
+**This table is *only* the $2 unlock — the utility line.** Cosmetics (themes, skins,
+seasonal drops) are a **separate purchase** and live in their own section:
+[Cosmetics — themes, skins & seasonal drops](#cosmetics--themes-skins--seasonal-drops).
+Keeping them apart is deliberate: if cosmetics were bundled into the $2 unlock, we'd
+permanently give away our only *repeatable* revenue line.
 
 Legend: ✅ included · ⛔ not available · 🔸 limited / capped
 
-| # | Feature | Free Host | Pro Host |
+| # | Feature | Free Host | Pro Host ($2) |
 |---|---------|:---------:|:--------:|
-| **Core** |
+| **Core (always free)** |
 | 1 | Join any room and play any game | ✅ | ✅ |
 | 2 | Create rooms | ✅ | ✅ |
 | 3 | All 20+ game modes | ✅ | ✅ |
@@ -60,17 +81,170 @@ Legend: ✅ included · ⛔ not available · 🔸 limited / capped
 | 17 | Custom voting categories / game modes | ⛔ | ✅ |
 | **Identity & polish** |
 | 18 | Custom / vanity room codes | ⛔ | ✅ |
-| 19 | Custom room themes (neon, retro, etc.) | 🔸 1–2 | ✅ all |
-| 19b | Custom game board / piece / tile skins (Chess, Scrabble, Ludo, Whot, Sudoku, Monopoly, Bingo) | ⛔ | ✅ |
 | 20 | Pro badge on profile & in lobby | ⛔ | ✅ |
 | 21 | Remove "Made with Fate Round" footer | ⛔ | ✅ |
 | **Perks** |
 | 22 | Early access to new game modes | ⛔ | ✅ |
 | 23 | Priority support | ⛔ | ✅ |
 
-> This is the **full recommended menu**. Not all of it ships day one — see
-> [Launch set vs. roadmap](#launch-set-vs-roadmap). Items 8 and the core rows already exist
-> in the codebase today; most Pro rows are net-new gating work.
+> **What the $2 buys, in one line:** *more* (bigger + more rooms), *longer* (add-time,
+> 4-hr games), *more control* (custom timers, host powers, kick/skip), *more content*
+> (big imports, saved packs), and a bit of *status* (Pro badge, no footer). It is the
+> **utility** upgrade. Looking good is sold separately as cosmetics.
+
+> Rows 19 (themes) and 19b (board/piece skins) from the old version have **moved** into the
+> [Cosmetics](#cosmetics--themes-skins--seasonal-drops) section — they're no longer part of
+> the unlock. Item 8 and the core rows already exist in the codebase today; most Pro rows
+> are net-new gating work.
+
+---
+
+## Cosmetics — themes, skins & seasonal drops
+
+**This is the second revenue line, and the long-term one.** The $2 unlock has a ceiling
+(a host buys it once and is done). Cosmetics don't — they're repeatable, they scale with
+the game catalogue, and they can be sold to the **whole player base**, not just hosts.
+This is the answer to "will the model still work in 5 years."
+
+### Two layers of theming — and yes, every game can be themed
+
+There are **two different things** people mean by "theme," and they apply to different
+games:
+
+| Layer | What it themes | Which games | Already built? |
+|-------|----------------|-------------|----------------|
+| **1. Room themes** | The whole room UI — background, colours, accents, lobby look | **Every game**, no exceptions | ✅ Yes — [`src/lib/themes.ts`](../src/lib/themes.ts) ships 5 (Default, Neon, Retro, Elegant, Tropical) |
+| **2. Component skins** | The actual play surface — board, pieces, tiles, cards, dice | Only games that draw a surface (table below) | ✅ Partly — Chess already has it ([`src/lib/chess-appearance.ts`](../src/lib/chess-appearance.ts): 8 boards, 5 piece sets) |
+
+So **"all games can be themed" is true** — via room themes (layer 1). On top of that, the
+games with a physical surface *also* get skins (layer 2). The infrastructure for both
+already exists once in the codebase, which means new themes/skins are mostly **art + a
+catalogue entry**, not new engineering.
+
+### Which games can get component skins (layer 2)
+
+Pulled from each game's actual render code. "Surface" = it draws a board/cards/dice we can
+re-skin without touching any rules.
+
+| Game | Board art — *you see your own* | Your piece / identity — *everyone sees yours* |
+|------|-------------------------------|-----------------------------------------------|
+| **Monopoly** | Board | Token |
+| **Ludo** | Board | Tokens |
+| **Snake & Ladder** | Board | Token |
+| **Scrabble** | Board | Tile/rack style |
+| **Bingo** | Card backdrop | Dauber / ball style |
+| **Whot** | Table felt | Card-back |
+| **Crazy Eights** | Table felt | Card-back |
+| **Tic-Tac-Toe** | Board | Your mark (X/O style) |
+| **Chess** | Board (already shipped) | Piece set (already shipped) |
+| **Sudoku** | Grid theme | — (solo surface) |
+| **Yahtzee** | — | Your dice |
+
+Everything **not** on this list (Trivia, Two Truths, Describe It, Codewords, Word Hunt,
+NPAT, Most Likely To, Never Have I Ever, Would You Rather, This or That, Who Said This,
+Pick a Number, Hot Seat, Anonymous Messages, Anime Quotes, polls, etc.) has no physical
+surface, so it monetizes through **room themes (layer 1) only** — which is plenty, because
+the room theme is what everyone in the lobby sees.
+
+### Who sees what — how skins resolve (the key design rule)
+
+**Skins are always owned by the *player*, never by the host.** This is the most important
+rule in the whole cosmetics system — it's what makes a skin worth buying even when you're
+not the one hosting. A shared board is a *single object* everyone looks at, so "the host's
+skin wins" would mean a non-host buyer never sees what they paid for. We avoid that entirely
+by splitting every cosmetic into two kinds, **neither host-gated**:
+
+| Kind | Who sees it | How it renders | Sells on |
+|------|-------------|----------------|----------|
+| **Board / surface art** | **You see your own** | Rendered **locally per viewer** — game *state* is shared, the decorative art is not. Exactly how [`chess-appearance.ts`](../src/lib/chess-appearance.ts) already works ("opponents are unaffected"). | Comfort / self-expression |
+| **Your piece / token / card-back** | **Everyone sees yours** | A small "skin id" per player synced in the game record; every client renders *your* piece as you chose. It represents **you** at the table. | Status / identity |
+
+So whether or not you host:
+
+- Buy a **Monopoly board skin** → *you* see your board every game (others see their own). No host dependency.
+- Buy a **gold token** → *everyone* sees your token is gold, every game, because it's your identity.
+
+**There is no skin that only works when you host.** That scenario — the thing that would
+stop a player buying — simply doesn't exist under this model. Chess and Sudoku aren't
+special; they're just the first games that already render "you see your own." Every game
+works the same way.
+
+> **Technical split (falls out cleanly):**
+> - *Board art* = purely **local**, no sync needed (localStorage, like chess today). Cheap.
+> - *Your piece/token* = one **synced skin-id per player** in the game record so everyone
+>   can render it. Light.
+
+### The hard line: cosmetic, never content
+
+A skin may only change **colour, art, and style**. The moment a "skin" changes a **label,
+layout, or meaning** — e.g. a Monopoly board with renamed streets, or different tile values —
+that is **content, not cosmetic**: it's part of the game, must be shared by everyone, and
+can't be a per-player look. Our chess code already enforces exactly this boundary ("never
+touches game state"). Keep it everywhere — it's also what keeps cosmetics safely on the
+right side of the **never pay-for-power** rule.
+
+### Seasonal / topical drops — the "Wednesday skin" idea
+
+**Yes — we should do this, and it's one of the best ideas on the table.** When the
+*Wednesday* show blew up, Fortnite shipped a Wednesday skin and rode the wave. Same play
+for us: a **limited-time themed skin/room-theme tied to whatever's hot that month**, that
+people unlock while it's available.
+
+Why it works especially well here:
+
+- **Urgency drives the impulse buy.** "Available this month only" converts far better than
+  an always-on store item. It's the same psychology as add-time, applied to cosmetics.
+- **It rides culture for free marketing.** A drop timed to a trending moment is its own ad.
+- **Two flavours — and we should do both:**
+  - **🌍 Global moments:** a hit show/movie launch (legally: *inspired-by* style, not
+    licensed IP), Halloween, Christmas, Valentine's, New Year.
+  - **🇳🇬 Local / Nigerian moments:** Detty December, Independence Day (Oct 1), BBNaija
+    season, a big Afrobeats/AMVCA moment. **This is our edge** — global apps won't make a
+    Naija-specific drop; we will, and our core community will feel seen. As we expand
+    abroad, we add region-specific drops per market.
+- **Mechanically it's the same engine as a normal skin** — just time-boxed availability.
+  No new tech beyond a "available from/until" window on a cosmetic.
+
+> **Important — keep drops cosmetic and inspired-by, never licensed IP.** We don't pay for
+> or claim official movie/brand licenses. A drop is "spooky season" or "festive" styling,
+> not a trademarked character. Cosmetic only, no gameplay change, same as every other skin.
+
+### Who can buy cosmetics — players too, not just hosts
+
+This is the big unlock for sustainability. The $2 utility upgrade is **host-only** (only a
+host feels the limits). But cosmetics have **no reason to be host-only** — a *player* wants
+their own chess set or a cool token just as much. And selling a player an optional skin
+doesn't gate play (default look stays free), so it doesn't break "never charge to play."
+
+> **Effect:** the paying base goes from *"1 host per room"* to *"potentially everyone in
+> the room."* That's the single biggest lever for the app sustaining itself. The only
+> requirement: a player buying a cosmetic needs an (optional, opt-in) account — they make
+> one only when they want to buy.
+
+### Cosmetics pricing
+
+Same impulse logic as the unlock — **cheaper, because there are more of them**:
+
+- **Per item: a snack price.** Roughly **$0.50–$1.50 / ₦300–₦800** per skin or theme.
+  Cheap enough to tap without thinking.
+- **Bundles / packs:** a themed bundle (e.g. "Festive pack: board + tokens + room theme")
+  at a small discount to lift basket size.
+- **Seasonal drops** can sit slightly higher than evergreen skins because scarcity justifies
+  it — but still impulse territory.
+- **Volume, not whales** (see the Nigeria note in the strategy discussion): the model is
+  *many people buying cheap cosmetics*, which is exactly what a price-sensitive,
+  Nigeria-first base supports. The same catalogue earns *more* per user as we expand abroad.
+- **No virtual currency / coins at launch** — sell items directly for money. Coins add
+  friction and only pay off at large scale; revisit only if volume gets huge.
+
+### Cosmetics guardrails
+
+- **Cosmetic only — never pay-for-power.** A skin never changes a rule, a score, or an odds.
+- **Never make the default *worse* to push skins.** Free players keep a clean, good-looking
+  default; cosmetics are *extra* on top, never a downgrade of what's free today.
+- **Never gate language / accessibility as "cosmetic."** The Scrabble language editions are
+  accessibility, not skins — they stay free.
+- **No licensed IP.** Drops are *inspired-by* styling, not trademarked characters.
 
 ---
 
@@ -368,8 +542,10 @@ Orientation for when we build it — not a final design.
 
 ## Guardrails / principles
 
-- **Never charge players.** Joining and playing is free, permanently. Pro only ever affects
-  the host's powers.
+- **Never charge to *play*.** Joining and playing is free, permanently. The $2 unlock only
+  affects the host's powers; cosmetics are optional and never gate play.
+- **Cosmetic only — never pay-for-power.** No purchase (unlock or skin) ever buys a
+  gameplay advantage. Fair play is the whole reason friends show up.
 - **Never make a free room *worse* to push Pro.** We add ceilings for Pro; we don't degrade
   today's free baseline.
 - **Never gate language / accessibility.** Localization (e.g. the French/German/Spanish
@@ -394,6 +570,13 @@ Orientation for when we build it — not a final design.
 | Phase-1 minimum | Caps + multi-room + both add-time flagships + themes + Pro badge | See below |
 | Early access to new games | **Yes, long-term (Phase 3)** | Standing Pro perk once we ship games regularly |
 | Founder / Lifetime+ tier | **Optional, later** | Premium one-time SKU for superfans; not at launch |
+| **Two revenue lines** | **$2 unlock (utility) + cosmetics (status), kept separate** | Cosmetics are NOT bundled into the unlock — they're the repeatable, long-term line |
+| **Cosmetics buyer** | **Hosts *and* players** (opt-in account to buy) | Unlock stays host-only; cosmetics open to everyone — biggest sustainability lever |
+| **Skin ownership scope** | **Player-owned, never host-owned** | Board art renders locally (you see your own); your piece/token syncs (everyone sees yours). No skin is host-gated, so a non-host buyer always sees what they paid for |
+| **Theming scope** | **Room themes = all games; component skins = surface games only** | Both already partly built (`themes.ts`, `chess-appearance.ts`) |
+| **Seasonal / topical drops** | **Yes — limited-time, inspired-by, global *and* Naija-local** | Same engine as skins + an availability window; urgency drives the buy |
+| **Virtual currency / coins** | **No at launch** — sell items directly | Coins add friction, only pay off at scale; revisit if volume is huge |
+| **Pay-for-power** | **Never** | Cosmetic only, forever — protects fair-play, the whole reason the app works |
 
 ### Why these are the right Phase-1 minimum
 

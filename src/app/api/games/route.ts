@@ -51,6 +51,7 @@ import {
   HOT_SEAT_MAX_ROUNDS_CAP,
 } from '@/lib/hot-seat'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
+import { THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import { NHIE_QUESTION_COUNT } from '@/lib/never-have-i-ever-questions'
 import { PAN_MIN_POOL, PAN_QUESTION_COUNT } from '@/lib/pick-a-number-questions'
@@ -166,7 +167,7 @@ function lobbyMaxRounds(
     if (isCodewordsGame(gameType)) return parseStoredCodewordsWords(customQuestions).length
     return 20
   }
-  if (isBinaryChoiceGame(gameType)) return isThisOrThat(gameType) ? 0 : WYR_QUESTION_COUNT
+  if (isBinaryChoiceGame(gameType)) return isThisOrThat(gameType) ? THIS_OR_THAT_QUESTION_COUNT : WYR_QUESTION_COUNT
   if (isMostLikelyTo(gameType)) return MLT_QUESTION_COUNT
   if (isNeverHaveIEver(gameType)) return NHIE_QUESTION_COUNT
   if (isPickANumber(gameType)) return PAN_QUESTION_COUNT
@@ -599,6 +600,7 @@ export async function POST(req: NextRequest) {
         : 'any',
     question_source:
       isWouldYouRather(game_type) ||
+      isThisOrThat(game_type) ||
       isNeverHaveIEver(game_type) ||
       isPickANumber(game_type) ||
       isMostLikelyTo(game_type) ||

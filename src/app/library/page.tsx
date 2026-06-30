@@ -7,7 +7,15 @@ import { PageShell, Chip } from '@/components/ui/PageShell'
 interface PackSummary {
   id: string
   title: string
-  game_type: 'trivia' | 'would_you_rather' | 'most_likely_to' | 'this_or_that' | 'never_have_i_ever'
+  game_type:
+    | 'trivia'
+    | 'would_you_rather'
+    | 'most_likely_to'
+    | 'this_or_that'
+    | 'never_have_i_ever'
+    | 'describe_it'
+    | 'codewords'
+    | 'pick_a_number'
   author_name: string
   description: string | null
   question_count: number
@@ -33,6 +41,18 @@ const GAME_TYPE_META: Record<string, { label: string; color: string }> = {
     label: 'Never Have I Ever',
     color: 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/25',
   },
+  describe_it: {
+    label: 'Text Charades',
+    color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/25',
+  },
+  codewords: {
+    label: 'Codewords',
+    color: 'text-red-600 dark:text-red-400 bg-red-500/10 border-red-500/25',
+  },
+  pick_a_number: {
+    label: 'Pick a Number',
+    color: 'text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 border-cyan-500/25',
+  },
 }
 
 const TAG_META: Record<string, { label: string; color: string }> = {
@@ -52,6 +72,9 @@ const GAME_TYPE_FILTERS = [
   { value: 'most_likely_to', label: 'Most Likely To' },
   { value: 'this_or_that', label: 'This or That' },
   { value: 'never_have_i_ever', label: 'Never Have I Ever' },
+  { value: 'describe_it', label: 'Text Charades' },
+  { value: 'codewords', label: 'Codewords' },
+  { value: 'pick_a_number', label: 'Pick a Number' },
 ]
 
 const TAG_FILTERS = [

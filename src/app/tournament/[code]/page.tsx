@@ -13,9 +13,7 @@ import {
   questionSampleFile,
 } from '@/lib/custom-questions'
 import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
-
-const MEDAL = ['🥇', '🥈', '🥉']
-const RANK_COLOR = ['var(--marry)', '#64748b', '#b45309']
+import { TournamentShareLeaderboard } from '@/components/tournament/TournamentShareLeaderboard'
 
 const GAME_TYPE_LABELS: Record<string, string> = {
   trivia: 'Trivia',
@@ -60,6 +58,10 @@ export default function TournamentLobbyPage() {
 
   const [questionSource, setQuestionSource] = useState<'platform' | 'custom'>('platform')
   const [customTrivia, setCustomTrivia] = useState<TriviaQuestion[]>([])
+  // Size of the custom pack carried over from an earlier game (null if none). Lets the
+  // lobby show the pack is still loaded after a reload/new tab, where local upload state
+  // has reset. The server reuses this pack on Start unless a fresh file is uploaded.
+  const [carriedCustomCount, setCarriedCustomCount] = useState<number | null>(null)
   const [uploadMsg, setUploadMsg] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -90,6 +92,7 @@ export default function TournamentLobbyPage() {
       setTournament(data.tournament)
       setPlayers(data.players)
       setGames(data.games)
+      setCarriedCustomCount(data.carriedCustomCount ?? null)
     } catch {
       setError('Failed to load tournament')
     } finally {
@@ -402,18 +405,23 @@ export default function TournamentLobbyPage() {
   const isParticipant = joined && !isHost
   const isFull = tournament.max_players != null && players.length >= tournament.max_players
   const myName = typeof window !== 'undefined' ? localStorage.getItem(`tournament_player_${tournamentId}`) : null
-  const iAmEliminated = Boolean(
-    isParticipant && myName && players.find((p) => p.player_name.toLowerCase() === myName.toLowerCase())?.is_eliminated
-  )
+  const me =
+    isParticipant && myName ? (players.find((p) => p.player_name.toLowerCase() === myName.toLowerCase()) ?? null) : null
+  const iAmEliminated = Boolean(me?.is_eliminated)
+  // Show a personal lives readout whenever the tournament runs in lives mode and the
+  // player still has a tracked life count (null means lives mode is off for them).
+  const myLives = lives && me?.lives_remaining != null ? me.lives_remaining : null
 
   // Host-control derived state
   const rounds = parseInt(roundsCount, 10) || 10
   const isFirstGame = games.length === 0
   const isCustom = selectedGameType === 'trivia' && questionSource === 'custom'
-  // Custom requires a loaded pack with enough questions. The host's uploaded pack
-  // persists on the lobby between games (and the server de-dupes already-seen
-  // questions across games), so reuse needs no special-casing here.
-  const canStartCustom = !isCustom || customTrivia.length >= rounds
+  // Effective pack size for custom trivia: a freshly uploaded pack wins; otherwise the
+  // pack carried over from an earlier game (which the server reuses on Start). After a
+  // reload/new tab the local upload resets to empty, so without the carry-over fallback
+  // the host would be blocked from starting the next game with their existing pack.
+  const effectiveCustomCount = customTrivia.length > 0 ? customTrivia.length : (carriedCustomCount ?? 0)
+  const canStartCustom = !isCustom || effectiveCustomCount >= rounds
 
   return (
     <PageShell>
@@ -675,6 +683,16 @@ export default function TournamentLobbyPage() {
           <p className="text-muted text-sm">
             Waiting for the host to start the next game. Hang tight — it&apos;ll appear here.
           </p>
+          {myLives != null && (
+            <div className="surface-inset px-4 py-2.5 inline-flex items-center justify-center gap-2 mx-auto">
+              <span aria-hidden="true" className="text-base">
+                {myLives > 0 ? '❤️'.repeat(myLives) : '💔'}
+              </span>
+              <span className="text-sm font-semibold text-body">
+                You have {myLives} {myLives === 1 ? 'life' : 'lives'} left
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -788,7 +806,17 @@ export default function TournamentLobbyPage() {
             <span className="text-xs text-faint">Game {activeGame.game_order}</span>
           </div>
           {isParticipant && !iAmEliminated && (
-            <PrimaryBtn onClick={() => handleJoinGame(activeGame.game_id)}>Join Game</PrimaryBtn>
+            <>
+              {myLives != null && (
+                <p className="text-center text-sm text-body">
+                  <span aria-hidden="true">{myLives > 0 ? '❤️'.repeat(myLives) : '💔'}</span>{' '}
+                  <span className="font-semibold">
+                    {myLives} {myLives === 1 ? 'life' : 'lives'} left
+                  </span>
+                </p>
+              )}
+              <PrimaryBtn onClick={() => handleJoinGame(activeGame.game_id)}>Join Game</PrimaryBtn>
+            </>
           )}
           {/* Eliminated players and opted-in spectators watch instead of playing.
               This is also the re-entry path if a watcher navigated back to the
@@ -806,45 +834,8 @@ export default function TournamentLobbyPage() {
         </div>
       )}
 
-      {/* Leaderboard */}
-      <div className="glass-card p-5 space-y-3">
-        <p className="label-caps">Leaderboard</p>
-        {players.length === 0 ? (
-          <p className="text-faint text-sm">No players yet</p>
-        ) : (
-          <div className="space-y-2">
-            {players.map((p, i) => (
-              <div
-                key={p.id}
-                className={`result-row flex items-center justify-between px-4 py-2.5 ${
-                  i === 0 ? 'result-row-winner-amber' : ''
-                } ${p.is_eliminated ? 'opacity-50' : ''}`}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span
-                    className="w-6 text-center text-base font-black tabular-nums shrink-0"
-                    style={{ color: i < 3 ? RANK_COLOR[i] : 'var(--faint)' }}
-                  >
-                    {i < 3 ? MEDAL[i] : i + 1}
-                  </span>
-                  <span className="font-medium text-body truncate">{p.player_name}</span>
-                  {p.lives_remaining != null && !p.is_eliminated && (
-                    <span className="text-xs shrink-0">{'❤️'.repeat(Math.max(0, p.lives_remaining))}</span>
-                  )}
-                  {p.is_eliminated && <span className="text-xs text-red-400 ml-1 shrink-0">Eliminated</span>}
-                </div>
-                <div className="text-right shrink-0">
-                  <span className="font-bold tabular-nums" style={{ color: 'var(--primary)' }}>
-                    {p.total_points}
-                    <span className="text-xs font-semibold">pts</span>
-                  </span>
-                  <span className="text-faint text-xs ml-2">{p.games_played}g</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Leaderboard — with "Share results" image export */}
+      <TournamentShareLeaderboard tournament={tournament} players={players} />
 
       {/* Game History */}
       {finishedGames.length > 0 && (
@@ -944,8 +935,19 @@ export default function TournamentLobbyPage() {
                   />
                   {customTrivia.length === 0 ? (
                     <div className="space-y-2">
+                      {carriedCustomCount != null && (
+                        <div className="surface-inset p-3 space-y-1" style={{ borderColor: 'var(--primary)' }}>
+                          <p className="text-sm text-body font-medium">
+                            ✓ Reusing your pack ({carriedCustomCount} question
+                            {carriedCustomCount === 1 ? '' : 's'}) from an earlier game
+                          </p>
+                          <p className="text-faint text-xs">
+                            Already-seen questions are skipped automatically. Upload a new file below to replace it.
+                          </p>
+                        </div>
+                      )}
                       <button type="button" onClick={() => fileRef.current?.click()} className="btn-secondary w-full">
-                        Choose CSV or Excel file
+                        {carriedCustomCount != null ? 'Upload a different file' : 'Choose CSV or Excel file'}
                       </button>
                       <p className="text-faint text-xs">
                         Columns: question, option_a–option_d, correct (A–D).{' '}
@@ -958,9 +960,11 @@ export default function TournamentLobbyPage() {
                           Download sample
                         </a>
                       </p>
-                      <p className="text-faint text-xs">
-                        Your pack stays loaded between games — already-seen questions are skipped automatically.
-                      </p>
+                      {carriedCustomCount == null && (
+                        <p className="text-faint text-xs">
+                          Your pack stays loaded between games — already-seen questions are skipped automatically.
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <div className="flex items-center justify-between gap-3">
@@ -989,7 +993,7 @@ export default function TournamentLobbyPage() {
             </p>
           </div>
 
-          {isCustom && customTrivia.length > 0 && customTrivia.length < rounds && (
+          {isCustom && effectiveCustomCount > 0 && effectiveCustomCount < rounds && (
             <p className="text-faint text-xs text-center -mt-2">
               Need {rounds} questions for {rounds} rounds — upload more or lower the round count.
             </p>

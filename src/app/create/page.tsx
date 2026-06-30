@@ -69,6 +69,7 @@ import {
 } from '@/lib/game-types'
 import { BOARD_THEMES, PIECE_SETS, pieceGlyph } from '@/lib/chess-appearance'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
+import { THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import { NHIE_QUESTION_COUNT } from '@/lib/never-have-i-ever-questions'
@@ -92,7 +93,7 @@ import {
   mergeCodewordsWords,
   parseCodewordsWordRows,
   parseExcelCodewordsWords,
-  questionSampleFile,
+  parseStoredCodewordsWords,
   questionUploadHint,
   questionSourceOptions,
   questionRoundPickerOptions,
@@ -108,6 +109,7 @@ import { supportsGenderToggle, defaultGenderBasedForType } from '@/lib/gender-ba
 import type { CustomSlotsConfig } from '@/types'
 import { GameTypeModal } from '@/components/GameTypeModal'
 import { GameTypeCard } from '@/components/GameTypeCard'
+import { LibraryPackPicker } from '@/components/LibraryPackPicker'
 import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
 import { StepIndicator, SettingsGroup, StickyActionBar, SegmentedControl, ChipGrid } from '@/components/ui/CreateWizard'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
@@ -336,6 +338,9 @@ function CreateGameInner() {
       trivia: 'trivia',
       this_or_that: 'this_or_that',
       never_have_i_ever: 'never_have_i_ever',
+      pick_a_number: 'pick_a_number',
+      describe_it: 'describe_it',
+      codewords: 'codewords',
     }
     const gt = gameTypeMap[settings.game_type]
     if (!gt) return
@@ -352,11 +357,15 @@ function CreateGameInner() {
     const res = await fetch(`/api/library/${id}`)
     const data = await res.json()
     if (data.pack?.questions) {
-      setLibraryPackQuestions(data.pack.questions)
-      if (isTriviaGame(settings.game_type)) setCustomTriviaQuestions(data.pack.questions as TriviaQuestion[])
+      const qs = data.pack.questions
+      setLibraryPackQuestions(qs)
+      if (isTriviaGame(settings.game_type)) setCustomTriviaQuestions(qs as TriviaQuestion[])
       else if (isWouldYouRather(settings.game_type) || isThisOrThat(settings.game_type))
-        setCustomWyrQuestions(data.pack.questions as WyrQuestion[])
-      else setCustomMltQuestions(data.pack.questions as string[])
+        setCustomWyrQuestions(qs as WyrQuestion[])
+      else if (isDescribeItGame(settings.game_type))
+        setDescribeItWords(parseDescribeItWords((qs as string[]).join('\n')).join('\n'))
+      else if (isCodewordsGame(settings.game_type)) setCustomCodewordsWords(parseStoredCodewordsWords(qs))
+      else setCustomMltQuestions(qs as string[])
     }
   }
 
@@ -520,17 +529,27 @@ function CreateGameInner() {
     }
     const packParam = searchParams.get('pack')
     if (packParam) {
-      setQuestionSource('library')
       setSelectedPackId(packParam)
       fetch(`/api/library/${packParam}`)
         .then((r) => r.json())
         .then((d) => {
           if (!d.pack?.questions) return
           const gt = d.pack.game_type
-          if (gt === 'trivia') setCustomTriviaQuestions(d.pack.questions as TriviaQuestion[])
-          else if (gt === 'would_you_rather') setCustomWyrQuestions(d.pack.questions as WyrQuestion[])
-          else setCustomMltQuestions(d.pack.questions as string[])
-          setLibraryPackQuestions(d.pack.questions)
+          const qs = d.pack.questions
+          if (gt === 'describe_it') {
+            // Text Charades has its own custom-word UI, not the shared library tab
+            setQuestionSource('custom')
+            setDescribeItWords(parseDescribeItWords((qs as string[]).join('\n')).join('\n'))
+          } else if (gt === 'codewords') {
+            setQuestionSource('custom')
+            setCustomCodewordsWords(parseStoredCodewordsWords(qs))
+          } else {
+            setQuestionSource('library')
+            if (gt === 'trivia') setCustomTriviaQuestions(qs as TriviaQuestion[])
+            else if (gt === 'would_you_rather' || gt === 'this_or_that') setCustomWyrQuestions(qs as WyrQuestion[])
+            else setCustomMltQuestions(qs as string[])
+          }
+          setLibraryPackQuestions(qs)
         })
         .catch(() => {})
     }
@@ -605,7 +624,9 @@ function CreateGameInner() {
     (questionSource === 'custom' || questionSource === 'library') && customQuestionCount > 0
       ? customQuestionCount
       : isTot
-        ? customQuestionCount
+        ? questionSource === 'platform'
+          ? THIS_OR_THAT_QUESTION_COUNT
+          : customQuestionCount
         : isTrivia
           ? TRIVIA_QUESTION_COUNT
           : isWyr
@@ -632,8 +653,11 @@ function CreateGameInner() {
             ? wstRoundOptions
             : [2, 3, 4, 5, 6, 8, 10]
   const hasEnoughCustomQuestions =
-    (isTot && customQuestionCount >= settings.rounds_count && customQuestionCount > 0) ||
-    (questionSource === 'platform' && !isTot && !isPan) ||
+    (isTot &&
+      questionSource !== 'platform' &&
+      customQuestionCount >= settings.rounds_count &&
+      customQuestionCount > 0) ||
+    (questionSource === 'platform' && !isPan) ||
     (isPan && questionSource === 'platform') ||
     (isPan && questionSource === 'custom' && customQuestionCount >= PAN_MIN_POOL && customQuestionCount > 0) ||
     (isLobbyQuestions && !isTot && !isPan && customQuestionCount >= settings.rounds_count && customQuestionCount > 0) ||
@@ -692,7 +716,7 @@ function CreateGameInner() {
   const selectGameType = (type: GameType) => {
     setCustomSlots(null)
     setWstQuoteSource('player')
-    setQuestionSource(isThisOrThat(type) ? 'custom' : 'platform')
+    setQuestionSource('platform')
     setPlayerQuestionsEnabled(true)
     setPlayerQuestionsOrder('players_first')
     setCustomWyrQuestions([])
@@ -1117,7 +1141,12 @@ function CreateGameInner() {
     if (loading) return
     if (isQuickLobby) {
       if (!settings.title.trim()) return
-      if (isCodewords && questionSource === 'custom' && customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL) return
+      if (
+        isCodewords &&
+        (questionSource === 'custom' || questionSource === 'library') &&
+        customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL
+      )
+        return
     } else if (isTriviaQuickCreate) {
       if (!canCreateQuickLobby) return
     } else if (isJoinersMode ? !canCreateJoiners : !canCreateImport) return
@@ -1131,27 +1160,29 @@ function CreateGameInner() {
           ...(isWordHunt ? { timer_seconds: wordHuntTimer } : {}),
           rounds_count: isWst ? Math.max(participants.length, 2) : settings.rounds_count,
           question_source: isCodewords
-            ? questionSource
+            ? questionSource === 'library'
+              ? 'custom'
+              : questionSource
             : isDescribeIt
-              ? questionSource === 'custom' && parseDescribeItWords(describeItWords).length > 0
+              ? (questionSource === 'custom' || questionSource === 'library') &&
+                parseDescribeItWords(describeItWords).length > 0
                 ? 'custom'
                 : 'platform'
-              : isTot
-                ? 'custom'
-                : isLobbyQuestions
-                  ? questionSource === 'library'
-                    ? 'custom'
-                    : questionSource
-                  : 'platform',
+              : isLobbyQuestions
+                ? questionSource === 'library'
+                  ? 'custom'
+                  : questionSource
+                : 'platform',
           custom_questions: isCodewords
-            ? questionSource === 'custom'
+            ? questionSource === 'custom' || questionSource === 'library'
               ? customCodewordsWords
               : null
             : isDescribeIt
-              ? questionSource === 'custom' && parseDescribeItWords(describeItWords).length > 0
+              ? (questionSource === 'custom' || questionSource === 'library') &&
+                parseDescribeItWords(describeItWords).length > 0
                 ? parseDescribeItWords(describeItWords)
                 : null
-              : isLobbyQuestions && (isTot || questionSource === 'custom' || questionSource === 'library')
+              : isLobbyQuestions && (questionSource === 'custom' || questionSource === 'library')
                 ? isWyr || isTot
                   ? customWyrQuestions
                   : isTrivia
@@ -2041,16 +2072,41 @@ function CreateGameInner() {
                 </Field>
                 <Field label="Words">
                   <SegmentedControl
-                    value={questionSource === 'custom' ? 'custom' : 'platform'}
-                    onChange={(v) => setQuestionSource(v as QuestionSource)}
+                    value={questionSource}
+                    onChange={(v) => {
+                      setQuestionSource(v as QuestionSource)
+                      setSelectedPackId(null)
+                      setLibraryPackQuestions([])
+                      if (v !== 'custom') setDescribeItWords('')
+                    }}
                     options={[
                       { value: 'platform', label: 'Platform', hint: 'Use our built-in word bank.' },
+                      { value: 'library', label: 'Library', hint: 'Pick a community word pack.' },
                       { value: 'custom', label: 'Your own', hint: 'Add your own words or upload a file.' },
                     ]}
                   />
                 </Field>
 
-                {questionCustomHint && <CustomContentAiTip hint={questionCustomHint} />}
+                {questionSource === 'custom' && questionCustomHint && <CustomContentAiTip hint={questionCustomHint} />}
+
+                {questionSource === 'library' && (
+                  <div className="space-y-2 pt-1">
+                    <LibraryPackPicker
+                      loading={libraryPacksLoading}
+                      packs={libraryPacks}
+                      search={libraryPackSearch}
+                      onSearchChange={setLibraryPackSearch}
+                      selectedPackId={selectedPackId}
+                      onSelect={selectLibraryPack}
+                      noun="words"
+                    />
+                    {parseDescribeItWords(describeItWords).length > 0 && (
+                      <p className="text-faint text-xs text-center">
+                        Loaded {parseDescribeItWords(describeItWords).length} words from this pack.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {questionSource === 'custom' && (
                   <div className="space-y-4 pt-1">
@@ -2080,22 +2136,13 @@ function CreateGameInner() {
                       />
                     ) : questionTab === 'upload' ? (
                       <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => describeItFileRef.current?.click()}
-                            className="btn-secondary !py-3"
-                          >
-                            Choose file
-                          </button>
-                          <a
-                            href={questionSampleFile('describe_it').href}
-                            download={questionSampleFile('describe_it').download}
-                            className="btn-secondary !py-3 text-center no-underline flex items-center justify-center"
-                          >
-                            Sample CSV
-                          </a>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => describeItFileRef.current?.click()}
+                          className="btn-secondary w-full py-2.5 text-sm"
+                        >
+                          Choose file
+                        </button>
                         <input
                           ref={describeItFileRef}
                           type="file"
@@ -2127,7 +2174,6 @@ function CreateGameInner() {
                             }
                           }}
                         />
-                        <p className="text-faint text-xs text-center">{questionUploadHint('describe_it')}</p>
                       </div>
                     ) : (
                       <textarea
@@ -2323,111 +2369,152 @@ function CreateGameInner() {
                 <Field label="Word list">
                   <SegmentedControl
                     value={questionSource}
-                    onChange={(v) => setQuestionSource(v as QuestionSource)}
+                    onChange={(v) => {
+                      setQuestionSource(v as QuestionSource)
+                      setSelectedPackId(null)
+                      setLibraryPackQuestions([])
+                      if (v !== 'custom') setCustomCodewordsWords([])
+                    }}
                     options={questionSourceOptions('codewords')}
                   />
                 </Field>
-                {questionSource === 'custom' && (
-                  <div className="space-y-3 surface-inset border border-theme rounded-xl p-4">
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => codewordsFileRef.current?.click()}
-                        className="btn-secondary !py-3"
-                      >
-                        Choose file
-                      </button>
-                      <a
-                        href={questionSampleFile('codewords').href}
-                        download={questionSampleFile('codewords').download}
-                        className="btn-secondary !py-3 text-center no-underline flex items-center justify-center"
-                      >
-                        Sample CSV
-                      </a>
-                    </div>
-                    <input
-                      ref={codewordsFileRef}
-                      type="file"
-                      accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0]
-                        e.target.value = ''
-                        if (!file) return
-                        setQuestionsUploadError(null)
-                        const ext = file.name.split('.').pop()?.toLowerCase()
-                        try {
-                          const rows =
-                            ext === 'csv'
-                              ? parseCodewordsWordRows(await file.text())
-                              : ext === 'xlsx' || ext === 'xls'
-                                ? await parseExcelCodewordsWords(await file.arrayBuffer())
-                                : []
-                          if (rows.length === 0) {
-                            setQuestionsUploadError('No valid rows. Add one single word per line.')
-                            return
-                          }
-                          setCustomCodewordsWords(rows)
-                        } catch {
-                          setQuestionsUploadError('Could not read that file. Try the sample CSV.')
-                        }
-                      }}
-                    />
-                    <p className="text-faint text-xs text-center">{questionUploadHint('codewords')}</p>
-                    <input
-                      value={codewordsWordInput}
-                      onChange={(e) => setCodewordsWordInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key !== 'Enter') return
-                        const rows = parseCodewordsWordRows(codewordsWordInput)
-                        if (rows.length === 0) {
-                          setQuestionsUploadError('Use a single word with no spaces.')
-                          return
-                        }
-                        setQuestionsUploadError(null)
-                        setCustomCodewordsWords((prev) => mergeCodewordsWords(prev, rows))
-                        setCodewordsWordInput('')
-                      }}
-                      placeholder="Ocean"
-                      className="input-field py-2.5 text-sm"
-                    />
-                    <textarea
-                      value={codewordsBulkPaste}
-                      onChange={(e) => setCodewordsBulkPaste(e.target.value)}
-                      placeholder={'Ocean\nMountain\nCastle'}
-                      rows={3}
-                      className="input-field resize-none font-medium text-sm"
-                    />
-                    {codewordsBulkPaste.trim() && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const rows = parseCodewordsWordRows(codewordsBulkPaste)
-                          if (rows.length === 0) {
-                            setQuestionsUploadError('No valid words found.')
-                            return
-                          }
-                          setQuestionsUploadError(null)
-                          setCustomCodewordsWords((prev) => mergeCodewordsWords(prev, rows))
-                          setCodewordsBulkPaste('')
-                        }}
-                        className="btn-secondary w-full text-sm py-2.5"
-                      >
-                        Import pasted list
-                      </button>
-                    )}
-                    <AiQuestionsGenerator
-                      gameType="codewords"
+                {questionSource === 'custom' && questionCustomHint && <CustomContentAiTip hint={questionCustomHint} />}
+                {questionSource === 'library' && (
+                  <div className="space-y-2">
+                    <LibraryPackPicker
+                      loading={libraryPacksLoading}
+                      packs={libraryPacks}
+                      search={libraryPackSearch}
+                      onSearchChange={setLibraryPackSearch}
+                      selectedPackId={selectedPackId}
+                      onSelect={selectLibraryPack}
                       noun="words"
-                      defaultCount={Math.max(CODEWORDS_MIN_CUSTOM_POOL, 25)}
-                      onGenerated={(questions) => {
-                        setQuestionsUploadError(null)
-                        setCustomCodewordsWords(mergeCodewordsWords([], questions as string[]))
-                      }}
                     />
+                    {customCodewordsWords.length > 0 && (
+                      <p className="text-faint text-xs text-center">
+                        Loaded {customCodewordsWords.length} words from this pack
+                        {customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL
+                          ? ` — need ${CODEWORDS_MIN_CUSTOM_POOL} minimum`
+                          : ''}
+                        .
+                      </p>
+                    )}
+                  </div>
+                )}
+                {questionSource === 'custom' && (
+                  <div className="space-y-4 pt-1">
+                    <SegmentedControl
+                      value={questionTab}
+                      onChange={setQuestionTab}
+                      options={[
+                        { value: 'upload', label: 'Upload file', hint: questionUploadHint('codewords') },
+                        { value: 'manual', label: 'Add manually', hint: 'Type a word, or paste one per line.' },
+                        {
+                          value: 'ai',
+                          label: 'Generate with AI',
+                          hint: 'Generate words with your own Claude API key.',
+                        },
+                      ]}
+                    />
+
+                    {questionTab === 'ai' ? (
+                      <AiQuestionsGenerator
+                        gameType="codewords"
+                        noun="words"
+                        defaultCount={Math.max(CODEWORDS_MIN_CUSTOM_POOL, 25)}
+                        onGenerated={(questions) => {
+                          setQuestionsUploadError(null)
+                          setCustomCodewordsWords(mergeCodewordsWords([], questions as string[]))
+                        }}
+                      />
+                    ) : questionTab === 'upload' ? (
+                      <div className="space-y-3">
+                        <button
+                          type="button"
+                          onClick={() => codewordsFileRef.current?.click()}
+                          className="btn-secondary w-full py-2.5 text-sm"
+                        >
+                          Choose file
+                        </button>
+                        <input
+                          ref={codewordsFileRef}
+                          type="file"
+                          accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            e.target.value = ''
+                            if (!file) return
+                            setQuestionsUploadError(null)
+                            const ext = file.name.split('.').pop()?.toLowerCase()
+                            try {
+                              const rows =
+                                ext === 'csv'
+                                  ? parseCodewordsWordRows(await file.text())
+                                  : ext === 'xlsx' || ext === 'xls'
+                                    ? await parseExcelCodewordsWords(await file.arrayBuffer())
+                                    : []
+                              if (rows.length === 0) {
+                                setQuestionsUploadError('No valid rows. Add one single word per line.')
+                                return
+                              }
+                              setCustomCodewordsWords(rows)
+                            } catch {
+                              setQuestionsUploadError('Could not read that file. Try the sample CSV.')
+                            }
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <input
+                          value={codewordsWordInput}
+                          onChange={(e) => setCodewordsWordInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key !== 'Enter') return
+                            const rows = parseCodewordsWordRows(codewordsWordInput)
+                            if (rows.length === 0) {
+                              setQuestionsUploadError('Use a single word with no spaces.')
+                              return
+                            }
+                            setQuestionsUploadError(null)
+                            setCustomCodewordsWords((prev) => mergeCodewordsWords(prev, rows))
+                            setCodewordsWordInput('')
+                          }}
+                          placeholder="Ocean"
+                          className="input-field py-2.5 text-sm"
+                        />
+                        <textarea
+                          value={codewordsBulkPaste}
+                          onChange={(e) => setCodewordsBulkPaste(e.target.value)}
+                          placeholder={'Ocean\nMountain\nCastle'}
+                          rows={3}
+                          className="input-field resize-none font-medium text-sm"
+                        />
+                        {codewordsBulkPaste.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const rows = parseCodewordsWordRows(codewordsBulkPaste)
+                              if (rows.length === 0) {
+                                setQuestionsUploadError('No valid words found.')
+                                return
+                              }
+                              setQuestionsUploadError(null)
+                              setCustomCodewordsWords((prev) => mergeCodewordsWords(prev, rows))
+                              setCodewordsBulkPaste('')
+                            }}
+                            className="btn-secondary w-full text-sm py-2.5"
+                          >
+                            Import pasted list
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {questionsUploadError && <p className="text-red-400 text-sm">{questionsUploadError}</p>}
                     {customCodewordsWords.length > 0 && (
-                      <div className="max-h-36 overflow-y-auto space-y-1.5">
+                      <div className="surface-inset border border-theme rounded-xl p-3 max-h-36 overflow-y-auto space-y-1.5">
                         <p className="text-muted text-xs uppercase tracking-wider">
                           Loaded ({customCodewordsWords.length}
                           {customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL
@@ -2777,14 +2864,14 @@ function CreateGameInner() {
                               onChange={(v) => setPlayerQuestionsOrder(parsePlayerQuestionsOrder(v))}
                               options={playerQuestionsOrderOptions({
                                 game_type: settings.game_type,
-                                question_source: isTot ? 'custom' : questionSource,
+                                question_source: questionSource,
                               }).map((opt) => ({ value: opt.value, label: opt.label }))}
                             />
                             <p className="text-faint text-xs mt-2">
                               {
                                 playerQuestionsOrderOptions({
                                   game_type: settings.game_type,
-                                  question_source: isTot ? 'custom' : questionSource,
+                                  question_source: questionSource,
                                 }).find((opt) => opt.value === playerQuestionsOrder)?.hint
                               }
                             </p>
@@ -2793,7 +2880,7 @@ function CreateGameInner() {
                       </>
                     )}
 
-                    {isLobbyQuestions && !isTot && (
+                    {isLobbyQuestions && (
                       <SegmentedControl
                         value={questionSource}
                         onChange={(v) => {
@@ -2818,89 +2905,24 @@ function CreateGameInner() {
                       />
                     )}
 
-                    {questionCustomHint && <CustomContentAiTip hint={questionCustomHint} />}
+                    {questionSource === 'custom' && questionCustomHint && (
+                      <CustomContentAiTip hint={questionCustomHint} />
+                    )}
 
                     {isLobbyQuestions && questionSource === 'library' && (
                       <div className="space-y-2 pt-1">
-                        {libraryPacksLoading ? (
-                          <div className="space-y-2">
-                            {[0, 1].map((i) => (
-                              <div key={i} className="surface-inset px-4 py-3 animate-pulse">
-                                <div className="h-3 bg-[var(--border-strong)] rounded-full w-2/3 mb-2" />
-                                <div className="h-2.5 bg-[var(--border)] rounded-full w-1/3" />
-                              </div>
-                            ))}
-                          </div>
-                        ) : libraryPacks.length === 0 ? (
-                          <p className="text-muted text-sm text-center py-4">
-                            No approved packs for this game type yet.
-                          </p>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="relative">
-                              <input
-                                type="search"
-                                value={libraryPackSearch}
-                                onChange={(e) => setLibraryPackSearch(e.target.value)}
-                                placeholder="Search packs…"
-                                className="input-field w-full text-sm"
-                                style={{ paddingLeft: '2.25rem', paddingTop: '0.5rem', paddingBottom: '0.5rem' }}
-                              />
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-faint)] pointer-events-none text-xs">
-                                🔍
-                              </span>
-                            </div>
-                            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-0.5">
-                              {libraryPacks
-                                .filter((p) => {
-                                  const q = libraryPackSearch.toLowerCase().trim()
-                                  if (!q) return true
-                                  return p.title.toLowerCase().includes(q) || p.author_name.toLowerCase().includes(q)
-                                })
-                                .map((pack) => (
-                                  <button
-                                    key={pack.id}
-                                    type="button"
-                                    onClick={() => selectLibraryPack(pack.id)}
-                                    className={`surface-inset w-full px-4 py-3 text-left transition-all ${
-                                      selectedPackId === pack.id
-                                        ? 'border-[var(--chip-active-border)] bg-[var(--chip-active-bg)]'
-                                        : 'hover:border-[var(--border-strong)]'
-                                    }`}
-                                  >
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="min-w-0">
-                                        <p
-                                          className={`font-semibold text-sm truncate ${selectedPackId === pack.id ? 'text-[var(--chip-active-text)]' : ''}`}
-                                        >
-                                          {pack.title}
-                                        </p>
-                                        <p className="text-faint text-xs mt-0.5">
-                                          by {pack.author_name} · {pack.question_count} questions
-                                        </p>
-                                      </div>
-                                      {selectedPackId === pack.id && (
-                                        <span className="text-[var(--chip-active-text)] text-sm font-bold shrink-0">
-                                          ✓
-                                        </span>
-                                      )}
-                                    </div>
-                                  </button>
-                                ))}
-                              {libraryPacks.filter((p) => {
-                                const q = libraryPackSearch.toLowerCase().trim()
-                                if (!q) return true
-                                return p.title.toLowerCase().includes(q) || p.author_name.toLowerCase().includes(q)
-                              }).length === 0 && (
-                                <p className="text-muted text-sm text-center py-3">No packs match your search.</p>
-                              )}
-                            </div>
-                          </div>
-                        )}
+                        <LibraryPackPicker
+                          loading={libraryPacksLoading}
+                          packs={libraryPacks}
+                          search={libraryPackSearch}
+                          onSearchChange={setLibraryPackSearch}
+                          selectedPackId={selectedPackId}
+                          onSelect={selectLibraryPack}
+                        />
                       </div>
                     )}
 
-                    {isLobbyQuestions && (isTot || questionSource === 'custom') && (
+                    {isLobbyQuestions && questionSource === 'custom' && (
                       <div className="space-y-4 pt-1">
                         <SegmentedControl
                           value={questionTab}
@@ -2930,22 +2952,13 @@ function CreateGameInner() {
 
                         {questionTab === 'upload' ? (
                           <div className="space-y-3">
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                type="button"
-                                onClick={() => questionsFileRef.current?.click()}
-                                className="btn-secondary !py-3"
-                              >
-                                Choose file
-                              </button>
-                              <a
-                                href={questionSampleFile(settings.game_type).href}
-                                download={questionSampleFile(settings.game_type).download}
-                                className="btn-secondary !py-3 text-center no-underline flex items-center justify-center"
-                              >
-                                Sample CSV
-                              </a>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => questionsFileRef.current?.click()}
+                              className="btn-secondary w-full py-2.5 text-sm"
+                            >
+                              Choose file
+                            </button>
                             <input
                               ref={questionsFileRef}
                               type="file"
@@ -2953,7 +2966,6 @@ function CreateGameInner() {
                               className="hidden"
                               onChange={handleQuestionsFileUpload}
                             />
-                            <p className="text-faint text-xs text-center">{questionUploadHint(settings.game_type)}</p>
                           </div>
                         ) : questionTab === 'ai' ? (
                           <AiQuestionsGenerator

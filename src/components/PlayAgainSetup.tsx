@@ -29,11 +29,11 @@ import {
   mergeCodewordsWords,
   questionSampleFile,
   questionUploadHint,
+  questionSourceOptions,
   parseQuestionSource,
   parseStoredWyrQuestions,
   parseStoredMltQuestions,
   parseStoredCodewordsWords,
-  parseOrSplitQuestion,
   CODEWORDS_MIN_CUSTOM_POOL,
 } from '@/lib/custom-questions'
 import {
@@ -45,13 +45,17 @@ import {
   parseGameType,
   isAnonymousMessagesGame,
   isCodewordsGame,
+  isPickANumber,
 } from '@/lib/game-types'
+import type { QuestionSource } from '@/types'
 import { supportsHostListPlayAgain, hostListPlayAgainHint } from '@/lib/participant-mode'
 import { isGameGenderBased } from '@/lib/gender-based'
+import { LibraryPackBrowser } from '@/components/LibraryPackPicker'
 
 export type PlayAgainPayload = {
   custom_questions?: WyrQuestion[] | string[]
   participants?: ParticipantInput[]
+  question_source?: QuestionSource
 }
 
 type PoolTab = 'upload' | 'manual'
@@ -66,8 +70,6 @@ interface PlayAgainSetupProps {
   onConfirm: (payload: PlayAgainPayload) => void | Promise<void>
   loading?: boolean
   variant?: PoolSetupVariant
-  /** When set, pre-selects the questions/words tab on open (lobby edits default to change). */
-  defaultQuestionMode?: PoolMode
 }
 
 function hostParticipants(participants: Participant[]): ParticipantInput[] {
@@ -115,12 +117,15 @@ export function hostPoolSetupLabels(game: Game): { title: string; hasQuestions: 
 
 function hasQuestionPool(game: Game): boolean {
   const type = parseGameType(game.game_type)
-  if (isCodewordsGame(type) && parseQuestionSource(game.question_source, type) === 'custom') return true
-  if (isThisOrThat(type)) return true
-  if (isWouldYouRather(type) && parseQuestionSource(game.question_source, type) === 'custom') return true
-  if (isNeverHaveIEver(type) && parseQuestionSource(game.question_source, type) === 'custom') return true
-  if (isMostLikelyTo(type) && parseQuestionSource(game.question_source, type) === 'custom') return true
-  return false
+  // Available regardless of source: the host can switch between Platform / Library / Your own.
+  return (
+    isCodewordsGame(type) ||
+    isThisOrThat(type) ||
+    isWouldYouRather(type) ||
+    isNeverHaveIEver(type) ||
+    isMostLikelyTo(type) ||
+    isPickANumber(type)
+  )
 }
 
 function hasParticipantPool(game: Game): boolean {
@@ -135,7 +140,6 @@ export function PlayAgainSetup({
   onConfirm,
   loading,
   variant = 'play-again',
-  defaultQuestionMode,
 }: PlayAgainSetupProps) {
   const gameType = parseGameType(game.game_type)
   const showQuestions = hasQuestionPool(game)
@@ -144,12 +148,14 @@ export function PlayAgainSetup({
   const isWyr = isWouldYouRather(gameType)
   const isNhie = isNeverHaveIEver(gameType)
   const isMlt = isMostLikelyTo(gameType)
+  const isPan = isPickANumber(gameType)
   const isCodewords = isCodewordsGame(gameType)
   const isBinaryLobby = isBinaryChoiceGame(gameType)
   const needsGender = participantsNeedGenderForGame(gameType, { game, genderBased: isGameGenderBased(game) })
   const participantOpts = { game, genderBased: isGameGenderBased(game) }
+  const sourceOptions = questionSourceOptions(gameType)
 
-  const [questionMode, setQuestionMode] = useState<PoolMode>('same')
+  const [questionSource, setQuestionSource] = useState<QuestionSource>('custom')
   const [participantMode, setParticipantMode] = useState<PoolMode>('same')
   const [questionTab, setQuestionTab] = useState<PoolTab>('upload')
   const [participantTab, setParticipantTab] = useState<PoolTab>('upload')
@@ -161,9 +167,6 @@ export function PlayAgainSetup({
 
   const [questionsUploadError, setQuestionsUploadError] = useState<string | null>(null)
   const [participantUploadError, setParticipantUploadError] = useState<string | null>(null)
-  const [wyrOptionA, setWyrOptionA] = useState('')
-  const [wyrOptionB, setWyrOptionB] = useState('')
-  const [mltQuestionInput, setMltQuestionInput] = useState('')
   const [questionsBulkPaste, setQuestionsBulkPaste] = useState('')
   const [nameInput, setNameInput] = useState('')
   const [defaultGender, setDefaultGender] = useState<ParticipantGender>('female')
@@ -181,7 +184,8 @@ export function PlayAgainSetup({
     if (draftInitializedRef.current) return
     draftInitializedRef.current = true
 
-    setQuestionMode(defaultQuestionMode ?? (variant === 'lobby' ? 'change' : 'same'))
+    setQuestionSource(parseQuestionSource(game.question_source, gameType))
+    setQuestionTab('upload')
     setParticipantMode('same')
     setQuestionsUploadError(null)
     setParticipantUploadError(null)
@@ -189,7 +193,7 @@ export function PlayAgainSetup({
     setCustomMltQuestions(parseStoredMltQuestions(game.custom_questions))
     setCustomCodewordsWords(parseStoredCodewordsWords(game.custom_questions))
     setDraftParticipants(hostParticipants(participants))
-  }, [open, game.custom_questions, participants, variant, defaultQuestionMode])
+  }, [open, game.custom_questions, game.question_source, gameType, participants, variant])
 
   const customQuestionCount = isCodewords
     ? customCodewordsWords.length
@@ -203,7 +207,7 @@ export function PlayAgainSetup({
       hints.push(
         isCodewords
           ? 'Words that did not appear on the last board are picked first for the next round.'
-          : 'Uploaded questions that did not appear last game are picked first.'
+          : 'Questions that did not appear last game are picked first.'
       )
     }
     if (showParticipants) hints.push(hostListPlayAgainHint(game))
@@ -235,6 +239,18 @@ export function PlayAgainSetup({
     setQuestionsUploadError(null)
   }
 
+  // Load a community library pack into the question pool, replacing the current list.
+  const loadLibraryQuestions = (questions: unknown[]) => {
+    setQuestionsUploadError(null)
+    if (isCodewords) {
+      setCustomCodewordsWords(parseStoredCodewordsWords(questions))
+    } else if (isBinaryLobby) {
+      setCustomWyrQuestions(parseStoredWyrQuestions(questions))
+    } else {
+      setCustomMltQuestions(parseStoredMltQuestions(questions))
+    }
+  }
+
   const handleQuestionsFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
@@ -242,7 +258,8 @@ export function PlayAgainSetup({
 
     setQuestionsUploadError(null)
     const ext = file.name.split('.').pop()?.toLowerCase()
-    const replace = questionMode === 'change'
+    // Uploading a file always swaps in the new list.
+    const replace = true
 
     try {
       if (ext === 'csv') {
@@ -261,7 +278,7 @@ export function PlayAgainSetup({
             return
           }
           addCustomQuestionsFromRows(rows, [], [], replace)
-        } else if (isMlt || isNhie) {
+        } else if (isMlt || isNhie || isPan) {
           const rows = parseMltQuestionRows(text)
           if (rows.length === 0) {
             setQuestionsUploadError('No valid rows. Add one question per line.')
@@ -295,7 +312,7 @@ export function PlayAgainSetup({
             return
           }
           addCustomQuestionsFromRows(rows, [], [], replace)
-        } else if (isMlt || isNhie) {
+        } else if (isMlt || isNhie || isPan) {
           const rows = await parseExcelMltQuestions(buffer)
           if (rows.length === 0) {
             setQuestionsUploadError('No valid rows. Add one question per line.')
@@ -319,44 +336,10 @@ export function PlayAgainSetup({
     }
   }
 
-  const addManualQuestion = () => {
-    if (isBinaryLobby) {
-      const a = wyrOptionA.trim()
-      const b = wyrOptionB.trim()
-      if (!a || !b) return
-      addCustomQuestionsFromRows([{ optionA: a, optionB: b }], [])
-      setWyrOptionA('')
-      setWyrOptionB('')
-      return
-    }
-    const q = mltQuestionInput.trim()
-    if (!q) return
-    if (isCodewords) {
-      const rows = parseCodewordsWordRows(q)
-      if (rows.length === 0) {
-        setQuestionsUploadError('Use a single word with no spaces.')
-        return
-      }
-      setCustomCodewordsWords((prev) => mergeCodewordsWords(prev, rows))
-      setMltQuestionInput('')
-      return
-    }
-    if (isTot) {
-      const parsed = parseOrSplitQuestion(q)
-      if (!parsed) {
-        setQuestionsUploadError('Use “Coffee or Tea?” style, or two columns for A and B.')
-        return
-      }
-      addCustomQuestionsFromRows([parsed], [])
-    } else {
-      addCustomQuestionsFromRows([], [q])
-    }
-    setMltQuestionInput('')
-  }
-
   const addBulkQuestions = () => {
     if (!questionsBulkPaste.trim()) return
-    const replace = questionMode === 'change'
+    // Pasting adds to the current list (use Upload to replace).
+    const replace = false
     if (isBinaryLobby) {
       const rows = parseWyrQuestionRows(questionsBulkPaste)
       if (rows.length === 0) {
@@ -377,7 +360,7 @@ export function PlayAgainSetup({
         setQuestionsUploadError('No valid words found.')
         return
       }
-      setCustomCodewordsWords(questionMode === 'change' ? rows : (prev) => mergeCodewordsWords(prev, rows))
+      setCustomCodewordsWords((prev) => mergeCodewordsWords(prev, rows))
     } else {
       const rows = parseMltQuestionRows(questionsBulkPaste)
       if (rows.length === 0) {
@@ -472,17 +455,22 @@ export function PlayAgainSetup({
   const handleConfirm = () => {
     const payload: PlayAgainPayload = {}
 
-    if (showQuestions && questionMode === 'change') {
-      const questions = isCodewords ? customCodewordsWords : isBinaryLobby ? customWyrQuestions : customMltQuestions
-      if (questions.length === 0) {
-        setQuestionsUploadError(isCodewords ? 'Add at least one word' : 'Add at least one question')
-        return
+    if (showQuestions) {
+      if (questionSource === 'platform') {
+        payload.question_source = 'platform'
+      } else {
+        const questions = isCodewords ? customCodewordsWords : isBinaryLobby ? customWyrQuestions : customMltQuestions
+        if (questions.length === 0) {
+          setQuestionsUploadError(isCodewords ? 'Add at least one word' : 'Add at least one question')
+          return
+        }
+        if (isCodewords && questions.length < CODEWORDS_MIN_CUSTOM_POOL) {
+          setQuestionsUploadError(`Need at least ${CODEWORDS_MIN_CUSTOM_POOL} words for a full board`)
+          return
+        }
+        payload.question_source = 'custom'
+        payload.custom_questions = questions
       }
-      if (isCodewords && questions.length < CODEWORDS_MIN_CUSTOM_POOL) {
-        setQuestionsUploadError(`Need at least ${CODEWORDS_MIN_CUSTOM_POOL} words for a full board`)
-        return
-      }
-      payload.custom_questions = questions
     }
 
     if (showParticipants && participantMode === 'change') {
@@ -502,9 +490,8 @@ export function PlayAgainSetup({
 
   const confirmDisabled =
     loading ||
-    (isLobby &&
-      showQuestions &&
-      questionMode === 'change' &&
+    (showQuestions &&
+      questionSource !== 'platform' &&
       (isCodewords
         ? customCodewordsWords.length < CODEWORDS_MIN_CUSTOM_POOL
         : (isBinaryLobby ? customWyrQuestions : customMltQuestions).length === 0))
@@ -528,90 +515,83 @@ export function PlayAgainSetup({
           <div className="space-y-3">
             <p className="label-caps">{isCodewords ? 'Words' : 'Questions'}</p>
             <SegmentedControl
-              value={questionMode}
-              onChange={setQuestionMode}
-              options={[
-                {
-                  value: 'same',
-                  label: 'Same list',
-                  hint: `${customQuestionCount || parseStoredCodewordsWords(game.custom_questions).length || parseStoredWyrQuestions(game.custom_questions).length || parseStoredMltQuestions(game.custom_questions).length} loaded — unused ones first`,
-                },
-                {
-                  value: 'change',
-                  label: 'Upload or edit',
-                  hint: 'Upload replaces the list — or clear and build a new one',
-                },
-              ]}
+              value={questionSource}
+              onChange={(v) => {
+                setQuestionSource(v as QuestionSource)
+                setQuestionsUploadError(null)
+              }}
+              options={sourceOptions}
             />
 
-            {questionMode === 'change' && (
+            {questionSource === 'platform' ? (
+              <p className="text-faint text-sm leading-relaxed">
+                Using our built-in {isCodewords ? 'word list' : 'question pool'} — no upload needed.
+              </p>
+            ) : (
               <div className="surface-inset border border-theme rounded-xl p-4 space-y-3">
-                <SegmentedControl
-                  value={questionTab}
-                  onChange={setQuestionTab}
-                  options={[
-                    { value: 'upload', label: 'Upload file' },
-                    { value: 'manual', label: 'Add manually' },
-                  ]}
+                {questionSource === 'custom' && (
+                  <div className="space-y-1">
+                    <p className="label-caps">{isCodewords ? 'Your words' : 'Your questions'}</p>
+                    {customQuestionCount > 0 && (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                        ✓ {customQuestionCount} {isCodewords ? 'words' : 'questions'} already loaded — kept (unused
+                        first) unless you replace them below.
+                      </p>
+                    )}
+                    <p className="text-faint text-xs">{questionUploadHint(gameType)}</p>
+                    <a
+                      href={questionSample.href}
+                      download={questionSample.download}
+                      className="inline-block text-sm text-[var(--primary)] underline"
+                    >
+                      Download sample CSV
+                    </a>
+                  </div>
+                )}
+
+                {questionSource !== 'library' && (
+                  <SegmentedControl
+                    value={questionTab}
+                    onChange={setQuestionTab}
+                    options={[
+                      { value: 'upload', label: 'Upload file' },
+                      { value: 'manual', label: 'Paste' },
+                    ]}
+                  />
+                )}
+
+                {/* Hidden file input rendered once (outside the tab branches) so toggling
+                    tabs never reconciles it against a controlled text input. */}
+                <input
+                  ref={questionsFileRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={handleQuestionsFileUpload}
                 />
 
-                {questionTab === 'upload' ? (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => questionsFileRef.current?.click()}
-                        className="btn-secondary !py-3"
-                      >
-                        Choose file
-                      </button>
-                      <a
-                        href={questionSample.href}
-                        download={questionSample.download}
-                        className="btn-secondary !py-3 text-center no-underline flex items-center justify-center"
-                      >
-                        Sample CSV
-                      </a>
-                    </div>
-                    <input
-                      ref={questionsFileRef}
-                      type="file"
-                      accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                      className="hidden"
-                      onChange={handleQuestionsFileUpload}
+                {questionSource === 'library' ? (
+                  <div className="space-y-2">
+                    <LibraryPackBrowser
+                      gameType={gameType}
+                      noun={isCodewords ? 'words' : 'questions'}
+                      onPick={loadLibraryQuestions}
                     />
-                    <p className="text-faint text-xs text-center">{questionUploadHint(gameType)}</p>
+                    <p className="text-faint text-xs text-center">Picking a pack replaces the current list.</p>
+                  </div>
+                ) : questionTab === 'upload' ? (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => questionsFileRef.current?.click()}
+                      className="btn-secondary w-full py-3 text-sm"
+                    >
+                      Choose CSV or Excel file
+                    </button>
                     <p className="text-faint text-xs text-center">Uploading a file replaces the current list.</p>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {isBinaryLobby ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          value={wyrOptionA}
-                          onChange={(e) => setWyrOptionA(e.target.value)}
-                          placeholder="Option A"
-                          className="input-field py-2.5 text-sm"
-                        />
-                        <input
-                          value={wyrOptionB}
-                          onChange={(e) => setWyrOptionB(e.target.value)}
-                          placeholder="Option B"
-                          className="input-field py-2.5 text-sm"
-                        />
-                      </div>
-                    ) : (
-                      <input
-                        value={mltQuestionInput}
-                        onChange={(e) => setMltQuestionInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && addManualQuestion()}
-                        placeholder={isCodewords ? 'Ocean' : isTot ? 'Coffee or Tea?' : 'Who is most likely to…'}
-                        className="input-field py-2.5 text-sm"
-                      />
-                    )}
-                    <button type="button" onClick={addManualQuestion} className="btn-secondary w-full text-sm py-2.5">
-                      {isCodewords ? 'Add word' : 'Add question'}
-                    </button>
+                  <div className="space-y-2">
                     <textarea
                       value={questionsBulkPaste}
                       onChange={(e) => setQuestionsBulkPaste(e.target.value)}
@@ -624,14 +604,17 @@ export function PlayAgainSetup({
                               ? 'Ocean\nMountain\nCastle'
                               : 'Who is most likely to become famous?'
                       }
-                      rows={3}
+                      rows={4}
                       className="input-field resize-none font-medium text-sm"
                     />
-                    {questionsBulkPaste.trim() && (
-                      <button type="button" onClick={addBulkQuestions} className="btn-secondary w-full text-sm py-2.5">
-                        Import pasted list
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={addBulkQuestions}
+                      disabled={!questionsBulkPaste.trim()}
+                      className="btn-secondary w-full py-2.5 text-sm"
+                    >
+                      Add pasted {isCodewords ? 'words' : 'questions'}
+                    </button>
                   </div>
                 )}
 

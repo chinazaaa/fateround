@@ -34,7 +34,7 @@ export function AiQuestionsGenerator({
   const [error, setError] = useState<string | null>(null)
   const [lastCount, setLastCount] = useState<number | null>(null)
 
-  const inputClass = 'w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-body'
+  const inputClass = 'input-field w-full text-sm'
 
   async function handleGenerate() {
     const trimmedKey = apiKey.trim()
@@ -80,6 +80,7 @@ export function AiQuestionsGenerator({
           type="number"
           min={1}
           max={maxCount}
+          autoComplete="off"
           className={inputClass}
           value={count}
           onChange={(e) => {
@@ -94,6 +95,8 @@ export function AiQuestionsGenerator({
         <span className="text-muted text-xs uppercase tracking-wider">Theme (optional)</span>
         <input
           type="text"
+          name="ai-theme"
+          autoComplete="off"
           className={inputClass}
           placeholder="e.g. 90s movies, our office, a birthday party"
           maxLength={100}
@@ -105,6 +108,8 @@ export function AiQuestionsGenerator({
       <label className="block space-y-1">
         <span className="text-muted text-xs uppercase tracking-wider">Extra instructions (optional)</span>
         <textarea
+          name="ai-instructions"
+          autoComplete="off"
           className={`${inputClass} resize-none`}
           rows={2}
           maxLength={500}
@@ -118,6 +123,8 @@ export function AiQuestionsGenerator({
         <span className="text-muted text-xs uppercase tracking-wider">Your Claude API key (required)</span>
         <input
           type="password"
+          name="ai-api-key"
+          autoComplete="new-password"
           className={inputClass}
           placeholder="sk-ant-..."
           value={apiKey}

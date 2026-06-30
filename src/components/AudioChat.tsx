@@ -223,7 +223,7 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
         <div className="flex gap-2">
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className="flex items-center justify-center w-10 h-10 rounded-full bg-theme text-body border border-theme shadow-md active:scale-95 transition-all"
+            className="flex items-center justify-center w-12 h-12 rounded-full bg-theme text-body border border-theme shadow-md active:scale-95 transition-all"
             title={isOpen ? 'Minimize voice panel (stays connected)' : 'Open voice panel'}
             aria-label={isOpen ? 'Minimize voice panel (stays connected)' : 'Open voice panel'}
           >

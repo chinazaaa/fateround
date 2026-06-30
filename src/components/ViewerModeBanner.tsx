@@ -10,7 +10,13 @@ type Props = {
   playerId?: string | null
   game?: Pick<
     Game,
-    'status' | 'session_started_at' | 'allow_viewers' | 'allow_late_players' | 'codewords_late_join' | 'game_type'
+    | 'status'
+    | 'session_started_at'
+    | 'allow_viewers'
+    | 'allow_late_players'
+    | 'codewords_late_join'
+    | 'game_type'
+    | 'tournament_id'
   > | null
   player?: Pick<Player, 'joined_at' | 'spectator'> | null
   playerDetail?: string

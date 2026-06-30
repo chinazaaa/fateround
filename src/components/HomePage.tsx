@@ -137,6 +137,13 @@ export function HomePage() {
           </div>
 
           <div className="shrink-0 flex flex-wrap items-center justify-center lg:justify-start gap-x-3 sm:gap-x-4 gap-y-1 text-[11px] sm:text-xs text-faint pt-0.5 lg:col-start-1 lg:row-start-3">
+            <Link
+              href="/leaderboard"
+              className="font-semibold text-[var(--primary)] hover:text-[var(--primary-strong)] transition-colors"
+            >
+              🏆 Leaderboard
+            </Link>
+            <span aria-hidden>·</span>
             <button
               type="button"
               onClick={() => router.push('/history')}

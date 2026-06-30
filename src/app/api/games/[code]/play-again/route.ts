@@ -210,6 +210,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     poolUsage = nextPoolUsage
   }
 
+  // Non-trivia games can switch back to the built-in pool when replaying.
+  if (!isTriviaGame(gameType) && question_source === 'platform') {
+    gameUpdate.question_source = 'platform'
+    if (rawCustomQuestions === undefined) gameUpdate.custom_questions = null
+  }
+
   if (isTriviaGame(gameType)) {
     let customQuestions = undefined
     if (rawCustomQuestions !== undefined) {

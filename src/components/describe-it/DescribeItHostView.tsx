@@ -46,6 +46,9 @@ import {
   isDescribeItResultsPhase,
 } from '@/lib/describe-it'
 import { parseDescribeItWords, parseExcelDescribeItWords, parseStoredDescribeItWords } from '@/lib/describe-it-words'
+import { LibraryPackBrowser } from '@/components/LibraryPackPicker'
+import { questionSampleFile, questionUploadHint, parseQuestionSource } from '@/lib/custom-questions'
+import { SegmentedControl } from '@/components/ui/CreateWizard'
 import {
   DescribeItCard,
   DescribeItPlayerScoreboard,
@@ -95,6 +98,8 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   const [wordsDraft, setWordsDraft] = useState('')
   const [savingWords, setSavingWords] = useState(false)
   const [wordsUploadError, setWordsUploadError] = useState<string | null>(null)
+  const [wordSource, setWordSource] = useState<'platform' | 'library' | 'custom'>('custom')
+  const [wordTab, setWordTab] = useState<'upload' | 'paste'>('upload')
   const wordsInitRef = useRef(false)
   const wordsFileRef = useRef<HTMLInputElement>(null)
 
@@ -176,14 +181,17 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     if (wordsInitRef.current || !game) return
     wordsInitRef.current = true
     setWordsDraft(parseStoredDescribeItWords(game.custom_questions).join('\n'))
+    setWordSource(parseQuestionSource(game.question_source, 'describe_it') === 'platform' ? 'platform' : 'custom')
   }, [game])
 
-  const saveSettings = async (partial: Record<string, unknown>) => {
+  const saveSettings = async (partial: Record<string, unknown>): Promise<boolean> => {
     try {
       await post('settings', { hostToken, ...partial })
       await load()
+      return true
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to update settings')
+      return false
     }
   }
 
@@ -620,63 +628,182 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
                 ))}
               </select>
             </label>
-            <div className="space-y-1">
-              <p className="text-xs font-semibold text-faint">Your words (one per line, optional)</p>
-              <textarea
-                value={wordsDraft}
-                onChange={(e) => setWordsDraft(e.target.value)}
-                placeholder="pizza&#10;rainbow&#10;astronaut"
-                rows={3}
-                className="input-field w-full resize-y text-sm"
-              />
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => wordsFileRef.current?.click()}
-                  className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
-                >
-                  Upload CSV / Excel
-                </button>
-                <button
-                  type="button"
-                  onClick={saveWords}
-                  disabled={savingWords}
-                  className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-3 py-1.5 hover:bg-[var(--primary)]/10"
-                >
-                  {savingWords ? 'Saving…' : 'Save words'}
-                </button>
-              </div>
-              <input
-                ref={wordsFileRef}
-                type="file"
-                accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0]
-                  e.target.value = ''
-                  if (!file) return
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-faint">Words</p>
+              <SegmentedControl
+                value={wordSource}
+                onChange={(v) => {
+                  const next = v as 'platform' | 'library' | 'custom'
+                  setWordSource(next)
                   setWordsUploadError(null)
-                  const ext = file.name.split('.').pop()?.toLowerCase()
-                  try {
-                    const rows =
-                      ext === 'csv'
-                        ? parseDescribeItWords(await file.text())
-                        : ext === 'xlsx' || ext === 'xls'
-                          ? await parseExcelDescribeItWords(await file.arrayBuffer())
-                          : []
-                    if (rows.length === 0) {
-                      setWordsUploadError('No words found. Use one word per line or row.')
-                      return
-                    }
-                    const merged = parseDescribeItWords(`${wordsDraft}\n${rows.join('\n')}`)
-                    setWordsDraft(merged.join('\n'))
-                    await saveSettings({ words: merged.join('\n') })
-                  } catch {
-                    setWordsUploadError('Could not read that file. Try a .csv or .xlsx.')
+                  if (next === 'platform') {
+                    setWordsDraft('')
+                    void saveSettings({ words: '' })
                   }
                 }}
+                options={[
+                  { value: 'platform', label: 'Platform', hint: 'Use our built-in word bank.' },
+                  { value: 'library', label: 'Library', hint: 'Pick a community word pack.' },
+                  { value: 'custom', label: 'Your own', hint: 'Add your own words or upload a file.' },
+                ]}
               />
-              {wordsUploadError && <p className="text-rose-400 text-xs">{wordsUploadError}</p>}
+
+              <p className="text-faint text-[11px]">
+                Words that haven&apos;t been used yet are picked first — Play Again avoids repeats until the list runs
+                out.
+              </p>
+
+              {wordSource === 'platform' && (
+                <p className="text-faint text-[11px]">Using our built-in word bank — no upload needed.</p>
+              )}
+
+              {wordSource === 'library' && (
+                <div className="surface-inset border border-theme rounded-xl p-3 space-y-2">
+                  <LibraryPackBrowser
+                    gameType="describe_it"
+                    noun="words"
+                    onPick={async (questions) => {
+                      setWordsUploadError(null)
+                      const incoming = parseStoredDescribeItWords(questions)
+                      if (incoming.length === 0) return
+                      const saved = await saveSettings({ words: incoming.join('\n') })
+                      if (saved) {
+                        setWordsDraft(incoming.join('\n'))
+                        setWordSource('custom')
+                      } else {
+                        setWordsUploadError('Could not save the imported words. Please try again.')
+                      }
+                    }}
+                  />
+                  <p className="text-faint text-[11px]">Picking a pack replaces your word list.</p>
+                </div>
+              )}
+
+              {wordSource === 'custom' && (
+                <div className="space-y-2">
+                  <p className="label-caps">Your words</p>
+                  {parseDescribeItWords(wordsDraft).length > 0 && (
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                      ✓ {parseDescribeItWords(wordsDraft).length} words already loaded — kept (unused first) unless you
+                      replace them below.
+                    </p>
+                  )}
+                  <p className="text-faint text-[11px]">{questionUploadHint('describe_it')}</p>
+                  <a
+                    href={questionSampleFile('describe_it').href}
+                    download={questionSampleFile('describe_it').download}
+                    className="inline-block text-sm text-[var(--primary)] underline"
+                  >
+                    Download sample CSV
+                  </a>
+
+                  <SegmentedControl
+                    value={wordTab}
+                    onChange={(v) => setWordTab(v as 'upload' | 'paste')}
+                    options={[
+                      { value: 'upload', label: 'Upload file' },
+                      { value: 'paste', label: 'Paste' },
+                    ]}
+                  />
+
+                  {wordTab === 'upload' ? (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => wordsFileRef.current?.click()}
+                        className="btn-secondary w-full py-3 text-sm"
+                      >
+                        Choose CSV or Excel file
+                      </button>
+                      <p className="text-faint text-[11px]">Uploading a file replaces the current list.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <textarea
+                        value={wordsDraft}
+                        onChange={(e) => setWordsDraft(e.target.value)}
+                        placeholder="pizza&#10;rainbow&#10;astronaut"
+                        rows={3}
+                        className="input-field w-full resize-y text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={saveWords}
+                        disabled={savingWords}
+                        className="btn-secondary w-full py-2.5 text-sm"
+                      >
+                        {savingWords ? 'Saving…' : 'Save words'}
+                      </button>
+                    </div>
+                  )}
+
+                  <input
+                    ref={wordsFileRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      e.target.value = ''
+                      if (!file) return
+                      setWordsUploadError(null)
+                      const ext = file.name.split('.').pop()?.toLowerCase()
+                      try {
+                        const rows =
+                          ext === 'csv'
+                            ? parseDescribeItWords(await file.text())
+                            : ext === 'xlsx' || ext === 'xls'
+                              ? await parseExcelDescribeItWords(await file.arrayBuffer())
+                              : []
+                        if (rows.length === 0) {
+                          setWordsUploadError('No words found. Use one word per row.')
+                          return
+                        }
+                        const next = rows
+                        // Only commit the preview once the words actually persist, so the
+                        // loaded list never implies a pool the backend didn't save.
+                        const saved = await saveSettings({ words: next.join('\n') })
+                        if (saved) setWordsDraft(next.join('\n'))
+                        else setWordsUploadError('Could not save the imported words. Please try again.')
+                      } catch {
+                        setWordsUploadError('Could not read that file. Try a .csv or .xlsx.')
+                      }
+                    }}
+                  />
+                  {wordsUploadError && <p className="text-rose-400 text-xs">{wordsUploadError}</p>}
+                  {parseDescribeItWords(wordsDraft).length > 0 && (
+                    <div className="surface-inset border border-theme rounded-xl p-3 space-y-2 max-h-48 overflow-y-auto">
+                      <p className="text-muted text-xs uppercase tracking-wider">
+                        Loaded ({parseDescribeItWords(wordsDraft).length})
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {parseDescribeItWords(wordsDraft).map((w, i) => (
+                          <span
+                            key={`${w}-${i}`}
+                            className="inline-flex items-center gap-1 rounded-md border border-theme bg-[var(--surface-inset-bg)] px-2 py-1 text-xs"
+                          >
+                            {w}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setWordsDraft(
+                                  parseDescribeItWords(wordsDraft)
+                                    .filter((_, idx) => idx !== i)
+                                    .join('\n')
+                                )
+                              }
+                              className="text-faint hover:text-red-300"
+                              aria-label={`Remove ${w}`}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="pt-1 border-t border-[var(--border)]">
               <HostAllowViewersField gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />

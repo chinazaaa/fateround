@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
-const VALID_GAME_TYPES = ['trivia', 'would_you_rather', 'most_likely_to']
+const VALID_GAME_TYPES = [
+  'trivia',
+  'would_you_rather',
+  'most_likely_to',
+  'this_or_that',
+  'never_have_i_ever',
+  'describe_it',
+  'codewords',
+  'pick_a_number',
+]
 const VALID_STATUSES = ['pending', 'approved', 'rejected']
 const VALID_TAGS = ['easy', 'intermediate', 'advanced', 'family-friendly', '18+', 'party', 'spicy']
 

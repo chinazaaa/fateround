@@ -524,6 +524,11 @@ export function PollGamePlayerExperience({
   if (view === 'not_found') return <NotFound onHome={() => router.push('/')} />
   if (game) {
     const DedicatedView = PLAYER_VIEW_REGISTRY[parseGameType(game.game_type)]
+    // Dedicated views only need `gameCode`: the `initialName` / `autoJoinAsViewer`
+    // auto-join (used by tournament "Watch live" links) is owned by useJoinFlow above,
+    // which — being a hook — always runs before this early return. So a watcher is
+    // already joined as a spectator by the time the dedicated view mounts; it just
+    // resolves that session. Don't re-thread those props into dedicated views.
     if (DedicatedView) return <DedicatedView gameCode={gameCode} />
   }
 

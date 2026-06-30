@@ -951,7 +951,7 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   const handleLobbyPoolSave = async (payload: PlayAgainPayload = {}) => {
     if (savingLobbyPool) return
-    if (!payload.custom_questions && !payload.participants) {
+    if (!payload.custom_questions && !payload.participants && !payload.question_source) {
       setPoolSetup((prev) => ({ ...prev, open: false }))
       return
     }

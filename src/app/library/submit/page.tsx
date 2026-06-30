@@ -4,10 +4,21 @@ import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
 import { parseCsvRows } from '@/lib/csv-parse'
+import { parseDescribeItWords } from '@/lib/describe-it-words'
+import { parseCodewordsWordRows, CODEWORDS_MIN_CUSTOM_POOL } from '@/lib/codewords-pool'
+import { PAN_MIN_POOL } from '@/lib/pick-a-number-questions'
 import type { TriviaQuestion } from '@/types'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 
-type GameType = 'trivia' | 'would_you_rather' | 'most_likely_to' | 'this_or_that' | 'never_have_i_ever'
+type GameType =
+  | 'trivia'
+  | 'would_you_rather'
+  | 'most_likely_to'
+  | 'this_or_that'
+  | 'never_have_i_ever'
+  | 'describe_it'
+  | 'codewords'
+  | 'pick_a_number'
 
 interface ValidationResult {
   ok: boolean
@@ -75,23 +86,45 @@ function validateWyr(rows: Record<string, string>[]): ValidationResult {
   return { ok: errors.length === 0, errors, questions, rowCount: rows.length }
 }
 
-function validateMlt(rows: Record<string, string>[]): ValidationResult {
+function validatePrompts(rows: Record<string, string>[], min = 5): ValidationResult {
   if (rows.length === 0) return { ok: false, errors: ['No rows found'], questions: [], rowCount: 0 }
-  if (!('prompt' in rows[0])) return { ok: false, errors: ['Missing column: prompt'], questions: [], rowCount: 0 }
+  const col = 'prompt' in rows[0] ? 'prompt' : 'question' in rows[0] ? 'question' : null
+  if (!col) return { ok: false, errors: ['Missing column: question'], questions: [], rowCount: 0 }
 
   const errors: string[] = []
   const questions: string[] = []
   for (let i = 0; i < rows.length; i++) {
-    const r = rows[i]
-    if (!r.prompt) {
-      errors.push(`Row ${i + 2}: prompt is empty`)
+    const v = rows[i][col]
+    if (!v) {
+      errors.push(`Row ${i + 2}: ${col} is empty`)
       continue
     }
-    questions.push(r.prompt)
+    questions.push(v)
   }
-  if (questions.length < 5) errors.push('Must have at least 5 valid rows')
+  if (questions.length < min) errors.push(`Must have at least ${min} valid rows`)
   if (questions.length > 200) errors.push('Maximum 200 rows allowed')
   return { ok: errors.length === 0, errors, questions, rowCount: rows.length }
+}
+
+function validateDescribeIt(rows: Record<string, string>[]): ValidationResult {
+  if (rows.length === 0) return { ok: false, errors: ['No rows found'], questions: [], rowCount: 0 }
+  if (!('word' in rows[0])) return { ok: false, errors: ['Missing column: word'], questions: [], rowCount: 0 }
+  const words = parseDescribeItWords(rows.map((r) => r.word ?? '').join('\n'))
+  const errors: string[] = []
+  if (words.length < 5) errors.push('Must have at least 5 valid words')
+  if (words.length > 200) errors.push('Maximum 200 words allowed')
+  return { ok: errors.length === 0, errors, questions: words, rowCount: rows.length }
+}
+
+function validateCodewords(rows: Record<string, string>[]): ValidationResult {
+  if (rows.length === 0) return { ok: false, errors: ['No rows found'], questions: [], rowCount: 0 }
+  if (!('word' in rows[0])) return { ok: false, errors: ['Missing column: word'], questions: [], rowCount: 0 }
+  const words = parseCodewordsWordRows(rows.map((r) => r.word ?? '').join('\n'))
+  const errors: string[] = []
+  if (words.length < CODEWORDS_MIN_CUSTOM_POOL)
+    errors.push(`Must have at least ${CODEWORDS_MIN_CUSTOM_POOL} single-word entries`)
+  if (words.length > 200) errors.push('Maximum 200 words allowed')
+  return { ok: errors.length === 0, errors, questions: words, rowCount: rows.length }
 }
 
 const GAME_TYPES: { value: GameType; label: string; description: string; columns: string }[] = [
@@ -124,6 +157,24 @@ const GAME_TYPES: { value: GameType; label: string; description: string; columns
     label: 'Never Have I Ever',
     description: 'Prompts players vote on having done',
     columns: 'prompt',
+  },
+  {
+    value: 'describe_it',
+    label: 'Text Charades',
+    description: 'Words or phrases for players to describe',
+    columns: 'word',
+  },
+  {
+    value: 'codewords',
+    label: 'Codewords',
+    description: 'Single words for the spy word grid',
+    columns: 'word',
+  },
+  {
+    value: 'pick_a_number',
+    label: 'Pick a Number',
+    description: 'Prompts players answer with a number',
+    columns: 'question',
   },
 ]
 
@@ -179,7 +230,10 @@ export default function SubmitPackPage() {
       const rows = parseCsvRows(text)
       if (gameType === 'trivia') setValidation(validateTrivia(rows))
       else if (gameType === 'would_you_rather' || gameType === 'this_or_that') setValidation(validateWyr(rows))
-      else setValidation(validateMlt(rows)) // covers most_likely_to and never_have_i_ever
+      else if (gameType === 'describe_it') setValidation(validateDescribeIt(rows))
+      else if (gameType === 'codewords') setValidation(validateCodewords(rows))
+      else if (gameType === 'pick_a_number') setValidation(validatePrompts(rows, PAN_MIN_POOL))
+      else setValidation(validatePrompts(rows)) // covers most_likely_to and never_have_i_ever
     }
     reader.readAsText(file)
   }
@@ -453,7 +507,11 @@ export default function SubmitPackPage() {
                           {i + 1}. {q.optionA} <span className="text-faint">or</span> {q.optionB}
                         </p>
                       ))}
-                    {(gameType === 'most_likely_to' || gameType === 'never_have_i_ever') &&
+                    {(gameType === 'most_likely_to' ||
+                      gameType === 'never_have_i_ever' ||
+                      gameType === 'describe_it' ||
+                      gameType === 'codewords' ||
+                      gameType === 'pick_a_number') &&
                       (validation.questions as string[]).slice(0, 3).map((q, i) => (
                         <p key={i} className="text-xs text-muted truncate leading-relaxed">
                           {i + 1}. {q}

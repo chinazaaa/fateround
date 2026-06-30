@@ -13,18 +13,13 @@ import { SnakeLadderFinalResultsShareBlock } from '@/components/snake-and-ladder
 import { gameTypeConfig } from '@/lib/game-types'
 import { currentPlayerId } from '@/lib/snake-and-ladder'
 import { supabase } from '@/lib/supabase'
-import {
-  GAME_SELECT,
-  PLAYER_SELECT,
-  SNAKE_LADDER_PLAYER_STATE_SELECT,
-  SNAKE_LADDER_SESSION_SELECT,
-} from '@/lib/supabase-selects'
-import { setPlayerSession, clearPlayerSession } from '@/lib/utils'
-import { resolvePlayerSession } from '@/lib/player-resume'
-import type { Game, Player, SnakeLadderPlayerState, SnakeLadderSession } from '@/types'
+import { SNAKE_LADDER_PLAYER_STATE_SELECT, SNAKE_LADDER_SESSION_SELECT } from '@/lib/supabase-selects'
+import { clearPlayerSession } from '@/lib/utils'
+import type { Game, SnakeLadderPlayerState, SnakeLadderSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -63,17 +58,9 @@ type Screen =
 export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
-  const [screen, setScreen] = useState<Screen>('loading')
-  const [game, setGame] = useState<Game | null>(null)
-  const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<SnakeLadderSession | null>(null)
   const [states, setStates] = useState<SnakeLadderPlayerState[]>([])
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
-  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
-  const [joinName, setJoinName] = useState('')
-  const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
-  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   const [acting, setActing] = useState(false)
   const [rolling, setRolling] = useState(false)
   const [displayRoll, setDisplayRoll] = useState<number | null>(null)
@@ -82,37 +69,10 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   const sawActiveRef = useRef(false)
   const rollStartedRef = useRef(0)
 
-  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
-
-  const syncScreen = useCallback((gameData: Game, playerId: string | null) => {
-    if (!playerId) {
-      const pre = preJoinScreen(gameData, false)
-      if (pre === 'game_started_waiting') {
-        setScreen('game_started_waiting')
-        return
-      }
-      if (pre === 'game_ended') {
-        setScreen('game_ended')
-        return
-      }
-      setScreen('join')
-      return
-    }
-    if (gameData.status === 'waiting') {
-      setScreen('waiting')
-      return
-    }
-    if (gameData.status === 'active') {
-      setScreen('active')
-      return
-    }
-    setScreen('finished')
-  }, [])
-
-  const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes, sessionRes, statesRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+  // Game-specific load: fetch the snake-and-ladder session + per-player state (the shared
+  // game/players fetch + session resolution lives in useGameViewBootstrap).
+  const loadGameState = useCallback(async (): Promise<{ state: void; ok: boolean }> => {
+    const [sessionRes, statesRes] = await Promise.all([
       supabase.from('snake_ladder_sessions').select(SNAKE_LADDER_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
       supabase
         .from('snake_ladder_player_state')
@@ -120,33 +80,47 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
         .eq('game_id', gameCode)
         .order('player_order'),
     ])
-    if (!supabasePollOk(gameRes, plrsRes, sessionRes, statesRes)) return false
+    if (supabasePollOk(sessionRes)) setSession(sessionRes.data as SnakeLadderSession | null)
+    if (supabasePollOk(statesRes)) setStates((statesRes.data as SnakeLadderPlayerState[]) ?? [])
+    return { state: undefined, ok: supabasePollOk(sessionRes, statesRes) }
+  }, [gameCode])
 
-    const gameData = gameRes.data
-    const plrs = plrsRes.data
-
-    if (!gameData) {
-      setScreen('not_found')
-      return true
+  const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'game_ended') return 'game_ended'
+      return 'join'
     }
+    if (gameData.status === 'waiting') return 'waiting'
+    if (gameData.status === 'active') return 'active'
+    return 'finished'
+  }, [])
 
-    setGame(gameData)
-    setPlayers(plrs ?? [])
-    setSession(sessionRes.data as SnakeLadderSession | null)
-    setStates((statesRes.data as SnakeLadderPlayerState[]) ?? [])
+  const {
+    screen,
+    game,
+    players,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<Screen, void>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'not_found',
+    loadGameState,
+    computeScreen,
+    joinExtras,
+    onJoinError: toastError,
+  })
 
-    const playerSession = await resolvePlayerSession(gameCode, plrs)
-    const playerId = playerSession?.playerId ?? null
-    setMyPlayerId(playerId)
-    setMyResumeToken(playerSession?.resumeToken ?? null)
-
-    syncScreen(gameData, playerId)
-    return true
-  }, [gameCode, syncScreen])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(
@@ -160,39 +134,6 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
   })
-
-  const join = useCallback(
-    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-      const name = (opts?.name ?? joinName).trim()
-      if (!name) return
-      setJoining(true)
-      try {
-        const res = await fetch('/api/players', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameCode,
-            playerName: name,
-            ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer ?? true } : {}),
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-          toastError(data.error ?? 'Failed to join')
-          return
-        }
-        setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-        setMyPlayerId(data.playerId)
-        await load()
-      } catch {
-        toastError('Failed to join')
-      } finally {
-        setJoining(false)
-      }
-    },
-    [game?.status, gameCode, joinExtras, joinName, load, toastError]
-  )
 
   useRoomMemberAutoJoin({
     displayName: roomDisplayName,

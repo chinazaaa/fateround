@@ -7,6 +7,7 @@ import {
   isNeverHaveIEver,
   isThisOrThat,
   isCodewordsGame,
+  isPickANumber,
 } from '@/lib/game-types'
 import { usesHostParticipantList } from '@/lib/participant-mode'
 import { normalizeGender, participantsNeedGenderForGame, type ParticipantInput } from '@/lib/participants'
@@ -64,7 +65,7 @@ export function parseHostPoolCustomQuestions(
     const parsed = parseStoredWyrQuestions(raw)
     return parsed.length > 0 ? parsed : null
   }
-  if (isMostLikelyTo(gameType) || isNeverHaveIEver(gameType)) {
+  if (isMostLikelyTo(gameType) || isNeverHaveIEver(gameType) || isPickANumber(gameType)) {
     const parsed = parseStoredMltQuestions(raw)
     return parsed.length > 0 ? parsed : null
   }
@@ -122,8 +123,10 @@ export function applyCustomQuestionsUpdate(
 ): { gameUpdate: Record<string, unknown>; poolUsage: ReturnType<typeof parsePoolUsage> } {
   const gameType = parseGameType(game.game_type)
   let poolUsage = existingPoolUsage
+  // Providing a custom pool always implies the custom source.
   const gameUpdate: Record<string, unknown> = {
     custom_questions: nextQuestions,
+    question_source: 'custom',
   }
 
   if (isBinaryChoiceGame(gameType) || isThisOrThat(gameType)) {
@@ -133,7 +136,7 @@ export function applyCustomQuestionsUpdate(
         wyrQuestionKey(q.optionA, q.optionB)
       ),
     }
-  } else if (isMostLikelyTo(gameType) || isNeverHaveIEver(gameType)) {
+  } else if (isMostLikelyTo(gameType) || isNeverHaveIEver(gameType) || isPickANumber(gameType)) {
     poolUsage = {
       ...poolUsage,
       mlt: pruneQuestionUsage(poolUsage.mlt, nextQuestions as string[], (q) => q),
@@ -143,11 +146,6 @@ export function applyCustomQuestionsUpdate(
       ...poolUsage,
       codewords: pruneQuestionUsage(poolUsage.codewords, nextQuestions as string[], codewordPoolKey),
     }
-    gameUpdate.question_source = 'custom'
-  }
-
-  if (isThisOrThat(gameType)) {
-    gameUpdate.question_source = 'custom'
   }
 
   gameUpdate.pool_usage = poolUsage

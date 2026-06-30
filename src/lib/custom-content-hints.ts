@@ -47,24 +47,20 @@ export function getQuestionCustomContentHint(gameType: GameType): CustomContentH
   const label = gameTypeConfig(gameType).label
   const sample = questionSampleFile(gameType)
 
-  // Word-list games (Text Charades) use plain words, not Q&A — phrase the tip for words.
-  if (isDescribeItGame(gameType)) {
+  // Word-list games (Text Charades, Codewords) use plain words, not Q&A — phrase the tip for words.
+  if (isDescribeItGame(gameType) || isCodewordsGame(gameType)) {
     return {
       headline: 'Any theme you want',
-      body: `Use our built-in word bank, or add your own. Pick any theme your group cares about — a fandom, a holiday, inside jokes. Ask ChatGPT, Claude, or any AI assistant to write a list of ${label} words, one per line, then paste or upload them here.`,
-      promptExample: `"Create a list of 30 ${label} words about [your theme], one per line."`,
+      body: `Any theme works — a fandom, a holiday, inside jokes. Generate a word list with AI, upload your own, or add them by hand.`,
+      promptExample: `"Create a list of 30 words about [your theme], one per line."`,
       sampleHref: sample.href,
       sampleDownload: sample.download,
     }
   }
 
-  const hasPlatform = !isThisOrThat(gameType)
-
   return {
     headline: 'Any theme you want',
-    body: hasPlatform
-      ? `Use our built-in prompts, or library, or upload your own. Pick any theme your group cares about — a fandom, a holiday, inside jokes — ask ChatGPT, Claude, or any AI assistant to write ${label} questions in our CSV format, then upload the file here.`
-      : `Pick any theme your group cares about — a fandom, a holiday, inside jokes. Ask ChatGPT, Claude, or any AI assistant to write ${label} questions in our CSV format, then upload the file below.`,
+    body: `Any theme works — a fandom, a holiday, inside jokes. Generate ${label} questions with AI, upload a CSV, or add them by hand.`,
     promptExample: `"Create 30 ${label} questions about [your theme] as a CSV using the format in ${sample.download}."`,
     sampleHref: sample.href,
     sampleDownload: sample.download,

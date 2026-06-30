@@ -433,7 +433,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   }
 
   const handleLobbyPoolSave = async (payload: PlayAgainPayload = {}) => {
-    if (!payload.custom_questions) {
+    if (!payload.custom_questions && !payload.question_source) {
       setLobbyPoolOpen(false)
       return
     }
@@ -442,7 +442,11 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       const res = await fetch(`/api/games/${gameCode}/lobby-pool`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken, custom_questions: payload.custom_questions }),
+        body: JSON.stringify({
+          hostToken,
+          custom_questions: payload.custom_questions,
+          question_source: payload.question_source,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to save word list')
@@ -606,9 +610,8 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
             : 0
         }
         onEditWordPool={
-          game && parseQuestionSource(game.question_source, parseGameType(game.game_type)) === 'custom'
-            ? () => setLobbyPoolOpen(true)
-            : undefined
+          // Available regardless of source — host can switch Platform / Library / Your own.
+          game ? () => setLobbyPoolOpen(true) : undefined
         }
         savingWordPool={savingLobbyPool}
         settingsBottom={

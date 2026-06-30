@@ -30,6 +30,7 @@ import { buildHotSeatRoundRows } from '@/lib/hot-seat'
 import { buildPickANumberRoundRows } from '@/lib/pick-a-number'
 import { buildRoundsFromQuotePool, buildRoundsFromAnimePool, wstAutoRoundCount } from '@/lib/who-said-this'
 import { pickWyrQuestions } from '@/lib/would-you-rather-questions'
+import { pickThisOrThatQuestions, THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import { pickMltQuestions } from '@/lib/most-likely-to-questions'
 import { pickNhieQuestions } from '@/lib/never-have-i-ever-questions'
 import { pickPanQuestions, PAN_DEFAULT_POOL_SIZE, PAN_MIN_POOL } from '@/lib/pick-a-number-questions'
@@ -1102,7 +1103,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const questionOrder = parsePlayerQuestionsOrder(game.player_questions_order)
     const effectivePlayerCount = playerQuestionsEnabled ? playerTotQuestions.length : 0
     const customPool = parseStoredWyrQuestions(game.custom_questions)
-    const totalAvailable = customPool.length + effectivePlayerCount
+    // Use the built-in pool unless the host chose custom/library (folded to a stored pool).
+    // Legacy games may carry custom_questions with a stale 'platform' source — honor those too.
+    const useCustom = parseQuestionSource(game.question_source, gameType) !== 'platform' || customPool.length > 0
+    const platformPoolSize = useCustom ? customPool.length : THIS_OR_THAT_QUESTION_COUNT
+    const totalAvailable = platformPoolSize + effectivePlayerCount
     if (totalAvailable === 0) {
       return NextResponse.json(
         { error: 'No questions available — upload prompts or wait for player submissions' },
@@ -1122,7 +1127,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       questionOrder,
       playerQuestionsEnabled
     )
-    const poolQuestions = pickCustomWyrQuestions(customPool, poolNeeded, customWyrUsage)
+    const poolQuestions = useCustom
+      ? pickCustomWyrQuestions(customPool, poolNeeded, customWyrUsage)
+      : pickThisOrThatQuestions(poolNeeded)
     const questions = combineLobbyQuestions(
       playerQuestionsEnabled ? playerTotQuestions : [],
       poolQuestions,

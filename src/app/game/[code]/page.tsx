@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PollGamePlayerExperience } from '@/components/poll-game/PollGamePlayerExperience'
@@ -10,6 +10,7 @@ import { getPlayerSession } from '@/lib/utils'
 const TOURNAMENT_RETURN_SECONDS = 8
 
 function TournamentBanner({ gameCode, tournamentId }: { gameCode: string; tournamentId: string | null }) {
+  const router = useRouter()
   const [finished, setFinished] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState(TOURNAMENT_RETURN_SECONDS)
 
@@ -37,16 +38,18 @@ function TournamentBanner({ gameCode, tournamentId }: { gameCode: string; tourna
     }
   }, [gameCode, tournamentId])
 
-  // Count down and return to the tournament once the game is over.
+  // Count down and return to the tournament once the game is over. Use SPA navigation
+  // (router.push) rather than a full-page reload so the hand-off back to the hub is
+  // smooth — matching how the hub forwards spectators into a game on the way in.
   useEffect(() => {
     if (!tournamentId || !finished) return
     if (secondsLeft <= 0) {
-      window.location.href = `/tournament/${tournamentId}`
+      router.push(`/tournament/${tournamentId}`)
       return
     }
     const t = setTimeout(() => setSecondsLeft((s) => s - 1), 1000)
     return () => clearTimeout(t)
-  }, [tournamentId, finished, secondsLeft])
+  }, [tournamentId, finished, secondsLeft, router])
 
   if (!tournamentId) return null
 
@@ -55,9 +58,13 @@ function TournamentBanner({ gameCode, tournamentId }: { gameCode: string; tourna
       <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center p-4">
         <div className="glass-card-strong flex items-center gap-4 px-5 py-3">
           <p className="text-sm font-medium text-body">Game over — back to the tournament in {secondsLeft}s</p>
-          <a href={`/tournament/${tournamentId}`} className="btn-primary btn-fit text-sm">
+          <button
+            type="button"
+            onClick={() => router.push(`/tournament/${tournamentId}`)}
+            className="btn-primary btn-fit text-sm"
+          >
             Back now
-          </a>
+          </button>
         </div>
       </div>
     )
@@ -65,9 +72,13 @@ function TournamentBanner({ gameCode, tournamentId }: { gameCode: string; tourna
 
   return (
     <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
-      <a href={`/tournament/${tournamentId}`} className="btn-secondary btn-fit text-sm">
+      <button
+        type="button"
+        onClick={() => router.push(`/tournament/${tournamentId}`)}
+        className="btn-secondary btn-fit text-sm"
+      >
         ← Back to Tournament
-      </a>
+      </button>
     </div>
   )
 }

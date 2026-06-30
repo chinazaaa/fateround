@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   WhotCard,
@@ -22,13 +22,13 @@ import {
   parseWhotRules,
 } from '@/lib/whot'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT, WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
-import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
-import { resolvePlayerSession } from '@/lib/player-resume'
-import type { Game, Player, WhotPlayerHand, WhotSession, WhotShape } from '@/types'
+import { WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
+import { clearPlayerSession } from '@/lib/utils'
+import type { Game, WhotPlayerHand, WhotSession, WhotShape } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -58,84 +58,60 @@ type Screen =
 export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
-  const [screen, setScreen] = useState<Screen>('loading')
-  const [game, setGame] = useState<Game | null>(null)
-  const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<WhotSession | null>(null)
   const [hands, setHands] = useState<WhotPlayerHand[]>([])
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
-  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
-  const [joinName, setJoinName] = useState('')
-  const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
-  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   const [acting, setActing] = useState(false)
 
-  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
-
-  const syncScreen = useCallback((gameData: Game, playerId: string | null) => {
-    if (!playerId) {
-      const pre = preJoinScreen(gameData, false)
-      if (pre === 'game_started_waiting') {
-        setScreen('game_started_waiting')
-        return
-      }
-      if (pre === 'game_ended') {
-        setScreen('game_ended')
-        return
-      }
-      setScreen('join')
-      return
-    }
-    if (gameData.status === 'waiting') {
-      setScreen('waiting')
-      return
-    }
-    if (gameData.status === 'active') {
-      setScreen('active')
-      return
-    }
-    setScreen('finished')
-  }, [])
-
-  const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes, sessionRes, handsRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+  // Game-specific load: fetch the whot session + player hands (the shared game/players
+  // fetch + session resolution lives in useGameViewBootstrap).
+  const loadGameState = useCallback(async (): Promise<{ state: WhotSession | null; ok: boolean }> => {
+    const [sessionRes, handsRes] = await Promise.all([
       supabase.from('whot_sessions').select(WHOT_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
       supabase.from('whot_player_hands').select(WHOT_PLAYER_HANDS_SELECT).eq('game_id', gameCode).order('player_order'),
     ])
-    if (!supabasePollOk(gameRes, plrsRes, sessionRes, handsRes)) return false
+    const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as WhotSession | null) : null
+    if (sessionData) setSession(sessionData)
+    if (supabasePollOk(handsRes)) setHands((handsRes.data as WhotPlayerHand[]) ?? [])
+    return { state: sessionData, ok: supabasePollOk(sessionRes, handsRes) }
+  }, [gameCode])
 
-    const gameData = gameRes.data
-    const plrs = plrsRes.data
-
-    if (!gameData) {
-      setScreen('not_found')
-      return true
+  const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'game_ended') return 'game_ended'
+      return 'join'
     }
+    if (gameData.status === 'waiting') return 'waiting'
+    if (gameData.status === 'active') return 'active'
+    return 'finished'
+  }, [])
 
-    setGame(gameData)
-    setPlayers(plrs ?? [])
-    setSession(sessionRes.data as WhotSession | null)
-    setHands((handsRes.data as WhotPlayerHand[]) ?? [])
+  const {
+    screen,
+    game,
+    players,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<Screen, WhotSession | null>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'not_found',
+    loadGameState,
+    computeScreen,
+    joinExtras,
+    onJoinError: toastError,
+  })
 
-    const session = await resolvePlayerSession(gameCode, plrs)
-    const playerId = session?.playerId ?? null
-    if (session) {
-      setMyPlayerId(session.playerId)
-    } else {
-      setMyPlayerId(null)
-    }
-    setMyResumeToken(session?.resumeToken ?? null)
-
-    syncScreen(gameData, playerId)
-    return true
-  }, [gameCode, syncScreen])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'whot_sessions', 'whot_player_hands'], load)
@@ -145,38 +121,6 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
   })
-
-  const join = useCallback(
-    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-      const name = (opts?.name ?? joinName).trim()
-      if (!name) return
-      setJoining(true)
-      try {
-        const res = await fetch('/api/players', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameCode,
-            playerName: name,
-            ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer ?? true } : {}),
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-          toastError(data.error ?? 'Failed to join')
-          return
-        }
-        setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-        setMyPlayerId(data.playerId)
-        setMyResumeToken(data.resumeToken ?? null)
-        await load()
-      } finally {
-        setJoining(false)
-      }
-    },
-    [game?.status, gameCode, joinExtras, joinName, load, toastError]
-  )
 
   useRoomMemberAutoJoin({
     displayName: roomDisplayName,

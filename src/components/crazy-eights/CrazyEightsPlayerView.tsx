@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CrazyEightsCard,
@@ -22,13 +22,12 @@ import {
   parseCrazyEightsRules,
 } from '@/lib/crazy-eights'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
-import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
-import { resolvePlayerSession } from '@/lib/player-resume'
-import type { Game, Player, CrazyEightsPlayerHand, CrazyEightsSession, CrazyEightsCalledSuit } from '@/types'
+import { clearPlayerSession } from '@/lib/utils'
+import type { Game, CrazyEightsPlayerHand, CrazyEightsSession, CrazyEightsCalledSuit } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -46,7 +45,7 @@ import { useCrazyEightsTurnTimer } from '@/hooks/useCrazyEightsTurnTimer'
 import { useCrazyEightsNotifications, playCrazyEightsActionSound } from '@/hooks/useCrazyEightsNotifications'
 
 const CRAZY8_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
 const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 type Screen =
@@ -62,50 +61,15 @@ type Screen =
 export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
-  const [screen, setScreen] = useState<Screen>('loading')
-  const [game, setGame] = useState<Game | null>(null)
-  const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<CrazyEightsSession | null>(null)
   const [hands, setHands] = useState<CrazyEightsPlayerHand[]>([])
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
-  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
-  const [joinName, setJoinName] = useState('')
-  const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
-  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   const [acting, setActing] = useState(false)
 
-  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
-
-  const syncScreen = useCallback((gameData: Game, playerId: string | null) => {
-    if (!playerId) {
-      const pre = preJoinScreen(gameData, false)
-      if (pre === 'game_started_waiting') {
-        setScreen('game_started_waiting')
-        return
-      }
-      if (pre === 'game_ended') {
-        setScreen('game_ended')
-        return
-      }
-      setScreen('join')
-      return
-    }
-    if (gameData.status === 'waiting') {
-      setScreen('waiting')
-      return
-    }
-    if (gameData.status === 'active') {
-      setScreen('active')
-      return
-    }
-    setScreen('finished')
-  }, [])
-
-  const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes, sessionRes, handsRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+  // Game-specific load: fetch the crazy eights session + player hands (the shared
+  // game/players fetch + session resolution lives in useGameViewBootstrap).
+  const loadGameState = useCallback(async (): Promise<{ state: CrazyEightsSession | null; ok: boolean }> => {
+    const [sessionRes, handsRes] = await Promise.all([
       supabase.from('crazy_eights_sessions').select(CRAZY8_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
       supabase
         .from('crazy_eights_player_hands')
@@ -113,37 +77,48 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
         .eq('game_id', gameCode)
         .order('player_order'),
     ])
-    if (!supabasePollOk(gameRes, plrsRes, sessionRes, handsRes)) return false
+    const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as CrazyEightsSession | null) : null
+    if (sessionData) setSession(sessionData)
+    if (supabasePollOk(handsRes)) setHands((handsRes.data as CrazyEightsPlayerHand[]) ?? [])
+    return { state: sessionData, ok: supabasePollOk(sessionRes, handsRes) }
+  }, [gameCode])
 
-    const gameData = gameRes.data
-    const plrs = plrsRes.data
-
-    if (!gameData) {
-      setScreen('not_found')
-      return true
+  const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'game_ended') return 'game_ended'
+      return 'join'
     }
+    if (gameData.status === 'waiting') return 'waiting'
+    if (gameData.status === 'active') return 'active'
+    return 'finished'
+  }, [])
 
-    setGame(gameData)
-    setPlayers(plrs ?? [])
-    setSession(sessionRes.data as CrazyEightsSession | null)
-    setHands((handsRes.data as CrazyEightsPlayerHand[]) ?? [])
+  const {
+    screen,
+    game,
+    players,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<Screen, CrazyEightsSession | null>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'not_found',
+    loadGameState,
+    computeScreen,
+    joinExtras,
+    onJoinError: toastError,
+  })
 
-    const session = await resolvePlayerSession(gameCode, plrs)
-    const playerId = session?.playerId ?? null
-    if (session) {
-      setMyPlayerId(session.playerId)
-    } else {
-      setMyPlayerId(null)
-    }
-    setMyResumeToken(session?.resumeToken ?? null)
-
-    syncScreen(gameData, playerId)
-    return true
-  }, [gameCode, syncScreen])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(
@@ -157,38 +132,6 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
   })
-
-  const join = useCallback(
-    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-      const name = (opts?.name ?? joinName).trim()
-      if (!name) return
-      setJoining(true)
-      try {
-        const res = await fetch('/api/players', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameCode,
-            playerName: name,
-            ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer ?? true } : {}),
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-          toastError(data.error ?? 'Failed to join')
-          return
-        }
-        setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-        setMyPlayerId(data.playerId)
-        setMyResumeToken(data.resumeToken ?? null)
-        await load()
-      } finally {
-        setJoining(false)
-      }
-    },
-    [game?.status, gameCode, joinExtras, joinName, load, toastError]
-  )
 
   useRoomMemberAutoJoin({
     displayName: roomDisplayName,

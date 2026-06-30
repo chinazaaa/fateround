@@ -42,6 +42,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <AdminNavLink href="/admin/library" active={pathname === '/admin/library'}>
                 Library
               </AdminNavLink>
+              <AdminNavLink href="/admin/community" active={pathname === '/admin/community'}>
+                Leaderboard
+              </AdminNavLink>
             </nav>
           </div>
           <div className="flex items-center gap-3">

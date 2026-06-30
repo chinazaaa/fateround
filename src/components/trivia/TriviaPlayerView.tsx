@@ -298,7 +298,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
         )}
         {game.status === 'waiting' && (
           <>
-            {me?.spectator === true && (
+            {me?.spectator === true && !game.tournament_id && (
               <button
                 type="button"
                 className="btn-primary w-full py-3 text-base font-bold"

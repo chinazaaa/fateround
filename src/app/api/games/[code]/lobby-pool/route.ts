@@ -119,6 +119,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     nextGame = { ...nextGame, ...questionUpdate } as typeof game
   }
 
+  // Non-trivia games can switch back to the built-in pool from the lobby.
+  if (!isTriviaGame(gameType) && question_source === 'platform') {
+    gameUpdate.question_source = 'platform'
+    if (rawCustomQuestions === undefined) gameUpdate.custom_questions = null
+    nextGame = { ...nextGame, question_source: 'platform' } as typeof game
+  }
+
   if (rawParticipants !== undefined) {
     if (!canReplaceHostParticipantList(game)) {
       return NextResponse.json({ error: 'This game mode does not support replacing the name list' }, { status: 400 })

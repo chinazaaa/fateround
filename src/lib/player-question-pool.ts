@@ -40,7 +40,7 @@ export function lobbyPoolSourceLabel(game: Pick<Game, 'game_type' | 'question_so
   const type = parseGameType(game.game_type)
   if (isPairGame(type) || isUnaryPollGame(type) || isThreeChoiceGame(type) || isCustomGame(type)) return 'Host list'
   const src = parseQuestionSource(game.question_source, type)
-  if (src === 'custom' || src === 'library' || type === 'this_or_that') {
+  if (src === 'custom' || src === 'library') {
     return 'Uploaded'
   }
   return 'Platform'

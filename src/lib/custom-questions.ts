@@ -4,6 +4,7 @@ import { WYR_QUESTION_COUNT, wyrQuestionKey } from '@/lib/would-you-rather-quest
 import { MLT_QUESTION_COUNT } from '@/lib/most-likely-to-questions'
 import { NHIE_QUESTION_COUNT } from '@/lib/never-have-i-ever-questions'
 import { PAN_QUESTION_COUNT } from '@/lib/pick-a-number-questions'
+import { THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import { TRIVIA_QUESTION_COUNT, triviaQuestionKey } from '@/lib/trivia-questions'
 import {
   isWouldYouRather,
@@ -368,7 +369,14 @@ export function parseStoredTriviaQuestions(raw: unknown): TriviaQuestion[] {
 }
 
 export function parseQuestionSource(raw: unknown, gameType?: GameType | string): QuestionSource {
-  if (isThisOrThat(gameType)) return 'custom'
+  if (isThisOrThat(gameType)) {
+    // This or That has a built-in pool, community library packs, and custom uploads.
+    // Library is folded into 'custom' at create time, so only 'platform'/'custom' persist;
+    // anything unrecognized defaults to 'custom' (matches legacy uploaded games).
+    if (raw === 'platform') return 'platform'
+    if (raw === 'library') return 'library'
+    return 'custom'
+  }
   if (
     isTriviaGame(gameType) ||
     isCodewordsGame(gameType) ||
@@ -590,7 +598,7 @@ export function questionPoolCap(
   if (isBinaryChoiceGame(type)) {
     const custom = customQuestionCount(game)
     if (custom > 0) return capAt(custom + playerCount)
-    if (isThisOrThat(type)) return capAt(playerCount)
+    if (isThisOrThat(type)) return capAt(THIS_OR_THAT_QUESTION_COUNT + playerCount)
     return capAt(WYR_QUESTION_COUNT + playerCount)
   }
   if (isMostLikelyTo(type)) {
@@ -663,6 +671,16 @@ export function questionSourceOptions(gameType: GameType | string): {
   if (isThisOrThat(gameType)) {
     return [
       {
+        value: 'platform',
+        label: 'Platform',
+        hint: `Use our built-in pool (${THIS_OR_THAT_QUESTION_COUNT}+ prompts).`,
+      },
+      {
+        value: 'library',
+        label: 'Library',
+        hint: 'Pick a community-submitted question pack.',
+      },
+      {
         value: 'custom',
         label: 'Your own',
         hint: 'Upload a CSV with “Coffee or Tea?” style prompts.',
@@ -675,6 +693,11 @@ export function questionSourceOptions(gameType: GameType | string): {
         value: 'platform',
         label: 'Platform',
         hint: 'Use our built-in word list (~400 words).',
+      },
+      {
+        value: 'library',
+        label: 'Library',
+        hint: 'Pick a community-submitted word pack.',
       },
       {
         value: 'custom',
@@ -692,7 +715,12 @@ export function questionSourceOptions(gameType: GameType | string): {
         : isMostLikelyTo(gameType)
           ? MLT_QUESTION_COUNT
           : WYR_QUESTION_COUNT
-  const supportsLibrary = isTriviaGame(gameType) || isWouldYouRather(gameType) || isMostLikelyTo(gameType)
+  const supportsLibrary =
+    isTriviaGame(gameType) ||
+    isWouldYouRather(gameType) ||
+    isMostLikelyTo(gameType) ||
+    isNeverHaveIEver(gameType) ||
+    isPickANumber(gameType)
   const base: { value: QuestionSource; label: string; hint: string }[] = [
     {
       value: 'platform',

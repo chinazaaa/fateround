@@ -32,10 +32,33 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
       .order('game_order', { ascending: true }),
   ])
 
+  const games = gamesRes.data ?? []
+
+  // Surface whether a prior game's custom (CSV-uploaded) pack is available to carry
+  // into the next game. The host's in-page upload state resets on reload/new tab, so
+  // the lobby uses this to show the pack is still loaded and to allow Start without a
+  // fresh upload. Mirrors the carry-over logic in the games POST route.
+  let carriedCustomCount: number | null = null
+  const gameIds = games.map((g) => g.game_id)
+  if (gameIds.length > 0) {
+    const admin = getSupabaseAdmin()
+    const { data: priorGames } = await admin.from('games').select('custom_questions, created_at').in('id', gameIds)
+    let latest: { created_at: string; count: number } | null = null
+    for (const g of priorGames ?? []) {
+      if (Array.isArray(g.custom_questions) && g.custom_questions.length > 0) {
+        if (!latest || String(g.created_at) > latest.created_at) {
+          latest = { created_at: String(g.created_at), count: g.custom_questions.length }
+        }
+      }
+    }
+    carriedCustomCount = latest?.count ?? null
+  }
+
   return NextResponse.json({
     tournament,
     players: playersRes.data ?? [],
-    games: gamesRes.data ?? [],
+    games,
+    carriedCustomCount,
   })
 }
 

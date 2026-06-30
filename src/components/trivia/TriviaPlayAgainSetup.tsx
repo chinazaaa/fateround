@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Field, Chip } from '@/components/ui/PageShell'
 import { ChipGrid, SegmentedControl } from '@/components/ui/CreateWizard'
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
+import { LibraryPackBrowser } from '@/components/LibraryPackPicker'
 import {
   mergeTriviaQuestions,
   parseExcelTriviaQuestionImport,
@@ -116,7 +117,11 @@ export function TriviaPlayAgainSetup({
   }, [roundOptions, roundsCount])
 
   useEffect(() => {
-    if (questionSource === 'custom' && customQuestions.length > 0 && roundsCount > customQuestions.length) {
+    if (
+      (questionSource === 'custom' || questionSource === 'library') &&
+      customQuestions.length > 0 &&
+      roundsCount > customQuestions.length
+    ) {
       setRoundsCount(customQuestions.length)
     }
   }, [customQuestions.length, questionSource, roundsCount])
@@ -177,17 +182,19 @@ export function TriviaPlayAgainSetup({
 
   const handleConfirm = async () => {
     const storedCustom = parseStoredTriviaQuestions(game.custom_questions)
+    // A library pick produces a custom pool; the backend only understands 'custom'.
+    const usesCustomPool = questionSource === 'custom' || questionSource === 'library'
 
-    if (questionSource === 'custom') {
+    if (usesCustomPool) {
       const pool =
-        isLobby || questionMode === 'change'
+        isLobby || questionMode === 'change' || questionSource === 'library'
           ? customQuestions.length > 0
             ? customQuestions
             : storedCustom
           : storedCustom
 
       if (pool.length === 0) {
-        setQuestionsUploadError('Upload at least one question')
+        setQuestionsUploadError(questionSource === 'library' ? 'Pick a library pack' : 'Upload at least one question')
         return
       }
       if (pool.length < roundsCount) {
@@ -197,16 +204,17 @@ export function TriviaPlayAgainSetup({
     }
 
     const payload: TriviaSettingsPayload = {
-      question_source: questionSource,
+      question_source: usesCustomPool ? 'custom' : questionSource,
       trivia_category: triviaCategory,
       timer_seconds: clampTriviaTimer(timerSeconds),
       rounds_count: roundsCount,
     }
 
-    if (questionSource === 'custom') {
-      const shouldSendCustom = isLobby
-        ? customQuestions.length > 0
-        : questionMode === 'change' && customQuestions.length > 0
+    if (usesCustomPool) {
+      const shouldSendCustom =
+        isLobby || questionSource === 'library'
+          ? customQuestions.length > 0
+          : questionMode === 'change' && customQuestions.length > 0
       if (shouldSendCustom) {
         payload.custom_questions = customQuestions
       }
@@ -267,6 +275,13 @@ export function TriviaPlayAgainSetup({
             <a href={sample.href} download={sample.download} className="text-sm text-[var(--primary)] underline">
               Download sample CSV
             </a>
+
+            {isLobby && customQuestions.length > 0 && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                ✓ {customQuestions.length} question{customQuestions.length === 1 ? '' : 's'} already loaded — kept
+                (unused first) unless you replace them below.
+              </p>
+            )}
 
             {showCustomKeepMode && (
               <SegmentedControl
@@ -344,7 +359,7 @@ export function TriviaPlayAgainSetup({
                   </div>
                 )}
 
-                {customQuestions.length > 0 && (
+                {!isLobby && customQuestions.length > 0 && (
                   <p className="text-muted text-sm">
                     {customQuestions.length} question{customQuestions.length === 1 ? '' : 's'} in pool
                   </p>
@@ -355,6 +370,25 @@ export function TriviaPlayAgainSetup({
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {questionSource === 'library' && (
+          <div className="space-y-2">
+            <p className="label-caps">Library pack</p>
+            <LibraryPackBrowser
+              gameType="trivia"
+              onPick={(questions) => {
+                setQuestionsUploadError(null)
+                setCustomQuestions(parseStoredTriviaQuestions(questions))
+              }}
+            />
+            {customQuestions.length > 0 && (
+              <p className="text-muted text-sm">
+                {customQuestions.length} question{customQuestions.length === 1 ? '' : 's'} loaded from this pack.
+              </p>
+            )}
+            <p className="text-faint text-xs">Picking a pack replaces the current pool.</p>
           </div>
         )}
 

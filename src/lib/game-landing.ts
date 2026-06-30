@@ -1178,25 +1178,25 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   sudoku: landing('sudoku', {
     seoTitle: 'Sudoku — Multiplayer Puzzle Race Online',
     seoDescription:
-      'Play multiplayer Sudoku online. Race your friends to claim 3×3 blocks — first to solve a block scores 10 pts, wrong answers cost you points but you can try again.',
+      'Play multiplayer Sudoku online. Race your friends cell by cell — first correct answer claims the cell for +10 pts, wrong answers cost points.',
     keywords: ['multiplayer sudoku', 'sudoku online', 'puzzle race game', 'party game sudoku'],
     heroSubtitle:
-      'Everyone solves the same 9×9 puzzle. Claim 3×3 blocks before your friends — first correct gets 10 pts, wrong answers cost points.',
-    highlights: ['Race to claim blocks', 'Risk/reward scoring', 'Live real-time puzzle'],
+      'Everyone solves the same 9×9 puzzle. Claim cells before your friends — correct answers score +10 pts, mistakes cost −3.',
+    highlights: ['Race to claim cells', 'Color-coded ownership', 'Live real-time puzzle'],
     features: [
       {
-        title: 'Claim blocks',
-        description: 'Submit the correct numbers for any 3×3 block before anyone else and score big.',
+        title: 'Claim cells',
+        description: 'Tap a cell and enter a number — the first correct answer locks it in your color.',
         emoji: '🔢',
       },
       {
         title: 'Risk vs reward',
-        description: 'A wrong answer costs 3 points — but you can keep trying that block until you get it.',
+        description: 'A wrong answer costs 3 points — but you can keep trying unclaimed cells.',
         emoji: '⚠️',
       },
       {
         title: 'Live scoring',
-        description: "See who's claimed each block in real time — race or be strategic about which block to target.",
+        description: "See who's claimed which cells in real time as the board fills up.",
         emoji: '⚡',
       },
       {
@@ -1209,25 +1209,22 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       { title: 'Join the room', description: 'Enter your name and wait for the host to start the puzzle.' },
       {
         title: 'Solve the puzzle',
-        description: "Fill in numbers on the shared 9×9 grid and lock in a 3×3 block when you're confident.",
+        description: 'Select any empty cell and tap a number to submit. Use Notes for pencil marks.',
       },
       {
         title: 'Race to the top',
-        description:
-          '1st correct on a block = 10 pts, 2nd = 6, 3rd = 3, rest = 1. Wrong answer = −3 pts, but you can retry.',
+        description: 'Each correct cell = +10 pts. Wrong answer = −3 pts. Most points when the puzzle is done wins.',
       },
     ],
     perfectFor: ['Puzzle fans', 'Game nights', 'Brain teasers', 'Classrooms'],
     extraFaqs: [
       {
         question: 'What happens if I submit a wrong answer?',
-        answer:
-          'You lose 3 points, but you can try that block again — and you can keep attempting every other block too.',
+        answer: 'You lose 3 points, but you can try again on any cell that has not been claimed yet.',
       },
       {
-        question: 'Can multiple players solve the same block?',
-        answer:
-          'Yes — the first correct submission gets 10 pts, second gets 6, third gets 3, and everyone after that gets 1.',
+        question: 'Can multiple players solve the same cell?',
+        answer: 'No — the first player to submit the correct number claims that cell. Everyone else must move on.',
       },
     ],
   }),

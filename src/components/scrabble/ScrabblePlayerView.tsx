@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ScrabbleCard,
@@ -15,18 +15,13 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { currentTurnPlayerId, isScrabbleResultsPhase } from '@/lib/scrabble-board'
 import { tileSetForDictionary } from '@/lib/scrabble-rulesets'
 import { supabase } from '@/lib/supabase'
-import {
-  GAME_SELECT,
-  PLAYER_SELECT,
-  SCRABBLE_SESSION_SELECT,
-  SCRABBLE_PLAYER_STATE_SELECT,
-} from '@/lib/supabase-selects'
-import { setPlayerSession, clearPlayerSession } from '@/lib/utils'
-import { resolvePlayerSession } from '@/lib/player-resume'
-import type { Game, Player, ScrabbleSession, ScrabblePlayerState, ScrabblePlacedTile } from '@/types'
+import { SCRABBLE_SESSION_SELECT, SCRABBLE_PLAYER_STATE_SELECT } from '@/lib/supabase-selects'
+import { clearPlayerSession } from '@/lib/utils'
+import type { Game, ScrabbleSession, ScrabblePlayerState, ScrabblePlacedTile } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -54,92 +49,65 @@ type Screen =
 export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
-  const [screen, setScreen] = useState<Screen>('loading')
-  const [game, setGame] = useState<Game | null>(null)
-  const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<ScrabbleSession | null>(null)
   const [playerStates, setPlayerStates] = useState<ScrabblePlayerState[]>([])
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
-  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
-  const [joinName, setJoinName] = useState('')
-  const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
-  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   const [acting, setActing] = useState(false)
 
-  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
-
-  const syncScreen = useCallback((gameData: Game, playerId: string | null, sessionData: ScrabbleSession | null) => {
-    if (!playerId) {
-      const pre = preJoinScreen(gameData, false)
-      if (pre === 'game_started_waiting') {
-        setScreen('game_started_waiting')
-        return
-      }
-      if (pre === 'game_ended') {
-        setScreen('game_ended')
-        return
-      }
-      setScreen('join')
-      return
-    }
-    if (gameData.status === 'waiting') {
-      setScreen('waiting')
-      return
-    }
-    if (gameData.status === 'active' && sessionData?.phase !== 'finished') {
-      setScreen('active')
-      return
-    }
-    if (isScrabbleResultsPhase(gameData.status, sessionData)) {
-      setScreen('finished')
-      return
-    }
-    setScreen('waiting')
-  }, [])
-
-  const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-    ])
-    if (!supabasePollOk(gameRes, plrsRes)) return false
-
-    const gameData = gameRes.data
-    const plrs = plrsRes.data
-
-    if (!gameData) {
-      setScreen('not_found')
-      return true
-    }
-
-    setGame(gameData)
-    setPlayers(plrs ?? [])
-
+  // Game-specific load: fetch the scrabble session + per-player state (the shared
+  // game/players fetch + session resolution lives in useGameViewBootstrap).
+  const loadGameState = useCallback(async (): Promise<{ state: ScrabbleSession | null; ok: boolean }> => {
     const [sessionRes, statesRes] = await Promise.all([
       supabase.from('scrabble_sessions').select(SCRABBLE_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
       supabase.from('scrabble_player_state').select(SCRABBLE_PLAYER_STATE_SELECT).eq('game_id', gameCode),
     ])
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as ScrabbleSession | null) : null
-    if (sessionData) {
-      setSession(sessionData)
-    }
-    if (supabasePollOk(statesRes)) {
-      setPlayerStates((statesRes.data ?? []) as ScrabblePlayerState[])
-    }
+    if (sessionData) setSession(sessionData)
+    if (supabasePollOk(statesRes)) setPlayerStates((statesRes.data ?? []) as ScrabblePlayerState[])
+    return { state: sessionData, ok: supabasePollOk(sessionRes, statesRes) }
+  }, [gameCode])
 
-    const playerSession = await resolvePlayerSession(gameCode, plrs)
-    const playerId = playerSession?.playerId ?? null
-    setMyPlayerId(playerId)
-    setMyResumeToken(playerSession?.resumeToken ?? null)
+  const computeScreen = useCallback(
+    (gameData: Game, playerId: string | null, sessionData: ScrabbleSession | null): Screen => {
+      if (!playerId) {
+        const pre = preJoinScreen(gameData, false)
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'game_ended') return 'game_ended'
+        return 'join'
+      }
+      if (gameData.status === 'waiting') return 'waiting'
+      if (gameData.status === 'active' && sessionData?.phase !== 'finished') return 'active'
+      if (isScrabbleResultsPhase(gameData.status, sessionData)) return 'finished'
+      return 'waiting'
+    },
+    []
+  )
 
-    syncScreen(gameData, playerId, sessionData)
-    return supabasePollOk(sessionRes, statesRes)
-  }, [gameCode, syncScreen])
+  const {
+    screen,
+    game,
+    players,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    setMyResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<Screen, ScrabbleSession | null>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'not_found',
+    loadGameState,
+    computeScreen,
+    joinExtras,
+    onJoinError: toastError,
+  })
 
-  useEffect(() => {
-    load()
-  }, [load])
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   // Realtime push: reload on any change to this game's row + scrabble tables.
   useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'scrabble_sessions', 'scrabble_player_state'], load)
@@ -150,38 +118,6 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
   })
-
-  const join = useCallback(
-    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-      const name = (opts?.name ?? joinName).trim()
-      if (!name) return
-      setJoining(true)
-      try {
-        const res = await fetch('/api/players', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameCode,
-            playerName: name,
-            ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer ?? true } : {}),
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-          toastError(data.error ?? 'Failed to join')
-          return
-        }
-        setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-        setMyPlayerId(data.playerId)
-        setMyResumeToken(data.resumeToken ?? null)
-        await load()
-      } finally {
-        setJoining(false)
-      }
-    },
-    [game?.status, gameCode, joinExtras, joinName, load, toastError]
-  )
 
   useRoomMemberAutoJoin({
     displayName: roomDisplayName,
