@@ -11,6 +11,7 @@ import {
 } from '@/lib/checkers'
 import type { CheckersColor, Player, CheckersSession } from '@/types'
 import { CheckersCard, CheckersTurnBar } from '@/components/checkers/CheckersChrome'
+import { useCheckersTurnSound } from '@/hooks/useCheckersTurnSound'
 
 // Board look — a single clean wood-ish theme (no per-host appearance picker).
 const LIGHT_SQUARE = '#e8d3ab'
@@ -125,6 +126,10 @@ export function CheckersGamePanel({
   acting?: boolean
 }) {
   const [selected, setSelected] = useState<string | null>(null)
+
+  // Cue when it becomes the local player's turn. Only fires for the seated player
+  // (a spectating host has a null myPlayerId, so it stays silent for them).
+  useCheckersTurnSound(session, myPlayerId, true)
 
   const myColor = myPlayerId ? colorForPlayer(session, myPlayerId) : null
   // Red sits on the bottom rows by default, so the Black player flips the board
