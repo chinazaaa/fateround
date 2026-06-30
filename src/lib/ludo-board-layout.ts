@@ -109,12 +109,17 @@ export const START_CELL: Record<LudoColor, { row: number; col: number }> = {
   yellow: { row: 13, col: 6 },
 }
 
-/** ★ where each home column meets the outer track (safe entry). */
-export const SAFE_ENTRY_CELL: Record<LudoColor, { row: number; col: number }> = {
-  green: { row: 7, col: 0 },
-  red: { row: 0, col: 7 },
-  blue: { row: 7, col: 14 },
-  yellow: { row: 14, col: 7 },
+/**
+ * ★ safe-star squares — the classic mid-arm stars, one per colour, sitting on
+ * the track 8 squares clockwise from each start (which is also the last safe
+ * square in front of that colour's home gate). Coloured to match the home the
+ * square guards. These are the 4 non-start safe squares on a standard board.
+ */
+export const SAFE_STAR_CELL: Record<LudoColor, { row: number; col: number }> = {
+  red: { row: 2, col: 6 }, // track idx 8 — in front of red's home (top)
+  blue: { row: 6, col: 12 }, // track idx 21 — in front of blue's home (right)
+  yellow: { row: 12, col: 8 }, // track idx 34 — in front of yellow's home (bottom)
+  green: { row: 8, col: 2 }, // track idx 47 — in front of green's home (left)
 }
 
 /**
@@ -168,9 +173,9 @@ for (const [color, cell] of Object.entries(START_CELL) as [LudoColor, { row: num
   START_CELL_MAP.set(`${cell.row},${cell.col}`, color)
 }
 
-const SAFE_ENTRY_MAP = new Map<string, LudoColor>()
-for (const [color, cell] of Object.entries(SAFE_ENTRY_CELL) as [LudoColor, { row: number; col: number }][]) {
-  SAFE_ENTRY_MAP.set(`${cell.row},${cell.col}`, color)
+const SAFE_STAR_MAP = new Map<string, LudoColor>()
+for (const [color, cell] of Object.entries(SAFE_STAR_CELL) as [LudoColor, { row: number; col: number }][]) {
+  SAFE_STAR_MAP.set(`${cell.row},${cell.col}`, color)
 }
 
 /** Extra junction cells on the 3-wide cross (visual path, not separate track indices). */
@@ -201,8 +206,8 @@ export function boardCellKind(row: number, col: number): { kind: BoardCellKind; 
     return { kind: 'start', color: START_CELL_MAP.get(key)! }
   }
 
-  if (SAFE_ENTRY_MAP.has(key)) {
-    return { kind: 'safe', color: SAFE_ENTRY_MAP.get(key)! }
+  if (SAFE_STAR_MAP.has(key)) {
+    return { kind: 'safe', color: SAFE_STAR_MAP.get(key)! }
   }
 
   const home = HOME_CELL_MAP.get(key)
@@ -277,13 +282,13 @@ export function trackIndexAt(row: number, col: number): number | null {
   return TRACK_POS_BY_COORD.get(`${row},${col}`) ?? null
 }
 
-/** Track squares where a piece cannot be captured (★ start + safe entry). */
+/** Track squares where a piece cannot be captured (★ start + mid-arm safe star). */
 export const SAFE_TRACK_POSITIONS: ReadonlySet<number> = new Set(
   (['red', 'green', 'yellow', 'blue'] as LudoColor[]).flatMap((color) => {
     const indices: number[] = [START_POS[color]]
-    const entry = SAFE_ENTRY_CELL[color]
-    const entryIdx = trackIndexAt(entry.row, entry.col)
-    if (entryIdx != null) indices.push(entryIdx)
+    const star = SAFE_STAR_CELL[color]
+    const starIdx = trackIndexAt(star.row, star.col)
+    if (starIdx != null) indices.push(starIdx)
     return indices
   })
 )

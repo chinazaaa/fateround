@@ -30,12 +30,19 @@ export type CommunityResult = {
 // The leaderboard time windows.
 export type LeaderboardWindow = 'today' | 'week' | 'month'
 
+// One winner of a game on a given day, with how many times they won it (a player
+// can take several of the day's rounds).
+export type DailyWinner = {
+  name: string
+  wins: number
+}
+
 // One game's winners for a given day (used by the manager entry form + Today view).
 // A game can be played in several rounds across the day, so it may have multiple
-// winners. Names are returned in the order they were recorded.
+// winners. Winners are returned in the order they were first recorded.
 export type DailyGameWinner = {
   game: Pick<CommunityGame, 'id' | 'name' | 'slug' | 'accent'>
-  winners: string[]
+  winners: DailyWinner[]
 }
 
 // A ranked player in the weekly/monthly standings.

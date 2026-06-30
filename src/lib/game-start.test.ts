@@ -27,8 +27,9 @@ describe('startCountError', () => {
 })
 
 describe('GAME_START_SPECS', () => {
-  it('registers exactly the 9 uniform board games', () => {
+  it('registers exactly the 10 uniform board games', () => {
     expect(Object.keys(GAME_START_SPECS).sort()).toEqual([
+      'checkers',
       'chess',
       'crazy_eights',
       'ludo',
@@ -43,6 +44,7 @@ describe('GAME_START_SPECS', () => {
 
   it('flags the exact-count and range games', () => {
     expect(GAME_START_SPECS.chess?.exact).toBe(true)
+    expect(GAME_START_SPECS.checkers?.exact).toBe(true)
     expect(GAME_START_SPECS.tic_tac_toe?.exact).toBe(true)
     expect(GAME_START_SPECS.scrabble?.maxPlayers).toBeGreaterThan(GAME_START_SPECS.scrabble!.minPlayers)
     expect(GAME_START_SPECS.whot?.exact).toBeUndefined()

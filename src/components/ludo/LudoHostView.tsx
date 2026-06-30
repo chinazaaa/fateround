@@ -255,6 +255,8 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const primaryKind: 'play' | 'watch' = hostPlays ? 'play' : 'watch'
 
   // Primary tab: interactive board when the host is playing, read-only board otherwise.
+  // LudoGamePanel self-caps its width (it hugs the board), so it stays focused in
+  // the wide host shell without needing an extra wrapper here.
   const interactivePlay = session && hostPlayerId && (
     <LudoGamePanel
       session={session}

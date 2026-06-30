@@ -4,12 +4,8 @@ import { useMemo, useRef, type ReactNode } from 'react'
 import { Chess, type Square } from 'chess.js'
 import type { Game, Player, ChessSession } from '@/types'
 import { chessResultDetail } from '@/lib/chess'
-import {
-  type ChessAppearanceDefaults,
-  type ChessPieceType,
-  pieceGlyph,
-  useChessAppearance,
-} from '@/lib/chess-appearance'
+import { type ChessAppearanceDefaults, type ChessPieceType, useChessAppearance } from '@/lib/chess-appearance'
+import { ChessPieceIcon } from '@/components/chess/ChessPieceIcon'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
@@ -44,12 +40,12 @@ function ReadOnlyBoard({ fen, defaults }: { fen: string; defaults?: ChessAppeara
               style={{ backgroundColor: isLight ? boardTheme.light : boardTheme.dark }}
             >
               {piece && face && (
-                <span
-                  className="text-[3.4vw] sm:text-base leading-none"
-                  style={{ color: face.color, textShadow: face.shadow }}
-                >
-                  {pieceGlyph(pieceSet, piece.color, piece.type as ChessPieceType)}
-                </span>
+                <ChessPieceIcon
+                  type={piece.type as ChessPieceType}
+                  variant={face.variant}
+                  className="w-[82%] h-[82%]"
+                  style={{ color: face.color, filter: face.filter }}
+                />
               )}
             </div>
           )

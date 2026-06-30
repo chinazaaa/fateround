@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 }
 
 // POST { gameId, date, playerName } — add a winner for one game on one day.
-// Games can have multiple winners; re-adding the same name is a no-op.
+// Games can have multiple winners; re-adding the same player bumps their count.
 export async function POST(req: NextRequest) {
   const session = await assertManagerRequest(req)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -42,8 +42,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// DELETE ?gameId=&date=&playerName= — remove one winner from a game/day. Omit
-// playerName to clear every winner recorded for that game on that day.
+// DELETE ?gameId=&date=&playerName=&mode= — remove a player's wins from a game/day.
+// mode=all removes the player entirely; otherwise one win is removed (the row is
+// deleted when its count hits zero). Omit playerName to clear the whole game/day.
 export async function DELETE(req: NextRequest) {
   const session = await assertManagerRequest(req)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -51,11 +52,12 @@ export async function DELETE(req: NextRequest) {
   const gameId = req.nextUrl.searchParams.get('gameId') ?? ''
   const date = req.nextUrl.searchParams.get('date') ?? ''
   const playerName = req.nextUrl.searchParams.get('playerName') ?? ''
+  const all = req.nextUrl.searchParams.get('mode') === 'all'
   if (!gameId) return NextResponse.json({ error: 'gameId is required' }, { status: 400 })
   if (!isValidDateStr(date)) return NextResponse.json({ error: 'A valid date is required' }, { status: 400 })
 
   try {
-    await deleteResult(gameId, date, playerName)
+    await deleteResult(gameId, date, playerName, { all })
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json(

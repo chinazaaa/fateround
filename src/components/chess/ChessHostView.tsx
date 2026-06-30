@@ -273,29 +273,37 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const gameStarted = game.status === 'active' && !gameFinished
   const primaryKind: 'play' | 'watch' = hostPlays ? 'play' : 'watch'
 
+  // The host shell is wide (max-w-6xl) to hold tabs/manage chrome, but the board
+  // itself reads best focused — same as the player view (which its parent caps at
+  // max-w-lg). Cap + center the panel here so the host's board doesn't sprawl in
+  // a sea of whitespace on desktop.
   const interactivePlay = session && hostPlayerId && (
-    <ChessGamePanel
-      session={session}
-      players={players}
-      myPlayerId={hostPlayerId}
-      isMyTurn={isHostTurn}
-      timeControlSeconds={game?.timer_seconds ?? 0}
-      appearanceDefaults={{ boardTheme: game?.chess_board_theme, pieceSet: game?.chess_piece_set }}
-      onMove={movePiece}
-      onResign={resign}
-      acting={hostActing}
-    />
+    <div className="max-w-lg mx-auto w-full">
+      <ChessGamePanel
+        session={session}
+        players={players}
+        myPlayerId={hostPlayerId}
+        isMyTurn={isHostTurn}
+        timeControlSeconds={game?.timer_seconds ?? 0}
+        appearanceDefaults={{ boardTheme: game?.chess_board_theme, pieceSet: game?.chess_piece_set }}
+        onMove={movePiece}
+        onResign={resign}
+        acting={hostActing}
+      />
+    </div>
   )
 
   const watchBoard = session ? (
-    <ChessGamePanel
-      session={session}
-      players={players}
-      myPlayerId={hostPlayerId}
-      isMyTurn={false}
-      timeControlSeconds={game?.timer_seconds ?? 0}
-      appearanceDefaults={{ boardTheme: game?.chess_board_theme, pieceSet: game?.chess_piece_set }}
-    />
+    <div className="max-w-lg mx-auto w-full">
+      <ChessGamePanel
+        session={session}
+        players={players}
+        myPlayerId={hostPlayerId}
+        isMyTurn={false}
+        timeControlSeconds={game?.timer_seconds ?? 0}
+        appearanceDefaults={{ boardTheme: game?.chess_board_theme, pieceSet: game?.chess_piece_set }}
+      />
+    </div>
   ) : (
     <p className="text-muted text-sm text-center">Waiting for the round to begin…</p>
   )

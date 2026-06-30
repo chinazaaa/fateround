@@ -104,8 +104,8 @@ export function TwoTruthsHostManagePanel({
             <div>
               <p className="label-caps">Lobby ({players.length} players)</p>
               <p className="text-faint text-xs mt-1 leading-relaxed">
-                Players submit two truths and a lie. You can start once {TTL_MIN_PLAYERS}+ have submitted — others will
-                be skipped.
+                Players submit two truths and a lie. You can start once {TTL_MIN_PLAYERS}+ have submitted — anyone still
+                waiting will watch instead of playing.
               </p>
             </div>
             <span
@@ -153,7 +153,7 @@ export function TwoTruthsHostManagePanel({
           {ready.ok && submittedIds.size < players.length && (
             <p className="text-faint text-sm">
               {players.length - submittedIds.size} player{players.length - submittedIds.size === 1 ? '' : 's'}{' '}
-              haven&apos;t submitted — they&apos;ll be skipped.
+              haven&apos;t submitted — they&apos;ll watch instead of playing.
             </p>
           )}
 

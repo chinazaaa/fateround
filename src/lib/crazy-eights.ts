@@ -521,6 +521,7 @@ async function loadGameState(
   hands: CrazyEightsPlayerHand[]
   timerSeconds: number
   gameDurationSeconds: number
+  sessionStartedAt: string | null
   rules: CrazyEightsRules
   playerNames: Map<string, string>
 }> {
@@ -529,7 +530,9 @@ async function loadGameState(
     supabase.from('crazy_eights_player_hands').select('*').eq('game_id', gameId).order('player_order'),
     supabase
       .from('games')
-      .select('timer_seconds, game_duration_seconds, crazy8_action_cards, crazy8_jokers, crazy8_pick2_stacking')
+      .select(
+        'timer_seconds, game_duration_seconds, session_started_at, crazy8_action_cards, crazy8_jokers, crazy8_pick2_stacking'
+      )
       .eq('id', gameId)
       .maybeSingle(),
     supabase.from('players').select('id, name').eq('game_id', gameId),
@@ -545,6 +548,7 @@ async function loadGameState(
     hands: (handsRes.data as CrazyEightsPlayerHand[]) ?? [],
     timerSeconds: gameRes.data?.timer_seconds ?? 0,
     gameDurationSeconds: gameRes.data?.game_duration_seconds ?? 0,
+    sessionStartedAt: gameRes.data?.session_started_at ?? null,
     rules: parseCrazyEightsRules(gameRes.data),
     playerNames,
   }
@@ -652,6 +656,31 @@ async function finishByLowestHand(
   if ((data?.length ?? 0) === 0) return false // lost the race — another request already moved the game
   await markGameFinished(supabase, gameId)
   return true
+}
+
+/**
+ * Server-authoritative game-clock guard. The game-duration deadline must never depend
+ * on a client firing the dedicated /expire-crazy-eights route: that fires off the client's
+ * clock, so a fast/skewed/throttled tab (or a dropped request) lets turns keep advancing
+ * past time while the display reads 0:00. Every turn-processing path runs this first, using
+ * the server clock — so the next turn poke or move after the buzzer finalizes the game by
+ * lowest hand. Returns true only when it actually ended the game (caller should stop).
+ */
+async function finalizeIfGameExpired(
+  supabase: SupabaseClient,
+  gameId: string,
+  session: CrazyEightsSession,
+  hands: CrazyEightsPlayerHand[],
+  playerNames: Map<string, string>,
+  sessionStartedAt: string | null,
+  gameDurationSeconds: number
+): Promise<boolean> {
+  if (session.phase === 'finished') return false
+  if (!crazyEightsGameSessionExpired(sessionStartedAt, gameDurationSeconds)) return false
+  // Return the CAS result, not an unconditional true: a lost claim means a concurrent
+  // in-flight write won, so we did NOT finalize and the caller must not report "time's up".
+  // The next turn poke re-evaluates from fresh state and finalizes then.
+  return finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!")
 }
 
 /**
@@ -772,12 +801,20 @@ export async function processCrazyEightsPlay(
   playerId: string,
   cardId: string
 ): Promise<{ error?: string }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, rules, playerNames } = await loadGameState(
-    supabase,
-    gameId
-  )
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
+
+  // The buzzer wins ties with a player's move: once the game clock is spent, no further
+  // card may be played — finalize by lowest hand instead. Run before the phase check so an
+  // expired game still ends even if the request arrives in the "wrong" phase.
+  if (
+    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
+
   if (session.phase === 'choose_suit') return { error: 'Choose a suit first' }
 
   const currentId = currentPlayerId(session)
@@ -869,9 +906,20 @@ export async function processCrazyEightsDraw(
   gameId: string,
   playerId: string
 ): Promise<{ error?: string }> {
-  const { session, hands, timerSeconds, rules, playerNames } = await loadGameState(supabase, gameId)
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
+
+  // The buzzer wins ties with a player's move: once the game clock is spent, no further
+  // draw may happen — finalize by lowest hand instead. Run before the phase check so an
+  // expired game still ends even if the request arrives in the "wrong" phase.
+  if (
+    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
+
   if (session.phase === 'choose_suit') return { error: 'Choose a suit first' }
 
   const currentId = currentPlayerId(session)
@@ -971,8 +1019,21 @@ export async function processCrazyEightsChoose(
   playerId: string,
   suit: CrazyEightsCalledSuit
 ): Promise<{ error?: string }> {
-  const { session, hands, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, playerNames } = await loadGameState(
+    supabase,
+    gameId
+  )
   if (!session) return { error: 'Session not found' }
+
+  // The buzzer wins ties with a player's move: once the game clock is spent, finalize by
+  // lowest hand instead of resolving the suit call. Run before the phase check so an
+  // expired game still ends even if the request arrives in the "wrong" phase.
+  if (
+    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
+
   if (session.phase !== 'choose_suit') return { error: 'Not choosing a suit' }
 
   const currentId = currentPlayerId(session)
@@ -1011,9 +1072,18 @@ export async function processCrazyEightsExpireTurn(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands, rules, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
+  const { session, hands, rules, timerSeconds, gameDurationSeconds, sessionStartedAt, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { skipped: true }
+
+  // Game clock takes precedence over the turn clock: if the session ran out of time,
+  // end it now by lowest hand rather than auto-playing another turn.
+  if (
+    await finalizeIfGameExpired(supabase, gameId, session, hands, playerNames, sessionStartedAt, gameDurationSeconds)
+  ) {
+    return {}
+  }
 
   if (!session.turn_deadline_at || new Date(session.turn_deadline_at as string) > new Date()) {
     return { skipped: true }

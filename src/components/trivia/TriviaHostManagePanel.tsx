@@ -150,6 +150,7 @@ export function TriviaHostManagePanel({
           removingPlayerId={removingPlayerId}
           onRemovePlayer={onRemovePlayer}
           highlightPlayerId={highlightPlayerId}
+          alwaysShowReady={game.status === 'waiting'}
         />
       )}
 

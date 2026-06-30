@@ -11,35 +11,20 @@ import { useSyncExternalStore } from 'react'
 
 export type ChessPieceType = 'k' | 'q' | 'r' | 'b' | 'n' | 'p'
 
-// U+FE0E (text variation selector) forces monochrome TEXT rendering so our CSS
-// `color` applies. Without it, iOS renders these chess characters as emoji
-// (which ignore `color`), so light pieces come out dark — looking black.
-const VS_TEXT = '\uFE0E'
-
-// Filled silhouettes (Unicode's "black" piece glyphs) — solid shapes.
-const FILLED: Record<ChessPieceType, string> = {
-  k: '♚',
-  q: '♛',
-  r: '♜',
-  b: '♝',
-  n: '♞',
-  p: '♟',
-}
-
-// Outline glyphs (Unicode's "white" piece glyphs) — hollow / line-drawn shapes.
-const OUTLINE: Record<ChessPieceType, string> = {
-  k: '♔',
-  q: '♕',
-  r: '♖',
-  b: '♗',
-  n: '♘',
-  p: '♙',
-}
+/**
+ * How a side's pieces are drawn:
+ * - `filled` — solid silhouette (the side's `color` fills the shape).
+ * - `outline` — hollow line-drawing (the `color` strokes the outline only).
+ * The actual shapes live in `ChessPieceIcon`; here we only pick the look.
+ */
+export type PieceVariant = 'filled' | 'outline'
 
 export type PieceFace = {
-  glyphs: Record<ChessPieceType, string>
+  variant: PieceVariant
+  /** Fill (filled) or stroke (outline) color — drives the SVG `currentColor`. */
   color: string
-  shadow: string
+  /** CSS `filter` value: a drop-shadow chain giving the piece a halo / depth. */
+  filter: string
 }
 
 export type ChessPieceSet = {
@@ -49,45 +34,71 @@ export type ChessPieceSet = {
   black: PieceFace
 }
 
-/** Glyph (with the text variation selector) for a side in a given set. */
-export function pieceGlyph(set: ChessPieceSet, color: 'w' | 'b', type: ChessPieceType): string {
-  const face = color === 'w' ? set.white : set.black
-  return `${face.glyphs[type]}${VS_TEXT}`
-}
-
 export const PIECE_SETS: ChessPieceSet[] = [
   {
     id: 'classic',
     name: 'Classic',
-    white: { glyphs: FILLED, color: '#f8fafc', shadow: '0 0 1px #0f172a, 0 1px 2px rgba(0,0,0,0.45)' },
-    black: { glyphs: FILLED, color: '#1e293b', shadow: '0 0 1px #f8fafc, 0 1px 2px rgba(0,0,0,0.35)' },
+    white: {
+      variant: 'filled',
+      color: '#f8fafc',
+      filter: 'drop-shadow(0 0 1px #0f172a) drop-shadow(0 1px 2px rgba(0,0,0,0.45))',
+    },
+    black: {
+      variant: 'filled',
+      color: '#1e293b',
+      filter: 'drop-shadow(0 0 1px #f8fafc) drop-shadow(0 1px 2px rgba(0,0,0,0.35))',
+    },
   },
   {
     id: 'outline',
     name: 'Outline',
     // White side hollow, black side solid — a clean, modern two-tone look.
-    white: { glyphs: OUTLINE, color: '#f8fafc', shadow: '0 0 1px #0f172a, 0 1px 2px rgba(0,0,0,0.5)' },
-    black: { glyphs: FILLED, color: '#111827', shadow: '0 0 1px rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.35)' },
+    white: {
+      variant: 'outline',
+      color: '#f8fafc',
+      filter: 'drop-shadow(0 0 1px #0f172a) drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
+    },
+    black: {
+      variant: 'filled',
+      color: '#111827',
+      filter: 'drop-shadow(0 0 1px rgba(255,255,255,0.6)) drop-shadow(0 1px 2px rgba(0,0,0,0.35))',
+    },
   },
   {
     id: 'ink',
     name: 'Ink',
     // Both dark; white reads as a line drawing, black as solid — the classic
     // printed-book / newspaper diagram style.
-    white: { glyphs: OUTLINE, color: '#1f2937', shadow: '0 1px 1px rgba(255,255,255,0.35)' },
-    black: { glyphs: FILLED, color: '#0b1220', shadow: '0 1px 1px rgba(255,255,255,0.25)' },
+    white: { variant: 'outline', color: '#1f2937', filter: 'drop-shadow(0 1px 1px rgba(255,255,255,0.35))' },
+    black: { variant: 'filled', color: '#0b1220', filter: 'drop-shadow(0 1px 1px rgba(255,255,255,0.25))' },
   },
   {
     id: 'neon',
     name: 'Neon',
-    white: { glyphs: FILLED, color: '#67e8f9', shadow: '0 0 4px #22d3ee, 0 0 8px rgba(34,211,238,0.7)' },
-    black: { glyphs: FILLED, color: '#f0abfc', shadow: '0 0 4px #e879f9, 0 0 8px rgba(232,121,249,0.7)' },
+    white: {
+      variant: 'filled',
+      color: '#67e8f9',
+      filter: 'drop-shadow(0 0 4px #22d3ee) drop-shadow(0 0 8px rgba(34,211,238,0.7))',
+    },
+    black: {
+      variant: 'filled',
+      color: '#f0abfc',
+      filter: 'drop-shadow(0 0 4px #e879f9) drop-shadow(0 0 8px rgba(232,121,249,0.7))',
+    },
   },
   {
     id: 'gold',
     name: 'Royal',
-    white: { glyphs: FILLED, color: '#fde68a', shadow: '0 0 1px #78350f, 0 1px 2px rgba(0,0,0,0.5)' },
-    black: { glyphs: FILLED, color: '#7f1d1d', shadow: '0 0 1px #fde68a, 0 1px 2px rgba(0,0,0,0.4)' },
+    white: {
+      variant: 'filled',
+      color: '#fde68a',
+      filter: 'drop-shadow(0 0 1px #78350f) drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
+    },
+    black: {
+      variant: 'filled',
+      color: '#7f1d1d',
+      filter: 'drop-shadow(0 0 1px #fde68a) drop-shadow(0 1px 2px rgba(0,0,0,0.4))',
+    },
   },
 ]
 

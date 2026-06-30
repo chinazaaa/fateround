@@ -15,6 +15,7 @@ import { LudoHostView } from '@/components/ludo/LudoHostView'
 import { SnakeLadderHostView } from '@/components/snake-and-ladder/SnakeLadderHostView'
 import { TicTacToeHostView } from '@/components/tic-tac-toe/TicTacToeHostView'
 import { ChessHostView } from '@/components/chess/ChessHostView'
+import { CheckersHostView } from '@/components/checkers/CheckersHostView'
 import { ScrabbleHostView } from '@/components/scrabble/ScrabbleHostView'
 import { DescribeItHostView } from '@/components/describe-it/DescribeItHostView'
 import { NpatHostView } from '@/components/npat/NpatHostView'
@@ -45,6 +46,7 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   snake_and_ladder: SnakeLadderHostView,
   tic_tac_toe: TicTacToeHostView,
   chess: ChessHostView,
+  checkers: CheckersHostView,
   scrabble: ScrabbleHostView,
   describe_it: DescribeItHostView,
   sudoku: SudokuHostView,

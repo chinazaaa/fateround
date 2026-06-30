@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import type { CrazyEightsCard as CrazyEightsCardType, CrazyEightsCalledSuit, CrazyEightsSuit } from '@/types'
 import {
   CRAZY8_SUITS,
@@ -19,6 +20,9 @@ import {
   CrazyEightsTurnBar,
 } from '@/components/crazy-eights/CrazyEightsChrome'
 import { CrazyEightsSuitIcon } from '@/components/crazy-eights/CrazyEightsSuitIcon'
+
+/** Cards shown in the hand before it collapses behind a "+N more" toggle. */
+const HAND_DISPLAY_LIMIT = 10
 
 /**
  * Card-face gradients per suit. Classic playing-card look: clean light faces so the
@@ -128,6 +132,7 @@ export function CrazyEightsTable({
   secondsLeft,
   hasTimer,
   urgent,
+  showStandings = true,
 }: {
   session: CrazyEightsSession
   players: { id: string; name: string; spectator?: boolean | null }[]
@@ -138,53 +143,12 @@ export function CrazyEightsTable({
   secondsLeft?: number
   hasTimer?: boolean
   urgent?: boolean
+  showStandings?: boolean
 }) {
   const top = session.top_card
   const drawCount = (session.draw_pile as unknown[])?.length ?? 0
   const discardCount = (session.discard_pile as unknown[])?.length ?? 0
-  const turnId = session.turn_order[session.current_turn_index]
-
-  const activePlayers = players.filter((p) => !isCrazyEightsPlayerOut(handCounts[p.id] ?? 0, p.spectator))
-  const watchingPlayers = players.filter((p) => isCrazyEightsPlayerOut(handCounts[p.id] ?? 0, p.spectator))
   const { pickTwo, jokerPenalty } = getNormalizedPenalties(session)
-
-  function renderPlayerRow(p: { id: string; name: string; spectator?: boolean | null }, watching: boolean) {
-    const count = handCounts[p.id] ?? 0
-    const isTurn = !watching && p.id === turnId
-    const isMe = p.id === myPlayerId
-
-    return (
-      <div
-        key={p.id}
-        className={[
-          'rounded-lg px-3 py-2 text-sm flex items-center justify-between gap-2',
-          watching
-            ? 'border border-dashed border-(--border-strong) bg-(--surface-inset-bg)/60 opacity-75'
-            : isTurn
-              ? 'bg-(--primary)/15 border border-(--primary)/40 font-bold'
-              : 'bg-(--surface-inset-bg)',
-        ].join(' ')}
-      >
-        <div className="min-w-0 flex flex-wrap items-center gap-1.5">
-          <span className="truncate">
-            {p.name}
-            {isMe ? ' (you)' : ''}
-          </span>
-          {isTurn && (
-            <span className="rounded-full bg-[color-mix(in_srgb,var(--marry)_20%,transparent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-(--marry)">
-              Turn
-            </span>
-          )}
-          {watching && (
-            <span className="rounded-full bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">
-              Watching
-            </span>
-          )}
-        </div>
-        <span className="text-muted ml-2 shrink-0 tabular-nums">{watching ? '👀' : `${count} 🃏`}</span>
-      </div>
-    )
-  }
 
   return (
     <CrazyEightsCardShell className="p-4 space-y-4">
@@ -257,27 +221,92 @@ export function CrazyEightsTable({
         <p className="text-center text-sm text-muted border-t border-(--border) pt-3">{session.status_message}</p>
       )}
 
-      <div className="space-y-3 border-t border-(--border) pt-3">
-        {activePlayers.length > 0 && (
-          <div className="space-y-2">
-            {watchingPlayers.length > 0 && (
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Still playing</p>
-            )}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {activePlayers.map((p) => renderPlayerRow(p, false))}
-            </div>
-          </div>
-        )}
-        {watchingPlayers.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Watching</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {watchingPlayers.map((p) => renderPlayerRow(p, true))}
-            </div>
-          </div>
-        )}
-      </div>
+      {showStandings && (
+        <div className="border-t border-(--border) pt-3">
+          <CrazyEightsStandings session={session} players={players} myPlayerId={myPlayerId} handCounts={handCounts} />
+        </div>
+      )}
     </CrazyEightsCardShell>
+  )
+}
+
+/**
+ * The "Still playing" / "Watching" roster. Split out of CrazyEightsTable so the
+ * active-player view can place it BELOW the player's own hand and draw button — the hand
+ * is what you act on, so it should sit above the standings rather than below the board.
+ */
+export function CrazyEightsStandings({
+  session,
+  players,
+  myPlayerId,
+  handCounts,
+  gridClassName = 'grid-cols-2 sm:grid-cols-3',
+}: {
+  session: CrazyEightsSession
+  players: { id: string; name: string; spectator?: boolean | null }[]
+  myPlayerId: string | null
+  handCounts: Record<string, number>
+  // Column layout for the player rows. Defaults to the wide grid; the desktop
+  // sidebar passes a single-column list so it reads like the trivia leaderboard.
+  gridClassName?: string
+}) {
+  const turnId = session.turn_order[session.current_turn_index]
+  const activePlayers = players.filter((p) => !isCrazyEightsPlayerOut(handCounts[p.id] ?? 0, p.spectator))
+  const watchingPlayers = players.filter((p) => isCrazyEightsPlayerOut(handCounts[p.id] ?? 0, p.spectator))
+
+  function renderPlayerRow(p: { id: string; name: string; spectator?: boolean | null }, watching: boolean) {
+    const count = handCounts[p.id] ?? 0
+    const isTurn = !watching && p.id === turnId
+    const isMe = p.id === myPlayerId
+
+    return (
+      <div
+        key={p.id}
+        className={[
+          'rounded-lg px-3 py-2 text-sm flex items-center justify-between gap-2',
+          watching
+            ? 'border border-dashed border-(--border-strong) bg-(--surface-inset-bg)/60 opacity-75'
+            : isTurn
+              ? 'bg-(--primary)/15 border border-(--primary)/40 font-bold'
+              : 'bg-(--surface-inset-bg)',
+        ].join(' ')}
+      >
+        <div className="min-w-0 flex flex-wrap items-center gap-1.5">
+          <span className="truncate">
+            {p.name}
+            {isMe ? ' (you)' : ''}
+          </span>
+          {isTurn && (
+            <span className="rounded-full bg-[color-mix(in_srgb,var(--marry)_20%,transparent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-(--marry)">
+              Turn
+            </span>
+          )}
+          {watching && (
+            <span className="rounded-full bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">
+              Watching
+            </span>
+          )}
+        </div>
+        <span className="text-muted ml-2 shrink-0 tabular-nums">{watching ? '👀' : `${count} 🃏`}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {activePlayers.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Still playing</p>
+          <div className={`grid ${gridClassName} gap-2`}>{activePlayers.map((p) => renderPlayerRow(p, false))}</div>
+        </div>
+      )}
+      {watchingPlayers.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Watching</p>
+          <div className={`grid ${gridClassName} gap-2`}>{watchingPlayers.map((p) => renderPlayerRow(p, true))}</div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -295,6 +324,7 @@ export function CrazyEightsHand({
   rules?: CrazyEightsRules
 }) {
   const crazyEightsRules = rules ?? parseCrazyEightsRules(null)
+  const [expanded, setExpanded] = useState(false)
   if (cards.length === 0) {
     return (
       <CrazyEightsCardShell className="p-4 text-center text-sm text-muted">
@@ -303,21 +333,45 @@ export function CrazyEightsHand({
     )
   }
 
+  const decorated = cards.map((card) => ({
+    card,
+    playable: canPlayCard(card, session, crazyEightsRules) && session.phase === 'playing',
+  }))
+  // A big hand makes the page very tall, so collapse it past a limit. The visible set
+  // keeps the first N cards AND every playable card — so you never have to expand to make
+  // a move; only extra non-playable cards get tucked behind the "+N more" toggle.
+  const canCollapse = decorated.length > HAND_DISPLAY_LIMIT
+  let visible = decorated
+  if (canCollapse && !expanded) {
+    const shown = new Set(decorated.slice(0, HAND_DISPLAY_LIMIT).map((d) => d.card.id))
+    for (const d of decorated) if (d.playable) shown.add(d.card.id)
+    visible = decorated.filter((d) => shown.has(d.card.id))
+  }
+  const hiddenCount = decorated.length - visible.length
+
   return (
     <CrazyEightsCardShell className="p-4">
-      <p className="text-xs font-semibold text-muted mb-3 uppercase tracking-wide">Your hand</p>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-muted uppercase tracking-wide">Your hand · {cards.length}</p>
+        {canCollapse && (expanded || hiddenCount > 0) && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="rounded-full border border-(--border-strong) bg-(--surface-inset-bg) px-3 py-1 text-xs font-semibold text-muted hover:bg-(--primary)/10"
+          >
+            {expanded ? 'Show less' : `+${hiddenCount} more`}
+          </button>
+        )}
+      </div>
       <div className="flex flex-wrap gap-2 justify-center">
-        {cards.map((card) => {
-          const playable = canPlayCard(card, session, crazyEightsRules) && session.phase === 'playing'
-          return (
-            <CrazyEightsPlayingCard
-              key={card.id}
-              card={card}
-              playable={playable}
-              onClick={playable && !acting ? () => onPlay(card.id) : undefined}
-            />
-          )
-        })}
+        {visible.map(({ card, playable }) => (
+          <CrazyEightsPlayingCard
+            key={card.id}
+            card={card}
+            playable={playable}
+            onClick={playable && !acting ? () => onPlay(card.id) : undefined}
+          />
+        ))}
       </div>
     </CrazyEightsCardShell>
   )

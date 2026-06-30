@@ -61,13 +61,15 @@ import {
   isSnakeAndLadderGame,
   isTicTacToeGame,
   isChessGame,
+  isCheckersGame,
   isScrabbleGame,
   isDescribeItGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
 } from '@/lib/game-types'
-import { BOARD_THEMES, PIECE_SETS, pieceGlyph } from '@/lib/chess-appearance'
+import { BOARD_THEMES, PIECE_SETS } from '@/lib/chess-appearance'
+import { ChessPieceIcon } from '@/components/chess/ChessPieceIcon'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
@@ -490,6 +492,15 @@ function CreateGameInner() {
               timer_seconds: 600,
             }
           : {}),
+        ...(isCheckersGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              // Cumulative per-player clock, same as Chess. Default 10 minutes each.
+              timer_seconds: 600,
+            }
+          : {}),
         ...(isScrabbleGame(type)
           ? {
               participant_mode: 'joiners' as const,
@@ -580,6 +591,7 @@ function CreateGameInner() {
   const isSnakeLadder = isSnakeAndLadderGame(settings.game_type)
   const isTicTacToe = isTicTacToeGame(settings.game_type)
   const isChess = isChessGame(settings.game_type)
+  const isCheckers = isCheckersGame(settings.game_type)
   const isScrabble = isScrabbleGame(settings.game_type)
   const isDescribeIt = isDescribeItGame(settings.game_type)
   const isNpat = isICallOnGame(settings.game_type)
@@ -817,6 +829,15 @@ function CreateGameInner() {
             anonymous: true,
             rounds_count: 1,
             // Cumulative per-player clock (chess.com style). Default 10 minutes each.
+            timer_seconds: 600,
+          }
+        : {}),
+      ...(isCheckersGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            // Cumulative per-player clock, same as Chess. Default 10 minutes each.
             timer_seconds: 600,
           }
         : {}),
@@ -1907,13 +1928,19 @@ function CreateGameInner() {
                           ].join(' ')}
                           style={{ backgroundColor: '#b58863' }}
                         >
-                          <span className="leading-none text-xl flex gap-0.5">
-                            <span style={{ color: set.white.color, textShadow: set.white.shadow }}>
-                              {pieceGlyph(set, 'w', 'n')}
-                            </span>
-                            <span style={{ color: set.black.color, textShadow: set.black.shadow }}>
-                              {pieceGlyph(set, 'b', 'n')}
-                            </span>
+                          <span className="leading-none flex gap-0.5">
+                            <ChessPieceIcon
+                              type="n"
+                              variant={set.white.variant}
+                              className="h-6 w-6"
+                              style={{ color: set.white.color, filter: set.white.filter }}
+                            />
+                            <ChessPieceIcon
+                              type="n"
+                              variant={set.black.variant}
+                              className="h-6 w-6"
+                              style={{ color: set.black.color, filter: set.black.filter }}
+                            />
                           </span>
                           <span className="text-[10px] font-semibold text-white/90 leading-none">{set.name}</span>
                         </button>
@@ -1927,6 +1954,29 @@ function CreateGameInner() {
                 <p className="text-faint text-sm leading-relaxed">
                   Classic chess — White moves first, standard rules, checkmate to win. Each player gets their own clock
                   that only ticks on their turn; the first to run out of time loses.
+                </p>
+              </SettingsGroup>
+            ) : isCheckers ? (
+              <SettingsGroup title="Checkers room">
+                <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
+                <Field label="Time per player">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={0}>No timer</option>
+                    <option value={180}>3 minutes each</option>
+                    <option value={300}>5 minutes each</option>
+                    <option value={600}>10 minutes each</option>
+                  </select>
+                </Field>
+                <Field label="Late joiners">
+                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="checkers" />
+                </Field>
+                <p className="text-faint text-sm leading-relaxed">
+                  Classic checkers — Red moves first, jumps are forced, and reaching the far row crowns a king. Capture
+                  all your opponent’s pieces to win. Each player gets their own clock that only ticks on their turn.
                 </p>
               </SettingsGroup>
             ) : isScrabble ? (

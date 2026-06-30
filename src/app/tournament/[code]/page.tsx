@@ -26,6 +26,7 @@ const GAME_TYPE_LABELS: Record<string, string> = {
   'word-hunt': 'Word Hunt',
   'i-call-on': 'I Call On',
   chess: 'Chess',
+  checkers: 'Checkers',
   bingo: 'Bingo',
   'who-said-this': 'Who Said This',
   'describe-it': 'Describe It',

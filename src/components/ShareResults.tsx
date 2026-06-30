@@ -20,6 +20,7 @@ import {
   isSnakeAndLadderGame,
   isTicTacToeGame,
   isChessGame,
+  isCheckersGame,
   isICallOnGame,
   isCodewordsGame,
   isWordHuntGame,
@@ -210,8 +211,8 @@ function buildShareText({
     return [...gameHeader, '🏆', '', 'BINGO!', '', `${bingoWinnerName} wins!`, '', `Play at ${appDomain()}`].join('\n')
   }
 
-  // Tic-Tac-Toe and Chess share the same winner / draw / ended-early result signal.
-  if (isTicTacToeGame(gameType) || isChessGame(gameType)) {
+  // Tic-Tac-Toe, Chess and Checkers share the same winner / draw / ended-early result signal.
+  if (isTicTacToeGame(gameType) || isChessGame(gameType) || isCheckersGame(gameType)) {
     if (ticTacToeIsDraw) {
       return [...gameHeader, '🤝', '', "It's a draw!", '', `Play at ${appDomain()}`].join('\n')
     }

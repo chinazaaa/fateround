@@ -3,7 +3,7 @@
 // public policies, so these tables are only reachable from this trusted boundary.
 
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import type { CommunityGame, DailyGameWinner, LeaderboardStanding } from '@/types/community'
+import type { CommunityGame, DailyGameWinner, DailyWinner, LeaderboardStanding } from '@/types/community'
 
 export function normalizeName(name: string): string {
   return name.trim().replace(/\s+/g, ' ').toLowerCase()
@@ -68,18 +68,18 @@ export async function getDayWinners(dateStr: string): Promise<DailyGameWinner[]>
 
   const { data, error } = await supabase
     .from('community_results')
-    .select('game_id, recorded_at, player:community_players(display_name)')
+    .select('game_id, recorded_at, wins, player:community_players(display_name)')
     .eq('result_date', dateStr)
     .order('recorded_at', { ascending: true })
   if (error) throw error
 
-  const winnersByGame = new Map<string, string[]>()
+  const winnersByGame = new Map<string, DailyWinner[]>()
   for (const row of data ?? []) {
     const player = row.player as { display_name: string } | { display_name: string }[] | null
     const name = Array.isArray(player) ? player[0]?.display_name : player?.display_name
     if (!name) continue
     const list = winnersByGame.get(row.game_id as string) ?? []
-    list.push(name)
+    list.push({ name, wins: (row.wins as number) ?? 1 })
     winnersByGame.set(row.game_id as string, list)
   }
 
@@ -89,8 +89,9 @@ export async function getDayWinners(dateStr: string): Promise<DailyGameWinner[]>
   }))
 }
 
-// Add a winner to a game for a day. Multiple winners per game/day are allowed;
-// re-adding the same player for the same game/day is a no-op (idempotent).
+// Record a win for a player in a game on a day. The first win creates the row;
+// each subsequent call for the same player increments their win count (so a
+// player who takes several of the day's rounds is tallied once with wins > 1).
 export async function addResult(gameId: string, dateStr: string, playerName: string): Promise<void> {
   const supabase = getSupabaseAdmin()
 
@@ -101,34 +102,73 @@ export async function addResult(gameId: string, dateStr: string, playerName: str
   if (!game.is_active) throw new Error('This game is not active')
 
   const { id: playerId } = await resolvePlayerId(playerName)
-  const { error } = await supabase
+
+  // Increment if the player already has a row for this game/day, else insert.
+  // The manager UI is single-user, so a read-modify-write race is acceptable; the
+  // unique (game_id, result_date, player_id) key still guards against duplicates.
+  const { data: existing } = await supabase
     .from('community_results')
-    .upsert(
-      { game_id: gameId, result_date: dateStr, player_id: playerId, recorded_by: 'manager' },
-      { onConflict: 'game_id,result_date,player_id', ignoreDuplicates: true }
-    )
-  if (error) throw error
+    .select('id, wins')
+    .eq('game_id', gameId)
+    .eq('result_date', dateStr)
+    .eq('player_id', playerId)
+    .maybeSingle()
+
+  if (existing) {
+    const { error } = await supabase
+      .from('community_results')
+      .update({ wins: (existing.wins as number) + 1 })
+      .eq('id', existing.id)
+    if (error) throw error
+  } else {
+    const { error } = await supabase
+      .from('community_results')
+      .insert({ game_id: gameId, result_date: dateStr, player_id: playerId, wins: 1, recorded_by: 'manager' })
+    if (error) throw error
+  }
 }
 
-// Remove a single winner from a game/day. With no playerName, clears every winner
-// recorded for that game on that day.
-export async function deleteResult(gameId: string, dateStr: string, playerName?: string): Promise<void> {
+// Remove wins for a player in a game/day. By default removes one win (deleting the
+// row when it hits zero); with all=true removes the player entirely. With no
+// playerName, clears every winner recorded for that game on that day.
+export async function deleteResult(
+  gameId: string,
+  dateStr: string,
+  playerName?: string,
+  opts: { all?: boolean } = {}
+): Promise<void> {
   const supabase = getSupabaseAdmin()
-  let query = supabase.from('community_results').delete().eq('game_id', gameId).eq('result_date', dateStr)
 
-  if (playerName && playerName.trim()) {
-    const normalized = normalizeName(playerName)
-    const { data: player } = await supabase
-      .from('community_players')
-      .select('id')
-      .eq('normalized_name', normalized)
-      .maybeSingle()
-    // Unknown name => nothing recorded for that player; treat as a no-op.
-    if (!player) return
-    query = query.eq('player_id', player.id)
+  if (!playerName || !playerName.trim()) {
+    const { error } = await supabase.from('community_results').delete().eq('game_id', gameId).eq('result_date', dateStr)
+    if (error) throw error
+    return
   }
 
-  const { error } = await query
+  const normalized = normalizeName(playerName)
+  const { data: player } = await supabase
+    .from('community_players')
+    .select('id')
+    .eq('normalized_name', normalized)
+    .maybeSingle()
+  // Unknown name => nothing recorded for that player; treat as a no-op.
+  if (!player) return
+
+  const match = { game_id: gameId, result_date: dateStr, player_id: player.id }
+
+  if (!opts.all) {
+    const { data: existing } = await supabase.from('community_results').select('id, wins').match(match).maybeSingle()
+    if (existing && (existing.wins as number) > 1) {
+      const { error } = await supabase
+        .from('community_results')
+        .update({ wins: (existing.wins as number) - 1 })
+        .eq('id', existing.id)
+      if (error) throw error
+      return
+    }
+  }
+
+  const { error } = await supabase.from('community_results').delete().match(match)
   if (error) throw error
 }
 
@@ -138,7 +178,7 @@ export async function getStandings(startStr: string, endStr: string): Promise<Le
   const supabase = getSupabaseAdmin()
   const { data, error } = await supabase
     .from('community_results')
-    .select('game_id, player:community_players(display_name)')
+    .select('game_id, wins, player:community_players(display_name)')
     .gte('result_date', startStr)
     .lte('result_date', endStr)
   if (error) throw error
@@ -151,7 +191,7 @@ export async function getStandings(startStr: string, endStr: string): Promise<Le
     if (!name) continue
     const key = name.toLowerCase()
     const agg = byPlayer.get(key) ?? { playerName: name, wins: 0, games: new Set<string>() }
-    agg.wins += 1
+    agg.wins += (row.wins as number) ?? 1
     agg.games.add(row.game_id as string)
     byPlayer.set(key, agg)
   }

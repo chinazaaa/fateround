@@ -202,9 +202,12 @@ function TodayView({ data }: { data: LeaderboardResponse }) {
                     {entry.winners.length === 1 ? 'Winner' : `Winners · ${entry.winners.length}`}
                   </p>
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    {entry.winners.map((name, i) => (
-                      <span key={`${name}-${i}`} className="text-xl font-black tracking-tight">
-                        {name}
+                    {entry.winners.map((w, i) => (
+                      <span key={`${w.name}-${i}`} className="text-xl font-black tracking-tight">
+                        {w.name}
+                        {w.wins > 1 && (
+                          <span className="ml-1 align-middle text-xs font-bold text-[var(--primary)]">×{w.wins}</span>
+                        )}
                         {i < entry.winners.length - 1 && <span className="text-faint font-normal">,</span>}
                       </span>
                     ))}

@@ -32,6 +32,11 @@ export async function POST(req: NextRequest) {
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const playerId = auth.player.id
 
+  // Only participants guess — players who didn't submit statements are watch-only viewers.
+  if (auth.player.spectator === true || auth.player.is_eliminated === true) {
+    return NextResponse.json({ error: 'Spectators cannot guess' }, { status: 403 })
+  }
+
   if (round.submitter_player_id === playerId) {
     return NextResponse.json({ error: 'You cannot guess on your own round' }, { status: 400 })
   }

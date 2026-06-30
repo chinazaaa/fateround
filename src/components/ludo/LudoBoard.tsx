@@ -158,10 +158,11 @@ function cellStyle(kind: ReturnType<typeof boardCellKind>, row: number, col: num
   }
 
   if (kind.kind === 'safe' && kind.color) {
+    // Safe-star squares are white cells carrying a colour-tinted ★ (drawn in the
+    // cell body below), matching the classic board — only start squares are solid.
     return {
-      background: COLOR_VIVID[kind.color],
+      background: '#ffffff',
       borderColor: '#1e293b',
-      boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.7)',
     }
   }
 
@@ -312,8 +313,13 @@ export function LudoBoard({
           {isStart && (
             <span className="absolute text-[11px] font-black text-white drop-shadow pointer-events-none">★</span>
           )}
-          {isSafe && (
-            <span className="absolute text-[8px] font-black text-white/90 drop-shadow pointer-events-none">★</span>
+          {isSafe && kind.color && (
+            <span
+              className="absolute text-[13px] font-black drop-shadow pointer-events-none"
+              style={{ color: COLOR_VIVID[kind.color] }}
+            >
+              ★
+            </span>
           )}
           {kind.kind === 'track' && direction && (
             <span className="absolute text-[7px] font-bold text-slate-300/90 pointer-events-none">
@@ -388,7 +394,11 @@ export function LudoBoard({
             )}
           {overlayPieces.map((p) => {
             const selectable = !!(selectablePieceIds?.includes(p.pieceId) && p.playerId === myPlayerId)
-            const offset = (p.stackIndex - (p.stackTotal - 1) / 2) * 7
+            // Fan co-located pieces apart by roughly a token's width so each one
+            // stays individually visible and tappable instead of hiding under the
+            // piece drawn on top of it. Tighter spacing once a cell holds 3+.
+            const spacing = p.stackTotal > 2 ? 9 : 18
+            const offset = (p.stackIndex - (p.stackTotal - 1) / 2) * spacing
             return (
               <div
                 key={`${p.playerId}-${p.pieceId}`}
@@ -397,6 +407,9 @@ export function LudoBoard({
                   left: `${((p.col + 0.5) / 15) * 100}%`,
                   top: `${((p.row + 0.5) / 15) * 100}%`,
                   transform: `translate(calc(-50% + ${offset}px), -50%)`,
+                  // Later pieces in a stack sit on top; selectable ones lift above
+                  // the rest so a tap always lands on a movable piece.
+                  zIndex: 20 + p.stackIndex + (selectable ? 4 : 0),
                 }}
               >
                 <div className={selectable ? 'pointer-events-auto' : ''}>
@@ -596,7 +609,10 @@ export function LudoGamePanel({
   const allSixes = remainingDice.length > 0 && remainingDice.every((value) => value === 6)
 
   return (
-    <div className="space-y-3 rounded-2xl p-3 text-white shadow-xl sm:p-4" style={{ backgroundColor: PAGE_BG }}>
+    <div
+      className="mx-auto w-full max-w-[30rem] space-y-3 rounded-2xl p-3 text-white shadow-xl sm:p-4 lg:max-w-[52rem]"
+      style={{ backgroundColor: PAGE_BG }}
+    >
       <LudoTurnBar
         turnPlayerName={turnPlayer?.name}
         isMyTurn={isMyTurn}
@@ -605,120 +621,134 @@ export function LudoGamePanel({
         urgent={urgent}
       />
 
-      {/* Top corners: green (TL) · red (TR) */}
-      <LudoPlayerCardsRow
-        colors={['green', 'red']}
-        states={states}
-        players={players}
-        session={session}
-        myPlayerId={myPlayerId}
-      />
+      {/* Board (with its four corner cards) and the dice/move controls sit
+          side-by-side on desktop so the whole panel fits without scrolling, and
+          stack vertically on mobile (board first, then controls). */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-center lg:gap-5">
+        {/* Board unit: corner cards + grid, kept together at the board's width.
+            On desktop the width also shrinks to fit the viewport height so the
+            board + controls never need scrolling on shorter laptops. */}
+        <div className="space-y-3 lg:w-[min(28rem,calc(100dvh-21rem))] lg:shrink-0">
+          {/* Top corners: green (TL) · red (TR) */}
+          <LudoPlayerCardsRow
+            colors={['green', 'red']}
+            states={states}
+            players={players}
+            session={session}
+            myPlayerId={myPlayerId}
+          />
 
-      <LudoBoard
-        session={session}
-        states={states}
-        players={players}
-        myPlayerId={myPlayerId}
-        onMovePiece={isMyTurn && session.phase === 'move' ? handleMovePiece : undefined}
-        selectablePieceIds={selectablePieceIds}
-        highlightCells={highlightCells}
-      />
+          <LudoBoard
+            session={session}
+            states={states}
+            players={players}
+            myPlayerId={myPlayerId}
+            onMovePiece={isMyTurn && session.phase === 'move' ? handleMovePiece : undefined}
+            selectablePieceIds={selectablePieceIds}
+            highlightCells={highlightCells}
+          />
 
-      {/* Bottom corners: yellow (BL) · blue (BR) */}
-      <LudoPlayerCardsRow
-        colors={['yellow', 'blue']}
-        states={states}
-        players={players}
-        session={session}
-        myPlayerId={myPlayerId}
-      />
-
-      {/* Dice + roll control sits below the board (not in the centre) */}
-      <div className="flex items-center justify-center rounded-xl bg-black/20 px-3 py-2">
-        <LudoBoardCenter
-          dice={diceDisplay}
-          rolling={rolling}
-          showRoll={isMyTurn && session.phase === 'roll' && !!onRoll}
-          onRoll={onRoll}
-          acting={acting}
-          consecutiveSixes={session.consecutive_sixes}
-          phase={session.phase}
-          lastDice={parsedLastDice}
-          remainingDice={remainingDice}
-        />
-      </div>
-
-      {session.status_message && <p className="text-center text-sm text-white/80">{session.status_message}</p>}
-
-      {isMyTurn && session.phase === 'move' && displayMoves.length > 0 && onMovePiece && (
-        <div className="space-y-2">
-          <p className="text-center text-sm font-semibold text-white">
-            {allSixes && remainingDice.length === 2
-              ? 'Doubles! Use each 6 — bring out two pieces, or one out then move 6'
-              : allSixes && remainingDice.length === 1
-                ? 'Use your 6 — bring out another piece or move 6 spaces'
-                : hasBaseSixMove
-                  ? 'Use your 6 — pick a piece to bring onto your ★ square'
-                  : remainingDice.length === 1
-                    ? `Move a piece ${remainingDice[0]} spaces`
-                    : `Use each die (${remainingDice.join(' & ')}) — pick a piece`}
-          </p>
-          <p className="text-center text-xs text-white/60">
-            Tap a highlighted piece on the board or use a button below
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {displayMoves.map((move) => {
-              const fromLabel = pieceStatusLabel(move.from)
-              const toLabel =
-                move.to.zone === 'finished'
-                  ? 'Center — home!'
-                  : move.to.zone === 'home'
-                    ? `Home lane step ${move.to.pos + 1}`
-                    : move.to.zone === 'track'
-                      ? 'Onto the path'
-                      : 'Leave base'
-              return (
-                <button
-                  key={`${move.pieceId}-${move.diceIndex}`}
-                  type="button"
-                  disabled={acting}
-                  onClick={() => handleMovePiece(move.pieceId, move.diceIndex)}
-                  className="rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-left text-xs font-semibold text-white hover:bg-white/20 disabled:opacity-50"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/70 text-[10px] font-bold text-white"
-                      style={{ backgroundColor: myState ? COLOR_VIVID[myState.color] : undefined }}
-                    >
-                      {move.pieceId + 1}
-                    </span>
-                    Piece {move.pieceId + 1}
-                    <span className="rounded bg-white/90 px-1 text-[10px] font-bold text-slate-900">
-                      🎲 {move.diceValue}
-                    </span>
-                  </span>
-                  <span className="mt-0.5 block font-normal text-white/60">
-                    {fromLabel} → {toLabel}
-                    {move.captures ? ' · Capture!' : ''}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
+          {/* Bottom corners: yellow (BL) · blue (BR) */}
+          <LudoPlayerCardsRow
+            colors={['yellow', 'blue']}
+            states={states}
+            players={players}
+            session={session}
+            myPlayerId={myPlayerId}
+          />
         </div>
-      )}
 
-      {isMyTurn && session.phase === 'move' && legalMoves.length === 0 && (
-        <p className="text-center text-xs font-medium text-amber-300">
-          No legal moves for this roll — wait for the turn to pass.
-        </p>
-      )}
+        {/* Controls column: dice + status + move buttons. Vertically centered
+            next to the board on desktop. */}
+        <div className="space-y-3 lg:flex-1 lg:min-w-0 lg:max-w-xs lg:self-center">
+          {/* Dice + roll control */}
+          <div className="flex items-center justify-center rounded-xl bg-black/20 px-3 py-2">
+            <LudoBoardCenter
+              dice={diceDisplay}
+              rolling={rolling}
+              showRoll={isMyTurn && session.phase === 'roll' && !!onRoll}
+              onRoll={onRoll}
+              acting={acting}
+              consecutiveSixes={session.consecutive_sixes}
+              phase={session.phase}
+              lastDice={parsedLastDice}
+              remainingDice={remainingDice}
+            />
+          </div>
 
-      {isMyTurn && session.phase === 'roll' && !rolling && (
-        <p className="text-center text-xs text-white/60">
-          Tap 🎲 Roll below — roll a 6 on either die to leave your yard onto your ★ square
-        </p>
-      )}
+          {session.status_message && <p className="text-center text-sm text-white/80">{session.status_message}</p>}
+
+          {isMyTurn && session.phase === 'move' && displayMoves.length > 0 && onMovePiece && (
+            <div className="space-y-2">
+              <p className="text-center text-sm font-semibold text-white">
+                {allSixes && remainingDice.length === 2
+                  ? 'Doubles! Use each 6 — bring out two pieces, or one out then move 6'
+                  : allSixes && remainingDice.length === 1
+                    ? 'Use your 6 — bring out another piece or move 6 spaces'
+                    : hasBaseSixMove
+                      ? 'Use your 6 — pick a piece to bring onto your ★ square'
+                      : remainingDice.length === 1
+                        ? `Move a piece ${remainingDice[0]} spaces`
+                        : `Use each die (${remainingDice.join(' & ')}) — pick a piece`}
+              </p>
+              <p className="text-center text-xs text-white/60">
+                Tap a highlighted piece on the board or use a button below
+              </p>
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+                {displayMoves.map((move) => {
+                  const fromLabel = pieceStatusLabel(move.from)
+                  const toLabel =
+                    move.to.zone === 'finished'
+                      ? 'Center — home!'
+                      : move.to.zone === 'home'
+                        ? `Home lane step ${move.to.pos + 1}`
+                        : move.to.zone === 'track'
+                          ? 'Onto the path'
+                          : 'Leave base'
+                  return (
+                    <button
+                      key={`${move.pieceId}-${move.diceIndex}`}
+                      type="button"
+                      disabled={acting}
+                      onClick={() => handleMovePiece(move.pieceId, move.diceIndex)}
+                      className="rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-left text-xs font-semibold text-white hover:bg-white/20 disabled:opacity-50"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/70 text-[10px] font-bold text-white"
+                          style={{ backgroundColor: myState ? COLOR_VIVID[myState.color] : undefined }}
+                        >
+                          {move.pieceId + 1}
+                        </span>
+                        Piece {move.pieceId + 1}
+                        <span className="rounded bg-white/90 px-1 text-[10px] font-bold text-slate-900">
+                          🎲 {move.diceValue}
+                        </span>
+                      </span>
+                      <span className="mt-0.5 block font-normal text-white/60">
+                        {fromLabel} → {toLabel}
+                        {move.captures ? ' · Capture!' : ''}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {isMyTurn && session.phase === 'move' && legalMoves.length === 0 && (
+            <p className="text-center text-xs font-medium text-amber-300">
+              No legal moves for this roll — wait for the turn to pass.
+            </p>
+          )}
+
+          {isMyTurn && session.phase === 'roll' && !rolling && (
+            <p className="text-center text-xs text-white/60">
+              Tap 🎲 Roll below — roll a 6 on either die to leave your yard onto your ★ square
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

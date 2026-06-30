@@ -33,8 +33,34 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
   const [myTabId] = useState(() => Math.random().toString(36).substring(2))
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
 
+  // How many people are already in the voice chat (shown as a badge to nudge
+  // others to join). Only polled while this tab hasn't joined.
+  const [presenceCount, setPresenceCount] = useState(0)
+
+  // Which side the floating control parks on, so it can be moved out of the way
+  // of wide game boards (e.g. Scrabble). Persisted per device.
+  const [side, setSide] = useState<'left' | 'right'>('right')
+  useEffect(() => {
+    const saved = localStorage.getItem('fateround_voice_side')
+    if (saved === 'left' || saved === 'right') setSide(saved)
+  }, [])
+  const flipSide = () =>
+    setSide((prev) => {
+      const next = prev === 'right' ? 'left' : 'right'
+      try {
+        localStorage.setItem('fateround_voice_side', next)
+      } catch {
+        // ignore storage failures
+      }
+      return next
+    })
+
   const serverUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL
   const joinAudioRef = useRef<() => Promise<void>>(null)
+  // Keep auth in a ref so the presence poll doesn't restart when the parent
+  // passes a fresh auth object on every render.
+  const authRef = useRef(auth)
+  authRef.current = auth
 
   // 1. Resolve room code dynamically if this is a game linked to a persistent room
   useEffect(() => {
@@ -63,6 +89,48 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
       active = false
     }
   }, [roomCode])
+
+  // 1b. Poll how many people are in the voice chat while we haven't joined, so
+  // we can badge the icon and prompt people to hop in. Once joined, the panel
+  // shows the live participant list instead.
+  useEffect(() => {
+    if (token || !resolvedRoomCode) {
+      setPresenceCount(0)
+      return
+    }
+    let active = true
+
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/audio-presence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            roomName: resolvedRoomCode.toUpperCase(),
+            identity: identity || playerName,
+            auth: authRef.current,
+          }),
+        })
+        if (!res.ok) {
+          if (active) setPresenceCount(0)
+          return
+        }
+        const data = await res.json()
+        if (active) setPresenceCount(typeof data.count === 'number' ? data.count : 0)
+      } catch {
+        // Best-effort hint — clear the badge so a stale count from a previous
+        // room/auth doesn't linger after a failure.
+        if (active) setPresenceCount(0)
+      }
+    }
+
+    poll()
+    const interval = window.setInterval(poll, 12000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [token, resolvedRoomCode, identity, playerName])
 
   // 2. Join voice chat handler
   const joinAudio = async () => {
@@ -196,29 +264,102 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
   const isAnotherTabActive = activeTabId && activeTabId !== myTabId
 
   return (
-    <div className="fixed bottom-20 right-4 z-50 flex flex-col items-end gap-2">
-      {/* Floating Join/Leave Button */}
+    <div
+      className={`fixed bottom-20 z-50 flex flex-col gap-2 ${
+        side === 'right' ? 'right-4 items-end' : 'left-4 items-start'
+      }`}
+    >
+      {/* Move the control to the other side (e.g. to clear a wide game board).
+       * Labelled so it's obvious it repositions the voice button. */}
+      <button
+        type="button"
+        onClick={flipSide}
+        title={`Move voice chat to the ${side === 'right' ? 'left' : 'right'}`}
+        aria-label={`Move voice chat control to the ${side === 'right' ? 'left' : 'right'}`}
+        className={`flex h-7 items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--card-strong)] px-2 text-[10px] font-semibold uppercase tracking-wide text-muted shadow hover:text-[var(--foreground)] active:scale-95 transition-all ${
+          side === 'right' ? 'flex-row-reverse' : ''
+        }`}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-3.5 w-3.5 shrink-0"
+          aria-hidden
+        >
+          <path d="M8 7 4 12l4 5" />
+          <path d="M16 7l4 5-4 5" />
+          <path d="M4 12h16" />
+        </svg>
+        Move
+      </button>
+      {/* Floating Join/Leave Button — compact round icon so it stays out of the
+       * way during play (matches the connected-state icon below). */}
       {!token ? (
-        isAnotherTabActive ? (
-          <button
-            onClick={joinAudio}
-            disabled={isConnecting}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-slate-800 hover:bg-slate-700 text-body border border-theme font-semibold text-xs shadow-lg active:scale-95 transition-all duration-150"
-            title="Voice chat is running in another tab. Click to switch audio here."
-          >
-            <span>🔊</span>
-            {isConnecting ? 'Transferring...' : 'Voice active elsewhere (Switch here)'}
-          </button>
-        ) : (
-          <button
-            onClick={joinAudio}
-            disabled={isConnecting}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-lg shadow-emerald-950/20 active:scale-95 transition-all duration-150"
-          >
-            <span>🎙️</span>
-            {isConnecting ? 'Connecting...' : 'Join Voice'}
-          </button>
-        )
+        <div className="relative">
+          {/* Soft halo + count badge when others are already in the call. */}
+          {presenceCount > 0 && (
+            <span
+              className="pointer-events-none absolute inset-0 rounded-full bg-emerald-500/40 animate-ping"
+              aria-hidden
+            />
+          )}
+          {isAnotherTabActive ? (
+            <button
+              onClick={joinAudio}
+              disabled={isConnecting}
+              className="relative flex items-center justify-center w-12 h-12 rounded-full bg-slate-800 hover:bg-slate-700 text-body border border-theme text-xl shadow-lg active:scale-95 transition-all duration-150 disabled:opacity-70"
+              title={
+                isConnecting ? 'Transferring…' : 'Voice chat is running in another tab. Click to switch audio here.'
+              }
+              aria-label={isConnecting ? 'Transferring voice chat to this tab' : 'Switch voice chat to this tab'}
+            >
+              {isConnecting ? (
+                <span className="inline-block w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+              ) : (
+                <span>🔊</span>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={joinAudio}
+              disabled={isConnecting}
+              className="relative flex items-center justify-center w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xl shadow-lg shadow-emerald-950/20 active:scale-95 transition-all duration-150 disabled:opacity-70"
+              title={
+                isConnecting
+                  ? 'Connecting…'
+                  : presenceCount > 0
+                    ? `Join voice chat — ${presenceCount} already in the call`
+                    : 'Join voice chat'
+              }
+              aria-label={
+                isConnecting
+                  ? 'Connecting to voice chat'
+                  : presenceCount > 0
+                    ? `Join voice chat, ${presenceCount} ${presenceCount === 1 ? 'person' : 'people'} already in the call`
+                    : 'Join voice chat'
+              }
+            >
+              {isConnecting ? (
+                <span className="inline-block w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+              ) : (
+                <span>🎙️</span>
+              )}
+            </button>
+          )}
+          {presenceCount > 0 && (
+            <span
+              className={`absolute -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[11px] font-bold text-white shadow ring-2 ring-[var(--background)] ${
+                side === 'right' ? '-right-1' : '-left-1'
+              }`}
+            >
+              {presenceCount}
+            </span>
+          )}
+        </div>
       ) : (
         <div className="flex gap-2">
           <button

@@ -123,6 +123,8 @@ function EntryForm({ onLoggedOut }: { onLoggedOut: () => void }) {
       setLoading(true)
       try {
         const qs = forDate ? `?date=${forDate}` : ''
+        // Refreshing after a save shouldn't flash the cards away — only the
+        // winner chips need to update, so we swap the data in place below.
         const res = await fetch(`/api/manager/results${qs}`, { cache: 'no-store' })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? 'Failed to load')
@@ -189,7 +191,7 @@ function EntryForm({ onLoggedOut }: { onLoggedOut: () => void }) {
           </label>
         </div>
 
-        {loading ? (
+        {loading && games.length === 0 ? (
           <p className="text-muted text-sm">Loading games…</p>
         ) : games.length === 0 ? (
           <div className="glass-card p-6 text-center text-muted text-sm">
@@ -245,8 +247,7 @@ function GameRow({
 
   const accent = entry.game.accent ?? 'var(--primary)'
   const winners = entry.winners
-  // Already-recorded (case-insensitive) so we don't fire a no-op save.
-  const alreadyAdded = winners.some((w) => w.toLowerCase() === value.trim().toLowerCase())
+  const totalWins = winners.reduce((sum, w) => sum + w.wins, 0)
 
   const fetchSuggestions = (q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -261,13 +262,11 @@ function GameRow({
     }, 180)
   }
 
-  const add = async (name = value) => {
+  // Record a win for `name`. New names appear as a chip; an existing winner's
+  // count is bumped (so the same player taking several rounds is tracked as ×N).
+  const add = async (name = value, opts: { clearInput?: boolean } = {}) => {
     const trimmed = name.trim()
     if (!trimmed) return
-    if (winners.some((w) => w.toLowerCase() === trimmed.toLowerCase())) {
-      onToast.error(`${trimmed} is already a winner of ${entry.game.name}`)
-      return
-    }
     setSaving(true)
     try {
       const res = await fetch('/api/manager/results', {
@@ -278,7 +277,7 @@ function GameRow({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to save')
       onToast.success(`${entry.game.name}: ${trimmed} 🏆`)
-      setValue('')
+      if (opts.clearInput) setValue('')
       onChanged()
     } catch (err) {
       onToast.error(err instanceof Error ? err.message : 'Failed to save')
@@ -288,25 +287,24 @@ function GameRow({
     }
   }
 
-  const remove = async (name: string) => {
-    const ok = await confirm({
-      title: `Remove ${name}?`,
-      message: `Remove ${name} as a winner of ${entry.game.name} for this day.`,
-      confirmLabel: 'Remove',
-      destructive: true,
-    })
-    if (!ok) return
+  // Remove one of a player's wins (mode 'one') or the player entirely (mode 'all').
+  const removeWin = async (name: string, mode: 'one' | 'all') => {
+    if (mode === 'all') {
+      const ok = await confirm({
+        title: `Remove ${name}?`,
+        message: `Remove ${name} as a winner of ${entry.game.name} for this day.`,
+        confirmLabel: 'Remove',
+        destructive: true,
+      })
+      if (!ok) return
+    }
     setSaving(true)
     try {
-      const params = new URLSearchParams({
-        gameId: String(entry.game.id),
-        date,
-        playerName: name,
-      })
+      const params = new URLSearchParams({ gameId: String(entry.game.id), date, playerName: name })
+      if (mode === 'all') params.set('mode', 'all')
       const res = await fetch(`/api/manager/results?${params.toString()}`, { method: 'DELETE' })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to remove')
-      onToast.success(`${name} removed from ${entry.game.name}`)
       onChanged()
     } catch (err) {
       onToast.error(err instanceof Error ? err.message : 'Failed to remove')
@@ -321,24 +319,55 @@ function GameRow({
         <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: accent }} />
         <span className="font-semibold">{entry.game.name}</span>
         <span className="ml-auto text-xs text-faint">
-          {winners.length === 0 ? 'no winners yet' : `${winners.length} winner${winners.length === 1 ? '' : 's'}`}
+          {winners.length === 0
+            ? 'no winners yet'
+            : `${winners.length} winner${winners.length === 1 ? '' : 's'}` +
+              (totalWins !== winners.length ? ` · ${totalWins} wins` : '')}
         </span>
       </div>
 
       {winners.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3">
-          {winners.map((name) => (
+          {winners.map((w) => (
             <span
-              key={name}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-strong)] bg-[var(--chip-active-bg)] py-1 pl-3 pr-1.5 text-sm font-medium"
+              key={w.name}
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--border-strong)] bg-[var(--chip-active-bg)] py-1 pl-3 pr-1.5 text-sm font-medium"
             >
-              🏆 {name}
+              🏆 {w.name}
+              {w.wins > 1 && (
+                <span className="ml-0.5 rounded-full bg-[var(--card-strong)] px-1.5 py-0.5 text-xs font-bold tabular-nums">
+                  ×{w.wins}
+                </span>
+              )}
               <button
                 type="button"
-                onClick={() => remove(name)}
+                onClick={() => add(w.name)}
+                disabled={saving}
+                className="flex h-5 w-5 items-center justify-center rounded-full text-muted hover:bg-[var(--card-strong)] hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                aria-label={`Add another win for ${w.name} in ${entry.game.name}`}
+                title="Won again"
+              >
+                +
+              </button>
+              {w.wins > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeWin(w.name, 'one')}
+                  disabled={saving}
+                  className="flex h-5 w-5 items-center justify-center rounded-full text-muted hover:bg-[var(--card-strong)] hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                  aria-label={`Remove one win from ${w.name} in ${entry.game.name}`}
+                  title="Remove one win"
+                >
+                  −
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => removeWin(w.name, 'all')}
                 disabled={saving}
                 className="flex h-5 w-5 items-center justify-center rounded-full text-faint hover:bg-[var(--card-strong)] hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-                aria-label={`Remove ${name} from ${entry.game.name}`}
+                aria-label={`Remove ${w.name} from ${entry.game.name}`}
+                title="Remove winner"
               >
                 ✕
               </button>
@@ -366,7 +395,7 @@ function GameRow({
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault()
-                add()
+                add(value, { clearInput: true })
               }
             }}
             placeholder="Add a winner's name"
@@ -382,9 +411,8 @@ function GameRow({
                   onMouseDown={(e) => {
                     e.preventDefault()
                     if (blurRef.current) clearTimeout(blurRef.current)
-                    setValue(name)
                     setOpen(false)
-                    add(name)
+                    add(name, { clearInput: true })
                   }}
                 >
                   {name}
@@ -396,8 +424,8 @@ function GameRow({
 
         <button
           type="button"
-          onClick={() => add()}
-          disabled={saving || !value.trim() || alreadyAdded}
+          onClick={() => add(value, { clearInput: true })}
+          disabled={saving || !value.trim()}
           className="btn-primary btn-fit px-4 disabled:opacity-50"
         >
           {saving ? '…' : 'Add'}
