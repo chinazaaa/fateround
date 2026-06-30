@@ -39,17 +39,23 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
   // 1. Resolve room code dynamically if this is a game linked to a persistent room
   useEffect(() => {
     let active = true
+
+    const fallbackRoomCode = roomCode
+    setResolvedRoomCode(fallbackRoomCode)
+
     async function resolveRoom() {
       try {
-        const res = await fetch(`/api/games/${roomCode.toUpperCase()}/room`)
+        const res = await fetch(`/api/games/${encodeURIComponent(fallbackRoomCode.toUpperCase())}/room`)
+        if (!active) return
+
         if (res.ok) {
           const data = await res.json()
-          if (data.roomCode && active) {
+          if (data.roomCode) {
             setResolvedRoomCode(data.roomCode)
           }
         }
       } catch (err) {
-        // Fallback to roomCode as passed (standalone games or direct room lobbies)
+        if (active) setResolvedRoomCode(fallbackRoomCode)
       }
     }
     resolveRoom()
