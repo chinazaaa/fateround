@@ -11,6 +11,7 @@ import {
   isTwoTruthsGame,
   isTicTacToeGame,
   isChessGame,
+  isCheckersGame,
   isDescribeItGame,
   isScrabbleGame,
   isICallOnGame,
@@ -28,6 +29,7 @@ import { clearLudoSessionData } from '@/lib/ludo'
 import { clearSnakeAndLadderSessionData } from '@/lib/snake-and-ladder'
 import { clearTicTacToeSessionData, canTicTacToePlayAgain } from '@/lib/tic-tac-toe'
 import { clearChessSessionData, canChessPlayAgain } from '@/lib/chess'
+import { clearCheckersSessionData, canCheckersPlayAgain } from '@/lib/checkers'
 import { clearDescribeItSessionData, canDescribeItPlayAgain } from '@/lib/describe-it'
 import { clearScrabbleSessionData, canScrabblePlayAgain } from '@/lib/scrabble'
 import { clearNpatSessionData } from '@/lib/npat'
@@ -77,6 +79,7 @@ type ClearableSessionGameType = Extract<
   | 'ludo'
   | 'snake_and_ladder'
   | 'chess'
+  | 'checkers'
   | 'describe_it'
   | 'scrabble'
   | 'tic_tac_toe'
@@ -103,6 +106,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   ludo: clearLudoSessionData,
   snake_and_ladder: clearSnakeAndLadderSessionData,
   chess: clearChessSessionData,
+  checkers: clearCheckersSessionData,
   describe_it: clearDescribeItSessionData,
   scrabble: clearScrabbleSessionData,
   tic_tac_toe: clearTicTacToeSessionData,
@@ -137,6 +141,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     ? await canTicTacToePlayAgain(supabase, gameId, game.status)
     : false
   const chessCanReplay = isChessGame(gameType) ? await canChessPlayAgain(supabase, gameId, game.status) : false
+  const checkersCanReplay = isCheckersGame(gameType)
+    ? await canCheckersPlayAgain(supabase, gameId, game.status)
+    : false
   const describeItCanReplay = isDescribeItGame(gameType)
     ? await canDescribeItPlayAgain(supabase, gameId, game.status)
     : false
@@ -146,6 +153,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     game.status === 'finished' ||
     ticTacToeCanReplay ||
     chessCanReplay ||
+    checkersCanReplay ||
     describeItCanReplay ||
     scrabbleCanReplay ||
     (isCodewordsGame(gameType) && game.status === 'active') ||

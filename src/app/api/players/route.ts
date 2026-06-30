@@ -11,6 +11,7 @@ import { removeLudoPlayer } from '@/lib/ludo'
 import { removeSnakeAndLadderPlayer } from '@/lib/snake-and-ladder'
 import { removeYahtzeePlayer } from '@/lib/yahtzee'
 import { removeChessPlayer } from '@/lib/chess'
+import { removeCheckersPlayer } from '@/lib/checkers'
 import { removeTicTacToePlayer } from '@/lib/tic-tac-toe'
 import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
@@ -34,6 +35,7 @@ import {
   isSnakeAndLadderGame,
   isTicTacToeGame,
   isChessGame,
+  isCheckersGame,
   isScrabbleGame,
   isDescribeItGame,
   isTwoTruthsGame,
@@ -554,7 +556,12 @@ export async function POST(req: NextRequest) {
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
   }
 
-  if (isTicTacToeGame(rowGameType) || isChessGame(rowGameType) || isScrabbleGame(rowGameType)) {
+  if (
+    isTicTacToeGame(rowGameType) ||
+    isChessGame(rowGameType) ||
+    isCheckersGame(rowGameType) ||
+    isScrabbleGame(rowGameType)
+  ) {
     const joinCheck = canJoinGame(gameRow as Game)
     if (!joinCheck.ok) {
       return NextResponse.json({ error: joinCheck.error }, { status: 400 })
@@ -564,7 +571,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'playerName is required' }, { status: 400 })
     }
 
-    const limitKey = isChessGame(rowGameType) ? 'chess' : isScrabbleGame(rowGameType) ? 'scrabble' : 'tic_tac_toe'
+    const limitKey = isChessGame(rowGameType)
+      ? 'chess'
+      : isCheckersGame(rowGameType)
+        ? 'checkers'
+        : isScrabbleGame(rowGameType)
+          ? 'scrabble'
+          : 'tic_tac_toe'
     const maxPlayers = lobbyMaxPlayersFromGame(limitKey, gameRow, lobbyLimits)
     const { count: playerCount } = await supabase
       .from('players')
@@ -1469,6 +1482,12 @@ export async function DELETE(req: NextRequest) {
 
   if (isChessGame(gameType)) {
     const { error } = await removeChessPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isCheckersGame(gameType)) {
+    const { error } = await removeCheckersPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }

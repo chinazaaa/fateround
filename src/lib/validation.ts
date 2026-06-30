@@ -74,6 +74,7 @@ const gameTypeEnum = z.enum([
   'tic_tac_toe',
   'word_hunt',
   'chess',
+  'checkers',
   'describe_it',
   'scrabble',
   'snake_and_ladder',
@@ -869,6 +870,29 @@ export const chessResignSchema = z.object({
 })
 
 export type ChessMoveInput = z.infer<typeof chessMoveSchema>
+
+// Checkers square id: 'rc' (row 0-7, col 0-7); the engine further checks it's a dark square.
+const checkersSquare = z.string().regex(/^[0-7][0-7]$/, 'Invalid square')
+
+export const checkersMoveSchema = z.object({
+  gameId: gameCodeString(),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
+  from: checkersSquare,
+  to: checkersSquare,
+})
+
+export const checkersExpireSchema = z.object({
+  gameId: gameCodeString(),
+})
+
+export const checkersResignSchema = z.object({
+  gameId: gameCodeString(),
+  // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
+  resumeToken: z.string().min(4),
+})
+
+export type CheckersMoveInput = z.infer<typeof checkersMoveSchema>
 
 export const describeItTeamSchema = z.object({
   gameId: gameCodeString(),

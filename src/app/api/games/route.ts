@@ -37,6 +37,7 @@ import {
   isLudoGame,
   isTicTacToeGame,
   isChessGame,
+  isCheckersGame,
   isScrabbleGame,
   isDescribeItGame,
   isICallOnGame,
@@ -103,6 +104,7 @@ import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
+import { clampCheckersTimer } from '@/lib/checkers'
 import { clampScrabbleTimer, clampScrabbleGameDuration } from '@/lib/scrabble'
 import { parseScrabbleDictionaryId } from '@/lib/scrabble-dictionary-meta'
 import {
@@ -315,6 +317,7 @@ export async function POST(req: NextRequest) {
     isWordHuntGame(game_type) ||
     isTicTacToeGame(game_type) ||
     isChessGame(game_type) ||
+    isCheckersGame(game_type) ||
     isScrabbleGame(game_type) ||
     isDescribeItGame(game_type)
       ? 'joiners'
@@ -373,6 +376,7 @@ export async function POST(req: NextRequest) {
     isWordHuntGame(game_type) ||
     isTicTacToeGame(game_type) ||
     isChessGame(game_type) ||
+    isCheckersGame(game_type) ||
     isScrabbleGame(game_type)
       ? 1
       : isDescribeItGame(game_type)
@@ -497,7 +501,13 @@ export async function POST(req: NextRequest) {
                                       rawMaxPlayers,
                                       lobbyDefaultMaxPlayers('chess', lobbyLimits)
                                     )
-                                  : isScrabbleGame(game_type)
+                                  : isCheckersGame(game_type)
+                                    ? resolveMaxPlayers(
+                                        'checkers',
+                                        rawMaxPlayers,
+                                        lobbyDefaultMaxPlayers('checkers', lobbyLimits)
+                                      )
+                                    : isScrabbleGame(game_type)
                                     ? resolveMaxPlayers(
                                         'scrabble',
                                         rawMaxPlayers,
@@ -543,7 +553,9 @@ export async function POST(req: NextRequest) {
                 ? clampWordHuntTimer(timer_seconds)
                 : isChessGame(game_type)
                   ? clampChessTimer(timer_seconds)
-                  : isScrabbleGame(game_type)
+                  : isCheckersGame(game_type)
+                    ? clampCheckersTimer(timer_seconds)
+                    : isScrabbleGame(game_type)
                     ? clampScrabbleTimer(timer_seconds)
                     : isDescribeItGame(game_type)
                       ? clampDescribeItTurnSeconds(timer_seconds)

@@ -16,6 +16,7 @@ import { LudoPlayerView } from '@/components/ludo/LudoPlayerView'
 import { SnakeLadderPlayerView } from '@/components/snake-and-ladder/SnakeLadderPlayerView'
 import { TicTacToePlayerView } from '@/components/tic-tac-toe/TicTacToePlayerView'
 import { ChessPlayerView } from '@/components/chess/ChessPlayerView'
+import { CheckersPlayerView } from '@/components/checkers/CheckersPlayerView'
 import { ScrabblePlayerView } from '@/components/scrabble/ScrabblePlayerView'
 import { DescribeItPlayerView } from '@/components/describe-it/DescribeItPlayerView'
 import { SudokuPlayerView } from '@/components/sudoku/SudokuPlayerView'
@@ -45,6 +46,7 @@ export const PLAYER_VIEW_REGISTRY: Partial<Record<GameType, GamePlayerView>> = {
   snake_and_ladder: SnakeLadderPlayerView,
   tic_tac_toe: TicTacToePlayerView,
   chess: ChessPlayerView,
+  checkers: CheckersPlayerView,
   scrabble: ScrabblePlayerView,
   describe_it: DescribeItPlayerView,
   sudoku: SudokuPlayerView,

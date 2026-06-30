@@ -40,6 +40,7 @@ export type GameType =
   | 'scrabble'
   | 'snake_and_ladder'
   | 'crazy_eights'
+  | 'checkers'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -659,6 +660,42 @@ export interface ChessSession {
   in_check: boolean
   status: 'active' | 'finished'
   /** checkmate | stalemate | threefold | insufficient | fifty_move | timeout | resignation */
+  result_reason: string | null
+  winner_player_id: string | null
+  is_draw: boolean
+  status_message: string | null
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type CheckersColor = 'r' | 'b'
+
+export interface CheckersSession {
+  id: string
+  game_id: string
+  player_red_id: string
+  player_black_id: string
+  /**
+   * 64-char board, indexed by row*8 + col (row 0 = top, col 0 = left). Only dark
+   * squares are occupied. '.' empty, 'r'/'b' man, 'R'/'B' king. Red moves first.
+   */
+  board: string
+  current_turn: CheckersColor
+  /** Consecutive king-only, non-capture plies — drives the 40-move draw rule. */
+  move_count: number
+  /** Square id ('rc') a multi-jump must continue from; null when no chain is active. */
+  must_continue_from: string | null
+  /** Remaining clock for each player in milliseconds; null when the game is untimed. */
+  red_time_ms: number | null
+  black_time_ms: number | null
+  /** When the player on the move started their clock — used to compute elapsed time. */
+  turn_started_at: string | null
+  /** Squares of the most recent hop, for highlighting. */
+  last_move_from: string | null
+  last_move_to: string | null
+  status: 'active' | 'finished'
+  /** capture_all | no_moves | draw_moves | timeout | resignation */
   result_reason: string | null
   winner_player_id: string | null
   is_draw: boolean
