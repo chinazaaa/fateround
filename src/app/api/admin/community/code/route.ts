@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { assertAdminRequest } from '@/lib/admin-api'
+import { MANAGER_CODE_MIN_LENGTH } from '@/lib/manager-constants'
 import { managerCodeIsSet, setManagerCode } from '@/lib/manager-session'
 import { hasServiceRoleKey } from '@/lib/supabase-admin'
 
@@ -20,7 +21,9 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}))
   const code = typeof body.code === 'string' ? body.code.trim() : ''
-  if (code.length < 4) return NextResponse.json({ error: 'Code must be at least 4 characters' }, { status: 400 })
+  if (code.length < MANAGER_CODE_MIN_LENGTH) {
+    return NextResponse.json({ error: `Code must be at least ${MANAGER_CODE_MIN_LENGTH} characters` }, { status: 400 })
+  }
 
   try {
     await setManagerCode(code)

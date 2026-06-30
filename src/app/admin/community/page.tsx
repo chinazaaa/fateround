@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { MANAGER_CODE_MIN_LENGTH } from '@/lib/manager-constants'
 import type { CommunityGame } from '@/types/community'
 
 const ACCENT_PRESETS = ['#f43f5e', '#22c55e', '#fb923c', '#ec4899', '#8b5cf6', '#38bdf8', '#a78bfa', '#e879f9']
@@ -279,8 +280,8 @@ function ManagerCodePanel() {
   }, [])
 
   const save = async () => {
-    if (code.trim().length < 4) {
-      error('Code must be at least 4 characters')
+    if (code.trim().length < MANAGER_CODE_MIN_LENGTH) {
+      error(`Code must be at least ${MANAGER_CODE_MIN_LENGTH} characters`)
       return
     }
     setSaving(true)
@@ -313,6 +314,9 @@ function ManagerCodePanel() {
               ? 'A code is set. Setting a new one immediately replaces it — anyone using the old code will need the new one.'
               : 'No code set yet. Create one and share it with your community manager so she can enter scores at /input.'}
         </p>
+        <p className="text-xs text-faint">
+          Use at least {MANAGER_CODE_MIN_LENGTH} characters — a short code can be guessed.
+        </p>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
             value={code}
@@ -325,7 +329,7 @@ function ManagerCodePanel() {
           <button
             type="button"
             onClick={save}
-            disabled={saving || code.trim().length < 4}
+            disabled={saving || code.trim().length < MANAGER_CODE_MIN_LENGTH}
             className="btn-primary btn-fit px-5 py-2.5 disabled:opacity-60"
           >
             {saving ? 'Saving…' : configured ? 'Rotate code' : 'Set code'}

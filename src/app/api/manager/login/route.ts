@@ -7,6 +7,15 @@ import {
   verifyManagerCode,
 } from '@/lib/manager-session'
 
+// Fixed delay applied to every failed attempt. Combined with the long minimum
+// code length, this throttles brute-forcing the public login endpoint (a serial
+// attacker is capped to a couple of guesses/second).
+const FAILED_ATTEMPT_DELAY_MS = 600
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}))
@@ -17,6 +26,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!(await verifyManagerCode(code))) {
+      await delay(FAILED_ATTEMPT_DELAY_MS)
       return NextResponse.json({ error: 'Invalid access code' }, { status: 401 })
     }
 
