@@ -210,6 +210,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
         removingPlayerId={removingPlayerId}
         onRemovePlayer={removePlayer}
         highlightPlayerId={hostPlayerId}
+        alwaysShowReady={game?.status === 'waiting'}
       />
     ) : null
 
