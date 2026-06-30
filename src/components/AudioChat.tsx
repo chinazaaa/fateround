@@ -33,8 +33,16 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
   const [myTabId] = useState(() => Math.random().toString(36).substring(2))
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
 
+  // How many people are already in the voice chat (shown as a badge to nudge
+  // others to join). Only polled while this tab hasn't joined.
+  const [presenceCount, setPresenceCount] = useState(0)
+
   const serverUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL
   const joinAudioRef = useRef<() => Promise<void>>(null)
+  // Keep auth in a ref so the presence poll doesn't restart when the parent
+  // passes a fresh auth object on every render.
+  const authRef = useRef(auth)
+  authRef.current = auth
 
   // 1. Resolve room code dynamically if this is a game linked to a persistent room
   useEffect(() => {
@@ -63,6 +71,43 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
       active = false
     }
   }, [roomCode])
+
+  // 1b. Poll how many people are in the voice chat while we haven't joined, so
+  // we can badge the icon and prompt people to hop in. Once joined, the panel
+  // shows the live participant list instead.
+  useEffect(() => {
+    if (token || !resolvedRoomCode) {
+      setPresenceCount(0)
+      return
+    }
+    let active = true
+
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/audio-presence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            roomName: resolvedRoomCode.toUpperCase(),
+            identity: identity || playerName,
+            auth: authRef.current,
+          }),
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        if (active) setPresenceCount(typeof data.count === 'number' ? data.count : 0)
+      } catch {
+        // Best-effort hint; ignore failures.
+      }
+    }
+
+    poll()
+    const interval = window.setInterval(poll, 12000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [token, resolvedRoomCode, identity, playerName])
 
   // 2. Join voice chat handler
   const joinAudio = async () => {
@@ -200,35 +245,53 @@ export function AudioChat({ roomCode, playerName, identity, auth }: AudioChatPro
       {/* Floating Join/Leave Button — compact round icon so it stays out of the
        * way during play (matches the connected-state icon below). */}
       {!token ? (
-        isAnotherTabActive ? (
-          <button
-            onClick={joinAudio}
-            disabled={isConnecting}
-            className="flex items-center justify-center w-12 h-12 rounded-full bg-slate-800 hover:bg-slate-700 text-body border border-theme text-xl shadow-lg active:scale-95 transition-all duration-150 disabled:opacity-70"
-            title="Voice chat is running in another tab. Click to switch audio here."
-            aria-label="Switch voice chat to this tab"
-          >
-            {isConnecting ? (
-              <span className="inline-block w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-            ) : (
-              <span>🔊</span>
-            )}
-          </button>
-        ) : (
-          <button
-            onClick={joinAudio}
-            disabled={isConnecting}
-            className="flex items-center justify-center w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xl shadow-lg shadow-emerald-950/20 active:scale-95 transition-all duration-150 disabled:opacity-70"
-            title="Join voice chat"
-            aria-label="Join voice chat"
-          >
-            {isConnecting ? (
-              <span className="inline-block w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-            ) : (
-              <span>🎙️</span>
-            )}
-          </button>
-        )
+        <div className="relative">
+          {/* Soft halo + count badge when others are already in the call. */}
+          {presenceCount > 0 && (
+            <span
+              className="pointer-events-none absolute inset-0 rounded-full bg-emerald-500/40 animate-ping"
+              aria-hidden
+            />
+          )}
+          {isAnotherTabActive ? (
+            <button
+              onClick={joinAudio}
+              disabled={isConnecting}
+              className="relative flex items-center justify-center w-12 h-12 rounded-full bg-slate-800 hover:bg-slate-700 text-body border border-theme text-xl shadow-lg active:scale-95 transition-all duration-150 disabled:opacity-70"
+              title="Voice chat is running in another tab. Click to switch audio here."
+              aria-label="Switch voice chat to this tab"
+            >
+              {isConnecting ? (
+                <span className="inline-block w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+              ) : (
+                <span>🔊</span>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={joinAudio}
+              disabled={isConnecting}
+              className="relative flex items-center justify-center w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xl shadow-lg shadow-emerald-950/20 active:scale-95 transition-all duration-150 disabled:opacity-70"
+              title={presenceCount > 0 ? `Join voice chat — ${presenceCount} already in the call` : 'Join voice chat'}
+              aria-label={
+                presenceCount > 0
+                  ? `Join voice chat, ${presenceCount} ${presenceCount === 1 ? 'person' : 'people'} already in the call`
+                  : 'Join voice chat'
+              }
+            >
+              {isConnecting ? (
+                <span className="inline-block w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+              ) : (
+                <span>🎙️</span>
+              )}
+            </button>
+          )}
+          {presenceCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[11px] font-bold text-white shadow ring-2 ring-[var(--background)]">
+              {presenceCount}
+            </span>
+          )}
+        </div>
       ) : (
         <div className="flex gap-2">
           <button
