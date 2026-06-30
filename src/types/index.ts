@@ -684,6 +684,8 @@ export interface CheckersSession {
   current_turn: CheckersColor
   /** Consecutive king-only, non-capture plies — drives the 40-move draw rule. */
   move_count: number
+  /** Occurrences of each "<board>:<turn>" position; drives threefold-repetition draws. */
+  position_counts: Record<string, number>
   /** Square id ('rc') a multi-jump must continue from; null when no chain is active. */
   must_continue_from: string | null
   /** Remaining clock for each player in milliseconds; null when the game is untimed. */

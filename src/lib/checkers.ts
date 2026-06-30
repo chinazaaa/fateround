@@ -18,6 +18,9 @@ export const CHECKERS_STARTING_BOARD = '.b.b.b.bb.b.b.b..b.b.b.b................
 /** Draw after this many consecutive king-only, non-capture plies (40 per side). */
 export const CHECKERS_DRAW_PLY = 80
 
+/** Draw once the same position (board + side to move) has occurred this many times. */
+export const CHECKERS_DRAW_REPETITIONS = 3
+
 export type CheckersMoveRequest = { from: string; to: string }
 
 /** One legal hop: a simple step, or a jump (capture = square of the jumped piece). */
@@ -281,6 +284,8 @@ export function checkersResultDetail(reason: string | null | undefined): string 
       return 'by resignation'
     case 'draw_moves':
       return 'draw — 40-move rule'
+    case 'threefold':
+      return 'draw by repetition'
     default:
       return ''
   }
@@ -326,9 +331,10 @@ export async function initializeCheckersGame(
   let blackId: string
 
   if (existing) {
-    // Rematch: swap colors so whoever played Black opens as Red this time.
-    redId = existing.player_black_id
+    // Rematch: swap colors so whoever played Red opens as Black — and so moves
+    // first — this time (Black always opens, like Dark in standard draughts).
     blackId = existing.player_red_id
+    redId = existing.player_black_id
     if (!playerIds.includes(redId) || !playerIds.includes(blackId)) {
       ;[redId, blackId] = shuffle(playerIds)
     }
@@ -349,8 +355,10 @@ export async function initializeCheckersGame(
     player_red_id: redId,
     player_black_id: blackId,
     board: CHECKERS_STARTING_BOARD,
-    current_turn: 'r' as const,
+    // Black (Dark) always opens, as in standard draughts.
+    current_turn: 'b' as const,
     move_count: 0,
+    position_counts: {},
     must_continue_from: null,
     red_time_ms: initialMs,
     black_time_ms: initialMs,
@@ -361,7 +369,7 @@ export async function initializeCheckersGame(
     result_reason: null,
     winner_player_id: null,
     is_draw: false,
-    status_message: turnMessage(names.get(redId) ?? 'Red', 'r'),
+    status_message: turnMessage(names.get(blackId) ?? 'Black', 'b'),
     turn_deadline_at: initialMs != null ? new Date(now + initialMs).toISOString() : null,
     updated_at: new Date().toISOString(),
   }
@@ -436,6 +444,17 @@ export async function processCheckersMove(
   const kingMove = isKing(mover) && !captured && !crowned
   const moveCount = kingMove ? session.move_count + 1 : 0
 
+  // Threefold repetition: only a reversible move (a king sliding, no capture, no
+  // crowning) can recur, so the tally resets on any irreversible move. We count
+  // the resulting position keyed by board + side to move.
+  let positionCounts: Record<string, number> = {}
+  let repetition = 0
+  if (kingMove && !continues) {
+    const key = `${nextBoard}:${nextTurn}`
+    repetition = (session.position_counts?.[key] ?? 0) + 1
+    positionCounts = { ...session.position_counts, [key]: repetition }
+  }
+
   let finished = false
   let draw = false
   let reason: string | null = null
@@ -450,6 +469,10 @@ export async function processCheckersMove(
       finished = true
       winnerColor = color
       reason = 'no_moves'
+    } else if (repetition >= CHECKERS_DRAW_REPETITIONS) {
+      finished = true
+      draw = true
+      reason = 'threefold'
     } else if (moveCount >= CHECKERS_DRAW_PLY) {
       finished = true
       draw = true
@@ -490,7 +513,9 @@ export async function processCheckersMove(
       : winnerColor
         ? `${moverName} wins!`
         : draw
-          ? "It's a draw — 40-move rule!"
+          ? reason === 'threefold'
+            ? "Threefold repetition — it's a draw!"
+            : "It's a draw — 40-move rule!"
           : continues
             ? `${moverName} must keep jumping!`
             : turnMessage(nextName, nextTurn)
@@ -506,6 +531,7 @@ export async function processCheckersMove(
       board: nextBoard,
       current_turn: nextTurn,
       move_count: moveCount,
+      position_counts: positionCounts,
       must_continue_from: continues ? step.to : null,
       red_time_ms: redMs,
       black_time_ms: blackMs,

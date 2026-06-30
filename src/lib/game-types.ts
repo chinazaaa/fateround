@@ -1574,7 +1574,7 @@ export function gameHowItWorks(
     case 'chess':
       return 'Two players join with their name. The host can play too. One player is White, the other Black — White moves first. Move pieces by the standard rules; checkmate your opponent to win. Optional chess clock — each player gets their own time bank that only ticks on their turn, and the first to run out loses.'
     case 'checkers':
-      return 'Two players join with their name. The host can play too. One player is Red (and moves first), the other Black. Move diagonally forward one square; jump an adjacent opponent piece to capture it — and if a jump is available you must take it, chaining multiple jumps in one turn. Reach the far row to crown a king that moves both ways. Capture all your opponent’s pieces, or leave them with no move, to win. Optional clock — each player has their own time bank that only ticks on their turn.'
+      return 'Two players join with their name. The host can play too. One player is Black (and moves first), the other Red. Move diagonally forward one square; jump an adjacent opponent piece to capture it — and if a jump is available you must take it, chaining multiple jumps in one turn. Reach the far row to crown a king that moves both ways. Capture all your opponent’s pieces, or leave them with no move, to win. Optional clock — each player has their own time bank that only ticks on their turn.'
     case 'describe_it':
       return 'Players join with their name and split into teams (you pick how many). Each round, one team is on the clock — a describer sees a secret word and types clues without saying it, while teammates race to type the word. Every correct guess scores a point. Most words across all rounds wins.'
     case 'i_call_on':

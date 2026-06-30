@@ -1432,7 +1432,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     keywords: ['checkers online', 'play checkers with friends', 'online draughts 2 player', 'checkers with a friend'],
     heroSubtitle: 'Classic checkers, head-to-head — jump your friend’s pieces and crown your kings.',
     bodyParagraph:
-      'Checkers on Fate Round is a clean two-player game of standard American (8×8) draughts. One player joins a room as Red, the other as Black, and Red moves first. Men slide one square diagonally forward; jump an adjacent opponent to capture it — and if a jump is on offer you must take it, chaining multiple jumps in a single turn. Reach the far row to crown a king that moves and captures both directions. Capture all of your opponent’s pieces, or leave them with no legal move, to win. Add an optional clock — each player gets their own time bank (3, 5, or 10 minutes) that only ticks on their turn, and the first to flag loses.',
+      'Checkers on Fate Round is a clean two-player game of standard American (8×8) draughts. One player joins a room as Black, the other as Red, and Black moves first. Men slide one square diagonally forward; jump an adjacent opponent to capture it — and if a jump is on offer you must take it, chaining multiple jumps in a single turn. Reach the far row to crown a king that moves and captures both directions. Capture all of your opponent’s pieces, or leave them with no legal move, to win. Add an optional clock — each player gets their own time bank (3, 5, or 10 minutes) that only ticks on their turn, and the first to flag loses.',
     highlights: ['2 players', 'Forced jumps', 'Real-time board'],
     features: [
       {
@@ -1451,8 +1451,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     steps: [
       { title: 'Join a room', description: 'Two players join with their name — the host can join as a player too.' },
       {
-        title: 'Red moves first',
-        description: 'One player is Red, the other Black. Tap a piece, then its diagonal destination.',
+        title: 'Black moves first',
+        description: 'One player is Black, the other Red. Tap a piece, then its diagonal destination.',
       },
       {
         title: 'Capture to win',

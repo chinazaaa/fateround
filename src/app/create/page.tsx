@@ -1975,8 +1975,9 @@ function CreateGameInner() {
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="checkers" />
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
-                  Classic checkers — Red moves first, jumps are forced, and reaching the far row crowns a king. Capture
-                  all your opponent’s pieces to win. Each player gets their own clock that only ticks on their turn.
+                  Classic checkers — Black moves first, jumps are forced, and reaching the far row crowns a king.
+                  Capture all your opponent’s pieces to win. Each player gets their own clock that only ticks on their
+                  turn.
                 </p>
               </SettingsGroup>
             ) : isScrabble ? (

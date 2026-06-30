@@ -891,14 +891,14 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'Objective',
       points: [
         'Capture all of your opponent’s pieces — or leave them with no legal move — to win.',
-        'A game where neither side can make progress can end in a draw (the 40-move rule).',
+        'A game where neither side can make progress can end in a draw (threefold repetition or the 40-move rule).',
       ],
     },
     {
       title: 'Setup',
       points: [
         'Exactly 2 players join a room. The host can play too.',
-        'One player is randomly assigned Red, the other Black. Red always moves first.',
+        'One player is randomly assigned Black, the other Red. Black always moves first.',
         'Optional clock — each player gets their own time bank (e.g. 10 minutes) that only counts down on their turn. Run out and you lose on time.',
       ],
     },
@@ -915,8 +915,8 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'Winning',
       points: [
         'Capture every enemy piece, or block their last legal move, to win. You can also win if your opponent resigns or runs out of time.',
-        '40 moves with no capture or man advance ends the game in a draw.',
-        'Play again starts a fresh game — colors swap so the previous Black player opens as Red.',
+        'The game is drawn if the same position repeats three times, or after 40 moves with no capture or man advance.',
+        'Play again starts a fresh game — colors swap so the previous Red player opens as Black.',
       ],
     },
   ],
