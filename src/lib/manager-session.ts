@@ -6,6 +6,7 @@
 // plaintext is never stored. Once verified, the manager gets a signed cookie.
 
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { MANAGER_CODE_MIN_LENGTH } from '@/lib/manager-constants'
 
 const COOKIE_NAME = 'manager_session'
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
@@ -152,7 +153,9 @@ export async function verifyManagerCode(code: string): Promise<boolean> {
 // Set/rotate the manager access code (admin only). Stores only the hash.
 export async function setManagerCode(code: string): Promise<void> {
   const trimmed = code.trim()
-  if (trimmed.length < 4) throw new Error('Code must be at least 4 characters')
+  if (trimmed.length < MANAGER_CODE_MIN_LENGTH) {
+    throw new Error(`Code must be at least ${MANAGER_CODE_MIN_LENGTH} characters`)
+  }
 
   const supabase = getSupabaseAdmin()
   const hash = await hashManagerCode(trimmed)
