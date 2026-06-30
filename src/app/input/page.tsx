@@ -319,9 +319,7 @@ function GameRow({
         <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: accent }} />
         <span className="font-semibold">{entry.game.name}</span>
         <span className="ml-auto text-xs text-faint">
-          {winners.length === 0
-            ? 'no winners yet'
-            : `${winners.length} winner${winners.length === 1 ? '' : 's'}`}
+          {winners.length === 0 ? 'no winners yet' : `${winners.length} winner${winners.length === 1 ? '' : 's'}`}
         </span>
       </div>
 
