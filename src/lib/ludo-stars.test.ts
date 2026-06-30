@@ -29,12 +29,7 @@ describe('ludo safe-star squares', () => {
 
   it('safe track positions are the 4 starts + 4 mid-arm stars (8 total)', () => {
     const starts = [0, 13, 26, 39]
-    const stars = [
-      trackIndexAt(2, 6),
-      trackIndexAt(6, 12),
-      trackIndexAt(12, 8),
-      trackIndexAt(8, 2),
-    ]
+    const stars = [trackIndexAt(2, 6), trackIndexAt(6, 12), trackIndexAt(12, 8), trackIndexAt(8, 2)]
     expect(stars).toEqual([8, 21, 34, 47])
     const expected = new Set([...starts, ...(stars as number[])])
     expect(SAFE_TRACK_POSITIONS).toEqual(expected)
