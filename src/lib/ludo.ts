@@ -38,21 +38,29 @@ export const START_POS: Record<LudoColor, number> = {
   yellow: 39,
 }
 
-/** ★ start + safe entry cells on the 52-cell track — pieces cannot be captured here. */
+/**
+ * ★ safe cells on the 52-cell track — pieces cannot be captured here. The 8
+ * standard safe squares: each colour's start, plus the mid-arm star 8 squares
+ * clockwise from each start (the last safe square before a colour's home gate).
+ */
 const SAFE_TRACK_POSITIONS: ReadonlySet<number> = new Set([
   START_POS.red,
   START_POS.green,
   START_POS.yellow,
   START_POS.blue,
-  50, // green safe entry [7,0]
-  11, // red safe entry [0,7]
-  24, // blue safe entry [7,14]
-  37, // yellow safe entry [14,7]
+  8, // safe star [2,6] — guards red's home
+  21, // safe star [6,12] — guards blue's home
+  34, // safe star [12,8] — guards yellow's home
+  47, // safe star [8,2] — guards green's home
 ])
 
-/** Colors used for each player count (opposite corners for 2-player). */
+/**
+ * Colors used for each player count. With 2 players they take diagonally
+ * opposite corners — red (top-right) and yellow (bottom-left) — rather than
+ * sitting side by side, matching how 2-player Ludo is normally set up.
+ */
 export function colorsForPlayerCount(count: number): LudoColor[] {
-  if (count <= 2) return ['red', 'green']
+  if (count <= 2) return ['red', 'yellow']
   if (count === 3) return ['red', 'green', 'yellow']
   return ['red', 'green', 'yellow', 'blue']
 }

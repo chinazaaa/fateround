@@ -886,6 +886,41 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  checkers: [
+    {
+      title: 'Objective',
+      points: [
+        'Capture all of your opponent’s pieces — or leave them with no legal move — to win.',
+        'A game where neither side can make progress can end in a draw (the 40-move rule).',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        'Exactly 2 players join a room. The host can play too.',
+        'One player is randomly assigned Red, the other Black. Red always moves first.',
+        'Optional clock — each player gets their own time bank (e.g. 10 minutes) that only counts down on their turn. Run out and you lose on time.',
+      ],
+    },
+    {
+      title: 'Taking a turn',
+      points: [
+        'On your turn, tap one of your pieces to see its legal moves, then tap a highlighted square to move there.',
+        'Men move one square diagonally forward; jump an adjacent opponent piece into the empty square beyond to capture it.',
+        'Captures are forced — if any jump is available you must take it, and you must keep jumping with the same piece while more captures are on offer.',
+        'A man that reaches the far row is crowned a king, which can move and capture both forward and backward.',
+      ],
+    },
+    {
+      title: 'Winning',
+      points: [
+        'Capture every enemy piece, or block their last legal move, to win. You can also win if your opponent resigns or runs out of time.',
+        '40 moves with no capture or man advance ends the game in a draw.',
+        'Play again starts a fresh game — colors swap so the previous Black player opens as Red.',
+      ],
+    },
+  ],
+
   describe_it: [
     {
       title: 'Objective',

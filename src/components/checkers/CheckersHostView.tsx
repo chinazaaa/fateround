@@ -1,87 +1,92 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
-import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
-import { gameTypeConfig } from '@/lib/game-types'
-import {
-  currentPlayerId,
-  getLudoHostMode,
-  LUDO_MIN_PLAYERS,
-  parseLudoDice,
-  setLudoHostMode,
-  type LudoHostMode,
-} from '@/lib/ludo'
+import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
+import { ExitIcon } from '@/components/host/host-icons'
+import { currentTurnPlayerId, CHECKERS_MIN_PLAYERS, isCheckersResultsPhase } from '@/lib/checkers'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
-import { appOrigin } from '@/lib/site'
+import { GAME_SELECT, PLAYER_SELECT, CHECKERS_SESSION_SELECT } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
-import type { Game, LudoDiceRoll, LudoPlayerState, LudoSession, Player } from '@/types'
+import type { Game, Player, CheckersSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
-import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
-import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
-import { ExitIcon } from '@/components/host/host-icons'
-import { useLudoTurnTimer } from '@/hooks/useLudoTurnTimer'
-import { useLudoNotifications, playLudoActionSound, playLudoRollSound } from '@/hooks/useLudoNotifications'
-import { LudoGamePanel } from '@/components/ludo/LudoBoard'
-import { LudoFinalResultsShareBlock } from '@/components/ludo/LudoFinalResultsShareBlock'
-import { LudoPrimaryButton } from '@/components/ludo/LudoChrome'
-
-const ROLL_MIN_MS = 700
+import { useCheckersClockExpiry } from '@/hooks/useCheckersClocks'
+import { CheckersGamePanel } from '@/components/checkers/CheckersBoard'
+import { CheckersFinalResultsShareBlock } from '@/components/checkers/CheckersFinalResultsShareBlock'
+import { CheckersPrimaryButton } from '@/components/checkers/CheckersChrome'
 
 type HostTab = 'play' | 'manage'
+type CheckersHostMode = 'spectator' | 'player'
 
-export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
+const HOST_MODE_KEY = 'checkers_host_mode'
+
+function getHostMode(gameCode: string): CheckersHostMode {
+  if (typeof window === 'undefined') return 'spectator'
+  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as CheckersHostMode) ?? 'spectator'
+}
+
+function setHostMode(gameCode: string, mode: CheckersHostMode): void {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(`${HOST_MODE_KEY}_${gameCode}`, mode)
+}
+
+export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
+  const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
-  const [session, setSession] = useState<LudoSession | null>(null)
-  const [states, setStates] = useState<LudoPlayerState[]>([])
+  const [session, setSession] = useState<CheckersSession | null>(null)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostModeState] = useState<LudoHostMode>('spectator')
+  const [hostMode, setHostModeState] = useState<CheckersHostMode>('spectator')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
   const [hostActing, setHostActing] = useState(false)
-  const [rolling, setRolling] = useState(false)
-  const [displayDice, setDisplayDice] = useState<LudoDiceRoll | null>(null)
-  const rollStartedRef = useRef(0)
   const [tab, setTab] = useState<HostTab>('manage')
+  const [loading, setLoading] = useState(true)
 
   useApplyGameTheme(game?.theme)
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
 
   const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes, sessionRes, statesRes] = await Promise.all([
+    const [gameRes, plrsRes] = await Promise.all([
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-      supabase.from('ludo_sessions').select(LUDO_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      supabase.from('ludo_player_state').select(LUDO_PLAYER_STATE_SELECT).eq('game_id', gameCode).order('player_order'),
     ])
-    if (!supabasePollOk(gameRes, plrsRes, sessionRes, statesRes)) return false
+    if (!supabasePollOk(gameRes, plrsRes)) return false
+
     setGame(gameRes.data)
     setPlayers(plrsRes.data ?? [])
-    setSession(sessionRes.data as LudoSession | null)
-    setStates((statesRes.data as LudoPlayerState[]) ?? [])
-    return true
+    setLoading(false)
+
+    const sessionRes = await supabase
+      .from('checkers_sessions')
+      .select(CHECKERS_SESSION_SELECT)
+      .eq('game_id', gameCode)
+      .maybeSingle()
+    if (supabasePollOk(sessionRes)) {
+      setSession(sessionRes.data as CheckersSession | null)
+    }
+    return supabasePollOk(sessionRes)
   }, [gameCode])
 
   useEffect(() => {
     load()
-    setHostModeState(getLudoHostMode(gameCode))
+    setHostModeState(getHostMode(gameCode))
     const stored = getPlayerSession(gameCode)
     if (stored) {
       setHostPlayerId(stored.playerId)
@@ -90,14 +95,14 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     }
   }, [gameCode, load])
 
-  // Land on the primary (Play/Watch) tab when the game starts, and on Manage when it ends.
+  // Land on the primary (Play/Watch) tab when the game starts, and on Manage at results.
   useEffect(() => {
-    if (game?.status === 'active') setTab('play')
-    else if (game?.status === 'finished') setTab('manage')
-  }, [game?.status])
+    if (isCheckersResultsPhase(game?.status, session)) setTab('manage')
+    else if (game?.status === 'active') setTab('play')
+  }, [game?.status, session])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'ludo_sessions', 'ludo_player_state'], load)
+  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'checkers_sessions'], load)
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
@@ -115,9 +120,11 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
-  const changeHostMode = (mode: LudoHostMode) => {
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+
+  const changeHostMode = (mode: CheckersHostMode) => {
     setHostModeState(mode)
-    setLudoHostMode(gameCode, mode)
+    setHostMode(gameCode, mode)
   }
 
   const hostJoinGame = async () => {
@@ -143,39 +150,56 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     }
   }
 
-  const postHostAction = async (path: string, body: Record<string, unknown> = {}) => {
+  const movePiece = async (from: string, to: string) => {
     if (!hostPlayerId) return
     if (!hostResumeToken) {
       toastError('Your player session expired — rejoin to continue')
       return
     }
     setHostActing(true)
-    if (path.includes('/roll')) {
-      rollStartedRef.current = Date.now()
-      setRolling(true)
-      setDisplayDice(null)
-      playLudoRollSound()
-    }
     try {
-      const res = await fetch(path, {
+      const res = await fetch('/api/checkers/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, ...body }),
+        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, from, to }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Action failed')
-      if (data.dice) setDisplayDice(parseLudoDice(data.dice))
-      if (path.includes('/roll') || path.includes('/move')) playLudoActionSound()
+      if (!res.ok) throw new Error(data.error ?? 'Move failed')
       await load()
     } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Action failed')
+      toastError(err instanceof Error ? err.message : 'Move failed')
     } finally {
       setHostActing(false)
-      if (path.includes('/roll')) {
-        const wait = Math.max(0, ROLL_MIN_MS - (Date.now() - rollStartedRef.current))
-        if (wait > 0) await new Promise((r) => setTimeout(r, wait))
-      }
-      setRolling(false)
+    }
+  }
+
+  const resign = async () => {
+    if (!hostPlayerId) return
+    if (!hostResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
+    const ok = await confirm({
+      title: 'Resign this game?',
+      message: 'Your opponent will be awarded the win.',
+      confirmLabel: 'Resign',
+      destructive: true,
+    })
+    if (!ok) return
+    setHostActing(true)
+    try {
+      const res = await fetch('/api/checkers/resign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to resign')
+      await load()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to resign')
+    } finally {
+      setHostActing(false)
     }
   }
 
@@ -209,6 +233,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to reset')
+      if (data.game) setGame(data.game)
       success('Ready for a new game!')
       await load()
     } catch (err) {
@@ -218,31 +243,17 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     }
   }
 
-  const cfg = gameTypeConfig('ludo')
-  const joinUrl = `${appOrigin()}/game/${gameCode}`
-  const canStart = players.filter((p) => p.spectator !== true).length >= LUDO_MIN_PLAYERS
-  const turnPlayerId = session ? currentPlayerId(session) : null
+  const readyPlayers = players.filter((p) => p.spectator !== true)
+  const canStart = readyPlayers.length >= CHECKERS_MIN_PLAYERS
+  const turnPlayerId = session ? currentTurnPlayerId(session) : null
   const winner = players.find((p) => p.id === session?.winner_player_id)
   const hostPlays = hostMode === 'player' && !!hostPlayerId
+  const gameFinished = isCheckersResultsPhase(game?.status, session)
   const isHostTurn = turnPlayerId === hostPlayerId
 
-  const { secondsLeft, hasTimer, urgent } = useLudoTurnTimer(
-    gameCode,
-    session,
-    game?.status === 'active' && (tab === 'play' ? isHostTurn : true)
-  )
+  useCheckersClockExpiry(gameCode, session, game?.status === 'active')
 
-  useLudoNotifications({
-    game,
-    session,
-    myPlayerId: hostPlayerId,
-    players,
-    enabled: hostPlays && game?.status === 'active',
-  })
-
-  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
-
-  if (!game) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-muted">Loading…</p>
@@ -250,42 +261,43 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     )
   }
 
-  const showTabs = game.status !== 'finished'
-  const gameStarted = game.status === 'active'
+  if (!game) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <p className="text-muted text-center">Game not found.</p>
+      </div>
+    )
+  }
+
+  const showTabs = !gameFinished
+  const gameStarted = game.status === 'active' && !gameFinished
   const primaryKind: 'play' | 'watch' = hostPlays ? 'play' : 'watch'
 
-  // Primary tab: interactive board when the host is playing, read-only board otherwise.
-  // LudoGamePanel self-caps its width (it hugs the board), so it stays focused in
-  // the wide host shell without needing an extra wrapper here.
   const interactivePlay = session && hostPlayerId && (
-    <LudoGamePanel
-      session={session}
-      states={states}
-      players={players}
-      myPlayerId={hostPlayerId}
-      isMyTurn={isHostTurn}
-      secondsLeft={secondsLeft}
-      hasTimer={hasTimer}
-      urgent={urgent}
-      onRoll={() => void postHostAction('/api/ludo/roll')}
-      onMovePiece={(pieceId, diceIndex) => void postHostAction('/api/ludo/move', { pieceId, diceIndex })}
-      acting={hostActing}
-      rolling={rolling}
-      displayDice={displayDice}
-    />
+    <div className="max-w-lg mx-auto w-full">
+      <CheckersGamePanel
+        session={session}
+        players={players}
+        myPlayerId={hostPlayerId}
+        isMyTurn={isHostTurn}
+        timeControlSeconds={game?.timer_seconds ?? 0}
+        onMove={movePiece}
+        onResign={resign}
+        acting={hostActing}
+      />
+    </div>
   )
 
   const watchBoard = session ? (
-    <LudoGamePanel
-      session={session}
-      states={states}
-      players={players}
-      myPlayerId={hostPlayerId}
-      isMyTurn={false}
-      secondsLeft={secondsLeft}
-      hasTimer={hasTimer}
-      urgent={urgent}
-    />
+    <div className="max-w-lg mx-auto w-full">
+      <CheckersGamePanel
+        session={session}
+        players={players}
+        myPlayerId={hostPlayerId}
+        isMyTurn={false}
+        timeControlSeconds={game?.timer_seconds ?? 0}
+      />
+    </div>
   ) : (
     <p className="text-muted text-sm text-center">Waiting for the round to begin…</p>
   )
@@ -297,7 +309,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       highlightPlayerId={hostPlayerId}
       removingPlayerId={removingPlayerId}
       onRemovePlayer={removePlayer}
-      gameType="ludo"
+      gameType="checkers"
       top={
         game.status === 'waiting' ? (
           <HostModeSelector
@@ -313,40 +325,25 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           />
         ) : undefined
       }
-      settings={
-        <>
-          {game.status === 'waiting' && (
-            <HostBoardGameLobbyPanel
-              gameCode={gameCode}
-              hostToken={hostToken}
-              game={game}
-              boardGameType="ludo"
-              playerCount={players.length}
-              onGameUpdate={setGame}
-            />
-          )}
-          {game.status === 'active' && (
-            <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-          )}
-        </>
-      }
       footer={
         game.status === 'waiting' ? (
           <HostLobbyWaitingFooter
             gameCode={gameCode}
             hostToken={hostToken}
-            onStart={() => void startGame()}
+            onStart={startGame}
             onEnded={load}
             canStart={canStart}
             starting={starting}
             startDisabledHint={
               canStart
                 ? null
-                : `Need at least ${LUDO_MIN_PLAYERS} players to start (${players.length}/${LUDO_MIN_PLAYERS})`
+                : readyPlayers.length < players.length
+                  ? `Waiting for players to tap ready (${readyPlayers.length}/${CHECKERS_MIN_PLAYERS})`
+                  : `Need exactly ${CHECKERS_MIN_PLAYERS} players to start (${players.length}/${CHECKERS_MIN_PLAYERS})`
             }
             className="space-y-3"
           />
-        ) : game.status === 'active' ? (
+        ) : game.status === 'active' && !gameFinished ? (
           <HostEndGameButton
             gameCode={gameCode}
             hostToken={hostToken}
@@ -365,26 +362,26 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   return (
     <HostGameLayout
       gameCode={gameCode}
-      status={game.status}
+      status={gameFinished ? 'finished' : game.status}
       tab={tab}
       onTabChange={setTab}
       primaryKind={primaryKind}
       showTabs={showTabs}
       gameStarted={gameStarted}
-      header={<HostGameHeader game={game} />}
+      header={gameFinished ? undefined : <HostGameHeader game={game} />}
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
       finished={
-        <LudoFinalResultsShareBlock
+        <CheckersFinalResultsShareBlock
           game={game}
           players={players}
-          states={states}
           session={session}
           winnerName={winner?.name}
+          highlightPlayerId={hostPlayerId}
           playAgainButton={
-            <LudoPrimaryButton onClick={playAgain} loading={playingAgain}>
+            <CheckersPrimaryButton onClick={playAgain} loading={playingAgain}>
               Play again
-            </LudoPrimaryButton>
+            </CheckersPrimaryButton>
           }
         />
       }
