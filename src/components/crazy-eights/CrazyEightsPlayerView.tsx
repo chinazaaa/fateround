@@ -9,7 +9,13 @@ import {
   CrazyEightsSecondaryButton,
   CrazyEightsShell,
 } from '@/components/crazy-eights/CrazyEightsChrome'
-import { CrazyEightsChoosePanel, CrazyEightsHand, CrazyEightsTable } from '@/components/crazy-eights/CrazyEightsBoard'
+import {
+  CrazyEightsChoosePanel,
+  CrazyEightsHand,
+  CrazyEightsStandings,
+  CrazyEightsTable,
+} from '@/components/crazy-eights/CrazyEightsBoard'
+import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
 import { CrazyEightsGameTimerBar } from '@/components/crazy-eights/CrazyEightsGameTimerBar'
 import { CrazyEightsFinalResultsShareBlock } from '@/components/crazy-eights/CrazyEightsFinalResultsShareBlock'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -389,64 +395,81 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
 
       <CrazyEightsGameTimerBar gameCode={gameCode} game={game} />
 
-      <CrazyEightsTable
-        session={session}
-        players={players}
-        myPlayerId={myPlayerId}
-        handCounts={handCounts}
-        {...tableTimerProps}
-      />
-
-      {isMyTurn && session.phase === 'choose_suit' && (
-        <CrazyEightsChoosePanel
-          acting={acting}
-          onChooseSuit={(suit: CrazyEightsCalledSuit) => void postAction('/api/crazy-eights/choose', { suit })}
+      {/* Play area on the left; the roster sits on the right on desktop (sm+) and
+          stacks below the hand on mobile — matching the trivia leaderboard layout. */}
+      <LiveLeaderboardLayout
+        sidebar={
+          <CrazyEightsCard className="p-4">
+            <CrazyEightsStandings
+              session={session}
+              players={players}
+              myPlayerId={myPlayerId}
+              handCounts={handCounts}
+              gridClassName="grid-cols-2 sm:grid-cols-1"
+            />
+          </CrazyEightsCard>
+        }
+      >
+        <CrazyEightsTable
+          session={session}
+          players={players}
+          myPlayerId={myPlayerId}
+          handCounts={handCounts}
+          showStandings={false}
+          {...tableTimerProps}
         />
-      )}
 
-      {session.phase === 'playing' && (
-        <>
-          {isMyTurn && (
-            <p className="text-center text-xs text-muted px-2">
-              {drawDepleted && myCanPlay
-                ? 'Draw pile empty — play a highlighted card.'
-                : drawDepleted && !myCanPlay
-                  ? 'Draw pile empty — pass your turn if you cannot play.'
-                  : penalties.pickTwo > 0
-                    ? 'Pick 2 active — play a 2 or draw the penalty.'
-                    : penalties.jokerPenalty > 0
-                      ? 'Joker — draw the penalty, no defending.'
-                      : suitCallActive
-                        ? 'Match the called suit, play an 8 / Joker to name a new one, or draw from the pile.'
-                        : 'Tap a highlighted card to play, or draw from the pile.'}
-            </p>
-          )}
-          <CrazyEightsHand
-            cards={myHand}
-            session={session}
+        {isMyTurn && session.phase === 'choose_suit' && (
+          <CrazyEightsChoosePanel
             acting={acting}
-            rules={crazyEightsRules}
-            onPlay={(cardId) => void postAction('/api/crazy-eights/play', { cardId })}
+            onChooseSuit={(suit: CrazyEightsCalledSuit) => void postAction('/api/crazy-eights/choose', { suit })}
           />
-          {isMyTurn && !(drawDepleted && myCanPlay) && (
-            <CrazyEightsPrimaryButton onClick={() => void postAction('/api/crazy-eights/draw', {})} loading={acting}>
-              {drawDepleted
-                ? 'Pass turn'
-                : penalties.pickTwo > 0
-                  ? `Draw ${penalties.pickTwo} (Pick 2)`
-                  : penalties.jokerPenalty > 0
-                    ? `Draw ${penalties.jokerPenalty} (Joker)`
-                    : 'Draw 1 card'}
-            </CrazyEightsPrimaryButton>
-          )}
-        </>
-      )}
+        )}
 
-      {!isMyTurn && session.phase === 'playing' && (
-        <CrazyEightsCard className="p-3 text-center text-sm text-muted">
-          Waiting for {players.find((p) => p.id === turnPlayerId)?.name ?? 'next player'}…
-        </CrazyEightsCard>
-      )}
+        {session.phase === 'playing' && (
+          <>
+            {isMyTurn && (
+              <p className="text-center text-xs text-muted px-2">
+                {drawDepleted && myCanPlay
+                  ? 'Draw pile empty — play a highlighted card.'
+                  : drawDepleted && !myCanPlay
+                    ? 'Draw pile empty — pass your turn if you cannot play.'
+                    : penalties.pickTwo > 0
+                      ? 'Pick 2 active — play a 2 or draw the penalty.'
+                      : penalties.jokerPenalty > 0
+                        ? 'Joker — draw the penalty, no defending.'
+                        : suitCallActive
+                          ? 'Match the called suit, play an 8 / Joker to name a new one, or draw from the pile.'
+                          : 'Tap a highlighted card to play, or draw from the pile.'}
+              </p>
+            )}
+            <CrazyEightsHand
+              cards={myHand}
+              session={session}
+              acting={acting}
+              rules={crazyEightsRules}
+              onPlay={(cardId) => void postAction('/api/crazy-eights/play', { cardId })}
+            />
+            {isMyTurn && !(drawDepleted && myCanPlay) && (
+              <CrazyEightsPrimaryButton onClick={() => void postAction('/api/crazy-eights/draw', {})} loading={acting}>
+                {drawDepleted
+                  ? 'Pass turn'
+                  : penalties.pickTwo > 0
+                    ? `Draw ${penalties.pickTwo} (Pick 2)`
+                    : penalties.jokerPenalty > 0
+                      ? `Draw ${penalties.jokerPenalty} (Joker)`
+                      : 'Draw 1 card'}
+              </CrazyEightsPrimaryButton>
+            )}
+          </>
+        )}
+
+        {!isMyTurn && session.phase === 'playing' && (
+          <CrazyEightsCard className="p-3 text-center text-sm text-muted">
+            Waiting for {players.find((p) => p.id === turnPlayerId)?.name ?? 'next player'}…
+          </CrazyEightsCard>
+        )}
+      </LiveLeaderboardLayout>
     </CrazyEightsShell>
   )
 }

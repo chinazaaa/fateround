@@ -9,7 +9,8 @@ import {
   WhotSecondaryButton,
   WhotShell,
 } from '@/components/whot/WhotChrome'
-import { WhotChoosePanel, WhotHand, WhotTable } from '@/components/whot/WhotBoard'
+import { WhotChoosePanel, WhotHand, WhotStandings, WhotTable } from '@/components/whot/WhotBoard'
+import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
 import { WhotGameTimerBar } from '@/components/whot/WhotGameTimerBar'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -380,68 +381,85 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
       <WhotGameTimerBar gameCode={gameCode} game={game} />
 
-      <WhotTable
-        session={session}
-        players={players}
-        myPlayerId={myPlayerId}
-        handCounts={handCounts}
-        {...tableTimerProps}
-      />
-
-      {isMyTurn && session.phase === 'choose_whot' && (
-        <WhotChoosePanel
-          acting={acting}
-          allowNumberCalls={whotRules.numberCallsEnabled}
-          onChooseShape={(shape: WhotShape) => void postAction('/api/whot/choose', { shape })}
-          onChooseNumber={(number) => void postAction('/api/whot/choose', { number })}
+      {/* Play area on the left; the roster sits on the right on desktop (sm+) and
+          stacks below the hand on mobile — matching the trivia leaderboard layout. */}
+      <LiveLeaderboardLayout
+        sidebar={
+          <WhotCard className="p-4">
+            <WhotStandings
+              session={session}
+              players={players}
+              myPlayerId={myPlayerId}
+              handCounts={handCounts}
+              gridClassName="grid-cols-2 sm:grid-cols-1"
+            />
+          </WhotCard>
+        }
+      >
+        <WhotTable
+          session={session}
+          players={players}
+          myPlayerId={myPlayerId}
+          handCounts={handCounts}
+          showStandings={false}
+          {...tableTimerProps}
         />
-      )}
 
-      {session.phase === 'playing' && (
-        <>
-          {isMyTurn && (
-            <p className="text-center text-xs text-muted px-2">
-              {drawDepleted && myCanPlay
-                ? 'Draw pile empty — play a highlighted card.'
-                : drawDepleted && !myCanPlay
-                  ? 'Draw pile empty — pass your turn if you cannot play.'
-                  : pickPenalty.type === 'pick2'
-                    ? 'Pick 2 active — play a 2 or draw the penalty.'
-                    : pickPenalty.type === 'pick3'
-                      ? 'Pick 3 active — play a 5 or draw the penalty.'
-                      : whotCallActive
-                        ? whotRules.whotCardsEnabled
-                          ? 'Match the WHOT call, play WHOT to override it, or draw from the pile.'
-                          : 'Match the WHOT call or draw from the pile.'
-                        : 'Tap a highlighted card to play, or draw from the pile.'}
-            </p>
-          )}
-          <WhotHand
-            cards={myHand}
-            session={session}
+        {isMyTurn && session.phase === 'choose_whot' && (
+          <WhotChoosePanel
             acting={acting}
-            rules={whotRules}
-            onPlay={(cardId) => void postAction('/api/whot/play', { cardId })}
+            allowNumberCalls={whotRules.numberCallsEnabled}
+            onChooseShape={(shape: WhotShape) => void postAction('/api/whot/choose', { shape })}
+            onChooseNumber={(number) => void postAction('/api/whot/choose', { number })}
           />
-          {isMyTurn && !(drawDepleted && myCanPlay) && (
-            <WhotPrimaryButton onClick={() => void postAction('/api/whot/draw', {})} loading={acting}>
-              {drawDepleted
-                ? 'Pass turn'
-                : pickPenalty.type === 'pick2'
-                  ? `Draw ${pickPenalty.count} (Pick 2)`
-                  : pickPenalty.type === 'pick3'
-                    ? `Draw ${pickPenalty.count} (Pick 3)`
-                    : 'Draw 1 card'}
-            </WhotPrimaryButton>
-          )}
-        </>
-      )}
+        )}
 
-      {!isMyTurn && session.phase === 'playing' && (
-        <WhotCard className="p-3 text-center text-sm text-muted">
-          Waiting for {players.find((p) => p.id === turnPlayerId)?.name ?? 'next player'}…
-        </WhotCard>
-      )}
+        {session.phase === 'playing' && (
+          <>
+            {isMyTurn && (
+              <p className="text-center text-xs text-muted px-2">
+                {drawDepleted && myCanPlay
+                  ? 'Draw pile empty — play a highlighted card.'
+                  : drawDepleted && !myCanPlay
+                    ? 'Draw pile empty — pass your turn if you cannot play.'
+                    : pickPenalty.type === 'pick2'
+                      ? 'Pick 2 active — play a 2 or draw the penalty.'
+                      : pickPenalty.type === 'pick3'
+                        ? 'Pick 3 active — play a 5 or draw the penalty.'
+                        : whotCallActive
+                          ? whotRules.whotCardsEnabled
+                            ? 'Match the WHOT call, play WHOT to override it, or draw from the pile.'
+                            : 'Match the WHOT call or draw from the pile.'
+                          : 'Tap a highlighted card to play, or draw from the pile.'}
+              </p>
+            )}
+            <WhotHand
+              cards={myHand}
+              session={session}
+              acting={acting}
+              rules={whotRules}
+              onPlay={(cardId) => void postAction('/api/whot/play', { cardId })}
+            />
+            {isMyTurn && !(drawDepleted && myCanPlay) && (
+              <WhotPrimaryButton onClick={() => void postAction('/api/whot/draw', {})} loading={acting}>
+                {drawDepleted
+                  ? 'Pass turn'
+                  : pickPenalty.type === 'pick2'
+                    ? `Draw ${pickPenalty.count} (Pick 2)`
+                    : pickPenalty.type === 'pick3'
+                      ? `Draw ${pickPenalty.count} (Pick 3)`
+                      : 'Draw 1 card'}
+              </WhotPrimaryButton>
+            )}
+          </>
+        )}
+
+        {!isMyTurn && session.phase === 'playing' && (
+          <WhotCard className="p-3 text-center text-sm text-muted">
+            Waiting for {players.find((p) => p.id === turnPlayerId)?.name ?? 'next player'}…
+          </WhotCard>
+        )}
+      </LiveLeaderboardLayout>
     </WhotShell>
   )
 }
