@@ -11,14 +11,7 @@ import {
   getGameLandingContent,
   type GameLandingContent,
 } from '@/lib/game-landing'
-import {
-  SITE_NAME,
-  faqPageJsonLd,
-  gameJsonLd,
-  gameLandingOgPath,
-  breadcrumbJsonLd,
-  gameHowToJsonLd,
-} from '@/lib/seo'
+import { SITE_NAME, faqPageJsonLd, gameJsonLd, gameLandingOgPath, breadcrumbJsonLd, gameHowToJsonLd } from '@/lib/seo'
 import { getGameLandingCustomContentHints } from '@/lib/custom-content-hints'
 import { CustomContentAiTip } from '@/components/ui/CustomContentAiTip'
 import { SiteFooter } from '@/components/SiteFooter'
