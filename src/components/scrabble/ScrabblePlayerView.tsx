@@ -121,6 +121,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   })
 
   useRoomMemberAutoJoin({
+    gameCode,
     displayName: roomDisplayName,
     resolving: resolvingRoomMember,
     screen,

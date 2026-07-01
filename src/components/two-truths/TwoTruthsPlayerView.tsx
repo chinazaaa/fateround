@@ -179,6 +179,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   useRoomMemberAutoJoin({
+    gameCode,
     displayName: roomDisplayName,
     resolving: resolvingRoomMember,
     screen,

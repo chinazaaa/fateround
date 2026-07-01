@@ -123,6 +123,9 @@ export async function resolvePlayerSession(
     // (network, 5xx, 429) must keep the session so the next load can retry.
     const exists = session.resumeToken ? await confirmPlayerExists(gameCode, session.resumeToken) : null
     if (exists === false) {
+      // The server positively reports this player gone — a host removed them (or they
+      // left). clearPlayerSession marks them kicked so room-link auto-join won't silently
+      // pull them back in; they must deliberately tap "join" to return.
       clearPlayerSession(gameCode)
       return null
     }

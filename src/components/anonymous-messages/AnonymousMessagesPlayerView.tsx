@@ -197,6 +197,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   }, [gameCode, joinExtras, load, success, toastError])
 
   useRoomMemberAutoJoin({
+    gameCode,
     autoJoinWithoutName: !!memberCode,
     resolving: resolvingRoomMember,
     screen,

@@ -24,7 +24,8 @@ import {
   type SudokuUnitFlash,
 } from '@/lib/sudoku'
 import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } from '@/lib/supabase-selects'
-import { getPlayerSession, clearPlayerSession, setPlayerSession } from '@/lib/utils'
+import { clearPlayerSession, setPlayerSession } from '@/lib/utils'
+import { resolvePlayerSession } from '@/lib/player-resume'
 import { formatMinutesSeconds } from '@/lib/timer-format'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
@@ -139,8 +140,6 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   }, [])
 
   const load = useCallback(async () => {
-    const session = getPlayerSession(gameCode)
-
     const [{ data: gameData }, { data: playersData }] = await Promise.all([
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
@@ -152,6 +151,11 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     }
     setGame(gameData as Game)
     setPlayers((playersData ?? []) as Player[])
+
+    // Validate the stored session against the live roster: a removed player is marked
+    // "kicked" (so room auto-join won't silently pull them back) and bounced to the
+    // join / viewer-or-player screen, consistent with the other games.
+    const session = await resolvePlayerSession(gameCode, playersData)
 
     if (!session?.playerId) {
       // Someone opening the link mid-game gets the viewer/player choice, like other games.
@@ -317,6 +321,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   useRoomMemberAutoJoin({
+    gameCode,
     displayName: roomDisplayName,
     resolving: resolvingRoomMember,
     screen: view,

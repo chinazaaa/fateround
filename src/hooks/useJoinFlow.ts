@@ -293,6 +293,7 @@ export function useJoinFlow(deps: JoinFlowDeps) {
   }
 
   useRoomMemberAutoJoin({
+    gameCode,
     enabled: useFreeNameJoin && !editingJoin,
     displayName: roomDisplayName,
     resolving: resolvingRoomMember,

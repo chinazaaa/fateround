@@ -643,7 +643,15 @@ async function processIndividualGuess(
   text: string,
   session: DescribeItSession
 ): Promise<{ error?: string; correct?: boolean; internal?: boolean }> {
-  if (!session.roster.includes(playerId)) return { error: 'You are not in this game' }
+  // Gate on the LIVE roster (describe_it_players), not the frozen session.roster.
+  // Late joiners are seeded into describe_it_players but never into session.roster
+  // (which stays fixed to keep the describer rotation stable), so checking the
+  // snapshot would reject their guesses with "You are not in this game" and they
+  // could never play. Departed players are cascade-removed from describe_it_players,
+  // so this also stops counting them as pending guessers below.
+  const liveRoster = await loadTeamRows(supabase, gameId)
+  const liveIds = new Set(liveRoster.map((r) => r.player_id))
+  if (!liveIds.has(playerId)) return { error: 'You are not in this game' }
   // The guessing window only opens once the describer's first clue lands.
   if ((session.current_clues?.length ?? 0) === 0) return { error: 'Wait for the describer’s first clue' }
 
@@ -687,7 +695,7 @@ async function processIndividualGuess(
     .eq('game_id', gameId)
     .eq('turn_index', session.turn_index)
     .eq('correct', true)
-  const guesserCount = session.roster.filter((id) => id !== session.describer_player_id).length
+  const guesserCount = [...liveIds].filter((id) => id !== session.describer_player_id).length
   if ((count ?? 0) >= guesserCount) await endIndividualTurn(supabase, gameId, session)
 
   return { correct: true }

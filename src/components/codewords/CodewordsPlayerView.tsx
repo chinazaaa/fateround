@@ -312,6 +312,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   useRoomMemberAutoJoin({
+    gameCode,
     displayName: roomDisplayName,
     resolving: resolvingRoomMember,
     screen,
