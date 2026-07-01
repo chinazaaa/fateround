@@ -594,9 +594,20 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
     {
+      title: 'Scorecard categories & points',
+      points: [
+        'Upper section — Ones, Twos, Threes, Fours, Fives, Sixes: score the sum of the dice showing that number.',
+        'Three of a Kind & Four of a Kind: score the total of all five dice when you have 3 (or 4) matching.',
+        'Full House: three of one number plus two of another — a flat 25 points.',
+        'Small Straight (four in a row) 30 points · Large Straight (five in a row) 40 points.',
+        'Yahtzee (five of a kind) 50 points · Chance: the sum of all five dice, any combination.',
+      ],
+    },
+    {
       title: 'Scoring bonus',
       points: [
         'Score 63+ in the upper section (Ones through Sixes) to earn a 35-point bonus.',
+        'After scoring 50 in the Yahtzee box, each extra five-of-a-kind is worth a 100-point Yahtzee bonus.',
         'Each category can only be scored once per game.',
       ],
     },
