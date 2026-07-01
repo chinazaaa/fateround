@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getGames } from '@/lib/community-data'
+import { GAME_TYPE_CONFIG } from '@/lib/game-types'
+import type { GameType } from '@/types'
 import { getSupabaseAdmin, hasServiceRoleKey } from '@/lib/supabase-admin'
 
 function slugify(name: string): string {
@@ -40,21 +42,39 @@ export async function POST(req: NextRequest) {
   if (blocked) return blocked
 
   const body = await req.json().catch(() => ({}))
-  const name = typeof body.name === 'string' ? body.name.trim() : ''
-  const accent = typeof body.accent === 'string' && body.accent.trim() ? body.accent.trim() : null
-  if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
+
+  // Preferred path: admin picks a game type from the dropdown. We derive the
+  // name/accent/slug from the game-type config so the leaderboard row maps
+  // exactly to an in-app GameType. Name/accent overrides are still honoured.
+  const rawType = typeof body.gameType === 'string' ? body.gameType : ''
+  const cfg = rawType ? GAME_TYPE_CONFIG[rawType as GameType] : undefined
+  if (rawType && !cfg) return NextResponse.json({ error: 'Unknown game type' }, { status: 400 })
+
+  const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : (cfg?.label ?? '')
+  const accent = typeof body.accent === 'string' && body.accent.trim() ? body.accent.trim() : (cfg?.card.accent ?? null)
+  const gameType = cfg?.id ?? null
+  if (!name) return NextResponse.json({ error: 'Pick a game type' }, { status: 400 })
 
   const supabase = getSupabaseAdmin()
   const existing = await getGames()
-  // Unique slug (append -2, -3, … on collision).
-  const base = slugify(name) || 'game'
+
+  // One leaderboard row per game type — adding the same type twice is a no-op
+  // that would only confuse the self-post mapping.
+  if (gameType && existing.some((g) => g.game_type === gameType)) {
+    return NextResponse.json({ error: `${name} is already on the leaderboard` }, { status: 409 })
+  }
+
+  // Unique slug (prefer the game type; append -2, -3, … on collision).
+  const base = (gameType ? gameType : slugify(name)) || 'game'
   let slug = base
   let n = 2
   const slugs = new Set(existing.map((g) => g.slug))
   while (slugs.has(slug)) slug = `${base}-${n++}`
   const sortOrder = existing.reduce((max, g) => Math.max(max, g.sort_order), 0) + 1
 
-  const { error } = await supabase.from('community_games').insert({ name, slug, accent, sort_order: sortOrder })
+  const { error } = await supabase
+    .from('community_games')
+    .insert({ name, slug, accent, game_type: gameType, sort_order: sortOrder })
   if (error) return NextResponse.json({ error: internalErrorMessage('admin/community/games', error) }, { status: 500 })
   return NextResponse.json({ games: await getGames() })
 }
@@ -73,6 +93,13 @@ export async function PATCH(req: NextRequest) {
   if (typeof body.accent === 'string') update.accent = body.accent.trim() || null
   if (typeof body.is_active === 'boolean') update.is_active = body.is_active
   if (typeof body.sort_order === 'number' && Number.isInteger(body.sort_order)) update.sort_order = body.sort_order
+  if ('game_type' in body) {
+    const gt = typeof body.game_type === 'string' ? body.game_type.trim() : ''
+    if (gt && !GAME_TYPE_CONFIG[gt as GameType]) {
+      return NextResponse.json({ error: 'Unknown game type' }, { status: 400 })
+    }
+    update.game_type = gt || null
+  }
   if (Object.keys(update).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 
   const supabase = getSupabaseAdmin()

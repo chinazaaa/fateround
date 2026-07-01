@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { BingoCardGrid, BingoCardLegend, CalledNumbersBoard } from '@/components/bingo/BingoCardGrid'
 import { BingoFinalResultsShareBlock } from '@/components/bingo/BingoFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
 import { formatBingoNumber, hasBingoWin } from '@/lib/bingo'
 import { supabase } from '@/lib/supabase'
@@ -513,6 +514,9 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
               </div>
               <CreateNewGameButton />
             </>
+          )}
+          {iWon && game && (
+            <PostWinToCommunity gameType="bingo" gameCode={gameCode} winnerName={myPlayerName} roundKey={winner?.id} />
           )}
           {card && (
             <div className="glass-card p-4">

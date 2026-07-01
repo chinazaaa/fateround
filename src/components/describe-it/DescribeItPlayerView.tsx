@@ -11,7 +11,13 @@ import {
 import { DescribeItPlayPanel } from '@/components/describe-it/DescribeItPlay'
 import { DescribeItFinalResultsShareBlock } from '@/components/describe-it/DescribeItFinalResultsShareBlock'
 import { gameTypeConfig } from '@/lib/game-types'
-import { clampDescribeItMode, clampDescribeItTeams, isDescribeItResultsPhase } from '@/lib/describe-it'
+import {
+  clampDescribeItMode,
+  clampDescribeItTeams,
+  describeItIndividualLeaderboard,
+  isDescribeItResultsPhase,
+} from '@/lib/describe-it'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { supabase } from '@/lib/supabase'
 import {
   GAME_SELECT,
@@ -384,6 +390,11 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (screen === 'finished') {
+    // Individual mode only — team mode has no single-player winner.
+    const individualLb = isIndividual ? describeItIndividualLeaderboard(playerScores, players) : []
+    const myDescRow = individualLb.find((row) => row.id === myPlayerId)
+    const iWonDescribe =
+      !!myDescRow && individualLb[0] != null && myDescRow.score === individualLb[0].score && individualLb[0].score > 0
     return (
       <DescribeItShell compact>
         {game && (
@@ -394,6 +405,14 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             numTeams={numTeams}
             mode={isIndividual ? 'individual' : 'team'}
             playerScores={playerScores}
+          />
+        )}
+        {iWonDescribe && game && (
+          <PostWinToCommunity
+            gameType="describe_it"
+            gameCode={gameCode}
+            winnerName={myName || (myDescRow?.name ?? '')}
+            roundKey={session?.id}
           />
         )}
         {myPlayerId && myName && (

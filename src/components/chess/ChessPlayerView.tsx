@@ -5,6 +5,7 @@ import { Chess } from 'chess.js'
 import { useRouter } from 'next/navigation'
 import { ChessCard, ChessLoadingScreen, ChessSecondaryButton, ChessShell } from '@/components/chess/ChessChrome'
 import { ChessFinalResultsShareBlock } from '@/components/chess/ChessFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ChessGamePanel } from '@/components/chess/ChessBoard'
 import { gameTypeConfig } from '@/lib/game-types'
 import { currentTurnPlayerId, isChessResultsPhase } from '@/lib/chess'
@@ -340,6 +341,14 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
                   : 'Game ended early'}
             </p>
           </ChessCard>
+        )}
+        {iWon && game && (
+          <PostWinToCommunity
+            gameType="chess"
+            gameCode={gameCode}
+            winnerName={finishedName ?? ''}
+            roundKey={session?.id}
+          />
         )}
         {myPlayerId && myName && (
           <PlayerSessionControls

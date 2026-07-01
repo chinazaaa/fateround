@@ -1,19 +1,19 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
-import { MANAGER_CODE_MIN_LENGTH } from '@/lib/manager-constants'
+import { MANAGER_CODE_MIN_LENGTH, POST_CODE_MIN_LENGTH } from '@/lib/manager-constants'
+import { communityGameTypeOptions } from '@/lib/game-types'
 import type { CommunityGame } from '@/types/community'
 
-const ACCENT_PRESETS = ['#f43f5e', '#22c55e', '#fb923c', '#ec4899', '#8b5cf6', '#38bdf8', '#a78bfa', '#e879f9']
+const GAME_TYPE_OPTIONS = communityGameTypeOptions()
 
 export default function AdminCommunityPage() {
   const { success, error } = useToast()
   const [games, setGames] = useState<CommunityGame[]>([])
   const [loading, setLoading] = useState(true)
-  const [newName, setNewName] = useState('')
-  const [newAccent, setNewAccent] = useState(ACCENT_PRESETS[0])
+  const [newType, setNewType] = useState('')
   const [adding, setAdding] = useState(false)
 
   const load = useCallback(async () => {
@@ -39,17 +39,23 @@ export default function AdminCommunityPage() {
     if (data.games) setGames(data.games)
   }
 
+  // Game types not already on the leaderboard (one row per type).
+  const availableTypes = useMemo(() => {
+    const taken = new Set(games.map((g) => g.game_type).filter(Boolean))
+    return GAME_TYPE_OPTIONS.filter((o) => !taken.has(o.id))
+  }, [games])
+
   const addGame = async () => {
-    if (!newName.trim()) return
+    if (!newType) return
     setAdding(true)
     try {
       const res = await fetch('/api/admin/community/games', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim(), accent: newAccent }),
+        body: JSON.stringify({ gameType: newType }),
       })
       applyGames(await res.json(), res)
-      setNewName('')
+      setNewType('')
       success('Game added')
     } catch (err) {
       error(err instanceof Error ? err.message : 'Failed to add game')
@@ -60,7 +66,7 @@ export default function AdminCommunityPage() {
 
   const patchGame = async (
     id: string,
-    patch: Partial<Pick<CommunityGame, 'name' | 'accent' | 'is_active' | 'sort_order'>>
+    patch: Partial<Pick<CommunityGame, 'name' | 'accent' | 'is_active' | 'sort_order' | 'game_type'>>
   ) => {
     try {
       const res = await fetch('/api/admin/community/games', {
@@ -124,45 +130,37 @@ export default function AdminCommunityPage() {
       <div>
         <h1 className="text-3xl font-black tracking-tight gradient-title">Community leaderboard</h1>
         <p className="text-muted text-sm mt-1">
-          Manage the games shown on the public leaderboard and the access code your community manager uses to enter
-          winners.
+          Manage the games shown on the public leaderboard, the weekly code winners use to post their own wins, and the
+          access code your community manager uses to enter scores manually.
         </p>
       </div>
 
+      <PostCodePanel />
       <ManagerCodePanel />
+      <WhatsAppPanel />
 
       <section className="space-y-3">
         <h2 className="text-lg font-bold">Games</h2>
+        <p className="text-sm text-muted -mt-1">
+          Pick a game to add it to the leaderboard. Winners of that game can then post their own wins from the end
+          screen using this week’s code.
+        </p>
         <div className="glass-card-strong p-4 flex flex-col gap-3 sm:flex-row sm:items-end">
           <label className="flex-1 text-sm">
-            <span className="text-muted">New game name</span>
-            <input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addGame()}
-              placeholder="e.g. Ludo"
-              className="input-field w-full mt-1"
-            />
-          </label>
-          <div className="text-sm">
-            <span className="text-muted">Colour</span>
-            <div className="flex gap-1.5 mt-1">
-              {ACCENT_PRESETS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  aria-label={`Accent ${c}`}
-                  onClick={() => setNewAccent(c)}
-                  className={`h-7 w-7 rounded-full transition-transform ${newAccent === c ? 'scale-110 ring-2 ring-offset-2 ring-offset-[var(--background)]' : ''}`}
-                  style={{ background: c, boxShadow: newAccent === c ? `0 0 0 2px ${c}` : undefined }}
-                />
+            <span className="text-muted">Add a game</span>
+            <select value={newType} onChange={(e) => setNewType(e.target.value)} className="input-field w-full mt-1">
+              <option value="">Choose a game…</option>
+              {availableTypes.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
               ))}
-            </div>
-          </div>
+            </select>
+          </label>
           <button
             type="button"
             onClick={addGame}
-            disabled={adding || !newName.trim()}
+            disabled={adding || !newType}
             className="btn-primary btn-fit px-5 py-2.5 disabled:opacity-60"
           >
             {adding ? 'Adding…' : 'Add game'}
@@ -193,6 +191,9 @@ export default function AdminCommunityPage() {
   )
 }
 
+// A game_type value is "real" only if it matches a known game-type option.
+const KNOWN_TYPE_IDS = new Set(GAME_TYPE_OPTIONS.map((o) => o.id))
+
 function GameRow({
   game,
   isFirst,
@@ -204,7 +205,7 @@ function GameRow({
   game: CommunityGame
   isFirst: boolean
   isLast: boolean
-  onPatch: (patch: Partial<Pick<CommunityGame, 'name' | 'accent' | 'is_active' | 'sort_order'>>) => void
+  onPatch: (patch: Partial<Pick<CommunityGame, 'name' | 'accent' | 'is_active' | 'sort_order' | 'game_type'>>) => void
   onMove: (dir: -1 | 1) => void
   onDelete: () => void
 }) {
@@ -217,8 +218,10 @@ function GameRow({
     else setName(game.name)
   }
 
+  const mapped = game.game_type && KNOWN_TYPE_IDS.has(game.game_type as never)
+
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 ${game.is_active ? '' : 'opacity-50'}`}>
+    <div className={`flex flex-wrap items-center gap-3 px-4 py-3 ${game.is_active ? '' : 'opacity-50'}`}>
       <div className="flex flex-col">
         <button
           type="button"
@@ -245,8 +248,24 @@ function GameRow({
         onChange={(e) => setName(e.target.value)}
         onBlur={saveName}
         onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-        className="input-field flex-1 py-1.5"
+        className="input-field flex-1 min-w-[8rem] py-1.5"
       />
+      <label className="text-xs text-muted flex items-center gap-1.5">
+        <span className="hidden sm:inline">Maps to</span>
+        <select
+          value={mapped ? (game.game_type as string) : ''}
+          onChange={(e) => onPatch({ game_type: e.target.value || null })}
+          className={`input-field py-1 px-2 text-xs w-auto ${mapped ? '' : 'text-amber-600'}`}
+          title="Which in-app game a winner posts from"
+        >
+          <option value="">Not mapped</option>
+          {GAME_TYPE_OPTIONS.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <button
         type="button"
         onClick={() => onPatch({ is_active: !game.is_active })}
@@ -266,27 +285,41 @@ function GameRow({
   )
 }
 
-function ManagerCodePanel() {
+// A code panel used by both the weekly post code and the manager code — same
+// shape (set/rotate a hashed code), different endpoint and copy.
+function CodePanel({
+  title,
+  endpoint,
+  minLength,
+  describe,
+  hint,
+}: {
+  title: string
+  endpoint: string
+  minLength: number
+  describe: (configured: boolean) => string
+  hint: string
+}) {
   const { success, error } = useToast()
   const [configured, setConfigured] = useState<boolean | null>(null)
   const [code, setCode] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    fetch('/api/admin/community/code', { cache: 'no-store' })
+    fetch(endpoint, { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => setConfigured(Boolean(d.configured)))
       .catch(() => setConfigured(false))
-  }, [])
+  }, [endpoint])
 
   const save = async () => {
-    if (code.trim().length < MANAGER_CODE_MIN_LENGTH) {
-      error(`Code must be at least ${MANAGER_CODE_MIN_LENGTH} characters`)
+    if (code.trim().length < minLength) {
+      error(`Code must be at least ${minLength} characters`)
       return
     }
     setSaving(true)
     try {
-      const res = await fetch('/api/admin/community/code', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: code.trim() }),
@@ -295,7 +328,7 @@ function ManagerCodePanel() {
       if (!res.ok) throw new Error(data.error ?? 'Failed to set code')
       setConfigured(true)
       setCode('')
-      success('Manager access code saved')
+      success(`${title} saved`)
     } catch (err) {
       error(err instanceof Error ? err.message : 'Failed to set code')
     } finally {
@@ -305,18 +338,10 @@ function ManagerCodePanel() {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-lg font-bold">Manager access code</h2>
+      <h2 className="text-lg font-bold">{title}</h2>
       <div className="glass-card-strong p-5 space-y-3">
-        <p className="text-sm text-muted">
-          {configured === null
-            ? 'Checking…'
-            : configured
-              ? 'A code is set. Setting a new one immediately replaces it — anyone using the old code will need the new one.'
-              : 'No code set yet. Create one and share it with your community manager so she can enter scores at /input.'}
-        </p>
-        <p className="text-xs text-faint">
-          Use at least {MANAGER_CODE_MIN_LENGTH} characters — a short code can be guessed.
-        </p>
+        <p className="text-sm text-muted">{configured === null ? 'Checking…' : describe(configured)}</p>
+        <p className="text-xs text-faint">{hint}</p>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
             value={code}
@@ -329,10 +354,106 @@ function ManagerCodePanel() {
           <button
             type="button"
             onClick={save}
-            disabled={saving || code.trim().length < MANAGER_CODE_MIN_LENGTH}
+            disabled={saving || code.trim().length < minLength}
             className="btn-primary btn-fit px-5 py-2.5 disabled:opacity-60"
           >
             {saving ? 'Saving…' : configured ? 'Rotate code' : 'Set code'}
+          </button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function PostCodePanel() {
+  return (
+    <CodePanel
+      title="Weekly post code"
+      endpoint="/api/admin/community/post-code"
+      minLength={POST_CODE_MIN_LENGTH}
+      describe={(configured) =>
+        configured
+          ? 'A code is set. Rotate it each week (Monday) and share the new code in the WhatsApp group. Winners enter it on the game end screen to post their win.'
+          : 'No code set yet. Create one and share it in the WhatsApp group — winners enter it on the game end screen to post their win to the leaderboard.'
+      }
+      hint={`Change this every week. At least ${POST_CODE_MIN_LENGTH} characters — keep it easy to type but not obvious.`}
+    />
+  )
+}
+
+function ManagerCodePanel() {
+  return (
+    <CodePanel
+      title="Manager access code"
+      endpoint="/api/admin/community/code"
+      minLength={MANAGER_CODE_MIN_LENGTH}
+      describe={(configured) =>
+        configured
+          ? 'A code is set. Setting a new one immediately replaces it — anyone using the old code will need the new one.'
+          : 'No code set yet. Create one and share it with your community manager so she can enter scores at /input.'
+      }
+      hint={`Use at least ${MANAGER_CODE_MIN_LENGTH} characters — this grants full entry powers, so keep it private.`}
+    />
+  )
+}
+
+function WhatsAppPanel() {
+  const { success, error } = useToast()
+  const [url, setUrl] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/admin/community/settings', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => setUrl(d.whatsappInviteUrl ?? ''))
+      .catch(() => {})
+      .finally(() => setLoaded(true))
+  }, [])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/admin/community/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ whatsappInviteUrl: url.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to save')
+      setUrl(data.whatsappInviteUrl ?? '')
+      success(url.trim() ? 'WhatsApp link saved' : 'WhatsApp link cleared')
+    } catch (err) {
+      error(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-lg font-bold">Community WhatsApp link</h2>
+      <div className="glass-card-strong p-5 space-y-3">
+        <p className="text-sm text-muted">
+          Shown as a “Join the community” button on the public leaderboard. Leave blank to hide it.
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && save()}
+            placeholder="https://chat.whatsapp.com/…"
+            className="input-field flex-1"
+            autoComplete="off"
+            disabled={!loaded}
+          />
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving || !loaded}
+            className="btn-primary btn-fit px-5 py-2.5 disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : 'Save link'}
           </button>
         </div>
       </div>

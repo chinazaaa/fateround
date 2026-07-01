@@ -14,6 +14,7 @@ import {
 } from '@/components/yahtzee/YahtzeeChrome'
 import { YahtzeeLeaderboard, YahtzeeScorecard } from '@/components/yahtzee/YahtzeeScorecard'
 import { YahtzeeFinalResultsShareBlock } from '@/components/yahtzee/YahtzeeFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
 import { currentPlayerId } from '@/lib/yahtzee'
 import { supabase } from '@/lib/supabase'
@@ -381,6 +382,9 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
             <YahtzeeLeaderboard rows={scores} players={players} highlightPlayerId={myPlayerId} />
             <YahtzeeSecondaryButton onClick={() => router.push('/games')}>Create a new game</YahtzeeSecondaryButton>
           </>
+        )}
+        {iWon && game && (
+          <PostWinToCommunity gameType="yahtzee" gameCode={gameCode} winnerName={myName ?? ''} roundKey={session?.id} />
         )}
       </YahtzeeShell>
     )

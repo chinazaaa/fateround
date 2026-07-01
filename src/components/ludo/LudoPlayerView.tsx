@@ -11,6 +11,7 @@ import {
 } from '@/components/ludo/LudoChrome'
 import { LudoGamePanel } from '@/components/ludo/LudoBoard'
 import { LudoFinalResultsShareBlock } from '@/components/ludo/LudoFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
 import { currentPlayerId, parseLudoDice } from '@/lib/ludo'
 import { supabase } from '@/lib/supabase'
@@ -299,6 +300,9 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
             <p className="text-2xl font-black">{winner ? `${winner.name} wins!` : 'Game ended early'}</p>
             <p className="text-sm text-muted">Waiting for the host to start a new round…</p>
           </LudoCard>
+        )}
+        {iWon && game && (
+          <PostWinToCommunity gameType="ludo" gameCode={gameCode} winnerName={myName ?? ''} roundKey={session?.id} />
         )}
         {myPlayerId && myName && (
           <PlayerSessionControls

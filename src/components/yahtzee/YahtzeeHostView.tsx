@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { YahtzeeDiceTray } from '@/components/yahtzee/YahtzeeChrome'
 import { YahtzeeScorecard } from '@/components/yahtzee/YahtzeeScorecard'
 import { YahtzeeFinalResultsShareBlock } from '@/components/yahtzee/YahtzeeFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
@@ -429,22 +430,32 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
       finished={
-        <YahtzeeFinalResultsShareBlock
-          game={game}
-          players={players}
-          scores={scores}
-          winnerName={winner?.name}
-          playAgainButton={
-            <button
-              type="button"
-              onClick={() => void playAgain()}
-              disabled={playingAgain}
-              className="btn-primary w-full py-3"
-            >
-              {playingAgain ? 'Resetting…' : 'Play again'}
-            </button>
-          }
-        />
+        <>
+          <YahtzeeFinalResultsShareBlock
+            game={game}
+            players={players}
+            scores={scores}
+            winnerName={winner?.name}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void playAgain()}
+                disabled={playingAgain}
+                className="btn-primary w-full py-3"
+              >
+                {playingAgain ? 'Resetting…' : 'Play again'}
+              </button>
+            }
+          />
+          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="yahtzee"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={session?.id}
+            />
+          )}
+        </>
       }
     />
   )

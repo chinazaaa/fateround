@@ -13,6 +13,7 @@ import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { MonopolyPageHeader } from '@/components/monopoly/MonopolyChrome'
 import { gameTypeConfig } from '@/lib/game-types'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { buildMonopolyStandings, MONOPOLY_MIN_PLAYERS, MONOPOLY_STARTING_CASH } from '@/lib/monopoly'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
@@ -433,6 +434,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               <h2 className="text-xl font-black gradient-title">
                 {finishedWinnerName ? `${finishedWinnerName} wins!` : 'Game over'}
               </h2>
+            </div>
+          )}
+          {myPlayerId && board?.winner_player_id === myPlayerId && (
+            <div className="mt-4">
+              <PostWinToCommunity
+                gameType="monopoly"
+                gameCode={gameCode}
+                winnerName={players.find((p) => p.id === myPlayerId)?.name ?? ''}
+                roundKey={board?.id}
+              />
             </div>
           )}
         </div>

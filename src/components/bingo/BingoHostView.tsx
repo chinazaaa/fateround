@@ -5,6 +5,7 @@ import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { BingoCardGrid, CalledNumbersBoard } from '@/components/bingo/BingoCardGrid'
 import { BingoFinalResultsShareBlock } from '@/components/bingo/BingoFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
@@ -650,16 +651,26 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const finished =
     game.status === 'finished' ? (
       winnerPlayer ? (
-        <BingoFinalResultsShareBlock
-          game={game}
-          players={players}
-          winnerName={winnerPlayer.name}
-          playAgainButton={
-            <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-secondary w-full">
-              {playingAgain ? 'Resetting…' : 'Play again'}
-            </button>
-          }
-        />
+        <>
+          <BingoFinalResultsShareBlock
+            game={game}
+            players={players}
+            winnerName={winnerPlayer.name}
+            playAgainButton={
+              <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-secondary w-full">
+                {playingAgain ? 'Resetting…' : 'Play again'}
+              </button>
+            }
+          />
+          {hostPlayerId && winner?.player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="bingo"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={winner?.id}
+            />
+          )}
+        </>
       ) : (
         <div className="space-y-4">
           <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-secondary w-full">

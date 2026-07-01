@@ -38,6 +38,7 @@ import { useCrazyEightsNotifications, playCrazyEightsActionSound } from '@/hooks
 import { CrazyEightsChoosePanel, CrazyEightsHand, CrazyEightsTable } from '@/components/crazy-eights/CrazyEightsBoard'
 import { CrazyEightsGameTimerBar } from '@/components/crazy-eights/CrazyEightsGameTimerBar'
 import { CrazyEightsFinalResultsShareBlock } from '@/components/crazy-eights/CrazyEightsFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { CrazyEightsCard, CrazyEightsPrimaryButton } from '@/components/crazy-eights/CrazyEightsChrome'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 
@@ -420,24 +421,34 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
       finished={
-        <CrazyEightsFinalResultsShareBlock
-          game={game}
-          players={players}
-          hands={hands}
-          session={session}
-          winnerName={winner?.name}
-          highlightPlayerId={hostPlayerId}
-          playAgainButton={
-            <button
-              type="button"
-              onClick={() => void playAgain()}
-              disabled={playingAgain}
-              className="btn-primary w-full py-3"
-            >
-              {playingAgain ? 'Resetting…' : 'Play again'}
-            </button>
-          }
-        />
+        <>
+          <CrazyEightsFinalResultsShareBlock
+            game={game}
+            players={players}
+            hands={hands}
+            session={session}
+            winnerName={winner?.name}
+            highlightPlayerId={hostPlayerId}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void playAgain()}
+                disabled={playingAgain}
+                className="btn-primary w-full py-3"
+              >
+                {playingAgain ? 'Resetting…' : 'Play again'}
+              </button>
+            }
+          />
+          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="crazy_eights"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={session?.id}
+            />
+          )}
+        </>
       }
     />
   )

@@ -2049,3 +2049,17 @@ export function isAssignmentComplete(assignment: VoteAssignment, gameType?: Game
 export function assignedCount(assignment: VoteAssignment, gameType?: GameType | string): number {
   return voteSlots(gameType).filter((slot) => assignment[slot]).length
 }
+
+// Options for the admin "add game to community leaderboard" dropdown: every game
+// type with its display label and accent, sorted alphabetically by label.
+export function communityGameTypeOptions(): { id: GameType; label: string; accent: string }[] {
+  return Object.values(GAME_TYPE_CONFIG)
+    .map((cfg) => ({ id: cfg.id, label: cfg.label, accent: cfg.card.accent }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+}
+
+// Display label for a game type id (falls back to the raw id if unknown).
+export function gameTypeLabel(gameType: string | null | undefined): string | null {
+  if (!gameType) return null
+  return GAME_TYPE_CONFIG[gameType as GameType]?.label ?? gameType
+}
