@@ -3,6 +3,7 @@ import { getGameByType, getSetting, postWinFromGame, WHATSAPP_INVITE_URL_KEY } f
 import { postCodeIsSet, verifyPostCode } from '@/lib/community-post-code'
 import { DEFAULT_WHATSAPP_INVITE_URL } from '@/lib/community-constants'
 import { watToday } from '@/lib/community-dates'
+import { checkPostWinRateLimit, clearPostWinAttempts, clientIp, recordFailedPostWin } from '@/lib/community-rate-limit'
 import { getSupabaseAdmin, hasServiceRoleKey } from '@/lib/supabase-admin'
 
 // Same throttle as the manager login: a fixed delay on every failed code so the
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest) {
 
   // Dedup key: per round when we have a round token, else per game.
   const ledgerKey = roundKey ? `${gameId}::${roundKey}` : gameId
+  const ip = clientIp(req)
 
   try {
     if (!(await postCodeIsSet())) {
@@ -71,8 +73,17 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Cap wrong-code guesses per IP so the short weekly code can't be brute-forced.
+    const rate = await checkPostWinRateLimit(ip)
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: 'Too many attempts. Try again later.' },
+        { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } }
+      )
+    }
+
     if (!(await verifyPostCode(code))) {
-      await delay(FAILED_ATTEMPT_DELAY_MS)
+      await Promise.all([recordFailedPostWin(ip), delay(FAILED_ATTEMPT_DELAY_MS)])
       return NextResponse.json({ error: 'Wrong code. Check this week’s code in the group.' }, { status: 401 })
     }
 
@@ -98,6 +109,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'This win has already been posted.' }, { status: 409 })
     }
 
+    // Correct code accepted — reset this IP's failure counter.
+    await clearPostWinAttempts(ip)
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[community/post-win] failed', err)
