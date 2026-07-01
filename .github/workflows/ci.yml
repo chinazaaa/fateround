@@ -139,7 +139,27 @@ jobs:
               ;;
           esac
           supabase link --project-ref "$REF"
-          supabase db push --include-all
+
+          # `db push --include-all` can re-queue a migration that is already
+          # applied on the remote — e.g. a branch cut from an older dev carries
+          # its own copy of a migration that already landed via another PR. The
+          # migration SQL itself is idempotent (`create ... if not exists`), but
+          # the CLI's follow-up `INSERT INTO schema_migrations` is not: it aborts
+          # on the existing version row (duplicate schema_migrations_pkey). That
+          # one specific failure means "already applied", so swallow it and treat
+          # the push as successful. Any other failure still fails the job.
+          set +e
+          push_out="$(supabase db push --include-all 2>&1)"
+          push_rc=$?
+          set -e
+          echo "$push_out"
+          if [ "$push_rc" -ne 0 ]; then
+            if echo "$push_out" | grep -q 'schema_migrations_pkey'; then
+              echo "::warning::A migration is already recorded remotely (schema_migrations_pkey); treating it as applied."
+            else
+              exit "$push_rc"
+            fi
+          fi
 
   security:
     name: Security Scan
