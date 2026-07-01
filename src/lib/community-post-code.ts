@@ -25,6 +25,16 @@ export function normalizePostCode(code: string): string {
   return code.trim().toLowerCase().replace(/\s+/g, '')
 }
 
+// Shared length check so the route/UI prechecks and setPostCode agree on what's
+// valid — all measure the SAME normalized form. Returns an error message when the
+// code is too short (for a 400), or null when it's acceptable.
+export function postCodeLengthError(code: string): string | null {
+  if (normalizePostCode(code).length < POST_CODE_MIN_LENGTH) {
+    return `Code must be at least ${POST_CODE_MIN_LENGTH} characters`
+  }
+  return null
+}
+
 async function hashCode(code: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code))
   return Array.from(new Uint8Array(digest))
@@ -57,9 +67,7 @@ export async function verifyPostCode(code: string): Promise<boolean> {
 
 // Set/rotate the weekly post code (admin only). Stores only the hash.
 export async function setPostCode(code: string): Promise<void> {
-  const normalized = normalizePostCode(code)
-  if (normalized.length < POST_CODE_MIN_LENGTH) {
-    throw new Error(`Code must be at least ${POST_CODE_MIN_LENGTH} characters`)
-  }
-  await setSetting(POST_CODE_KEY, await hashCode(normalized))
+  const lengthError = postCodeLengthError(code)
+  if (lengthError) throw new Error(lengthError)
+  await setSetting(POST_CODE_KEY, await hashCode(normalizePostCode(code)))
 }
