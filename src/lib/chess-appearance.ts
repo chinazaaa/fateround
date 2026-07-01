@@ -25,79 +25,146 @@ export type PieceFace = {
   color: string
   /** CSS `filter` value: a drop-shadow chain giving the piece a halo / depth. */
   filter: string
+  /** Detailed sets only: outline stroke around the piece body. */
+  outline?: string
+  /** Detailed sets only: interior "ink" lines / accents (crown lines, knight eye). */
+  detail?: string
 }
 
 export type ChessPieceSet = {
   id: string
   name: string
+  /**
+   * How the pieces are drawn. `silhouette` (default) uses the single-tone
+   * `ChessPieceIcon`; `detailed` uses the two-tone `ChessPieceDetailed` set —
+   * the classic light-body / dark-ink look you see on chess.com & lichess.
+   */
+  style?: 'silhouette' | 'detailed'
   white: PieceFace
   black: PieceFace
 }
 
 export const PIECE_SETS: ChessPieceSet[] = [
   {
+    // The most-requested look: classic two-tone pieces (light body, dark ink).
+    // Rendered by `ChessPieceDetailed`; the `color`/`outline`/`detail` fields
+    // drive its body fill, silhouette stroke, and interior lines respectively.
+    id: 'neo',
+    name: 'Neo',
+    style: 'detailed',
+    white: {
+      variant: 'filled',
+      color: '#f8f8f8',
+      outline: '#4b4b4b',
+      detail: '#4b4b4b',
+      filter: 'drop-shadow(0 1.5px 1px rgba(0,0,0,0.28))',
+    },
+    black: {
+      variant: 'filled',
+      color: '#38352f',
+      outline: '#0e0d0b',
+      detail: '#e6e2db',
+      filter: 'drop-shadow(0 1.5px 1px rgba(0,0,0,0.3))',
+    },
+  },
+  {
+    // Wooden set — pale boxwood vs rich walnut, the traditional tournament look.
     id: 'classic',
-    name: 'Classic',
+    name: 'Wood',
+    style: 'detailed',
     white: {
       variant: 'filled',
-      color: '#f8fafc',
-      filter: 'drop-shadow(0 0 1px #0f172a) drop-shadow(0 1px 2px rgba(0,0,0,0.45))',
+      color: '#e2bd88',
+      outline: '#6b4a2c',
+      detail: '#6b4a2c',
+      filter: 'drop-shadow(0 1.5px 1px rgba(0,0,0,0.3))',
     },
     black: {
       variant: 'filled',
-      color: '#1e293b',
-      filter: 'drop-shadow(0 0 1px #f8fafc) drop-shadow(0 1px 2px rgba(0,0,0,0.35))',
+      color: '#5b3a20',
+      outline: '#2a1809',
+      detail: '#e2bd88',
+      filter: 'drop-shadow(0 1.5px 1px rgba(0,0,0,0.35))',
     },
   },
   {
+    // Cool marble — bluish stone with slate ink.
     id: 'outline',
-    name: 'Outline',
-    // White side hollow, black side solid — a clean, modern two-tone look.
+    name: 'Marble',
+    style: 'detailed',
     white: {
-      variant: 'outline',
-      color: '#f8fafc',
-      filter: 'drop-shadow(0 0 1px #0f172a) drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
+      variant: 'filled',
+      color: '#eef2f6',
+      outline: '#3b4a57',
+      detail: '#3b4a57',
+      filter: 'drop-shadow(0 1.5px 1px rgba(0,0,0,0.28))',
     },
     black: {
       variant: 'filled',
-      color: '#111827',
-      filter: 'drop-shadow(0 0 1px rgba(255,255,255,0.6)) drop-shadow(0 1px 2px rgba(0,0,0,0.35))',
+      color: '#33404a',
+      outline: '#10161b',
+      detail: '#d4dee6',
+      filter: 'drop-shadow(0 1.5px 1px rgba(0,0,0,0.3))',
     },
   },
   {
+    // Stark grayscale — crisp black lines, the printed-diagram look.
     id: 'ink',
     name: 'Ink',
-    // Both dark; white reads as a line drawing, black as solid — the classic
-    // printed-book / newspaper diagram style.
-    white: { variant: 'outline', color: '#1f2937', filter: 'drop-shadow(0 1px 1px rgba(255,255,255,0.35))' },
-    black: { variant: 'filled', color: '#0b1220', filter: 'drop-shadow(0 1px 1px rgba(255,255,255,0.25))' },
+    style: 'detailed',
+    white: {
+      variant: 'filled',
+      color: '#fafafa',
+      outline: '#171717',
+      detail: '#171717',
+      filter: 'drop-shadow(0 1.5px 1px rgba(0,0,0,0.25))',
+    },
+    black: {
+      variant: 'filled',
+      color: '#171717',
+      outline: '#000000',
+      detail: '#f0f0f0',
+      filter: 'drop-shadow(0 1.5px 1px rgba(0,0,0,0.3))',
+    },
   },
   {
+    // Glowing neon — bright bodies with a coloured halo.
     id: 'neon',
     name: 'Neon',
+    style: 'detailed',
     white: {
       variant: 'filled',
-      color: '#67e8f9',
-      filter: 'drop-shadow(0 0 4px #22d3ee) drop-shadow(0 0 8px rgba(34,211,238,0.7))',
+      color: '#22d3ee',
+      outline: '#0e7490',
+      detail: '#ecfeff',
+      filter: 'drop-shadow(0 0 3px #22d3ee) drop-shadow(0 0 6px rgba(34,211,238,0.7))',
     },
     black: {
       variant: 'filled',
-      color: '#f0abfc',
-      filter: 'drop-shadow(0 0 4px #e879f9) drop-shadow(0 0 8px rgba(232,121,249,0.7))',
+      color: '#e879f9',
+      outline: '#86198f',
+      detail: '#fdf4ff',
+      filter: 'drop-shadow(0 0 3px #e879f9) drop-shadow(0 0 6px rgba(232,121,249,0.7))',
     },
   },
   {
+    // Gold & burgundy — a regal, high-ornament pairing.
     id: 'gold',
     name: 'Royal',
+    style: 'detailed',
     white: {
       variant: 'filled',
-      color: '#fde68a',
-      filter: 'drop-shadow(0 0 1px #78350f) drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
+      color: '#f5d67a',
+      outline: '#7a5a12',
+      detail: '#7a5a12',
+      filter: 'drop-shadow(0 1.5px 1px rgba(0,0,0,0.3))',
     },
     black: {
       variant: 'filled',
-      color: '#7f1d1d',
-      filter: 'drop-shadow(0 0 1px #fde68a) drop-shadow(0 1px 2px rgba(0,0,0,0.4))',
+      color: '#7f1d2e',
+      outline: '#3f0d17',
+      detail: '#f5d67a',
+      filter: 'drop-shadow(0 1.5px 1px rgba(0,0,0,0.35))',
     },
   },
 ]
@@ -110,8 +177,8 @@ export type ChessBoardTheme = {
 }
 
 export const BOARD_THEMES: ChessBoardTheme[] = [
+  { id: 'green', name: 'Green', light: '#ebecd0', dark: '#739552' },
   { id: 'classic', name: 'Classic', light: '#eed9b5', dark: '#b58863' },
-  { id: 'emerald', name: 'Emerald', light: '#eeeed2', dark: '#769656' },
   { id: 'ocean', name: 'Ocean', light: '#dee3e6', dark: '#8ca2ad' },
   { id: 'midnight', name: 'Midnight', light: '#6b7a8a', dark: '#2c3a47' },
   { id: 'walnut', name: 'Walnut', light: '#e3c6a0', dark: '#7a4a2b' },

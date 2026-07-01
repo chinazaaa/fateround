@@ -25,8 +25,8 @@ export function clampChessTimer(value: unknown): number {
 // truth for validation; the matching visual definitions live in
 // src/lib/chess-appearance.ts and must stay in sync with these ids.
 export const CHESS_BOARD_THEME_IDS = [
+  'green',
   'classic',
-  'emerald',
   'ocean',
   'midnight',
   'walnut',
@@ -34,9 +34,9 @@ export const CHESS_BOARD_THEME_IDS = [
   'grape',
   'rosewood',
 ] as const
-export const CHESS_PIECE_SET_IDS = ['classic', 'outline', 'ink', 'neon', 'gold'] as const
-export const CHESS_DEFAULT_BOARD_THEME = 'classic'
-export const CHESS_DEFAULT_PIECE_SET = 'classic'
+export const CHESS_PIECE_SET_IDS = ['neo', 'classic', 'outline', 'ink', 'neon', 'gold'] as const
+export const CHESS_DEFAULT_BOARD_THEME = 'green'
+export const CHESS_DEFAULT_PIECE_SET = 'neo'
 
 export function clampChessBoardTheme(value: unknown): string {
   return (CHESS_BOARD_THEME_IDS as readonly string[]).includes(value as string)

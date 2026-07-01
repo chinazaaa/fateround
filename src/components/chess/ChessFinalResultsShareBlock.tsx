@@ -5,7 +5,7 @@ import { Chess, type Square } from 'chess.js'
 import type { Game, Player, ChessSession } from '@/types'
 import { chessResultDetail } from '@/lib/chess'
 import { type ChessAppearanceDefaults, type ChessPieceType, useChessAppearance } from '@/lib/chess-appearance'
-import { ChessPieceIcon } from '@/components/chess/ChessPieceIcon'
+import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
@@ -32,19 +32,18 @@ function ReadOnlyBoard({ fen, defaults }: { fen: string; defaults?: ChessAppeara
           const square = `${file}${rank}`
           const piece = chess.get(square as Square)
           const isLight = (FILES.indexOf(file) + rank) % 2 === 1
-          const face = piece ? (piece.color === 'w' ? pieceSet.white : pieceSet.black) : null
           return (
             <div
               key={square}
               className="aspect-square flex items-center justify-center"
               style={{ backgroundColor: isLight ? boardTheme.light : boardTheme.dark }}
             >
-              {piece && face && (
-                <ChessPieceIcon
+              {piece && (
+                <ChessPieceGlyph
+                  set={pieceSet}
+                  color={piece.color}
                   type={piece.type as ChessPieceType}
-                  variant={face.variant}
-                  className="w-[82%] h-[82%]"
-                  style={{ color: face.color, filter: face.filter }}
+                  className={pieceSet.style === 'detailed' ? 'w-[92%] h-[92%]' : 'w-[82%] h-[82%]'}
                 />
               )}
             </div>

@@ -68,8 +68,8 @@ import {
   isSudokuGame,
   isWordHuntGame,
 } from '@/lib/game-types'
-import { BOARD_THEMES, PIECE_SETS } from '@/lib/chess-appearance'
-import { ChessPieceIcon } from '@/components/chess/ChessPieceIcon'
+import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
+import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
 import { WYR_QUESTION_COUNT } from '@/lib/would-you-rather-questions'
 import { THIS_OR_THAT_QUESTION_COUNT } from '@/lib/this-or-that-questions'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
@@ -284,8 +284,12 @@ function CreateGameInner() {
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
   const [scrabbleGameDuration, setScrabbleGameDuration] = useState(0)
   const [scrabbleDictionary, setScrabbleDictionary] = useState<ScrabbleDictionaryId>(SCRABBLE_DEFAULT_DICTIONARY)
-  const [chessBoardTheme, setChessBoardTheme] = useState('classic')
-  const [chessPieceSet, setChessPieceSet] = useState('classic')
+  const [chessBoardTheme, setChessBoardTheme] = useState('green')
+  const [chessPieceSet, setChessPieceSet] = useState('neo')
+  // On successful chess-game creation we mirror the host's chosen look into this
+  // device's personal preference (see createGame), so a leftover per-device
+  // override from a previous game doesn't silently shadow it on the host's board.
+  const { setBoardTheme: setDeviceBoardTheme, setPieceSet: setDevicePieceSet } = useChessAppearance()
   const [yahtzeeMaxPlayers, setYahtzeeMaxPlayers] = useState(YAHTZEE_DEFAULT_MAX_PLAYERS)
   const [whotMaxPlayers, setWhotMaxPlayers] = useState(WHOT_DEFAULT_MAX_PLAYERS)
   const [whotGameDuration, setWhotGameDuration] = useState(0)
@@ -1300,6 +1304,14 @@ function CreateGameInner() {
       })
       const data = await res.json()
       if (data.gameCode) {
+        // Mirror the host's chosen look into this device's personal preference so
+        // the host sees exactly what they picked, rather than a leftover override
+        // from a previous game. Done only once the game is actually created — not
+        // on every swatch click while they're still deciding.
+        if (isChess) {
+          setDeviceBoardTheme(chessBoardTheme)
+          setDevicePieceSet(chessPieceSet)
+        }
         setResult(data)
         setStep('done')
         const roomParam = searchParams.get('room')
@@ -1929,18 +1941,8 @@ function CreateGameInner() {
                           style={{ backgroundColor: '#b58863' }}
                         >
                           <span className="leading-none flex gap-0.5">
-                            <ChessPieceIcon
-                              type="n"
-                              variant={set.white.variant}
-                              className="h-6 w-6"
-                              style={{ color: set.white.color, filter: set.white.filter }}
-                            />
-                            <ChessPieceIcon
-                              type="n"
-                              variant={set.black.variant}
-                              className="h-6 w-6"
-                              style={{ color: set.black.color, filter: set.black.filter }}
-                            />
+                            <ChessPieceGlyph set={set} color="w" type="n" className="h-6 w-6" />
+                            <ChessPieceGlyph set={set} color="b" type="n" className="h-6 w-6" />
                           </span>
                           <span className="text-[10px] font-semibold text-white/90 leading-none">{set.name}</span>
                         </button>
