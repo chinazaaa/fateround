@@ -6,6 +6,7 @@ import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaiting
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { ExitIcon } from '@/components/host/host-icons'
@@ -103,6 +104,10 @@ export function TriviaHostManagePanel({
     [roundAnswersProp, answers, currentRound]
   )
   const leaderboard = useMemo(() => tallyTriviaPlayerScores(answers, players), [answers, players])
+  // A host who plays and finishes top can post their win too.
+  const hostRow = leaderboard.find((row) => row.id === highlightPlayerId)
+  const hostWon =
+    !!hostRow && leaderboard[0] != null && hostRow.score === leaderboard[0].score && leaderboard[0].score > 0
   const isLastRound = isLastRoundProp ?? (game.current_round_number ?? 0) >= (game.rounds_count ?? 0)
   const category = triviaCategoryLabel(triviaCategoryFromGame(game))
   const questionSource = parseQuestionSource(game.question_source, 'trivia')
@@ -322,6 +327,14 @@ export function TriviaHostManagePanel({
               totalQuestions={game.rounds_count ?? undefined}
             />
           </FinalResultsShareBlock>
+          {hostWon && (
+            <PostWinToCommunity
+              gameType="trivia"
+              gameCode={gameCode}
+              winnerName={hostRow?.name ?? ''}
+              roundKey={game.session_started_at ?? undefined}
+            />
+          )}
         </>
       )}
     </div>

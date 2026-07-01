@@ -9,6 +9,45 @@ export function normalizeName(name: string): string {
   return name.trim().replace(/\s+/g, ' ').toLowerCase()
 }
 
+// community_settings key for the community WhatsApp invite link shown on the
+// public leaderboard ("Join the community").
+export const WHATSAPP_INVITE_URL_KEY = 'whatsapp_invite_url'
+
+// Simple key/value accessors over community_settings (holds hashed codes and the
+// WhatsApp invite URL). Returns null when unset.
+export async function getSetting(key: string): Promise<string | null> {
+  const supabase = getSupabaseAdmin()
+  const { data } = await supabase.from('community_settings').select('value').eq('key', key).maybeSingle()
+  return data?.value ?? null
+}
+
+export async function setSetting(key: string, value: string | null): Promise<void> {
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase
+    .from('community_settings')
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+  if (error) throw error
+}
+
+// Resolve the leaderboard game mapped to an in-app game type. Free-text legacy
+// rows may share a game_type, so pick the first by sort order for determinism.
+export async function getGameByType(
+  gameType: string,
+  opts: { activeOnly?: boolean } = {}
+): Promise<CommunityGame | null> {
+  const supabase = getSupabaseAdmin()
+  let query = supabase
+    .from('community_games')
+    .select('*')
+    .eq('game_type', gameType)
+    .order('sort_order', { ascending: true })
+    .limit(1)
+  if (opts.activeOnly) query = query.eq('is_active', true)
+  const { data, error } = await query
+  if (error) throw error
+  return (data?.[0] as CommunityGame | undefined) ?? null
+}
+
 export async function getGames(opts: { activeOnly?: boolean } = {}): Promise<CommunityGame[]> {
   const supabase = getSupabaseAdmin()
   let query = supabase.from('community_games').select('*').order('sort_order', { ascending: true }).order('name')
@@ -92,7 +131,12 @@ export async function getDayWinners(dateStr: string): Promise<DailyGameWinner[]>
 // Record a win for a player in a game on a day. The first win creates the row;
 // each subsequent call for the same player increments their win count (so a
 // player who takes several of the day's rounds is tallied once with wins > 1).
-export async function addResult(gameId: string, dateStr: string, playerName: string): Promise<void> {
+export async function addResult(
+  gameId: string,
+  dateStr: string,
+  playerName: string,
+  opts: { recordedBy?: string } = {}
+): Promise<void> {
   const supabase = getSupabaseAdmin()
 
   // Only active games may receive results — otherwise a crafted request could
@@ -121,11 +165,49 @@ export async function addResult(gameId: string, dateStr: string, playerName: str
       .eq('id', existing.id)
     if (error) throw error
   } else {
-    const { error } = await supabase
-      .from('community_results')
-      .insert({ game_id: gameId, result_date: dateStr, player_id: playerId, wins: 1, recorded_by: 'manager' })
+    const { error } = await supabase.from('community_results').insert({
+      game_id: gameId,
+      result_date: dateStr,
+      player_id: playerId,
+      wins: 1,
+      recorded_by: opts.recordedBy ?? 'manager',
+    })
     if (error) throw error
   }
+}
+
+export type PostWinOutcome = 'recorded' | 'already_posted' | 'not_on_leaderboard'
+
+// Winner self-report path: the winner of an in-app game (sourceGameId) posts
+// their win for today. Deduped via community_self_posts so the same match can't
+// be posted twice by the same player. Assumes the access code was already
+// verified by the caller. Records under recorded_by = 'self'.
+export async function postWinFromGame(args: {
+  gameType: string
+  playerName: string
+  sourceGameId: string
+  dateStr: string
+}): Promise<PostWinOutcome> {
+  const supabase = getSupabaseAdmin()
+
+  const game = await getGameByType(args.gameType, { activeOnly: true })
+  if (!game) return 'not_on_leaderboard'
+
+  const { id: playerId } = await resolvePlayerId(args.playerName)
+
+  // Claim the (match, player) slot first. A unique-violation means this player
+  // already posted this match — reject before touching the win tally.
+  const { error: ledgerError } = await supabase
+    .from('community_self_posts')
+    .insert({ source_game_id: args.sourceGameId, player_id: playerId, community_game_id: game.id })
+  if (ledgerError) {
+    // 23505 = unique_violation (already posted). Anything else is a real failure.
+    if ((ledgerError as { code?: string }).code === '23505') return 'already_posted'
+    throw ledgerError
+  }
+
+  await addResult(game.id, args.dateStr, args.playerName, { recordedBy: 'self' })
+  return 'recorded'
 }
 
 // Remove wins for a player in a game/day. By default removes one win (deleting the

@@ -38,6 +38,7 @@ import { useWhotNotifications, playWhotActionSound } from '@/hooks/useWhotNotifi
 import { WhotChoosePanel, WhotHand, WhotTable } from '@/components/whot/WhotBoard'
 import { WhotGameTimerBar } from '@/components/whot/WhotGameTimerBar'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { WhotCard, WhotPrimaryButton } from '@/components/whot/WhotChrome'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 
@@ -409,24 +410,34 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
       finished={
-        <WhotFinalResultsShareBlock
-          game={game}
-          players={players}
-          hands={hands}
-          session={session}
-          winnerName={winner?.name}
-          highlightPlayerId={hostPlayerId}
-          playAgainButton={
-            <button
-              type="button"
-              onClick={() => void playAgain()}
-              disabled={playingAgain}
-              className="btn-primary w-full py-3"
-            >
-              {playingAgain ? 'Resetting…' : 'Play again'}
-            </button>
-          }
-        />
+        <>
+          <WhotFinalResultsShareBlock
+            game={game}
+            players={players}
+            hands={hands}
+            session={session}
+            winnerName={winner?.name}
+            highlightPlayerId={hostPlayerId}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void playAgain()}
+                disabled={playingAgain}
+                className="btn-primary w-full py-3"
+              >
+                {playingAgain ? 'Resetting…' : 'Play again'}
+              </button>
+            }
+          />
+          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="whot"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={session?.id}
+            />
+          )}
+        </>
       }
     />
   )

@@ -70,6 +70,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const [validWords, setValidWords] = useState<Set<string>>(new Set())
   const [submissions, setSubmissions] = useState<WordHuntSubmission[]>([])
   const [selectedPath, setSelectedPath] = useState<number[]>([])
+  const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const inFlightWordsRef = useRef<Set<string>>(new Set())
 
@@ -449,6 +450,18 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const leaderboard = tallyWordHuntScores(submissions, players)
   const displayName = myPlayerName || me?.name || 'Player'
 
+  // Viewers watch one player's hunt at a time — the shared grid is static, so the
+  // interesting part is seeing a chosen player's words and score fill in live.
+  const watchablePlayers = game ? players.filter((p) => !playerIsViewer(p, game)) : []
+  const effectiveWatchedId =
+    (watchedPlayerId && watchablePlayers.some((p) => p.id === watchedPlayerId) ? watchedPlayerId : null) ??
+    leaderboard.find((row) => watchablePlayers.some((p) => p.id === row.player_id))?.player_id ??
+    watchablePlayers[0]?.id ??
+    null
+  const watchedSubmissions = effectiveWatchedId ? submissions.filter((s) => s.player_id === effectiveWatchedId) : []
+  const watchedFoundWords = watchedSubmissions.map((s) => s.word)
+  const watchedPoints = watchedSubmissions.reduce((sum, s) => sum + s.points_awarded, 0)
+
   if (view === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -601,15 +614,45 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
           />
         )}
 
+        {isViewer &&
+          (watchablePlayers.length > 0 ? (
+            <div className="glass-card p-3 space-y-2">
+              <p className="label-caps text-xs">Watching a player&apos;s board</p>
+              <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {watchablePlayers.map((p) => {
+                  const active = p.id === effectiveWatchedId
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setWatchedPlayerId(p.id)}
+                      className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+                        active
+                          ? 'bg-[var(--chip-active-bg)] text-[var(--chip-active-text)] border-[var(--chip-active-border)]'
+                          : 'bg-[var(--surface-inset-bg)] text-muted border-[var(--border-strong)] hover:text-[var(--foreground)]'
+                      }`}
+                    >
+                      {p.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            <p className="glass-card p-3 text-center text-xs text-muted">
+              No players have joined the hunt yet — you&apos;ll see their board here once they do.
+            </p>
+          ))}
+
         {grid && (
           <WordHuntPlaySurface
             grid={grid}
-            selectedPath={selectedPath}
+            selectedPath={isViewer ? [] : selectedPath}
             onPathChange={setSelectedPath}
             onStrokeEnd={handleSubmitWord}
-            foundWords={myFoundWords}
+            foundWords={isViewer ? watchedFoundWords : myFoundWords}
             validWords={validWords}
-            myPoints={myPoints}
+            myPoints={isViewer ? watchedPoints : myPoints}
             timeLabel={timeLabel}
             timeUp={timeUp}
             secondsLeft={secondsLeft}

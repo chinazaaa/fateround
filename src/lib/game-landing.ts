@@ -921,12 +921,21 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'Play Yahtzee online free with friends — no sign-up, no download. Roll five dice, hold what you want, and fill your scorecard. Solo or up to 6 players.',
     keywords: [
       'yahtzee game online',
+      'yahtzee online multiplayer',
+      'play yahtzee online free',
+      'yahtzee with friends online',
       'yahtzee rules',
       'how to play yahtzee',
       'how many dice in yahtzee',
       'full house yahtzee',
       'yahtzee scoring',
+      'yahtzee score sheet',
+      'yahtzee categories',
+      'small straight vs large straight',
+      'yahtzee bonus rules',
+      'yahtzee strategy',
       'dice game multiplayer',
+      'online dice game with friends',
       'roll hold scorecard',
       'play yahtzee friends',
     ],
@@ -984,6 +993,31 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Is it spelled Yahtzee or Yatzee?',
         answer:
           'The correct spelling is Yahtzee, but it’s commonly mistyped as Yatzee, Yahtzy, Yatzy, Yachtzee, Yathzee, or Tahtzee. However you spell it, it’s the same five-dice scoring game — and you can play it free on Fate Round.',
+      },
+      {
+        question: 'What are all the categories on a Yahtzee scorecard?',
+        answer:
+          'A Yahtzee scorecard has 13 categories in two sections. The upper section is Ones, Twos, Threes, Fours, Fives, and Sixes — each scores the sum of dice showing that number. The lower section is Three of a Kind, Four of a Kind, Full House (25), Small Straight (30), Large Straight (40), Yahtzee (50), and Chance. You fill exactly one category per turn, and Fate Round tracks the whole card for every player automatically.',
+      },
+      {
+        question: 'What is the difference between a small straight and a large straight in Yahtzee?',
+        answer:
+          'A small straight is four dice in a run (like 3-4-5-6) and scores 30 points. A large straight is all five dice in a run (like 2-3-4-5-6) and scores 40 points. The large straight is harder to roll, which is why it pays more.',
+      },
+      {
+        question: 'What is the Yahtzee bonus?',
+        answer:
+          'There are two bonuses. The upper-section bonus adds 35 points if your Ones-through-Sixes total reaches 63 or more. The Yahtzee bonus rewards extra Yahtzees: once you have already scored 50 in the Yahtzee box, every additional five-of-a-kind you roll is worth a 100-point bonus. Fate Round applies both automatically.',
+      },
+      {
+        question: 'Is there any strategy to Yahtzee?',
+        answer:
+          'Yes. Prioritise the upper section early to chase the 63-point threshold for the 35-point bonus, keep Chance as a flexible fallback for a bad roll, and only zero out a category (like Yahtzee) when you have no better option. Deciding which dice to hold between rolls is where most of the skill lives.',
+      },
+      {
+        question: 'Can you play Yahtzee solo?',
+        answer:
+          'Yes. Fate Round lets you start a Yahtzee room on your own and play through the full scorecard to chase a high score — no other players required. Add friends any time by sharing the room code.',
       },
     ],
   }),
@@ -1432,7 +1466,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     keywords: ['checkers online', 'play checkers with friends', 'online draughts 2 player', 'checkers with a friend'],
     heroSubtitle: 'Classic checkers, head-to-head — jump your friend’s pieces and crown your kings.',
     bodyParagraph:
-      'Checkers on Fate Round is a clean two-player game of standard American (8×8) draughts. One player joins a room as Red, the other as Black, and Red moves first. Men slide one square diagonally forward; jump an adjacent opponent to capture it — and if a jump is on offer you must take it, chaining multiple jumps in a single turn. Reach the far row to crown a king that moves and captures both directions. Capture all of your opponent’s pieces, or leave them with no legal move, to win. Add an optional clock — each player gets their own time bank (3, 5, or 10 minutes) that only ticks on their turn, and the first to flag loses.',
+      'Checkers on Fate Round is a clean two-player game of standard American (8×8) draughts. One player joins a room as Black, the other as Red, and Black moves first. Men slide one square diagonally forward; jump an adjacent opponent to capture it — and if a jump is on offer you must take it, chaining multiple jumps in a single turn. Reach the far row to crown a king that moves and captures both directions. Capture all of your opponent’s pieces, or leave them with no legal move, to win. Add an optional clock — each player gets their own time bank (3, 5, or 10 minutes) that only ticks on their turn, and the first to flag loses.',
     highlights: ['2 players', 'Forced jumps', 'Real-time board'],
     features: [
       {
@@ -1451,8 +1485,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     steps: [
       { title: 'Join a room', description: 'Two players join with their name — the host can join as a player too.' },
       {
-        title: 'Red moves first',
-        description: 'One player is Red, the other Black. Tap a piece, then its diagonal destination.',
+        title: 'Black moves first',
+        description: 'One player is Black, the other Red. Tap a piece, then its diagonal destination.',
       },
       {
         title: 'Capture to win',

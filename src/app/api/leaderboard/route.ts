@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDayWinners, getStandings } from '@/lib/community-data'
+import { getDayWinners, getSetting, getStandings, WHATSAPP_INVITE_URL_KEY } from '@/lib/community-data'
 import {
   formatDayLabel,
   formatMonthLabel,
@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
   const date = isValidDateStr(dateParam) ? dateParam : watToday()
 
   try {
+    const whatsappInviteUrl = await getSetting(WHATSAPP_INVITE_URL_KEY)
     let response: LeaderboardResponse
 
     if (window === 'today') {
@@ -36,6 +37,7 @@ export async function GET(req: NextRequest) {
         rangeEnd: date,
         today: await getDayWinners(date),
         standings: [],
+        whatsappInviteUrl,
       }
     } else {
       const { start, end } = window === 'week' ? weekBounds(date) : monthBounds(date)
@@ -46,6 +48,7 @@ export async function GET(req: NextRequest) {
         rangeEnd: end,
         today: [],
         standings: await getStandings(start, end),
+        whatsappInviteUrl,
       }
     }
 

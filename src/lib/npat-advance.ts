@@ -118,14 +118,34 @@ async function pickLetterAndStartWriting(
   const metadata = parseNpatMetadata(round.npat_metadata)
   if (!metadata || metadata.phase !== 'letter_pick') return false
   const now = new Date().toISOString()
-  const ok = await updateRoundMetadata(supabase, round.id, {
-    ...metadata,
-    letter: letter.toUpperCase().slice(0, 1),
-    phase: 'writing',
-    phase_started_at: now,
-  })
-  if (ok) await ensureBlankAnswers(supabase, gameId, round.id, playerIds)
-  return ok
+  // Condition the write on the round still being in letter_pick. `round` is a
+  // snapshot; a caller may have already picked (or another poller auto-picked)
+  // since it was read. Without this guard a stale auto-pick overwrites the real
+  // letter after writing began, flipping the letter mid-round and zeroing everyone.
+  const { data: updated, error } = await supabase
+    .from('rounds')
+    .update({
+      npat_metadata: {
+        ...metadata,
+        letter: letter.toUpperCase().slice(0, 1),
+        phase: 'writing',
+        phase_started_at: now,
+      },
+    })
+    .eq('id', round.id)
+    .eq('npat_metadata->>phase', 'letter_pick')
+    .select('id')
+    .maybeSingle()
+  // A real write failure and "another writer already transitioned" are both
+  // non-advances — the caller must not report phase_advanced for either. Log the
+  // genuine error so a persistent DB failure is observable.
+  if (error) {
+    console.error('Failed to auto-pick NPAT letter:', error.message)
+    return false
+  }
+  if (!updated) return false
+  await ensureBlankAnswers(supabase, gameId, round.id, playerIds)
+  return true
 }
 
 async function startMarkingPhase(
@@ -294,8 +314,8 @@ async function advanceActiveRoundPhase(
         remaining.length > 0
           ? remaining[Math.floor(Math.random() * remaining.length)]
           : randomUnusedLetter(metadata.used_letters)
-      await pickLetterAndStartWriting(supabase, game.id, round, letter, playerIds)
-      return 'phase_advanced'
+      const ok = await pickLetterAndStartWriting(supabase, game.id, round, letter, playerIds)
+      return ok ? 'phase_advanced' : 'round_active'
     }
     return 'round_active'
   }

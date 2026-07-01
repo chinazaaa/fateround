@@ -92,9 +92,24 @@ export async function findJoinerParticipant(supabase: SupabaseClient, gameId: st
   return data
 }
 
-export async function deleteJoinerPair(supabase: SupabaseClient, gameId: string, player: { id: string; name: string }) {
-  await supabase.from('participants').delete().eq('game_id', gameId).eq('name', player.name)
-  await supabase.from('players').delete().eq('id', player.id)
+export async function deleteJoinerPair(
+  supabase: SupabaseClient,
+  gameId: string,
+  player: { id: string; name: string }
+): Promise<{ error: string | null }> {
+  // Surface either failure instead of swallowing it — otherwise the caller reports
+  // success while a row lingers, and the player reappears on the next reload.
+  // Delete the participant first (a player row may FK-reference it); bail before
+  // touching players if it fails, so we don't half-remove the pair.
+  const { error: participantError } = await supabase
+    .from('participants')
+    .delete()
+    .eq('game_id', gameId)
+    .eq('name', player.name)
+  if (participantError) return { error: participantError.message }
+  const { error } = await supabase.from('players').delete().eq('id', player.id)
+  if (error) return { error: error.message }
+  return { error: null }
 }
 
 export function pollGenderForPlayer(

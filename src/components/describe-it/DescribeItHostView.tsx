@@ -58,6 +58,7 @@ import {
 } from '@/components/describe-it/DescribeItChrome'
 import { DescribeItPlayPanel } from '@/components/describe-it/DescribeItPlay'
 import { DescribeItFinalResultsShareBlock } from '@/components/describe-it/DescribeItFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 
 type HostMode = 'spectator' | 'player'
 type HostTab = 'play' | 'manage'
@@ -890,20 +891,39 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     </div>
   )
 
+  // Individual mode only — team mode has no single-player winner.
+  const hostIndividualLb = isIndividual ? describeItIndividualLeaderboard(playerScores, players) : []
+  const hostDescRow = hostIndividualLb.find((row) => row.id === hostPlayerId)
+  const hostWonDescribe =
+    !!hostDescRow &&
+    hostIndividualLb[0] != null &&
+    hostDescRow.score === hostIndividualLb[0].score &&
+    hostIndividualLb[0].score > 0
+
   const finished = gameFinished && (
-    <DescribeItFinalResultsShareBlock
-      game={game}
-      players={players}
-      words={words}
-      numTeams={numTeams}
-      mode={mode}
-      playerScores={playerScores}
-      playAgainButton={
-        <DescribeItPrimaryButton onClick={playAgain} loading={playingAgain}>
-          Play again
-        </DescribeItPrimaryButton>
-      }
-    />
+    <>
+      <DescribeItFinalResultsShareBlock
+        game={game}
+        players={players}
+        words={words}
+        numTeams={numTeams}
+        mode={mode}
+        playerScores={playerScores}
+        playAgainButton={
+          <DescribeItPrimaryButton onClick={playAgain} loading={playingAgain}>
+            Play again
+          </DescribeItPrimaryButton>
+        }
+      />
+      {hostWonDescribe && (
+        <PostWinToCommunity
+          gameType="describe_it"
+          gameCode={gameCode}
+          winnerName={hostDescRow?.name ?? ''}
+          roundKey={session?.id}
+        />
+      )}
+    </>
   )
 
   return (

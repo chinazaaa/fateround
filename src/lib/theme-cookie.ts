@@ -8,5 +8,9 @@ export function parseThemeCookie(value: string | undefined | null): Theme {
 
 /** Client-side: persist theme for SSR on the next request. */
 export function setThemeCookie(theme: Theme) {
-  document.cookie = `${THEME_COOKIE}=${theme};path=/;max-age=31536000;SameSite=Lax`
+  try {
+    document.cookie = `${THEME_COOKIE}=${theme};path=/;max-age=31536000;SameSite=Lax`
+  } catch {
+    /* cookie write blocked (e.g. Edge tracking prevention) — non-fatal */
+  }
 }

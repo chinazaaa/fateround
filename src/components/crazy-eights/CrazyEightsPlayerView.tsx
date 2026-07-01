@@ -18,6 +18,7 @@ import {
 import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
 import { CrazyEightsGameTimerBar } from '@/components/crazy-eights/CrazyEightsGameTimerBar'
 import { CrazyEightsFinalResultsShareBlock } from '@/components/crazy-eights/CrazyEightsFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   currentPlayerId,
@@ -338,6 +339,14 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
             <div className="text-6xl mb-3">🏆</div>
             {winner && <p className="text-2xl font-black text-[var(--marry)]">{winner.name}</p>}
           </CrazyEightsCard>
+        )}
+        {myPlayerId && session?.winner_player_id === myPlayerId && (
+          <PostWinToCommunity
+            gameType="crazy_eights"
+            gameCode={gameCode}
+            winnerName={players.find((p) => p.id === myPlayerId)?.name ?? ''}
+            roundKey={session?.id}
+          />
         )}
       </CrazyEightsShell>
     )

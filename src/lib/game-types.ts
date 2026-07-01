@@ -1574,7 +1574,7 @@ export function gameHowItWorks(
     case 'chess':
       return 'Two players join with their name. The host can play too. One player is White, the other Black — White moves first. Move pieces by the standard rules; checkmate your opponent to win. Optional chess clock — each player gets their own time bank that only ticks on their turn, and the first to run out loses.'
     case 'checkers':
-      return 'Two players join with their name. The host can play too. One player is Red (and moves first), the other Black. Move diagonally forward one square; jump an adjacent opponent piece to capture it — and if a jump is available you must take it, chaining multiple jumps in one turn. Reach the far row to crown a king that moves both ways. Capture all your opponent’s pieces, or leave them with no move, to win. Optional clock — each player has their own time bank that only ticks on their turn.'
+      return 'Two players join with their name. The host can play too. One player is Black (and moves first), the other Red. Move diagonally forward one square; jump an adjacent opponent piece to capture it — and if a jump is available you must take it, chaining multiple jumps in one turn. Reach the far row to crown a king that moves both ways. Capture all your opponent’s pieces, or leave them with no move, to win. Optional clock — each player has their own time bank that only ticks on their turn.'
     case 'describe_it':
       return 'Players join with their name and split into teams (you pick how many). Each round, one team is on the clock — a describer sees a secret word and types clues without saying it, while teammates race to type the word. Every correct guess scores a point. Most words across all rounds wins.'
     case 'i_call_on':
@@ -2048,4 +2048,18 @@ export function isAssignmentComplete(assignment: VoteAssignment, gameType?: Game
 
 export function assignedCount(assignment: VoteAssignment, gameType?: GameType | string): number {
   return voteSlots(gameType).filter((slot) => assignment[slot]).length
+}
+
+// Options for the admin "add game to community leaderboard" dropdown: every game
+// type with its display label and accent, sorted alphabetically by label.
+export function communityGameTypeOptions(): { id: GameType; label: string; accent: string }[] {
+  return Object.values(GAME_TYPE_CONFIG)
+    .map((cfg) => ({ id: cfg.id, label: cfg.label, accent: cfg.card.accent }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+}
+
+// Display label for a game type id (falls back to the raw id if unknown).
+export function gameTypeLabel(gameType: string | null | undefined): string | null {
+  if (!gameType) return null
+  return GAME_TYPE_CONFIG[gameType as GameType]?.label ?? gameType
 }

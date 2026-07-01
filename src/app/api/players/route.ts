@@ -1501,7 +1501,8 @@ export async function DELETE(req: NextRequest) {
   }
 
   if (game!.participant_mode === 'joiners') {
-    await deleteJoinerPair(getSupabaseAdmin(), id, player)
+    const { error } = await deleteJoinerPair(getSupabaseAdmin(), id, player)
+    if (error) return NextResponse.json({ error: internalErrorMessage('players', { message: error }) }, { status: 500 })
   } else {
     const { error } = await getSupabaseAdmin().from('players').delete().eq('id', playerId)
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })

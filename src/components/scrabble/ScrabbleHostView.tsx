@@ -27,6 +27,7 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { ScrabbleGamePanel } from '@/components/scrabble/ScrabbleBoard'
 import { ScrabbleFinalResultsShareBlock } from '@/components/scrabble/ScrabbleFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ScrabblePrimaryButton } from '@/components/scrabble/ScrabbleChrome'
 import { ScrabbleHostTimeExtension } from '@/components/scrabble/ScrabbleHostTimeExtension'
 import { ScrabbleGameTimerBar } from '@/components/scrabble/ScrabbleGameTimerBar'
@@ -497,19 +498,29 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
       finished={
-        <ScrabbleFinalResultsShareBlock
-          game={game}
-          players={players}
-          session={session}
-          playerStates={playerStates}
-          winnerName={winner?.name}
-          highlightPlayerId={hostPlayerId}
-          playAgainButton={
-            <ScrabblePrimaryButton onClick={playAgain} loading={playingAgain}>
-              Play again
-            </ScrabblePrimaryButton>
-          }
-        />
+        <>
+          <ScrabbleFinalResultsShareBlock
+            game={game}
+            players={players}
+            session={session}
+            playerStates={playerStates}
+            winnerName={winner?.name}
+            highlightPlayerId={hostPlayerId}
+            playAgainButton={
+              <ScrabblePrimaryButton onClick={playAgain} loading={playingAgain}>
+                Play again
+              </ScrabblePrimaryButton>
+            }
+          />
+          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="scrabble"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={session?.id}
+            />
+          )}
+        </>
       }
     />
   )

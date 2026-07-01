@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Chip } from '@/components/ui/PageShell'
 import { addDays, addMonths, watToday } from '@/lib/community-dates'
+import { DEFAULT_WHATSAPP_INVITE_URL } from '@/lib/community-constants'
 import type { LeaderboardResponse, LeaderboardWindow } from '@/types/community'
 
 const TABS: { key: LeaderboardWindow; label: string }[] = [
@@ -84,6 +85,16 @@ export function LeaderboardClient() {
           </span>
           <h1 className="text-4xl font-black tracking-tight gradient-title">Community Leaderboard</h1>
           <p className="text-muted text-sm">Nightly champions from our community games</p>
+          <div className="pt-1">
+            <a
+              href={data?.whatsappInviteUrl || DEFAULT_WHATSAPP_INVITE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-600 transition-colors hover:bg-emerald-500/25"
+            >
+              💬 Join the community on WhatsApp
+            </a>
+          </div>
         </header>
 
         <div className="flex items-center justify-center gap-2">

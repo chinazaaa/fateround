@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { GAME_TYPE_OPTIONS, gameTypeConfig } from '@/lib/game-types'
+import { GAME_TYPE_OPTIONS, GAME_TYPE_DISPLAY_ORDER, gameTypeConfig } from '@/lib/game-types'
 import type { GameLandingContent, GameLandingFaq } from '@/lib/game-landing'
 import { gameLandingSlug } from '@/lib/game-landing'
 import { appOrigin } from '@/lib/site'
@@ -263,6 +263,71 @@ export function faqPageJsonLd(faqs: GameLandingFaq[]): string {
   })
 }
 
+/** BreadcrumbList structured data — helps Google render breadcrumb trails and helps AI models understand page hierarchy. */
+export function breadcrumbJsonLd(items: { name: string; path: string }[]): string {
+  const origin = appOrigin()
+
+  return JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((item, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: item.name,
+      item: `${origin}${item.path === '/' ? '' : item.path}`,
+    })),
+  })
+}
+
+/** ItemList of every game landing page — gives search/answer engines the full catalog in one machine-readable object. */
+export function gamesItemListJsonLd(): string {
+  const origin = appOrigin()
+
+  return JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: `${SITE_NAME} party games`,
+    description: 'Every free online party game you can play on Fate Round.',
+    numberOfItems: GAME_TYPE_DISPLAY_ORDER.length,
+    itemListElement: GAME_TYPE_DISPLAY_ORDER.map((type, i) => {
+      const cfg = gameTypeConfig(type)
+      const slug = gameLandingSlug(type)
+      return {
+        '@type': 'ListItem',
+        position: i + 1,
+        name: cfg.label,
+        description: cfg.tagline,
+        url: `${origin}/games/${slug}`,
+      }
+    }),
+  })
+}
+
+/**
+ * HowTo structured data built from a game's "how it works" steps — parsed by AI
+ * answer engines and Bing. `totalTime` is intentionally omitted: play length
+ * varies per game and per group, so asserting a fixed duration would be
+ * inaccurate structured data.
+ */
+export function gameHowToJsonLd(content: GameLandingContent): string {
+  const cfg = gameTypeConfig(content.gameType)
+  const origin = appOrigin()
+
+  return JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'HowTo',
+    name: `How to play ${cfg.label} online`,
+    description: content.seoDescription,
+    step: content.steps.map((step, i) => ({
+      '@type': 'HowToStep',
+      position: i + 1,
+      name: step.title,
+      text: step.description,
+      url: `${origin}/games/${content.slug}#rules`,
+    })),
+  })
+}
+
 /** Static OG art per game landing page (1200×630 PNG in /public/og/). */
 export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   'smash-marry-kill': '/og/smash-marry-kill.png',
@@ -280,6 +345,7 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   monopoly: '/og/monopoly.png',
   yahtzee: '/og/yahtzee.png',
   whot: '/og/whot.png',
+  'crazy-eights': '/og/crazy-eights.png',
   ludo: '/og/ludo.png',
   'i-call-on': '/og/i-call-on.png',
   'date-my-kid': '/og/date-my-kid.png',

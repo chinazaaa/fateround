@@ -9,6 +9,7 @@ import {
   ScrabbleShell,
 } from '@/components/scrabble/ScrabbleChrome'
 import { ScrabbleFinalResultsShareBlock } from '@/components/scrabble/ScrabbleFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ScrabbleGamePanel } from '@/components/scrabble/ScrabbleBoard'
 import { ScrabbleGameTimerBar } from '@/components/scrabble/ScrabbleGameTimerBar'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -334,6 +335,14 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
                   : 'Game ended early'}
             </p>
           </ScrabbleCard>
+        )}
+        {iWon && game && (
+          <PostWinToCommunity
+            gameType="scrabble"
+            gameCode={gameCode}
+            winnerName={finishedName ?? ''}
+            roundKey={session?.id}
+          />
         )}
         {myPlayerId && myName && (
           <PlayerSessionControls

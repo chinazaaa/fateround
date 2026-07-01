@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { NpatActiveRound } from '@/components/npat/NpatActiveRound'
 import { NpatFinalResultsShareBlock } from '@/components/npat/NpatFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { NpatScoreboard } from '@/components/npat/NpatScoreboard'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
@@ -271,6 +272,9 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     [marks, currentRound]
   )
   const leaderboard = useMemo(() => tallyNpatScores(answers, players), [answers, players])
+  const hostNpatRow = leaderboard.find((row) => row.id === hostPlayerId)
+  const hostWonNpat =
+    !!hostNpatRow && leaderboard[0] != null && hostNpatRow.score === leaderboard[0].score && leaderboard[0].score > 0
   const showManageScoreboard =
     game?.status === 'active' &&
     currentMetadata != null &&
@@ -482,17 +486,27 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       primary={hostPlays ? interactivePlay : watchRound}
       manage={manage}
       finished={
-        <NpatFinalResultsShareBlock
-          game={game}
-          players={players}
-          leaderboard={leaderboard}
-          highlightPlayerId={hostPlayerId}
-          playAgainButton={
-            <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-primary w-full py-3">
-              {playingAgain ? 'Resetting…' : 'Play again'}
-            </button>
-          }
-        />
+        <>
+          <NpatFinalResultsShareBlock
+            game={game}
+            players={players}
+            leaderboard={leaderboard}
+            highlightPlayerId={hostPlayerId}
+            playAgainButton={
+              <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-primary w-full py-3">
+                {playingAgain ? 'Resetting…' : 'Play again'}
+              </button>
+            }
+          />
+          {hostWonNpat && (
+            <PostWinToCommunity
+              gameType="i_call_on"
+              gameCode={gameCode}
+              winnerName={hostNpatRow?.name ?? ''}
+              roundKey={game.session_started_at ?? undefined}
+            />
+          )}
+        </>
       }
     />
   )

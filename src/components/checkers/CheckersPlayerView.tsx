@@ -9,6 +9,7 @@ import {
   CheckersShell,
 } from '@/components/checkers/CheckersChrome'
 import { CheckersFinalResultsShareBlock } from '@/components/checkers/CheckersFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { CheckersGamePanel } from '@/components/checkers/CheckersBoard'
 import { gameTypeConfig } from '@/lib/game-types'
 import { currentTurnPlayerId, isCheckersResultsPhase } from '@/lib/checkers'
@@ -315,6 +316,14 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
                   : 'Game ended early'}
             </p>
           </CheckersCard>
+        )}
+        {iWon && game && (
+          <PostWinToCommunity
+            gameType="checkers"
+            gameCode={gameCode}
+            winnerName={finishedName ?? ''}
+            roundKey={session?.id}
+          />
         )}
         {myPlayerId && myName && (
           <PlayerSessionControls

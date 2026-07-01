@@ -10,6 +10,7 @@ import {
 } from '@/components/snake-and-ladder/SnakeLadderChrome'
 import { SnakeLadderGamePanel } from '@/components/snake-and-ladder/SnakeLadderBoard'
 import { SnakeLadderFinalResultsShareBlock } from '@/components/snake-and-ladder/SnakeLadderFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
 import { currentPlayerId } from '@/lib/snake-and-ladder'
 import { supabase } from '@/lib/supabase'
@@ -350,6 +351,14 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
             <p className="text-2xl font-black">{winner ? `${winner.name} wins!` : 'Game ended early'}</p>
             <p className="text-sm text-muted">Waiting for the host to start a new round…</p>
           </SnakeLadderCard>
+        )}
+        {iWon && game && (
+          <PostWinToCommunity
+            gameType="snake_and_ladder"
+            gameCode={gameCode}
+            winnerName={myName ?? ''}
+            roundKey={session?.id}
+          />
         )}
         {myPlayerId && myName && (
           <PlayerSessionControls

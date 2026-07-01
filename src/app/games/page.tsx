@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { GAME_TYPE_DISPLAY_ORDER, gameTypeConfig } from '@/lib/game-types'
 import { GAME_LANDING_CONTENT, gameLandingSlug } from '@/lib/game-landing'
-import { SITE_NAME, OG_IMAGE } from '@/lib/seo'
+import { SITE_NAME, OG_IMAGE, gamesItemListJsonLd, breadcrumbJsonLd } from '@/lib/seo'
 import { GamesGrid } from '@/components/GamesGrid'
 import { SiteFooter } from '@/components/SiteFooter'
 
@@ -31,6 +31,17 @@ export default function GamesIndexPage() {
 
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: gamesItemListJsonLd() }} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: breadcrumbJsonLd([
+            { name: 'Home', path: '/' },
+            { name: 'All games', path: '/games' },
+          ]),
+        }}
+      />
+
       <header className="fixed top-0 inset-x-0 z-40 flex items-center px-4 py-3 pointer-events-none">
         <Link href="/" className="pointer-events-auto">
           <FateRoundLogo className="h-8 w-auto max-w-[9.5rem] sm:max-w-[11rem]" />
@@ -59,6 +70,24 @@ export default function GamesIndexPage() {
           </div>
 
           <GamesGrid games={games} />
+
+          <section className="border-t border-theme pt-8 space-y-4 text-muted text-sm sm:text-base leading-relaxed">
+            <h2 className="text-lg font-bold text-body">Free online party games — {games.length}+ modes, one place</h2>
+            <p>
+              {SITE_NAME} brings {games.length}+ multiplayer games into a single browser tab — no sign-up, no download,
+              and free forever. Pick a mode, create a game, and share the room code so friends can join from any phone
+              or laptop. Everything syncs in real time, so it works over a video call, a Discord server, or a group
+              chat.
+            </p>
+            <p>
+              You&apos;ll find classic party games like Smash Marry Kill, Would You Rather, Most Likely To, Red Flag
+              Green Flag, Never Have I Ever, and Hot Seat; board and card games including Monopoly, Yahtzee, Whot, Ludo,
+              Chess, Checkers, Crazy Eights, Snakes and Ladders, and Scrabble; plus word, trivia, and puzzle games such
+              as Codewords, Trivia, Word Hunt, Sudoku, Tic-Tac-Toe, and Bingo. Many modes let you upload your own
+              questions or participant lists, so any theme works for birthdays, icebreakers, team socials, or family
+              game night.
+            </p>
+          </section>
         </div>
       </div>
 

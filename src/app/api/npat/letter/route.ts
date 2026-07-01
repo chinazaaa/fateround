@@ -58,7 +58,10 @@ export async function POST(req: NextRequest) {
   }
 
   const now = new Date().toISOString()
-  const { error } = await supabase
+  // Guard the transition on the round still being in letter_pick so a concurrent
+  // auto-pick (which reads a stale snapshot) can't overwrite the chosen letter
+  // after writing has started — that flip would zero everyone's answers.
+  const { data: updated, error } = await supabase
     .from('rounds')
     .update({
       npat_metadata: {
@@ -70,8 +73,15 @@ export async function POST(req: NextRequest) {
     })
     .eq('id', roundId)
     .eq('status', 'active')
+    .eq('npat_metadata->>phase', 'letter_pick')
+    .select('id')
+    .maybeSingle()
 
   if (error) return NextResponse.json({ error: internalErrorMessage('npat/letter', error) }, { status: 500 })
+  if (!updated) {
+    // Someone (or the auto-pick) already moved this round past letter_pick.
+    return NextResponse.json({ error: 'The letter has already been chosen for this round' }, { status: 409 })
+  }
 
   const { data: players } = await supabase.from('players').select('id').eq('game_id', gameId).eq('spectator', false)
   await ensureBlankAnswers(

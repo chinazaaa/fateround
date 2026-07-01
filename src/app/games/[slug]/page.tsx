@@ -11,7 +11,7 @@ import {
   getGameLandingContent,
   type GameLandingContent,
 } from '@/lib/game-landing'
-import { SITE_NAME, faqPageJsonLd, gameJsonLd, gameLandingOgPath } from '@/lib/seo'
+import { SITE_NAME, faqPageJsonLd, gameJsonLd, gameLandingOgPath, breadcrumbJsonLd, gameHowToJsonLd } from '@/lib/seo'
 import { getGameLandingCustomContentHints } from '@/lib/custom-content-hints'
 import { CustomContentAiTip } from '@/components/ui/CustomContentAiTip'
 import { SiteFooter } from '@/components/SiteFooter'
@@ -75,7 +75,18 @@ export default async function GameLandingRoute({ params }: Props) {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: gamePageJsonLd(content) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: gameHowToJsonLd(content) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: faqPageJsonLd(faqs) }} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: breadcrumbJsonLd([
+            { name: 'Home', path: '/' },
+            { name: 'All games', path: '/games' },
+            { name: cfg.label, path: `/games/${content.slug}` },
+          ]),
+        }}
+      />
 
       <header className="fixed top-0 inset-x-0 z-40 flex items-center justify-between px-4 py-3 pointer-events-none">
         <Link href="/" className="pointer-events-auto">

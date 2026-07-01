@@ -4,6 +4,8 @@
 
 /* ── Light theme (default) ─────────────────────────────────────── */
 :root {
+  color-scheme: light;
+
   --background: #f4f4f7;
   --background-soft: #ffffff;
   --foreground: #0a0a12;
@@ -56,6 +58,8 @@
 
 /* ── Dark theme override ────────────────────────────────────────── */
 [data-theme="dark"] {
+  color-scheme: dark;
+
   --background: #08080f;
   --background-soft: #0e0e16;
   --foreground: #f2f2f8;
@@ -128,6 +132,10 @@ body {
   border-radius: 50%;
   filter: blur(80px);
   opacity: 0.5;
+  /* Promote to a cached GPU layer so the heavy blur is rasterized once and only
+     translated — re-rasterizing blur(80px) per frame banded/tore on mobile GPUs. */
+  will-change: transform;
+  transform: translateZ(0);
   animation: ambient-drift 20s ease-in-out infinite alternate;
 }
 
@@ -161,8 +169,15 @@ body {
 }
 
 @keyframes ambient-drift {
-  0% { transform: translate(0, 0) scale(1); }
-  100% { transform: translate(30px, 20px) scale(1.08); }
+  /* Translate only — scaling forces the blurred layer to re-rasterize each frame. */
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(30px, 20px, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-spot {
+    animation: none;
+  }
 }
 
 .page-wrap {

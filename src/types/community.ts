@@ -6,6 +6,10 @@ export type CommunityGame = {
   name: string
   slug: string
   accent: string | null
+  // In-app game type this leaderboard row maps to (e.g. 'whot', 'checkers').
+  // Used by the winner self-post flow to resolve a game result to a row. May be
+  // null/stale for legacy free-text games until the admin picks one.
+  game_type: string | null
   sort_order: number
   is_active: boolean
   created_at: string
@@ -61,4 +65,5 @@ export type LeaderboardResponse = {
   rangeEnd: string // YYYY-MM-DD (inclusive)
   today: DailyGameWinner[] // populated for window === 'today'
   standings: LeaderboardStanding[] // populated for window === 'week' | 'month'
+  whatsappInviteUrl: string | null // community WhatsApp link, if the admin set one
 }
