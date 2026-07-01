@@ -10,6 +10,7 @@ import {
   isNeverHaveIEver,
   isThisOrThat,
   isTriviaGame,
+  isSudokuGame,
   isBinaryChoiceGame,
   isWouldYouRather,
   isWordHuntGame,
@@ -75,6 +76,14 @@ export async function fetchLateJoinContext(
       statusLine: `Round ${roundLabel(current)}`,
       playerDetail: "You'll vote on the current prompt only. Past rounds can't be voted on.",
       viewerDetail: "Watch the current round and results live — you can't vote.",
+    }
+  }
+
+  if (isSudokuGame(type)) {
+    return {
+      statusLine: 'Puzzle in progress',
+      playerDetail: 'Jump into the same puzzle and race to claim the cells still open.',
+      viewerDetail: "Watch the board fill in and live scores — you can't claim cells.",
     }
   }
 

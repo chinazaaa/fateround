@@ -10,6 +10,7 @@ import {
   parseSudokuMetadata,
   tallySudokuScores,
   buildCellOwnerGrid,
+  buildClaimedValueGrid,
   buildPlayerDisplayGrid,
   getNewlyCompletedUnits,
   playerCompletionPercent,
@@ -25,6 +26,10 @@ import {
 import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } from '@/lib/supabase-selects'
 import { getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
+import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
+import { LateJoinChoice } from '@/components/LateJoinChoice'
+import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import type { Game, Player } from '@/types'
 
 const GRID_KEY = (roundId: string, playerId: string) => `sudoku_grid_${roundId}_${playerId}`
@@ -57,7 +62,7 @@ function saveGrid(roundId: string, playerId: string, grid: number[][]) {
   }
 }
 
-type View = 'loading' | 'join' | 'waiting' | 'playing' | 'finished'
+type View = 'loading' | 'join' | 'late_join_choice' | 'waiting' | 'playing' | 'finished'
 
 type DraftUndo = { row: number; col: number; prev: number; prevWrong: boolean }
 
@@ -126,7 +131,9 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     setPlayers((playersData ?? []) as Player[])
 
     if (!session?.playerId) {
-      setView('join')
+      // Someone opening the link mid-game gets the viewer/player choice, like other games.
+      const pre = preJoinScreen(gameData as Game, false)
+      setView(pre === 'late_join_choice' ? 'late_join_choice' : 'join')
       return
     }
     myPlayerIdRef.current = session.playerId
@@ -192,10 +199,9 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           setGame(payload.new as Game)
-          const status = (payload.new as Game).status
-          if (status === 'waiting') setView('waiting')
-          if (status === 'active') load()
-          if (status === 'finished') load()
+          // Re-derive the screen from session + status (handles lobby reopen for
+          // no-session viewers, mid-game start, and finish alike).
+          load()
         }
       )
       .subscribe()
@@ -248,7 +254,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   }, [gameCode])
 
   const handleJoin = useCallback(
-    async (opts?: { name?: string }) => {
+    async (opts?: { name?: string; joinAsViewer?: boolean }) => {
       const name = (opts?.name ?? joinName).trim()
       if (!name) return
       setJoining(true)
@@ -256,7 +262,12 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         const res = await fetch('/api/players', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameCode, playerName: name, ...joinExtras }),
+          body: JSON.stringify({
+            gameCode,
+            playerName: name,
+            ...joinExtras,
+            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer } : {}),
+          }),
         })
         const json = await res.json()
         if (!res.ok) {
@@ -264,6 +275,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
           return
         }
         myPlayerIdRef.current = json.playerId
+        myResumeTokenRef.current = json.resumeToken ?? null
         setPlayerSession(
           gameCode,
           json.playerId,
@@ -271,12 +283,14 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
           json.playerGender ?? 'no_pref',
           json.resumeToken ?? null
         )
-        setView('waiting')
+        // Derive the right screen: waiting-room joiners wait, mid-game joiners
+        // (players and viewers alike) drop straight into the live puzzle.
+        await load()
       } finally {
         setJoining(false)
       }
     },
-    [gameCode, joinExtras, joinName]
+    [game?.status, gameCode, joinExtras, joinName, load]
   )
 
   useRoomMemberAutoJoin({
@@ -309,6 +323,11 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     if (!puzzle || !myPlayerId) return userGrid
     return buildPlayerDisplayGrid(puzzle, submissions, myPlayerId, userGrid)
   }, [puzzle, userGrid, submissions, myPlayerId])
+  // Viewers watch the shared board fill in — every claimed value, colored by owner.
+  const claimedGrid = useMemo(
+    () => (puzzle ? buildClaimedValueGrid(puzzle, submissions) : undefined),
+    [puzzle, submissions]
+  )
 
   const activePlayers = useMemo(() => players.filter((p) => p.spectator !== true), [players])
   const playerColors = useMemo(() => {
@@ -322,12 +341,26 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const leaderboard = tallySudokuScores(submissions, players)
   const me = players.find((p) => p.id === myPlayerId)
   const isSpectator = me?.spectator === true
+  const isViewer = !!(game && me && playerIsViewer(me, game))
   const myRank = leaderboard.findIndex((r) => r.player_id === myPlayerId) + 1
   const myCompletion = puzzle && myPlayerId ? playerCompletionPercent(puzzle, submissions, myPlayerId) : 0
   const boardCompletion = puzzle ? boardCompletionPercent(puzzle, cellOwners) : 0
 
+  const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
+    gameCode,
+    game,
+    view === 'late_join_choice',
+    submissions.length
+  )
+  const { context: viewerPromoteContext } = useLateJoinContext(
+    gameCode,
+    game,
+    isViewer && view === 'playing',
+    submissions.length
+  )
+
   function isCellEditable(row: number, col: number): boolean {
-    if (isSpectator) return false
+    if (isViewer) return false
     if (!puzzle || !myPlayerId) return false
     if (puzzle[row]![col] !== 0) return false
     return !playerHasSolvedCell(submissions, myPlayerId, row, col)
@@ -498,6 +531,29 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
+  if (view === 'late_join_choice' && game) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <GamePlayerChrome />
+        <main className="pt-16 flex-1">
+          <LateJoinChoice
+            gameCode={gameCode}
+            game={game}
+            context={lateJoinContext}
+            contextLoading={lateJoinContextLoading}
+            playersAllowed={allowLatePlayers(game)}
+            showNameField
+            nameInput={joinName}
+            onNameChange={setJoinName}
+            joining={joining}
+            onJoinAsViewer={() => void handleJoin({ joinAsViewer: true })}
+            onJoinAsPlayer={() => void handleJoin({ joinAsViewer: false })}
+          />
+        </main>
+      </div>
+    )
+  }
+
   if (view === 'waiting') {
     return (
       <div className="min-h-screen flex flex-col">
@@ -580,37 +636,58 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         </div>
       )}
       <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">
-        {/* Player status header */}
-        <div className="flex items-center gap-3 px-1">
-          <div className="w-4 h-4 rounded-sm shrink-0" style={{ backgroundColor: SUDOKU_MY_CELL_COLOR }} />
-          <div>
-            <p className="font-bold text-slate-800 dark:text-slate-100 leading-tight">{me?.name ?? 'Me'}</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              {myRank > 0 ? `${ordinal(myRank)}` : '—'} | {myCompletion}%
-            </p>
-          </div>
-        </div>
-
-        {puzzle && (
-          <SudokuBoard
-            puzzle={puzzle}
-            userGrid={displayGrid}
-            cellOwners={cellOwners}
-            mySolvedCells={mySolvedCells}
-            playerColors={playerColors}
-            myPlayerId={myPlayerId}
-            selectedCell={selectedCell}
-            draftWrongCells={wrongDrafts}
-            onCellSelect={handleCellSelect}
-            onNumberPress={handleNumberPress}
-            onErase={handleErase}
-            onUndo={handleUndo}
-            undoDisabled={undoStack.length === 0}
-            completionPercent={boardCompletion}
-            canSelectCell={(r, c) => isCellEditable(r, c)}
-            flashUnits={flashUnits}
+        {isViewer ? (
+          <ViewerModeBanner
+            gameCode={gameCode}
+            playerId={myPlayerId}
+            game={game}
+            player={me}
+            playerDetail={viewerPromoteContext?.playerDetail}
+            onPromoted={load}
           />
+        ) : (
+          /* Player status header */
+          <div className="flex items-center gap-3 px-1">
+            <div className="w-4 h-4 rounded-sm shrink-0" style={{ backgroundColor: SUDOKU_MY_CELL_COLOR }} />
+            <div>
+              <p className="font-bold text-slate-800 dark:text-slate-100 leading-tight">{me?.name ?? 'Me'}</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {myRank > 0 ? `${ordinal(myRank)}` : '—'} | {myCompletion}%
+              </p>
+            </div>
+          </div>
         )}
+
+        {puzzle &&
+          (isViewer ? (
+            <SudokuBoard
+              puzzle={puzzle}
+              userGrid={claimedGrid}
+              cellOwners={cellOwners}
+              playerColors={playerColors}
+              completionPercent={boardCompletion}
+              readOnly
+            />
+          ) : (
+            <SudokuBoard
+              puzzle={puzzle}
+              userGrid={displayGrid}
+              cellOwners={cellOwners}
+              mySolvedCells={mySolvedCells}
+              playerColors={playerColors}
+              myPlayerId={myPlayerId}
+              selectedCell={selectedCell}
+              draftWrongCells={wrongDrafts}
+              onCellSelect={handleCellSelect}
+              onNumberPress={handleNumberPress}
+              onErase={handleErase}
+              onUndo={handleUndo}
+              undoDisabled={undoStack.length === 0}
+              completionPercent={boardCompletion}
+              canSelectCell={(r, c) => isCellEditable(r, c)}
+              flashUnits={flashUnits}
+            />
+          ))}
 
         {/* Player standings */}
         <div className="space-y-2">

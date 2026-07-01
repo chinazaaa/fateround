@@ -18,6 +18,7 @@ import {
   isMostLikelyTo,
   isNeverHaveIEver,
   isSecretMessageGame,
+  isSudokuGame,
   isThisOrThat,
   isTriviaGame,
   isTwoTruthsGame,
@@ -92,7 +93,8 @@ export function gameOffersLateJoinChoice(gameType: GameType): boolean {
     isThisOrThat(gameType) ||
     isMostLikelyTo(gameType) ||
     isTwoTruthsGame(gameType) ||
-    isICallOnGame(gameType)
+    isICallOnGame(gameType) ||
+    isSudokuGame(gameType)
   )
 }
 
