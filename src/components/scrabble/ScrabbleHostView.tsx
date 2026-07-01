@@ -499,27 +499,27 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
       manage={manage}
       finished={
         <>
-        <ScrabbleFinalResultsShareBlock
-          game={game}
-          players={players}
-          session={session}
-          playerStates={playerStates}
-          winnerName={winner?.name}
-          highlightPlayerId={hostPlayerId}
-          playAgainButton={
-            <ScrabblePrimaryButton onClick={playAgain} loading={playingAgain}>
-              Play again
-            </ScrabblePrimaryButton>
-          }
-        />
-        {hostPlayerId && session?.winner_player_id === hostPlayerId && (
-          <PostWinToCommunity
-            gameType="scrabble"
-            gameCode={gameCode}
-            winnerName={hostPlayerName}
-            roundKey={session?.id}
+          <ScrabbleFinalResultsShareBlock
+            game={game}
+            players={players}
+            session={session}
+            playerStates={playerStates}
+            winnerName={winner?.name}
+            highlightPlayerId={hostPlayerId}
+            playAgainButton={
+              <ScrabblePrimaryButton onClick={playAgain} loading={playingAgain}>
+                Play again
+              </ScrabblePrimaryButton>
+            }
           />
-        )}
+          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="scrabble"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={session?.id}
+            />
+          )}
         </>
       }
     />

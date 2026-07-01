@@ -377,21 +377,26 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       manage={manage}
       finished={
         <>
-        <LudoFinalResultsShareBlock
-          game={game}
-          players={players}
-          states={states}
-          session={session}
-          winnerName={winner?.name}
-          playAgainButton={
-            <LudoPrimaryButton onClick={playAgain} loading={playingAgain}>
-              Play again
-            </LudoPrimaryButton>
-          }
-        />
-        {hostPlayerId && session?.winner_player_id === hostPlayerId && (
-          <PostWinToCommunity gameType="ludo" gameCode={gameCode} winnerName={hostPlayerName} roundKey={session?.id} />
-        )}
+          <LudoFinalResultsShareBlock
+            game={game}
+            players={players}
+            states={states}
+            session={session}
+            winnerName={winner?.name}
+            playAgainButton={
+              <LudoPrimaryButton onClick={playAgain} loading={playingAgain}>
+                Play again
+              </LudoPrimaryButton>
+            }
+          />
+          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="ludo"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={session?.id}
+            />
+          )}
         </>
       }
     />

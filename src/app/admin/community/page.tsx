@@ -148,11 +148,7 @@ export default function AdminCommunityPage() {
         <div className="glass-card-strong p-4 flex flex-col gap-3 sm:flex-row sm:items-end">
           <label className="flex-1 text-sm">
             <span className="text-muted">Add a game</span>
-            <select
-              value={newType}
-              onChange={(e) => setNewType(e.target.value)}
-              className="input-field w-full mt-1"
-            >
+            <select value={newType} onChange={(e) => setNewType(e.target.value)} className="input-field w-full mt-1">
               <option value="">Choose a game…</option>
               {availableTypes.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -209,9 +205,7 @@ function GameRow({
   game: CommunityGame
   isFirst: boolean
   isLast: boolean
-  onPatch: (
-    patch: Partial<Pick<CommunityGame, 'name' | 'accent' | 'is_active' | 'sort_order' | 'game_type'>>
-  ) => void
+  onPatch: (patch: Partial<Pick<CommunityGame, 'name' | 'accent' | 'is_active' | 'sort_order' | 'game_type'>>) => void
   onMove: (dir: -1 | 1) => void
   onDelete: () => void
 }) {

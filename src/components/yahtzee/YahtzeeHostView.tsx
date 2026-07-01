@@ -431,30 +431,30 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
       manage={manage}
       finished={
         <>
-        <YahtzeeFinalResultsShareBlock
-          game={game}
-          players={players}
-          scores={scores}
-          winnerName={winner?.name}
-          playAgainButton={
-            <button
-              type="button"
-              onClick={() => void playAgain()}
-              disabled={playingAgain}
-              className="btn-primary w-full py-3"
-            >
-              {playingAgain ? 'Resetting…' : 'Play again'}
-            </button>
-          }
-        />
-        {hostPlayerId && session?.winner_player_id === hostPlayerId && (
-          <PostWinToCommunity
-            gameType="yahtzee"
-            gameCode={gameCode}
-            winnerName={hostPlayerName}
-            roundKey={session?.id}
+          <YahtzeeFinalResultsShareBlock
+            game={game}
+            players={players}
+            scores={scores}
+            winnerName={winner?.name}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void playAgain()}
+                disabled={playingAgain}
+                className="btn-primary w-full py-3"
+              >
+                {playingAgain ? 'Resetting…' : 'Play again'}
+              </button>
+            }
           />
-        )}
+          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="yahtzee"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={session?.id}
+            />
+          )}
         </>
       }
     />

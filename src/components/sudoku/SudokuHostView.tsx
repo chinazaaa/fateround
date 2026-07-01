@@ -266,7 +266,10 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
   const leaderboard = tallySudokuScores(submissions, players)
   const hostSudokuRow = leaderboard.find((row) => row.player_id === hostPlayerId)
   const hostWonSudoku =
-    !!hostSudokuRow && leaderboard[0] != null && hostSudokuRow.points === leaderboard[0].points && leaderboard[0].points > 0
+    !!hostSudokuRow &&
+    leaderboard[0] != null &&
+    hostSudokuRow.points === leaderboard[0].points &&
+    leaderboard[0].points > 0
   const hostPlays = hostMode === 'player' && !!hostPlayerId
   const boardCompletion = puzzle ? boardCompletionPercent(puzzle, cellOwners) : 0
 

@@ -51,8 +51,7 @@ export async function POST(req: NextRequest) {
   if (rawType && !cfg) return NextResponse.json({ error: 'Unknown game type' }, { status: 400 })
 
   const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : (cfg?.label ?? '')
-  const accent =
-    typeof body.accent === 'string' && body.accent.trim() ? body.accent.trim() : (cfg?.card.accent ?? null)
+  const accent = typeof body.accent === 'string' && body.accent.trim() ? body.accent.trim() : (cfg?.card.accent ?? null)
   const gameType = cfg?.id ?? null
   if (!name) return NextResponse.json({ error: 'Pick a game type' }, { status: 400 })
 

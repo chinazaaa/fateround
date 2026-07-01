@@ -380,26 +380,26 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
       manage={manage}
       finished={
         <>
-        <ChessFinalResultsShareBlock
-          game={game}
-          players={players}
-          session={session}
-          winnerName={winner?.name}
-          highlightPlayerId={hostPlayerId}
-          playAgainButton={
-            <ChessPrimaryButton onClick={playAgain} loading={playingAgain}>
-              Play again
-            </ChessPrimaryButton>
-          }
-        />
-        {hostPlayerId && session?.winner_player_id === hostPlayerId && (
-          <PostWinToCommunity
-            gameType="chess"
-            gameCode={gameCode}
-            winnerName={hostPlayerName}
-            roundKey={session?.id}
+          <ChessFinalResultsShareBlock
+            game={game}
+            players={players}
+            session={session}
+            winnerName={winner?.name}
+            highlightPlayerId={hostPlayerId}
+            playAgainButton={
+              <ChessPrimaryButton onClick={playAgain} loading={playingAgain}>
+                Play again
+              </ChessPrimaryButton>
+            }
           />
-        )}
+          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="chess"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={session?.id}
+            />
+          )}
         </>
       }
     />

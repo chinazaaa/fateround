@@ -92,7 +92,12 @@ export function PostWinToCommunity({
       const res = await fetch('/api/community/post-win', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerName: name.trim(), code: code.trim(), gameId: gameCode, roundKey: roundKey ?? null }),
+        body: JSON.stringify({
+          playerName: name.trim(),
+          code: code.trim(),
+          gameId: gameCode,
+          roundKey: roundKey ?? null,
+        }),
       })
       const data = await res.json().catch(() => ({}))
       if (res.status === 409) {

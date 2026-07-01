@@ -516,12 +516,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
             </>
           )}
           {iWon && game && (
-            <PostWinToCommunity
-              gameType="bingo"
-              gameCode={gameCode}
-              winnerName={myPlayerName}
-              roundKey={winner?.id}
-            />
+            <PostWinToCommunity gameType="bingo" gameCode={gameCode} winnerName={myPlayerName} roundKey={winner?.id} />
           )}
           {card && (
             <div className="glass-card p-4">

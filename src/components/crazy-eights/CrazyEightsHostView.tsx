@@ -422,32 +422,32 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
       manage={manage}
       finished={
         <>
-        <CrazyEightsFinalResultsShareBlock
-          game={game}
-          players={players}
-          hands={hands}
-          session={session}
-          winnerName={winner?.name}
-          highlightPlayerId={hostPlayerId}
-          playAgainButton={
-            <button
-              type="button"
-              onClick={() => void playAgain()}
-              disabled={playingAgain}
-              className="btn-primary w-full py-3"
-            >
-              {playingAgain ? 'Resetting…' : 'Play again'}
-            </button>
-          }
-        />
-        {hostPlayerId && session?.winner_player_id === hostPlayerId && (
-          <PostWinToCommunity
-            gameType="crazy_eights"
-            gameCode={gameCode}
-            winnerName={hostPlayerName}
-            roundKey={session?.id}
+          <CrazyEightsFinalResultsShareBlock
+            game={game}
+            players={players}
+            hands={hands}
+            session={session}
+            winnerName={winner?.name}
+            highlightPlayerId={hostPlayerId}
+            playAgainButton={
+              <button
+                type="button"
+                onClick={() => void playAgain()}
+                disabled={playingAgain}
+                className="btn-primary w-full py-3"
+              >
+                {playingAgain ? 'Resetting…' : 'Play again'}
+              </button>
+            }
           />
-        )}
+          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="crazy_eights"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={session?.id}
+            />
+          )}
         </>
       }
     />

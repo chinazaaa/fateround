@@ -479,27 +479,27 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
       manage={manage}
       finished={
         <>
-        <MonopolyFinalResultsShareBlock
-          game={game}
-          players={players}
-          states={states}
-          board={board}
-          winnerName={finishedWinnerName}
-          highlightPlayerId={hostPlayerId}
-          playAgainButton={
-            <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-primary w-full py-3">
-              {playingAgain ? 'Resetting…' : 'Play again'}
-            </button>
-          }
-        />
-        {hostPlayerId && board?.winner_player_id === hostPlayerId && (
-          <PostWinToCommunity
-            gameType="monopoly"
-            gameCode={gameCode}
-            winnerName={hostPlayerName}
-            roundKey={board?.id}
+          <MonopolyFinalResultsShareBlock
+            game={game}
+            players={players}
+            states={states}
+            board={board}
+            winnerName={finishedWinnerName}
+            highlightPlayerId={hostPlayerId}
+            playAgainButton={
+              <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-primary w-full py-3">
+                {playingAgain ? 'Resetting…' : 'Play again'}
+              </button>
+            }
           />
-        )}
+          {hostPlayerId && board?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="monopoly"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={board?.id}
+            />
+          )}
         </>
       }
     />

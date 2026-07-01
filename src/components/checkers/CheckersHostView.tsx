@@ -374,26 +374,26 @@ export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; ho
       manage={manage}
       finished={
         <>
-        <CheckersFinalResultsShareBlock
-          game={game}
-          players={players}
-          session={session}
-          winnerName={winner?.name}
-          highlightPlayerId={hostPlayerId}
-          playAgainButton={
-            <CheckersPrimaryButton onClick={playAgain} loading={playingAgain}>
-              Play again
-            </CheckersPrimaryButton>
-          }
-        />
-        {hostPlayerId && session?.winner_player_id === hostPlayerId && (
-          <PostWinToCommunity
-            gameType="checkers"
-            gameCode={gameCode}
-            winnerName={hostPlayerName}
-            roundKey={session?.id}
+          <CheckersFinalResultsShareBlock
+            game={game}
+            players={players}
+            session={session}
+            winnerName={winner?.name}
+            highlightPlayerId={hostPlayerId}
+            playAgainButton={
+              <CheckersPrimaryButton onClick={playAgain} loading={playingAgain}>
+                Play again
+              </CheckersPrimaryButton>
+            }
           />
-        )}
+          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="checkers"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={session?.id}
+            />
+          )}
         </>
       }
     />

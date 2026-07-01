@@ -165,9 +165,13 @@ export async function addResult(
       .eq('id', existing.id)
     if (error) throw error
   } else {
-    const { error } = await supabase
-      .from('community_results')
-      .insert({ game_id: gameId, result_date: dateStr, player_id: playerId, wins: 1, recorded_by: opts.recordedBy ?? 'manager' })
+    const { error } = await supabase.from('community_results').insert({
+      game_id: gameId,
+      result_date: dateStr,
+      player_id: playerId,
+      wins: 1,
+      recorded_by: opts.recordedBy ?? 'manager',
+    })
     if (error) throw error
   }
 }

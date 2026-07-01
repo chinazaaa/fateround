@@ -533,7 +533,10 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   if (view === 'finished') {
     const mySudokuRow = leaderboard.find((row) => row.player_id === myPlayerId)
     const iWonSudoku =
-      !!mySudokuRow && leaderboard[0] != null && mySudokuRow.points === leaderboard[0].points && leaderboard[0].points > 0
+      !!mySudokuRow &&
+      leaderboard[0] != null &&
+      mySudokuRow.points === leaderboard[0].points &&
+      leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">
         <GamePlayerChrome />

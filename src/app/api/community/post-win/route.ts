@@ -49,7 +49,12 @@ export async function POST(req: NextRequest) {
   // is a per-round token (the session row id) so replaying the same game lets the
   // winner post again while a single round can't be posted twice. Older callers
   // may still send sourceGameId — accept it as the game id.
-  const gameId = typeof body.gameId === 'string' ? body.gameId.trim() : typeof body.sourceGameId === 'string' ? body.sourceGameId.trim() : ''
+  const gameId =
+    typeof body.gameId === 'string'
+      ? body.gameId.trim()
+      : typeof body.sourceGameId === 'string'
+        ? body.sourceGameId.trim()
+        : ''
   const roundKey = typeof body.roundKey === 'string' ? body.roundKey.trim() : ''
 
   if (!playerName) return NextResponse.json({ error: 'Enter your name' }, { status: 400 })
@@ -60,7 +65,10 @@ export async function POST(req: NextRequest) {
 
   try {
     if (!(await postCodeIsSet())) {
-      return NextResponse.json({ error: 'No weekly code is set yet. Ask the admin for this week’s code.' }, { status: 503 })
+      return NextResponse.json(
+        { error: 'No weekly code is set yet. Ask the admin for this week’s code.' },
+        { status: 503 }
+      )
     }
 
     if (!(await verifyPostCode(code))) {
