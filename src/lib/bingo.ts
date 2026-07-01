@@ -143,14 +143,7 @@ export function bingoCallIntervalFromGame(game: { bingo_call_interval_seconds?: 
 }
 
 export type BingoSyncCode =
-  | 'manual_mode'
-  | 'not_active'
-  | 'not_bingo'
-  | 'game_not_found'
-  | 'waiting'
-  | 'called'
-  | 'all_called'
-  | 'call_failed'
+  'manual_mode' | 'not_active' | 'not_bingo' | 'game_not_found' | 'waiting' | 'called' | 'all_called' | 'call_failed'
 
 export type BingoSyncResult = {
   ok: boolean

@@ -319,7 +319,12 @@ export async function finishMonopolyGameEarly(
   const winnerName = winnerId ? players.find((p) => p.id === winnerId)?.name : null
   const winnerNetWorth =
     winnerId != null
-      ? computeMonopolyNetWorth(states.find((s) => s.player_id === winnerId)!, owners, buildings, mortgaged)
+      ? computeMonopolyNetWorth(
+          states.find((s) => s.player_id === winnerId)!,
+          owners,
+          buildings,
+          mortgaged
+        )
       : null
 
   const statusMessage = winnerName

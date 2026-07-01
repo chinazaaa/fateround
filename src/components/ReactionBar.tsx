@@ -20,8 +20,7 @@ const ALLOWED_TEXT = new Set<string>(TEXT_REACTIONS)
 const MAX_CUSTOM_TEXT = 32
 
 type Floater =
-  | { id: number; kind: 'emoji'; content: string; x: number }
-  | { id: number; kind: 'text'; content: string; x: number }
+  { id: number; kind: 'emoji'; content: string; x: number } | { id: number; kind: 'text'; content: string; x: number }
 
 const STYLE_ID = 'reaction-bar-styles'
 

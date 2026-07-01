@@ -14,28 +14,10 @@ export const MONOPOLY_HOTELS_IN_BANK = 12
 export const MONOPOLY_MORTGAGE_INTEREST_RATE = 0.1
 
 export type MonopolySpaceType =
-  | 'go'
-  | 'property'
-  | 'station'
-  | 'utility'
-  | 'tax'
-  | 'chance'
-  | 'community'
-  | 'jail'
-  | 'go_to_jail'
-  | 'free_parking'
+  'go' | 'property' | 'station' | 'utility' | 'tax' | 'chance' | 'community' | 'jail' | 'go_to_jail' | 'free_parking'
 
 export type MonopolyColorGroup =
-  | 'brown'
-  | 'light_blue'
-  | 'pink'
-  | 'orange'
-  | 'red'
-  | 'yellow'
-  | 'green'
-  | 'dark_blue'
-  | 'station'
-  | 'utility'
+  'brown' | 'light_blue' | 'pink' | 'orange' | 'red' | 'yellow' | 'green' | 'dark_blue' | 'station' | 'utility'
 
 /** 0 = site only, 1–3 = houses, 5 = hotel (level 4 kept for legacy saves). */
 export type BuildingLevel = 0 | 1 | 2 | 3 | 4 | 5
