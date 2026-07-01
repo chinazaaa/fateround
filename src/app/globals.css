@@ -4,6 +4,8 @@
 
 /* ── Light theme (default) ─────────────────────────────────────── */
 :root {
+  color-scheme: light;
+
   --background: #f4f4f7;
   --background-soft: #ffffff;
   --foreground: #0a0a12;
@@ -56,6 +58,8 @@
 
 /* ── Dark theme override ────────────────────────────────────────── */
 [data-theme="dark"] {
+  color-scheme: dark;
+
   --background: #08080f;
   --background-soft: #0e0e16;
   --foreground: #f2f2f8;
