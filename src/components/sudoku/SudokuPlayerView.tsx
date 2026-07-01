@@ -10,7 +10,6 @@ import {
   parseSudokuMetadata,
   tallySudokuScores,
   buildCellOwnerGrid,
-  buildClaimedValueGrid,
   buildPlayerDisplayGrid,
   getNewlyCompletedUnits,
   playerCompletionPercent,
@@ -70,6 +69,9 @@ function emptyWrongGrid(): boolean[][] {
   return Array.from({ length: 9 }, () => Array(9).fill(false))
 }
 
+// Shared read-only "no local drafts" grid for rendering a watched player's board.
+const EMPTY_DRAFTS: number[][] = Array.from({ length: 9 }, () => Array(9).fill(0))
+
 export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const [view, setView] = useState<View>('loading')
   const [game, setGame] = useState<Game | null>(null)
@@ -80,6 +82,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const [wrongDrafts, setWrongDrafts] = useState<boolean[][]>(emptyWrongGrid)
   const [undoStack, setUndoStack] = useState<DraftUndo[]>([])
   const [selectedCell, setSelectedCell] = useState<[number, number] | null>(null)
+  const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
   const [submissions, setSubmissions] = useState<SudokuSubmission[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
@@ -323,11 +326,6 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     if (!puzzle || !myPlayerId) return userGrid
     return buildPlayerDisplayGrid(puzzle, submissions, myPlayerId, userGrid)
   }, [puzzle, userGrid, submissions, myPlayerId])
-  // Viewers watch the shared board fill in — every claimed value, colored by owner.
-  const claimedGrid = useMemo(
-    () => (puzzle ? buildClaimedValueGrid(puzzle, submissions) : undefined),
-    [puzzle, submissions]
-  )
 
   const activePlayers = useMemo(() => players.filter((p) => p.spectator !== true), [players])
   const playerColors = useMemo(() => {
@@ -345,6 +343,21 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const myRank = leaderboard.findIndex((r) => r.player_id === myPlayerId) + 1
   const myCompletion = puzzle && myPlayerId ? playerCompletionPercent(puzzle, submissions, myPlayerId) : 0
   const boardCompletion = puzzle ? boardCompletionPercent(puzzle, cellOwners) : 0
+
+  // Viewers watch one player at a time — the same personal board that player sees:
+  // their own solved cells filled and highlighted, everyone else's just claimed.
+  const effectiveWatchedId =
+    (watchedPlayerId && activePlayers.some((p) => p.id === watchedPlayerId) ? watchedPlayerId : null) ??
+    leaderboard.find((row) => activePlayers.some((p) => p.id === row.player_id))?.player_id ??
+    activePlayers[0]?.id ??
+    null
+  const watchedPlayer = players.find((p) => p.id === effectiveWatchedId)
+  const watchedGrid =
+    puzzle && effectiveWatchedId ? buildPlayerDisplayGrid(puzzle, submissions, effectiveWatchedId, EMPTY_DRAFTS) : puzzle
+  const watchedSolvedCells = effectiveWatchedId ? buildPlayerSolvedGrid(submissions, effectiveWatchedId) : undefined
+  const watchedRank = leaderboard.findIndex((r) => r.player_id === effectiveWatchedId) + 1
+  const watchedCompletion =
+    puzzle && effectiveWatchedId ? playerCompletionPercent(puzzle, submissions, effectiveWatchedId) : 0
 
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
     gameCode,
@@ -632,14 +645,48 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       )}
       <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">
         {isViewer ? (
-          <ViewerModeBanner
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            game={game}
-            player={me}
-            playerDetail={viewerPromoteContext?.playerDetail}
-            onPromoted={load}
-          />
+          <>
+            <ViewerModeBanner
+              gameCode={gameCode}
+              playerId={myPlayerId}
+              game={game}
+              player={me}
+              playerDetail={viewerPromoteContext?.playerDetail}
+              onPromoted={load}
+            />
+            {activePlayers.length > 0 ? (
+              <div className="glass-card p-3 space-y-2">
+                <p className="label-caps text-xs">Watching a player&apos;s board</p>
+                <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {activePlayers.map((p) => {
+                    const active = p.id === effectiveWatchedId
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setWatchedPlayerId(p.id)}
+                        className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+                          active
+                            ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:border-slate-100'
+                            : 'bg-slate-100/70 text-slate-600 border-slate-200 hover:text-slate-900 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700'
+                        }`}
+                      >
+                        <span
+                          className="w-2.5 h-2.5 rounded-sm shrink-0"
+                          style={{ backgroundColor: playerColors[p.id] ?? '#86efac' }}
+                        />
+                        {p.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <p className="glass-card p-3 text-center text-xs text-muted">
+                No players have joined the puzzle yet — pick a player to watch once they do.
+              </p>
+            )}
+          </>
         ) : (
           /* Player status header */
           <div className="flex items-center gap-3 px-1">
@@ -655,14 +702,31 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
 
         {puzzle &&
           (isViewer ? (
-            <SudokuBoard
-              puzzle={puzzle}
-              userGrid={claimedGrid}
-              cellOwners={cellOwners}
-              playerColors={playerColors}
-              completionPercent={boardCompletion}
-              readOnly
-            />
+            watchedGrid && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 px-1">
+                  <div className="w-4 h-4 rounded-sm shrink-0" style={{ backgroundColor: SUDOKU_MY_CELL_COLOR }} />
+                  <div>
+                    <p className="font-bold text-slate-800 dark:text-slate-100 leading-tight">
+                      {watchedPlayer?.name ?? 'Player'}
+                    </p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      {watchedRank > 0 ? `${ordinal(watchedRank)}` : '—'} | {watchedCompletion}%
+                    </p>
+                  </div>
+                </div>
+                <SudokuBoard
+                  puzzle={puzzle}
+                  userGrid={watchedGrid}
+                  cellOwners={cellOwners}
+                  mySolvedCells={watchedSolvedCells}
+                  playerColors={playerColors}
+                  myPlayerId={effectiveWatchedId}
+                  completionPercent={watchedCompletion}
+                  readOnly
+                />
+              </div>
+            )
           ) : (
             <SudokuBoard
               puzzle={puzzle}
