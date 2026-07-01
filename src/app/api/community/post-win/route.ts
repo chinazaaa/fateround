@@ -3,7 +3,7 @@ import { getGameByType, getSetting, postWinFromGame, WHATSAPP_INVITE_URL_KEY } f
 import { postCodeIsSet, verifyPostCode } from '@/lib/community-post-code'
 import { DEFAULT_WHATSAPP_INVITE_URL } from '@/lib/community-constants'
 import { watToday } from '@/lib/community-dates'
-import { checkPostWinRateLimit, clearPostWinAttempts, clientIp, recordFailedPostWin } from '@/lib/community-rate-limit'
+import { clearPostWinAttempts, clientIp, reservePostWinSlot } from '@/lib/community-rate-limit'
 import { getSupabaseAdmin, hasServiceRoleKey } from '@/lib/supabase-admin'
 
 // Same throttle as the manager login: a fixed delay on every failed code so the
@@ -73,8 +73,10 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Cap wrong-code guesses per IP so the short weekly code can't be brute-forced.
-    const rate = await checkPostWinRateLimit(ip)
+    // Reserve an attempt slot up front (atomic increment) so the short weekly
+    // code can't be brute-forced and concurrent guesses can't all slip past the
+    // cap. A correct code refunds the slot below.
+    const rate = await reservePostWinSlot(ip)
     if (!rate.allowed) {
       return NextResponse.json(
         { error: 'Too many attempts. Try again later.' },
@@ -83,7 +85,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!(await verifyPostCode(code))) {
-      await Promise.all([recordFailedPostWin(ip), delay(FAILED_ATTEMPT_DELAY_MS)])
+      await delay(FAILED_ATTEMPT_DELAY_MS)
       return NextResponse.json({ error: 'Wrong code. Check this week’s code in the group.' }, { status: 401 })
     }
 
