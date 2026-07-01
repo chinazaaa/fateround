@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import {
   parseSudokuMetadata,
   tallySudokuScores,
@@ -530,6 +531,12 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (view === 'finished') {
+    const mySudokuRow = leaderboard.find((row) => row.player_id === myPlayerId)
+    const iWonSudoku =
+      !!mySudokuRow &&
+      leaderboard[0] != null &&
+      mySudokuRow.points === leaderboard[0].points &&
+      leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">
         <GamePlayerChrome />
@@ -549,6 +556,14 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
             highlightId={myPlayerId ?? undefined}
             scoreLabel={(n) => `${n} pts`}
           />
+          {iWonSudoku && (
+            <PostWinToCommunity
+              gameType="sudoku"
+              gameCode={gameCode}
+              winnerName={mySudokuRow?.name ?? ''}
+              roundKey={game?.session_started_at ?? undefined}
+            />
+          )}
         </main>
       </div>
     )

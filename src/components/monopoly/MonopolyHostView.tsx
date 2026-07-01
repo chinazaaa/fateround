@@ -7,6 +7,7 @@ import { MonopolyHostTimeExtension } from '@/components/monopoly/MonopolyHostTim
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
@@ -477,19 +478,29 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
       finished={
-        <MonopolyFinalResultsShareBlock
-          game={game}
-          players={players}
-          states={states}
-          board={board}
-          winnerName={finishedWinnerName}
-          highlightPlayerId={hostPlayerId}
-          playAgainButton={
-            <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-primary w-full py-3">
-              {playingAgain ? 'Resetting…' : 'Play again'}
-            </button>
-          }
-        />
+        <>
+          <MonopolyFinalResultsShareBlock
+            game={game}
+            players={players}
+            states={states}
+            board={board}
+            winnerName={finishedWinnerName}
+            highlightPlayerId={hostPlayerId}
+            playAgainButton={
+              <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-primary w-full py-3">
+                {playingAgain ? 'Resetting…' : 'Play again'}
+              </button>
+            }
+          />
+          {hostPlayerId && board?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="monopoly"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={board?.id}
+            />
+          )}
+        </>
       }
     />
   )

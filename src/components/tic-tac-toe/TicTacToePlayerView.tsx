@@ -9,6 +9,7 @@ import {
   TicTacToeShell,
 } from '@/components/tic-tac-toe/TicTacToeChrome'
 import { TicTacToeFinalResultsShareBlock } from '@/components/tic-tac-toe/TicTacToeFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { TicTacToeGamePanel } from '@/components/tic-tac-toe/TicTacToeBoard'
 import { gameTypeConfig } from '@/lib/game-types'
 import { currentTurnPlayerId, isTicTacToeResultsPhase } from '@/lib/tic-tac-toe'
@@ -287,6 +288,14 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
                   : 'Game ended early'}
             </p>
           </TicTacToeCard>
+        )}
+        {iWon && game && (
+          <PostWinToCommunity
+            gameType="tic_tac_toe"
+            gameCode={gameCode}
+            winnerName={myName ?? ''}
+            roundKey={session?.id}
+          />
         )}
         {myPlayerId && myName && (
           <PlayerSessionControls

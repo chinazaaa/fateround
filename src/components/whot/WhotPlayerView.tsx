@@ -13,6 +13,7 @@ import { WhotChoosePanel, WhotHand, WhotStandings, WhotTable } from '@/component
 import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
 import { WhotGameTimerBar } from '@/components/whot/WhotGameTimerBar'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   currentPlayerId,
@@ -324,6 +325,14 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
             <div className="text-6xl mb-3">🏆</div>
             {winner && <p className="text-2xl font-black text-[var(--marry)]">{winner.name}</p>}
           </WhotCard>
+        )}
+        {myPlayerId && session?.winner_player_id === myPlayerId && (
+          <PostWinToCommunity
+            gameType="whot"
+            gameCode={gameCode}
+            winnerName={players.find((p) => p.id === myPlayerId)?.name ?? ''}
+            roundKey={session?.id}
+          />
         )}
       </WhotShell>
     )

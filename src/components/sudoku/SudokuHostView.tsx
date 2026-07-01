@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { SudokuPlayerView } from '@/components/sudoku/SudokuPlayerView'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
@@ -263,6 +264,12 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
   }, [activePlayers])
 
   const leaderboard = tallySudokuScores(submissions, players)
+  const hostSudokuRow = leaderboard.find((row) => row.player_id === hostPlayerId)
+  const hostWonSudoku =
+    !!hostSudokuRow &&
+    leaderboard[0] != null &&
+    hostSudokuRow.points === leaderboard[0].points &&
+    leaderboard[0].points > 0
   const hostPlays = hostMode === 'player' && !!hostPlayerId
   const boardCompletion = puzzle ? boardCompletionPercent(puzzle, cellOwners) : 0
 
@@ -400,6 +407,14 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
           >
             {playingAgain ? 'Resetting…' : 'Play again'}
           </button>
+          {hostWonSudoku && (
+            <PostWinToCommunity
+              gameType="sudoku"
+              gameCode={gameCode}
+              winnerName={hostSudokuRow?.name ?? ''}
+              roundKey={game?.session_started_at ?? undefined}
+            />
+          )}
         </>
       }
     />

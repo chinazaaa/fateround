@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { NpatCallerReviewPanel } from '@/components/npat/NpatCallerReviewPanel'
 import { NpatFinalResultsShareBlock } from '@/components/npat/NpatFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { NpatScoreboard } from '@/components/npat/NpatScoreboard'
 import { NpatGameTimerBar } from '@/components/npat/NpatGameTimerBar'
 import {
@@ -456,13 +457,26 @@ export function NpatActiveRound({
   }
 
   if (screen === 'finished') {
+    const myNpatRow = leaderboard.find((row) => row.id === myPlayerId)
+    const iWonNpat =
+      !!myNpatRow && leaderboard[0] != null && myNpatRow.score === leaderboard[0].score && leaderboard[0].score > 0
     return (
-      <NpatFinalResultsShareBlock
-        game={game}
-        players={players}
-        leaderboard={leaderboard}
-        highlightPlayerId={myPlayerId}
-      />
+      <>
+        <NpatFinalResultsShareBlock
+          game={game}
+          players={players}
+          leaderboard={leaderboard}
+          highlightPlayerId={myPlayerId}
+        />
+        {iWonNpat && (
+          <PostWinToCommunity
+            gameType="i_call_on"
+            gameCode={game.id}
+            winnerName={myNpatRow?.name ?? ''}
+            roundKey={game.session_started_at ?? undefined}
+          />
+        )}
+      </>
     )
   }
 

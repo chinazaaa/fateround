@@ -24,6 +24,7 @@ import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useChessClockExpiry } from '@/hooks/useChessClocks'
 import { ChessGamePanel } from '@/components/chess/ChessBoard'
 import { ChessFinalResultsShareBlock } from '@/components/chess/ChessFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ChessPrimaryButton } from '@/components/chess/ChessChrome'
 
 type HostTab = 'play' | 'manage'
@@ -378,18 +379,28 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
       finished={
-        <ChessFinalResultsShareBlock
-          game={game}
-          players={players}
-          session={session}
-          winnerName={winner?.name}
-          highlightPlayerId={hostPlayerId}
-          playAgainButton={
-            <ChessPrimaryButton onClick={playAgain} loading={playingAgain}>
-              Play again
-            </ChessPrimaryButton>
-          }
-        />
+        <>
+          <ChessFinalResultsShareBlock
+            game={game}
+            players={players}
+            session={session}
+            winnerName={winner?.name}
+            highlightPlayerId={hostPlayerId}
+            playAgainButton={
+              <ChessPrimaryButton onClick={playAgain} loading={playingAgain}>
+                Play again
+              </ChessPrimaryButton>
+            }
+          />
+          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="chess"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={session?.id}
+            />
+          )}
+        </>
       }
     />
   )

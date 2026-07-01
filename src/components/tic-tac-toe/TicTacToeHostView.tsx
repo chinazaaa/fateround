@@ -23,6 +23,7 @@ import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTicTacToeTurnTimer } from '@/hooks/useTicTacToeTurnTimer'
 import { TicTacToeGamePanel } from '@/components/tic-tac-toe/TicTacToeBoard'
 import { TicTacToeFinalResultsShareBlock } from '@/components/tic-tac-toe/TicTacToeFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { TicTacToePrimaryButton } from '@/components/tic-tac-toe/TicTacToeChrome'
 
 type HostTab = 'play' | 'manage'
@@ -343,18 +344,28 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
       finished={
-        <TicTacToeFinalResultsShareBlock
-          game={game}
-          players={players}
-          session={session}
-          winnerName={winner?.name}
-          highlightPlayerId={hostPlayerId}
-          playAgainButton={
-            <TicTacToePrimaryButton onClick={playAgain} loading={playingAgain}>
-              Play again
-            </TicTacToePrimaryButton>
-          }
-        />
+        <>
+          <TicTacToeFinalResultsShareBlock
+            game={game}
+            players={players}
+            session={session}
+            winnerName={winner?.name}
+            highlightPlayerId={hostPlayerId}
+            playAgainButton={
+              <TicTacToePrimaryButton onClick={playAgain} loading={playingAgain}>
+                Play again
+              </TicTacToePrimaryButton>
+            }
+          />
+          {hostPlayerId && session?.winner_player_id === hostPlayerId && (
+            <PostWinToCommunity
+              gameType="tic_tac_toe"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={session?.id}
+            />
+          )}
+        </>
       }
     />
   )

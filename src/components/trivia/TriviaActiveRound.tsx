@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import {
   formatTriviaChoiceLabel,
   parseTriviaMetadata,
@@ -214,6 +215,9 @@ export function TriviaActiveRound({
   )
 
   if (screen === 'finished') {
+    const myTriviaRow = leaderboard.find((row) => row.id === myPlayerId)
+    const iWonTrivia =
+      !!myTriviaRow && leaderboard[0] != null && myTriviaRow.score === leaderboard[0].score && leaderboard[0].score > 0
     return (
       <div className="space-y-5">
         {tournamentId && (
@@ -248,6 +252,14 @@ export function TriviaActiveRound({
             totalQuestions={game.rounds_count ?? undefined}
           />
         </FinalResultsShareBlock>
+        {iWonTrivia && (
+          <PostWinToCommunity
+            gameType="trivia"
+            gameCode={game.id}
+            winnerName={myTriviaRow?.name ?? ''}
+            roundKey={game.session_started_at ?? undefined}
+          />
+        )}
       </div>
     )
   }
