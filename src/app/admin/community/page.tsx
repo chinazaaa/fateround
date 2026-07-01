@@ -376,7 +376,7 @@ function PostCodePanel() {
           ? 'A code is set. Rotate it each week (Monday) and share the new code in the WhatsApp group. Winners enter it on the game end screen to post their win.'
           : 'No code set yet. Create one and share it in the WhatsApp group — winners enter it on the game end screen to post their win to the leaderboard.'
       }
-      hint={`Change this every week. At least ${POST_CODE_MIN_LENGTH} characters — keep it easy to type but not obvious.`}
+      hint={`Change this every week. A short, memorable word works well (e.g. "Naza") — at least ${POST_CODE_MIN_LENGTH} characters. Capitalisation and spaces don't matter.`}
     />
   )
 }

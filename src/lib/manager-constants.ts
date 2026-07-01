@@ -6,7 +6,8 @@
 export const MANAGER_CODE_MIN_LENGTH = 10
 
 // Minimum length for the weekly "post code" that game winners use to self-report
-// wins. Lower-stakes than the manager code (it only lets someone add their own
-// win, and it's rotated weekly), but still guarded by a failure delay on the
-// public endpoint. Kept short enough to be easy to share in the WhatsApp group.
-export const POST_CODE_MIN_LENGTH = 6
+// wins. Deliberately short so it can be a single memorable word (e.g. "Naza")
+// that's easy to type every time and share in the WhatsApp group. Lower-stakes
+// than the manager code (it only lets someone add their own win, is rotated
+// weekly, and is guarded by a failure delay on the public endpoint).
+export const POST_CODE_MIN_LENGTH = 4

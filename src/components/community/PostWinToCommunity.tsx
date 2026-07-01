@@ -162,7 +162,7 @@ export function PostWinToCommunity({
           value={code}
           onChange={(e) => setCode(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
-          placeholder="e.g. FATE-JULY1"
+          placeholder="e.g. Naza"
           className="input-field w-full mt-1"
           autoComplete="off"
         />

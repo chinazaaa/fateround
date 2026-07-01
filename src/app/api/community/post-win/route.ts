@@ -3,6 +3,7 @@ import { getGameByType, getSetting, postWinFromGame, WHATSAPP_INVITE_URL_KEY } f
 import { postCodeIsSet, verifyPostCode } from '@/lib/community-post-code'
 import { DEFAULT_WHATSAPP_INVITE_URL } from '@/lib/community-constants'
 import { watToday } from '@/lib/community-dates'
+import { clearPostWinAttempts, clientIp, reservePostWinSlot } from '@/lib/community-rate-limit'
 import { getSupabaseAdmin, hasServiceRoleKey } from '@/lib/supabase-admin'
 
 // Same throttle as the manager login: a fixed delay on every failed code so the
@@ -62,12 +63,24 @@ export async function POST(req: NextRequest) {
 
   // Dedup key: per round when we have a round token, else per game.
   const ledgerKey = roundKey ? `${gameId}::${roundKey}` : gameId
+  const ip = clientIp(req)
 
   try {
     if (!(await postCodeIsSet())) {
       return NextResponse.json(
         { error: 'No weekly code is set yet. Ask the admin for this week’s code.' },
         { status: 503 }
+      )
+    }
+
+    // Reserve an attempt slot up front (atomic increment) so the short weekly
+    // code can't be brute-forced and concurrent guesses can't all slip past the
+    // cap. A correct code refunds the slot below.
+    const rate = await reservePostWinSlot(ip)
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: 'Too many attempts. Try again later.' },
+        { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } }
       )
     }
 
@@ -98,6 +111,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'This win has already been posted.' }, { status: 409 })
     }
 
+    // Correct code accepted — reset this IP's failure counter.
+    await clearPostWinAttempts(ip)
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[community/post-win] failed', err)

@@ -16,6 +16,25 @@ import { POST_CODE_MIN_LENGTH } from '@/lib/manager-constants'
 
 const POST_CODE_KEY = 'post_code_hash'
 
+// Normalize before hashing so entry is forgiving: case and stray spaces don't
+// matter ("Naza", "naza", " NAZA " all match). Applied identically on set and
+// verify so the hashes line up. Winners type this every time, so lenience wins.
+// Exported so callers (route/UI) validate length against the SAME canonical form
+// setPostCode uses — otherwise "A A A" passes a raw check then throws here.
+export function normalizePostCode(code: string): string {
+  return code.trim().toLowerCase().replace(/\s+/g, '')
+}
+
+// Shared length check so the route/UI prechecks and setPostCode agree on what's
+// valid — all measure the SAME normalized form. Returns an error message when the
+// code is too short (for a 400), or null when it's acceptable.
+export function postCodeLengthError(code: string): string | null {
+  if (normalizePostCode(code).length < POST_CODE_MIN_LENGTH) {
+    return `Code must be at least ${POST_CODE_MIN_LENGTH} characters`
+  }
+  return null
+}
+
 async function hashCode(code: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code))
   return Array.from(new Uint8Array(digest))
@@ -38,19 +57,17 @@ export async function postCodeIsSet(): Promise<boolean> {
 
 // Validate a submitted code against the stored hash.
 export async function verifyPostCode(code: string): Promise<boolean> {
-  const trimmed = code.trim()
-  if (!trimmed) return false
+  const normalized = normalizePostCode(code)
+  if (!normalized) return false
   const storedHash = await getSetting(POST_CODE_KEY)
   if (!storedHash) return false
-  const candidate = await hashCode(trimmed)
+  const candidate = await hashCode(normalized)
   return timingSafeEqualHex(candidate, storedHash)
 }
 
 // Set/rotate the weekly post code (admin only). Stores only the hash.
 export async function setPostCode(code: string): Promise<void> {
-  const trimmed = code.trim()
-  if (trimmed.length < POST_CODE_MIN_LENGTH) {
-    throw new Error(`Code must be at least ${POST_CODE_MIN_LENGTH} characters`)
-  }
-  await setSetting(POST_CODE_KEY, await hashCode(trimmed))
+  const lengthError = postCodeLengthError(code)
+  if (lengthError) throw new Error(lengthError)
+  await setSetting(POST_CODE_KEY, await hashCode(normalizePostCode(code)))
 }
