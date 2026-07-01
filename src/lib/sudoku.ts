@@ -505,7 +505,7 @@ export function tallySudokuScores(
 
 /** Time spent by a player in seconds. If completed, stops at their final correct submission. */
 export function getPlayerTimeSpent(
-  game: { session_started_at?: string | null } | null,
+  game: { session_started_at?: string | null; finished_at?: string | null } | null,
   submissions: Pick<SudokuSubmission, 'player_id' | 'is_correct' | 'cell_row' | 'cell_col' | 'submitted_at'>[],
   playerId: string,
   completionPercent: number,
@@ -523,5 +523,8 @@ export function getPlayerTimeSpent(
       return Math.max(0, Math.floor((endMs - startMs) / 1000))
     }
   }
-  return Math.max(0, Math.floor((nowMs - startMs) / 1000))
+  const endMs = (completionPercent < 100 && game.finished_at)
+    ? new Date(game.finished_at).getTime()
+    : nowMs
+  return Math.max(0, Math.floor((endMs - startMs) / 1000))
 }

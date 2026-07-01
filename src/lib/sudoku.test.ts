@@ -17,6 +17,7 @@ import {
   playerHasSolvedCell,
   sudokuCellPoints,
   tallySudokuScores,
+  getPlayerTimeSpent,
 } from './sudoku'
 
 const PUZZLE = [
@@ -282,5 +283,55 @@ describe('parseSudokuMetadata', () => {
   it('rejects invalid metadata', () => {
     expect(parseSudokuMetadata(null)).toBeNull()
     expect(parseSudokuMetadata({ solution: PUZZLE })).toBeNull()
+  })
+})
+
+describe('getPlayerTimeSpent', () => {
+  const startAt = '2026-07-01T20:00:00Z'
+  const startMs = new Date(startAt).getTime()
+  const submissions = [
+    {
+      player_id: 'alice',
+      is_correct: true,
+      cell_row: 0,
+      cell_col: 2,
+      submitted_at: '2026-07-01T20:05:00Z',
+    },
+    {
+      player_id: 'alice',
+      is_correct: true,
+      cell_row: 0,
+      cell_col: 3,
+      submitted_at: '2026-07-01T20:10:00Z',
+    },
+  ]
+
+  it('returns 0 if game start is not defined', () => {
+    expect(getPlayerTimeSpent(null, [], 'alice', 0, startMs + 1000)).toBe(0)
+  })
+
+  it('uses last correct submission when completionPercent >= 100', () => {
+    const game = { session_started_at: startAt }
+    // Alice has correct submissions, last one is at 20:10 (10 mins / 600s after start)
+    expect(getPlayerTimeSpent(game, submissions, 'alice', 100, startMs + 900000)).toBe(600)
+  })
+
+  it('falls back to nowMs when completionPercent >= 100 but no correct submissions', () => {
+    const game = { session_started_at: startAt }
+    const nowMs = startMs + 300000 // 5 minutes
+    expect(getPlayerTimeSpent(game, [], 'alice', 100, nowMs)).toBe(300)
+  })
+
+  it('uses nowMs for incomplete players when game is not finished', () => {
+    const game = { session_started_at: startAt, finished_at: null }
+    const nowMs = startMs + 300000 // 5 minutes
+    expect(getPlayerTimeSpent(game, submissions, 'alice', 50, nowMs)).toBe(300)
+  })
+
+  it('uses finished_at for incomplete players when game is finished', () => {
+    const game = { session_started_at: startAt, finished_at: '2026-07-01T20:08:00Z' }
+    const nowMs = startMs + 600000 // 10 minutes
+    // 8 minutes = 480 seconds
+    expect(getPlayerTimeSpent(game, submissions, 'alice', 50, nowMs)).toBe(480)
   })
 })
