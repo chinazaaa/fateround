@@ -351,7 +351,29 @@ export function setPlayerSession(
     `kmk_player_${gameCode.toUpperCase()}`,
     JSON.stringify({ playerId, playerName, playerGender, resumeToken: token })
   )
+  // A real join clears any prior "kicked" mark — the player deliberately came back.
+  clearPlayerKicked(gameCode)
   window.dispatchEvent(new CustomEvent('kmk-player-session', { detail: { gameCode: gameCode.toUpperCase() } }))
+}
+
+/**
+ * Mark that this device's player was removed from the game (host kick or self-leave),
+ * so room-link auto-join won't silently re-add them. They can still rejoin, but only
+ * by deliberately tapping "join" — which clears the mark via {@link setPlayerSession}.
+ */
+export function markPlayerKicked(gameCode: string): void {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(`kmk_kicked_${gameCode.toUpperCase()}`, '1')
+}
+
+export function wasPlayerKicked(gameCode: string): boolean {
+  if (typeof window === 'undefined') return false
+  return localStorage.getItem(`kmk_kicked_${gameCode.toUpperCase()}`) === '1'
+}
+
+export function clearPlayerKicked(gameCode: string): void {
+  if (typeof window === 'undefined') return
+  localStorage.removeItem(`kmk_kicked_${gameCode.toUpperCase()}`)
 }
 
 export function clearPlayerSession(gameCode: string): void {

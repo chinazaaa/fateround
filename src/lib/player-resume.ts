@@ -1,7 +1,13 @@
 import type { PlayerGender } from '@/types'
 import { parsePlayerGenderFromDb } from '@/lib/participants'
 import { setPollHostMode } from '@/lib/poll-host-mode'
-import { clearPlayerSession, getPlayerSession, normalizeResumeToken, setPlayerSession } from '@/lib/utils'
+import {
+  clearPlayerSession,
+  getPlayerSession,
+  markPlayerKicked,
+  normalizeResumeToken,
+  setPlayerSession,
+} from '@/lib/utils'
 
 export const PLAYER_RESUME_QUERY = 'player'
 
@@ -123,6 +129,10 @@ export async function resolvePlayerSession(
     // (network, 5xx, 429) must keep the session so the next load can retry.
     const exists = session.resumeToken ? await confirmPlayerExists(gameCode, session.resumeToken) : null
     if (exists === false) {
+      // The server positively reports this player gone — a host removed them (or they
+      // left). Mark them kicked so room-link auto-join won't silently pull them back in;
+      // they must deliberately tap "join" to return.
+      markPlayerKicked(gameCode)
       clearPlayerSession(gameCode)
       return null
     }

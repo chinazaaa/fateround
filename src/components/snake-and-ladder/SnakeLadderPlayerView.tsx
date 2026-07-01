@@ -47,14 +47,7 @@ const ROLL_MIN_MS = 700
 const WIN_HOLD_MS = 9000
 
 type Screen =
-  | 'loading'
-  | 'join'
-  | 'game_started_waiting'
-  | 'game_ended'
-  | 'waiting'
-  | 'active'
-  | 'finished'
-  | 'not_found'
+  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
@@ -137,6 +130,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   useRoomMemberAutoJoin({
+    gameCode,
     displayName: roomDisplayName,
     resolving: resolvingRoomMember,
     screen,

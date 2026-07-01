@@ -34,14 +34,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useChessClockExpiry } from '@/hooks/useChessClocks'
 
 type Screen =
-  | 'loading'
-  | 'join'
-  | 'game_started_waiting'
-  | 'game_ended'
-  | 'waiting'
-  | 'active'
-  | 'finished'
-  | 'not_found'
+  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
@@ -117,6 +110,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   useRoomMemberAutoJoin({
+    gameCode,
     displayName: roomDisplayName,
     resolving: resolvingRoomMember,
     screen,

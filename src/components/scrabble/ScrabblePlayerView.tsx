@@ -38,14 +38,7 @@ import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 
 type Screen =
-  | 'loading'
-  | 'join'
-  | 'game_started_waiting'
-  | 'game_ended'
-  | 'waiting'
-  | 'active'
-  | 'finished'
-  | 'not_found'
+  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
@@ -121,6 +114,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   })
 
   useRoomMemberAutoJoin({
+    gameCode,
     displayName: roomDisplayName,
     resolving: resolvingRoomMember,
     screen,

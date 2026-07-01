@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { roomMemberCodeFromSearch } from '@/lib/room-member-join'
+import { wasPlayerKicked } from '@/lib/utils'
 
 export function useRoomMemberJoin(gameCode: string) {
   const memberCode = useMemo(
@@ -42,6 +43,8 @@ export function useRoomMemberJoin(gameCode: string) {
 
 type AutoJoinOptions = {
   enabled?: boolean
+  /** Game code — when set, a player removed from this game won't be auto-rejoined. */
+  gameCode?: string
   displayName?: string | null
   /** Join without a display name once the room member link is resolved (e.g. anonymous chat). */
   autoJoinWithoutName?: boolean
@@ -58,6 +61,7 @@ type AutoJoinOptions = {
 /** Join automatically with the room display name when opened from a game room link. */
 export function useRoomMemberAutoJoin({
   enabled = true,
+  gameCode,
   displayName = null,
   autoJoinWithoutName = false,
   resolving,
@@ -74,11 +78,15 @@ export function useRoomMemberAutoJoin({
   useEffect(() => {
     if (!enabled || resolving || !canAutoJoin || hasPlayerSession || joining) return
     if (!autoJoinScreens.includes(screen) || gameStatus !== 'waiting') return
+    // A player the host removed (or who left) must deliberately tap "join" to return —
+    // don't silently pull them back in from the room link.
+    if (gameCode && wasPlayerKicked(gameCode)) return
     if (attemptedRef.current) return
     attemptedRef.current = true
     void onJoin(displayName ?? '')
   }, [
     enabled,
+    gameCode,
     resolving,
     canAutoJoin,
     displayName,

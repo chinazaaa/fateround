@@ -39,14 +39,7 @@ import { markPlayerReady } from '@/lib/player-ready'
 import { allowLateJoin, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 
 type Screen =
-  | 'loading'
-  | 'join'
-  | 'game_started_waiting'
-  | 'game_ended'
-  | 'waiting'
-  | 'active'
-  | 'finished'
-  | 'not_found'
+  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
@@ -197,6 +190,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   }, [gameCode, joinExtras, load, success, toastError])
 
   useRoomMemberAutoJoin({
+    gameCode,
     autoJoinWithoutName: !!memberCode,
     resolving: resolvingRoomMember,
     screen,

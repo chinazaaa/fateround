@@ -47,14 +47,7 @@ import { useYahtzeeNotifications, playYahtzeeScoreSound } from '@/hooks/useYahtz
 import { useYahtzeeTurnTimer } from '@/hooks/useYahtzeeTurnTimer'
 
 type Screen =
-  | 'loading'
-  | 'join'
-  | 'game_started_waiting'
-  | 'game_ended'
-  | 'waiting'
-  | 'active'
-  | 'finished'
-  | 'not_found'
+  'loading' | 'join' | 'game_started_waiting' | 'game_ended' | 'waiting' | 'active' | 'finished' | 'not_found'
 
 export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
@@ -196,6 +189,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   )
 
   useRoomMemberAutoJoin({
+    gameCode,
     displayName: roomDisplayName,
     resolving: resolvingRoomMember,
     screen,
