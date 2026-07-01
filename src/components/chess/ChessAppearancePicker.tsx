@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance, type ChessAppearanceDefaults } from '@/lib/chess-appearance'
-import { ChessPieceIcon } from '@/components/chess/ChessPieceIcon'
+import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
 
 /**
  * Personal, per-device picker for the board colors and piece style. Collapsed
@@ -105,18 +105,8 @@ export function ChessAppearancePicker({ defaults }: { defaults?: ChessAppearance
                     style={{ backgroundColor: '#b58863' }}
                   >
                     <span className="leading-none flex gap-0.5">
-                      <ChessPieceIcon
-                        type="n"
-                        variant={set.white.variant}
-                        className="h-6 w-6"
-                        style={{ color: set.white.color, filter: set.white.filter }}
-                      />
-                      <ChessPieceIcon
-                        type="n"
-                        variant={set.black.variant}
-                        className="h-6 w-6"
-                        style={{ color: set.black.color, filter: set.black.filter }}
-                      />
+                      <ChessPieceGlyph set={set} color="w" type="n" className="h-6 w-6" />
+                      <ChessPieceGlyph set={set} color="b" type="n" className="h-6 w-6" />
                     </span>
                     <span className="text-[10px] font-semibold text-white/90 leading-none">{set.name}</span>
                   </button>

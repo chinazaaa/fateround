@@ -12,7 +12,7 @@ import {
   type ChessPieceType,
   useChessAppearance,
 } from '@/lib/chess-appearance'
-import { ChessPieceIcon } from '@/components/chess/ChessPieceIcon'
+import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
 import { useChessTurnSound } from '@/hooks/useChessTurnSound'
 
 const PIECE_NAMES: Record<ChessPieceType, string> = {
@@ -130,7 +130,6 @@ function CapturedTray({
   set: ChessPieceSet
   clock?: ReactNode
 }) {
-  const face = glyphColor === 'w' ? set.white : set.black
   return (
     <div className="flex items-center gap-1.5 min-h-[1.75rem] px-1">
       <span className="text-xs font-bold shrink-0">
@@ -138,12 +137,12 @@ function CapturedTray({
       </span>
       <div className="flex items-center flex-wrap gap-0.5 leading-none">
         {pieces.map((type, i) => (
-          <ChessPieceIcon
+          <ChessPieceGlyph
             key={`${type}-${i}`}
+            set={set}
+            color={glyphColor}
             type={type as ChessPieceType}
-            variant={face.variant}
             className="h-5 w-5 sm:h-6 sm:w-6"
-            style={{ color: face.color, filter: face.filter }}
           />
         ))}
       </div>
@@ -153,13 +152,14 @@ function CapturedTray({
 }
 
 function Piece({ type, color, set }: { type: string; color: ChessColor; set: ChessPieceSet }) {
-  const face = color === 'w' ? set.white : set.black
+  const detailed = set.style === 'detailed'
   return (
-    <ChessPieceIcon
+    <ChessPieceGlyph
+      set={set}
+      color={color}
       type={type as ChessPieceType}
-      variant={face.variant}
-      className="relative z-10 select-none w-[82%] h-[82%]"
-      style={{ color: face.color, filter: face.filter }}
+      // Detailed pieces are drawn with built-in padding, so they fill more of the square.
+      className={`relative z-10 select-none ${detailed ? 'w-[92%] h-[92%]' : 'w-[82%] h-[82%]'}`}
     />
   )
 }
@@ -321,8 +321,8 @@ export function ChessGamePanel({
           clock={<ChessClockChip session={session} color={topColor} />}
         />
         <div className="grid grid-cols-8 rounded-lg overflow-hidden border-2 border-[var(--border-strong)] shadow-lg">
-          {orderedRanks.map((rank) =>
-            orderedFiles.map((file) => {
+          {orderedRanks.map((rank, rankIdx) =>
+            orderedFiles.map((file, fileIdx) => {
               const square = `${file}${rank}`
               const piece = chess.get(square as Square)
               const isLight = (FILES.indexOf(file) + rank) % 2 === 1
@@ -330,6 +330,12 @@ export function ChessGamePanel({
               const isSelected = selected === square
               const isLastMove = session.last_move_from === square || session.last_move_to === square
               const isCheck = checkSquare === square
+              // Coordinates hug the board's edges (chess.com style): ranks down the
+              // left column, files along the bottom row. Each label is tinted with
+              // the opposite square colour so it reads against its own square.
+              const showRank = fileIdx === 0
+              const showFile = rankIdx === orderedRanks.length - 1
+              const coordColor = isLight ? boardTheme.dark : boardTheme.light
 
               return (
                 <button
@@ -350,6 +356,24 @@ export function ChessGamePanel({
                 >
                   {isLastMove && <span className="absolute inset-0 z-0 bg-yellow-300/40" />}
                   {isCheck && <span className="absolute inset-0 z-0 bg-rose-500/50" />}
+                  {showRank && (
+                    <span
+                      className="pointer-events-none absolute top-0.5 left-0.5 z-20 text-[9px] sm:text-[11px] font-bold leading-none select-none"
+                      style={{ color: coordColor }}
+                      aria-hidden
+                    >
+                      {rank}
+                    </span>
+                  )}
+                  {showFile && (
+                    <span
+                      className="pointer-events-none absolute bottom-0.5 right-1 z-20 text-[9px] sm:text-[11px] font-bold leading-none select-none"
+                      style={{ color: coordColor }}
+                      aria-hidden
+                    >
+                      {file}
+                    </span>
+                  )}
                   {isSelected && <span className="absolute inset-0 z-20 ring-2 ring-inset ring-[var(--primary)]" />}
                   {piece && <Piece type={piece.type} color={piece.color} set={pieceSet} />}
                   {target && !piece && <span className="absolute z-20 w-1/4 h-1/4 rounded-full bg-black/30" />}
