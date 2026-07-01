@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { POST_CODE_MIN_LENGTH } from '@/lib/manager-constants'
-import { postCodeIsSet, setPostCode } from '@/lib/community-post-code'
+import { normalizePostCode, postCodeIsSet, setPostCode } from '@/lib/community-post-code'
 import { hasServiceRoleKey } from '@/lib/supabase-admin'
 
 export async function GET(req: NextRequest) {
@@ -21,8 +21,10 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}))
-  const code = typeof body.code === 'string' ? body.code.trim() : ''
-  if (code.length < POST_CODE_MIN_LENGTH) {
+  const code = typeof body.code === 'string' ? body.code : ''
+  // Validate against the SAME normalized form setPostCode hashes, so borderline
+  // input (e.g. "A A A") is rejected as a 400 here rather than throwing a 500.
+  if (normalizePostCode(code).length < POST_CODE_MIN_LENGTH) {
     return NextResponse.json({ error: `Code must be at least ${POST_CODE_MIN_LENGTH} characters` }, { status: 400 })
   }
 

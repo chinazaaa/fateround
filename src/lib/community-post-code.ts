@@ -19,7 +19,9 @@ const POST_CODE_KEY = 'post_code_hash'
 // Normalize before hashing so entry is forgiving: case and stray spaces don't
 // matter ("Naza", "naza", " NAZA " all match). Applied identically on set and
 // verify so the hashes line up. Winners type this every time, so lenience wins.
-function normalizePostCode(code: string): string {
+// Exported so callers (route/UI) validate length against the SAME canonical form
+// setPostCode uses — otherwise "A A A" passes a raw check then throws here.
+export function normalizePostCode(code: string): string {
   return code.trim().toLowerCase().replace(/\s+/g, '')
 }
 
