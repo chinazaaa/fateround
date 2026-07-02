@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { initializeChessGame } from '@/lib/chess'
-import { h2hGroupSize } from '@/lib/tournament-validation'
+import { h2hGroupSize } from '@/lib/tournament-bracket'
 
 /**
  * Resolve a finished head-to-head chess match: record the winner, eliminate the

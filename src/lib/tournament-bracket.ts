@@ -2,6 +2,27 @@
 // Pure functions so the pairing/bye math can be unit-tested independently of the
 // round-spawn endpoint (which handles shuffling + I/O).
 
+// Games eligible for the head-to-head (bracket) format. Chess is the classic 1v1
+// (group size 2); Whot and Scrabble play in rooms of 4, where each round's single
+// room winner advances (group size 4). All are single-winner elimination games.
+// Kept here (a dependency-free module) so the resolution libs can read the room
+// size without importing the schema file, which would form an import cycle.
+export const H2H_ELIGIBLE_TYPES = ['chess', 'whot', 'scrabble'] as const
+
+// How many players share one bracket room per game. Chess is a duel; Whot and
+// Scrabble seat 4 and advance only the room winner. Drives the round grouping,
+// seating, and elimination math.
+export const H2H_GROUP_SIZES: Record<(typeof H2H_ELIGIBLE_TYPES)[number], number> = {
+  chess: 2,
+  whot: 4,
+  scrabble: 4,
+}
+
+/** Room size for a head-to-head game type; defaults to a duel (2) if unknown. */
+export function h2hGroupSize(gameType: string | null | undefined): number {
+  return H2H_GROUP_SIZES[gameType as (typeof H2H_ELIGIBLE_TYPES)[number]] ?? 2
+}
+
 /** Smallest power of two >= n (minimum 1). */
 export function nextPowerOfTwo(n: number): number {
   let p = 1
