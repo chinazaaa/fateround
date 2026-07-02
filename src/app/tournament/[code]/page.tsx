@@ -626,8 +626,7 @@ export default function TournamentLobbyPage() {
   // Bracket room size: chess is a 1v1 duel (2); Whot/Scrabble play in rooms of 4.
   const groupSize = Number(tournament.game_config?.groupSize) || h2hGroupSize(tournament.game_type)
   const isGroupH2h = h2h && groupSize > 2
-  const labelForRound = (entrants: number) =>
-    isGroupH2h ? groupRoundLabel(entrants, groupSize) : roundLabel(entrants)
+  const labelForRound = (entrants: number) => (isGroupH2h ? groupRoundLabel(entrants, groupSize) : roundLabel(entrants))
   const playerNameById = (id: string | null) => (id ? (players.find((p) => p.id === id)?.player_name ?? '—') : '—')
   const h2hMatches = h2h ? games.filter((g) => g.round_number != null) : []
   const currentRoundNumber = h2hMatches.length ? Math.max(...h2hMatches.map((g) => g.round_number ?? 0)) : 0
@@ -665,11 +664,7 @@ export default function TournamentLobbyPage() {
   const myCurrentMatch =
     h2h && me && !me.is_eliminated
       ? (currentRoundMatches.find(
-          (g) =>
-            !g.is_bye &&
-            g.game_id &&
-            matchHasPlayer(g, me.id) &&
-            (g.status === 'pending' || g.status === 'active')
+          (g) => !g.is_bye && g.game_id && matchHasPlayer(g, me.id) && (g.status === 'pending' || g.status === 'active')
         ) ?? null)
       : null
 

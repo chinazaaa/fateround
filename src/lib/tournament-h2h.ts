@@ -170,11 +170,7 @@ async function resolveGroupRoom(
 
   // Map the winning game player to its tournament roster slot by name (unique per
   // tournament), restricted to this room's members.
-  const { data: winnerRow } = await supabase
-    .from('players')
-    .select('name')
-    .eq('id', winnerGamePlayerId)
-    .maybeSingle()
+  const { data: winnerRow } = await supabase.from('players').select('name').eq('id', winnerGamePlayerId).maybeSingle()
   const winnerName = winnerRow?.name?.toLowerCase() ?? null
 
   const memberIds = (match.member_ids ?? []).filter((id): id is string => Boolean(id))

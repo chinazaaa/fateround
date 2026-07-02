@@ -66,10 +66,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const roundNums = (rows ?? []).map((r) => r.round_number ?? 0)
     const currentRound = roundNums.length ? Math.max(...roundNums) : 0
     const room = (rows ?? []).find(
-      (r) =>
-        r.round_number === currentRound &&
-        !r.is_bye &&
-        ((r.member_ids ?? []) as string[]).includes(playerId)
+      (r) => r.round_number === currentRound && !r.is_bye && ((r.member_ids ?? []) as string[]).includes(playerId)
     )
 
     if (room && (room.status !== 'finished' || room.winner_player_id === playerId)) {
