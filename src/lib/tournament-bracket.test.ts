@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nextPowerOfTwo, computeRoundPairings, roundLabel } from './tournament-bracket'
+import { nextPowerOfTwo, computeRoundPairings, roundLabel, splitKnockoutField } from './tournament-bracket'
 
 describe('nextPowerOfTwo', () => {
   it('returns the smallest power of two >= n', () => {
@@ -61,6 +61,38 @@ describe('computeRoundPairings', () => {
 
   it('handles a trivial single-player field', () => {
     expect(computeRoundPairings(['solo'])).toEqual({ matches: [], byes: ['solo'] })
+  })
+})
+
+describe('splitKnockoutField', () => {
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => `p${i + 1}`)
+
+  it.each([
+    [16, 8, 8],
+    [8, 4, 4],
+    [4, 2, 2],
+    [2, 1, 1],
+    [10, 5, 5],
+    [5, 3, 2],
+    [3, 2, 1],
+    [1, 1, 0],
+  ])('for %i players advances %i and eliminates %i', (n, adv, elim) => {
+    const { advancing, eliminated } = splitKnockoutField(ids(n))
+    expect(advancing).toHaveLength(adv)
+    expect(eliminated).toHaveLength(elim)
+    // the field is partitioned; the top-ranked advance
+    expect([...advancing, ...eliminated]).toEqual(ids(n))
+    expect(advancing).toEqual(ids(n).slice(0, adv))
+  })
+
+  it('halves down to a champion: 16 → 8 → 4 → 2 → 1', () => {
+    let field = ids(16)
+    const sizes = [16]
+    while (field.length > 1) {
+      field = splitKnockoutField(field).advancing
+      sizes.push(field.length)
+    }
+    expect(sizes).toEqual([16, 8, 4, 2, 1])
   })
 })
 

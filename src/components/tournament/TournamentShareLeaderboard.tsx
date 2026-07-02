@@ -55,7 +55,9 @@ export function TournamentShareLeaderboard({
   const [sharing, setSharing] = useState(false)
   const sharingLock = useRef(false)
 
-  const h2h = tournament.format === 'head-to-head'
+  // Head-to-head and knockout are both bracket-style: ranked by how far each
+  // player got (no points), with the lone survivor crowned champion.
+  const h2h = tournament.format === 'head-to-head' || tournament.format === 'knockout'
   const ranked = orderForStandings(players, h2h)
 
   const handleShare = useCallback(async () => {

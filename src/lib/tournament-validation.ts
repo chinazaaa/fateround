@@ -8,10 +8,19 @@ const eliminationConfigSchema = z.object({
   eliminateCount: z.coerce.number().int().min(1).max(10),
 })
 
+// Per-round game setup for head-to-head/knockout, chosen at creation. Trivia
+// knockout uses questionsPerRound + timerSeconds for each round's group game.
+const gameConfigSchema = z.object({
+  questionSource: z.enum(['platform', 'custom']).optional(),
+  roundsCount: z.coerce.number().int().min(1).max(50).optional(),
+  timerSeconds: z.coerce.number().int().min(5).max(120).optional(),
+})
+
 export const createTournamentSchema = z.object({
   title: sanitizedString(1, 100),
-  format: z.enum(['round-robin', 'head-to-head']).optional(),
+  format: z.enum(['round-robin', 'head-to-head', 'knockout']).optional(),
   gameType: z.string().min(1).max(40).optional(),
+  gameConfig: gameConfigSchema.optional(),
   placementPoints: z.array(z.number().int().min(0)).min(1).max(20).optional(),
   targetGameCount: z.coerce.number().int().min(1).max(100).optional().nullable(),
   maxPlayers: z.coerce.number().int().min(2).max(100).optional().nullable(),
@@ -64,3 +73,7 @@ export const TOURNAMENT_ELIGIBLE_TYPES = ['trivia'] as const
 
 // Games eligible for the head-to-head (1v1 bracket) format — 2-player games only.
 export const H2H_ELIGIBLE_TYPES = ['chess'] as const
+
+// Games eligible for the knockout (group elimination) format — group games where
+// everyone plays at once and the field is cut by score each round.
+export const KNOCKOUT_ELIGIBLE_TYPES = ['trivia'] as const

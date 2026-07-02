@@ -4,6 +4,7 @@ import { parseJsonBody } from '@/lib/parse-body'
 import { tournamentHostActionSchema } from '@/lib/tournament-validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { initializeChessGame } from '@/lib/chess'
+import { startKnockoutRoundGame } from '@/lib/tournament-knockout'
 
 /**
  * Start every staged match in the current head-to-head round at once. Each match
@@ -29,8 +30,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     .maybeSingle()
   if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
   if (tournament.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (tournament.format !== 'head-to-head') {
-    return NextResponse.json({ error: 'Not a head-to-head tournament' }, { status: 400 })
+  if (tournament.format !== 'head-to-head' && tournament.format !== 'knockout') {
+    return NextResponse.json({ error: 'This tournament does not run bracket rounds' }, { status: 400 })
   }
   if (tournament.status === 'finished') return NextResponse.json({ error: 'Tournament has ended' }, { status: 400 })
 
@@ -39,10 +40,39 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     .select('id, game_id, round_number, is_bye, player_a_id, player_b_id')
     .eq('tournament_id', tournamentId)
     .eq('status', 'pending')
-  if (!pendingRows?.length) return NextResponse.json({ error: 'No staged matches to start' }, { status: 400 })
+  if (!pendingRows?.length) return NextResponse.json({ error: 'No staged round to start' }, { status: 400 })
 
   // Start the latest staged round only.
   const roundNumber = Math.max(...pendingRows.map((r) => r.round_number ?? 0))
+
+  // Knockout: the round is a single group game — start it server-side (pick
+  // questions + activate). It then runs and finishes on its own.
+  if (tournament.format === 'knockout') {
+    const groupRow = pendingRows.find((r) => r.round_number === roundNumber && r.game_id)
+    if (!groupRow?.game_id) return NextResponse.json({ error: 'No game to start' }, { status: 400 })
+
+    const { data: gamePlayers } = await admin.from('players').select('id, spectator').eq('game_id', groupRow.game_id)
+    const playing = (gamePlayers ?? []).filter((p) => p.spectator !== true)
+    if (playing.length < 2) {
+      return NextResponse.json(
+        { error: 'Waiting for at least 2 players to be in the room before you can start.', started: 0 },
+        { status: 400 }
+      )
+    }
+
+    const { error: startError } = await startKnockoutRoundGame(admin, groupRow.game_id)
+    if (startError) return NextResponse.json({ error: startError }, { status: 500 })
+
+    const { error: tgError } = await admin.from('tournament_games').update({ status: 'active' }).eq('id', groupRow.id)
+    if (tgError) {
+      return NextResponse.json(
+        { error: internalErrorMessage('tournaments/code/rounds/start', tgError) },
+        { status: 500 }
+      )
+    }
+    return NextResponse.json({ started: 1, players: playing.length })
+  }
+
   const roundMatches = pendingRows.filter((r) => r.round_number === roundNumber && !r.is_bye && r.game_id)
 
   // The two players each match is supposed to be between. tournament_players
