@@ -691,7 +691,14 @@ async function updatePlayerAndBoard(
     p_board_patch: boardPatch,
     p_player_patches: [{ player_id: playerId, ...playerPatch }, ...otherCashDeltas],
   })
-  if (error) return false
+  if (error) {
+    // The whole RPC is one transaction, so a failure committed nothing — the claim
+    // rolled back too. We keep treating it as a lost race (retryable no-op) rather
+    // than surfacing it to the player, but log it so a persistent fault (SQL/runtime
+    // bug, not a lost CAS) is visible instead of silently stalling the game.
+    console.error('monopoly_claim_and_apply failed', { gameId, error })
+    return false
+  }
   return won === true
 }
 

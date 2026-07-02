@@ -23,7 +23,9 @@ CREATE OR REPLACE FUNCTION monopoly_claim_and_apply(
 ) RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+-- pg_temp last so this SECURITY DEFINER function can't be hijacked via a
+-- temp-schema object shadowing an unqualified name.
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_claimed integer;
@@ -96,6 +98,14 @@ BEGIN
   -- inside the same transaction cannot deadlock or interleave with another
   -- handler's reads-then-writes.
   FOR v_patch IN SELECT jsonb_array_elements(coalesce(p_player_patches, '[]'::jsonb)) LOOP
+    -- A JSON null for a balance field would resolve to SQL NULL, which the
+    -- `< 0` guards below can't catch (NULL < 0 is NULL, not true), corrupting the
+    -- balance. Reject it explicitly before writing anything.
+    IF (v_patch ? 'cash' AND v_patch->'cash' = 'null'::jsonb)
+       OR (v_patch ? 'get_out_of_jail_free' AND v_patch->'get_out_of_jail_free' = 'null'::jsonb) THEN
+      RAISE EXCEPTION 'INVALID_PLAYER_PATCH';
+    END IF;
+
     UPDATE monopoly_player_state s SET
       cash = (CASE WHEN v_patch ? 'cash' THEN (v_patch->>'cash')::integer ELSE s.cash END)
              + COALESCE((v_patch->>'cash_delta')::integer, 0),
@@ -119,3 +129,8 @@ BEGIN
   RETURN true;
 END;
 $$;
+
+-- Only the server (service_role, via the admin client) ever calls this mutating
+-- SECURITY DEFINER function — never the browser. Strip the default PUBLIC EXECUTE
+-- so it can't be invoked with an anon/authenticated key (matches the sudoku RPCs).
+REVOKE EXECUTE ON FUNCTION monopoly_claim_and_apply(text, timestamptz, jsonb, jsonb) FROM PUBLIC, anon, authenticated;

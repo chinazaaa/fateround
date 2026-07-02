@@ -29,13 +29,22 @@ CREATE OR REPLACE FUNCTION monopoly_settle_payment(
 ) RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+-- pg_temp last so this SECURITY DEFINER function can't be hijacked via a
+-- temp-schema object shadowing an unqualified name.
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_claimed    integer;
   v_payer_cash integer;
   v_credited   integer;
 BEGIN
+  -- Reject bad amounts up front. A NULL or non-positive amount would either skip
+  -- the affordability check (v_payer_cash < negative is never true) or reverse the
+  -- transfer (payer gains, creditor loses), so fail the whole transaction instead.
+  IF p_amount IS NULL OR p_amount <= 0 THEN
+    RAISE EXCEPTION 'INVALID_PAYMENT_AMOUNT';
+  END IF;
+
   -- Claim the board first — the same optimistic-concurrency token the JS
   -- handlers race on. Zero rows means another trigger already settled this
   -- payment; return false without touching any cash.
@@ -84,3 +93,8 @@ BEGIN
   RETURN true;
 END;
 $$;
+
+-- Only the server (service_role, via the admin client) ever calls this mutating
+-- SECURITY DEFINER function — never the browser. Strip the default PUBLIC EXECUTE
+-- so it can't be invoked with an anon/authenticated key (matches the sudoku RPCs).
+REVOKE EXECUTE ON FUNCTION monopoly_settle_payment(text, timestamptz, uuid, uuid, integer, text, integer, integer, text, jsonb, timestamptz, boolean) FROM PUBLIC, anon, authenticated;
