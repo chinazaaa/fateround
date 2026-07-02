@@ -120,7 +120,10 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(
     gameCode,
-    [{ table: 'games', column: 'id' }, { table: 'chess_sessions', apply: applySessionRow }],
+    [
+      { table: 'games', column: 'id' },
+      { table: 'chess_sessions', apply: applySessionRow },
+    ],
     load
   )
 

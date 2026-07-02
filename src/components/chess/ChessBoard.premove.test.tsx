@@ -118,7 +118,9 @@ describe('ChessGamePanel premove', () => {
   it('does not offer premoves to viewers or when the game is over', () => {
     const onMove = vi.fn()
     // Viewer: no onMove handler at all.
-    const { rerender } = render(<ChessGamePanel session={makeSession()} players={players} myPlayerId={null} isMyTurn={false} />)
+    const { rerender } = render(
+      <ChessGamePanel session={makeSession()} players={players} myPlayerId={null} isMyTurn={false} />
+    )
     expect(square('e7')).toBeDisabled()
 
     // Finished game: handler present but the board is inert.
