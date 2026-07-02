@@ -35,7 +35,8 @@ import { useToast } from '@/components/ui/Toast'
 import { filterParticipantsInRounds } from '@/lib/utils'
 import { appDomain } from '@/lib/site'
 import { captureElementAsImage } from '@/lib/capture-element-image'
-import { shareImageBlob } from '@/lib/share-image'
+import { shareImageBlob, downloadBlobAsFile, shareFilenameStem } from '@/lib/share-image'
+import { ShareActionButtons } from '@/components/ShareActionButtons'
 import type { MonopolyStanding } from '@/lib/monopoly'
 import { formatMonopolyMoney } from '@/lib/monopoly'
 import type { WhotStanding } from '@/lib/whot'
@@ -420,37 +421,12 @@ export function ShareResults({
 }) {
   const { success, error } = useToast()
   const [sharing, setSharing] = useState(false)
-  const sharingLock = useRef(false)
+  const [downloading, setDownloading] = useState(false)
+  const busyLock = useRef(false)
 
-  const handleShare = useCallback(async () => {
-    if (sharingLock.current) return
-
-    const wantsImage = !!captureRef
-    const target = captureRef?.current
-
-    if (wantsImage && (!target || target.offsetHeight === 0)) {
-      error('Nothing to share yet')
-      return
-    }
-
-    sharingLock.current = true
-    setSharing(true)
-    try {
-      if (target) {
-        const blob = await captureElementAsImage(target)
-        const result = await shareImageBlob(blob, 'final-results.png')
-
-        if (result === 'copied') {
-          success('Image copied — paste into Stories or chat')
-        } else if (result === 'shared') {
-          success('Shared!')
-        } else {
-          success('Image downloaded')
-        }
-        return
-      }
-
-      const text = buildShareText({
+  const buildText = useCallback(
+    () =>
+      buildShareText({
         game,
         participants,
         votes,
@@ -479,7 +455,68 @@ export function ShareResults({
         codewordsWinnerLabel,
         wordHuntLeaderboard,
         wordHuntWinnerName,
-      })
+      }),
+    [
+      game,
+      participants,
+      votes,
+      rounds,
+      players,
+      triviaAnswers,
+      bingoWinnerName,
+      yahtzeeScores,
+      yahtzeeWinnerName,
+      monopolyStandings,
+      monopolyWinnerName,
+      whotStandings,
+      whotWinnerName,
+      ludoStandings,
+      ludoWinnerName,
+      ludoEndedEarly,
+      snakeLadderStandings,
+      snakeLadderWinnerName,
+      snakeLadderEndedEarly,
+      ticTacToeWinnerName,
+      ticTacToeIsDraw,
+      ticTacToeEndedEarly,
+      npatLeaderboard,
+      npatWinnerLabel,
+      codewordsOperativeStats,
+      codewordsWinnerLabel,
+      wordHuntLeaderboard,
+      wordHuntWinnerName,
+    ]
+  )
+
+  const handleShare = useCallback(async () => {
+    if (busyLock.current) return
+
+    const wantsImage = !!captureRef
+    const target = captureRef?.current
+
+    if (wantsImage && (!target || target.offsetHeight === 0)) {
+      error('Nothing to share yet')
+      return
+    }
+
+    busyLock.current = true
+    setSharing(true)
+    try {
+      if (target) {
+        const blob = await captureElementAsImage(target)
+        const result = await shareImageBlob(blob, 'final-results.png')
+
+        if (result === 'copied') {
+          success('Image copied — paste into Stories or chat')
+        } else if (result === 'shared') {
+          success('Shared!')
+        } else {
+          success('Image downloaded')
+        }
+        return
+      }
+
+      const text = buildText()
       if (typeof navigator !== 'undefined' && navigator.share) {
         try {
           await navigator.share({ text })
@@ -500,84 +537,57 @@ export function ShareResults({
       }
 
       try {
-        const text = buildShareText({
-          game,
-          participants,
-          votes,
-          rounds,
-          players,
-          triviaAnswers,
-          bingoWinnerName,
-          yahtzeeScores,
-          yahtzeeWinnerName,
-          monopolyStandings,
-          monopolyWinnerName,
-          whotStandings,
-          whotWinnerName,
-          ludoStandings,
-          ludoWinnerName,
-          ludoEndedEarly,
-          ticTacToeWinnerName,
-          ticTacToeIsDraw,
-          ticTacToeEndedEarly,
-          npatLeaderboard,
-          npatWinnerLabel,
-          codewordsOperativeStats,
-          codewordsWinnerLabel,
-          wordHuntLeaderboard,
-          wordHuntWinnerName,
-        })
-        await navigator.clipboard.writeText(text)
+        await navigator.clipboard.writeText(buildText())
         success('Results copied to clipboard!')
       } catch {
         error(err instanceof Error ? err.message : 'Could not share results')
       }
     } finally {
-      sharingLock.current = false
+      busyLock.current = false
       setSharing(false)
     }
-  }, [
-    captureRef,
-    game,
-    participants,
-    votes,
-    rounds,
-    players,
-    triviaAnswers,
-    bingoWinnerName,
-    yahtzeeScores,
-    yahtzeeWinnerName,
-    monopolyStandings,
-    monopolyWinnerName,
-    whotStandings,
-    whotWinnerName,
-    ludoStandings,
-    ludoWinnerName,
-    ludoEndedEarly,
-    ticTacToeWinnerName,
-    ticTacToeIsDraw,
-    ticTacToeEndedEarly,
-    npatLeaderboard,
-    npatWinnerLabel,
-    codewordsOperativeStats,
-    codewordsWinnerLabel,
-    wordHuntLeaderboard,
-    wordHuntWinnerName,
-    success,
-    error,
-  ])
+  }, [captureRef, buildText, success, error])
+
+  const handleDownload = useCallback(async () => {
+    if (busyLock.current) return
+
+    const wantsImage = !!captureRef
+    const target = captureRef?.current
+
+    if (wantsImage && (!target || target.offsetHeight === 0)) {
+      error('Nothing to download yet')
+      return
+    }
+
+    busyLock.current = true
+    setDownloading(true)
+    try {
+      const stem = shareFilenameStem(game.title)
+      if (target) {
+        const blob = await captureElementAsImage(target)
+        downloadBlobAsFile(blob, `${stem}-results.png`)
+        success('Image downloaded')
+        return
+      }
+
+      const blob = new Blob([buildText()], { type: 'text/plain' })
+      downloadBlobAsFile(blob, `${stem}-results.txt`)
+      success('Results downloaded')
+    } catch (err) {
+      error(err instanceof Error ? err.message : 'Could not download results')
+    } finally {
+      busyLock.current = false
+      setDownloading(false)
+    }
+  }, [captureRef, game.title, buildText, success, error])
 
   return (
-    <button
-      type="button"
-      onClick={handleShare}
-      disabled={sharing}
-      className="btn-secondary w-full flex items-center justify-center gap-2 disabled:opacity-50"
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-        <path d="M13 4.5a2.5 2.5 0 1 1 .702 1.737L6.97 9.604a2.5 2.5 0 0 1 0 .792l6.733 3.367a2.5 2.5 0 1 1-.671 1.341l-6.733-3.367a2.5 2.5 0 1 1 0-3.474l6.733-3.367A2.5 2.5 0 0 1 13 4.5Z" />
-      </svg>
-      {sharing ? 'Sharing…' : 'Share Results'}
-    </button>
+    <ShareActionButtons
+      shareLabel="Share Results"
+      onShare={handleShare}
+      onDownload={handleDownload}
+      sharing={sharing}
+      downloading={downloading}
+    />
   )
 }

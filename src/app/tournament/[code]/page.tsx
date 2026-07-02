@@ -6,7 +6,7 @@ import { useTournamentRealtime } from '@/hooks/useTournamentRealtime'
 import type { Tournament, TournamentPlayer, TournamentGame } from '@/types/tournament'
 import type { TriviaQuestion } from '@/types'
 import { TOURNAMENT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
-import { roundLabel } from '@/lib/tournament-bracket'
+import { groupRoundLabel, resolveGroupSize, roundLabel } from '@/lib/tournament-bracket'
 import { gameTypeLabel } from '@/lib/game-types'
 import {
   parseTriviaQuestionImport,
@@ -18,6 +18,21 @@ import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { TournamentShareLeaderboard } from '@/components/tournament/TournamentShareLeaderboard'
 import { TournamentBracketBoard } from '@/components/tournament/TournamentBracketBoard'
+
+/**
+ * Whether a tournament player is in a bracket match — a chess duel (player_a/b)
+ * or a Whot/Scrabble group room (member_ids). Lets one code path serve both.
+ */
+function matchHasPlayer(g: TournamentGame, playerId: string): boolean {
+  if (g.player_a_id === playerId || g.player_b_id === playerId) return true
+  return (g.member_ids ?? []).includes(playerId)
+}
+
+/** All tournament-player ids in a match — duel pair or group room. */
+function matchMemberIds(g: TournamentGame): string[] {
+  if (g.member_ids?.length) return g.member_ids
+  return [g.player_a_id, g.player_b_id].filter((id): id is string => Boolean(id))
+}
 
 /** How a head-to-head match was decided, for the bracket results line. */
 function winReasonLabel(reason?: string | null): string {
@@ -77,7 +92,10 @@ export default function TournamentLobbyPage() {
   const [roundsCount, setRoundsCount] = useState('10')
   const [timerSeconds, setTimerSeconds] = useState('30')
   // Head-to-head: shared per-player chess clock for a round's matches.
-  const [h2hTimer, setH2hTimer] = useState('600')
+  // Fallback per-player clock sent when starting a round for older chess
+  // tournaments whose game_config has no stored timer (newer ones set it at
+  // creation; the round route prefers that). No UI — hence no setter.
+  const [h2hTimer] = useState('600')
   const [actionLoading, setActionLoading] = useState(false)
 
   const [questionSource, setQuestionSource] = useState<'platform' | 'custom'>('platform')
@@ -200,11 +218,7 @@ export default function TournamentLobbyPage() {
     const currentRound = roundNums.length ? Math.max(...roundNums) : 0
     if (!currentRound) return
     const myMatch = games.find(
-      (g) =>
-        g.round_number === currentRound &&
-        !g.is_bye &&
-        g.game_id &&
-        (g.player_a_id === me.id || g.player_b_id === me.id)
+      (g) => g.round_number === currentRound && !g.is_bye && g.game_id && matchHasPlayer(g, me.id)
     )
     if (!myMatch?.game_id || (myMatch.status !== 'pending' && myMatch.status !== 'active')) return
     if (forwardedGameRef.current === myMatch.game_id) return
@@ -612,11 +626,15 @@ export default function TournamentLobbyPage() {
   const knockout = tournament.format === 'knockout'
   const bracket = h2h || knockout
   const roundRobin = !bracket
+  // Bracket room size: chess is a 1v1 duel (2); Whot/Scrabble play in rooms of 4.
+  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
+  const isGroupH2h = h2h && groupSize > 2
+  const labelForRound = (entrants: number) => (isGroupH2h ? groupRoundLabel(entrants, groupSize) : roundLabel(entrants))
   const playerNameById = (id: string | null) => (id ? (players.find((p) => p.id === id)?.player_name ?? '—') : '—')
   const h2hMatches = h2h ? games.filter((g) => g.round_number != null) : []
   const currentRoundNumber = h2hMatches.length ? Math.max(...h2hMatches.map((g) => g.round_number ?? 0)) : 0
   const currentRoundMatches = h2hMatches.filter((g) => g.round_number === currentRoundNumber)
-  const currentRoundEntrants = currentRoundMatches.reduce((n, m) => n + (m.is_bye ? 1 : 2), 0)
+  const currentRoundEntrants = currentRoundMatches.reduce((n, m) => n + (m.is_bye ? 1 : matchMemberIds(m).length), 0)
   const stagedMatches = currentRoundMatches.filter((g) => !g.is_bye && g.status === 'pending')
   const roundInProgress = currentRoundMatches.some(
     (g) => !g.is_bye && (g.status === 'pending' || g.status === 'active')
@@ -649,11 +667,7 @@ export default function TournamentLobbyPage() {
   const myCurrentMatch =
     h2h && me && !me.is_eliminated
       ? (currentRoundMatches.find(
-          (g) =>
-            !g.is_bye &&
-            g.game_id &&
-            (g.player_a_id === me.id || g.player_b_id === me.id) &&
-            (g.status === 'pending' || g.status === 'active')
+          (g) => !g.is_bye && g.game_id && matchHasPlayer(g, me.id) && (g.status === 'pending' || g.status === 'active')
         ) ?? null)
       : null
 
@@ -671,7 +685,7 @@ export default function TournamentLobbyPage() {
       )
         .map((matches) => ({
           round: matches[0].round_number as number,
-          entrants: matches.reduce((n, m) => n + (m.is_bye ? 1 : 2), 0),
+          entrants: matches.reduce((n, m) => n + (m.is_bye ? 1 : matchMemberIds(m).length), 0),
           matches: [...matches].sort((a, b) => (a.match_index ?? 0) - (b.match_index ?? 0)),
         }))
         .sort((a, b) => a.round - b.round)
@@ -697,7 +711,7 @@ export default function TournamentLobbyPage() {
         <div className="flex flex-wrap items-center justify-center gap-1.5">
           <span className="chip text-xs">
             {h2h
-              ? `♟ ${gameTypeLabel(tournament.game_type) ?? 'Chess'}`
+              ? `${isGroupH2h ? '🎮' : '♟'} ${gameTypeLabel(tournament.game_type) ?? 'Chess'}`
               : knockout
                 ? `🧠 ${gameTypeLabel(tournament.game_type) ?? 'Trivia'}`
                 : '🎮 Trivia'}
@@ -872,7 +886,7 @@ export default function TournamentLobbyPage() {
         <TournamentBracketBoard
           matches={currentRoundMatches}
           roundNumber={currentRoundNumber}
-          roundLabel={roundLabel(currentRoundEntrants)}
+          roundLabel={labelForRound(currentRoundEntrants)}
           nameOf={playerNameById}
           onWatch={handleWatchGame}
           onRemovePlayer={isHost ? handleRemovePlayer : undefined}
@@ -917,27 +931,25 @@ export default function TournamentLobbyPage() {
 
           {!roundInProgress && (
             <>
-              <Field label="Time per player" htmlFor="h2h-timer">
-                <select
-                  id="h2h-timer"
-                  value={h2hTimer}
-                  onChange={(e) => setH2hTimer(e.target.value)}
-                  className="input-field"
-                >
-                  <option value="0">Untimed</option>
-                  <option value="180">3 min</option>
-                  <option value="300">5 min</option>
-                  <option value="600">10 min</option>
-                </select>
-              </Field>
+              {/* Time controls (chess clock, Whot/Scrabble length + rules) are all
+                  chosen once at tournament creation, so there's no per-round picker
+                  here — the host just starts the round. */}
               <div className="space-y-1.5">
                 <PrimaryBtn onClick={handleStartRound} disabled={actionLoading || survivingCount < 2}>
-                  {actionLoading ? 'Pairing…' : currentRoundNumber > 0 ? 'Start Next Round' : 'Start Round'}
+                  {actionLoading
+                    ? isGroupH2h
+                      ? 'Grouping…'
+                      : 'Pairing…'
+                    : currentRoundNumber > 0
+                      ? 'Start Next Round'
+                      : 'Start Round'}
                 </PrimaryBtn>
                 <p className="text-faint text-xs text-center">
                   {survivingCount < 2
                     ? 'Waiting for players to join before you can start.'
-                    : 'Pairs everyone up and sends them to their match rooms.'}
+                    : isGroupH2h
+                      ? `Splits everyone into rooms of ${groupSize} and sends them in.`
+                      : 'Pairs everyone up and sends them to their match rooms.'}
                 </p>
               </div>
             </>
@@ -948,10 +960,14 @@ export default function TournamentLobbyPage() {
               <PrimaryBtn onClick={handleStartMatches} disabled={actionLoading}>
                 {actionLoading
                   ? 'Starting…'
-                  : `Start ${stagedMatches.length} Match${stagedMatches.length === 1 ? '' : 'es'}`}
+                  : isGroupH2h
+                    ? `Start ${stagedMatches.length} Room${stagedMatches.length === 1 ? '' : 's'}`
+                    : `Start ${stagedMatches.length} Match${stagedMatches.length === 1 ? '' : 'es'}`}
               </PrimaryBtn>
               <p className="text-faint text-xs text-center">
-                Starts every match at once. Players must be in their rooms first.
+                {isGroupH2h
+                  ? 'Starts every room at once. Players must be in their rooms first.'
+                  : 'Starts every match at once. Players must be in their rooms first.'}
               </p>
             </div>
           )}
@@ -1512,18 +1528,23 @@ export default function TournamentLobbyPage() {
           {resultRounds.map((rd) => (
             <div key={rd.round} className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Round {rd.round} · {roundLabel(rd.entrants)}
+                Round {rd.round} · {labelForRound(rd.entrants)}
               </p>
               {rd.matches.map((g) => {
                 const loserId = g.winner_player_id === g.player_a_id ? g.player_b_id : g.player_a_id
+                const roomLabel = matchMemberIds(g).map(playerNameById).join(', ')
                 return (
                   <div key={g.id} className="result-row flex items-center justify-between gap-3 px-4 py-2.5">
                     <span className="min-w-0 truncate text-sm font-medium text-body">
                       {g.is_bye
                         ? `${playerNameById(g.player_a_id)} — bye`
                         : g.winner_player_id
-                          ? `✓ ${playerNameById(g.winner_player_id)} beat ${playerNameById(loserId)}${winReasonLabel(g.win_reason)}`
-                          : `${playerNameById(g.player_a_id)} vs ${playerNameById(g.player_b_id)}`}
+                          ? isGroupH2h
+                            ? `✓ ${playerNameById(g.winner_player_id)} won the room`
+                            : `✓ ${playerNameById(g.winner_player_id)} beat ${playerNameById(loserId)}${winReasonLabel(g.win_reason)}`
+                          : isGroupH2h
+                            ? roomLabel
+                            : `${playerNameById(g.player_a_id)} vs ${playerNameById(g.player_b_id)}`}
                     </span>
                     {!g.is_bye && g.game_id && (
                       <button onClick={() => handleWatchGame(g.game_id!)} className="btn-ghost shrink-0 text-xs">

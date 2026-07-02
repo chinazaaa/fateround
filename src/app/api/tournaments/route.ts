@@ -3,7 +3,17 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { generateGameCode, generateToken } from '@/lib/utils'
-import { createTournamentSchema, H2H_ELIGIBLE_TYPES, KNOCKOUT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
+import {
+  createTournamentSchema,
+  H2H_ELIGIBLE_TYPES,
+  h2hGroupSize,
+  KNOCKOUT_ELIGIBLE_TYPES,
+} from '@/lib/tournament-validation'
+import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
+import { clampChessTimer } from '@/lib/chess'
+import { clampWhotGameDuration } from '@/lib/whot'
+import { clampScrabbleTimer, clampScrabbleGameDuration } from '@/lib/scrabble'
+import { parseScrabbleDictionaryId } from '@/lib/scrabble-dictionary-meta'
 
 const supabase = getSupabaseAnon()
 
@@ -42,6 +52,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to generate unique code' }, { status: 500 })
   }
 
+  // Head-to-head game_config: the fixed room size (chess 2, Whot/Scrabble 4) plus,
+  // for the group games, the house rules / dictionary and per-turn timer the host
+  // picked — applied to every room the bracket spawns.
+  let h2hGameConfig: Record<string, unknown> | null = null
+  if (isH2H) {
+    const groupSize = h2hGroupSize(h2hGameType)
+    if (h2hGameType === 'whot') {
+      h2hGameConfig = {
+        groupSize,
+        timerSeconds: clampBoardGameTurnTimer(gameConfig?.timerSeconds ?? 30, 'whot'),
+        gameDurationSeconds: clampWhotGameDuration(gameConfig?.gameDurationSeconds ?? 900),
+        whotPick3: gameConfig?.whotPick3 ?? true,
+        whotCards: gameConfig?.whotCards ?? true,
+        whotNumberCalls: gameConfig?.whotNumberCalls ?? true,
+        whotPick2Stacking: gameConfig?.whotPick2Stacking ?? true,
+      }
+    } else if (h2hGameType === 'scrabble') {
+      h2hGameConfig = {
+        groupSize,
+        timerSeconds: clampScrabbleTimer(gameConfig?.timerSeconds ?? 60),
+        gameDurationSeconds: clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 900),
+        scrabbleDictionary: parseScrabbleDictionaryId(gameConfig?.scrabbleDictionary),
+      }
+    } else {
+      // Chess: the per-player clock (0 = untimed) applied to every match.
+      h2hGameConfig = { groupSize, timerSeconds: clampChessTimer(gameConfig?.timerSeconds ?? 600) }
+    }
+  }
+
   const { error } = await supabase.from('tournaments').insert({
     id: tournamentCode,
     host_token: hostToken,
@@ -54,7 +93,7 @@ export async function POST(req: NextRequest) {
           roundsCount: gameConfig?.roundsCount ?? 5,
           timerSeconds: gameConfig?.timerSeconds ?? 15,
         }
-      : null,
+      : h2hGameConfig,
     placement_points: placementPoints ?? [10, 7, 5, 3, 2, 1],
     target_game_count: targetGameCount ?? null,
     max_players: maxPlayers ?? null,

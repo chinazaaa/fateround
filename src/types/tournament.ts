@@ -13,7 +13,21 @@ export type TournamentFormat = 'round-robin' | 'head-to-head' | 'knockout'
 export interface TournamentGameConfig {
   questionSource?: 'platform' | 'custom'
   roundsCount?: number
+  // Per-round timer: trivia knockout = seconds per question; Whot/Scrabble
+  // head-to-head = seconds per turn in each room.
   timerSeconds?: number
+  // Whot/Scrabble head-to-head: max room length in seconds (0 = no limit), so a
+  // room can't run for hours. Enforced against each room's session_started_at.
+  gameDurationSeconds?: number
+  // Head-to-head room size: 2 for chess (1v1), 4 for Whot/Scrabble group rooms.
+  groupSize?: number
+  // Whot house rules applied to every spawned room (default true when omitted).
+  whotPick3?: boolean
+  whotCards?: boolean
+  whotNumberCalls?: boolean
+  whotPick2Stacking?: boolean
+  // Scrabble word list id (see SCRABBLE_DICTIONARY_OPTIONS).
+  scrabbleDictionary?: string
 }
 
 export interface Tournament {
@@ -61,6 +75,9 @@ export interface TournamentGame {
   match_index: number | null
   player_a_id: string | null
   player_b_id: string | null
+  // Group-bracket rooms (Whot/Scrabble, up to 4 players): the tournament_player ids
+  // seated in this room. Null for chess, which uses player_a_id/player_b_id.
+  member_ids: string[] | null
   winner_player_id: string | null
   // How the match was decided (e.g. 'checkmate', 'timeout', 'resignation', 'walkover').
   win_reason?: string | null

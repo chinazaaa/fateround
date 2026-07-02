@@ -5,7 +5,8 @@ import type { Game, Participant, Player, Round, Vote } from '@/types'
 import { appDomain } from '@/lib/site'
 import { buildRoundShareCardContent } from '@/lib/share-round-content'
 import { captureElementAsImage } from '@/lib/capture-element-image'
-import { shareImageBlob } from '@/lib/share-image'
+import { shareImageBlob, downloadBlobAsFile, shareFilenameStem } from '@/lib/share-image'
+import { ShareActionButtons } from '@/components/ShareActionButtons'
 import { useToast } from '@/components/ui/Toast'
 
 function buildRoundShareText({
@@ -50,10 +51,11 @@ export function ShareRoundResults({
 }) {
   const { success, error } = useToast()
   const [sharing, setSharing] = useState(false)
-  const sharingLock = useRef(false)
+  const [downloading, setDownloading] = useState(false)
+  const busyLock = useRef(false)
 
   const handleShare = useCallback(async () => {
-    if (sharingLock.current) return
+    if (busyLock.current) return
 
     const target = captureRef.current
     if (!target) {
@@ -61,7 +63,7 @@ export function ShareRoundResults({
       return
     }
 
-    sharingLock.current = true
+    busyLock.current = true
     setSharing(true)
     try {
       const blob = await captureElementAsImage(target)
@@ -89,22 +91,41 @@ export function ShareRoundResults({
         error(err instanceof Error ? err.message : 'Could not share results')
       }
     } finally {
-      sharingLock.current = false
+      busyLock.current = false
       setSharing(false)
     }
   }, [captureRef, game, round, votes, participants, players, success, error])
 
+  const handleDownload = useCallback(async () => {
+    if (busyLock.current) return
+
+    const target = captureRef.current
+    if (!target) {
+      error('Nothing to download yet')
+      return
+    }
+
+    busyLock.current = true
+    setDownloading(true)
+    try {
+      const blob = await captureElementAsImage(target)
+      downloadBlobAsFile(blob, `${shareFilenameStem(game.title)}-round.png`)
+      success('Image downloaded')
+    } catch (err) {
+      error(err instanceof Error ? err.message : 'Could not download results')
+    } finally {
+      busyLock.current = false
+      setDownloading(false)
+    }
+  }, [captureRef, game.title, success, error])
+
   return (
-    <button
-      type="button"
-      onClick={handleShare}
-      disabled={sharing}
-      className="btn-secondary w-full flex items-center justify-center gap-2 disabled:opacity-50"
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-        <path d="M13 4.5a2.5 2.5 0 1 1 .702 1.737L6.97 9.604a2.5 2.5 0 0 1 0 .792l6.733 3.367a2.5 2.5 0 1 1-.671 1.341l-6.733-3.367a2.5 2.5 0 1 1 0-3.474l6.733-3.367A2.5 2.5 0 0 1 13 4.5Z" />
-      </svg>
-      {sharing ? 'Sharing…' : 'Share Round'}
-    </button>
+    <ShareActionButtons
+      shareLabel="Share Round"
+      onShare={handleShare}
+      onDownload={handleDownload}
+      sharing={sharing}
+      downloading={downloading}
+    />
   )
 }

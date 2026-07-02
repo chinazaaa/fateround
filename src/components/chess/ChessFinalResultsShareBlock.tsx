@@ -6,6 +6,7 @@ import type { Game, Player, ChessSession } from '@/types'
 import { chessResultDetail } from '@/lib/chess'
 import { type ChessAppearanceDefaults, type ChessPieceType, useChessAppearance } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
+import { ChessPgnActions } from '@/components/chess/ChessPgnActions'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
@@ -119,6 +120,7 @@ export function ChessFinalResultsShareBlock({
           </>
         )}
       </div>
+      {session && session.pgn ? <ChessPgnActions game={game} players={players} session={session} /> : null}
       <HostGameFinishedActions
         playAgainButton={playAgainButton}
         shareButton={

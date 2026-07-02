@@ -9,7 +9,18 @@ export const LUDO_MAX_PLAYERS = 4
 export const LUDO_DEFAULT_MAX_PLAYERS = 4
 
 export const TRACK_LENGTH = 52
-const FINISH_STEPS = 57
+
+/**
+ * A piece walks 51 track squares — its start plus 50 more — and turns into its
+ * home column at the 51st step (the square directly behind its own start is
+ * never entered; the home mouth comes first). Entering home at step 52 instead
+ * made a piece overshoot its home mouth by one cell whenever it rolled the exact
+ * count to the mouth + 1 (e.g. a 1 from the mouth), so it sailed past the home
+ * lane and carried on around the track.
+ */
+export const HOME_ENTRY_STEPS = 51
+const HOME_LANE_LENGTH = 5
+const FINISH_STEPS = HOME_ENTRY_STEPS + HOME_LANE_LENGTH // 56
 
 export const LUDO_COLORS: LudoColor[] = ['red', 'green', 'yellow', 'blue']
 
@@ -143,13 +154,13 @@ export function formatLudoDiceRoll(dice: LudoDiceRoll): string {
 function stepsFromStart(color: LudoColor, piece: LudoPiece): number | null {
   if (piece.zone === 'base') return null
   if (piece.zone === 'finished') return FINISH_STEPS
-  if (piece.zone === 'home') return 52 + piece.pos
+  if (piece.zone === 'home') return HOME_ENTRY_STEPS + piece.pos
   return (piece.pos - START_POS[color] + TRACK_LENGTH) % TRACK_LENGTH
 }
 
 function pieceAtSteps(color: LudoColor, steps: number): LudoPiece {
   if (steps >= FINISH_STEPS) return { id: 0, zone: 'finished', pos: 0 }
-  if (steps >= 52) return { id: 0, zone: 'home', pos: steps - 52 }
+  if (steps >= HOME_ENTRY_STEPS) return { id: 0, zone: 'home', pos: steps - HOME_ENTRY_STEPS }
   return { id: 0, zone: 'track', pos: (START_POS[color] + steps) % TRACK_LENGTH }
 }
 
@@ -320,7 +331,7 @@ export function getLegalMovesForSteps(
     let blocked = false
     for (let step = 1; step <= steps; step += 1) {
       const intermediateSteps = currentSteps + step
-      if (intermediateSteps > 51) break
+      if (intermediateSteps >= HOME_ENTRY_STEPS) break
       const intermediatePos = (START_POS[color] + intermediateSteps) % TRACK_LENGTH
       if (step < steps && !canPassTrackSquare(intermediatePos, color, occupants)) {
         blocked = true

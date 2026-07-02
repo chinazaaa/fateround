@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
 import { removeTournamentPlayerSchema } from '@/lib/tournament-validation'
+import { resolveGroupSize } from '@/lib/tournament-bracket'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 /**
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { data: tournament } = await admin
     .from('tournaments')
-    .select('host_token, format, status, elimination_config')
+    .select('host_token, format, status, elimination_config, game_type, game_config')
     .eq('id', tournamentId)
     .maybeSingle()
   if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
@@ -51,8 +52,42 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     )
   }
 
-  // Head-to-head: resolve the removed player's current match so the round can move on.
-  if (tournament.format === 'head-to-head') {
+  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
+
+  // Group bracket (Whot/Scrabble): removing one member of a room of 4 doesn't void
+  // it — the rest still play. Only step in if the room is now down to one live
+  // member (walkover) or none (void); otherwise leave the room to finish normally.
+  if (tournament.format === 'head-to-head' && groupSize > 2) {
+    const { data: rows } = await admin
+      .from('tournament_games')
+      .select('id, game_id, round_number, member_ids, winner_player_id, status, is_bye')
+      .eq('tournament_id', tournamentId)
+
+    const roundNums = (rows ?? []).map((r) => r.round_number ?? 0)
+    const currentRound = roundNums.length ? Math.max(...roundNums) : 0
+    const room = (rows ?? []).find(
+      (r) => r.round_number === currentRound && !r.is_bye && ((r.member_ids ?? []) as string[]).includes(playerId)
+    )
+
+    if (room && (room.status !== 'finished' || room.winner_player_id === playerId)) {
+      const memberIds = ((room.member_ids ?? []) as string[]).filter(Boolean)
+      const { data: memRows } = await admin
+        .from('tournament_players')
+        .select('id, is_eliminated')
+        .in('id', memberIds.length ? memberIds : ['__none__'])
+      const remaining = (memRows ?? []).filter((m) => !m.is_eliminated).map((m) => m.id)
+      // >= 2 live members → the game continues untouched. <= 1 → resolve now.
+      if (remaining.length <= 1) {
+        const winner = remaining.length === 1 ? remaining[0] : null
+        await admin
+          .from('tournament_games')
+          .update({ status: 'finished', winner_player_id: winner, win_reason: winner ? 'walkover' : null })
+          .eq('id', room.id)
+        if (room.game_id) await admin.from('games').update({ status: 'finished' }).eq('id', room.game_id)
+      }
+    }
+  } else if (tournament.format === 'head-to-head') {
+    // Chess (1v1): resolve the removed player's current match so the round can move on.
     const { data: rows } = await admin
       .from('tournament_games')
       .select('id, game_id, round_number, player_a_id, player_b_id, winner_player_id, status, is_bye')

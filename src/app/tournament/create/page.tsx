@@ -3,12 +3,28 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageShell, Field, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
-import { H2H_ELIGIBLE_TYPES, KNOCKOUT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
+import { H2H_ELIGIBLE_TYPES, h2hGroupSize, KNOCKOUT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
 import { gameTypeLabel } from '@/lib/game-types'
+import { SCRABBLE_DICTIONARY_LABELS, SCRABBLE_DICTIONARY_OPTIONS } from '@/lib/scrabble-dictionary-meta'
 
 type Format = 'round-robin' | 'head-to-head' | 'knockout'
 
 const DEFAULT_POINTS = [10, 7, 5, 3, 2, 1]
+
+// Per-turn timer choices for the group games (mirrors the lobby's options).
+const WHOT_TURN_OPTIONS = [0, 10, 15, 30, 60, 90, 120]
+const SCRABBLE_TURN_OPTIONS = [0, 60, 180, 300]
+const fmtTurn = (s: number) => (s === 0 ? 'No limit' : s < 60 ? `${s}s` : `${s / 60} min`)
+
+// Overall room-length caps, so a Whot/Scrabble room can't run for hours.
+const WHOT_DURATION_OPTIONS = [0, 600, 900, 1800, 2700, 3600, 5400]
+const SCRABBLE_DURATION_OPTIONS = [0, 600, 900, 1800, 3600, 5400, 7200]
+const fmtDuration = (s: number) =>
+  s === 0 ? 'No limit' : s % 3600 === 0 ? `${s / 3600} hr` : `${Math.round(s / 60)} min`
+
+// Chess per-player clock choices (mirrors CHESS_TIME_OPTIONS).
+const CHESS_TIME_OPTIONS = [0, 180, 300, 600]
+const fmtChessTime = (s: number) => (s === 0 ? 'Untimed' : `${s / 60} min`)
 
 const PLACEMENT_STYLES = [
   { ring: 'rgba(217, 119, 6, 0.4)', bg: 'rgba(245, 158, 11, 0.14)', text: 'var(--marry)', medal: '🥇' },
@@ -69,6 +85,16 @@ export default function TournamentCreatePage() {
   // Knockout (group elimination) config.
   const [questionsPerRound, setQuestionsPerRound] = useState(5)
   const [triviaTimer, setTriviaTimer] = useState(15)
+  // Head-to-head group-game (Whot/Scrabble) config: per-turn timer, house rules,
+  // and word list — applied to every room the bracket spawns.
+  const [h2hChessTimer, setH2hChessTimer] = useState(600)
+  const [h2hTurnTimer, setH2hTurnTimer] = useState(30)
+  const [h2hGameDuration, setH2hGameDuration] = useState(900)
+  const [whotPick3, setWhotPick3] = useState(true)
+  const [whotCards, setWhotCards] = useState(true)
+  const [whotNumberCalls, setWhotNumberCalls] = useState(true)
+  const [whotPick2Stacking, setWhotPick2Stacking] = useState(true)
+  const [scrabbleDictionary, setScrabbleDictionary] = useState('enable')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -81,6 +107,19 @@ export default function TournamentCreatePage() {
     setFormat(next)
     if (next === 'head-to-head') setGameType(H2H_ELIGIBLE_TYPES[0])
     else if (next === 'knockout') setGameType(KNOCKOUT_ELIGIBLE_TYPES[0])
+  }
+
+  // Switching the head-to-head game resets the per-turn timer + room-length to
+  // that game's sensible defaults (Whot moves fast; Scrabble needs more time).
+  function pickGameType(next: string) {
+    setGameType(next)
+    if (next === 'scrabble') {
+      setH2hTurnTimer(60)
+      setH2hGameDuration(900)
+    } else if (next === 'whot') {
+      setH2hTurnTimer(30)
+      setH2hGameDuration(900)
+    }
   }
 
   async function handleCreate() {
@@ -105,6 +144,24 @@ export default function TournamentCreatePage() {
           questionSource: 'platform',
           roundsCount: questionsPerRound,
           timerSeconds: triviaTimer,
+        }
+      }
+      if (isH2H && gameType === 'chess') {
+        body.gameConfig = { timerSeconds: h2hChessTimer }
+      } else if (isH2H && gameType === 'whot') {
+        body.gameConfig = {
+          timerSeconds: h2hTurnTimer,
+          gameDurationSeconds: h2hGameDuration,
+          whotPick3,
+          whotCards,
+          whotNumberCalls,
+          whotPick2Stacking,
+        }
+      } else if (isH2H && gameType === 'scrabble') {
+        body.gameConfig = {
+          timerSeconds: h2hTurnTimer,
+          gameDurationSeconds: h2hGameDuration,
+          scrabbleDictionary,
         }
       }
       const cap = Number(maxPlayers)
@@ -201,7 +258,7 @@ export default function TournamentCreatePage() {
           </div>
           <p className="text-faint text-xs mt-2">
             {isH2H
-              ? 'Players are matched 1-v-1 and advance through rounds until one champion remains. Best for 2-player games like Chess.'
+              ? 'Players are grouped into rooms each round and only the winner of each room advances, until one champion remains. Chess is 1-v-1; Whot and Scrabble play in rooms of 4.'
               : isKnockout
                 ? 'Everyone plays together each round; the bottom half is knocked out until one champion remains. Round of 16 → Quarterfinal → Semifinal → Final.'
                 : 'Everyone plays each game together and earns placement points across multiple games.'}
@@ -213,7 +270,7 @@ export default function TournamentCreatePage() {
             <select
               id="tournament-game-type"
               value={gameType}
-              onChange={(e) => setGameType(e.target.value)}
+              onChange={(e) => pickGameType(e.target.value)}
               className="input-field"
             >
               {(isH2H ? H2H_ELIGIBLE_TYPES : KNOCKOUT_ELIGIBLE_TYPES).map((t) => (
@@ -223,9 +280,122 @@ export default function TournamentCreatePage() {
               ))}
             </select>
             <p className="text-faint text-xs mt-1.5">
-              {isH2H ? 'The 2-player game every match is played with.' : 'The game everyone plays together each round.'}
+              {isH2H
+                ? h2hGroupSize(gameType) > 2
+                  ? `Played in rooms of ${h2hGroupSize(gameType)} — only each room's winner advances.`
+                  : 'A 1-v-1 duel each round — the winner advances.'
+                : 'The game everyone plays together each round.'}
             </p>
           </Field>
+        )}
+
+        {isH2H && gameType === 'chess' && (
+          <div className="surface-inset p-4">
+            <Field label="Time per player" htmlFor="h2h-chess-timer">
+              <select
+                id="h2h-chess-timer"
+                value={h2hChessTimer}
+                onChange={(e) => setH2hChessTimer(Number(e.target.value))}
+                className="input-field"
+              >
+                {CHESS_TIME_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {fmtChessTime(s)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-faint text-xs mt-1.5">Each player&apos;s clock for every match in the bracket.</p>
+            </Field>
+          </div>
+        )}
+
+        {isH2H && (gameType === 'whot' || gameType === 'scrabble') && (
+          <div className="surface-inset p-4 space-y-4">
+            <Field label="Time per turn" htmlFor="h2h-turn-timer">
+              <select
+                id="h2h-turn-timer"
+                value={h2hTurnTimer}
+                onChange={(e) => setH2hTurnTimer(Number(e.target.value))}
+                className="input-field"
+              >
+                {(gameType === 'whot' ? WHOT_TURN_OPTIONS : SCRABBLE_TURN_OPTIONS).map((s) => (
+                  <option key={s} value={s}>
+                    {fmtTurn(s)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-faint text-xs mt-1.5">How long each player has on their turn in every room.</p>
+            </Field>
+
+            <Field label="Game length" htmlFor="h2h-game-duration">
+              <select
+                id="h2h-game-duration"
+                value={h2hGameDuration}
+                onChange={(e) => setH2hGameDuration(Number(e.target.value))}
+                className="input-field"
+              >
+                {(gameType === 'whot' ? WHOT_DURATION_OPTIONS : SCRABBLE_DURATION_OPTIONS).map((s) => (
+                  <option key={s} value={s}>
+                    {fmtDuration(s)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-faint text-xs mt-1.5">
+                Max length of each room — when time&apos;s up the game ends and the leader wins, so rounds don&apos;t
+                drag on.
+              </p>
+            </Field>
+
+            {gameType === 'whot' && (
+              <div className="space-y-1.5">
+                <p className="label-caps">House rules</p>
+                <Toggle
+                  label="Pick 3"
+                  description="Play the Pick 3 draw penalty on 5s (5 cards stay in the deck either way)"
+                  value={whotPick3}
+                  onChange={setWhotPick3}
+                />
+                <Toggle
+                  label="Stack Pick 2"
+                  description="On: defend a Pick 2 with your own 2. Off: you must draw it."
+                  value={whotPick2Stacking}
+                  onChange={setWhotPick2Stacking}
+                />
+                <Toggle
+                  label="WHOT cards"
+                  description="Include WHOT wild cards in the deck"
+                  value={whotCards}
+                  onChange={setWhotCards}
+                />
+                <div className={whotCards ? undefined : 'opacity-50 pointer-events-none'}>
+                  <Toggle
+                    label="Numbers on WHOT"
+                    description="Let players call a number (not just a shape) when playing WHOT"
+                    value={whotNumberCalls}
+                    onChange={setWhotNumberCalls}
+                  />
+                </div>
+              </div>
+            )}
+
+            {gameType === 'scrabble' && (
+              <Field label="Dictionary" htmlFor="scrabble-dictionary">
+                <select
+                  id="scrabble-dictionary"
+                  value={scrabbleDictionary}
+                  onChange={(e) => setScrabbleDictionary(e.target.value)}
+                  className="input-field"
+                >
+                  {SCRABBLE_DICTIONARY_OPTIONS.map((d) => (
+                    <option key={d} value={d}>
+                      {SCRABBLE_DICTIONARY_LABELS[d]}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-faint text-xs mt-1.5">The word list every room validates against.</p>
+              </Field>
+            )}
+          </div>
         )}
 
         {isKnockout && (

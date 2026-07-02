@@ -30,7 +30,7 @@ export function clampScrabbleTimer(value: unknown): number {
 // ── Whole-game session timer (so a game can't run for hours) ──────────────────
 
 /** Whole-game length options in seconds. 0 = no limit. */
-export const SCRABBLE_GAME_DURATION_OPTIONS = [0, 1800, 3600, 5400, 7200] as const
+export const SCRABBLE_GAME_DURATION_OPTIONS = [0, 600, 900, 1800, 3600, 5400, 7200] as const
 /** How much time the host can add mid-game (seconds). */
 export const SCRABBLE_GAME_TIME_EXTENSION_OPTIONS = [600, 900, 1800] as const
 export const SCRABBLE_MAX_GAME_DURATION_SECONDS = 14_400
