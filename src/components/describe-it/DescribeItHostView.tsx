@@ -25,6 +25,7 @@ import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/ut
 import type { DescribeItGuess, DescribeItPlayer, DescribeItSession, DescribeItWord, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useDescribeItTimer } from '@/hooks/useDescribeItTimer'
@@ -150,31 +151,19 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     }
   }, [gameCode, load])
 
-  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const scheduleLoad = useCallback(() => {
-    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
-    reloadTimerRef.current = setTimeout(() => void load(), 80)
-  }, [load])
-
-  useEffect(() => {
-    const channel = supabase.channel(`describe-it-host-${gameCode}`)
-    for (const table of [
-      'games',
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(
+    gameCode,
+    [
+      { table: 'games', column: 'id' },
       'players',
       'describe_it_sessions',
       'describe_it_players',
       'describe_it_words',
       'describe_it_guesses',
-    ]) {
-      const filter = table === 'games' ? `id=eq.${gameCode}` : `game_id=eq.${gameCode}`
-      channel.on('postgres_changes', { event: '*', schema: 'public', table, filter }, scheduleLoad)
-    }
-    channel.subscribe()
-    return () => {
-      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, scheduleLoad])
+    ],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
