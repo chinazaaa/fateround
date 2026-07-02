@@ -15,6 +15,7 @@ import {
   questionSampleFile,
 } from '@/lib/custom-questions'
 import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { TournamentShareLeaderboard } from '@/components/tournament/TournamentShareLeaderboard'
 import { TournamentBracketBoard } from '@/components/tournament/TournamentBracketBoard'
 
@@ -40,6 +41,7 @@ export default function TournamentLobbyPage() {
   const { code } = useParams<{ code: string }>()
   const router = useRouter()
   const tournamentId = (Array.isArray(code) ? code[0] : code).toUpperCase()
+  const { confirm } = useConfirm()
 
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [players, setPlayers] = useState<TournamentPlayer[]>([])
@@ -381,6 +383,13 @@ export default function TournamentLobbyPage() {
 
   async function handleEndTournament() {
     if (!hostToken) return
+    const ok = await confirm({
+      title: 'End the tournament?',
+      message: 'This ends it for everyone and can’t be undone.',
+      confirmLabel: 'End tournament',
+      destructive: true,
+    })
+    if (!ok) return
     setActionLoading(true)
 
     try {
