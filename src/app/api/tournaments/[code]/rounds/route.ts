@@ -169,6 +169,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     // stamped onto every room so the whole bracket plays with the host's settings.
     const cfg = (tournament.game_config ?? {}) as {
       timerSeconds?: number
+      gameDurationSeconds?: number
       whotPick3?: boolean
       whotCards?: boolean
       whotNumberCalls?: boolean
@@ -176,6 +177,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       scrabbleDictionary?: string
     }
     const roomTimer = typeof cfg.timerSeconds === 'number' ? cfg.timerSeconds : DEFAULT_GROUP_TURN_SECONDS
+    // Overall room-length cap (0 = no limit); the games auto-finish past it.
+    const roomDuration = typeof cfg.gameDurationSeconds === 'number' ? cfg.gameDurationSeconds : 0
     const gameSettings: Record<string, unknown> =
       gameType === 'whot'
         ? {
@@ -200,6 +203,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         participant_mode: 'joiners',
         rounds_count: 1,
         timer_seconds: roomTimer,
+        game_duration_seconds: roomDuration,
         tournament_id: tournamentId,
         ...gameSettings,
       })

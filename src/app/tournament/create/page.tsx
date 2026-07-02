@@ -16,6 +16,12 @@ const WHOT_TURN_OPTIONS = [0, 10, 15, 30, 60, 90, 120]
 const SCRABBLE_TURN_OPTIONS = [0, 60, 180, 300]
 const fmtTurn = (s: number) => (s === 0 ? 'No limit' : s < 60 ? `${s}s` : `${s / 60} min`)
 
+// Overall room-length caps, so a Whot/Scrabble room can't run for hours.
+const WHOT_DURATION_OPTIONS = [0, 600, 900, 1800, 2700, 3600, 5400]
+const SCRABBLE_DURATION_OPTIONS = [0, 1800, 3600, 5400, 7200]
+const fmtDuration = (s: number) =>
+  s === 0 ? 'No limit' : s % 3600 === 0 ? `${s / 3600} hr` : `${Math.round(s / 60)} min`
+
 const PLACEMENT_STYLES = [
   { ring: 'rgba(217, 119, 6, 0.4)', bg: 'rgba(245, 158, 11, 0.14)', text: 'var(--marry)', medal: '🥇' },
   { ring: 'rgba(100, 116, 139, 0.4)', bg: 'rgba(100, 116, 139, 0.12)', text: '#475569', medal: '🥈' },
@@ -78,6 +84,7 @@ export default function TournamentCreatePage() {
   // Head-to-head group-game (Whot/Scrabble) config: per-turn timer, house rules,
   // and word list — applied to every room the bracket spawns.
   const [h2hTurnTimer, setH2hTurnTimer] = useState(30)
+  const [h2hGameDuration, setH2hGameDuration] = useState(900)
   const [whotPick3, setWhotPick3] = useState(true)
   const [whotCards, setWhotCards] = useState(true)
   const [whotNumberCalls, setWhotNumberCalls] = useState(true)
@@ -97,12 +104,17 @@ export default function TournamentCreatePage() {
     else if (next === 'knockout') setGameType(KNOCKOUT_ELIGIBLE_TYPES[0])
   }
 
-  // Switching the head-to-head game resets the per-turn timer to that game's
-  // sensible default (Whot moves fast; Scrabble turns need more thinking time).
+  // Switching the head-to-head game resets the per-turn timer + room-length to
+  // that game's sensible defaults (Whot moves fast; Scrabble needs more time).
   function pickGameType(next: string) {
     setGameType(next)
-    if (next === 'scrabble') setH2hTurnTimer(180)
-    else if (next === 'whot') setH2hTurnTimer(30)
+    if (next === 'scrabble') {
+      setH2hTurnTimer(180)
+      setH2hGameDuration(1800)
+    } else if (next === 'whot') {
+      setH2hTurnTimer(30)
+      setH2hGameDuration(900)
+    }
   }
 
   async function handleCreate() {
@@ -132,13 +144,18 @@ export default function TournamentCreatePage() {
       if (isH2H && gameType === 'whot') {
         body.gameConfig = {
           timerSeconds: h2hTurnTimer,
+          gameDurationSeconds: h2hGameDuration,
           whotPick3,
           whotCards,
           whotNumberCalls,
           whotPick2Stacking,
         }
       } else if (isH2H && gameType === 'scrabble') {
-        body.gameConfig = { timerSeconds: h2hTurnTimer, scrabbleDictionary }
+        body.gameConfig = {
+          timerSeconds: h2hTurnTimer,
+          gameDurationSeconds: h2hGameDuration,
+          scrabbleDictionary,
+        }
       }
       const cap = Number(maxPlayers)
       if (Number.isInteger(cap) && cap >= 2 && cap <= 100) {
@@ -281,6 +298,25 @@ export default function TournamentCreatePage() {
                 ))}
               </select>
               <p className="text-faint text-xs mt-1.5">How long each player has on their turn in every room.</p>
+            </Field>
+
+            <Field label="Game length" htmlFor="h2h-game-duration">
+              <select
+                id="h2h-game-duration"
+                value={h2hGameDuration}
+                onChange={(e) => setH2hGameDuration(Number(e.target.value))}
+                className="input-field"
+              >
+                {(gameType === 'whot' ? WHOT_DURATION_OPTIONS : SCRABBLE_DURATION_OPTIONS).map((s) => (
+                  <option key={s} value={s}>
+                    {fmtDuration(s)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-faint text-xs mt-1.5">
+                Max length of each room — when time&apos;s up the game ends and the leader wins, so rounds don&apos;t
+                drag on.
+              </p>
             </Field>
 
             {gameType === 'whot' && (
