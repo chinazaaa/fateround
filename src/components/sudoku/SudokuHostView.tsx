@@ -33,6 +33,7 @@ import { formatMinutesSeconds } from '@/lib/timer-format'
 import type { Game, Player } from '@/types'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useToast } from '@/components/ui/Toast'
 
@@ -135,10 +136,21 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
     else if (game?.status === 'finished') setTab('manage')
   }, [game?.status])
 
-  const handlePlayerRemoved = useCallback((playerId: string) => {
-    setPlayers((prev) => prev.filter((p) => p.id !== playerId))
-  }, [])
+  const handlePlayerRemoved = useCallback(
+    (playerId: string) => {
+      if (playerId === hostPlayerId) {
+        clearPlayerSession(gameCode)
+        setHostPlayerId(null)
+        setHostPlayerName('')
+      }
+      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
+    },
+    [gameCode, hostPlayerId]
+  )
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+
+  // Clear stale host-as-player state if the host's own row is removed elsewhere.
+  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
