@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
 import { generateGameCode, generateToken } from '@/lib/utils'
-import { startTournamentRoundSchema } from '@/lib/tournament-validation'
+import { h2hGroupSize, startTournamentRoundSchema } from '@/lib/tournament-validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { computeRoundPairings } from '@/lib/tournament-bracket'
+import { computeRoundGroups, computeRoundPairings } from '@/lib/tournament-bracket'
 
 // Fallback for tournaments created before game_type was stored.
 const DEFAULT_H2H_GAME_TYPE = 'chess'
 const DEFAULT_TIMER_SECONDS = 600
+// Per-turn timer for Whot/Scrabble group rooms, so a no-show can't stall a round.
+const DEFAULT_GROUP_TURN_SECONDS = 45
 
 function shuffle<T>(items: T[]): T[] {
   const out = [...items]
@@ -148,6 +150,85 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       await admin.from('tournaments').update({ status: 'active' }).eq('id', tournamentId)
     }
     return NextResponse.json({ roundNumber, players: survivorIds.length })
+  }
+
+  const groupSize =
+    Number((tournament.game_config as { groupSize?: number } | null)?.groupSize) || h2hGroupSize(tournament.game_type)
+
+  // Group bracket (Whot/Scrabble): split survivors into rooms of up to `groupSize`
+  // and spawn one game room per group. Only the room's winner advances; the rest
+  // are eliminated when the game finishes (resolved in tournament-h2h).
+  if (groupSize > 2) {
+    const gameType = tournament.game_type ?? DEFAULT_H2H_GAME_TYPE
+    const { groups, byes } = computeRoundGroups(shuffle(survivorIds), groupSize)
+    let matchIndex = 0
+
+    for (const group of groups) {
+      let gameCode = ''
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const candidate = generateGameCode()
+        const { data: existing } = await admin.from('games').select('id').eq('id', candidate).maybeSingle()
+        if (!existing) {
+          gameCode = candidate
+          break
+        }
+      }
+      if (!gameCode) return NextResponse.json({ error: 'Failed to generate unique game code' }, { status: 500 })
+
+      const { error: gameError } = await admin.from('games').insert({
+        id: gameCode,
+        host_token: generateToken(),
+        title: `${tournament.title} — Room ${matchIndex + 1}`,
+        game_type: gameType,
+        participant_mode: 'joiners',
+        rounds_count: 1,
+        timer_seconds: DEFAULT_GROUP_TURN_SECONDS,
+        tournament_id: tournamentId,
+      })
+      if (gameError) {
+        return NextResponse.json({ error: internalErrorMessage('tournaments/code/rounds', gameError) }, { status: 500 })
+      }
+
+      const { error: tgError } = await admin.from('tournament_games').insert({
+        tournament_id: tournamentId,
+        game_id: gameCode,
+        game_order: nextOrder++,
+        round_number: roundNumber,
+        match_index: matchIndex,
+        member_ids: group,
+        status: 'pending',
+      })
+      if (tgError) {
+        await admin.from('games').delete().eq('id', gameCode)
+        return NextResponse.json({ error: internalErrorMessage('tournaments/code/rounds', tgError) }, { status: 500 })
+      }
+      matchIndex++
+    }
+
+    // A lone survivor advances automatically — a finished, game-less room.
+    for (const byeId of byes) {
+      const { error: byeError } = await admin.from('tournament_games').insert({
+        tournament_id: tournamentId,
+        game_id: null,
+        game_order: nextOrder++,
+        round_number: roundNumber,
+        match_index: matchIndex,
+        member_ids: [byeId],
+        player_a_id: byeId,
+        is_bye: true,
+        winner_player_id: byeId,
+        status: 'finished',
+      })
+      if (byeError) {
+        return NextResponse.json({ error: internalErrorMessage('tournaments/code/rounds', byeError) }, { status: 500 })
+      }
+      matchIndex++
+    }
+
+    if (tournament.status === 'waiting') {
+      await admin.from('tournaments').update({ status: 'active' }).eq('id', tournamentId)
+    }
+    return NextResponse.json({ roundNumber, rooms: groups.length, byes: byes.length })
   }
 
   // Who got a bye last round — so the pairing doesn't hand the same player a bye
