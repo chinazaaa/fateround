@@ -48,10 +48,28 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const { error: toastError } = useToast()
   const { confirm } = useConfirm()
   const [session, setSession] = useState<ChessSession | null>(null)
-  // Latest committed session, readable synchronously inside async callbacks (after an
-  // await, this reflects the newest render — realtime pushes included).
+  // Mirror of the accepted session, kept in lock-step by the helpers below so every
+  // writer compares against the truly-latest value (not a render-stale snapshot).
   const sessionRef = useRef<ChessSession | null>(null)
-  sessionRef.current = session
+
+  // Single funnel for accepting an incoming row (fetch, realtime push, rollback):
+  // keep the freshest by updated_at and update the ref *synchronously*, so an older
+  // async result can never briefly clobber newer state. Returns the row accepted.
+  const acceptSession = useCallback((next: ChessSession): ChessSession => {
+    const cur = sessionRef.current
+    const accepted = cur && Date.parse(next.updated_at) < Date.parse(cur.updated_at) ? cur : next
+    sessionRef.current = accepted
+    setSession(accepted)
+    return accepted
+  }, [])
+
+  // Force a local row onto the board (the optimistic move preview), keeping the ref in
+  // lock-step. Unguarded on purpose — the preview intentionally overrides the board.
+  const commitSession = useCallback((next: ChessSession) => {
+    sessionRef.current = next
+    setSession(next)
+  }, [])
+
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
@@ -64,17 +82,12 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       .eq('game_id', gameCode)
       .maybeSingle()
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as ChessSession | null) : null
-    if (sessionData) {
-      // A fetch that started before the latest realtime push can resolve after it —
-      // don't roll the board back to the older row it carries. Return the row we
-      // actually accept so the screen the bootstrap computes matches what's shown.
-      const cur = sessionRef.current
-      const accepted = cur && Date.parse(sessionData.updated_at) < Date.parse(cur.updated_at) ? cur : sessionData
-      setSession(accepted)
-      return { state: accepted, ok: supabasePollOk(sessionRes) }
-    }
-    return { state: sessionData, ok: supabasePollOk(sessionRes) }
-  }, [gameCode])
+    // Accept through the shared funnel: a fetch that started before the latest realtime
+    // push can resolve after it, so don't roll the board back to the older row it
+    // carries — and return the row we actually accept so the screen the bootstrap
+    // computes matches what's shown.
+    return { state: sessionData ? acceptSession(sessionData) : sessionData, ok: supabasePollOk(sessionRes) }
+  }, [gameCode, acceptSession])
 
   const computeScreen = useCallback(
     (gameData: Game, playerId: string | null, sessionData: ChessSession | null): Screen => {
@@ -121,10 +134,12 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   // reconciles everything else. Skip rows older than what we're already showing (a late
   // event must not roll the board back); an optimistic local move keeps the previous
   // updated_at, so the authoritative row for that same move still lands.
-  const applySessionRow = useCallback((row: Record<string, unknown>) => {
-    const next = row as unknown as ChessSession
-    setSession((cur) => (cur && Date.parse(next.updated_at) < Date.parse(cur.updated_at) ? cur : next))
-  }, [])
+  const applySessionRow = useCallback(
+    (row: Record<string, unknown>) => {
+      acceptSession(row as unknown as ChessSession)
+    },
+    [acceptSession]
+  )
 
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(
@@ -166,11 +181,6 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     void load()
   }
 
-  // Undo an optimistic move — but only if nothing newer arrived while the request was
-  // in flight (a realtime push can beat the rejection and must not be clobbered).
-  const rollbackTo = (prevSession: ChessSession) =>
-    setSession((cur) => (cur && Date.parse(cur.updated_at) > Date.parse(prevSession.updated_at) ? cur : prevSession))
-
   const movePiece = async (from: string, to: string, promotion?: 'q' | 'r' | 'b' | 'n') => {
     if (!myPlayerId || !session) return
     if (!myResumeToken) {
@@ -187,7 +197,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       const preview = new Chess()
       preview.load(session.fen)
       if (preview.move({ from, to, promotion })) {
-        setSession({
+        commitSession({
           ...session,
           fen: preview.fen(),
           current_turn: session.current_turn === 'w' ? 'b' : 'w',
@@ -210,13 +220,15 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       })
       const data = await res.json()
       if (!res.ok) {
-        rollbackTo(prevSession) // server rejected — roll back the optimistic move
+        // Roll back the optimistic move — acceptSession keeps a newer row if a realtime
+        // push beat the rejection, so the guard is unified with every other write.
+        acceptSession(prevSession)
         toastError(data.error ?? 'Move failed')
       } else {
         await load()
       }
     } catch {
-      rollbackTo(prevSession)
+      acceptSession(prevSession)
       toastError('Move failed')
     } finally {
       setActing(false)
