@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { supabasePollOk } from '@/hooks/usePolling'
@@ -96,9 +97,9 @@ export function HostNominationBanner() {
     }
   }
 
-  if (!code || !nominated || dismissed) return null
+  if (!code || !nominated || dismissed || typeof document === 'undefined') return null
 
-  return (
+  return createPortal(
     <div className="fixed inset-x-0 bottom-0 z-[60] flex justify-center px-4 pb-4 pointer-events-none">
       <div className="glass-card pointer-events-auto w-full max-w-md rounded-2xl p-4 space-y-3 border border-[var(--primary)]/40">
         <div className="flex items-start gap-3">
@@ -128,6 +129,7 @@ export function HostNominationBanner() {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
