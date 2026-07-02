@@ -12,6 +12,7 @@ import { currentTurnPlayerId, CHECKERS_MIN_PLAYERS, isCheckersResultsPhase } fro
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, CHECKERS_SESSION_SELECT } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player, CheckersSession } from '@/types'
@@ -120,6 +121,9 @@ export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; ho
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+
+  // Clear stale host-as-player state if the host's own row is removed elsewhere.
+  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 

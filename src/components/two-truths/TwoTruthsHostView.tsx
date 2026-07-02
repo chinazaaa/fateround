@@ -23,6 +23,7 @@ import {
 import { appOrigin } from '@/lib/site'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import type { Game, Player, Round, TtlGuess, TtlStatement } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -67,6 +68,9 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+
+  // Clear stale host-as-player state if the host's own row is removed elsewhere.
+  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes, stmtsRes, rdsRes, gssRes] = await Promise.all([

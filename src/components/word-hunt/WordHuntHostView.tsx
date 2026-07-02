@@ -23,6 +23,7 @@ import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/ut
 import type { Game, Player } from '@/types'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useToast } from '@/components/ui/Toast'
 
@@ -119,15 +120,20 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   const { label: timeLabel, timeUp, secondsLeft } = useWordHuntGameTimer(gameCode, game, load)
 
+  const clearHostPlayer = () => {
+    clearPlayerSession(gameCode)
+    setHostPlayerId(null)
+    setHostPlayerName('')
+    setHostJoinName('')
+  }
+
   const { removingPlayerId, removePlayer } = useHostRemovePlayer(gameCode, hostToken, async (playerId) => {
-    if (playerId === hostPlayerId) {
-      clearPlayerSession(gameCode)
-      setHostPlayerId(null)
-      setHostPlayerName('')
-      setHostJoinName('')
-    }
+    if (playerId === hostPlayerId) clearHostPlayer()
     await load()
   })
+
+  // Clear stale host-as-player state if the host's own row is removed elsewhere.
+  useHostPlayerReconciliation(players, hostPlayerId, clearHostPlayer)
 
   useEffect(() => {
     load()

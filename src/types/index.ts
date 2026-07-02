@@ -210,6 +210,9 @@ export interface Game {
   host_token?: string
   /** Set when this game belongs to a tournament (links back to tournaments.id). */
   tournament_id?: string | null
+  /** Claim-based host transfer: player id the current host has nominated to take over.
+   *  Non-secret (just a player id); the nominee claims via /api/games/[code]/claim-host. */
+  pending_host_player_id?: string | null
   rounds_count: number
   timer_seconds: number
   /** Scrabble — which word list to validate plays against (default 'enable'). */

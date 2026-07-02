@@ -19,6 +19,7 @@ import {
   DESCRIBE_IT_WORD_SELECT,
   DESCRIBE_IT_GUESS_SELECT,
 } from '@/lib/supabase-selects'
+import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { DescribeItGuess, DescribeItPlayer, DescribeItSession, DescribeItWord, Game, Player } from '@/types'
@@ -205,15 +206,20 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     }
   }
 
+  const clearHostPlayer = () => {
+    setHostPlayerId(null)
+    setHostResumeToken(null)
+    setHostPlayerName('')
+    clearPlayerSession(gameCode)
+  }
+
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, (id) => {
-    if (id === hostPlayerId) {
-      setHostPlayerId(null)
-      setHostResumeToken(null)
-      setHostPlayerName('')
-      clearPlayerSession(gameCode)
-    }
+    if (id === hostPlayerId) clearHostPlayer()
     void load()
   })
+
+  // Clear stale host-as-player state if the host's own row is removed elsewhere.
+  useHostPlayerReconciliation(players, hostPlayerId, clearHostPlayer)
 
   const changeHostMode = (mode: HostMode) => {
     setHostMode(mode)

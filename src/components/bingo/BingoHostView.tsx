@@ -39,6 +39,7 @@ import { appOrigin } from '@/lib/site'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import type { BingoCallMode, BingoCalledNumber, BingoClaim, BingoCard, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -203,6 +204,9 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+
+  // Clear stale host-as-player state if the host's own row is removed elsewhere.
+  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
   const playerManageBlock =
     game && (game.status === 'waiting' || game.status === 'active') ? (
