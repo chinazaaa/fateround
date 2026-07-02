@@ -82,20 +82,17 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   // reload. This needs the resolved playerId (to tell whose turn it is), so it runs after
   // session resolution and before the screen is computed — exactly where the pre-migration
   // inline sync sat. Side effect only (updates local held/turn refs); no screen change.
-  const afterResolve = useCallback(
-    (_game: Game, playerId: string | null, sessionData: YahtzeeSession | null): void => {
-      if (!sessionData) return
-      const turnChanged = turnIndexRef.current !== sessionData.current_turn_index
-      const isMyActiveTurn = playerId != null && currentPlayerId(sessionData) === playerId
-      const midTurn = (sessionData.rolls_this_turn ?? 0) > 0
+  const afterResolve = useCallback((_game: Game, playerId: string | null, sessionData: YahtzeeSession | null): void => {
+    if (!sessionData) return
+    const turnChanged = turnIndexRef.current !== sessionData.current_turn_index
+    const isMyActiveTurn = playerId != null && currentPlayerId(sessionData) === playerId
+    const midTurn = (sessionData.rolls_this_turn ?? 0) > 0
 
-      if (turnChanged || !isMyActiveTurn || !midTurn) {
-        turnIndexRef.current = sessionData.current_turn_index
-        setLocalHeld(sessionData.held ?? [false, false, false, false, false])
-      }
-    },
-    []
-  )
+    if (turnChanged || !isMyActiveTurn || !midTurn) {
+      turnIndexRef.current = sessionData.current_turn_index
+      setLocalHeld(sessionData.held ?? [false, false, false, false, false])
+    }
+  }, [])
 
   const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
     if (!playerId) {

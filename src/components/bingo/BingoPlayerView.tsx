@@ -8,11 +8,7 @@ import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
 import { formatBingoNumber, hasBingoWin } from '@/lib/bingo'
 import { supabase } from '@/lib/supabase'
-import {
-  BINGO_CALLED_NUMBER_SELECT,
-  BINGO_CARD_SELECT,
-  BINGO_CLAIM_SELECT,
-} from '@/lib/supabase-selects'
+import { BINGO_CALLED_NUMBER_SELECT, BINGO_CARD_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import type { BingoCalledNumber, BingoCard, BingoClaim, Game } from '@/types'
 import { useToast } from '@/components/ui/Toast'
