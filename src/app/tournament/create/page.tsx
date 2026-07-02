@@ -5,10 +5,16 @@ import { useRouter } from 'next/navigation'
 import { PageShell, Field, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
 import { H2H_ELIGIBLE_TYPES, h2hGroupSize, KNOCKOUT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
 import { gameTypeLabel } from '@/lib/game-types'
+import { SCRABBLE_DICTIONARY_LABELS, SCRABBLE_DICTIONARY_OPTIONS } from '@/lib/scrabble-dictionary-meta'
 
 type Format = 'round-robin' | 'head-to-head' | 'knockout'
 
 const DEFAULT_POINTS = [10, 7, 5, 3, 2, 1]
+
+// Per-turn timer choices for the group games (mirrors the lobby's options).
+const WHOT_TURN_OPTIONS = [0, 10, 15, 30, 60, 90, 120]
+const SCRABBLE_TURN_OPTIONS = [0, 60, 180, 300]
+const fmtTurn = (s: number) => (s === 0 ? 'No limit' : s < 60 ? `${s}s` : `${s / 60} min`)
 
 const PLACEMENT_STYLES = [
   { ring: 'rgba(217, 119, 6, 0.4)', bg: 'rgba(245, 158, 11, 0.14)', text: 'var(--marry)', medal: '🥇' },
@@ -69,6 +75,14 @@ export default function TournamentCreatePage() {
   // Knockout (group elimination) config.
   const [questionsPerRound, setQuestionsPerRound] = useState(5)
   const [triviaTimer, setTriviaTimer] = useState(15)
+  // Head-to-head group-game (Whot/Scrabble) config: per-turn timer, house rules,
+  // and word list — applied to every room the bracket spawns.
+  const [h2hTurnTimer, setH2hTurnTimer] = useState(30)
+  const [whotPick3, setWhotPick3] = useState(true)
+  const [whotCards, setWhotCards] = useState(true)
+  const [whotNumberCalls, setWhotNumberCalls] = useState(true)
+  const [whotPick2Stacking, setWhotPick2Stacking] = useState(true)
+  const [scrabbleDictionary, setScrabbleDictionary] = useState('enable')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -81,6 +95,14 @@ export default function TournamentCreatePage() {
     setFormat(next)
     if (next === 'head-to-head') setGameType(H2H_ELIGIBLE_TYPES[0])
     else if (next === 'knockout') setGameType(KNOCKOUT_ELIGIBLE_TYPES[0])
+  }
+
+  // Switching the head-to-head game resets the per-turn timer to that game's
+  // sensible default (Whot moves fast; Scrabble turns need more thinking time).
+  function pickGameType(next: string) {
+    setGameType(next)
+    if (next === 'scrabble') setH2hTurnTimer(180)
+    else if (next === 'whot') setH2hTurnTimer(30)
   }
 
   async function handleCreate() {
@@ -106,6 +128,17 @@ export default function TournamentCreatePage() {
           roundsCount: questionsPerRound,
           timerSeconds: triviaTimer,
         }
+      }
+      if (isH2H && gameType === 'whot') {
+        body.gameConfig = {
+          timerSeconds: h2hTurnTimer,
+          whotPick3,
+          whotCards,
+          whotNumberCalls,
+          whotPick2Stacking,
+        }
+      } else if (isH2H && gameType === 'scrabble') {
+        body.gameConfig = { timerSeconds: h2hTurnTimer, scrabbleDictionary }
       }
       const cap = Number(maxPlayers)
       if (Number.isInteger(cap) && cap >= 2 && cap <= 100) {
@@ -213,7 +246,7 @@ export default function TournamentCreatePage() {
             <select
               id="tournament-game-type"
               value={gameType}
-              onChange={(e) => setGameType(e.target.value)}
+              onChange={(e) => pickGameType(e.target.value)}
               className="input-field"
             >
               {(isH2H ? H2H_ELIGIBLE_TYPES : KNOCKOUT_ELIGIBLE_TYPES).map((t) => (
@@ -230,6 +263,76 @@ export default function TournamentCreatePage() {
                 : 'The game everyone plays together each round.'}
             </p>
           </Field>
+        )}
+
+        {isH2H && (gameType === 'whot' || gameType === 'scrabble') && (
+          <div className="surface-inset p-4 space-y-4">
+            <Field label="Time per turn" htmlFor="h2h-turn-timer">
+              <select
+                id="h2h-turn-timer"
+                value={h2hTurnTimer}
+                onChange={(e) => setH2hTurnTimer(Number(e.target.value))}
+                className="input-field"
+              >
+                {(gameType === 'whot' ? WHOT_TURN_OPTIONS : SCRABBLE_TURN_OPTIONS).map((s) => (
+                  <option key={s} value={s}>
+                    {fmtTurn(s)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-faint text-xs mt-1.5">How long each player has on their turn in every room.</p>
+            </Field>
+
+            {gameType === 'whot' && (
+              <div className="space-y-1.5">
+                <p className="label-caps">House rules</p>
+                <Toggle
+                  label="Pick 3"
+                  description="Play the Pick 3 draw penalty on 5s (5 cards stay in the deck either way)"
+                  value={whotPick3}
+                  onChange={setWhotPick3}
+                />
+                <Toggle
+                  label="Stack Pick 2"
+                  description="On: defend a Pick 2 with your own 2. Off: you must draw it."
+                  value={whotPick2Stacking}
+                  onChange={setWhotPick2Stacking}
+                />
+                <Toggle
+                  label="WHOT cards"
+                  description="Include WHOT wild cards in the deck"
+                  value={whotCards}
+                  onChange={setWhotCards}
+                />
+                <div className={whotCards ? undefined : 'opacity-50 pointer-events-none'}>
+                  <Toggle
+                    label="Numbers on WHOT"
+                    description="Let players call a number (not just a shape) when playing WHOT"
+                    value={whotNumberCalls}
+                    onChange={setWhotNumberCalls}
+                  />
+                </div>
+              </div>
+            )}
+
+            {gameType === 'scrabble' && (
+              <Field label="Dictionary" htmlFor="scrabble-dictionary">
+                <select
+                  id="scrabble-dictionary"
+                  value={scrabbleDictionary}
+                  onChange={(e) => setScrabbleDictionary(e.target.value)}
+                  className="input-field"
+                >
+                  {SCRABBLE_DICTIONARY_OPTIONS.map((d) => (
+                    <option key={d} value={d}>
+                      {SCRABBLE_DICTIONARY_LABELS[d]}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-faint text-xs mt-1.5">The word list every room validates against.</p>
+              </Field>
+            )}
+          </div>
         )}
 
         {isKnockout && (

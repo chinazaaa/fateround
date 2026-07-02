@@ -13,9 +13,18 @@ export type TournamentFormat = 'round-robin' | 'head-to-head' | 'knockout'
 export interface TournamentGameConfig {
   questionSource?: 'platform' | 'custom'
   roundsCount?: number
+  // Per-round timer: trivia knockout = seconds per question; Whot/Scrabble
+  // head-to-head = seconds per turn in each room.
   timerSeconds?: number
   // Head-to-head room size: 2 for chess (1v1), 4 for Whot/Scrabble group rooms.
   groupSize?: number
+  // Whot house rules applied to every spawned room (default true when omitted).
+  whotPick3?: boolean
+  whotCards?: boolean
+  whotNumberCalls?: boolean
+  whotPick2Stacking?: boolean
+  // Scrabble word list id (see SCRABBLE_DICTIONARY_OPTIONS).
+  scrabbleDictionary?: string
 }
 
 export interface Tournament {
