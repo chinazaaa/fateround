@@ -154,7 +154,8 @@ export function buildWhotDeck(rules: WhotRules = parseWhotRules(null)): WhotCard
   const deck: WhotCard[] = []
   for (const [shape, numbers] of Object.entries(DECK_COMPOSITION) as [Exclude<WhotShape, 'whot'>, number[]][]) {
     for (const number of numbers) {
-      if (!rules.pick3Enabled && number === 5) continue
+      // 5 cards always stay in the deck; disabling Pick 3 only turns off the
+      // draw-penalty action (handled in canPlayCard/applyPickStacksAfterPlay).
       deck.push({ id: `${shape}-${number}`, shape, number })
     }
   }
