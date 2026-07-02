@@ -9,18 +9,12 @@ import { TwoTruthsActiveRound } from '@/components/two-truths/TwoTruthsActiveRou
 import { TwoTruthsLobbySubmit } from '@/components/two-truths/TwoTruthsLobbySubmit'
 import { gameTypeConfig } from '@/lib/game-types'
 import { supabase } from '@/lib/supabase'
-import {
-  GAME_SELECT,
-  PLAYER_SELECT,
-  ROUND_SELECT,
-  TTL_GUESS_SELECT,
-  TTL_STATEMENT_SELECT,
-} from '@/lib/supabase-selects'
-import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
-import { resolvePlayerSession } from '@/lib/player-resume'
-import type { Game, Player, Round, TtlGuess, TtlStatement } from '@/types'
+import { ROUND_SELECT, TTL_GUESS_SELECT, TTL_STATEMENT_SELECT } from '@/lib/supabase-selects'
+import { clearPlayerSession } from '@/lib/utils'
+import type { Game, Round, TtlGuess, TtlStatement } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -45,82 +39,61 @@ type Screen =
 
 export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const { error: toastError, success } = useToast()
-  const [screen, setScreen] = useState<Screen>('loading')
-  const [game, setGame] = useState<Game | null>(null)
-  const [players, setPlayers] = useState<Player[]>([])
   const [statements, setStatements] = useState<TtlStatement[]>([])
   const [rounds, setRounds] = useState<Round[]>([])
   const [guesses, setGuesses] = useState<TtlGuess[]>([])
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
-  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
-  const [myPlayerName, setMyPlayerName] = useState('')
-  const [joinName, setJoinName] = useState('')
-  const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
-  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
-  const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes, stmtsRes, rdsRes, gssRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+  // Game-specific load: fetch this game's statements/rounds/guesses (the shared
+  // game/players fetch + session resolution lives in useGameViewBootstrap).
+  const loadGameState = useCallback(async (): Promise<{ state: null; ok: boolean }> => {
+    const [stmtsRes, rdsRes, gssRes] = await Promise.all([
       supabase.from('ttl_statements').select(TTL_STATEMENT_SELECT).eq('game_id', gameCode),
       supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).order('round_number'),
       supabase.from('ttl_guesses').select(TTL_GUESS_SELECT).eq('game_id', gameCode),
     ])
-    if (!supabasePollOk(gameRes, plrsRes, stmtsRes, rdsRes, gssRes)) return false
-
-    const gameData = gameRes.data
-    const plrs = plrsRes.data
-    const stmts = stmtsRes.data
-
-    if (!gameData) {
-      setScreen('not_found')
-      return true
-    }
-
-    setGame(gameData)
-    setPlayers(plrs ?? [])
-    setStatements(stmts ?? [])
-    setRounds(rdsRes.data ?? [])
-    setGuesses(gssRes.data ?? [])
-
-    const session = await resolvePlayerSession(gameCode, plrs)
-    const playerId = session?.playerId ?? null
-    if (session) {
-      setMyPlayerId(session.playerId)
-      setMyPlayerName(session.playerName)
-      setMyResumeToken(session.resumeToken ?? null)
-    } else {
-      setMyPlayerId(null)
-      setMyPlayerName('')
-      setMyResumeToken(null)
-    }
-
-    if (!playerId) {
-      const pre = preJoinScreen(gameData, false)
-      setScreen(
-        pre === 'game_started_waiting'
-          ? 'game_started_waiting'
-          : pre === 'late_join_choice'
-            ? 'late_join_choice'
-            : pre === 'game_ended'
-              ? 'game_ended'
-              : 'join'
-      )
-      return true
-    }
-
-    if (gameData.status === 'waiting') {
-      setScreen('lobby')
-    } else {
-      setScreen('playing')
-    }
-    return true
+    if (supabasePollOk(stmtsRes)) setStatements((stmtsRes.data ?? []) as TtlStatement[])
+    if (supabasePollOk(rdsRes)) setRounds((rdsRes.data ?? []) as Round[])
+    if (supabasePollOk(gssRes)) setGuesses((gssRes.data ?? []) as TtlGuess[])
+    return { state: null, ok: supabasePollOk(stmtsRes, rdsRes, gssRes) }
   }, [gameCode])
 
-  useEffect(() => {
-    load()
-  }, [load])
+  const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'late_join_choice') return 'late_join_choice'
+      if (pre === 'game_ended') return 'game_ended'
+      return 'join'
+    }
+    return gameData.status === 'waiting' ? 'lobby' : 'playing'
+  }, [])
+
+  const {
+    screen,
+    setScreen,
+    game,
+    players,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<Screen, null>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'not_found',
+    loadGameState,
+    computeScreen,
+    joinExtras,
+    onJoinError: toastError,
+    onJoinSuccess: (data) => success(`Joined as ${data.playerName}`),
+  })
+
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'rounds', 'ttl_statements', 'ttl_guesses'], load)
@@ -130,13 +103,14 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const openLobbyJoin = useCallback(() => {
     setScreen('join')
     void load()
-  }, [load])
+  }, [setScreen, load])
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'game_started_waiting' || screen === 'playing') void load()
   })
 
   const me = players.find((p) => p.id === myPlayerId)
+  const myPlayerName = me?.name ?? ''
   // In the lobby, everyone can participate regardless of spectator flag (gets cleared on reset)
   const isViewer = !!(game && me && game.status !== 'waiting' && playerIsViewer(me, game))
   // …but a genuine spectator/eliminated player sitting in the lobby must NOT fall into the
@@ -144,39 +118,6 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   // submit path explicitly on the spectator/eliminated flags (normal play clears spectator
   // on reset, so this only bites an actual watch-only viewer).
   const isLobbyWatcher = !!(me && (me.spectator === true || me.is_eliminated === true))
-
-  const joinGame = useCallback(
-    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-      const name = (opts?.name ?? joinName).trim()
-      if (!name) return
-      setJoining(true)
-      try {
-        const res = await fetch('/api/players', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameCode,
-            playerName: name,
-            ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer ?? true } : {}),
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-        setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-        setMyPlayerId(data.playerId)
-        setMyResumeToken(data.resumeToken ?? null)
-        setMyPlayerName(data.playerName)
-        await load()
-        success(`Joined as ${data.playerName}`)
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to join')
-      } finally {
-        setJoining(false)
-      }
-    },
-    [game?.status, gameCode, joinExtras, joinName, load, success, toastError]
-  )
 
   useRoomMemberAutoJoin({
     gameCode,
@@ -186,13 +127,12 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     gameStatus: game?.status,
     hasPlayerSession: !!myPlayerId,
     joining,
-    onJoin: (name) => joinGame({ name }),
+    onJoin: (name) => join({ name }),
   })
 
   const handlePlayerLeft = () => {
     clearPlayerSession(gameCode)
     setMyPlayerId(null)
-    setMyPlayerName('')
     setJoinName('')
     setScreen('join')
   }
@@ -243,8 +183,8 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         nameInput={joinName}
         onNameChange={setJoinName}
         joining={joining}
-        onJoinAsViewer={() => void joinGame({ joinAsViewer: true })}
-        onJoinAsPlayer={() => void joinGame({ joinAsViewer: false })}
+        onJoinAsViewer={() => void join({ joinAsViewer: true })}
+        onJoinAsPlayer={() => void join({ joinAsViewer: false })}
       />
     )
   }
@@ -263,7 +203,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         gameCode={gameCode}
         header={<GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="two_truths" />}
       >
-        <NameJoinForm value={joinName} onChange={setJoinName} onSubmit={() => void joinGame()} joining={joining} />
+        <NameJoinForm value={joinName} onChange={setJoinName} onSubmit={() => void join()} joining={joining} />
       </GameJoinLobbyShell>
     )
   }
@@ -277,10 +217,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myPlayerName}
-          onRenamed={(name) => {
-            setMyPlayerName(name)
-            void load()
-          }}
+          onRenamed={() => void load()}
           onLeft={handlePlayerLeft}
           title="Lobby"
           rulesLink={<GameRulesLink gameType="two_truths" variant="subtle" />}
@@ -351,10 +288,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
             gameCode={gameCode}
             playerId={myPlayerId}
             currentName={myPlayerName}
-            onRenamed={(name) => {
-              setMyPlayerName(name)
-              void load()
-            }}
+            onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
           />
           <TwoTruthsActiveRound
