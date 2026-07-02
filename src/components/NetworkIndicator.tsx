@@ -59,11 +59,7 @@ export function NetworkIndicator() {
   const offline = state === 'offline'
 
   return (
-    <div
-      className="fixed left-1/2 top-3 z-[60] -translate-x-1/2 pointer-events-none"
-      role="status"
-      aria-live="polite"
-    >
+    <div className="fixed left-1/2 top-3 z-[60] -translate-x-1/2 pointer-events-none" role="status" aria-live="polite">
       <div
         className={[
           'flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-lg backdrop-blur',
@@ -73,10 +69,7 @@ export function NetworkIndicator() {
         ].join(' ')}
       >
         <span
-          className={[
-            'h-2 w-2 rounded-full',
-            offline ? 'bg-rose-400 animate-pulse' : 'bg-emerald-400',
-          ].join(' ')}
+          className={['h-2 w-2 rounded-full', offline ? 'bg-rose-400 animate-pulse' : 'bg-emerald-400'].join(' ')}
           aria-hidden
         />
         {offline ? 'Offline — reconnecting…' : 'Back online'}
