@@ -10,15 +10,7 @@ import { useToast } from '@/components/ui/Toast'
  * "Download my game" (a .pgn file) and "Copy moves" (movetext to clipboard) for a
  * finished chess game. Both derive from the PGN already stored on the session.
  */
-export function ChessPgnActions({
-  game,
-  players,
-  session,
-}: {
-  game: Game
-  players: Player[]
-  session: ChessSession
-}) {
+export function ChessPgnActions({ game, players, session }: { game: Game; players: Player[]; session: ChessSession }) {
   const toast = useToast()
   const [copied, setCopied] = useState(false)
 
