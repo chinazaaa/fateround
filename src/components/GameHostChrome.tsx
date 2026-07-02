@@ -10,6 +10,7 @@ import { ThemeToggle } from '@/components/ThemeToggle'
 import { SoundToggle } from '@/components/SoundToggle'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
 import { WhatsAppHeaderIcon } from '@/components/WhatsAppChannelLink'
+import { TransferHostControl } from '@/components/TransferHostControl'
 import { setupAudioUnlock } from '@/lib/sounds'
 
 export function GameHostChrome() {
@@ -32,6 +33,7 @@ export function GameHostChrome() {
       </div>
       <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto shrink-0">
         <WhatsAppHeaderIcon />
+        <TransferHostControl />
         {code ? (
           <GameShareMenu
             gameCode={code}
