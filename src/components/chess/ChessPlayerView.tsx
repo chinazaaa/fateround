@@ -61,7 +61,9 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       .maybeSingle()
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as ChessSession | null) : null
     if (sessionData) {
-      setSession(sessionData)
+      // A fetch that started before the latest realtime push can resolve after it —
+      // don't roll the board back to the older row it carries.
+      setSession((cur) => (cur && Date.parse(sessionData.updated_at) < Date.parse(cur.updated_at) ? cur : sessionData))
     }
     return { state: sessionData, ok: supabasePollOk(sessionRes) }
   }, [gameCode])
@@ -107,10 +109,30 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
-  // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'chess_sessions'], load)
+  // Put a pushed session row on screen immediately — the debounced reload that follows
+  // reconciles everything else. Skip rows older than what we're already showing (a late
+  // event must not roll the board back); an optimistic local move keeps the previous
+  // updated_at, so the authoritative row for that same move still lands.
+  const applySessionRow = useCallback((row: Record<string, unknown>) => {
+    const next = row as unknown as ChessSession
+    setSession((cur) => (cur && Date.parse(next.updated_at) < Date.parse(cur.updated_at) ? cur : next))
+  }, [])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, { table: 'chess_sessions', apply: applySessionRow }],
+    load
+  )
+
+  // Fallback poll: tighter while the match is live, so a dropped realtime channel
+  // costs seconds of move lag instead of most of a minute.
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs:
+      screen === 'active' && session?.status === 'active'
+        ? POLL_INTERVALS.duelFallback
+        : POLL_INTERVALS.realtimeFallback,
+  })
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()

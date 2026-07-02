@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { Chess } from 'chess.js'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
@@ -80,7 +81,12 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
       .eq('game_id', gameCode)
       .maybeSingle()
     if (supabasePollOk(sessionRes)) {
-      setSession(sessionRes.data as ChessSession | null)
+      const sessionData = sessionRes.data as ChessSession | null
+      // A fetch that started before the latest realtime push can resolve after it —
+      // don't roll the board back to the older row it carries.
+      setSession((cur) =>
+        cur && sessionData && Date.parse(sessionData.updated_at) < Date.parse(cur.updated_at) ? cur : sessionData
+      )
     }
     return supabasePollOk(sessionRes)
   }, [gameCode])
@@ -102,10 +108,30 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
     else if (game?.status === 'active') setTab('play')
   }, [game?.status, session])
 
-  // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'chess_sessions'], load)
+  // Put a pushed session row on screen immediately — the debounced reload that follows
+  // reconciles everything else. Skip rows older than what we're already showing (a late
+  // event must not roll the board back); an optimistic local move keeps the previous
+  // updated_at, so the authoritative row for that same move still lands.
+  const applySessionRow = useCallback((row: Record<string, unknown>) => {
+    const next = row as unknown as ChessSession
+    setSession((cur) => (cur && Date.parse(next.updated_at) < Date.parse(cur.updated_at) ? cur : next))
+  }, [])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, { table: 'chess_sessions', apply: applySessionRow }],
+    load
+  )
+
+  // Fallback poll: tighter while the match is live, so a dropped realtime channel
+  // costs seconds of move lag instead of most of a minute.
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs:
+      game?.status === 'active' && session?.status === 'active'
+        ? POLL_INTERVALS.duelFallback
+        : POLL_INTERVALS.realtimeFallback,
+  })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
@@ -152,11 +178,35 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   }
 
   const movePiece = async (from: string, to: string, promotion?: 'q' | 'r' | 'b' | 'n') => {
-    if (!hostPlayerId) return
+    if (!hostPlayerId || !session) return
     if (!hostResumeToken) {
       toastError('Your player session expired — rejoin to continue')
       return
     }
+    const prevSession = session
+
+    // Optimistic: apply the move locally so the board responds instantly instead of
+    // sitting on the old position for the server round-trip + reload (~1-2s of "lag").
+    // The server stays authoritative — load() reconciles clocks/PGN below, and we
+    // revert if it rejects the move.
+    try {
+      const preview = new Chess()
+      preview.load(session.fen)
+      if (preview.move({ from, to, promotion })) {
+        setSession({
+          ...session,
+          fen: preview.fen(),
+          current_turn: session.current_turn === 'w' ? 'b' : 'w',
+          last_move_from: from,
+          last_move_to: to,
+          in_check: preview.inCheck(),
+        })
+      }
+    } catch {
+      // Illegal locally (the board only offers legal targets, so this shouldn't happen) —
+      // skip the preview and let the server be the judge.
+    }
+
     setHostActing(true)
     try {
       const res = await fetch('/api/chess/move', {
@@ -168,6 +218,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
       if (!res.ok) throw new Error(data.error ?? 'Move failed')
       await load()
     } catch (err) {
+      setSession(prevSession) // server rejected or unreachable — roll back the optimistic move
       toastError(err instanceof Error ? err.message : 'Move failed')
     } finally {
       setHostActing(false)
