@@ -60,6 +60,7 @@ export function TransferHostControl() {
         if (stillHost) {
           setDeclinedNotice(`${readNominee(code) || 'The player'} declined the host invite`)
           rememberNominee(code, null)
+          setOpen(false) // close the "waiting for X" modal; the toast reports the decline
         }
       }
     }
@@ -143,7 +144,7 @@ export function TransferHostControl() {
         style={{ color: 'var(--muted)' }}
       >
         <HandoffIcon />
-        <span className="hidden sm:inline">Host</span>
+        <span className="hidden sm:inline">Transfer Host</span>
         {pendingId ? (
           <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[var(--primary)] animate-pulse" />
         ) : null}
