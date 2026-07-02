@@ -9,11 +9,21 @@ const eliminationConfigSchema = z.object({
 })
 
 // Per-round game setup for head-to-head/knockout, chosen at creation. Trivia
-// knockout uses questionsPerRound + timerSeconds for each round's group game.
+// knockout uses questionsPerRound + timerSeconds for each round's group game;
+// Whot/Scrabble head-to-head carry their house rules / dictionary + per-turn timer
+// here so every spawned room plays with the settings the host chose. Values are
+// re-clamped per game type server-side, so the wide bounds here are just guards.
 const gameConfigSchema = z.object({
   questionSource: z.enum(['platform', 'custom']).optional(),
   roundsCount: z.coerce.number().int().min(1).max(50).optional(),
-  timerSeconds: z.coerce.number().int().min(5).max(120).optional(),
+  timerSeconds: z.coerce.number().int().min(0).max(300).optional(),
+  // Whot house rules.
+  whotPick3: z.boolean().optional(),
+  whotCards: z.boolean().optional(),
+  whotNumberCalls: z.boolean().optional(),
+  whotPick2Stacking: z.boolean().optional(),
+  // Scrabble word list.
+  scrabbleDictionary: z.string().min(1).max(40).optional(),
 })
 
 export const createTournamentSchema = z.object({

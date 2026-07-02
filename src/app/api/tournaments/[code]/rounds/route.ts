@@ -165,6 +165,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const { groups, byes } = computeRoundGroups(shuffle(survivorIds), groupSize)
     let matchIndex = 0
 
+    // Per-turn timer + the game's house rules / dictionary chosen at creation,
+    // stamped onto every room so the whole bracket plays with the host's settings.
+    const cfg = (tournament.game_config ?? {}) as {
+      timerSeconds?: number
+      whotPick3?: boolean
+      whotCards?: boolean
+      whotNumberCalls?: boolean
+      whotPick2Stacking?: boolean
+      scrabbleDictionary?: string
+    }
+    const roomTimer = typeof cfg.timerSeconds === 'number' ? cfg.timerSeconds : DEFAULT_GROUP_TURN_SECONDS
+    const gameSettings: Record<string, unknown> =
+      gameType === 'whot'
+        ? {
+            whot_pick3_enabled: cfg.whotPick3 ?? true,
+            whot_cards_enabled: cfg.whotCards ?? true,
+            whot_number_calls_enabled: cfg.whotNumberCalls ?? true,
+            whot_pick2_stacking: cfg.whotPick2Stacking ?? true,
+          }
+        : gameType === 'scrabble'
+          ? { scrabble_dictionary_id: cfg.scrabbleDictionary ?? 'enable' }
+          : {}
+
     for (const group of groups) {
       const gameCode = await uniqueGameCode(admin)
       if (!gameCode) return NextResponse.json({ error: 'Failed to generate unique game code' }, { status: 500 })
@@ -176,8 +199,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         game_type: gameType,
         participant_mode: 'joiners',
         rounds_count: 1,
-        timer_seconds: DEFAULT_GROUP_TURN_SECONDS,
+        timer_seconds: roomTimer,
         tournament_id: tournamentId,
+        ...gameSettings,
       })
       if (gameError) {
         return NextResponse.json({ error: internalErrorMessage('tournaments/code/rounds', gameError) }, { status: 500 })

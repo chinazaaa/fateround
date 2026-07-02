@@ -9,6 +9,9 @@ import {
   h2hGroupSize,
   KNOCKOUT_ELIGIBLE_TYPES,
 } from '@/lib/tournament-validation'
+import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
+import { clampScrabbleTimer } from '@/lib/scrabble'
+import { parseScrabbleDictionaryId } from '@/lib/scrabble-dictionary-meta'
 
 const supabase = getSupabaseAnon()
 
@@ -47,6 +50,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to generate unique code' }, { status: 500 })
   }
 
+  // Head-to-head game_config: the fixed room size (chess 2, Whot/Scrabble 4) plus,
+  // for the group games, the house rules / dictionary and per-turn timer the host
+  // picked — applied to every room the bracket spawns.
+  let h2hGameConfig: Record<string, unknown> | null = null
+  if (isH2H) {
+    const groupSize = h2hGroupSize(h2hGameType)
+    if (h2hGameType === 'whot') {
+      h2hGameConfig = {
+        groupSize,
+        timerSeconds: clampBoardGameTurnTimer(gameConfig?.timerSeconds ?? 30, 'whot'),
+        whotPick3: gameConfig?.whotPick3 ?? true,
+        whotCards: gameConfig?.whotCards ?? true,
+        whotNumberCalls: gameConfig?.whotNumberCalls ?? true,
+        whotPick2Stacking: gameConfig?.whotPick2Stacking ?? true,
+      }
+    } else if (h2hGameType === 'scrabble') {
+      h2hGameConfig = {
+        groupSize,
+        timerSeconds: clampScrabbleTimer(gameConfig?.timerSeconds ?? 180),
+        scrabbleDictionary: parseScrabbleDictionaryId(gameConfig?.scrabbleDictionary),
+      }
+    } else {
+      h2hGameConfig = { groupSize }
+    }
+  }
+
   const { error } = await supabase.from('tournaments').insert({
     id: tournamentCode,
     host_token: hostToken,
@@ -59,10 +88,7 @@ export async function POST(req: NextRequest) {
           roundsCount: gameConfig?.roundsCount ?? 5,
           timerSeconds: gameConfig?.timerSeconds ?? 15,
         }
-      : isH2H
-        ? // Fixes the bracket room size for the whole tournament (chess: 2, Whot/Scrabble: 4).
-          { groupSize: h2hGroupSize(h2hGameType) }
-        : null,
+      : h2hGameConfig,
     placement_points: placementPoints ?? [10, 7, 5, 3, 2, 1],
     target_game_count: targetGameCount ?? null,
     max_players: maxPlayers ?? null,
