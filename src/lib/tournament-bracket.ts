@@ -1,6 +1,6 @@
-// Head-to-head bracket helpers: seeding into matches, first-round byes, and
-// round labels. Pure functions so the pairing/bye math can be unit-tested
-// independently of the round-spawn endpoint (which handles shuffling + I/O).
+// Head-to-head bracket helpers: seeding into matches, byes, and round labels.
+// Pure functions so the pairing/bye math can be unit-tested independently of the
+// round-spawn endpoint (which handles shuffling + I/O).
 
 /** Smallest power of two >= n (minimum 1). */
 export function nextPowerOfTwo(n: number): number {
@@ -18,20 +18,19 @@ export interface RoundPairing {
 
 /**
  * Pair an already-seeded list of survivor ids into matches for one bracket
- * round. When the count isn't a power of two, the top seeds receive byes.
- *
- * Byes are placed in this (the first uneven) round on purpose: handing out
- * `nextPowerOfTwo(n) - n` byes leaves exactly a power of two players standing
- * afterwards (bye players + match winners), so every later round pairs cleanly
- * with no further byes. For power-of-two inputs there are no byes.
+ * round. Everyone who has an opponent plays — only the odd one out (when the
+ * count is odd) gets a bye and advances automatically. So an even field is all
+ * matches and no byes (6 players → 3 games); an odd field is one bye plus the
+ * rest paired. Byes recur naturally in later rounds whenever the survivor count
+ * is odd, at most one per round.
  */
 export function computeRoundPairings(seededIds: string[]): RoundPairing {
   const n = seededIds.length
   if (n <= 1) return { matches: [], byes: [...seededIds] }
 
-  const byeCount = nextPowerOfTwo(n) - n
-  const byes = seededIds.slice(0, byeCount)
-  const playing = seededIds.slice(byeCount)
+  const odd = n % 2 === 1
+  const byes = odd ? [seededIds[n - 1]] : []
+  const playing = odd ? seededIds.slice(0, -1) : seededIds
 
   const matches: [string, string][] = []
   for (let i = 0; i + 1 < playing.length; i += 2) {
