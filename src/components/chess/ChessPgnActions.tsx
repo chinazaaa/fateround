@@ -24,7 +24,8 @@ export function ChessPgnActions({ game, players, session }: { game: Game; player
     document.body.appendChild(a)
     a.click()
     a.remove()
-    URL.revokeObjectURL(url)
+    // Defer revocation so it can't race the browser starting the download.
+    window.setTimeout(() => URL.revokeObjectURL(url), 0)
   }
 
   const handleCopy = async () => {

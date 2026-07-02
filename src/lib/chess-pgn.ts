@@ -38,10 +38,13 @@ function pgnDate(iso: string | null | undefined): string {
   return `${yyyy}.${mm}.${dd}`
 }
 
-/** `TimeControl` tag from the per-player clock (seconds). Sudden death, no increment. */
-function timeControl(session: ChessSession): string | null {
-  if (session.white_time_ms == null) return null
-  const seconds = Math.round(session.white_time_ms / 1000)
+/**
+ * `TimeControl` tag from the game's configured per-player clock (seconds).
+ * Sudden death, no increment. Uses the starting timer, not the end-of-game
+ * remainder — `null` (untimed) when no clock was set.
+ */
+function timeControl(game: Game): string | null {
+  const seconds = game.timer_seconds
   return seconds > 0 ? String(seconds) : null
 }
 
@@ -81,7 +84,7 @@ export function buildChessPgn(session: ChessSession, players: Player[], game: Ga
   chess.setHeader('Result', result)
   const termination = terminationForReason(session.result_reason)
   if (termination) chess.setHeader('Termination', termination)
-  const tc = timeControl(session)
+  const tc = timeControl(game)
   if (tc) chess.setHeader('TimeControl', tc)
 
   const sans = chess.history()
