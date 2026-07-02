@@ -12,7 +12,8 @@
 -- host_token stays revoked from the public roles (migration 0122); only the new column is
 -- readable by anon/authenticated.
 
-alter table games add column if not exists pending_host_player_id text;
+-- uuid to match players.id (games.id is text, but the FK targets players).
+alter table games add column if not exists pending_host_player_id uuid;
 
 alter table games
   drop constraint if exists games_pending_host_player_fk;
