@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { boardGameLobbySettingsSchema } from '@/lib/validation'
 import {
   isLudoGame,
@@ -21,7 +21,7 @@ import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampLobbyMaxPlayers, fetchGamePlayerLimits, type LobbyLimitGameType } from '@/lib/game-limits'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+const supabase = getSupabaseAnon()
 
 function boardGameLobbyType(gameType: string): BoardGameLobbyType | null {
   const parsed = parseGameType(gameType)

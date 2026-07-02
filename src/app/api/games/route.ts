@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { generateGameCode, generateToken } from '@/lib/utils'
 import {
   normalizeGender,
@@ -129,7 +129,7 @@ const eliminationConfigSchema = z
   })
   .optional()
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+const supabase = getSupabaseAnon()
 
 function parseParticipants(
   raw: unknown,
