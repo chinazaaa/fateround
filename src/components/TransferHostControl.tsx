@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { rememberNominee } from '@/lib/host-transfer'
+import { rememberNominee, readNominee } from '@/lib/host-transfer'
 
 type PlayerRow = { id: string; name: string; spectator: boolean | null }
 
@@ -23,12 +23,41 @@ export function TransferHostControl() {
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [declinedNotice, setDeclinedNotice] = useState<string | null>(null)
+
+  // Track the last-seen nomination so we can detect the moment it clears, and a flag for
+  // when *we* cleared it (cancel) so a self-cancel isn't misread as a player decline.
+  const prevPendingRef = useRef<string | null>(null)
+  const selfClearedRef = useRef(false)
 
   const refreshPending = useCallback(async () => {
     if (!code) return
     const { data } = await supabase.from('games').select('pending_host_player_id').eq('id', code).maybeSingle()
-    setPendingId((data?.pending_host_player_id as string | null) ?? null)
-  }, [code])
+    const next = (data?.pending_host_player_id as string | null) ?? null
+    const prev = prevPendingRef.current
+    prevPendingRef.current = next
+    setPendingId(next)
+
+    // The nomination just cleared and we didn't cancel it ourselves → the nominee acted.
+    // Accepting also clears it, but that rotates our token; if we're still a valid host it
+    // was a decline. (On accept, the host page swaps to the "Host transferred" screen.)
+    if (prev && !next) {
+      if (selfClearedRef.current) {
+        selfClearedRef.current = false
+      } else {
+        const res = await fetch(`/api/games/${code}/verify-host`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hostToken }),
+        }).catch(() => null)
+        const stillHost = res?.ok ? (((await res.json().catch(() => ({}))) as { ok?: boolean }).ok ?? false) : false
+        if (stillHost) {
+          setDeclinedNotice(`${readNominee(code) || 'The player'} declined the host invite`)
+          rememberNominee(code, null)
+        }
+      }
+    }
+  }, [code, hostToken])
 
   // Keep the pending nomination in sync so the button reflects an outstanding invite and
   // clears once the nominee accepts (or the invite is cancelled).
@@ -37,6 +66,13 @@ export function TransferHostControl() {
     const t = setInterval(refreshPending, 6000)
     return () => clearInterval(t)
   }, [refreshPending])
+
+  // Auto-dismiss the "declined" notice after a few seconds.
+  useEffect(() => {
+    if (!declinedNotice) return
+    const t = setTimeout(() => setDeclinedNotice(null), 6000)
+    return () => clearTimeout(t)
+  }, [declinedNotice])
 
   const loadPlayers = useCallback(async () => {
     if (!code) return
@@ -70,6 +106,8 @@ export function TransferHostControl() {
         setError(data.error ?? 'Something went wrong')
         return
       }
+      if (!playerId) selfClearedRef.current = true // cancelling — don't misread as a decline
+      prevPendingRef.current = playerId
       setPendingId(playerId)
       // Remember who we handed off to so the "host transferred to X" screen can name them
       // once our own token stops working. Cleared when the invite is cancelled.
@@ -102,6 +140,25 @@ export function TransferHostControl() {
           <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[var(--primary)] animate-pulse" />
         ) : null}
       </button>
+
+      {declinedNotice ? (
+        <div className="fixed inset-x-0 top-16 z-[70] flex justify-center px-4 pointer-events-none">
+          <div
+            className="glass-card pointer-events-auto flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-body border border-[var(--border)]"
+            role="status"
+          >
+            <span>{declinedNotice}</span>
+            <button
+              type="button"
+              onClick={() => setDeclinedNotice(null)}
+              aria-label="Dismiss"
+              className="text-muted hover:text-body text-lg leading-none"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {open ? (
         <div

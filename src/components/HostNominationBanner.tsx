@@ -74,6 +74,24 @@ export function HostNominationBanner() {
     }
   }
 
+  // Decline server-side so the host learns of it (their pending indicator clears), then hide.
+  // Best-effort: even if the request fails, dismiss locally so the player isn't stuck.
+  const decline = async () => {
+    setDismissed(true)
+    if (!code) return
+    const session = getPlayerSession(code)
+    if (!session?.resumeToken) return
+    try {
+      await fetch(`/api/games/${code}/decline-host`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeToken: session.resumeToken }),
+      })
+    } catch {
+      // ignored — the banner is already hidden locally
+    }
+  }
+
   if (!code || !nominated || dismissed) return null
 
   return (
@@ -93,11 +111,11 @@ export function HostNominationBanner() {
           </button>
           <button
             type="button"
-            onClick={() => setDismissed(true)}
+            onClick={decline}
             disabled={busy}
             className="btn-secondary px-4 py-2.5 disabled:opacity-60"
           >
-            Not now
+            Decline
           </button>
         </div>
       </div>
