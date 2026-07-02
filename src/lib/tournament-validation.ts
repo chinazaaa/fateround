@@ -10,6 +10,7 @@ const eliminationConfigSchema = z.object({
 
 export const createTournamentSchema = z.object({
   title: sanitizedString(1, 100),
+  format: z.enum(['round-robin', 'head-to-head']).optional(),
   placementPoints: z.array(z.number().int().min(0)).min(1).max(20).optional(),
   targetGameCount: z.coerce.number().int().min(1).max(100).optional().nullable(),
   maxPlayers: z.coerce.number().int().min(2).max(100).optional().nullable(),
@@ -31,6 +32,13 @@ export const joinTournamentSchema = z.object({
   playerName: sanitizedString(1, 50),
 })
 
+// Head-to-head: host stages the next bracket round. `timerSeconds` is the shared
+// per-player chess clock applied to every match in the round (0 = untimed).
+export const startTournamentRoundSchema = z.object({
+  hostToken: hostTokenString(),
+  timerSeconds: z.coerce.number().int().min(0).max(3600).optional(),
+})
+
 export const tournamentHostActionSchema = z.object({
   hostToken: hostTokenString(),
 })
@@ -50,4 +58,8 @@ export const addTournamentGameSchema = z.object({
   customQuestions: z.array(z.unknown()).max(1000).optional().nullable(),
 })
 
+// Games eligible for the round-robin (all-vs-all) format.
 export const TOURNAMENT_ELIGIBLE_TYPES = ['trivia'] as const
+
+// Games eligible for the head-to-head (1v1 bracket) format — 2-player games only.
+export const H2H_ELIGIBLE_TYPES = ['chess'] as const

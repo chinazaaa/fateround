@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { awardRoomGamePoints } from '@/lib/room-points'
+import { resolveHeadToHeadMatch } from '@/lib/tournament-h2h'
 
 export async function markGameFinished(
   supabase: SupabaseClient,
@@ -23,6 +24,13 @@ export async function markGameFinished(
       await awardRoomGamePoints(supabase, gameId)
     } catch {
       // Room stats are best-effort — never block game finish.
+    }
+    try {
+      // Advance a head-to-head bracket match (record winner / rematch a draw).
+      // No-op for every other game. Best-effort — never block game finish.
+      await resolveHeadToHeadMatch(supabase, gameId)
+    } catch {
+      // ignore
     }
   }
 

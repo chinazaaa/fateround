@@ -6,6 +6,7 @@ import { useTournamentRealtime } from '@/hooks/useTournamentRealtime'
 import type { Tournament, TournamentPlayer, TournamentGame } from '@/types/tournament'
 import type { TriviaQuestion } from '@/types'
 import { TOURNAMENT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
+import { roundLabel } from '@/lib/tournament-bracket'
 import {
   parseTriviaQuestionImport,
   parseExcelTriviaQuestionImport,
@@ -14,6 +15,7 @@ import {
 } from '@/lib/custom-questions'
 import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
 import { TournamentShareLeaderboard } from '@/components/tournament/TournamentShareLeaderboard'
+import { TournamentBracketBoard } from '@/components/tournament/TournamentBracketBoard'
 
 const GAME_TYPE_LABELS: Record<string, string> = {
   trivia: 'Trivia',
@@ -55,6 +57,8 @@ export default function TournamentLobbyPage() {
   const [selectedGameType, setSelectedGameType] = useState('trivia')
   const [roundsCount, setRoundsCount] = useState('10')
   const [timerSeconds, setTimerSeconds] = useState('30')
+  // Head-to-head: shared per-player chess clock for a round's matches.
+  const [h2hTimer, setH2hTimer] = useState('600')
   const [actionLoading, setActionLoading] = useState(false)
 
   const [questionSource, setQuestionSource] = useState<'platform' | 'custom'>('platform')
@@ -119,8 +123,11 @@ export default function TournamentLobbyPage() {
   }, [tournamentId])
 
   // Auto-forward opted-in spectators into each game as a viewer when it starts.
+  // (Head-to-head runs many simultaneous matches — spectators pick one from the
+  // bracket board rather than being pulled into a single game.)
   useEffect(() => {
     if (joined || isHost || !spectating || tournament?.status === 'finished') return
+    if (tournament?.format === 'head-to-head') return
     const active = games.find((g) => g.status === 'active')
     if (!active || watchedGameRef.current === active.game_id) return
     watchedGameRef.current = active.game_id
@@ -131,6 +138,7 @@ export default function TournamentLobbyPage() {
   // they don't have to find it themselves. The host stays on the lobby to manage.
   useEffect(() => {
     if (!joined || isHost || tournament?.status === 'finished') return
+    if (tournament?.format === 'head-to-head') return
     const name = localStorage.getItem(`tournament_player_${tournamentId}`)
     // Eliminated players stay on the lobby to spectate — don't pull them into games.
     const me = name ? players.find((p) => p.player_name.toLowerCase() === name.toLowerCase()) : null
@@ -140,7 +148,32 @@ export default function TournamentLobbyPage() {
     forwardedGameRef.current = active.game_id
     const suffix = name ? `?name=${encodeURIComponent(name)}&tournament=${tournamentId}` : ''
     router.push(`/game/${active.game_id}${suffix}`)
-  }, [joined, isHost, tournament?.status, games, players, tournamentId, router])
+  }, [joined, isHost, tournament?.status, tournament?.format, games, players, tournamentId, router])
+
+  // Head-to-head: forward each joined player to their own match room for the
+  // current round (once it's staged or live). Bye players and eliminated players
+  // stay on the lobby.
+  useEffect(() => {
+    if (!joined || isHost || tournament?.format !== 'head-to-head' || tournament?.status === 'finished') return
+    const name = localStorage.getItem(`tournament_player_${tournamentId}`)
+    const me = name ? players.find((p) => p.player_name.toLowerCase() === name.toLowerCase()) : null
+    if (!me || me.is_eliminated) return
+    const roundNums = games.map((g) => g.round_number ?? 0)
+    const currentRound = roundNums.length ? Math.max(...roundNums) : 0
+    if (!currentRound) return
+    const myMatch = games.find(
+      (g) =>
+        g.round_number === currentRound &&
+        !g.is_bye &&
+        g.game_id &&
+        (g.player_a_id === me.id || g.player_b_id === me.id)
+    )
+    if (!myMatch?.game_id || (myMatch.status !== 'pending' && myMatch.status !== 'active')) return
+    if (forwardedGameRef.current === myMatch.game_id) return
+    forwardedGameRef.current = myMatch.game_id
+    const suffix = name ? `?name=${encodeURIComponent(name)}&tournament=${tournamentId}` : ''
+    router.push(`/game/${myMatch.game_id}${suffix}`)
+  }, [joined, isHost, tournament?.format, tournament?.status, games, players, tournamentId, router])
 
   async function handleJoin() {
     if (!playerName.trim()) return
@@ -348,6 +381,53 @@ export default function TournamentLobbyPage() {
     }
   }
 
+  // Head-to-head: stage the next bracket round (pairs survivors, creates match rooms).
+  async function handleStartRound() {
+    if (!hostToken) return
+    setActionLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/rounds`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, timerSeconds: parseInt(h2hTimer, 10) || 0 }),
+      })
+      const data = await res.json()
+      if (!res.ok) setError(data.error ?? 'Failed to start round')
+      else fetchState()
+    } catch {
+      setError('Something went wrong')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // Head-to-head: start every staged match in the current round together.
+  async function handleStartMatches() {
+    if (!hostToken) return
+    setActionLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/rounds/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) setError(data.error ?? 'Failed to start matches')
+      else {
+        if (data.waiting > 0) {
+          setError(`${data.started} started, ${data.waiting} still waiting for both players — try again once they join.`)
+        }
+        fetchState()
+      }
+    } catch {
+      setError('Something went wrong')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   function handleJoinGame(gameCode: string) {
     const name = localStorage.getItem(`tournament_player_${tournamentId}`)
     if (name) {
@@ -424,6 +504,21 @@ export default function TournamentLobbyPage() {
   const effectiveCustomCount = customTrivia.length > 0 ? customTrivia.length : (carriedCustomCount ?? 0)
   const canStartCustom = !isCustom || effectiveCustomCount >= rounds
 
+  // Head-to-head derived state
+  const h2h = tournament.format === 'head-to-head'
+  const playerNameById = (id: string | null) => (id ? (players.find((p) => p.id === id)?.player_name ?? '—') : '—')
+  const h2hMatches = h2h ? games.filter((g) => g.round_number != null) : []
+  const currentRoundNumber = h2hMatches.length ? Math.max(...h2hMatches.map((g) => g.round_number ?? 0)) : 0
+  const currentRoundMatches = h2hMatches.filter((g) => g.round_number === currentRoundNumber)
+  const currentRoundEntrants = currentRoundMatches.reduce((n, m) => n + (m.is_bye ? 1 : 2), 0)
+  const stagedMatches = currentRoundMatches.filter((g) => !g.is_bye && g.status === 'pending')
+  const roundInProgress = currentRoundMatches.some(
+    (g) => !g.is_bye && (g.status === 'pending' || g.status === 'active')
+  )
+  const survivingCount = players.filter((p) => !p.is_eliminated).length
+  // In a finished head-to-head bracket the lone survivor is the champion.
+  const h2hChampion = h2h && isFinished ? (players.find((p) => !p.is_eliminated) ?? null) : null
+
   return (
     <PageShell>
       {/* Header */}
@@ -442,9 +537,13 @@ export default function TournamentLobbyPage() {
           )}
         </p>
         <div className="flex flex-wrap items-center justify-center gap-1.5">
-          <span className="chip text-xs">🎮 Trivia</span>
+          <span className="chip text-xs">{h2h ? '♟ Chess' : '🎮 Trivia'}</span>
           <span className="chip text-xs">
-            {tournament.target_game_count ? `Best of ${tournament.target_game_count}` : 'Unlimited games'}
+            {h2h
+              ? '🏆 Head-to-Head'
+              : tournament.target_game_count
+                ? `Best of ${tournament.target_game_count}`
+                : 'Unlimited games'}
           </span>
           {lives && (
             <span className="chip text-xs">
@@ -587,6 +686,18 @@ export default function TournamentLobbyPage() {
 
       {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
+      {/* Head-to-head bracket board — the spectator view of the current round.
+          Watch a match, then use its "Back to Tournament" button to switch. */}
+      {h2h && currentRoundMatches.length > 0 && (
+        <TournamentBracketBoard
+          matches={currentRoundMatches}
+          roundNumber={currentRoundNumber}
+          roundLabel={roundLabel(currentRoundEntrants)}
+          nameOf={playerNameById}
+          onWatch={handleWatchGame}
+        />
+      )}
+
       {/* Join Form */}
       {!joined && !isHost && !isFinished && hasStarted && !spectating && (
         <div className="glass-card-strong p-5 text-center space-y-2">
@@ -701,42 +812,82 @@ export default function TournamentLobbyPage() {
       {isHost && !isFinished && (
         <div className="glass-card p-5 space-y-2.5">
           <p className="label-caps">How to run this tournament</p>
-          <ul className="space-y-2 text-sm text-muted">
-            <li className="flex gap-2.5">
-              <span aria-hidden>📣</span>
-              <span>
-                Share the invite link so players join. The roster <span className="text-body font-semibold">locks</span>{' '}
-                when you start the first game, so wait until everyone&apos;s in.
-              </span>
-            </li>
-            <li className="flex gap-2.5">
-              <span aria-hidden>▶️</span>
-              <span>
-                Tap <span className="text-body font-semibold">Start Tournament</span> to create a game, then open the
-                host dashboard (new tab) and start it there.
-              </span>
-            </li>
-            <li className="flex gap-2.5">
-              <span aria-hidden>🎮</span>
-              <span>
-                Players are pulled into each game automatically. You host from the dashboard — you don&apos;t play.
-              </span>
-            </li>
-            <li className="flex gap-2.5">
-              <span aria-hidden>🔁</span>
-              <span>
-                When a game ends, return to this tab — <span className="text-body font-semibold">Start Next Game</span>{' '}
-                appears here. Repeat until you&apos;re done.
-              </span>
-            </li>
-            <li className="flex gap-2.5">
-              <span aria-hidden>🏁</span>
-              <span>
-                It ends after your target games{lives ? ', or when one player is left in lives mode' : ''} — or tap End
-                Tournament anytime.
-              </span>
-            </li>
-          </ul>
+          {h2h ? (
+            <ul className="space-y-2 text-sm text-muted">
+              <li className="flex gap-2.5">
+                <span aria-hidden>📣</span>
+                <span>
+                  Share the invite link so players join. The roster{' '}
+                  <span className="text-body font-semibold">locks</span> when you start the first round, so wait until
+                  everyone&apos;s in.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>▶️</span>
+                <span>
+                  Pick a time control and tap <span className="text-body font-semibold">Start Round</span> — everyone is
+                  paired 1-v-1 and sent to their own match room.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>⏱️</span>
+                <span>
+                  Once players are in their rooms, tap <span className="text-body font-semibold">Start Matches</span> to
+                  begin every game at once. You host from here — you don&apos;t play.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>🔁</span>
+                <span>
+                  When every match finishes, tap <span className="text-body font-semibold">Start Next Round</span> to
+                  advance the winners. A drawn game replays automatically until it&apos;s decisive.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>🏆</span>
+                <span>The last player standing wins — or tap End Tournament anytime.</span>
+              </li>
+            </ul>
+          ) : (
+            <ul className="space-y-2 text-sm text-muted">
+              <li className="flex gap-2.5">
+                <span aria-hidden>📣</span>
+                <span>
+                  Share the invite link so players join. The roster{' '}
+                  <span className="text-body font-semibold">locks</span> when you start the first game, so wait until
+                  everyone&apos;s in.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>▶️</span>
+                <span>
+                  Tap <span className="text-body font-semibold">Start Tournament</span> to create a game, then open the
+                  host dashboard (new tab) and start it there.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>🎮</span>
+                <span>
+                  Players are pulled into each game automatically. You host from the dashboard — you don&apos;t play.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>🔁</span>
+                <span>
+                  When a game ends, return to this tab —{' '}
+                  <span className="text-body font-semibold">Start Next Game</span> appears here. Repeat until
+                  you&apos;re done.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>🏁</span>
+                <span>
+                  It ends after your target games{lives ? ', or when one player is left in lives mode' : ''} — or tap
+                  End Tournament anytime.
+                </span>
+              </li>
+            </ul>
+          )}
         </div>
       )}
 
@@ -788,7 +939,7 @@ export default function TournamentLobbyPage() {
       )}
 
       {/* Active Game Banner */}
-      {activeGame && (
+      {activeGame && !h2h && (
         <div
           className="glass-card-strong p-5 space-y-3"
           style={{ boxShadow: '0 0 0 1px var(--primary), var(--card-shadow-glow)' }}
@@ -835,6 +986,20 @@ export default function TournamentLobbyPage() {
         </div>
       )}
 
+      {/* Head-to-head champion */}
+      {h2hChampion && (
+        <div
+          className="glass-card-strong p-6 text-center space-y-1.5"
+          style={{ boxShadow: '0 0 0 1px var(--primary), var(--card-shadow-glow)' }}
+        >
+          <p className="text-4xl" aria-hidden="true">
+            🏆
+          </p>
+          <p className="label-caps">Champion</p>
+          <p className="text-2xl font-black gradient-title">{h2hChampion.player_name}</p>
+        </div>
+      )}
+
       {/* Leaderboard — with "Share results" image export */}
       <TournamentShareLeaderboard tournament={tournament} players={players} />
 
@@ -855,8 +1020,58 @@ export default function TournamentLobbyPage() {
         </div>
       )}
 
-      {/* Host Controls */}
-      {isHost && !isFinished && !activeGame && (
+      {/* Host Controls — head-to-head bracket */}
+      {isHost && !isFinished && tournament.format === 'head-to-head' && (
+        <div className="glass-card-strong p-5 space-y-4">
+          <p className="label-caps">Bracket controls</p>
+
+          {!roundInProgress && (
+            <>
+              <Field label="Time per player" htmlFor="h2h-timer">
+                <select
+                  id="h2h-timer"
+                  value={h2hTimer}
+                  onChange={(e) => setH2hTimer(e.target.value)}
+                  className="input-field"
+                >
+                  <option value="0">Untimed</option>
+                  <option value="180">3 min</option>
+                  <option value="300">5 min</option>
+                  <option value="600">10 min</option>
+                </select>
+              </Field>
+              <div className="space-y-1.5">
+                <PrimaryBtn onClick={handleStartRound} disabled={actionLoading || survivingCount < 2}>
+                  {actionLoading ? 'Pairing…' : currentRoundNumber > 0 ? 'Start Next Round' : 'Start Round'}
+                </PrimaryBtn>
+                <p className="text-faint text-xs text-center">
+                  {survivingCount < 2
+                    ? 'Waiting for players to join before you can start.'
+                    : 'Pairs everyone up and sends them to their match rooms.'}
+                </p>
+              </div>
+            </>
+          )}
+
+          {stagedMatches.length > 0 && (
+            <div className="space-y-1.5">
+              <PrimaryBtn onClick={handleStartMatches} disabled={actionLoading}>
+                {actionLoading ? 'Starting…' : `Start ${stagedMatches.length} Match${stagedMatches.length === 1 ? '' : 'es'}`}
+              </PrimaryBtn>
+              <p className="text-faint text-xs text-center">
+                Starts every match at once. Players must be in their rooms first.
+              </p>
+            </div>
+          )}
+
+          <button onClick={handleEndTournament} disabled={actionLoading} className="btn-danger-soft">
+            End Tournament
+          </button>
+        </div>
+      )}
+
+      {/* Host Controls — round-robin */}
+      {isHost && !isFinished && !activeGame && tournament.format !== 'head-to-head' && (
         <div className="glass-card-strong p-5 space-y-4">
           <p className="label-caps">Start Next Game</p>
 

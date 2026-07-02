@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, createTournamentSchema)
   if (bodyError) return bodyError
 
-  const { title, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = body
+  const { title, format, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = body
   const hostToken = generateToken()
 
   let tournamentCode = ''
@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
     id: tournamentCode,
     host_token: hostToken,
     title,
+    format: format ?? 'round-robin',
     placement_points: placementPoints ?? [10, 7, 5, 3, 2, 1],
     target_game_count: targetGameCount ?? null,
     max_players: maxPlayers ?? null,
