@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { parseGameType, isMessageInboxGame } from '@/lib/game-types'
 import { trimAnonymousMessagesIfDue } from '@/lib/anonymous-messages'
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+const supabase = getSupabaseAnon()
 
 export async function POST(req: NextRequest) {
   const raw = await req.json().catch(() => ({}))

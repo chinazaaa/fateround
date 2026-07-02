@@ -3,17 +3,18 @@ import { useState, useRef, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type {
   ParticipantGender,
-  ParticipantMode,
   GameType,
-  DescribeItMode,
-  PairVoteMode,
   QuestionSource,
-  ThemeId,
   WstQuoteSource,
   PlayerQuestionsOrder,
   TriviaCategory,
   TriviaQuestion,
 } from '@/types'
+import type { Settings, Step, ParticipantTab, QuestionTab } from './types'
+import { LIBRARY_GAME_TYPE_MAP } from './constants'
+import { GenderBadge } from './components/GenderBadge'
+import { Avatar } from './components/Avatar'
+import { CopyCard } from './components/CopyCard'
 import { THEMES } from '@/lib/themes'
 import { ThemePreviewCard, ThemePreviewModal } from '@/components/ThemePreviewModal'
 import {
@@ -23,7 +24,6 @@ import {
   mergeParticipants,
   countByGender,
   hasEnoughForRounds,
-  genderLabel,
   participantModeOptions,
   participantImportStepHint,
   participantClaimRosterHint,
@@ -186,32 +186,10 @@ import { parseDescribeItWords, parseExcelDescribeItWords } from '@/lib/describe-
 import { getCodeDefaultLimits, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
 import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
-import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { scrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useToast } from '@/components/ui/Toast'
 import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
-
-interface Settings {
-  title: string
-  rounds_count: number
-  timer_seconds: number
-  anonymous: boolean
-  auto_reveal: boolean
-  auto_submit_behavior: 'random' | 'no_answer'
-  participant_mode: ParticipantMode
-  pair_vote_mode: PairVoteMode
-  game_type: GameType
-  theme: ThemeId
-  participant_filter: 'all' | 'joined'
-  gender_based: boolean
-  describe_it_num_teams: number
-  describe_it_mode: DescribeItMode
-}
-
-type Step = 'settings' | 'participants' | 'done'
-type ParticipantTab = 'upload' | 'manual'
-type QuestionTab = 'upload' | 'manual' | 'ai'
 
 function CreateGameInner() {
   const router = useRouter()
@@ -338,17 +316,7 @@ function CreateGameInner() {
 
   useEffect(() => {
     if (questionSource !== 'library') return
-    const gameTypeMap: Record<string, string> = {
-      would_you_rather: 'would_you_rather',
-      most_likely_to: 'most_likely_to',
-      trivia: 'trivia',
-      this_or_that: 'this_or_that',
-      never_have_i_ever: 'never_have_i_ever',
-      pick_a_number: 'pick_a_number',
-      describe_it: 'describe_it',
-      codewords: 'codewords',
-    }
-    const gt = gameTypeMap[settings.game_type]
+    const gt = LIBRARY_GAME_TYPE_MAP[settings.game_type]
     if (!gt) return
     setLibraryPackSearch('')
     setLibraryPacksLoading(true)
@@ -3698,34 +3666,5 @@ export default function CreateGame() {
     >
       <CreateGameInner />
     </Suspense>
-  )
-}
-
-function GenderBadge({ gender }: { gender: ParticipantGender }) {
-  return (
-    <span
-      className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full shrink-0 ${
-        gender === 'male'
-          ? 'bg-sky-500/15 text-sky-600 border border-sky-400/25 dark:text-sky-300'
-          : 'bg-pink-500/15 text-pink-600 border border-pink-400/25 dark:text-pink-300'
-      }`}
-    >
-      {genderLabel(gender)}
-    </span>
-  )
-}
-
-function Avatar({ name }: { name: string }) {
-  return <div className="avatar w-7 h-7 text-xs shrink-0">{name.charAt(0).toUpperCase()}</div>
-}
-
-function CopyCard({ label, value, accent, hint }: { label: string; value: string; accent?: boolean; hint?: string }) {
-  return (
-    <div className={`glass-card p-4 space-y-2 ${accent ? 'border-[var(--primary)]/35' : ''}`}>
-      <p className={`label-caps ${accent ? 'text-[var(--primary)]' : ''}`}>{label}</p>
-      <p className="font-mono text-xs break-all text-muted">{value}</p>
-      <CopyLinkButton value={value} successMessage={accent ? 'Host link copied' : 'Player link copied'} />
-      {hint ? <p className="text-faint text-xs">{hint}</p> : null}
-    </div>
   )
 }
