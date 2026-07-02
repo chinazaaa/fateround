@@ -114,7 +114,7 @@ export default function TournamentCreatePage() {
   function pickGameType(next: string) {
     setGameType(next)
     if (next === 'scrabble') {
-      setH2hTurnTimer(180)
+      setH2hTurnTimer(60)
       setH2hGameDuration(900)
     } else if (next === 'whot') {
       setH2hTurnTimer(30)

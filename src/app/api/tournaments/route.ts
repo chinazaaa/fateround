@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
     } else if (h2hGameType === 'scrabble') {
       h2hGameConfig = {
         groupSize,
-        timerSeconds: clampScrabbleTimer(gameConfig?.timerSeconds ?? 180),
+        timerSeconds: clampScrabbleTimer(gameConfig?.timerSeconds ?? 60),
         gameDurationSeconds: clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 900),
         scrabbleDictionary: parseScrabbleDictionaryId(gameConfig?.scrabbleDictionary),
       }
