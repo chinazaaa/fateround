@@ -750,6 +750,59 @@ export default function TournamentLobbyPage() {
         />
       )}
 
+      {/* Host Controls — head-to-head bracket. Kept high (right under the board)
+          so the host doesn't scroll past the rules/results to reach Start. */}
+      {isHost && !isFinished && tournament.format === 'head-to-head' && (
+        <div className="glass-card-strong p-5 space-y-4">
+          <p className="label-caps">Bracket controls</p>
+
+          {!roundInProgress && (
+            <>
+              <Field label="Time per player" htmlFor="h2h-timer">
+                <select
+                  id="h2h-timer"
+                  value={h2hTimer}
+                  onChange={(e) => setH2hTimer(e.target.value)}
+                  className="input-field"
+                >
+                  <option value="0">Untimed</option>
+                  <option value="180">3 min</option>
+                  <option value="300">5 min</option>
+                  <option value="600">10 min</option>
+                </select>
+              </Field>
+              <div className="space-y-1.5">
+                <PrimaryBtn onClick={handleStartRound} disabled={actionLoading || survivingCount < 2}>
+                  {actionLoading ? 'Pairing…' : currentRoundNumber > 0 ? 'Start Next Round' : 'Start Round'}
+                </PrimaryBtn>
+                <p className="text-faint text-xs text-center">
+                  {survivingCount < 2
+                    ? 'Waiting for players to join before you can start.'
+                    : 'Pairs everyone up and sends them to their match rooms.'}
+                </p>
+              </div>
+            </>
+          )}
+
+          {stagedMatches.length > 0 && (
+            <div className="space-y-1.5">
+              <PrimaryBtn onClick={handleStartMatches} disabled={actionLoading}>
+                {actionLoading
+                  ? 'Starting…'
+                  : `Start ${stagedMatches.length} Match${stagedMatches.length === 1 ? '' : 'es'}`}
+              </PrimaryBtn>
+              <p className="text-faint text-xs text-center">
+                Starts every match at once. Players must be in their rooms first.
+              </p>
+            </div>
+          )}
+
+          <button onClick={handleEndTournament} disabled={actionLoading} className="btn-danger-soft">
+            End Tournament
+          </button>
+        </div>
+      )}
+
       {/* Join Form */}
       {!joined && !isHost && !isFinished && hasStarted && !spectating && (
         <div className="glass-card-strong p-5 text-center space-y-2">
@@ -871,87 +924,103 @@ export default function TournamentLobbyPage() {
         </div>
       )}
 
-      {/* Host how-to */}
+      {/* Host how-to — collapsed by default so it doesn't crowd the controls. */}
       {isHost && !isFinished && (
-        <div className="glass-card p-5 space-y-2.5">
-          <p className="label-caps">How to run this tournament</p>
-          {h2h ? (
-            <ul className="space-y-2 text-sm text-muted">
-              <li className="flex gap-2.5">
-                <span aria-hidden>📣</span>
-                <span>
-                  Share the invite link so players join. The roster{' '}
-                  <span className="text-body font-semibold">locks</span> when you start the first round, so wait until
-                  everyone&apos;s in.
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>▶️</span>
-                <span>
-                  Pick a time control and tap <span className="text-body font-semibold">Start Round</span> — everyone is
-                  paired 1-v-1 and sent to their own match room.
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>⏱️</span>
-                <span>
-                  Once players are in their rooms, tap <span className="text-body font-semibold">Start Matches</span> to
-                  begin every game at once. You host from here — you don&apos;t play.
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>🔁</span>
-                <span>
-                  When every match finishes, tap <span className="text-body font-semibold">Start Next Round</span> to
-                  advance the winners. A drawn game replays automatically until it&apos;s decisive.
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>🏆</span>
-                <span>The last player standing wins — or tap End Tournament anytime.</span>
-              </li>
-            </ul>
-          ) : (
-            <ul className="space-y-2 text-sm text-muted">
-              <li className="flex gap-2.5">
-                <span aria-hidden>📣</span>
-                <span>
-                  Share the invite link so players join. The roster{' '}
-                  <span className="text-body font-semibold">locks</span> when you start the first game, so wait until
-                  everyone&apos;s in.
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>▶️</span>
-                <span>
-                  Tap <span className="text-body font-semibold">Start Tournament</span> to create a game, then open the
-                  host dashboard (new tab) and start it there.
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>🎮</span>
-                <span>
-                  Players are pulled into each game automatically. You host from the dashboard — you don&apos;t play.
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>🔁</span>
-                <span>
-                  When a game ends, return to this tab —{' '}
-                  <span className="text-body font-semibold">Start Next Game</span> appears here. Repeat until
-                  you&apos;re done.
-                </span>
-              </li>
-              <li className="flex gap-2.5">
-                <span aria-hidden>🏁</span>
-                <span>
-                  It ends after your target games{lives ? ', or when one player is left in lives mode' : ''} — or tap
-                  End Tournament anytime.
-                </span>
-              </li>
-            </ul>
-          )}
-        </div>
+        <details className="glass-card group p-5">
+          <summary className="label-caps flex cursor-pointer select-none items-center justify-between [&::-webkit-details-marker]:hidden">
+            How to run this tournament
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="h-4 w-4 text-faint transition-transform group-open:rotate-180"
+            >
+              <path
+                fillRule="evenodd"
+                d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </summary>
+          <div className="mt-3 space-y-2.5">
+            {h2h ? (
+              <ul className="space-y-2 text-sm text-muted">
+                <li className="flex gap-2.5">
+                  <span aria-hidden>📣</span>
+                  <span>
+                    Share the invite link so players join. The roster{' '}
+                    <span className="text-body font-semibold">locks</span> when you start the first round, so wait until
+                    everyone&apos;s in.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>▶️</span>
+                  <span>
+                    Pick a time control and tap <span className="text-body font-semibold">Start Round</span> — everyone
+                    is paired 1-v-1 and sent to their own match room.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>⏱️</span>
+                  <span>
+                    Once players are in their rooms, tap <span className="text-body font-semibold">Start Matches</span>{' '}
+                    to begin every game at once. You host from here — you don&apos;t play.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>🔁</span>
+                  <span>
+                    When every match finishes, tap <span className="text-body font-semibold">Start Next Round</span> to
+                    advance the winners. A drawn game replays automatically until it&apos;s decisive.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>🏆</span>
+                  <span>The last player standing wins — or tap End Tournament anytime.</span>
+                </li>
+              </ul>
+            ) : (
+              <ul className="space-y-2 text-sm text-muted">
+                <li className="flex gap-2.5">
+                  <span aria-hidden>📣</span>
+                  <span>
+                    Share the invite link so players join. The roster{' '}
+                    <span className="text-body font-semibold">locks</span> when you start the first game, so wait until
+                    everyone&apos;s in.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>▶️</span>
+                  <span>
+                    Tap <span className="text-body font-semibold">Start Tournament</span> to create a game, then open
+                    the host dashboard (new tab) and start it there.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>🎮</span>
+                  <span>
+                    Players are pulled into each game automatically. You host from the dashboard — you don&apos;t play.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>🔁</span>
+                  <span>
+                    When a game ends, return to this tab —{' '}
+                    <span className="text-body font-semibold">Start Next Game</span> appears here. Repeat until
+                    you&apos;re done.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>🏁</span>
+                  <span>
+                    It ends after your target games{lives ? ', or when one player is left in lives mode' : ''} — or tap
+                    End Tournament anytime.
+                  </span>
+                </li>
+              </ul>
+            )}
+          </div>
+        </details>
       )}
 
       {/* How it works */}
@@ -1145,58 +1214,6 @@ export default function TournamentLobbyPage() {
               })}
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Host Controls — head-to-head bracket */}
-      {isHost && !isFinished && tournament.format === 'head-to-head' && (
-        <div className="glass-card-strong p-5 space-y-4">
-          <p className="label-caps">Bracket controls</p>
-
-          {!roundInProgress && (
-            <>
-              <Field label="Time per player" htmlFor="h2h-timer">
-                <select
-                  id="h2h-timer"
-                  value={h2hTimer}
-                  onChange={(e) => setH2hTimer(e.target.value)}
-                  className="input-field"
-                >
-                  <option value="0">Untimed</option>
-                  <option value="180">3 min</option>
-                  <option value="300">5 min</option>
-                  <option value="600">10 min</option>
-                </select>
-              </Field>
-              <div className="space-y-1.5">
-                <PrimaryBtn onClick={handleStartRound} disabled={actionLoading || survivingCount < 2}>
-                  {actionLoading ? 'Pairing…' : currentRoundNumber > 0 ? 'Start Next Round' : 'Start Round'}
-                </PrimaryBtn>
-                <p className="text-faint text-xs text-center">
-                  {survivingCount < 2
-                    ? 'Waiting for players to join before you can start.'
-                    : 'Pairs everyone up and sends them to their match rooms.'}
-                </p>
-              </div>
-            </>
-          )}
-
-          {stagedMatches.length > 0 && (
-            <div className="space-y-1.5">
-              <PrimaryBtn onClick={handleStartMatches} disabled={actionLoading}>
-                {actionLoading
-                  ? 'Starting…'
-                  : `Start ${stagedMatches.length} Match${stagedMatches.length === 1 ? '' : 'es'}`}
-              </PrimaryBtn>
-              <p className="text-faint text-xs text-center">
-                Starts every match at once. Players must be in their rooms first.
-              </p>
-            </div>
-          )}
-
-          <button onClick={handleEndTournament} disabled={actionLoading} className="btn-danger-soft">
-            End Tournament
-          </button>
         </div>
       )}
 
