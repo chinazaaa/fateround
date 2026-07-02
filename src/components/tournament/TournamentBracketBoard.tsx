@@ -56,14 +56,18 @@ export function TournamentBracketBoard({
         {matches.map((m) => {
           const isBye = m.is_bye
           if (!isBye) gameNo++
-          const aWon = m.winner_player_id != null && m.winner_player_id === m.player_a_id
-          const bWon = m.winner_player_id != null && m.winner_player_id === m.player_b_id
+          // Group room (Whot/Scrabble) vs 1v1 duel (chess): a room lists all its
+          // seated members; a duel is the classic A-vs-B pair.
+          const memberIds = m.member_ids?.length
+            ? m.member_ids
+            : [m.player_a_id, m.player_b_id].filter((id): id is string => Boolean(id))
+          const isRoom = (m.member_ids?.length ?? 0) > 2
           const canWatch = !isBye && Boolean(m.game_id) && (m.status === 'active' || m.status === 'finished')
 
           return (
             <div key={m.id} className="surface-inset p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-faint">{isBye ? 'Bye' : `Game ${gameNo}`}</span>
+                <span className="text-xs text-faint">{isBye ? 'Bye' : `${isRoom ? 'Room' : 'Game'} ${gameNo}`}</span>
                 {isBye ? (
                   <span className="chip text-[0.6875rem]">Advances</span>
                 ) : m.status === 'active' ? (
@@ -94,21 +98,24 @@ export function TournamentBracketBoard({
                 <p className="text-sm font-medium text-body">{nameOf(m.player_a_id)}</p>
               ) : (
                 <div className="space-y-0.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className={`text-sm ${aWon ? 'font-bold text-body' : 'text-body'}`}>
-                      {aWon && <span aria-hidden="true">✓ </span>}
-                      {nameOf(m.player_a_id)}
-                    </p>
-                    {m.status !== 'finished' && <RemoveBtn id={m.player_a_id} />}
-                  </div>
-                  <p className="text-[0.625rem] text-faint uppercase tracking-wide">vs</p>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className={`text-sm ${bWon ? 'font-bold text-body' : 'text-body'}`}>
-                      {bWon && <span aria-hidden="true">✓ </span>}
-                      {nameOf(m.player_b_id)}
-                    </p>
-                    {m.status !== 'finished' && <RemoveBtn id={m.player_b_id} />}
-                  </div>
+                  {memberIds.map((pid, i) => {
+                    const won = m.winner_player_id != null && m.winner_player_id === pid
+                    return (
+                      <div key={pid}>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-sm ${won ? 'font-bold text-body' : 'text-body'}`}>
+                            {won && <span aria-hidden="true">✓ </span>}
+                            {nameOf(pid)}
+                          </p>
+                          {m.status !== 'finished' && <RemoveBtn id={pid} />}
+                        </div>
+                        {/* Only a duel gets the "vs" divider; a room is just a list. */}
+                        {memberIds.length === 2 && i === 0 && (
+                          <p className="text-[0.625rem] text-faint uppercase tracking-wide">vs</p>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 

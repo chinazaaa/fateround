@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageShell, Field, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
-import { H2H_ELIGIBLE_TYPES, KNOCKOUT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
+import { H2H_ELIGIBLE_TYPES, h2hGroupSize, KNOCKOUT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
 import { gameTypeLabel } from '@/lib/game-types'
 
 type Format = 'round-robin' | 'head-to-head' | 'knockout'
@@ -201,7 +201,7 @@ export default function TournamentCreatePage() {
           </div>
           <p className="text-faint text-xs mt-2">
             {isH2H
-              ? 'Players are matched 1-v-1 and advance through rounds until one champion remains. Best for 2-player games like Chess.'
+              ? 'Players are grouped into rooms each round and only the winner of each room advances, until one champion remains. Chess is 1-v-1; Whot and Scrabble play in rooms of 4.'
               : isKnockout
                 ? 'Everyone plays together each round; the bottom half is knocked out until one champion remains. Round of 16 → Quarterfinal → Semifinal → Final.'
                 : 'Everyone plays each game together and earns placement points across multiple games.'}
@@ -223,7 +223,11 @@ export default function TournamentCreatePage() {
               ))}
             </select>
             <p className="text-faint text-xs mt-1.5">
-              {isH2H ? 'The 2-player game every match is played with.' : 'The game everyone plays together each round.'}
+              {isH2H
+                ? h2hGroupSize(gameType) > 2
+                  ? `Played in rooms of ${h2hGroupSize(gameType)} — only each room's winner advances.`
+                  : 'A 1-v-1 duel each round — the winner advances.'
+                : 'The game everyone plays together each round.'}
             </p>
           </Field>
         )}

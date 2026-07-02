@@ -111,6 +111,19 @@ export function splitKnockoutField(rankedIds: string[]): { advancing: string[]; 
   return { advancing: rankedIds.slice(0, advanceCount), eliminated: rankedIds.slice(advanceCount) }
 }
 
+/**
+ * Round label for a *group* bracket, named by how many rooms the entrants form:
+ * one room is the Final, two rooms the Semifinals, otherwise "Round of N". (Chess
+ * keeps the power-of-two `roundLabel`; this suits Whot/Scrabble's 16 → 4 → 1.)
+ */
+export function groupRoundLabel(entrants: number, groupSize: number): string {
+  if (entrants <= 1) return 'Champion'
+  const rooms = Math.ceil(entrants / Math.max(2, groupSize))
+  if (rooms === 1) return 'Final'
+  if (rooms === 2) return 'Semifinals'
+  return `Round of ${entrants}`
+}
+
 /** Human label for a round given how many players enter it. */
 export function roundLabel(entrants: number): string {
   if (entrants <= 1) return 'Champion'
