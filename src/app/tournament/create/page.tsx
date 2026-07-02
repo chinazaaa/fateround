@@ -55,6 +55,7 @@ function Stepper({
 export default function TournamentCreatePage() {
   const router = useRouter()
   const [title, setTitle] = useState('')
+  const [format, setFormat] = useState<'round-robin' | 'head-to-head'>('round-robin')
   const [targetGameCount, setTargetGameCount] = useState<string>('')
   const [maxPlayers, setMaxPlayers] = useState<string>('')
   const [livesEnabled, setLivesEnabled] = useState(false)
@@ -62,6 +63,8 @@ export default function TournamentCreatePage() {
   const [eliminateCount, setEliminateCount] = useState(1)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+
+  const isH2H = format === 'head-to-head'
 
   async function handleCreate() {
     if (!title.trim()) {
@@ -75,22 +78,27 @@ export default function TournamentCreatePage() {
     try {
       const body: Record<string, unknown> = {
         title: title.trim(),
-        placementPoints: DEFAULT_POINTS,
-      }
-      const count = Number(targetGameCount)
-      if (Number.isInteger(count) && count >= 1 && count <= 100) {
-        body.targetGameCount = count
+        format,
       }
       const cap = Number(maxPlayers)
       if (Number.isInteger(cap) && cap >= 2 && cap <= 100) {
         body.maxPlayers = cap
       }
-      if (livesEnabled) {
-        body.eliminationConfig = {
-          mode: 'lives',
-          startingLives,
-          livesLostRule: 'bottom-n',
-          eliminateCount,
+      // Placement points, target game count and lives mode only apply to the
+      // round-robin format. Head-to-head runs a bracket until one champion.
+      if (!isH2H) {
+        body.placementPoints = DEFAULT_POINTS
+        const count = Number(targetGameCount)
+        if (Number.isInteger(count) && count >= 1 && count <= 100) {
+          body.targetGameCount = count
+        }
+        if (livesEnabled) {
+          body.eliminationConfig = {
+            mode: 'lives',
+            startingLives,
+            livesLostRule: 'bottom-n',
+            eliminateCount,
+          }
         }
       }
 
@@ -136,20 +144,51 @@ export default function TournamentCreatePage() {
           />
         </Field>
 
-        <Field label="Target Games (optional)" htmlFor="tournament-target-games">
-          <input
-            id="tournament-target-games"
-            type="number"
-            value={targetGameCount}
-            onChange={(e) => setTargetGameCount(e.target.value)}
-            placeholder="Leave empty for unlimited"
-            min={1}
-            max={100}
-            step={1}
-            className="input-field"
-          />
-          <p className="text-faint text-xs mt-1.5">Tournament ends after this many games, or you can end it manually</p>
-        </Field>
+        <div>
+          <p className="label-caps mb-2.5">Format</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              aria-pressed={!isH2H}
+              onClick={() => setFormat('round-robin')}
+              className={`chip flex-1 ${!isH2H ? 'chip-active' : ''}`}
+            >
+              Round Robin
+            </button>
+            <button
+              type="button"
+              aria-pressed={isH2H}
+              onClick={() => setFormat('head-to-head')}
+              className={`chip flex-1 ${isH2H ? 'chip-active' : ''}`}
+            >
+              Head-to-Head
+            </button>
+          </div>
+          <p className="text-faint text-xs mt-2">
+            {isH2H
+              ? 'Players are matched 1-v-1 and advance through rounds until one champion remains. Best for 2-player games like Chess.'
+              : 'Everyone plays each game together and earns placement points across multiple games.'}
+          </p>
+        </div>
+
+        {!isH2H && (
+          <Field label="Target Games (optional)" htmlFor="tournament-target-games">
+            <input
+              id="tournament-target-games"
+              type="number"
+              value={targetGameCount}
+              onChange={(e) => setTargetGameCount(e.target.value)}
+              placeholder="Leave empty for unlimited"
+              min={1}
+              max={100}
+              step={1}
+              className="input-field"
+            />
+            <p className="text-faint text-xs mt-1.5">
+              Tournament ends after this many games, or you can end it manually
+            </p>
+          </Field>
+        )}
 
         <Field label="Max Players (optional)" htmlFor="tournament-max-players">
           <input
@@ -166,71 +205,78 @@ export default function TournamentCreatePage() {
           <p className="text-faint text-xs mt-1.5">Once full, new players can&apos;t join</p>
         </Field>
 
-        <div className="space-y-3">
-          <Toggle
-            label="Lives mode"
-            description="Bottom finishers lose a life each game — last player standing wins"
-            value={livesEnabled}
-            onChange={setLivesEnabled}
-          />
+        {!isH2H && (
+          <div className="space-y-3">
+            <Toggle
+              label="Lives mode"
+              description="Bottom finishers lose a life each game — last player standing wins"
+              value={livesEnabled}
+              onChange={setLivesEnabled}
+            />
 
-          {livesEnabled && (
-            <div className="surface-inset p-4 space-y-3 animate-stagger">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-body text-sm font-medium">Starting lives</p>
-                  <p className="text-faint text-xs mt-0.5">How many each player begins with</p>
+            {livesEnabled && (
+              <div className="surface-inset p-4 space-y-3 animate-stagger">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-body text-sm font-medium">Starting lives</p>
+                    <p className="text-faint text-xs mt-0.5">How many each player begins with</p>
+                  </div>
+                  <Stepper value={startingLives} min={1} max={10} onChange={setStartingLives} />
                 </div>
-                <Stepper value={startingLives} min={1} max={10} onChange={setStartingLives} />
+                <div className="divider-soft" />
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-body text-sm font-medium">Players who lose a life each game</p>
+                    <p className="text-faint text-xs mt-0.5">
+                      {eliminateCount === 1
+                        ? 'The bottom finisher loses 1 life'
+                        : `The bottom ${eliminateCount} finishers each lose 1 life`}
+                    </p>
+                  </div>
+                  <Stepper value={eliminateCount} min={1} max={10} onChange={setEliminateCount} />
+                </div>
               </div>
-              <div className="divider-soft" />
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-body text-sm font-medium">Players who lose a life each game</p>
-                  <p className="text-faint text-xs mt-0.5">
-                    {eliminateCount === 1
-                      ? 'The bottom finisher loses 1 life'
-                      : `The bottom ${eliminateCount} finishers each lose 1 life`}
-                  </p>
-                </div>
-                <Stepper value={eliminateCount} min={1} max={10} onChange={setEliminateCount} />
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div>
-          <p className="label-caps mb-2.5">Placement Points</p>
-          <div className="grid grid-cols-3 gap-2">
-            {DEFAULT_POINTS.map((pts, i) => {
-              const medal = PLACEMENT_STYLES[i]
-              return (
-                <div
-                  key={i}
-                  className="rounded-xl border border-theme px-3 py-2.5 text-center"
-                  style={
-                    medal
-                      ? { background: medal.bg, boxShadow: `inset 0 0 0 1px ${medal.ring}` }
-                      : { background: 'var(--surface-inset-bg)' }
-                  }
-                >
-                  <p className="text-[0.6875rem] font-semibold" style={{ color: medal ? medal.text : 'var(--muted)' }}>
-                    {medal ? `${medal.medal} ` : ''}
-                    {ordinal(i + 1)}
-                  </p>
-                  <p
-                    className="text-lg font-black tabular-nums leading-tight"
-                    style={{ color: medal ? medal.text : 'var(--foreground)' }}
-                  >
-                    {pts}
-                    <span className="text-[0.625rem] font-semibold align-top ml-0.5">pt</span>
-                  </p>
-                </div>
-              )
-            })}
+            )}
           </div>
-          <p className="text-faint text-xs mt-2 text-center">7th place and below earn 1pt each</p>
-        </div>
+        )}
+
+        {!isH2H && (
+          <div>
+            <p className="label-caps mb-2.5">Placement Points</p>
+            <div className="grid grid-cols-3 gap-2">
+              {DEFAULT_POINTS.map((pts, i) => {
+                const medal = PLACEMENT_STYLES[i]
+                return (
+                  <div
+                    key={i}
+                    className="rounded-xl border border-theme px-3 py-2.5 text-center"
+                    style={
+                      medal
+                        ? { background: medal.bg, boxShadow: `inset 0 0 0 1px ${medal.ring}` }
+                        : { background: 'var(--surface-inset-bg)' }
+                    }
+                  >
+                    <p
+                      className="text-[0.6875rem] font-semibold"
+                      style={{ color: medal ? medal.text : 'var(--muted)' }}
+                    >
+                      {medal ? `${medal.medal} ` : ''}
+                      {ordinal(i + 1)}
+                    </p>
+                    <p
+                      className="text-lg font-black tabular-nums leading-tight"
+                      style={{ color: medal ? medal.text : 'var(--foreground)' }}
+                    >
+                      {pts}
+                      <span className="text-[0.625rem] font-semibold align-top ml-0.5">pt</span>
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-faint text-xs mt-2 text-center">7th place and below earn 1pt each</p>
+          </div>
+        )}
       </div>
 
       {error && <p className="text-red-400 text-sm text-center">{error}</p>}

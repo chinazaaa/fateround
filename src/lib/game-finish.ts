@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { awardRoomGamePoints } from '@/lib/room-points'
+import { resolveHeadToHeadMatch } from '@/lib/tournament-h2h'
 
 export async function markGameFinished(
   supabase: SupabaseClient,
@@ -23,6 +24,16 @@ export async function markGameFinished(
       await awardRoomGamePoints(supabase, gameId)
     } catch {
       // Room stats are best-effort — never block game finish.
+    }
+    try {
+      // Advance a head-to-head bracket match (record winner / rematch a draw).
+      // No-op for every other game. Never block game finish, but — unlike room
+      // points — this is core tournament state, so surface a failure rather than
+      // swallow it: a stuck match needs attention (host can re-trigger by ending
+      // the game again, and resolution is idempotent).
+      await resolveHeadToHeadMatch(supabase, gameId)
+    } catch (err) {
+      console.error(`resolveHeadToHeadMatch failed for game ${gameId}`, err)
     }
   }
 

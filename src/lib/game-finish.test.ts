@@ -3,6 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const award = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/room-points', () => ({ awardRoomGamePoints: award }))
 
+// The head-to-head resolver has its own concerns and DB access; stub it so these
+// tests isolate markGameFinished's own transition/award behavior.
+const resolveH2H = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/tournament-h2h', () => ({ resolveHeadToHeadMatch: resolveH2H }))
+
 import { markGameFinished } from './game-finish'
 
 // Minimal Supabase stand-in: the games update builder is chainable and awaitable,
@@ -25,7 +30,10 @@ function makeSupabase(rows: unknown[] | null, error: unknown = null) {
   return { supabase: { from: () => b } as never, calls }
 }
 
-beforeEach(() => award.mockReset())
+beforeEach(() => {
+  award.mockReset()
+  resolveH2H.mockReset()
+})
 
 describe('markGameFinished', () => {
   it('guards the active→finished transition and awards points for the winner', async () => {
