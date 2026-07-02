@@ -417,7 +417,9 @@ export default function TournamentLobbyPage() {
       if (!res.ok) setError(data.error ?? 'Failed to start matches')
       else {
         if (data.waiting > 0) {
-          setError(`${data.started} started, ${data.waiting} still waiting for both players — try again once they join.`)
+          setError(
+            `${data.started} started, ${data.waiting} still waiting for both players — try again once they join.`
+          )
         }
         fetchState()
       }
@@ -1056,7 +1058,9 @@ export default function TournamentLobbyPage() {
           {stagedMatches.length > 0 && (
             <div className="space-y-1.5">
               <PrimaryBtn onClick={handleStartMatches} disabled={actionLoading}>
-                {actionLoading ? 'Starting…' : `Start ${stagedMatches.length} Match${stagedMatches.length === 1 ? '' : 'es'}`}
+                {actionLoading
+                  ? 'Starting…'
+                  : `Start ${stagedMatches.length} Match${stagedMatches.length === 1 ? '' : 'es'}`}
               </PrimaryBtn>
               <p className="text-faint text-xs text-center">
                 Starts every match at once. Players must be in their rooms first.

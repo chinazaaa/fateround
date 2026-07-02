@@ -73,12 +73,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .update({ status: 'active', session_started_at: sessionStartedAt, current_round_number: 1, rounds_count: 1 })
       .eq('id', gameId)
     if (gameError) {
-      return NextResponse.json({ error: internalErrorMessage('tournaments/code/rounds/start', gameError) }, { status: 500 })
+      return NextResponse.json(
+        { error: internalErrorMessage('tournaments/code/rounds/start', gameError) },
+        { status: 500 }
+      )
     }
 
     const { error: tgError } = await admin.from('tournament_games').update({ status: 'active' }).eq('id', match.id)
     if (tgError) {
-      return NextResponse.json({ error: internalErrorMessage('tournaments/code/rounds/start', tgError) }, { status: 500 })
+      return NextResponse.json(
+        { error: internalErrorMessage('tournaments/code/rounds/start', tgError) },
+        { status: 500 }
+      )
     }
 
     started++
