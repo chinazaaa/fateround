@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { assertHostGameSettings, assertHostLateJoinSettings } from '@/lib/game-admin'
 import { questionPoolCap } from '@/lib/custom-questions'
 import { parseTimerSeconds, updateGameSchema } from '@/lib/validation'
@@ -31,7 +31,7 @@ import { gameSupportsViewerSetting, lateJoinPolicyToFields, gameAllowsLatePlayer
 import { clampPanRounds } from '@/lib/pick-a-number'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+const supabase = getSupabaseAnon()
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params

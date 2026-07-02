@@ -1,7 +1,7 @@
 import type { EliminationConfig } from '@/types/elimination'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { generateRoundsByGender, generateNRounds } from '@/lib/utils'
 import { hasVotersForPolls, parseParticipantGenderFromDb, maxRecommendedRounds } from '@/lib/participants'
 import {
@@ -98,7 +98,7 @@ import { buildWordHuntMetadata } from '@/lib/word-hunt-dictionary'
 import { appearanceCountsForParticipants, mergeUsageMaps, parsePoolUsage, poolUsageToMap } from '@/lib/pool-usage'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+const supabase = getSupabaseAnon()
 
 import type { ParticipantForRounds } from '@/lib/utils'
 

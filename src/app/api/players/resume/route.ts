@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { z } from 'zod'
 import { normalizeResumeToken } from '@/lib/utils'
 import { playerIsViewer } from '@/lib/viewers'
@@ -7,7 +7,7 @@ import type { Game } from '@/types'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+const supabase = getSupabaseAnon()
 
 const resumeSchema = z.object({
   gameCode: z.string().min(4),
