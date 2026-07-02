@@ -1,8 +1,9 @@
 'use client'
 
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Chess, type Square } from 'chess.js'
 import { chessResultDetail, colorForPlayer, currentTurnPlayerId } from '@/lib/chess'
+import { type Premove, premoveNeedsPromotion, premoveTargets } from '@/lib/chess-premove'
 import type { ChessColor, Player, ChessSession } from '@/types'
 import { ChessCard, ChessTurnBar } from '@/components/chess/ChessChrome'
 import { ChessAppearancePicker } from '@/components/chess/ChessAppearancePicker'
@@ -186,7 +187,11 @@ export function ChessGamePanel({
   acting?: boolean
 }) {
   const [selected, setSelected] = useState<string | null>(null)
-  const [pendingPromotion, setPendingPromotion] = useState<{ from: string; to: string } | null>(null)
+  const [pendingPromotion, setPendingPromotion] = useState<{ from: string; to: string; isPremove?: boolean } | null>(
+    null
+  )
+  // A move queued while waiting for the opponent; auto-played the moment it's our turn.
+  const [premove, setPremove] = useState<Premove | null>(null)
   const { boardTheme, pieceSet } = useChessAppearance(appearanceDefaults)
 
   // Cue when it becomes the local player's turn. Only fires for the seated player
@@ -197,6 +202,9 @@ export function ChessGamePanel({
   const flip = myColor === 'b'
   const finished = session.status === 'finished'
   const interactive = !!onMove && isMyTurn && !finished && !acting && !!myColor
+  // Off-turn interactivity: queue a premove. Deliberately not gated on `acting`,
+  // so a player can line up their next move while their last one is still posting.
+  const canPremove = !!onMove && !isMyTurn && !finished && !!myColor
 
   const chess = useMemo(() => {
     const c = new Chess()
@@ -209,18 +217,66 @@ export function ChessGamePanel({
   }, [session.fen])
 
   const legalTargets = useMemo(() => {
-    if (!selected || !interactive) return new Map<string, { promotion: boolean }>()
     const map = new Map<string, { promotion: boolean }>()
-    try {
-      for (const m of chess.moves({ square: selected as Square, verbose: true })) {
-        const prev = map.get(m.to)
-        map.set(m.to, { promotion: (prev?.promotion ?? false) || m.flags.includes('p') })
+    if (!selected) return map
+    if (interactive) {
+      try {
+        for (const m of chess.moves({ square: selected as Square, verbose: true })) {
+          const prev = map.get(m.to)
+          map.set(m.to, { promotion: (prev?.promotion ?? false) || m.flags.includes('p') })
+        }
+      } catch {
+        // invalid square — ignore
       }
-    } catch {
-      // invalid square — ignore
+    } else if (canPremove && myColor) {
+      const piece = chess.get(selected as Square)
+      if (piece && piece.color === myColor) {
+        for (const to of premoveTargets(selected, piece.type, myColor)) {
+          // Keep taps on our own pieces meaning "reselect", not "premove onto it".
+          if (chess.get(to as Square)?.color === myColor) continue
+          map.set(to, { promotion: premoveNeedsPromotion(to, piece.type, myColor) })
+        }
+      }
     }
     return map
-  }, [chess, selected, interactive])
+  }, [chess, selected, interactive, canPremove, myColor])
+
+  // Fire the queued premove as soon as it's our turn. Re-validate against the
+  // position the opponent left us — if the queued move is no longer legal
+  // (piece captured, king now in check, path blocked) it's silently dropped.
+  const firedPremove = useRef<Premove | null>(null)
+  // The session's updated_at when the premove was queued. A newer row means a genuine
+  // turn advance (the opponent actually moved); an equal one means nothing real happened.
+  const premoveAt = useRef<string | null>(null)
+  useEffect(() => {
+    if (!premove) return
+    if (finished || !myColor) {
+      setPremove(null)
+      return
+    }
+    if (!isMyTurn || !onMove || acting) return
+    // If our own move failed and the parent rolled the board back, isMyTurn flips true
+    // again without a new row — same updated_at as when we queued. Drop the premove
+    // rather than auto-firing it into the reverted position; only a strictly newer row
+    // (the opponent's real move) should trigger it. Optimistic previews keep updated_at.
+    if (premoveAt.current && Date.parse(session.updated_at) <= Date.parse(premoveAt.current)) {
+      setPremove(null)
+      return
+    }
+    if (firedPremove.current === premove) return // guard double-run before state settles
+    firedPremove.current = premove
+    const legal = (() => {
+      try {
+        return chess
+          .moves({ square: premove.from as Square, verbose: true })
+          .some((m) => m.to === premove.to && (m.promotion ?? undefined) === premove.promotion)
+      } catch {
+        return false
+      }
+    })()
+    setPremove(null)
+    if (legal) onMove(premove.from, premove.to, premove.promotion)
+  }, [premove, isMyTurn, finished, acting, chess, onMove, myColor, session.updated_at])
 
   const checkSquare = useMemo(() => {
     if (!chess.inCheck()) return null
@@ -255,17 +311,31 @@ export function ChessGamePanel({
   const timed = session.white_time_ms != null && session.black_time_ms != null
 
   const handleSquareClick = (square: string) => {
-    if (!interactive) return
+    if (!interactive && !canPremove) return
     const piece = chess.get(square as Square)
+
+    // Any tap while a premove is queued cancels it; the tap then falls through,
+    // so tapping one of your pieces starts lining up a fresh one.
+    if (premove) setPremove(null)
 
     if (selected) {
       const target = legalTargets.get(square)
       if (target) {
-        if (target.promotion) {
-          setPendingPromotion({ from: selected, to: square })
+        if (interactive) {
+          if (target.promotion) {
+            setPendingPromotion({ from: selected, to: square })
+          } else {
+            onMove?.(selected, square)
+            setSelected(null)
+          }
         } else {
-          onMove?.(selected, square)
-          setSelected(null)
+          if (target.promotion) {
+            setPendingPromotion({ from: selected, to: square, isPremove: true })
+          } else {
+            premoveAt.current = session.updated_at
+            setPremove({ from: selected, to: square })
+            setSelected(null)
+          }
         }
         return
       }
@@ -281,7 +351,12 @@ export function ChessGamePanel({
 
   const confirmPromotion = (piece: 'q' | 'r' | 'b' | 'n') => {
     if (!pendingPromotion) return
-    onMove?.(pendingPromotion.from, pendingPromotion.to, piece)
+    if (pendingPromotion.isPremove) {
+      premoveAt.current = session.updated_at
+      setPremove({ from: pendingPromotion.from, to: pendingPromotion.to, promotion: piece })
+    } else {
+      onMove?.(pendingPromotion.from, pendingPromotion.to, piece)
+    }
     setPendingPromotion(null)
     setSelected(null)
   }
@@ -330,6 +405,7 @@ export function ChessGamePanel({
               const isSelected = selected === square
               const isLastMove = session.last_move_from === square || session.last_move_to === square
               const isCheck = checkSquare === square
+              const isPremove = premove?.from === square || premove?.to === square
               // Coordinates hug the board's edges (chess.com style): ranks down the
               // left column, files along the bottom row. Each label is tinted with
               // the opposite square colour so it reads against its own square.
@@ -342,7 +418,7 @@ export function ChessGamePanel({
                   key={square}
                   type="button"
                   onClick={() => handleSquareClick(square)}
-                  disabled={!interactive}
+                  disabled={!interactive && !canPremove}
                   aria-label={
                     piece
                       ? `${square}, ${piece.color === 'w' ? 'white' : 'black'} ${PIECE_NAMES[piece.type as ChessPieceType]}`
@@ -351,11 +427,12 @@ export function ChessGamePanel({
                   style={{ backgroundColor: isLight ? boardTheme.light : boardTheme.dark }}
                   className={[
                     'relative aspect-square flex items-center justify-center',
-                    interactive ? 'cursor-pointer' : 'cursor-default',
+                    interactive || canPremove ? 'cursor-pointer' : 'cursor-default',
                   ].join(' ')}
                 >
                   {isLastMove && <span className="absolute inset-0 z-0 bg-yellow-300/40" />}
                   {isCheck && <span className="absolute inset-0 z-0 bg-rose-500/50" />}
+                  {isPremove && <span className="absolute inset-0 z-0 bg-sky-500/45" />}
                   {showRank && (
                     <span
                       className="pointer-events-none absolute top-0.5 left-0.5 z-20 text-[9px] sm:text-[11px] font-bold leading-none select-none"
@@ -414,7 +491,13 @@ export function ChessGamePanel({
         <div className="space-y-2">
           <p className="text-center text-faint text-xs">
             You are <span className="font-bold">{myColor === 'w' ? '♔ White' : '♚ Black'}</span>
-            {isMyTurn ? ' · tap a piece, then its destination' : ' · waiting for your opponent'}
+            {isMyTurn
+              ? ' · tap a piece, then its destination'
+              : premove
+                ? ` · premove ${premove.from}→${premove.to} queued — tap the board to cancel`
+                : canPremove
+                  ? ' · waiting for your opponent — tap a piece to queue a premove'
+                  : ' · waiting for your opponent'}
           </p>
           {onResign && (
             <div className="flex justify-center">

@@ -3,7 +3,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 
 const cap = vi.hoisted(() => ({
-  ons: [] as Array<{ event: string; config: { table: string; filter: string; event: string }; cb: () => void }>,
+  ons: [] as Array<{
+    event: string
+    config: { table: string; filter: string; event: string }
+    cb: (payload?: unknown) => void
+  }>,
   subscribed: false,
   removed: false,
   channelName: '',
@@ -11,7 +15,7 @@ const cap = vi.hoisted(() => ({
 
 vi.mock('@/lib/supabase', () => {
   const channel = {
-    on(event: string, config: { table: string; filter: string; event: string }, cb: () => void) {
+    on(event: string, config: { table: string; filter: string; event: string }, cb: (payload?: unknown) => void) {
       cap.ons.push({ event, config, cb })
       return channel
     },
@@ -69,6 +73,44 @@ describe('useGameTableSync', () => {
     expect(reload).not.toHaveBeenCalled() // debounced
     await vi.advanceTimersByTimeAsync(150) // fire timer + flush the reload microtask
     expect(reload).toHaveBeenCalledTimes(1) // coalesced
+  })
+
+  it('applies pushed rows synchronously for tables that opt in, then still reloads', async () => {
+    const reload = vi.fn()
+    const apply = vi.fn()
+    renderHook(() => useGameTableSync('ABCD', [{ table: 'chess_sessions', apply }], reload))
+
+    const row = { id: 's1', fen: 'position' }
+    cap.ons[0].cb({ eventType: 'UPDATE', new: row })
+    expect(apply).toHaveBeenCalledExactlyOnceWith(row) // immediate, no debounce
+    expect(reload).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(150)
+    expect(reload).toHaveBeenCalledTimes(1) // reconciliation still runs
+  })
+
+  it('skips apply for DELETEs and payloads without a row, but always reloads', async () => {
+    const reload = vi.fn()
+    const apply = vi.fn()
+    renderHook(() => useGameTableSync('ABCD', [{ table: 'chess_sessions', apply }], reload))
+
+    cap.ons[0].cb({ eventType: 'DELETE', new: {} })
+    cap.ons[0].cb() // payload-less callers (and unknown shapes) must stay safe
+    expect(apply).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(150)
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('survives a throwing apply — the reload still fires', async () => {
+    const reload = vi.fn()
+    const apply = vi.fn(() => {
+      throw new Error('bad row')
+    })
+    renderHook(() => useGameTableSync('ABCD', [{ table: 'chess_sessions', apply }], reload))
+
+    cap.ons[0].cb({ eventType: 'UPDATE', new: { id: 's1' } })
+    expect(apply).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(150)
+    expect(reload).toHaveBeenCalledTimes(1)
   })
 
   it('does not subscribe when disabled or missing gameCode', () => {

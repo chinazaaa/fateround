@@ -5,6 +5,9 @@ import { useEffect, useRef } from 'react'
 /** Polling intervals — Realtime is primary; these are slow fallbacks only. */
 export const POLL_INTERVALS = {
   realtimeFallback: 15_000,
+  /** Head-to-head games mid-match: a dropped realtime channel reads as raw move lag,
+   *  and with only two clients per game the tighter poll is cheap. */
+  duelFallback: 4_000,
   lobby: 8_000,
   activeGame: 10_000,
   results: 10_000,
