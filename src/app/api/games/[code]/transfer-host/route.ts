@@ -29,22 +29,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (playerId) {
     // The nominee must be a real, non-spectator player in this game.
-    const { data: player } = await supabase
+    const { data: player, error: playerError } = await supabase
       .from('players')
       .select('id, spectator')
       .eq('game_id', gameId)
       .eq('id', playerId)
       .maybeSingle()
+    // A lookup failure must not masquerade as "player not found" — surface it as a 500.
+    if (playerError) return NextResponse.json({ error: 'Failed to look up player' }, { status: 500 })
     if (!player) return NextResponse.json({ error: 'Player not found in this game' }, { status: 404 })
     if (player.spectator) {
       return NextResponse.json({ error: 'Cannot transfer host to a spectator' }, { status: 400 })
     }
   }
 
-  const { error } = await supabase
-    .from('games')
-    .update({ pending_host_player_id: playerId })
-    .eq('id', gameId)
+  const { error } = await supabase.from('games').update({ pending_host_player_id: playerId }).eq('id', gameId)
   if (error) return NextResponse.json({ error: 'Failed to update nomination' }, { status: 500 })
 
   return NextResponse.json({ ok: true, pendingHostPlayerId: playerId }, { status: 200 })

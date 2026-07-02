@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { supabasePollOk } from '@/hooks/usePolling'
 import { getPlayerSession } from '@/lib/utils'
 
 /**
@@ -29,8 +30,11 @@ export function HostNominationBanner() {
       setNominated(false)
       return
     }
-    const { data } = await supabase.from('games').select('pending_host_player_id').eq('id', code).maybeSingle()
-    const pending = (data?.pending_host_player_id as string | null) ?? null
+    const res = await supabase.from('games').select('pending_host_player_id').eq('id', code).maybeSingle()
+    // On a transient query error, keep the current state rather than hiding the banner from
+    // the real nominee — the next poll recovers.
+    if (!supabasePollOk(res)) return
+    const pending = (res.data?.pending_host_player_id as string | null) ?? null
     const isMe = !!pending && pending === session.playerId
     setNominated(isMe)
     if (!isMe) setDismissed(false) // reset so a fresh future invite shows again
@@ -106,7 +110,12 @@ export function HostNominationBanner() {
         </div>
         {error ? <p className="text-sm text-red-500">{error}</p> : null}
         <div className="flex gap-2">
-          <button type="button" onClick={accept} disabled={busy} className="btn-primary flex-1 px-4 py-2.5 disabled:opacity-60">
+          <button
+            type="button"
+            onClick={accept}
+            disabled={busy}
+            className="btn-primary flex-1 px-4 py-2.5 disabled:opacity-60"
+          >
             {busy ? 'Accepting…' : 'Accept & host'}
           </button>
           <button

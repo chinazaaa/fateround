@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { supabasePollOk } from '@/hooks/usePolling'
 import { rememberNominee, readNominee } from '@/lib/host-transfer'
 
 type PlayerRow = { id: string; name: string; spectator: boolean | null }
@@ -32,8 +33,11 @@ export function TransferHostControl() {
 
   const refreshPending = useCallback(async () => {
     if (!code) return
-    const { data } = await supabase.from('games').select('pending_host_player_id').eq('id', code).maybeSingle()
-    const next = (data?.pending_host_player_id as string | null) ?? null
+    const res = await supabase.from('games').select('pending_host_player_id').eq('id', code).maybeSingle()
+    // On a transient query error, keep the current state rather than clearing the pending
+    // badge (which would also misfire the decline detection below). The next poll recovers.
+    if (!supabasePollOk(res)) return
+    const next = (res.data?.pending_host_player_id as string | null) ?? null
     const prev = prevPendingRef.current
     prevPendingRef.current = next
     setPendingId(next)
@@ -166,10 +170,7 @@ export function TransferHostControl() {
           style={{ background: 'rgba(0,0,0,0.55)' }}
           onClick={() => setOpen(false)}
         >
-          <div
-            className="glass-card w-full max-w-sm rounded-2xl p-5 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="glass-card w-full max-w-sm rounded-2xl p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-black text-body">Transfer host</h2>
               <button
@@ -185,9 +186,8 @@ export function TransferHostControl() {
             {pendingId ? (
               <div className="space-y-3">
                 <p className="text-sm text-muted">
-                  Waiting for{' '}
-                  <span className="font-bold text-body">{pendingPlayer?.name ?? 'the player'}</span> to accept. They&apos;ll
-                  see an invite on their screen. You stay host until they accept.
+                  Waiting for <span className="font-bold text-body">{pendingPlayer?.name ?? 'the player'}</span> to
+                  accept. They&apos;ll see an invite on their screen. You stay host until they accept.
                 </p>
                 <button
                   type="button"

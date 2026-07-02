@@ -33,7 +33,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // Atomic swap: only succeeds while this player is still the pending nominee. If a second
   // claim races in, or the host cancelled the nomination, no row matches and we 409.
-  const { data: updated } = await supabase
+  const { data: updated, error: updateError } = await supabase
     .from('games')
     .update({ host_token: newHostToken, pending_host_player_id: null })
     .eq('id', gameId)
@@ -41,6 +41,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     .select('id')
     .maybeSingle()
 
+  // A real DB error must not be reported as a stale claim — reserve the 409 for the no-row case.
+  if (updateError) {
+    return NextResponse.json({ error: 'Failed to claim host transfer' }, { status: 500 })
+  }
   if (!updated) {
     return NextResponse.json({ error: 'No pending host transfer for you' }, { status: 409 })
   }

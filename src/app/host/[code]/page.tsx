@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { LOAD_TIMEOUT_MS, supabasePollOk } from '@/hooks/usePolling'
@@ -32,6 +32,18 @@ export default function HostPage() {
   // nominee's name (remembered locally at nominate time), or null if we can't name them.
   const [transferred, setTransferred] = useState<{ to: string | null } | null>(null)
 
+  // Decide whether an invalid host token is an actual hand-off vs an unrelated invalidation.
+  // A remembered nominee is only *intent*; the proof is that the nomination has since cleared
+  // (the nominee's claim clears pending_host_player_id and rotates the token). If the invite
+  // is still outstanding, this wasn't a transfer — so we fall through to "access denied".
+  const confirmHandoff = useCallback(async (): Promise<{ to: string | null } | null> => {
+    const nominee = readNominee(gameCode)
+    if (nominee === null) return null
+    const { data } = await supabase.from('games').select('pending_host_player_id').eq('id', gameCode).maybeSingle()
+    if (data && !data.pending_host_player_id) return { to: nominee || null }
+    return null
+  }, [gameCode])
+
   useEffect(() => {
     let cancelled = false
 
@@ -52,10 +64,11 @@ export default function HostPage() {
             const verifyData = (await verifyRes.json().catch(() => ({ ok: false }))) as { ok?: boolean }
             if (!verifyData.ok) {
               if (cancelled) return
-              // If we had an outstanding nomination for this game, a now-invalid token means
-              // the nominee accepted — show a graceful hand-off screen instead of "denied".
-              const nominee = readNominee(gameCode)
-              if (nominee !== null) setTransferred({ to: nominee || null })
+              // Invalid token: show the graceful hand-off screen only if the nomination has
+              // actually cleared (nominee claimed); otherwise it's a plain access denial.
+              const handoff = await confirmHandoff()
+              if (cancelled) return
+              if (handoff) setTransferred(handoff)
               else setAuthError(true)
               return
             }
@@ -81,10 +94,11 @@ export default function HostPage() {
     return () => {
       cancelled = true
     }
-  }, [gameCode, hostToken])
+  }, [gameCode, hostToken, confirmHandoff])
 
   // Once authorized, re-check the token periodically. If it stops working while the host is
-  // watching, the nominee has accepted — swap to the graceful hand-off screen in place.
+  // watching AND the nomination has cleared, the nominee accepted — swap to the hand-off
+  // screen in place. An unrelated token invalidation leaves the host view untouched.
   useEffect(() => {
     if (!game || transferred || authError) return
     let stop = false
@@ -97,7 +111,9 @@ export default function HostPage() {
         })
         if (!res.ok) return
         const data = (await res.json().catch(() => ({}))) as { ok?: boolean }
-        if (!stop && data.ok === false) setTransferred({ to: readNominee(gameCode) || null })
+        if (stop || data.ok !== false) return
+        const handoff = await confirmHandoff()
+        if (!stop && handoff) setTransferred(handoff)
       } catch {
         // Network blips are ignored — only an explicit ok:false demotes the screen.
       }
@@ -107,7 +123,7 @@ export default function HostPage() {
       stop = true
       clearInterval(t)
     }
-  }, [game, transferred, authError, gameCode, hostToken])
+  }, [game, transferred, authError, gameCode, hostToken, confirmHandoff])
 
   // Once we've shown the hand-off screen, consume the remembered nominee so a later visit
   // with a genuinely bad token doesn't wrongly read as a transfer.
