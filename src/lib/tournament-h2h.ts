@@ -37,13 +37,22 @@ export async function resolveHeadToHeadMatch(supabase: SupabaseClient, gameId: s
   // Draw → auto-rematch in the same room; the pairing replays until decisive.
   if (session.is_draw || !session.winner_player_id) {
     if (session.is_draw && session.player_white_id && session.player_black_id) {
-      await initializeChessGame(supabase, gameId, [session.player_white_id, session.player_black_id])
-      await supabase.from('games').update({ status: 'active', finished_at: null }).eq('id', gameId)
+      const { error: rematchError } = await initializeChessGame(supabase, gameId, [
+        session.player_white_id,
+        session.player_black_id,
+      ])
+      // Only reopen the room once the fresh session is in place; otherwise the
+      // game would read "active" while its session is still the finished draw.
+      if (!rematchError) {
+        await supabase.from('games').update({ status: 'active', finished_at: null }).eq('id', gameId)
+      }
     }
     return
   }
 
   // Map the winning chess player (a players.id) to its tournament player by name.
+  // tournament_players enforces unique (tournament_id, player_name), so a name is
+  // unambiguous across a match's two rostered players.
   const { data: winnerRow } = await supabase
     .from('players')
     .select('name')
@@ -60,11 +69,16 @@ export async function resolveHeadToHeadMatch(supabase: SupabaseClient, gameId: s
   // rather than eliminate the wrong person.
   if (!winnerTP) return
 
-  await supabase
+  // Record the result, winning the active→finished race. Only the request that
+  // actually flips the row goes on to eliminate the loser and check for a
+  // champion, so a lost CAS (or failed update) can't half-resolve the match.
+  const { data: claimed, error: claimError } = await supabase
     .from('tournament_games')
     .update({ status: 'finished', winner_player_id: winnerTP.id })
     .eq('id', match.id)
     .neq('status', 'finished')
+    .select('id')
+  if (claimError || !claimed?.length) return
 
   if (loserTP) {
     await supabase

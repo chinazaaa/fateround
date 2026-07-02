@@ -27,10 +27,13 @@ export async function markGameFinished(
     }
     try {
       // Advance a head-to-head bracket match (record winner / rematch a draw).
-      // No-op for every other game. Best-effort — never block game finish.
+      // No-op for every other game. Never block game finish, but — unlike room
+      // points — this is core tournament state, so surface a failure rather than
+      // swallow it: a stuck match needs attention (host can re-trigger by ending
+      // the game again, and resolution is idempotent).
       await resolveHeadToHeadMatch(supabase, gameId)
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error(`resolveHeadToHeadMatch failed for game ${gameId}`, err)
     }
   }
 

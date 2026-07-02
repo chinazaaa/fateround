@@ -35,7 +35,8 @@ export interface TournamentPlayer {
 export interface TournamentGame {
   id: string
   tournament_id: string
-  game_id: string
+  // Null for a bye row, which advances a player without a game room.
+  game_id: string | null
   game_order: number
   status: 'pending' | 'active' | 'finished'
   placements: Record<string, number> | null

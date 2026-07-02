@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { data: pendingRows } = await admin
     .from('tournament_games')
-    .select('id, game_id, round_number, is_bye')
+    .select('id, game_id, round_number, is_bye, player_a_id, player_b_id')
     .eq('tournament_id', tournamentId)
     .eq('status', 'pending')
   if (!pendingRows?.length) return NextResponse.json({ error: 'No staged matches to start' }, { status: 400 })
@@ -45,18 +45,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const roundNumber = Math.max(...pendingRows.map((r) => r.round_number ?? 0))
   const roundMatches = pendingRows.filter((r) => r.round_number === roundNumber && !r.is_bye && r.game_id)
 
+  // The two players each match is supposed to be between. tournament_players
+  // enforces unique names per tournament, so a display name pins a bracket slot
+  // exactly — we use it to bind room seats to the intended pairing.
+  const rosterIds = [
+    ...new Set(roundMatches.flatMap((m) => [m.player_a_id, m.player_b_id]).filter((id): id is string => Boolean(id))),
+  ]
+  const { data: rosterRows } = await admin.from('tournament_players').select('id, player_name').in('id', rosterIds)
+  const nameById = new Map((rosterRows ?? []).map((p) => [p.id, p.player_name.toLowerCase()]))
+
   const sessionStartedAt = new Date().toISOString()
   let started = 0
   let waiting = 0
 
   for (const match of roundMatches) {
     const gameId = match.game_id as string
-    const { data: gamePlayers } = await admin.from('players').select('id, spectator').eq('game_id', gameId)
+    const expectedNames = new Set(
+      [nameById.get(match.player_a_id ?? ''), nameById.get(match.player_b_id ?? '')].filter(Boolean)
+    )
+    const { data: gamePlayers } = await admin.from('players').select('id, name, spectator').eq('game_id', gameId)
     const seated = (gamePlayers ?? []).filter((p) => p.spectator !== true)
-
-    // Chess needs exactly two seated players. If both haven't joined yet, leave
-    // the match staged so the host can start it on a retry.
-    if (seated.length !== 2) {
+    // Seat only the two paired players — never let a stray joiner or the wrong
+    // player decide someone else's bracket slot. If both paired players aren't
+    // seated yet, leave the match staged so the host can start it on a retry.
+    const pairedSeats = seated.filter((p) => expectedNames.has(p.name.toLowerCase()))
+    if (expectedNames.size !== 2 || pairedSeats.length !== 2) {
       waiting++
       continue
     }
@@ -64,7 +77,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const { error: initError } = await initializeChessGame(
       admin,
       gameId,
-      seated.map((p) => p.id)
+      pairedSeats.map((p) => p.id)
     )
     if (initError) return NextResponse.json({ error: initError }, { status: 500 })
 

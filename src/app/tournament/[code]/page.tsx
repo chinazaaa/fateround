@@ -519,7 +519,20 @@ export default function TournamentLobbyPage() {
   )
   const survivingCount = players.filter((p) => !p.is_eliminated).length
   // In a finished head-to-head bracket the lone survivor is the champion.
-  const h2hChampion = h2h && isFinished ? (players.find((p) => !p.is_eliminated) ?? null) : null
+  // Only crown a champion when exactly one player is left — a host can End
+  // Tournament early with several still standing, and that has no winner.
+  const h2hChampion = h2h && isFinished && survivingCount === 1 ? (players.find((p) => !p.is_eliminated) ?? null) : null
+  // The current player's live/staged match this round (for a "return to match" CTA).
+  const myCurrentMatch =
+    h2h && me && !me.is_eliminated
+      ? (currentRoundMatches.find(
+          (g) =>
+            !g.is_bye &&
+            g.game_id &&
+            (g.player_a_id === me.id || g.player_b_id === me.id) &&
+            (g.status === 'pending' || g.status === 'active')
+        ) ?? null)
+      : null
 
   return (
     <PageShell>
@@ -688,6 +701,15 @@ export default function TournamentLobbyPage() {
 
       {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
+      {/* Return the current player to their own match as a player (the bracket
+          board's Watch buttons only spectate). Covers coming back to the lobby
+          mid-match, where the one-shot auto-forward won't re-fire. */}
+      {myCurrentMatch?.game_id && (
+        <button onClick={() => handleJoinGame(myCurrentMatch.game_id!)} className="btn-primary w-full">
+          ▶ Return to your match
+        </button>
+      )}
+
       {/* Head-to-head bracket board — the spectator view of the current round.
           Watch a match, then use its "Back to Tournament" button to switch. */}
       {h2h && currentRoundMatches.length > 0 && (
@@ -710,7 +732,7 @@ export default function TournamentLobbyPage() {
           </p>
           {activeGame && (
             <button
-              onClick={() => handleWatchGame(activeGame.game_id)}
+              onClick={() => handleWatchGame(activeGame.game_id!)}
               className="btn-secondary btn-fit mx-auto text-sm"
             >
               👁 Watch live
@@ -730,7 +752,7 @@ export default function TournamentLobbyPage() {
           </p>
           {activeGame && (
             <button
-              onClick={() => handleWatchGame(activeGame.game_id)}
+              onClick={() => handleWatchGame(activeGame.game_id!)}
               className="btn-secondary btn-fit mx-auto text-sm"
             >
               👁 Watch live
@@ -897,46 +919,76 @@ export default function TournamentLobbyPage() {
       {!isFinished && !isHost && (
         <div className="glass-card p-5 space-y-2.5">
           <p className="label-caps">How this tournament works</p>
-          <ul className="space-y-2 text-sm text-muted">
-            <li className="flex gap-2.5">
-              <span aria-hidden>🎮</span>
-              <span>The host runs a series of games. Everyone plays each one from their own device.</span>
-            </li>
-            <li className="flex gap-2.5">
-              <span aria-hidden>🏅</span>
-              <span>
-                You earn points by how you place each game —{' '}
-                <span className="text-body font-semibold">
-                  1st {points[0]}pts, 2nd {points[1] ?? points[points.length - 1]}pts
-                </span>
-                , and so on.
-              </span>
-            </li>
-            {lives && (
+          {h2h ? (
+            <ul className="space-y-2 text-sm text-muted">
               <li className="flex gap-2.5">
-                <span aria-hidden>❤️</span>
+                <span aria-hidden>⚔️</span>
+                <span>Each round the host pairs everyone 1-v-1. You play your match on your own device.</span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>♟️</span>
                 <span>
-                  Lives mode: start with <span className="text-body font-semibold">{lives.startingLives}</span>. The
-                  bottom <span className="text-body font-semibold">{lives.eliminateCount}</span> each game lose one —
-                  run out and you&apos;re eliminated.
+                  <span className="text-body font-semibold">Win to advance, lose and you&apos;re out.</span> A draw
+                  replays automatically until someone wins.
                 </span>
               </li>
-            )}
-            <li className="flex gap-2.5">
-              <span aria-hidden>🚀</span>
-              <span>
-                When the host starts a game, tap <span className="text-body font-semibold">Join Game</span> to jump in.
-              </span>
-            </li>
-            <li className="flex gap-2.5">
-              <span aria-hidden>👑</span>
-              <span>
-                Most points{' '}
-                {tournament.target_game_count ? `after ${tournament.target_game_count} games` : 'when the host ends it'}{' '}
-                wins.
-              </span>
-            </li>
-          </ul>
+              <li className="flex gap-2.5">
+                <span aria-hidden>🚀</span>
+                <span>
+                  When the host starts the round, you&apos;re taken straight to your match room — an odd one out gets a{' '}
+                  <span className="text-body font-semibold">bye</span> to the next round.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>👑</span>
+                <span>Keep winning your matches to become champion.</span>
+              </li>
+            </ul>
+          ) : (
+            <ul className="space-y-2 text-sm text-muted">
+              <li className="flex gap-2.5">
+                <span aria-hidden>🎮</span>
+                <span>The host runs a series of games. Everyone plays each one from their own device.</span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>🏅</span>
+                <span>
+                  You earn points by how you place each game —{' '}
+                  <span className="text-body font-semibold">
+                    1st {points[0]}pts, 2nd {points[1] ?? points[points.length - 1]}pts
+                  </span>
+                  , and so on.
+                </span>
+              </li>
+              {lives && (
+                <li className="flex gap-2.5">
+                  <span aria-hidden>❤️</span>
+                  <span>
+                    Lives mode: start with <span className="text-body font-semibold">{lives.startingLives}</span>. The
+                    bottom <span className="text-body font-semibold">{lives.eliminateCount}</span> each game lose one —
+                    run out and you&apos;re eliminated.
+                  </span>
+                </li>
+              )}
+              <li className="flex gap-2.5">
+                <span aria-hidden>🚀</span>
+                <span>
+                  When the host starts a game, tap <span className="text-body font-semibold">Join Game</span> to jump
+                  in.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>👑</span>
+                <span>
+                  Most points{' '}
+                  {tournament.target_game_count
+                    ? `after ${tournament.target_game_count} games`
+                    : 'when the host ends it'}{' '}
+                  wins.
+                </span>
+              </li>
+            </ul>
+          )}
         </div>
       )}
 
@@ -969,19 +1021,19 @@ export default function TournamentLobbyPage() {
                   </span>
                 </p>
               )}
-              <PrimaryBtn onClick={() => handleJoinGame(activeGame.game_id)}>Join Game</PrimaryBtn>
+              <PrimaryBtn onClick={() => handleJoinGame(activeGame.game_id!)}>Join Game</PrimaryBtn>
             </>
           )}
           {/* Eliminated players and opted-in spectators watch instead of playing.
               This is also the re-entry path if a watcher navigated back to the
               lobby mid-game (the one-shot auto-forward won't fire again). */}
           {(iAmEliminated || (spectating && !joined && !isHost)) && (
-            <button onClick={() => handleWatchGame(activeGame.game_id)} className="btn-secondary w-full">
+            <button onClick={() => handleWatchGame(activeGame.game_id!)} className="btn-secondary w-full">
               👁 Watch live
             </button>
           )}
           {isHost && (
-            <button onClick={() => openHostDashboard(activeGame.game_id)} className="btn-secondary w-full">
+            <button onClick={() => openHostDashboard(activeGame.game_id!)} className="btn-secondary w-full">
               Open Host Dashboard
             </button>
           )}
