@@ -31,6 +31,7 @@ import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } fr
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { formatMinutesSeconds } from '@/lib/timer-format'
 import type { Game, Player } from '@/types'
+import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useToast } from '@/components/ui/Toast'
@@ -140,6 +141,10 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+
+  // Realtime-fallback poll: keeps the lobby roster fresh (and catches missed
+  // status transitions) when a players/games realtime event is dropped.
+  useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
   useEffect(() => {
     const ch = supabase
