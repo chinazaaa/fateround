@@ -1405,6 +1405,49 @@ export default function TournamentLobbyPage() {
         </div>
       )}
 
+      {/* Manage players — host can remove anyone (e.g. a no-show blocking a match).
+          The entry point for knockout / round-robin; head-to-head also has the ✕
+          on the board. */}
+      {isHost && !isFinished && players.length > 0 && (
+        <details className="glass-card group p-5">
+          <summary className="label-caps flex cursor-pointer select-none items-center justify-between [&::-webkit-details-marker]:hidden">
+            Manage players ({survivingCount})
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="h-4 w-4 text-faint transition-transform group-open:rotate-180"
+            >
+              <path
+                fillRule="evenodd"
+                d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </summary>
+          <div className="mt-3 space-y-1.5">
+            {players.map((p) => (
+              <div key={p.id} className="result-row flex items-center justify-between gap-3 px-4 py-2.5">
+                <span className={`text-sm ${p.is_eliminated ? 'text-faint line-through' : 'text-body'}`}>
+                  {p.player_name}
+                </span>
+                {p.is_eliminated ? (
+                  <span className="text-xs text-faint">out</span>
+                ) : (
+                  <button
+                    onClick={() => handleRemovePlayer(p.id)}
+                    disabled={actionLoading}
+                    className="rounded px-2 py-0.5 text-xs font-semibold text-red-500 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
       {/* Leaderboard — with "Share results" image export */}
       <TournamentShareLeaderboard tournament={tournament} players={players} />
 

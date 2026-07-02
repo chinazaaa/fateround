@@ -25,7 +25,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { data: tournament } = await admin
     .from('tournaments')
-    .select('host_token, format, status')
+    .select('host_token, format, status, elimination_config')
     .eq('id', tournamentId)
     .maybeSingle()
   if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
@@ -87,14 +87,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
-  // One player left standing → champion; end the tournament.
-  const { count } = await admin
-    .from('tournament_players')
-    .select('id', { count: 'exact', head: true })
-    .eq('tournament_id', tournamentId)
-    .eq('is_eliminated', false)
-  if (count != null && count <= 1) {
-    await admin.from('tournaments').update({ status: 'finished' }).eq('id', tournamentId)
+  // End on last-survivor only where elimination decides the winner — a bracket
+  // (head-to-head / knockout) or round-robin in lives mode. Plain round-robin ends
+  // by points/target, so removing players there must not finish it.
+  const eliminationDecides = tournament.format !== 'round-robin' || tournament.elimination_config != null
+  if (eliminationDecides) {
+    const { count } = await admin
+      .from('tournament_players')
+      .select('id', { count: 'exact', head: true })
+      .eq('tournament_id', tournamentId)
+      .eq('is_eliminated', false)
+    if (count != null && count <= 1) {
+      await admin.from('tournaments').update({ status: 'finished' }).eq('id', tournamentId)
+    }
   }
 
   return NextResponse.json({ ok: true })
