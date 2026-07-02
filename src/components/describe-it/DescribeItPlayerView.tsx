@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   DescribeItCard,
@@ -33,6 +33,7 @@ import type { DescribeItGuess, DescribeItPlayer, DescribeItSession, DescribeItWo
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
@@ -138,31 +139,19 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     load()
   }, [load])
 
-  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const scheduleLoad = useCallback(() => {
-    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
-    reloadTimerRef.current = setTimeout(() => void load(), 80)
-  }, [load])
-
-  useEffect(() => {
-    const channel = supabase.channel(`describe-it-player-${gameCode}`)
-    for (const table of [
-      'games',
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(
+    gameCode,
+    [
+      { table: 'games', column: 'id' },
       'players',
       'describe_it_sessions',
       'describe_it_players',
       'describe_it_words',
       'describe_it_guesses',
-    ]) {
-      const filter = table === 'games' ? `id=eq.${gameCode}` : `game_id=eq.${gameCode}`
-      channel.on('postgres_changes', { event: '*', schema: 'public', table, filter }, scheduleLoad)
-    }
-    channel.subscribe()
-    return () => {
-      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
-      supabase.removeChannel(channel)
-    }
-  }, [gameCode, scheduleLoad])
+    ],
+    load
+  )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
