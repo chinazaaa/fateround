@@ -8,6 +8,7 @@ import { SoundToggle } from '@/components/SoundToggle'
 // Hidden for now — "Buy us a coffee" (support) and Feedback buttons.
 // import { FeedbackButton } from '@/components/FeedbackButton'
 // import { SupportButton } from '@/components/SupportButton'
+import { NetworkIndicator } from '@/components/NetworkIndicator'
 import { ToastProvider } from '@/components/ui/Toast'
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
 import { QueryProvider } from '@/components/QueryProvider'
@@ -47,6 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <ConfirmProvider>
               <QueryProvider>
                 <AppBackground />
+                <NetworkIndicator />
                 <ThemeToggle />
                 <SoundToggle />
                 {/* Hidden for now:
