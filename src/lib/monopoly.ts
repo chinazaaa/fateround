@@ -1700,26 +1700,18 @@ export async function processMonopolyPayRent(
     .maybeSingle()
   if (!state || !ownerState) return { error: 'Player not found' }
 
-  if (state.cash < rent) {
-    return enterRaiseFundsPhase(
-      supabase,
-      gameId,
-      board,
-      {
-        player_id: playerId,
-        creditor_player_id: ownerId,
-        amount: rent,
-        reason: `Owe ${formatMonopolyMoney(rent)} rent on ${space.name}`,
-        debt_type: 'rent',
-        space_index: spaceIndex,
-      },
-      board.updated_at,
-      { pending_space: spaceIndex }
-    )
+  const rentDebt: MonopolyPendingDebt = {
+    player_id: playerId,
+    creditor_player_id: ownerId,
+    amount: rent,
+    reason: `Owe ${formatMonopolyMoney(rent)} rent on ${space.name}`,
+    debt_type: 'rent',
+    space_index: spaceIndex,
   }
 
-  const payerCash = state.cash - rent
-  const ownerCash = ownerState.cash + rent
+  if (state.cash < rent) {
+    return enterRaiseFundsPhase(supabase, gameId, board, rentDebt, board.updated_at, { pending_space: spaceIndex })
+  }
 
   const { data: statesRaw } = await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)
   const turnFinish = finishTurnAfterSpaceAction(board, (statesRaw ?? []) as MonopolyPlayerState[], playerId)
@@ -1733,35 +1725,37 @@ export async function processMonopolyPayRent(
     space_name: space.name,
   }
 
-  // Claim the board FIRST so only one trigger moves the rent; the loser aborts
-  // before either cash write, preventing a double payment.
-  const won = await persistBoard(
-    supabase,
-    gameId,
-    {
-      phase: turnFinish.phase,
-      pending_space: null,
-      pending_debt: null,
-      current_turn_index: turnFinish.turnIndex,
-      consecutive_doubles: turnFinish.consecutiveDoubles,
-      status_message: `Rent paid on ${space.name}.`,
-      last_rent_event: lastRentEvent,
-      turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, turnFinish.phase),
-    },
-    board.updated_at
-  )
-  if (!won) return {}
-
-  await supabase
-    .from('monopoly_player_state')
-    .update({ cash: payerCash })
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-  await supabase
-    .from('monopoly_player_state')
-    .update({ cash: ownerCash })
-    .eq('game_id', gameId)
-    .eq('player_id', ownerId)
+  // Claim the board and move both cash balances in ONE transaction
+  // (monopoly_settle_payment). Claiming first and issuing the two cash writes
+  // afterwards left a window where the turn had already advanced but a write
+  // failed or was overwritten by a concurrent absolute cash write — rent
+  // silently went unpaid or never reached the owner.
+  // A false return means another trigger won the claim and settled the rent —
+  // nothing left to do either way.
+  const { error: rpcError } = await supabase.rpc('monopoly_settle_payment', {
+    p_game_id: gameId,
+    p_expected_updated_at: board.updated_at,
+    p_payer_id: playerId,
+    p_creditor_id: ownerId,
+    p_amount: rent,
+    p_phase: turnFinish.phase,
+    p_current_turn_index: turnFinish.turnIndex,
+    p_consecutive_doubles: turnFinish.consecutiveDoubles,
+    p_status_message: `Rent paid on ${space.name}.`,
+    p_last_rent_event: lastRentEvent,
+    p_turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, turnFinish.phase),
+    p_payer_leaves_jail: false,
+  })
+  if (rpcError) {
+    if (rpcError.message?.includes('INSUFFICIENT_FUNDS')) {
+      // Cash dropped between our read and the transfer (e.g. a concurrent
+      // trade) — the transaction rolled back, so fall into raise-funds.
+      return enterRaiseFundsPhase(supabase, gameId, board, rentDebt, board.updated_at, {
+        pending_space: spaceIndex,
+      })
+    }
+    return { error: 'Could not settle rent — please try again' }
+  }
 
   return {}
 }
@@ -2587,52 +2581,30 @@ export async function processMonopolySettleDebt(
   }
 
   const creditorId = debt.creditor_player_id
-  const payerCash = state.cash - amount
-
-  // Read the creditor up front so the cash credit can be deferred until after the
-  // board claim wins — otherwise two triggers could each credit the creditor.
-  let creditorState: MonopolyPlayerState | null = null
-  if (creditorId) {
-    const { data: creditorRaw } = await supabase
-      .from('monopoly_player_state')
-      .select('*')
-      .eq('game_id', gameId)
-      .eq('player_id', creditorId)
-      .maybeSingle()
-    creditorState = (creditorRaw as MonopolyPlayerState | null) ?? null
-  }
-
-  const creditCreditor = async (): Promise<void> => {
-    if (creditorId && creditorState) {
-      await supabase
-        .from('monopoly_player_state')
-        .update({ cash: creditorState.cash + amount })
-        .eq('game_id', gameId)
-        .eq('player_id', creditorId)
-    }
-  }
 
   if (debt.debt_type === 'jail') {
-    // Claim the board FIRST; only the winner moves any cash.
-    const won = await persistBoard(
-      supabase,
-      gameId,
-      {
-        phase: 'roll',
-        pending_debt: null,
-        pending_space: null,
-        status_message: `Paid ${formatMonopolyMoney(amount)} — roll to move!`,
-        turn_deadline_at: monopolyDeadlineForPhase(await getMonopolyTimerSeconds(supabase, gameId), 'roll'),
-      },
-      board.updated_at
-    )
-    if (!won) return {}
-    await creditCreditor()
-    await supabase
-      .from('monopoly_player_state')
-      .update({ cash: payerCash, in_jail: false, jail_turns: 0 })
-      .eq('game_id', gameId)
-      .eq('player_id', playerId)
+    // Claim the board and move the cash in ONE transaction (monopoly_settle_payment)
+    // so a lost write can never strand the payment after the phase advances.
+    const { error: rpcError } = await supabase.rpc('monopoly_settle_payment', {
+      p_game_id: gameId,
+      p_expected_updated_at: board.updated_at,
+      p_payer_id: playerId,
+      p_creditor_id: creditorId,
+      p_amount: amount,
+      p_phase: 'roll',
+      p_current_turn_index: board.current_turn_index,
+      p_consecutive_doubles: board.consecutive_doubles ?? 0,
+      p_status_message: `Paid ${formatMonopolyMoney(amount)} — roll to move!`,
+      p_last_rent_event: board.last_rent_event ?? null,
+      p_turn_deadline_at: monopolyDeadlineForPhase(await getMonopolyTimerSeconds(supabase, gameId), 'roll'),
+      p_payer_leaves_jail: true,
+    })
+    if (rpcError) {
+      if (rpcError.message?.includes('INSUFFICIENT_FUNDS')) {
+        return { error: 'Still not enough cash — mortgage or sell assets, or forfeit' }
+      }
+      return { error: 'Could not settle debt — please try again' }
+    }
     return {}
   }
 
@@ -2641,29 +2613,27 @@ export async function processMonopolySettleDebt(
   const turnFinish = finishTurnAfterSpaceAction(board, states, playerId)
   const timerSeconds = await getMonopolyTimerSeconds(supabase, gameId)
 
-  // Claim the board FIRST; only the winner moves any cash.
-  const won = await persistBoard(
-    supabase,
-    gameId,
-    {
-      phase: turnFinish.phase,
-      pending_debt: null,
-      pending_space: null,
-      current_turn_index: turnFinish.turnIndex,
-      consecutive_doubles: turnFinish.consecutiveDoubles,
-      status_message: `Paid ${formatMonopolyMoney(amount)}.`,
-      turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, turnFinish.phase),
-    },
-    board.updated_at
-  )
-  if (!won) return {}
-
-  await creditCreditor()
-  await supabase
-    .from('monopoly_player_state')
-    .update({ cash: payerCash })
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
+  // Claim the board and move the cash in ONE transaction; see above.
+  const { error: rpcError } = await supabase.rpc('monopoly_settle_payment', {
+    p_game_id: gameId,
+    p_expected_updated_at: board.updated_at,
+    p_payer_id: playerId,
+    p_creditor_id: creditorId,
+    p_amount: amount,
+    p_phase: turnFinish.phase,
+    p_current_turn_index: turnFinish.turnIndex,
+    p_consecutive_doubles: turnFinish.consecutiveDoubles,
+    p_status_message: `Paid ${formatMonopolyMoney(amount)}.`,
+    p_last_rent_event: board.last_rent_event ?? null,
+    p_turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, turnFinish.phase),
+    p_payer_leaves_jail: false,
+  })
+  if (rpcError) {
+    if (rpcError.message?.includes('INSUFFICIENT_FUNDS')) {
+      return { error: 'Still not enough cash — mortgage or sell assets, or forfeit' }
+    }
+    return { error: 'Could not settle debt — please try again' }
+  }
 
   return {}
 }
