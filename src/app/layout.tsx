@@ -31,16 +31,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       data-theme={theme}
       suppressHydrationWarning
     >
-      <Script src="https://www.googletagmanager.com/gtag/js?id=G-HPGR3FN0HX" strategy="afterInteractive" />
-      <Script id="google-analytics" strategy="afterInteractive">
-        {`
+      <body className="min-h-full flex flex-col" style={{ color: 'var(--foreground)' }}>
+        <Script src="https://www.googletagmanager.com/gtag/js?id=G-HPGR3FN0HX" strategy="afterInteractive" />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
           gtag('js', new Date());
           gtag('config', 'G-HPGR3FN0HX');
         `}
-      </Script>
-      <body className="min-h-full flex flex-col" style={{ color: 'var(--foreground)' }}>
+        </Script>
         <ThemeProvider initialTheme={theme}>
           <ToastProvider>
             <ConfirmProvider>

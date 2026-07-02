@@ -822,11 +822,18 @@ export default function TournamentLobbyPage() {
               ? 'Players are joining the room — the host starts the game shortly.'
               : 'Everyone is answering now. The bottom half will be knocked out.'}
           </p>
-          {knockoutRoundGame.game_id && knockoutRoundGame.status === 'active' && (
-            <button onClick={() => handleWatchGame(knockoutRoundGame.game_id!)} className="btn-secondary w-full">
-              👁 Watch live
-            </button>
-          )}
+          {knockoutRoundGame.game_id &&
+            (me && !me.is_eliminated ? (
+              // A surviving player who came back to the lobby rejoins as a player
+              // (the one-shot auto-forward won't re-fire), not as a watcher.
+              <button onClick={() => handleJoinGame(knockoutRoundGame.game_id!)} className="btn-primary w-full">
+                ▶ {knockoutRoundStaged ? 'Go to the game' : 'Return to the game'}
+              </button>
+            ) : knockoutRoundGame.status === 'active' ? (
+              <button onClick={() => handleWatchGame(knockoutRoundGame.game_id!)} className="btn-secondary w-full">
+                👁 Watch live
+              </button>
+            ) : null)}
         </div>
       )}
 

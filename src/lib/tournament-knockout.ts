@@ -21,6 +21,20 @@ export async function startKnockoutRoundGame(supabase: SupabaseClient, gameId: s
   // Idempotent: if it's already been started, there's nothing to do.
   if (game.status !== 'waiting') return {}
 
+  // If a prior attempt already built this game's rounds but failed to flip it
+  // active (leaving status 'waiting'), don't re-insert the rounds on retry — just
+  // activate. Otherwise a re-trigger would duplicate the round rows.
+  const { data: existingRounds } = await supabase.from('rounds').select('id').eq('game_id', gameId).limit(1)
+  if (existingRounds && existingRounds.length > 0) {
+    const { error } = await supabase
+      .from('games')
+      .update({ status: 'active', current_round_number: 1 })
+      .eq('id', gameId)
+      .eq('status', 'waiting')
+    if (error) return { error: internalErrorMessage('tournament-knockout', error) }
+    return {}
+  }
+
   const gameType = parseGameType(game.game_type)
   const questionSource = parseQuestionSource(game.question_source, gameType)
   const category = triviaCategoryFromGame(game)
