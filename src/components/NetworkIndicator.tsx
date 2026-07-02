@@ -35,8 +35,11 @@ export function NetworkIndicator() {
 
     const goOnline = () => {
       // Only flash "Back online" if we were actually offline, not on first load.
+      // Idempotent: a second `online` event mid-flash must not cut the "recovered"
+      // window short — leave 'recovered' (and its running timer) untouched, and
+      // 'online' as-is; only an offline→online transition starts the flash.
       setState((prev) => {
-        if (prev !== 'offline') return 'online'
+        if (prev !== 'offline') return prev
         clearRecovered()
         recoveredTimer.current = window.setTimeout(() => setState('online'), 2500)
         return 'recovered'
