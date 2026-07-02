@@ -241,7 +241,7 @@ export function HostBoardGameLobbyPanel({
             <div className="space-y-1.5">
               <Toggle
                 label="Pick 3"
-                description="Include 5 cards and the Pick 3 draw penalty"
+                description="Play the Pick 3 draw penalty on 5s (5 cards stay in the deck either way)"
                 value={whotPick3Enabled}
                 onChange={(v) => onWhotRuleChange({ whot_pick3_enabled: v })}
               />
