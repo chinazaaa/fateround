@@ -7,6 +7,7 @@ import { ThemeToggle } from '@/components/ThemeToggle'
 import { SoundToggle } from '@/components/SoundToggle'
 import { FeedbackButton } from '@/components/FeedbackButton'
 import { SupportButton } from '@/components/SupportButton'
+import { NetworkIndicator } from '@/components/NetworkIndicator'
 import { ToastProvider } from '@/components/ui/Toast'
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
 import { QueryProvider } from '@/components/QueryProvider'
@@ -46,6 +47,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <ConfirmProvider>
               <QueryProvider>
                 <AppBackground />
+                <NetworkIndicator />
                 <ThemeToggle />
                 <SoundToggle />
                 <SupportButton />
