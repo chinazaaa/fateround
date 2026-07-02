@@ -23,6 +23,12 @@ interface SudokuBoardProps {
   canSelectCell?: (row: number, col: number) => boolean
   /** Brief highlight on rows/cols/boxes the player just completed. */
   flashUnits?: SudokuUnitFlash[]
+  /** Correctly placed number to pulse across matching visible cells. */
+  correctPulseValue?: number | null
+  /** Incrementing id that restarts the correct placement pulse. */
+  correctPulseId?: number
+  /** Numbers whose nine instances are solved for this board/player. */
+  completedNumbers?: number[]
 }
 
 const BLOCK_BORDER = 'border-slate-400/70'
@@ -46,7 +52,11 @@ export function SudokuBoard({
   readOnly = false,
   canSelectCell,
   flashUnits = [],
+  correctPulseValue = null,
+  correctPulseId = 0,
+  completedNumbers = [],
 }: SudokuBoardProps) {
+  const completedSet = new Set(completedNumbers)
   return (
     <div className="w-full max-w-[min(400px,100%)] mx-auto space-y-4">
       {/* Grid */}
@@ -87,6 +97,8 @@ export function SudokuBoard({
 
             const isWrongDraft = draftWrongCells?.[row]?.[col]
             const isFlashing = isCellInFlashingUnits(row, col, flashUnits)
+            const isCorrectPulsing =
+              correctPulseValue != null && typeof displayValue === 'number' && displayValue === correctPulseValue
 
             const baseBg = displayColor ? { backgroundColor: `${displayColor}${iSolved ? '55' : '35'}` } : undefined
 
@@ -130,14 +142,24 @@ export function SudokuBoard({
                 style={{ aspectRatio: '1', ...bgStyle }}
               >
                 <span
+                  key={isCorrectPulsing ? `${row}-${col}-${correctPulseId}` : `${row}-${col}`}
                   className={[
-                    'text-lg sm:text-xl font-semibold tabular-nums',
+                    'inline-block text-lg sm:text-xl font-semibold tabular-nums',
+                    isCorrectPulsing ? 'font-extrabold' : '',
                     given ? 'text-slate-800 dark:text-slate-100' : '',
                     isWrongDraft ? 'text-red-500 dark:text-red-400' : '',
                     !isWrongDraft && hasValue ? 'text-slate-800 dark:text-slate-100' : '',
                     !isWrongDraft && !hasValue ? 'text-slate-700 dark:text-slate-200' : '',
                     solution && !given ? 'text-violet-600 dark:text-violet-400' : '',
                   ].join(' ')}
+                  style={
+                    isCorrectPulsing
+                      ? {
+                          animation: 'sudoku-correct-number-pulse 420ms ease-out both',
+                          animationDelay: `${(row * 9 + col) * 18}ms`,
+                        }
+                      : undefined
+                  }
                 >
                   {displayValue}
                 </span>
@@ -146,6 +168,14 @@ export function SudokuBoard({
           })
         )}
       </div>
+
+      <style>{`
+        @keyframes sudoku-correct-number-pulse {
+          0% { transform: scale(1); }
+          38% { transform: scale(1.2); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
 
       {/* Toolbar: progress, undo, erase */}
       {!readOnly && (
@@ -171,14 +201,22 @@ export function SudokuBoard({
         <div className="flex items-center justify-between gap-1 px-0.5">
           {Array.from({ length: 9 }, (_, i) => {
             const num = i + 1
+            const complete = completedSet.has(num)
             return (
               <button
                 key={num}
                 type="button"
                 onClick={() => onNumberPress(num)}
-                className="flex-1 py-3 text-xl font-semibold text-slate-700 dark:text-slate-200 bg-slate-100/80 dark:bg-slate-800/50 hover:bg-slate-200/90 dark:hover:bg-slate-700/60 rounded-md transition-colors active:scale-95 cursor-pointer"
+                className={[
+                  'flex-1 py-3 text-xl font-semibold rounded-md transition-colors active:scale-95 cursor-pointer',
+                  complete
+                    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-900/35 hover:bg-emerald-100 dark:hover:bg-emerald-900/45'
+                    : 'text-slate-700 dark:text-slate-200 bg-slate-100/80 dark:bg-slate-800/50 hover:bg-slate-200/90 dark:hover:bg-slate-700/60',
+                ].join(' ')}
+                aria-label={complete ? `${num} complete` : `${num}`}
+                title={complete ? `${num} complete` : undefined}
               >
-                {num}
+                {complete ? '✓' : num}
               </button>
             )
           })}
