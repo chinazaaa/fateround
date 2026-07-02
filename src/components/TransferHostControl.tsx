@@ -1,9 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { supabasePollOk } from '@/hooks/usePolling'
+import { getPlayerSession } from '@/lib/utils'
 import { rememberNominee, readNominee } from '@/lib/host-transfer'
 
 type PlayerRow = { id: string; name: string; spectator: boolean | null }
@@ -58,6 +60,7 @@ export function TransferHostControl() {
         if (stillHost) {
           setDeclinedNotice(`${readNominee(code) || 'The player'} declined the host invite`)
           rememberNominee(code, null)
+          setOpen(false) // close the "waiting for X" modal; the toast reports the decline
         }
       }
     }
@@ -85,7 +88,9 @@ export function TransferHostControl() {
       .select('id,name,spectator')
       .eq('game_id', code)
       .order('joined_at', { ascending: true })
-    setPlayers(((data as PlayerRow[]) ?? []).filter((p) => !p.spectator))
+    // Exclude spectators and the host's own player (host+play mode) — you can't transfer to yourself.
+    const selfId = getPlayerSession(code)?.playerId ?? null
+    setPlayers(((data as PlayerRow[]) ?? []).filter((p) => !p.spectator && p.id !== selfId))
   }, [code])
 
   const openPicker = () => {
@@ -139,95 +144,104 @@ export function TransferHostControl() {
         style={{ color: 'var(--muted)' }}
       >
         <HandoffIcon />
-        <span className="hidden sm:inline">Host</span>
+        <span className="hidden sm:inline">Transfer Host</span>
         {pendingId ? (
           <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[var(--primary)] animate-pulse" />
         ) : null}
       </button>
 
-      {declinedNotice ? (
-        <div className="fixed inset-x-0 top-16 z-[70] flex justify-center px-4 pointer-events-none">
-          <div
-            className="glass-card pointer-events-auto flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-body border border-[var(--border)]"
-            role="status"
-          >
-            <span>{declinedNotice}</span>
-            <button
-              type="button"
-              onClick={() => setDeclinedNotice(null)}
-              aria-label="Dismiss"
-              className="text-muted hover:text-body text-lg leading-none"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {open ? (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center px-4 pointer-events-auto"
-          style={{ background: 'rgba(0,0,0,0.55)' }}
-          onClick={() => setOpen(false)}
-        >
-          <div className="glass-card w-full max-w-sm rounded-2xl p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-black text-body">Transfer host</h2>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                aria-label="Close"
-                className="text-muted hover:text-body text-xl leading-none"
+      {declinedNotice && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="fixed inset-x-0 top-16 z-[70] flex justify-center px-4 pointer-events-none">
+              <div
+                className="glass-card pointer-events-auto flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-body border border-[var(--border)]"
+                role="status"
               >
-                ×
-              </button>
-            </div>
-
-            {pendingId ? (
-              <div className="space-y-3">
-                <p className="text-sm text-muted">
-                  Waiting for <span className="font-bold text-body">{pendingPlayer?.name ?? 'the player'}</span> to
-                  accept. They&apos;ll see an invite on their screen. You stay host until they accept.
-                </p>
+                <span>{declinedNotice}</span>
                 <button
                   type="button"
-                  disabled={busy}
-                  onClick={() => nominate(null)}
-                  className="btn-secondary w-full px-4 py-2.5 disabled:opacity-60"
+                  onClick={() => setDeclinedNotice(null)}
+                  aria-label="Dismiss"
+                  className="text-muted hover:text-body text-lg leading-none"
                 >
-                  Cancel invite
+                  ×
                 </button>
               </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-sm text-muted">
-                  Pick a player to become the new host. They must accept before control moves — you&apos;ll lose host
-                  access the moment they do.
-                </p>
-                <div className="max-h-64 overflow-y-auto space-y-1.5">
-                  {players.length === 0 ? (
-                    <p className="text-sm text-muted py-4 text-center">No players to transfer to yet.</p>
-                  ) : (
-                    players.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        disabled={busy}
-                        onClick={() => nominate(p.id)}
-                        className="w-full text-left rounded-xl px-4 py-3 font-medium text-body transition-colors hover:bg-[var(--primary)]/10 disabled:opacity-60 border border-[var(--border)]/60"
-                      >
-                        {p.name}
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
+            </div>,
+            document.body
+          )
+        : null}
 
-            {error ? <p className="text-sm text-red-500">{error}</p> : null}
-          </div>
-        </div>
-      ) : null}
+      {open && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[60] flex items-center justify-center px-4 pointer-events-auto"
+              style={{ background: 'rgba(0,0,0,0.55)' }}
+              onClick={() => setOpen(false)}
+            >
+              <div
+                className="glass-card w-full max-w-sm rounded-2xl p-5 space-y-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-black text-body">Transfer host</h2>
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    aria-label="Close"
+                    className="text-muted hover:text-body text-xl leading-none"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                {pendingId ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted">
+                      Waiting for <span className="font-bold text-body">{pendingPlayer?.name ?? 'the player'}</span> to
+                      accept. They&apos;ll see an invite on their screen. You stay host until they accept.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => nominate(null)}
+                      className="btn-secondary w-full px-4 py-2.5 disabled:opacity-60"
+                    >
+                      Cancel invite
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted">
+                      Pick a player to become the new host. They must accept before control moves — you&apos;ll lose
+                      host access the moment they do.
+                    </p>
+                    <div className="max-h-64 overflow-y-auto space-y-1.5">
+                      {players.length === 0 ? (
+                        <p className="text-sm text-muted py-4 text-center">No players to transfer to yet.</p>
+                      ) : (
+                        players.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            disabled={busy}
+                            onClick={() => nominate(p.id)}
+                            className="w-full text-left rounded-xl px-4 py-3 font-medium text-body transition-colors hover:bg-[var(--primary)]/10 disabled:opacity-60 border border-[var(--border)]/60"
+                          >
+                            {p.name}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {error ? <p className="text-sm text-red-500">{error}</p> : null}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </>
   )
 }
