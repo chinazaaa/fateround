@@ -71,9 +71,25 @@ export function useJoinFlow(deps: JoinFlowDeps) {
   const [voteBothGenders, setVoteBothGenders] = useState(false)
   const [joining, setJoining] = useState(false)
   const [editingJoin, setEditingJoin] = useState(false)
+  // Set once the name-based auto-join has been attempted (success or failure), so
+  // a stuck/failed auto-join falls back to showing the join form.
+  const [nameAutoJoinDone, setNameAutoJoinDone] = useState(false)
   const joinGenderTouchedRef = useRef(false)
 
   useRoomMemberNamePrefill(roomDisplayName, nameInput, setNameInput)
+
+  // `initialName` (from tournament links) is resolved client-side, so on the first
+  // render it can be empty while `nameInput` was seeded from that empty value. Sync
+  // it in once it's available so the name-based auto-join isn't blocked by an empty
+  // field — otherwise the player has to re-open the link for the join to fire.
+  const initialNameSyncedRef = useRef(false)
+  useEffect(() => {
+    if (initialNameSyncedRef.current) return
+    if (initialName?.trim() && !nameInput.trim() && !myPlayerId && !editingJoin) {
+      initialNameSyncedRef.current = true
+      setNameInput(initialName)
+    }
+  }, [initialName, nameInput, myPlayerId, editingJoin])
 
   const isJoinersMode = game?.participant_mode === 'joiners'
   const isVoterOnly = game ? isVoterOnlyMode(game) : false
@@ -366,7 +382,7 @@ export function useJoinFlow(deps: JoinFlowDeps) {
       return
     }
     nameAutoJoinRef.current = true
-    void joinGame(autoJoinAsViewer === true)
+    void joinGame(autoJoinAsViewer === true).finally(() => setNameAutoJoinDone(true))
   }, [
     initialName,
     autoJoinAsViewer,
@@ -380,7 +396,24 @@ export function useJoinFlow(deps: JoinFlowDeps) {
     nameInput,
   ])
 
+  // True while a tournament auto-join is expected but hasn't resolved — the caller
+  // shows a "joining…" state instead of the name form to avoid a flash of the join
+  // screen. Holds while the game is still loading, then (once loaded) only for a
+  // free-name game until the attempt finishes — so a non-free-name game or a failed
+  // join falls back to the form rather than hanging on the loader.
+  const wantsAutoJoin = Boolean(initialName?.trim()) && !editingJoin && !myPlayerId && !nameAutoJoinDone
+  const autoJoinPending = wantsAutoJoin && (!game || (useFreeNameJoin && !joinNeedsGender))
+
+  // Safety net: never strand the caller on the "joining…" loader if the auto-join
+  // can't complete (e.g. the name is taken) — reveal the normal UI after a beat.
+  useEffect(() => {
+    if (nameAutoJoinDone || !initialName?.trim()) return
+    const t = setTimeout(() => setNameAutoJoinDone(true), 5000)
+    return () => clearTimeout(t)
+  }, [nameAutoJoinDone, initialName])
+
   return {
+    autoJoinPending,
     nameInput,
     selectedParticipantId,
     joinIdentityGender,

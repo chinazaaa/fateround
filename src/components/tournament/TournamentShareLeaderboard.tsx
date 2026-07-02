@@ -11,12 +11,27 @@ import { useToast } from '@/components/ui/Toast'
 const MEDAL = ['🥇', '🥈', '🥉']
 const RANK_COLOR = ['var(--marry)', '#64748b', '#b45309']
 
+/**
+ * Head-to-head has no points — rank by how far each player got: the champion
+ * (not eliminated) first, then the most recently eliminated (they lost latest,
+ * so they placed higher). Round-robin keeps its incoming points order.
+ */
+function orderForStandings(players: TournamentPlayer[], h2h: boolean): TournamentPlayer[] {
+  if (!h2h) return players
+  return [...players].sort((a, b) => {
+    if (a.is_eliminated !== b.is_eliminated) return a.is_eliminated ? 1 : -1
+    const ta = a.eliminated_at ? Date.parse(a.eliminated_at) : 0
+    const tb = b.eliminated_at ? Date.parse(b.eliminated_at) : 0
+    return tb - ta
+  })
+}
+
 /** Plain-text fallback when image capture/share isn't available. */
-function buildShareText(title: string, players: TournamentPlayer[]): string {
-  const lines = [`🏆 ${title}`, '', 'Leaderboard:']
+function buildShareText(title: string, players: TournamentPlayer[], h2h: boolean): string {
+  const lines = [`🏆 ${title}`, '', h2h ? 'Standings:' : 'Leaderboard:']
   players.slice(0, 8).forEach((p, i) => {
     const rank = i < 3 ? MEDAL[i] : `${i + 1}.`
-    lines.push(`${rank} ${p.player_name} — ${p.total_points} pts`)
+    lines.push(`${rank} ${p.player_name}${h2h ? '' : ` — ${p.total_points} pts`}`)
   })
   if (players.length > 8) lines.push(`…and ${players.length - 8} more`)
   lines.push('', `Play at ${appDomain()}`)
@@ -40,6 +55,9 @@ export function TournamentShareLeaderboard({
   const [sharing, setSharing] = useState(false)
   const sharingLock = useRef(false)
 
+  const h2h = tournament.format === 'head-to-head'
+  const ranked = orderForStandings(players, h2h)
+
   const handleShare = useCallback(async () => {
     if (sharingLock.current) return
     const target = captureRef.current
@@ -60,7 +78,7 @@ export function TournamentShareLeaderboard({
       if (err instanceof DOMException && err.name === 'AbortError') return
       // Image capture failed (e.g. unsupported browser) — fall back to text.
       try {
-        const text = buildShareText(tournament.title, players)
+        const text = buildShareText(tournament.title, orderForStandings(players, h2h), h2h)
         if (typeof navigator !== 'undefined' && navigator.share) {
           await navigator.share({ text })
         } else {
@@ -74,7 +92,7 @@ export function TournamentShareLeaderboard({
       sharingLock.current = false
       setSharing(false)
     }
-  }, [tournament.title, players, success, error])
+  }, [tournament.title, players, h2h, success, error])
 
   const isFinished = tournament.status === 'finished'
 
@@ -95,7 +113,7 @@ export function TournamentShareLeaderboard({
           <p className="text-faint text-sm text-center">No players yet</p>
         ) : (
           <div className="space-y-2">
-            {players.map((p, i) => (
+            {ranked.map((p, i) => (
               <div
                 key={p.id}
                 className={`result-row flex items-center justify-between px-4 py-2.5 ${
@@ -116,11 +134,23 @@ export function TournamentShareLeaderboard({
                   {p.is_eliminated && <span className="text-xs text-red-400 ml-1 shrink-0">Eliminated</span>}
                 </div>
                 <div className="text-right shrink-0">
-                  <span className="font-bold tabular-nums" style={{ color: 'var(--primary)' }}>
-                    {p.total_points}
-                    <span className="text-xs font-semibold">pts</span>
-                  </span>
-                  <span className="text-faint text-xs ml-2">{p.games_played}g</span>
+                  {h2h ? (
+                    // No points in a bracket — the champion is the lone survivor.
+                    !p.is_eliminated &&
+                    isFinished && (
+                      <span className="font-bold text-xs uppercase tracking-wide" style={{ color: 'var(--primary)' }}>
+                        Champion
+                      </span>
+                    )
+                  ) : (
+                    <>
+                      <span className="font-bold tabular-nums" style={{ color: 'var(--primary)' }}>
+                        {p.total_points}
+                        <span className="text-xs font-semibold">pts</span>
+                      </span>
+                      <span className="text-faint text-xs ml-2">{p.games_played}g</span>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
