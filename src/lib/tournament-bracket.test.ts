@@ -62,6 +62,23 @@ describe('computeRoundPairings', () => {
   it('handles a trivial single-player field', () => {
     expect(computeRoundPairings(['solo'])).toEqual({ matches: [], byes: ['solo'] })
   })
+
+  it('does not bye a player who had a bye last round', () => {
+    const field = ids(5) // odd → exactly one bye
+    const priorBye = computeRoundPairings(field).byes[0]
+    const next = computeRoundPairings(field, [priorBye])
+    expect(next.byes).toHaveLength(1)
+    expect(next.byes[0]).not.toBe(priorBye)
+    // everyone still accounted for
+    expect([...next.byes, ...next.matches.flat()].sort()).toEqual(field.sort())
+  })
+
+  it('still byes someone if everyone sat out last round (fallback)', () => {
+    const field = ids(3)
+    const res = computeRoundPairings(field, field)
+    expect(res.byes).toHaveLength(1)
+    expect(res.matches).toHaveLength(1)
+  })
 })
 
 describe('splitKnockoutField', () => {

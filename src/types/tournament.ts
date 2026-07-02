@@ -62,5 +62,7 @@ export interface TournamentGame {
   player_a_id: string | null
   player_b_id: string | null
   winner_player_id: string | null
+  // How the match was decided (e.g. 'checkmate', 'timeout', 'resignation', 'walkover').
+  win_reason?: string | null
   is_bye: boolean
 }

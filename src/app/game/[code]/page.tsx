@@ -129,7 +129,10 @@ export default function GamePage() {
   return (
     <>
       <PollGamePlayerExperience gameCode={gameCode} initialName={initialName} autoJoinAsViewer={watch} />
-      {playerName && playerId && (
+      {/* Voice chat is disabled inside tournaments — matches are structured and
+          run to a schedule, and it kept players' voice sessions unstable across
+          the lobby/match tabs a tournament involves. */}
+      {playerName && playerId && !tournamentId && (
         <AudioChat roomCode={gameCode} playerName={playerName} identity={playerId} auth={{ kind: 'player' }} />
       )}
       <TournamentBanner gameCode={gameCode} tournamentId={tournamentId} />

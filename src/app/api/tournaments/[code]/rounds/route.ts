@@ -150,7 +150,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ roundNumber, players: survivorIds.length })
   }
 
-  const { matches, byes } = computeRoundPairings(shuffle(survivorIds))
+  // Who got a bye last round — so the pairing doesn't hand the same player a bye
+  // two rounds running.
+  const { data: priorByeRows } = await admin
+    .from('tournament_games')
+    .select('player_a_id')
+    .eq('tournament_id', tournamentId)
+    .eq('round_number', roundNumber - 1)
+    .eq('is_bye', true)
+  const priorByeIds = (priorByeRows ?? []).map((r) => r.player_a_id).filter((id): id is string => Boolean(id))
+
+  const { matches, byes } = computeRoundPairings(shuffle(survivorIds), priorByeIds)
   const timer = timerSeconds ?? DEFAULT_TIMER_SECONDS
   const gameType = tournament.game_type ?? DEFAULT_H2H_GAME_TYPE
 

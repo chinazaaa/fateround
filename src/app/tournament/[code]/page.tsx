@@ -19,6 +19,22 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { TournamentShareLeaderboard } from '@/components/tournament/TournamentShareLeaderboard'
 import { TournamentBracketBoard } from '@/components/tournament/TournamentBracketBoard'
 
+/** How a head-to-head match was decided, for the bracket results line. */
+function winReasonLabel(reason?: string | null): string {
+  switch (reason) {
+    case 'checkmate':
+      return ' by checkmate'
+    case 'timeout':
+      return ' on time'
+    case 'resignation':
+      return ' by resignation'
+    case 'walkover':
+      return ' — opponent removed'
+    default:
+      return ''
+  }
+}
+
 const GAME_TYPE_LABELS: Record<string, string> = {
   trivia: 'Trivia',
   scrabble: 'Scrabble',
@@ -1506,7 +1522,7 @@ export default function TournamentLobbyPage() {
                       {g.is_bye
                         ? `${playerNameById(g.player_a_id)} — bye`
                         : g.winner_player_id
-                          ? `✓ ${playerNameById(g.winner_player_id)} beat ${playerNameById(loserId)}`
+                          ? `✓ ${playerNameById(g.winner_player_id)} beat ${playerNameById(loserId)}${winReasonLabel(g.win_reason)}`
                           : `${playerNameById(g.player_a_id)} vs ${playerNameById(g.player_b_id)}`}
                     </span>
                     {!g.is_bye && g.game_id && (
