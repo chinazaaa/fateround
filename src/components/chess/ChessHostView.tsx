@@ -221,7 +221,9 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
       if (!res.ok) throw new Error(data.error ?? 'Move failed')
       await load()
     } catch (err) {
-      setSession(prevSession) // server rejected or unreachable — roll back the optimistic move
+      // Roll back the optimistic move — but only if nothing newer landed while the
+      // request was in flight (a realtime push can beat the error and must win).
+      setSession((cur) => (cur && Date.parse(cur.updated_at) > Date.parse(prevSession.updated_at) ? cur : prevSession))
       toastError(err instanceof Error ? err.message : 'Move failed')
     } finally {
       setHostActing(false)

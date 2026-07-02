@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Chess } from 'chess.js'
 import { useRouter } from 'next/navigation'
 import { ChessCard, ChessLoadingScreen, ChessSecondaryButton, ChessShell } from '@/components/chess/ChessChrome'
@@ -48,6 +48,10 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const { error: toastError } = useToast()
   const { confirm } = useConfirm()
   const [session, setSession] = useState<ChessSession | null>(null)
+  // Latest committed session, readable synchronously inside async callbacks (after an
+  // await, this reflects the newest render — realtime pushes included).
+  const sessionRef = useRef<ChessSession | null>(null)
+  sessionRef.current = session
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
@@ -62,8 +66,12 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as ChessSession | null) : null
     if (sessionData) {
       // A fetch that started before the latest realtime push can resolve after it —
-      // don't roll the board back to the older row it carries.
-      setSession((cur) => (cur && Date.parse(sessionData.updated_at) < Date.parse(cur.updated_at) ? cur : sessionData))
+      // don't roll the board back to the older row it carries. Return the row we
+      // actually accept so the screen the bootstrap computes matches what's shown.
+      const cur = sessionRef.current
+      const accepted = cur && Date.parse(sessionData.updated_at) < Date.parse(cur.updated_at) ? cur : sessionData
+      setSession(accepted)
+      return { state: accepted, ok: supabasePollOk(sessionRes) }
     }
     return { state: sessionData, ok: supabasePollOk(sessionRes) }
   }, [gameCode])
@@ -158,6 +166,11 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     void load()
   }
 
+  // Undo an optimistic move — but only if nothing newer arrived while the request was
+  // in flight (a realtime push can beat the rejection and must not be clobbered).
+  const rollbackTo = (prevSession: ChessSession) =>
+    setSession((cur) => (cur && Date.parse(cur.updated_at) > Date.parse(prevSession.updated_at) ? cur : prevSession))
+
   const movePiece = async (from: string, to: string, promotion?: 'q' | 'r' | 'b' | 'n') => {
     if (!myPlayerId || !session) return
     if (!myResumeToken) {
@@ -197,13 +210,13 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       })
       const data = await res.json()
       if (!res.ok) {
-        setSession(prevSession) // server rejected — roll back the optimistic move
+        rollbackTo(prevSession) // server rejected — roll back the optimistic move
         toastError(data.error ?? 'Move failed')
       } else {
         await load()
       }
     } catch {
-      setSession(prevSession)
+      rollbackTo(prevSession)
       toastError('Move failed')
     } finally {
       setActing(false)

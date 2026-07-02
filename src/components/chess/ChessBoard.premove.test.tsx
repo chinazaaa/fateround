@@ -80,6 +80,50 @@ describe('ChessGamePanel premove', () => {
     expect(onMove).toHaveBeenCalledWith('e7', 'e5', undefined)
   })
 
+  it('drops a queued premove on a same-turn rollback instead of auto-firing it', () => {
+    const onMove = vi.fn()
+    // We queued a premove off-turn (our own move was still posting), then that move
+    // failed and the parent rolled the board back: isMyTurn returns to true but the
+    // row is the very one we queued against — same updated_at, no opponent move.
+    const rolledBack = makeSession({ fen: AFTER_E4_FEN, current_turn: 'b', updated_at: '2024-01-01T00:00:00.000Z' })
+    const { rerender } = render(<ChessGamePanel {...blackProps(onMove)} session={rolledBack} />)
+
+    fireEvent.click(square('e7'))
+    fireEvent.click(square('e5'))
+    expect(screen.getByText(/premove e7→e5 queued/)).toBeInTheDocument()
+
+    rerender(<ChessGamePanel {...blackProps(onMove)} session={rolledBack} isMyTurn />)
+    // Even though e7→e5 is legal in this position, no genuinely newer row arrived, so
+    // the premove is dropped rather than fired into the reverted board.
+    expect(onMove).not.toHaveBeenCalled()
+    expect(screen.queryByText(/premove .* queued/)).not.toBeInTheDocument()
+  })
+
+  it('fires a queued premove once a genuinely newer row arrives', () => {
+    const onMove = vi.fn()
+    const queued = makeSession({ updated_at: '2024-01-01T00:00:00.000Z' })
+    const { rerender } = render(<ChessGamePanel {...blackProps(onMove)} session={queued} />)
+
+    fireEvent.click(square('e7'))
+    fireEvent.click(square('e5'))
+
+    // The opponent's real move: a new position carrying a strictly newer updated_at.
+    rerender(
+      <ChessGamePanel
+        {...blackProps(onMove)}
+        session={makeSession({
+          fen: AFTER_E4_FEN,
+          current_turn: 'b',
+          last_move_from: 'e2',
+          last_move_to: 'e4',
+          updated_at: '2024-01-01T00:00:01.000Z',
+        })}
+        isMyTurn
+      />
+    )
+    expect(onMove).toHaveBeenCalledWith('e7', 'e5', undefined)
+  })
+
   it('silently drops a premove that is illegal in the position it fires on', () => {
     const onMove = vi.fn()
     const { rerender } = render(<ChessGamePanel {...blackProps(onMove)} />)

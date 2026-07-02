@@ -245,6 +245,9 @@ export function ChessGamePanel({
   // position the opponent left us — if the queued move is no longer legal
   // (piece captured, king now in check, path blocked) it's silently dropped.
   const firedPremove = useRef<Premove | null>(null)
+  // The session's updated_at when the premove was queued. A newer row means a genuine
+  // turn advance (the opponent actually moved); an equal one means nothing real happened.
+  const premoveAt = useRef<string | null>(null)
   useEffect(() => {
     if (!premove) return
     if (finished || !myColor) {
@@ -252,6 +255,14 @@ export function ChessGamePanel({
       return
     }
     if (!isMyTurn || !onMove || acting) return
+    // If our own move failed and the parent rolled the board back, isMyTurn flips true
+    // again without a new row — same updated_at as when we queued. Drop the premove
+    // rather than auto-firing it into the reverted position; only a strictly newer row
+    // (the opponent's real move) should trigger it. Optimistic previews keep updated_at.
+    if (premoveAt.current && Date.parse(session.updated_at) <= Date.parse(premoveAt.current)) {
+      setPremove(null)
+      return
+    }
     if (firedPremove.current === premove) return // guard double-run before state settles
     firedPremove.current = premove
     const legal = (() => {
@@ -265,7 +276,7 @@ export function ChessGamePanel({
     })()
     setPremove(null)
     if (legal) onMove(premove.from, premove.to, premove.promotion)
-  }, [premove, isMyTurn, finished, acting, chess, onMove, myColor])
+  }, [premove, isMyTurn, finished, acting, chess, onMove, myColor, session.updated_at])
 
   const checkSquare = useMemo(() => {
     if (!chess.inCheck()) return null
@@ -321,6 +332,7 @@ export function ChessGamePanel({
           if (target.promotion) {
             setPendingPromotion({ from: selected, to: square, isPremove: true })
           } else {
+            premoveAt.current = session.updated_at
             setPremove({ from: selected, to: square })
             setSelected(null)
           }
@@ -340,6 +352,7 @@ export function ChessGamePanel({
   const confirmPromotion = (piece: 'q' | 'r' | 'b' | 'n') => {
     if (!pendingPromotion) return
     if (pendingPromotion.isPremove) {
+      premoveAt.current = session.updated_at
       setPremove({ from: pendingPromotion.from, to: pendingPromotion.to, promotion: piece })
     } else {
       onMove?.(pendingPromotion.from, pendingPromotion.to, piece)
