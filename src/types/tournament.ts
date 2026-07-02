@@ -52,6 +52,9 @@ export interface TournamentGame {
   game_id: string | null
   game_order: number
   status: 'pending' | 'active' | 'finished'
+  // The underlying game's own status ('waiting' before it's started), attached by
+  // the tournament GET so the lobby can start a spawned game without a dashboard.
+  game_status?: 'waiting' | 'active' | 'finished' | null
   placements: Record<string, number> | null
   // Head-to-head bracket fields (null for round-robin games).
   round_number: number | null

@@ -39,11 +39,19 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
   // into the next game. The host's in-page upload state resets on reload/new tab, so
   // the lobby uses this to show the pack is still loaded and to allow Start without a
   // fresh upload. Mirrors the carry-over logic in the games POST route.
+  // Also attach each game's own status so the lobby can tell a spawned-but-not-yet-
+  // started game (waiting) from a running one, and start it from the lobby.
   let carriedCustomCount: number | null = null
-  const gameIds = games.map((g) => g.game_id)
+  let gamesOut = games
+  const gameIds = games.map((g) => g.game_id).filter((id): id is string => Boolean(id))
   if (gameIds.length > 0) {
     const admin = getSupabaseAdmin()
-    const { data: priorGames } = await admin.from('games').select('custom_questions, created_at').in('id', gameIds)
+    const { data: priorGames } = await admin
+      .from('games')
+      .select('id, status, custom_questions, created_at')
+      .in('id', gameIds)
+    const statusById = new Map((priorGames ?? []).map((g) => [g.id, g.status]))
+    gamesOut = games.map((g) => ({ ...g, game_status: g.game_id ? (statusById.get(g.game_id) ?? null) : null }))
     let latest: { created_at: string; count: number } | null = null
     for (const g of priorGames ?? []) {
       if (Array.isArray(g.custom_questions) && g.custom_questions.length > 0) {
@@ -58,7 +66,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
   return NextResponse.json({
     tournament,
     players: playersRes.data ?? [],
-    games,
+    games: gamesOut,
     carriedCustomCount,
   })
 }

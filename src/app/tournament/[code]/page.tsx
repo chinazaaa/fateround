@@ -371,9 +371,36 @@ export default function TournamentLobbyPage() {
         return
       }
       localStorage.setItem(`host_token_${data.gameCode}`, data.gameHostToken)
-      // Stay on the lobby (it now shows the active-game banner); the host opens the
-      // dashboard from there in a new tab to actually start the game.
+      // Stay on the lobby — players auto-join the spawned game, then the host taps
+      // "Start Game" here to begin it (no host dashboard needed).
       fetchState()
+    } catch {
+      setError('Something went wrong')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // Start the spawned round-robin game from the lobby (server-side), so the host
+  // doesn't have to open the game's host dashboard.
+  async function handleStartActiveGame() {
+    if (!activeGame?.game_id) return
+    const token = localStorage.getItem(`host_token_${activeGame.game_id}`)
+    if (!token) {
+      setError('Lost this game’s host token on this device — use “Open host dashboard” to start it.')
+      return
+    }
+    setActionLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/games/${activeGame.game_id}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken: token }),
+      })
+      const data = await res.json()
+      if (!res.ok) setError(data.error ?? 'Failed to start the game')
+      else fetchState()
     } catch {
       setError('Something went wrong')
     } finally {
@@ -1323,7 +1350,7 @@ export default function TournamentLobbyPage() {
                 />
                 <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: 'var(--primary)' }} />
               </span>
-              Game In Progress
+              {activeGame.game_status === 'waiting' ? 'Players joining' : 'Game In Progress'}
             </p>
             <span className="text-xs text-faint">Game {activeGame.game_order}</span>
           </div>
@@ -1348,9 +1375,17 @@ export default function TournamentLobbyPage() {
               👁 Watch live
             </button>
           )}
+          {isHost && activeGame.game_status === 'waiting' && (
+            <div className="space-y-1.5">
+              <PrimaryBtn onClick={handleStartActiveGame} disabled={actionLoading}>
+                {actionLoading ? 'Starting…' : 'Start Game'}
+              </PrimaryBtn>
+              <p className="text-faint text-xs text-center">Starts it here for everyone — no host dashboard needed.</p>
+            </div>
+          )}
           {isHost && (
-            <button onClick={() => openHostDashboard(activeGame.game_id!)} className="btn-secondary w-full">
-              Open Host Dashboard
+            <button onClick={() => openHostDashboard(activeGame.game_id!)} className="btn-ghost w-full text-sm">
+              Open host dashboard instead
             </button>
           )}
         </div>
