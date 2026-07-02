@@ -264,7 +264,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const priorByeIds = (priorByeRows ?? []).map((r) => r.player_a_id).filter((id): id is string => Boolean(id))
 
   const { matches, byes } = computeRoundPairings(shuffle(survivorIds), priorByeIds)
-  const timer = timerSeconds ?? DEFAULT_TIMER_SECONDS
+  // Prefer the per-player clock chosen at creation (0 = untimed is valid, so check
+  // the type, not truthiness); fall back to a request override, then the default.
+  const cfgTimer = (tournament.game_config as { timerSeconds?: number } | null)?.timerSeconds
+  const timer = typeof cfgTimer === 'number' ? cfgTimer : (timerSeconds ?? DEFAULT_TIMER_SECONDS)
   const gameType = tournament.game_type ?? DEFAULT_H2H_GAME_TYPE
 
   let matchIndex = 0

@@ -10,6 +10,7 @@ import {
   KNOCKOUT_ELIGIBLE_TYPES,
 } from '@/lib/tournament-validation'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
+import { clampChessTimer } from '@/lib/chess'
 import { clampWhotGameDuration } from '@/lib/whot'
 import { clampScrabbleTimer, clampScrabbleGameDuration } from '@/lib/scrabble'
 import { parseScrabbleDictionaryId } from '@/lib/scrabble-dictionary-meta'
@@ -75,7 +76,8 @@ export async function POST(req: NextRequest) {
         scrabbleDictionary: parseScrabbleDictionaryId(gameConfig?.scrabbleDictionary),
       }
     } else {
-      h2hGameConfig = { groupSize }
+      // Chess: the per-player clock (0 = untimed) applied to every match.
+      h2hGameConfig = { groupSize, timerSeconds: clampChessTimer(gameConfig?.timerSeconds ?? 600) }
     }
   }
 

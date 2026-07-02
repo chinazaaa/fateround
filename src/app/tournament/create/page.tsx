@@ -22,6 +22,10 @@ const SCRABBLE_DURATION_OPTIONS = [0, 1800, 3600, 5400, 7200]
 const fmtDuration = (s: number) =>
   s === 0 ? 'No limit' : s % 3600 === 0 ? `${s / 3600} hr` : `${Math.round(s / 60)} min`
 
+// Chess per-player clock choices (mirrors CHESS_TIME_OPTIONS).
+const CHESS_TIME_OPTIONS = [0, 180, 300, 600]
+const fmtChessTime = (s: number) => (s === 0 ? 'Untimed' : `${s / 60} min`)
+
 const PLACEMENT_STYLES = [
   { ring: 'rgba(217, 119, 6, 0.4)', bg: 'rgba(245, 158, 11, 0.14)', text: 'var(--marry)', medal: '🥇' },
   { ring: 'rgba(100, 116, 139, 0.4)', bg: 'rgba(100, 116, 139, 0.12)', text: '#475569', medal: '🥈' },
@@ -83,6 +87,7 @@ export default function TournamentCreatePage() {
   const [triviaTimer, setTriviaTimer] = useState(15)
   // Head-to-head group-game (Whot/Scrabble) config: per-turn timer, house rules,
   // and word list — applied to every room the bracket spawns.
+  const [h2hChessTimer, setH2hChessTimer] = useState(600)
   const [h2hTurnTimer, setH2hTurnTimer] = useState(30)
   const [h2hGameDuration, setH2hGameDuration] = useState(900)
   const [whotPick3, setWhotPick3] = useState(true)
@@ -141,7 +146,9 @@ export default function TournamentCreatePage() {
           timerSeconds: triviaTimer,
         }
       }
-      if (isH2H && gameType === 'whot') {
+      if (isH2H && gameType === 'chess') {
+        body.gameConfig = { timerSeconds: h2hChessTimer }
+      } else if (isH2H && gameType === 'whot') {
         body.gameConfig = {
           timerSeconds: h2hTurnTimer,
           gameDurationSeconds: h2hGameDuration,
@@ -280,6 +287,26 @@ export default function TournamentCreatePage() {
                 : 'The game everyone plays together each round.'}
             </p>
           </Field>
+        )}
+
+        {isH2H && gameType === 'chess' && (
+          <div className="surface-inset p-4">
+            <Field label="Time per player" htmlFor="h2h-chess-timer">
+              <select
+                id="h2h-chess-timer"
+                value={h2hChessTimer}
+                onChange={(e) => setH2hChessTimer(Number(e.target.value))}
+                className="input-field"
+              >
+                {CHESS_TIME_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {fmtChessTime(s)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-faint text-xs mt-1.5">Each player&apos;s clock for every match in the bracket.</p>
+            </Field>
+          </div>
         )}
 
         {isH2H && (gameType === 'whot' || gameType === 'scrabble') && (
