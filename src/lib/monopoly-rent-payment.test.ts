@@ -43,7 +43,8 @@ function makeMockSupabase(opts: {
         return Promise.resolve(single())
       },
       then(onFulfilled?: (v: Row) => unknown, onRejected?: (e: unknown) => unknown) {
-        const list: Row = table === 'monopoly_player_state' ? { data: opts.states, error: null } : { data: null, error: null }
+        const list: Row =
+          table === 'monopoly_player_state' ? { data: opts.states, error: null } : { data: null, error: null }
         return Promise.resolve(list).then(onFulfilled, onRejected)
       },
     }

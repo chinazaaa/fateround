@@ -189,9 +189,9 @@ describe('updatePlayerAndBoard-backed handlers — atomic claim', () => {
     const params = m.rpcCalls[0]!.params
     // Old Kent Road: price £60 → mortgage value £30.
     expect(params.p_player_patches).toEqual([{ player_id: 'payer', cash: 530 }])
-    expect(((params.p_board_patch as Record<string, unknown>).mortgaged_properties as Record<string, boolean>)['1']).toBe(
-      true
-    )
+    expect(
+      ((params.p_board_patch as Record<string, unknown>).mortgaged_properties as Record<string, boolean>)['1']
+    ).toBe(true)
     expect(m.updates.filter((u) => u.table === 'monopoly_player_state')).toHaveLength(0)
   })
 })
@@ -212,7 +212,11 @@ describe('processMonopolyForfeit — atomic bankruptcy transfer', () => {
           space_index: 3,
         },
       }),
-      states: [playerState('payer', 3, 0, { get_out_of_jail_free: 1 }), playerState('owner', 800, 1), playerState('third', 300, 2)],
+      states: [
+        playerState('payer', 3, 0, { get_out_of_jail_free: 1 }),
+        playerState('owner', 800, 1),
+        playerState('third', 300, 2),
+      ],
     })
     const result = await processMonopolyForfeit(m.supabase, 'GAME1', 'payer')
 
