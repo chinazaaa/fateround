@@ -421,7 +421,11 @@ export function ChessGamePanel({
             orderedFiles.map((file, fileIdx) => {
               const square = `${file}${rank}`
               const piece = chess.get(square as Square)
-              const isLight = (FILES.indexOf(file) + rank) % 2 === 1
+              // A square's colour is fixed by its coordinates: a1 (file 0, rank 1) is
+              // dark, and every step in file or rank flips it. So a square is light when
+              // (file index + rank) is even — that puts a8 and h1 (the canonical
+              // "light square on the right") on light, matching a real board.
+              const isLight = (FILES.indexOf(file) + rank) % 2 === 0
               const target = legalTargets.get(square)
               const isSelected = selected === square
               const isLastMove = session.last_move_from === square || session.last_move_to === square
