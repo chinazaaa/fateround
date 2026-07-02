@@ -28,6 +28,11 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
+/** Save a blob straight to the user's device, bypassing share/clipboard. */
+export function downloadImageBlob(blob: Blob, filename = 'final-results.png') {
+  downloadBlob(blob, filename)
+}
+
 /** Share image via native sheet (mobile), clipboard (desktop), or download fallback. */
 export async function shareImageBlob(blob: Blob, filename = 'secret-message.png'): Promise<ShareImageResult> {
   if (prefersNativeShare()) {

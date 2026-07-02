@@ -14,6 +14,8 @@ export interface TournamentGameConfig {
   questionSource?: 'platform' | 'custom'
   roundsCount?: number
   timerSeconds?: number
+  // Head-to-head room size: 2 for chess (1v1), 4 for Whot/Scrabble group rooms.
+  groupSize?: number
 }
 
 export interface Tournament {
@@ -61,6 +63,9 @@ export interface TournamentGame {
   match_index: number | null
   player_a_id: string | null
   player_b_id: string | null
+  // Group-bracket rooms (Whot/Scrabble, up to 4 players): the tournament_player ids
+  // seated in this room. Null for chess, which uses player_a_id/player_b_id.
+  member_ids: string[] | null
   winner_player_id: string | null
   // How the match was decided (e.g. 'checkmate', 'timeout', 'resignation', 'walkover').
   win_reason?: string | null

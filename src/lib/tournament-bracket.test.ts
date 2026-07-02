@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { nextPowerOfTwo, computeRoundPairings, roundLabel, splitKnockoutField } from './tournament-bracket'
+import {
+  nextPowerOfTwo,
+  computeRoundPairings,
+  computeRoundGroups,
+  roundLabel,
+  splitKnockoutField,
+} from './tournament-bracket'
 
 describe('nextPowerOfTwo', () => {
   it('returns the smallest power of two >= n', () => {
@@ -78,6 +84,60 @@ describe('computeRoundPairings', () => {
     const res = computeRoundPairings(field, field)
     expect(res.byes).toHaveLength(1)
     expect(res.matches).toHaveLength(1)
+  })
+})
+
+describe('computeRoundGroups', () => {
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => `p${i + 1}`)
+
+  it('splits a full field into rooms of the group size (16 at size 4 → 4 rooms of 4)', () => {
+    const { groups, byes } = computeRoundGroups(ids(16), 4)
+    expect(byes).toEqual([])
+    expect(groups).toHaveLength(4)
+    expect(groups.every((g) => g.length === 4)).toBe(true)
+    expect(groups.flat().sort()).toEqual(ids(16).sort())
+  })
+
+  it.each([
+    // [players, groupSize] -> expected room sizes
+    [16, 4, [4, 4, 4, 4]],
+    [8, 4, [4, 4]],
+    [4, 4, [4]],
+    [6, 4, [3, 3]], // balanced, not [4, 2]
+    [10, 4, [4, 3, 3]],
+    [5, 4, [3, 2]],
+    [7, 4, [4, 3]],
+    [2, 4, [2]],
+    [3, 4, [3]],
+  ])('for %i players at size %i yields rooms %j', (n, size, expectedSizes) => {
+    const { groups, byes } = computeRoundGroups(ids(n), size)
+    expect(byes).toEqual([])
+    expect(groups.map((g) => g.length)).toEqual(expectedSizes)
+    // every player is placed exactly once, and no room exceeds the group size or drops below 2
+    expect(groups.flat().sort()).toEqual(ids(n).sort())
+    expect(groups.every((g) => g.length >= 2 && g.length <= size)).toBe(true)
+  })
+
+  it('byes a lone survivor rather than making a room of one', () => {
+    expect(computeRoundGroups(['solo'], 4)).toEqual({ groups: [], byes: ['solo'] })
+  })
+
+  it('converges to a champion: 16 → 4 → 1', () => {
+    let field = ids(16)
+    const sizes = [field.length]
+    // Each round: one winner per group advances (simulate by taking the first id of each group).
+    while (field.length > 1) {
+      const { groups, byes } = computeRoundGroups(field, 4)
+      field = [...groups.map((g) => g[0]), ...byes]
+      sizes.push(field.length)
+    }
+    expect(sizes).toEqual([16, 4, 1])
+  })
+
+  it('folds a size-1 room into a bye at group size 2 (defensive)', () => {
+    const { groups, byes } = computeRoundGroups(ids(3), 2)
+    expect(groups).toEqual([['p1', 'p2']])
+    expect(byes).toEqual(['p3'])
   })
 })
 
