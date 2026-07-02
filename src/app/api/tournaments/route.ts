@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
       h2hGameConfig = {
         groupSize,
         timerSeconds: clampScrabbleTimer(gameConfig?.timerSeconds ?? 180),
-        gameDurationSeconds: clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 1800),
+        gameDurationSeconds: clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 900),
         scrabbleDictionary: parseScrabbleDictionaryId(gameConfig?.scrabbleDictionary),
       }
     } else {

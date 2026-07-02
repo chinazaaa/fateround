@@ -18,7 +18,7 @@ const fmtTurn = (s: number) => (s === 0 ? 'No limit' : s < 60 ? `${s}s` : `${s /
 
 // Overall room-length caps, so a Whot/Scrabble room can't run for hours.
 const WHOT_DURATION_OPTIONS = [0, 600, 900, 1800, 2700, 3600, 5400]
-const SCRABBLE_DURATION_OPTIONS = [0, 1800, 3600, 5400, 7200]
+const SCRABBLE_DURATION_OPTIONS = [0, 600, 900, 1800, 3600, 5400, 7200]
 const fmtDuration = (s: number) =>
   s === 0 ? 'No limit' : s % 3600 === 0 ? `${s / 3600} hr` : `${Math.round(s / 60)} min`
 
@@ -115,7 +115,7 @@ export default function TournamentCreatePage() {
     setGameType(next)
     if (next === 'scrabble') {
       setH2hTurnTimer(180)
-      setH2hGameDuration(1800)
+      setH2hGameDuration(900)
     } else if (next === 'whot') {
       setH2hTurnTimer(30)
       setH2hGameDuration(900)
