@@ -5,8 +5,9 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { SoundToggle } from '@/components/SoundToggle'
-import { FeedbackButton } from '@/components/FeedbackButton'
-import { SupportButton } from '@/components/SupportButton'
+// Hidden for now — "Buy us a coffee" (support) and Feedback buttons.
+// import { FeedbackButton } from '@/components/FeedbackButton'
+// import { SupportButton } from '@/components/SupportButton'
 import { ToastProvider } from '@/components/ui/Toast'
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
 import { QueryProvider } from '@/components/QueryProvider'
@@ -48,8 +49,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <AppBackground />
                 <ThemeToggle />
                 <SoundToggle />
+                {/* Hidden for now:
                 <SupportButton />
-                <FeedbackButton />
+                <FeedbackButton /> */}
                 {children}
               </QueryProvider>
             </ConfirmProvider>

@@ -31,7 +31,9 @@ function ReadOnlyBoard({ fen, defaults }: { fen: string; defaults?: ChessAppeara
         FILES.map((file) => {
           const square = `${file}${rank}`
           const piece = chess.get(square as Square)
-          const isLight = (FILES.indexOf(file) + rank) % 2 === 1
+          // Light when (file index + rank) is even, so a1 is dark and a8/h1 are light
+          // — the canonical board (matches ChessBoard).
+          const isLight = (FILES.indexOf(file) + rank) % 2 === 0
           return (
             <div
               key={square}
