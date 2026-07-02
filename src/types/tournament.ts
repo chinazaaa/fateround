@@ -16,6 +16,9 @@ export interface TournamentGameConfig {
   // Per-round timer: trivia knockout = seconds per question; Whot/Scrabble
   // head-to-head = seconds per turn in each room.
   timerSeconds?: number
+  // Whot/Scrabble head-to-head: max room length in seconds (0 = no limit), so a
+  // room can't run for hours. Enforced against each room's session_started_at.
+  gameDurationSeconds?: number
   // Head-to-head room size: 2 for chess (1v1), 4 for Whot/Scrabble group rooms.
   groupSize?: number
   // Whot house rules applied to every spawned room (default true when omitted).

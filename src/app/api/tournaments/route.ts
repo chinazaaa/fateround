@@ -10,7 +10,8 @@ import {
   KNOCKOUT_ELIGIBLE_TYPES,
 } from '@/lib/tournament-validation'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
-import { clampScrabbleTimer } from '@/lib/scrabble'
+import { clampWhotGameDuration } from '@/lib/whot'
+import { clampScrabbleTimer, clampScrabbleGameDuration } from '@/lib/scrabble'
 import { parseScrabbleDictionaryId } from '@/lib/scrabble-dictionary-meta'
 
 const supabase = getSupabaseAnon()
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
       h2hGameConfig = {
         groupSize,
         timerSeconds: clampBoardGameTurnTimer(gameConfig?.timerSeconds ?? 30, 'whot'),
+        gameDurationSeconds: clampWhotGameDuration(gameConfig?.gameDurationSeconds ?? 900),
         whotPick3: gameConfig?.whotPick3 ?? true,
         whotCards: gameConfig?.whotCards ?? true,
         whotNumberCalls: gameConfig?.whotNumberCalls ?? true,
@@ -69,6 +71,7 @@ export async function POST(req: NextRequest) {
       h2hGameConfig = {
         groupSize,
         timerSeconds: clampScrabbleTimer(gameConfig?.timerSeconds ?? 180),
+        gameDurationSeconds: clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 1800),
         scrabbleDictionary: parseScrabbleDictionaryId(gameConfig?.scrabbleDictionary),
       }
     } else {
