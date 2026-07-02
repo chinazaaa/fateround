@@ -91,7 +91,7 @@ export function TournamentBracketBoard({
 
               {canWatch && (
                 <button onClick={() => onWatch(m.game_id!)} className="btn-secondary w-full text-sm">
-                  {m.status === 'active' ? '👁 Watch live' : 'View result'}
+                  {m.status === 'active' ? '👁 Watch live' : 'View final board'}
                 </button>
               )}
             </div>

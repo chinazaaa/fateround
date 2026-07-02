@@ -3,7 +3,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
 import { createClient } from '@supabase/supabase-js'
 import { generateGameCode, generateToken } from '@/lib/utils'
-import { createTournamentSchema } from '@/lib/tournament-validation'
+import { createTournamentSchema, H2H_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
@@ -11,8 +11,15 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, createTournamentSchema)
   if (bodyError) return bodyError
 
-  const { title, format, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = body
+  const { title, format, gameType, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = body
   const hostToken = generateToken()
+
+  // Head-to-head is played with a single 2-player game, chosen at creation.
+  const isH2H = format === 'head-to-head'
+  const h2hGameType = gameType ?? H2H_ELIGIBLE_TYPES[0]
+  if (isH2H && !H2H_ELIGIBLE_TYPES.includes(h2hGameType as (typeof H2H_ELIGIBLE_TYPES)[number])) {
+    return NextResponse.json({ error: `Game "${gameType}" isn't available for head-to-head` }, { status: 400 })
+  }
 
   let tournamentCode = ''
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -33,6 +40,7 @@ export async function POST(req: NextRequest) {
     host_token: hostToken,
     title,
     format: format ?? 'round-robin',
+    game_type: isH2H ? h2hGameType : null,
     placement_points: placementPoints ?? [10, 7, 5, 3, 2, 1],
     target_game_count: targetGameCount ?? null,
     max_players: maxPlayers ?? null,

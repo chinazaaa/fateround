@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageShell, Field, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
+import { H2H_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
+import { gameTypeLabel } from '@/lib/game-types'
 
 const DEFAULT_POINTS = [10, 7, 5, 3, 2, 1]
 
@@ -56,6 +58,7 @@ export default function TournamentCreatePage() {
   const router = useRouter()
   const [title, setTitle] = useState('')
   const [format, setFormat] = useState<'round-robin' | 'head-to-head'>('round-robin')
+  const [gameType, setGameType] = useState<string>(H2H_ELIGIBLE_TYPES[0])
   const [targetGameCount, setTargetGameCount] = useState<string>('')
   const [maxPlayers, setMaxPlayers] = useState<string>('')
   const [livesEnabled, setLivesEnabled] = useState(false)
@@ -79,6 +82,9 @@ export default function TournamentCreatePage() {
       const body: Record<string, unknown> = {
         title: title.trim(),
         format,
+      }
+      if (isH2H) {
+        body.gameType = gameType
       }
       const cap = Number(maxPlayers)
       if (Number.isInteger(cap) && cap >= 2 && cap <= 100) {
@@ -170,6 +176,24 @@ export default function TournamentCreatePage() {
               : 'Everyone plays each game together and earns placement points across multiple games.'}
           </p>
         </div>
+
+        {isH2H && (
+          <Field label="Game" htmlFor="tournament-game-type">
+            <select
+              id="tournament-game-type"
+              value={gameType}
+              onChange={(e) => setGameType(e.target.value)}
+              className="input-field"
+            >
+              {H2H_ELIGIBLE_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {gameTypeLabel(t) ?? t}
+                </option>
+              ))}
+            </select>
+            <p className="text-faint text-xs mt-1.5">The 2-player game every match is played with.</p>
+          </Field>
+        )}
 
         {!isH2H && (
           <Field label="Target Games (optional)" htmlFor="tournament-target-games">
