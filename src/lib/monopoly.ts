@@ -668,10 +668,13 @@ async function persistBoard(
 }
 
 /**
- * Claim the board via CAS FIRST, then write the per-player row only if the claim
- * won. A request that lost the race returns false without touching player state,
- * so concurrent fires never clobber each other or double-apply cash. Returns
- * whether this write won the claim.
+ * Claim the board via CAS and apply the per-player writes in ONE transaction
+ * (monopoly_claim_and_apply), so concurrent fires never clobber each other,
+ * double-apply cash, or lose a write between the claim and the player update.
+ * `otherCashDeltas` lets a caller move other players' cash (e.g. card effects)
+ * inside the same transaction. Returns whether this call won the claim; on any
+ * RPC failure nothing was committed — the claim rolled back too — so callers
+ * can treat it exactly like a lost race and the action stays retryable.
  */
 async function updatePlayerAndBoard(
   supabase: SupabaseClient,
@@ -679,19 +682,24 @@ async function updatePlayerAndBoard(
   playerId: string,
   playerPatch: Partial<MonopolyPlayerState>,
   boardPatch: Partial<MonopolyBoard>,
-  expectedUpdatedAt: string
+  expectedUpdatedAt: string,
+  otherCashDeltas: { player_id: string; cash_delta: number }[] = []
 ): Promise<boolean> {
-  const won = await persistBoard(supabase, gameId, boardPatch, expectedUpdatedAt)
-  if (!won) return false
-  await supabase.from('monopoly_player_state').update(playerPatch).eq('game_id', gameId).eq('player_id', playerId)
-  return true
+  const { data: won, error } = await supabase.rpc('monopoly_claim_and_apply', {
+    p_game_id: gameId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_board_patch: boardPatch,
+    p_player_patches: [{ player_id: playerId, ...playerPatch }, ...otherCashDeltas],
+  })
+  if (error) return false
+  return won === true
 }
 
 /**
  * Pure: validate a multi-player cash transfer and compute the per-other-player
- * writes WITHOUT executing them. The caller applies `otherWrites` only after it
- * wins the board CAS, so a roll that lost the race never moves another player's
- * cash (which would otherwise double-apply when two rolls fire at once).
+ * deltas WITHOUT executing them. The caller folds `otherWrites` into the same
+ * atomic board-claim transaction, so a roll that lost the race never moves
+ * another player's cash and a winning roll can never lose a transfer.
  */
 function planMultiPlayerCashDeltas(
   states: MonopolyPlayerState[],
@@ -702,7 +710,7 @@ function planMultiPlayerCashDeltas(
   drawerCash: number
   error?: string
   failedPlayerId?: string
-  otherWrites: { player_id: string; cash: number }[]
+  otherWrites: { player_id: string; cash_delta: number }[]
 } {
   const drawer = states.find((s) => s.player_id === drawerId)
   if (!drawer) return { drawerCash: 0, error: 'Player not found', otherWrites: [] }
@@ -720,10 +728,10 @@ function planMultiPlayerCashDeltas(
     return { drawerCash, error: 'Insufficient funds', failedPlayerId: drawerId, otherWrites: [] }
   }
 
-  const otherWrites: { player_id: string; cash: number }[] = []
+  const otherWrites: { player_id: string; cash_delta: number }[] = []
   for (const [id, delta] of Object.entries(others)) {
-    const target = states.find((s) => s.player_id === id)!
-    otherWrites.push({ player_id: id, cash: target.cash + delta })
+    if (!states.some((s) => s.player_id === id)) continue
+    otherWrites.push({ player_id: id, cash_delta: delta })
   }
 
   return { drawerCash, otherWrites }
@@ -857,12 +865,14 @@ async function finalizeAuction(
       )
       statusMessage = `${space.name} sold at auction for ${formatMonopolyMoney(auction.high_bid)}.`
 
-      // Claim the board FIRST so only one trigger debits the winner's cash; the
-      // loser aborts before the cash write below.
-      const won = await persistBoard(
-        supabase,
-        gameId,
-        {
+      // Claim the board and debit the winner in ONE transaction
+      // (monopoly_claim_and_apply): the property handover and the payment
+      // commit together, so there is no window where the deed moved but the
+      // cash write failed (the old manual rollback for that case is gone).
+      const { error: rpcError } = await supabase.rpc('monopoly_claim_and_apply', {
+        p_game_id: gameId,
+        p_expected_updated_at: expectedUpdatedAt,
+        p_board_patch: {
           property_owners: owners,
           phase: turnFinish.phase,
           auction_state: null,
@@ -873,28 +883,13 @@ async function finalizeAuction(
           last_cash_event: lastCashEvent,
           turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, turnFinish.phase),
         },
-        expectedUpdatedAt
-      )
-      if (!won) return {}
-
-      const { error: cashError } = await supabase
-        .from('monopoly_player_state')
-        .update({ cash: newCash })
-        .eq('game_id', gameId)
-        .eq('player_id', auction.high_bidder_id)
-
-      if (cashError) {
-        const rolledBackOwners = { ...owners }
-        delete rolledBackOwners[spaceKey]
-        await supabase
-          .from('monopoly_boards')
-          .update({
-            property_owners: rolledBackOwners,
-            status_message: `Auction for ${space.name} — payment failed, property unsold.`,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('game_id', gameId)
-        return { error: internalErrorMessage('monopoly', cashError) }
+        p_player_patches: [{ player_id: auction.high_bidder_id, cash_delta: -auction.high_bid }],
+      })
+      if (rpcError) {
+        // Nothing committed — the auction stays open, and the next trigger
+        // re-runs finalization (the defaulter path above handles a bidder
+        // whose funds are genuinely gone).
+        return { error: internalErrorMessage('monopoly', rpcError) }
       }
 
       return {}
@@ -1088,10 +1083,10 @@ export async function processMonopolyRoll(
   let lastCardEvent: MonopolyLastCardEvent | null = null
   let extraTurn = false
   let pendingDebt: MonopolyPendingDebt | null = null
-  // Per-other-player cash writes from a Chance/Community card effect. Computed
-  // (not executed) up front, applied only after the final board claim wins, so a
-  // roll that lost the race never moves another player's cash.
-  let otherCashWrites: { player_id: string; cash: number }[] = []
+  // Per-other-player cash deltas from a Chance/Community card effect. Computed
+  // (not executed) up front, then folded into the single atomic board claim at
+  // the end of the roll, so they can never be lost or double-applied.
+  let otherCashWrites: { player_id: string; cash_delta: number }[] = []
 
   if (board.phase === 'jail') {
     jailTurns += 1
@@ -1336,7 +1331,7 @@ export async function processMonopolyRoll(
           )
           return {}
         }
-        // Defer the other-player credits/debits until after the final board claim.
+        // Defer the other-player credits/debits into the final board claim.
         otherCashWrites = multi.otherWrites
         cash = multi.drawerCash
 
@@ -1433,8 +1428,9 @@ export async function processMonopolyRoll(
     lastCashEvent = nextCashEvent(board, playerId, state.cash, cash, label)
   }
 
-  // Single board claim for the whole roll. If we lost the race, abort before
-  // writing any player state or the deferred card-effect cash transfers.
+  // Single atomic claim for the whole roll: board patch, the roller's state,
+  // and any card-effect transfers to other players all commit together, so a
+  // lost race changes nothing and a won race can never lose a transfer.
   const won = await updatePlayerAndBoard(
     supabase,
     gameId,
@@ -1464,18 +1460,10 @@ export async function processMonopolyRoll(
       ...(lastCashEvent ? { last_cash_event: lastCashEvent } : {}),
       turn_deadline_at: monopolyDeadlineForPhase(timerSeconds, boardPhase),
     },
-    board.updated_at
+    board.updated_at,
+    otherCashWrites
   )
   if (!won) return {}
-
-  // We hold the claim — now safe to apply the other-player card-effect cash deltas.
-  for (const w of otherCashWrites) {
-    await supabase
-      .from('monopoly_player_state')
-      .update({ cash: w.cash })
-      .eq('game_id', gameId)
-      .eq('player_id', w.player_id)
-  }
 
   const winner = checkWinner(
     ((await supabase.from('monopoly_player_state').select('*').eq('game_id', gameId)).data as MonopolyPlayerState[]) ??
@@ -2150,44 +2138,37 @@ export async function processMonopolyTradeRespond(
   const toName = names[trade.to_player_id] ?? 'A player'
   const lastTradeEvent = nextTradeEvent(board, trade.from_player_id, trade.to_player_id, 'accepted')
 
-  // Claim the board FIRST so only one trigger executes the asset transfer; the
-  // loser aborts before any cash/card moves between the two players.
-  const won = await persistBoard(
-    supabase,
-    gameId,
-    {
+  // Claim the board and move the cash/cards both ways in ONE transaction
+  // (monopoly_claim_and_apply): a lost race changes nothing, and a won claim
+  // can never commit only one side of the swap.
+  const { error: rpcError } = await supabase.rpc('monopoly_claim_and_apply', {
+    p_game_id: gameId,
+    p_expected_updated_at: board.updated_at,
+    p_board_patch: {
       property_owners: nextOwners,
       pending_trade: null,
       status_message: `${toName} accepted ${fromName}'s trade offer.`,
       last_trade_event: lastTradeEvent,
     },
-    board.updated_at
-  )
-  if (!won) return {}
-
-  const { error: fromUpdateError } = await supabase
-    .from('monopoly_player_state')
-    .update({
-      cash: fromState.cash - trade.offer_cash + trade.request_cash,
-      get_out_of_jail_free:
-        fromState.get_out_of_jail_free - trade.offer_get_out_cards + (trade.request_get_out_cards ?? 0),
-    })
-    .eq('game_id', gameId)
-    .eq('player_id', trade.from_player_id)
-
-  if (fromUpdateError) return { error: internalErrorMessage('monopoly', fromUpdateError) }
-
-  const { error: toUpdateError } = await supabase
-    .from('monopoly_player_state')
-    .update({
-      cash: toState.cash + trade.offer_cash - trade.request_cash,
-      get_out_of_jail_free:
-        toState.get_out_of_jail_free + trade.offer_get_out_cards - (trade.request_get_out_cards ?? 0),
-    })
-    .eq('game_id', gameId)
-    .eq('player_id', trade.to_player_id)
-
-  if (toUpdateError) return { error: internalErrorMessage('monopoly', toUpdateError) }
+    p_player_patches: [
+      {
+        player_id: trade.from_player_id,
+        cash_delta: trade.request_cash - trade.offer_cash,
+        cards_delta: (trade.request_get_out_cards ?? 0) - trade.offer_get_out_cards,
+      },
+      {
+        player_id: trade.to_player_id,
+        cash_delta: trade.offer_cash - trade.request_cash,
+        cards_delta: trade.offer_get_out_cards - (trade.request_get_out_cards ?? 0),
+      },
+    ],
+  })
+  if (rpcError) {
+    if (rpcError.message?.includes('INSUFFICIENT_FUNDS')) {
+      return { error: 'Trade failed — a player no longer has the offered cash or cards' }
+    }
+    return { error: internalErrorMessage('monopoly', rpcError) }
+  }
 
   return {}
 }
@@ -2706,14 +2687,30 @@ async function bankruptPlayer(
     }
   }
 
-  // Claim the board FIRST. The three writes that follow (creditor credit, bankrupt
-  // reset, board) are not atomic, so without this gate two concurrent triggers
-  // could each credit the creditor — money from nothing. The loser of the CAS
-  // aborts here, before any cash moves.
-  const won = await persistBoard(
-    supabase,
-    gameId,
-    {
+  // Claim the board, credit the creditor, and reset the bankrupt player in ONE
+  // transaction (monopoly_claim_and_apply) — two concurrent triggers can no
+  // longer each credit the creditor, and a won claim can never lose the
+  // creditor's payout to a failed or overwritten follow-up write.
+  const playerPatches: Record<string, unknown>[] = []
+  if (creditorId && states.some((s) => s.player_id === creditorId)) {
+    playerPatches.push({
+      player_id: creditorId,
+      cash_delta: Math.max(0, state.cash),
+      cards_delta: state.get_out_of_jail_free,
+    })
+  }
+  playerPatches.push({
+    player_id: playerId,
+    cash: 0,
+    bankrupt: true,
+    in_jail: false,
+    get_out_of_jail_free: 0,
+  })
+
+  const { data: won, error: rpcError } = await supabase.rpc('monopoly_claim_and_apply', {
+    p_game_id: gameId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_board_patch: {
       property_owners: returned.owners,
       property_buildings: returned.buildings,
       mortgaged_properties: returned.mortgaged,
@@ -2729,29 +2726,10 @@ async function bankruptPlayer(
       auction_state: null,
       pending_trade: null,
     },
-    expectedUpdatedAt
-  )
+    p_player_patches: playerPatches,
+  })
+  if (rpcError) return { error: internalErrorMessage('monopoly', rpcError) }
   if (!won) return {}
-
-  if (creditorId) {
-    const creditor = states.find((s) => s.player_id === creditorId)
-    if (creditor) {
-      await supabase
-        .from('monopoly_player_state')
-        .update({
-          cash: creditor.cash + Math.max(0, state.cash),
-          get_out_of_jail_free: creditor.get_out_of_jail_free + state.get_out_of_jail_free,
-        })
-        .eq('game_id', gameId)
-        .eq('player_id', creditorId)
-    }
-  }
-
-  await supabase
-    .from('monopoly_player_state')
-    .update({ bankrupt: true, cash: 0, in_jail: false, get_out_of_jail_free: 0 })
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
 
   if (winner) {
     await markGameFinished(supabase, gameId)
