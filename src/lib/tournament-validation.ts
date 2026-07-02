@@ -53,6 +53,12 @@ export const tournamentHostActionSchema = z.object({
   hostToken: hostTokenString(),
 })
 
+// Host removes a player from a tournament (e.g. a no-show blocking a match).
+export const removeTournamentPlayerSchema = z.object({
+  hostToken: hostTokenString(),
+  playerId: z.string().uuid(),
+})
+
 export const addTournamentGameSchema = z.object({
   hostToken: hostTokenString(),
   gameType: z.string().min(1),

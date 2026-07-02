@@ -381,6 +381,34 @@ export default function TournamentLobbyPage() {
     }
   }
 
+  async function handleRemovePlayer(playerId: string) {
+    if (!hostToken) return
+    const name = players.find((p) => p.id === playerId)?.player_name ?? 'this player'
+    const ok = await confirm({
+      title: `Remove ${name}?`,
+      message: 'They’re out of the tournament. Their opponent advances (or the match is voided if both are removed).',
+      confirmLabel: 'Remove',
+      destructive: true,
+    })
+    if (!ok) return
+    setActionLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/remove-player`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, playerId }),
+      })
+      const data = await res.json()
+      if (!res.ok) setError(data.error ?? 'Failed to remove player')
+      else fetchState()
+    } catch {
+      setError('Something went wrong')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   async function handleEndTournament() {
     if (!hostToken) return
     const ok = await confirm({
@@ -804,6 +832,7 @@ export default function TournamentLobbyPage() {
           roundLabel={roundLabel(currentRoundEntrants)}
           nameOf={playerNameById}
           onWatch={handleWatchGame}
+          onRemovePlayer={isHost ? handleRemovePlayer : undefined}
         />
       )}
 
