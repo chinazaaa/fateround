@@ -23,11 +23,11 @@ import {
   type SudokuSubmission,
   type SudokuUnitFlash,
 } from '@/lib/sudoku'
-import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } from '@/lib/supabase-selects'
-import { clearPlayerSession, setPlayerSession } from '@/lib/utils'
-import { resolvePlayerSession } from '@/lib/player-resume'
+import { PLAYER_SELECT, ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } from '@/lib/supabase-selects'
+import { clearPlayerSession } from '@/lib/utils'
 import { formatMinutesSeconds } from '@/lib/timer-format'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
@@ -74,6 +74,11 @@ function saveGrid(roundId: string, playerId: string, grid: number[][]) {
 
 type View = 'loading' | 'join' | 'late_join_choice' | 'waiting' | 'playing' | 'finished'
 
+// Slice `computeScreen` needs from the round load: the play screen only shows once a
+// valid round + puzzle metadata has loaded (populated in `afterResolve`, which is where
+// the resolved playerId is available); otherwise the view falls back to 'waiting'.
+type SudokuGameState = { hasValidRound: boolean }
+
 type DraftUndo = { row: number; col: number; prev: number; prevWrong: boolean }
 
 function emptyWrongGrid(): boolean[][] {
@@ -85,23 +90,11 @@ const EMPTY_DRAFTS: number[][] = Array.from({ length: 9 }, () => Array(9).fill(0
 
 export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const cfg = gameTypeConfig('sudoku')
-  const [view, setView] = useState<View>('loading')
-  const [game, setGame] = useState<Game | null>(null)
-  const [players, setPlayers] = useState<Player[]>([])
   const [roundId, setRoundId] = useState<string | null>(null)
   const [puzzle, setPuzzle] = useState<number[][] | null>(null)
   const [userGrid, setUserGrid] = useState<number[][]>(Array.from({ length: 9 }, () => Array(9).fill(0)))
   const [wrongDrafts, setWrongDrafts] = useState<boolean[][]>(emptyWrongGrid)
   const [nowMs, setNowMs] = useState<number>(Date.now())
-
-  useEffect(() => {
-    if (view === 'playing') {
-      const interval = setInterval(() => {
-        setNowMs(Date.now())
-      }, 1000)
-      return () => clearInterval(interval)
-    }
-  }, [view])
   const [undoStack, setUndoStack] = useState<DraftUndo[]>([])
   const [selectedCell, setSelectedCell] = useState<[number, number] | null>(null)
   const [watchedPlayerId, setWatchedPlayerId] = useState<string | null>(null)
@@ -110,14 +103,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [flashUnits, setFlashUnits] = useState<SudokuUnitFlash[]>([])
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [joinName, setJoinName] = useState('')
-  const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
-  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
-  const myPlayerIdRef = useRef<string | null>(null)
-  const myResumeTokenRef = useRef<string | null>(null)
-
-  const myPlayerId = myPlayerIdRef.current
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok })
@@ -140,84 +126,114 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     }
   }, [])
 
-  const load = useCallback(async () => {
-    const [{ data: gameData }, { data: playersData }] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-    ])
+  // Nothing sudoku-specific can be fetched before the session resolves: the round,
+  // submissions and saved draft grid are all gated on the resolved playerId, so they
+  // live in `afterResolve`. The shared game/players fetch + session resolution lives in
+  // useGameViewBootstrap.
+  const loadGameState = useCallback(async (): Promise<{ state: SudokuGameState; ok: boolean }> => {
+    return { state: { hasValidRound: false }, ok: true }
+  }, [])
 
-    if (!gameData) {
-      setView('loading')
-      return
-    }
-    setGame(gameData as Game)
-    setPlayers((playersData ?? []) as Player[])
+  // Post-resolve seam: reproduce the original status + playerId-gated round/submission
+  // load exactly (it needs the resolved playerId — for the localStorage draft grid — so it
+  // can't live in loadGameState). Returns whether a valid round + puzzle loaded so
+  // computeScreen can pick 'playing' vs 'waiting'.
+  const afterResolve = useCallback(
+    async (gameData: Game, playerId: string | null): Promise<SudokuGameState> => {
+      if (!playerId) return { hasValidRound: false }
 
-    // Validate the stored session against the live roster: a removed player is marked
-    // "kicked" (so room auto-join won't silently pull them back) and bounced to the
-    // join / viewer-or-player screen, consistent with the other games.
-    const session = await resolvePlayerSession(gameCode, playersData)
+      if (gameData.status === 'waiting') return { hasValidRound: false }
 
-    if (!session?.playerId) {
-      // Someone opening the link mid-game gets the viewer/player choice, like other games.
-      const pre = preJoinScreen(gameData as Game, false)
-      setView(pre === 'late_join_choice' ? 'late_join_choice' : 'join')
-      return
-    }
-    myPlayerIdRef.current = session.playerId
-    myResumeTokenRef.current = session.resumeToken ?? null
+      if (gameData.status === 'finished') {
+        const { data: subs } = await supabase
+          .from('sudoku_submissions')
+          .select(SUDOKU_SUBMISSION_SELECT)
+          .eq('game_id', gameCode)
+        setSubmissions((subs ?? []) as SudokuSubmission[])
+        return { hasValidRound: false }
+      }
 
-    if (gameData.status === 'waiting') {
-      setView('waiting')
-      return
-    }
+      const { data: roundData } = await supabase
+        .from('rounds')
+        .select(ROUND_SELECT)
+        .eq('game_id', gameCode)
+        .eq('round_number', 1)
+        .maybeSingle()
+      if (!roundData) return { hasValidRound: false }
 
-    if (gameData.status === 'finished') {
+      const meta = parseSudokuMetadata((roundData as Record<string, unknown>).sudoku_metadata)
+      if (!meta) return { hasValidRound: false }
+
+      setPuzzle(meta.puzzle)
+      setRoundId(roundData.id as string)
+
       const { data: subs } = await supabase
         .from('sudoku_submissions')
         .select(SUDOKU_SUBMISSION_SELECT)
-        .eq('game_id', gameCode)
+        .eq('round_id', roundData.id)
       setSubmissions((subs ?? []) as SudokuSubmission[])
-      setView('finished')
-      return
+
+      const savedGrid = loadSavedGrid(roundData.id as string, playerId)
+      setUserGrid(savedGrid ?? Array.from({ length: 9 }, () => Array(9).fill(0)))
+      setWrongDrafts(emptyWrongGrid())
+      setUndoStack([])
+      return { hasValidRound: true }
+    },
+    [gameCode]
+  )
+
+  // Screen derivation — an exact port of the old load()'s setView calls. Without a
+  // resolved playerId, someone opening the link mid-game gets the viewer/player choice;
+  // otherwise the screen follows game status, dropping to 'waiting' when the active game
+  // has no valid round/puzzle yet.
+  const computeScreen = useCallback((gameData: Game, playerId: string | null, state: SudokuGameState): View => {
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      return pre === 'late_join_choice' ? 'late_join_choice' : 'join'
     }
+    if (gameData.status === 'waiting') return 'waiting'
+    if (gameData.status === 'finished') return 'finished'
+    return state.hasValidRound ? 'playing' : 'waiting'
+  }, [])
 
-    const { data: roundData } = await supabase
-      .from('rounds')
-      .select(ROUND_SELECT)
-      .eq('game_id', gameCode)
-      .eq('round_number', 1)
-      .maybeSingle()
-    if (!roundData) {
-      setView('waiting')
-      return
-    }
+  const {
+    screen: view,
+    game,
+    setGame,
+    players,
+    setPlayers,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    setMyResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<View, SudokuGameState>({
+    gameCode,
+    // The original showed the plain 'loading' screen both before the first load and when
+    // the game id was missing, so both map to 'loading'.
+    loadingScreen: 'loading',
+    notFoundScreen: 'loading',
+    loadGameState,
+    computeScreen,
+    afterResolve,
+    joinExtras,
+    onJoinError: (message) => showToast(message, false),
+  })
 
-    const meta = parseSudokuMetadata((roundData as Record<string, unknown>).sudoku_metadata)
-    if (!meta) {
-      setView('waiting')
-      return
-    }
-
-    setPuzzle(meta.puzzle)
-    setRoundId(roundData.id as string)
-
-    const { data: subs } = await supabase
-      .from('sudoku_submissions')
-      .select(SUDOKU_SUBMISSION_SELECT)
-      .eq('round_id', roundData.id)
-    setSubmissions((subs ?? []) as SudokuSubmission[])
-
-    const savedGrid = loadSavedGrid(roundData.id as string, session.playerId)
-    setUserGrid(savedGrid ?? Array.from({ length: 9 }, () => Array(9).fill(0)))
-    setWrongDrafts(emptyWrongGrid())
-    setUndoStack([])
-    setView('playing')
-  }, [gameCode])
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
   useEffect(() => {
-    load()
-  }, [load])
+    if (view === 'playing') {
+      const interval = setInterval(() => {
+        setNowMs(Date.now())
+      }, 1000)
+      return () => clearInterval(interval)
+    }
+  }, [view])
 
   // Realtime-fallback poll: keeps the lobby roster fresh (and catches missed
   // status transitions) when a players/games realtime event is dropped. The full
@@ -241,7 +257,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     return () => {
       void supabase.removeChannel(ch)
     }
-  }, [gameCode, load])
+  }, [gameCode, load, setGame])
 
   useEffect(() => {
     if (!roundId) return
@@ -284,47 +300,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     return () => {
       void supabase.removeChannel(ch)
     }
-  }, [gameCode])
-
-  const handleJoin = useCallback(
-    async (opts?: { name?: string; joinAsViewer?: boolean }) => {
-      const name = (opts?.name ?? joinName).trim()
-      if (!name) return
-      setJoining(true)
-      try {
-        const res = await fetch('/api/players', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameCode,
-            playerName: name,
-            ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer } : {}),
-          }),
-        })
-        const json = await res.json()
-        if (!res.ok) {
-          showToast(json.error ?? 'Failed to join', false)
-          return
-        }
-        myPlayerIdRef.current = json.playerId
-        myResumeTokenRef.current = json.resumeToken ?? null
-        setPlayerSession(
-          gameCode,
-          json.playerId,
-          json.playerName,
-          json.playerGender ?? 'no_pref',
-          json.resumeToken ?? null
-        )
-        // Derive the right screen: waiting-room joiners wait, mid-game joiners
-        // (players and viewers alike) drop straight into the live puzzle.
-        await load()
-      } finally {
-        setJoining(false)
-      }
-    },
-    [game?.status, gameCode, joinExtras, joinName, load]
-  )
+  }, [gameCode, setPlayers])
 
   useRoomMemberAutoJoin({
     gameCode,
@@ -334,11 +310,11 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     gameStatus: game?.status,
     hasPlayerSession: !!myPlayerId,
     joining,
-    onJoin: (name) => handleJoin({ name }),
+    onJoin: (name) => join({ name }),
   })
 
   async function handleReady() {
-    const resumeToken = myResumeTokenRef.current
+    const resumeToken = myResumeToken
     if (!resumeToken) return
     await fetch('/api/players/ready', {
       method: 'POST',
@@ -350,8 +326,8 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
 
   function handlePlayerLeft() {
     clearPlayerSession(gameCode)
-    myPlayerIdRef.current = null
-    myResumeTokenRef.current = null
+    setMyPlayerId(null)
+    setMyResumeToken(null)
     setJoinName('')
     void load()
   }
@@ -450,7 +426,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   async function submitCell(row: number, col: number, value: number) {
     if (!myPlayerId || !roundId || submitting) return
 
-    const resumeToken = myResumeTokenRef.current
+    const resumeToken = myResumeToken
     if (!resumeToken) {
       showToast('Your session has expired — please rejoin', false)
       return
@@ -582,7 +558,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         <NameJoinForm
           value={joinName}
           onChange={setJoinName}
-          onSubmit={() => void handleJoin()}
+          onSubmit={() => void join()}
           joining={joining}
           submitLabel="Join game"
           footer={
@@ -607,8 +583,8 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         nameInput={joinName}
         onNameChange={setJoinName}
         joining={joining}
-        onJoinAsViewer={() => void handleJoin({ joinAsViewer: true })}
-        onJoinAsPlayer={() => void handleJoin({ joinAsViewer: false })}
+        onJoinAsViewer={() => void join({ joinAsViewer: true })}
+        onJoinAsPlayer={() => void join({ joinAsViewer: false })}
       />
     )
   }
