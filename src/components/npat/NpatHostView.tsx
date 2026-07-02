@@ -34,6 +34,7 @@ import { GAME_SELECT, NPAT_ANSWER_SELECT, NPAT_MARK_SELECT, PLAYER_SELECT, ROUND
 import { appOrigin } from '@/lib/site'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import type { Game, NpatAnswer, NpatMark, Player, Round } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -82,6 +83,9 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+
+  // Clear stale host-as-player state if the host's own row is removed elsewhere.
+  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes, rdsRes, ansRes, marksRes] = await Promise.all([
