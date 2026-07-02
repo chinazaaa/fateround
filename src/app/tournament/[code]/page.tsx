@@ -92,7 +92,10 @@ export default function TournamentLobbyPage() {
   const [roundsCount, setRoundsCount] = useState('10')
   const [timerSeconds, setTimerSeconds] = useState('30')
   // Head-to-head: shared per-player chess clock for a round's matches.
-  const [h2hTimer, setH2hTimer] = useState('600')
+  // Fallback per-player clock sent when starting a round for older chess
+  // tournaments whose game_config has no stored timer (newer ones set it at
+  // creation; the round route prefers that). No UI — hence no setter.
+  const [h2hTimer] = useState('600')
   const [actionLoading, setActionLoading] = useState(false)
 
   const [questionSource, setQuestionSource] = useState<'platform' | 'custom'>('platform')
@@ -928,23 +931,9 @@ export default function TournamentLobbyPage() {
 
           {!roundInProgress && (
             <>
-              {/* Chess uses a per-player clock; Whot/Scrabble rooms run on their own
-                  per-turn timer, so the clock picker only shows for the duel format. */}
-              {!isGroupH2h && (
-                <Field label="Time per player" htmlFor="h2h-timer">
-                  <select
-                    id="h2h-timer"
-                    value={h2hTimer}
-                    onChange={(e) => setH2hTimer(e.target.value)}
-                    className="input-field"
-                  >
-                    <option value="0">Untimed</option>
-                    <option value="180">3 min</option>
-                    <option value="300">5 min</option>
-                    <option value="600">10 min</option>
-                  </select>
-                </Field>
-              )}
+              {/* Time controls (chess clock, Whot/Scrabble length + rules) are all
+                  chosen once at tournament creation, so there's no per-round picker
+                  here — the host just starts the round. */}
               <div className="space-y-1.5">
                 <PrimaryBtn onClick={handleStartRound} disabled={actionLoading || survivingCount < 2}>
                   {actionLoading
