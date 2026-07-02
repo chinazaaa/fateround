@@ -1,5 +1,5 @@
 import type { LudoColor } from '@/types'
-import { START_POS } from '@/lib/ludo'
+import { HOME_ENTRY_STEPS, START_POS } from '@/lib/ludo'
 
 /**
  * Standard 15×15 Ludo board (0-indexed rows/cols).
@@ -235,7 +235,9 @@ export function trackCellsAlongSteps(
   const cells: { row: number; col: number }[] = []
   for (let step = 1; step <= dice; step += 1) {
     const nextSteps = stepsFromStart + step
-    if (nextSteps >= LUDO_TRACK_COORDS.length) break
+    // Stop at the home mouth — beyond it the piece turns into its home column,
+    // so there are no further outer-track cells to highlight.
+    if (nextSteps >= HOME_ENTRY_STEPS) break
     const idx = trackIndexForColor(color, nextSteps)
     const cell = TRACK_GRID[idx]
     if (cell) cells.push(cell)
