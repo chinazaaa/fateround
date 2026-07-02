@@ -43,8 +43,13 @@ export function useGameRosterPoll(
       if (playersRes.data) ref.current.setPlayers(playersRes.data as unknown as Player[])
 
       const game = gameRes.data as Game | null
-      if (game && game.status !== ref.current.status) {
-        ref.current.setGame(game)
+      if (!game) return
+      // Refresh `game` every tick so non-status changes (e.g. max_players,
+      // allow_late_players from the lobby settings panel) aren't lost when their
+      // realtime event is the one dropped. The full reload stays gated on a status
+      // transition, where re-deriving from scratch is safe for in-progress drafts.
+      ref.current.setGame(game)
+      if (game.status !== ref.current.status) {
         await ref.current.reload()
       }
     },

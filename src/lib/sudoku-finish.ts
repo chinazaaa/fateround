@@ -59,6 +59,8 @@ export async function finishSudokuIfAllPlayersDone(
   const allDone = playerIds.every((id) => (solvedByPlayer.get(id)?.size ?? 0) >= emptyCellsCount)
   if (!allDone) return { finished: false, error: null }
 
-  const { error: finishError } = await markGameFinished(supabase, gameId)
+  // Several players can submit their final correct cell at once and all compute
+  // allDone — guard the transition so points are awarded exactly once.
+  const { error: finishError } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
   return { finished: !finishError, error: finishError?.message ?? null }
 }

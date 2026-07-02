@@ -58,7 +58,7 @@ export function HostSudokuLobbyPanel({ gameCode, hostToken, game, playerCount, o
   }, [])
 
   const patchSettings = useCallback(
-    async (patch: Record<string, unknown>) => {
+    async (patch: Record<string, unknown>): Promise<boolean> => {
       setSaveState('saving')
       try {
         const res = await fetch(`/api/games/${gameCode}/lobby-settings`, {
@@ -70,21 +70,31 @@ export function HostSudokuLobbyPanel({ gameCode, hostToken, game, playerCount, o
         if (!res.ok) throw new Error(data.error ?? 'Failed to save settings')
         if (data.game) onGameUpdate(data.game)
         markSaved()
+        return true
       } catch (err) {
         setSaveState('idle')
         toastError(err instanceof Error ? err.message : 'Failed to save settings')
+        return false
       }
     },
     [gameCode, hostToken, markSaved, onGameUpdate, toastError]
   )
 
   const onMaxPlayersChange = (next: number) => {
+    // Ignore rapid re-clicks while a save is in flight so they can't queue conflicting
+    // writes (mirrors HostAllowViewersField).
+    if (saveState === 'saving') return
     if (next < playerCount) {
       toastError(`Already have ${playerCount} players — remove someone first`)
       return
     }
+    const previous = maxPlayers
     setMaxPlayers(next)
-    void patchSettings({ max_players: next })
+    void patchSettings({ max_players: next }).then((ok) => {
+      // The sync effect only re-runs when `game` changes, so a failed save would leave
+      // the optimistic value stuck — restore it ourselves.
+      if (!ok) setMaxPlayers(previous)
+    })
   }
 
   const maxPlayerOptions = useMemo(

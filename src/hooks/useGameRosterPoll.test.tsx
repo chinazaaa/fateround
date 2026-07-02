@@ -54,7 +54,7 @@ function renderPoll(status: Game['status'] | undefined = 'waiting') {
 }
 
 describe('useGameRosterPoll', () => {
-  it('refreshes the roster on each tick without running the full reload', async () => {
+  it('refreshes the roster and game each tick without running the full reload', async () => {
     const { setPlayers, setGame, reload } = renderPoll('waiting')
     db.players = [
       { id: 'p1', name: 'Ada' },
@@ -63,7 +63,9 @@ describe('useGameRosterPoll', () => {
 
     await vi.advanceTimersByTimeAsync(TICK + 50)
     expect(setPlayers).toHaveBeenCalledWith(db.players as unknown as Player[])
-    expect(setGame).not.toHaveBeenCalled()
+    // Non-status game changes (e.g. max_players) must still land, so setGame runs
+    // every tick — but reload stays gated on a status transition.
+    expect(setGame).toHaveBeenCalledWith(db.game)
     expect(reload).not.toHaveBeenCalled()
   })
 
@@ -82,7 +84,9 @@ describe('useGameRosterPoll', () => {
     db.game = { id: 'ABCD', status: 'active' }
 
     await vi.advanceTimersByTimeAsync(TICK + 50)
-    expect(setGame).not.toHaveBeenCalled()
+    // setGame still runs each tick, but the status now matches the latest prop, so
+    // no full reload fires.
+    expect(setGame).toHaveBeenCalledWith(db.game)
     expect(reload).not.toHaveBeenCalled()
   })
 
