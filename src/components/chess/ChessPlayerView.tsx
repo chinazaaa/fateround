@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Chess } from 'chess.js'
 import { useRouter } from 'next/navigation'
 import { ChessCard, ChessLoadingScreen, ChessSecondaryButton, ChessShell } from '@/components/chess/ChessChrome'
@@ -48,6 +48,28 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const { error: toastError } = useToast()
   const { confirm } = useConfirm()
   const [session, setSession] = useState<ChessSession | null>(null)
+  // Mirror of the accepted session, kept in lock-step by the helpers below so every
+  // writer compares against the truly-latest value (not a render-stale snapshot).
+  const sessionRef = useRef<ChessSession | null>(null)
+
+  // Single funnel for accepting an incoming row (fetch, realtime push, rollback):
+  // keep the freshest by updated_at and update the ref *synchronously*, so an older
+  // async result can never briefly clobber newer state. Returns the row accepted.
+  const acceptSession = useCallback((next: ChessSession): ChessSession => {
+    const cur = sessionRef.current
+    const accepted = cur && Date.parse(next.updated_at) < Date.parse(cur.updated_at) ? cur : next
+    sessionRef.current = accepted
+    setSession(accepted)
+    return accepted
+  }, [])
+
+  // Force a local row onto the board (the optimistic move preview), keeping the ref in
+  // lock-step. Unguarded on purpose — the preview intentionally overrides the board.
+  const commitSession = useCallback((next: ChessSession) => {
+    sessionRef.current = next
+    setSession(next)
+  }, [])
+
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
@@ -60,11 +82,12 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       .eq('game_id', gameCode)
       .maybeSingle()
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as ChessSession | null) : null
-    if (sessionData) {
-      setSession(sessionData)
-    }
-    return { state: sessionData, ok: supabasePollOk(sessionRes) }
-  }, [gameCode])
+    // Accept through the shared funnel: a fetch that started before the latest realtime
+    // push can resolve after it, so don't roll the board back to the older row it
+    // carries — and return the row we actually accept so the screen the bootstrap
+    // computes matches what's shown.
+    return { state: sessionData ? acceptSession(sessionData) : sessionData, ok: supabasePollOk(sessionRes) }
+  }, [gameCode, acceptSession])
 
   const computeScreen = useCallback(
     (gameData: Game, playerId: string | null, sessionData: ChessSession | null): Screen => {
@@ -107,10 +130,35 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
-  // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'chess_sessions'], load)
+  // Put a pushed session row on screen immediately — the debounced reload that follows
+  // reconciles everything else. Skip rows older than what we're already showing (a late
+  // event must not roll the board back); an optimistic local move keeps the previous
+  // updated_at, so the authoritative row for that same move still lands.
+  const applySessionRow = useCallback(
+    (row: Record<string, unknown>) => {
+      acceptSession(row as unknown as ChessSession)
+    },
+    [acceptSession]
+  )
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  // Realtime push: reload on any change to this game's row + its tables.
+  useGameTableSync(
+    gameCode,
+    [
+      { table: 'games', column: 'id' },
+      { table: 'chess_sessions', apply: applySessionRow },
+    ],
+    load
+  )
+
+  // Fallback poll: tighter while the match is live, so a dropped realtime channel
+  // costs seconds of move lag instead of most of a minute.
+  usePolling(() => load(), [gameCode, load], {
+    intervalMs:
+      screen === 'active' && session?.status === 'active'
+        ? POLL_INTERVALS.duelFallback
+        : POLL_INTERVALS.realtimeFallback,
+  })
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
@@ -149,7 +197,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       const preview = new Chess()
       preview.load(session.fen)
       if (preview.move({ from, to, promotion })) {
-        setSession({
+        commitSession({
           ...session,
           fen: preview.fen(),
           current_turn: session.current_turn === 'w' ? 'b' : 'w',
@@ -172,13 +220,15 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       })
       const data = await res.json()
       if (!res.ok) {
-        setSession(prevSession) // server rejected — roll back the optimistic move
+        // Roll back the optimistic move — acceptSession keeps a newer row if a realtime
+        // push beat the rejection, so the guard is unified with every other write.
+        acceptSession(prevSession)
         toastError(data.error ?? 'Move failed')
       } else {
         await load()
       }
     } catch {
-      setSession(prevSession)
+      acceptSession(prevSession)
       toastError('Move failed')
     } finally {
       setActing(false)
@@ -376,7 +426,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           isMyTurn={isMyTurn && !isViewer}
           timeControlSeconds={game?.timer_seconds ?? 0}
           appearanceDefaults={{ boardTheme: game?.chess_board_theme, pieceSet: game?.chess_piece_set }}
-          onMove={isMyTurn && !isViewer ? movePiece : undefined}
+          onMove={!isViewer ? movePiece : undefined}
           onResign={!isViewer ? resign : undefined}
           acting={acting}
         />

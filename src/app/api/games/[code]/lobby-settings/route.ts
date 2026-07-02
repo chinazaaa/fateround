@@ -10,6 +10,7 @@ import {
   isCrazyEightsGame,
   isYahtzeeGame,
   isWordHuntGame,
+  isSudokuGame,
   parseGameType,
 } from '@/lib/game-types'
 import { clampBoardGameTurnTimer, type BoardGameLobbyType } from '@/lib/board-game-lobby-settings'
@@ -36,6 +37,13 @@ function boardGameLobbyType(gameType: string): BoardGameLobbyType | null {
 function timedLobbyLimitType(gameType: string): LobbyLimitGameType | null {
   const parsed = parseGameType(gameType)
   if (isWordHuntGame(parsed)) return 'word_hunt'
+  return null
+}
+
+/** Games with only a max-players lobby setting — no timer or house rules. */
+function limitOnlyLobbyType(gameType: string): LobbyLimitGameType | null {
+  const parsed = parseGameType(gameType)
+  if (isSudokuGame(parsed)) return 'sudoku'
   return null
 }
 
@@ -89,12 +97,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const boardLobbyType = boardGameLobbyType(game.game_type)
   const timedLobbyType = timedLobbyLimitType(game.game_type)
-  if (!boardLobbyType && !timedLobbyType) {
+  const limitOnlyType = limitOnlyLobbyType(game.game_type)
+  if (!boardLobbyType && !timedLobbyType && !limitOnlyType) {
     return NextResponse.json({ error: 'This game type does not support lobby settings here' }, { status: 400 })
   }
 
   const lobbyLimits = await fetchGamePlayerLimits(supabase)
-  const limitKey = (timedLobbyType ?? boardLobbyType) as LobbyLimitGameType
+  const limitKey = (timedLobbyType ?? limitOnlyType ?? boardLobbyType) as LobbyLimitGameType
   const gameUpdate: Record<string, unknown> = {}
 
   if (max_players !== undefined) {
@@ -117,6 +126,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.timer_seconds = clampWordHuntTimer(timer_seconds)
     } else if (boardLobbyType) {
       gameUpdate.timer_seconds = clampBoardGameTurnTimer(timer_seconds, boardLobbyType)
+    } else {
+      // Limit-only games (sudoku) have no timer — an update here would otherwise
+      // fall through silently and hit the DB with an empty patch.
+      return NextResponse.json({ error: 'This game type does not support timer settings' }, { status: 400 })
     }
   }
 

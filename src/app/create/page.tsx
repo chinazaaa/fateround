@@ -1663,7 +1663,7 @@ function CreateGameInner() {
                   <div className="space-y-2">
                     <Toggle
                       label="Pick 3"
-                      description="Include 5 cards and the Pick 3 draw penalty"
+                      description="Play the Pick 3 draw penalty on 5s (5 cards stay in the deck either way)"
                       value={whotPick3Enabled}
                       onChange={setWhotPick3Enabled}
                     />

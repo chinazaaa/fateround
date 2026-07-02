@@ -27,6 +27,7 @@ import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } fr
 import { clearPlayerSession, setPlayerSession } from '@/lib/utils'
 import { resolvePlayerSession } from '@/lib/player-resume'
 import { formatMinutesSeconds } from '@/lib/timer-format'
+import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
@@ -217,6 +218,11 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   useEffect(() => {
     load()
   }, [load])
+
+  // Realtime-fallback poll: keeps the lobby roster fresh (and catches missed
+  // status transitions) when a players/games realtime event is dropped. The full
+  // load() only runs on a transition, so mid-puzzle drafts are never clobbered.
+  useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
   useEffect(() => {
     const ch = supabase
