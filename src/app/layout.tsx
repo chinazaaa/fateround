@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Script from 'next/script'
 import { cookies } from 'next/headers'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { ThemeProvider } from '@/components/ThemeProvider'
@@ -30,6 +31,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       data-theme={theme}
       suppressHydrationWarning
     >
+      <Script src="https://www.googletagmanager.com/gtag/js?id=G-HPGR3FN0HX" strategy="afterInteractive" />
+      <Script id="google-analytics" strategy="afterInteractive">
+        {`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-HPGR3FN0HX');
+        `}
+      </Script>
       <body className="min-h-full flex flex-col" style={{ color: 'var(--foreground)' }}>
         <ThemeProvider initialTheme={theme}>
           <ToastProvider>
