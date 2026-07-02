@@ -5,6 +5,7 @@ import type { Tournament, TournamentPlayer } from '@/types/tournament'
 import { captureElementAsImage } from '@/lib/capture-element-image'
 import { shareImageBlob } from '@/lib/share-image'
 import { appDomain } from '@/lib/site'
+import { gameTypeLabel } from '@/lib/game-types'
 import { useToast } from '@/components/ui/Toast'
 
 const MEDAL = ['🥇', '🥈', '🥉']
@@ -85,6 +86,7 @@ export function TournamentShareLeaderboard({
           <p className="text-2xl leading-none">🏆</p>
           <p className="text-lg font-black gradient-title leading-tight">{tournament.title}</p>
           <p className="text-muted text-[10px] uppercase tracking-wider">
+            {tournament.game_type ? `${gameTypeLabel(tournament.game_type)} · ` : ''}
             {isFinished ? 'Final Standings' : 'Leaderboard'}
             {tournament.target_game_count ? ` · Best of ${tournament.target_game_count}` : ''}
           </p>

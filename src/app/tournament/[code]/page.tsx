@@ -7,6 +7,7 @@ import type { Tournament, TournamentPlayer, TournamentGame } from '@/types/tourn
 import type { TriviaQuestion } from '@/types'
 import { TOURNAMENT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
 import { roundLabel } from '@/lib/tournament-bracket'
+import { gameTypeLabel } from '@/lib/game-types'
 import {
   parseTriviaQuestionImport,
   parseExcelTriviaQuestionImport,
@@ -552,7 +553,9 @@ export default function TournamentLobbyPage() {
           )}
         </p>
         <div className="flex flex-wrap items-center justify-center gap-1.5">
-          <span className="chip text-xs">{h2h ? '♟ Chess' : '🎮 Trivia'}</span>
+          <span className="chip text-xs">
+            {h2h ? `♟ ${gameTypeLabel(tournament.game_type) ?? 'Chess'}` : '🎮 Trivia'}
+          </span>
           <span className="chip text-xs">
             {h2h
               ? '🏆 Head-to-Head'
@@ -569,6 +572,11 @@ export default function TournamentLobbyPage() {
             👥 {players.length}
             {tournament.max_players ? `/${tournament.max_players}` : ''} player{players.length === 1 ? '' : 's'}
           </span>
+          {isParticipant && myName && (
+            <span className="chip text-xs" style={{ color: 'var(--primary)' }}>
+              🙋 You: {myName}
+            </span>
+          )}
         </div>
         {isFinished ? (
           <span className="premium-badge" style={{ marginTop: '0.25rem' }}>
@@ -801,7 +809,18 @@ export default function TournamentLobbyPage() {
       )}
 
       {/* Player waiting room */}
-      {isParticipant && !activeGame && !isFinished && (
+      {isParticipant && !activeGame && !isFinished && iAmEliminated && (
+        <div className="glass-card-strong p-5 text-center space-y-2">
+          <p className="font-bold text-body">You&apos;re out, {playerName}</p>
+          <p className="text-muted text-sm">
+            {h2h
+              ? 'Knocked out of the bracket — thanks for playing! You can still watch the remaining matches below.'
+              : 'You’ve been eliminated, but you can stick around and watch the rest below.'}
+          </p>
+        </div>
+      )}
+
+      {isParticipant && !activeGame && !isFinished && !iAmEliminated && (
         <div className="glass-card-strong p-5 text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
             <span className="relative flex h-2.5 w-2.5">
@@ -817,7 +836,7 @@ export default function TournamentLobbyPage() {
             <p className="font-bold text-body">You&apos;re in, {playerName}!</p>
           </div>
           <p className="text-muted text-sm">
-            Waiting for the host to start the next game. Hang tight — it&apos;ll appear here.
+            Waiting for the host to start the {h2h ? 'next round' : 'next game'}. Hang tight — it&apos;ll appear here.
           </p>
           {myLives != null && (
             <div className="surface-inset px-4 py-2.5 inline-flex items-center justify-center gap-2 mx-auto">
@@ -1057,8 +1076,8 @@ export default function TournamentLobbyPage() {
       {/* Leaderboard — with "Share results" image export */}
       <TournamentShareLeaderboard tournament={tournament} players={players} />
 
-      {/* Game History */}
-      {finishedGames.length > 0 && (
+      {/* Game History — round-robin: games + player counts. */}
+      {!h2h && finishedGames.length > 0 && (
         <div className="glass-card p-5 space-y-3">
           <p className="label-caps">Game History</p>
           <div className="space-y-2">
@@ -1070,6 +1089,32 @@ export default function TournamentLobbyPage() {
                 </span>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Bracket results — head-to-head: who won each match. */}
+      {h2h && finishedGames.some((g) => g.round_number != null) && (
+        <div className="glass-card p-5 space-y-3">
+          <p className="label-caps">Bracket results</p>
+          <div className="space-y-2">
+            {finishedGames
+              .filter((g) => g.round_number != null)
+              .map((g) => {
+                const loserId = g.winner_player_id === g.player_a_id ? g.player_b_id : g.player_a_id
+                return (
+                  <div key={g.id} className="result-row flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span className="text-xs text-faint shrink-0">Round {g.round_number}</span>
+                    <span className="text-sm font-medium text-body text-right">
+                      {g.is_bye
+                        ? `${playerNameById(g.player_a_id)} — bye`
+                        : g.winner_player_id
+                          ? `${playerNameById(g.winner_player_id)} beat ${playerNameById(loserId)}`
+                          : `${playerNameById(g.player_a_id)} vs ${playerNameById(g.player_b_id)}`}
+                    </span>
+                  </div>
+                )
+              })}
           </div>
         </div>
       )}

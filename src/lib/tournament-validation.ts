@@ -11,6 +11,7 @@ const eliminationConfigSchema = z.object({
 export const createTournamentSchema = z.object({
   title: sanitizedString(1, 100),
   format: z.enum(['round-robin', 'head-to-head']).optional(),
+  gameType: z.string().min(1).max(40).optional(),
   placementPoints: z.array(z.number().int().min(0)).min(1).max(20).optional(),
   targetGameCount: z.coerce.number().int().min(1).max(100).optional().nullable(),
   maxPlayers: z.coerce.number().int().min(2).max(100).optional().nullable(),
