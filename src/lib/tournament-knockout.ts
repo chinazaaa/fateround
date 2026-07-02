@@ -3,7 +3,12 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { parseGameType } from '@/lib/game-types'
 import { parseQuestionSource, parseStoredTriviaQuestions, pickCustomTriviaQuestions } from '@/lib/custom-questions'
 import { pickTriviaQuestions } from '@/lib/trivia-questions'
-import { triviaCategoryFromGame, buildRoundsFromTriviaQuestions, triviaUsageFromQuestions } from '@/lib/trivia'
+import {
+  triviaCategoryFromGame,
+  buildRoundsFromTriviaQuestions,
+  triviaUsageFromQuestions,
+  parseTriviaMetadata,
+} from '@/lib/trivia'
 import { parsePoolUsage, poolUsageToMap } from '@/lib/pool-usage'
 
 /**
@@ -22,13 +27,29 @@ export async function startKnockoutRoundGame(supabase: SupabaseClient, gameId: s
   if (game.status !== 'waiting') return {}
 
   // If a prior attempt already built this game's rounds but failed to flip it
-  // active (leaving status 'waiting'), don't re-insert the rounds on retry — just
-  // activate. Otherwise a re-trigger would duplicate the round rows.
-  const { data: existingRounds } = await supabase.from('rounds').select('id').eq('game_id', gameId).limit(1)
+  // active (leaving status 'waiting'), don't re-insert the rounds on retry —
+  // activate instead. Reconstruct question usage from the existing rounds so a
+  // later round still avoids repeats, and set session_started_at like the primary
+  // path (late-join/spectator logic depends on it).
+  const { data: existingRounds } = await supabase.from('rounds').select('trivia_metadata').eq('game_id', gameId)
   if (existingRounds && existingRounds.length > 0) {
+    const priorUsage = parsePoolUsage(game.pool_usage)
+    const usage: Record<string, number> = { ...((priorUsage.trivia as Record<string, number>) ?? {}) }
+    for (const r of existingRounds) {
+      const meta = parseTriviaMetadata(r.trivia_metadata)
+      if (meta?.question) {
+        const key = meta.question.trim().toLowerCase()
+        usage[key] = (usage[key] ?? 0) + 1
+      }
+    }
     const { error } = await supabase
       .from('games')
-      .update({ status: 'active', current_round_number: 1 })
+      .update({
+        status: 'active',
+        session_started_at: new Date().toISOString(),
+        current_round_number: 1,
+        pool_usage: { ...priorUsage, trivia: usage },
+      })
       .eq('id', gameId)
       .eq('status', 'waiting')
     if (error) return { error: internalErrorMessage('tournament-knockout', error) }
