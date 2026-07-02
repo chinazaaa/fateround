@@ -21,6 +21,7 @@ import { useWordHuntGameTimer } from '@/hooks/useWordHuntGameTimer'
 import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player } from '@/types'
+import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useToast } from '@/components/ui/Toast'
@@ -145,6 +146,10 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
   }, [game?.status])
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
+
+  // Realtime-fallback poll: keeps the lobby roster fresh (and catches missed
+  // status transitions) when a players/games realtime event is dropped.
+  useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
   useEffect(() => {
     const ch = supabase
