@@ -13,6 +13,8 @@ export interface Tournament {
   title: string
   status: 'waiting' | 'active' | 'finished'
   format: TournamentFormat
+  // The game a head-to-head bracket is played with (e.g. 'chess'); null for round-robin.
+  game_type: string | null
   placement_points: number[]
   target_game_count: number | null
   max_players: number | null

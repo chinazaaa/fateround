@@ -6,8 +6,8 @@ import { startTournamentRoundSchema } from '@/lib/tournament-validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { computeRoundPairings } from '@/lib/tournament-bracket'
 
-// Head-to-head matches are chess games for now.
-const H2H_GAME_TYPE = 'chess'
+// Fallback for tournaments created before game_type was stored.
+const DEFAULT_H2H_GAME_TYPE = 'chess'
 const DEFAULT_TIMER_SECONDS = 600
 
 function shuffle<T>(items: T[]): T[] {
@@ -80,6 +80,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { matches, byes } = computeRoundPairings(shuffle(survivorIds))
   const timer = timerSeconds ?? DEFAULT_TIMER_SECONDS
+  const gameType = tournament.game_type ?? DEFAULT_H2H_GAME_TYPE
 
   let matchIndex = 0
 
@@ -99,7 +100,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       id: gameCode,
       host_token: generateToken(),
       title: `${tournament.title} — Match ${matchIndex + 1}`,
-      game_type: H2H_GAME_TYPE,
+      game_type: gameType,
       participant_mode: 'joiners',
       rounds_count: 1,
       timer_seconds: timer,
