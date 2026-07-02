@@ -38,6 +38,7 @@ import {
   isCheckersGame,
   isScrabbleGame,
   isDescribeItGame,
+  isSudokuGame,
   isTwoTruthsGame,
 } from '@/lib/game-types'
 import { fetchGamePlayerLimits, isLobbyLimitGameType, lobbyMaxPlayersFromGame } from '@/lib/game-limits'
@@ -61,6 +62,7 @@ import {
   allowLatePlayers,
 } from '@/lib/viewers'
 import type { Game } from '@/types'
+import { finishSudokuIfAllPlayersDone } from '@/lib/sudoku-finish'
 import { linkPlayerToRoomMember, resolveRoomMemberForGame } from '@/lib/room-points'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
@@ -1506,6 +1508,13 @@ export async function DELETE(req: NextRequest) {
   } else {
     const { error } = await getSupabaseAdmin().from('players').delete().eq('id', playerId)
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+  }
+
+  if (isSudokuGame(gameType)) {
+    // The leaver may have been the last player still solving — with them gone,
+    // everyone remaining may already be done, and no further submission would
+    // ever re-trigger the completion check. Best-effort: never block the leave.
+    await finishSudokuIfAllPlayersDone(getSupabaseAdmin(), id)
   }
 
   return NextResponse.json({ success: true })

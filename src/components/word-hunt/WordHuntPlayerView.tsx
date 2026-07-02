@@ -18,6 +18,7 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { parseWordHuntMetadata, tallyWordHuntScores, wordHuntPoints, WORD_HUNT_MIN_WORD_LENGTH } from '@/lib/word-hunt'
 import { validateWordHuntSubmissionClient, validWordsSetFromMetadata } from '@/lib/word-hunt-client'
 import { useWordHuntGameTimer } from '@/hooks/useWordHuntGameTimer'
+import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
@@ -208,6 +209,11 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   useEffect(() => {
     void load()
   }, [load])
+
+  // Realtime-fallback poll: keeps the lobby roster fresh (and catches missed
+  // status transitions) when a players/games realtime event is dropped. The full
+  // load() only runs on a transition, so in-round play state is never clobbered.
+  useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
   useEffect(() => {
     const ch = supabase
