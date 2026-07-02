@@ -15,7 +15,7 @@ describe('nextPowerOfTwo', () => {
 describe('computeRoundPairings', () => {
   const ids = (n: number) => Array.from({ length: n }, (_, i) => `p${i + 1}`)
 
-  it('pairs a power-of-two field with no byes', () => {
+  it('pairs an even field with no byes', () => {
     const { matches, byes } = computeRoundPairings(ids(8))
     expect(byes).toEqual([])
     expect(matches).toHaveLength(4)
@@ -23,33 +23,40 @@ describe('computeRoundPairings', () => {
     expect(matches.flat().sort()).toEqual(ids(8).sort())
   })
 
-  it('gives first-round byes so survivors become a power of two (6 players)', () => {
+  it('plays every game and byes nobody when the field is even (6 players → 3 games)', () => {
     const { matches, byes } = computeRoundPairings(ids(6))
-    expect(byes).toHaveLength(2) // 8 - 6
-    expect(matches).toHaveLength(2) // remaining 4 players
-    // survivors after the round: 2 byes + 2 match winners = 4 (a power of two)
-    expect(byes.length + matches.length).toBe(4)
-    // no id is both playing and on a bye
+    expect(byes).toEqual([])
+    expect(matches).toHaveLength(3)
+    expect(matches.flat().sort()).toEqual(ids(6).sort())
+  })
+
+  it('byes only the odd one out for an odd field (5 players → 2 games + 1 bye)', () => {
+    const { matches, byes } = computeRoundPairings(ids(5))
+    expect(byes).toHaveLength(1)
+    expect(matches).toHaveLength(2)
+    // the bye player isn't also in a match
     const playing = new Set(matches.flat())
-    for (const b of byes) expect(playing.has(b)).toBe(false)
+    expect(playing.has(byes[0])).toBe(false)
   })
 
   it.each([
-    [3, 1, 1],
-    [5, 3, 1],
-    [7, 1, 3],
-    [4, 0, 2],
     [2, 0, 1],
+    [3, 1, 1],
+    [4, 0, 2],
+    [5, 1, 2],
+    [6, 0, 3],
+    [7, 1, 3],
+    [8, 0, 4],
   ])('for %i players yields %i byes and %i matches', (n, expectedByes, expectedMatches) => {
     const { matches, byes } = computeRoundPairings(ids(n))
     expect(byes).toHaveLength(expectedByes)
     expect(matches).toHaveLength(expectedMatches)
     // every player is accounted for exactly once
     expect([...byes, ...matches.flat()].sort()).toEqual(ids(n).sort())
-    // survivors (byes + one winner per match) are a clean power of two
-    const survivors = byes.length + matches.length
-    expect(survivors).toBe(nextPowerOfTwo(n) / 2)
-    expect(Number.isInteger(Math.log2(survivors))).toBe(true)
+    // at most one bye — only the odd one out ever sits
+    expect(byes.length).toBeLessThanOrEqual(1)
+    // survivors = one per match plus any bye = ceil(n / 2)
+    expect(byes.length + matches.length).toBe(Math.ceil(n / 2))
   })
 
   it('handles a trivial single-player field', () => {
