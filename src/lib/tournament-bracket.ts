@@ -23,14 +23,31 @@ export interface RoundPairing {
  * matches and no byes (6 players → 3 games); an odd field is one bye plus the
  * rest paired. Byes recur naturally in later rounds whenever the survivor count
  * is odd, at most one per round.
+ *
+ * `avoidByeIds` are players who got a bye last round — when the field is odd the
+ * bye goes to someone else if possible, so nobody sits out twice in a row.
  */
-export function computeRoundPairings(seededIds: string[]): RoundPairing {
+export function computeRoundPairings(seededIds: string[], avoidByeIds: string[] = []): RoundPairing {
   const n = seededIds.length
   if (n <= 1) return { matches: [], byes: [...seededIds] }
 
-  const odd = n % 2 === 1
-  const byes = odd ? [seededIds[n - 1]] : []
-  const playing = odd ? seededIds.slice(0, -1) : seededIds
+  let byes: string[] = []
+  let playing = seededIds
+
+  if (n % 2 === 1) {
+    const avoid = new Set(avoidByeIds)
+    // Prefer to bye someone who didn't get one last round; the list is already
+    // shuffled, so scanning from the end is effectively a random eligible pick.
+    let byeIdx = seededIds.length - 1
+    for (let i = seededIds.length - 1; i >= 0; i--) {
+      if (!avoid.has(seededIds[i])) {
+        byeIdx = i
+        break
+      }
+    }
+    byes = [seededIds[byeIdx]]
+    playing = seededIds.filter((_, i) => i !== byeIdx)
+  }
 
   const matches: [string, string][] = []
   for (let i = 0; i + 1 < playing.length; i += 2) {

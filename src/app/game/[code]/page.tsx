@@ -70,14 +70,16 @@ function TournamentBanner({ gameCode, tournamentId }: { gameCode: string; tourna
     )
   }
 
+  // Parked top-left (not bottom-centre) so it never sits over the centred
+  // name/join controls — players couldn't edit their name past it.
   return (
-    <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
+    <div className="fixed left-3 top-3 z-50">
       <button
         type="button"
         onClick={() => router.push(`/tournament/${tournamentId}`)}
-        className="btn-secondary btn-fit text-sm"
+        className="btn-secondary btn-fit text-xs shadow-md"
       >
-        ← Back to Tournament
+        ← Tournament
       </button>
     </div>
   )
@@ -129,7 +131,10 @@ export default function GamePage() {
   return (
     <>
       <PollGamePlayerExperience gameCode={gameCode} initialName={initialName} autoJoinAsViewer={watch} />
-      {playerName && playerId && (
+      {/* Voice chat is disabled inside tournaments — matches are structured and
+          run to a schedule, and it kept players' voice sessions unstable across
+          the lobby/match tabs a tournament involves. */}
+      {playerName && playerId && !tournamentId && (
         <AudioChat roomCode={gameCode} playerName={playerName} identity={playerId} auth={{ kind: 'player' }} />
       )}
       <TournamentBanner gameCode={gameCode} tournamentId={tournamentId} />

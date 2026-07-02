@@ -80,7 +80,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
           opponentEliminated = opp?.is_eliminated ?? true
         }
         const winner = opponentId && !opponentEliminated ? opponentId : null
-        await admin.from('tournament_games').update({ status: 'finished', winner_player_id: winner }).eq('id', match.id)
+        await admin
+          .from('tournament_games')
+          .update({ status: 'finished', winner_player_id: winner, win_reason: winner ? 'walkover' : null })
+          .eq('id', match.id)
         // End the (staged or live) match room so it doesn't linger.
         if (match.game_id) await admin.from('games').update({ status: 'finished' }).eq('id', match.game_id)
       }

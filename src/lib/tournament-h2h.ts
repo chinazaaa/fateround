@@ -29,7 +29,7 @@ export async function resolveHeadToHeadMatch(supabase: SupabaseClient, gameId: s
 
   const { data: session } = await supabase
     .from('chess_sessions')
-    .select('winner_player_id, is_draw, player_white_id, player_black_id')
+    .select('winner_player_id, is_draw, player_white_id, player_black_id, result_reason')
     .eq('game_id', gameId)
     .maybeSingle()
   if (!session) return
@@ -74,7 +74,7 @@ export async function resolveHeadToHeadMatch(supabase: SupabaseClient, gameId: s
   // champion, so a lost CAS (or failed update) can't half-resolve the match.
   const { data: claimed, error: claimError } = await supabase
     .from('tournament_games')
-    .update({ status: 'finished', winner_player_id: winnerTP.id })
+    .update({ status: 'finished', winner_player_id: winnerTP.id, win_reason: session.result_reason ?? null })
     .eq('id', match.id)
     .neq('status', 'finished')
     .select('id')
