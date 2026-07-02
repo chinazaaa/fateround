@@ -56,6 +56,51 @@ export function computeRoundPairings(seededIds: string[], avoidByeIds: string[] 
   return { matches, byes }
 }
 
+export interface RoundGroups {
+  /** Groups of player ids that each play one game this round; the winner advances. */
+  groups: string[][]
+  /** Player ids that skip this round and advance automatically (a lone leftover). */
+  byes: string[]
+}
+
+/**
+ * Split an already-seeded list of survivor ids into groups for one round of a
+ * *group bracket* — the group-of-N generalisation of head-to-head (chess is the
+ * N=2 case). Everyone in a group plays one game (Whot/Scrabble) and only its
+ * single winner advances; the rest are eliminated. So a round of N groups yields
+ * N winners, converging to a champion (16 → 4 groups → 4 → 1 group → 1).
+ *
+ * Rooms hold up to `groupSize` players, but the field is spread as *evenly* as
+ * possible across ceil(n / groupSize) rooms rather than packing full rooms and
+ * leaving a lopsided remainder — 6 players at size 4 become two rooms of 3, not
+ * a 4 and a 2, so nobody gets a materially easier path. A room that would hold a
+ * single player instead becomes a bye (only reachable at group size 2; the
+ * fixed size-4 formats never produce one). A lone survivor byes to the next round.
+ */
+export function computeRoundGroups(seededIds: string[], groupSize: number): RoundGroups {
+  const size = Math.max(2, Math.floor(groupSize) || 2)
+  const n = seededIds.length
+  if (n <= 1) return { groups: [], byes: [...seededIds] }
+
+  const numGroups = Math.ceil(n / size)
+  const base = Math.floor(n / numGroups)
+  // The first `remainder` groups get one extra player, so sizes differ by at most 1.
+  const remainder = n % numGroups
+
+  const built: string[][] = []
+  let idx = 0
+  for (let g = 0; g < numGroups; g++) {
+    const thisSize = base + (g < remainder ? 1 : 0)
+    built.push(seededIds.slice(idx, idx + thisSize))
+    idx += thisSize
+  }
+
+  // A size-1 room isn't a game — fold any into byes so every group has ≥ 2 players.
+  const groups = built.filter((g) => g.length >= 2)
+  const byes = built.filter((g) => g.length === 1).flat()
+  return { groups, byes }
+}
+
 /**
  * Knockout cut: given a field ranked best-first, the top half (ceil(n/2)) advance
  * and the bottom half are eliminated — 16 → 8 → 4 → 2 → 1. A 2-player final cuts

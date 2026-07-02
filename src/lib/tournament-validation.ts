@@ -77,8 +77,24 @@ export const addTournamentGameSchema = z.object({
 // Games eligible for the round-robin (all-vs-all) format.
 export const TOURNAMENT_ELIGIBLE_TYPES = ['trivia'] as const
 
-// Games eligible for the head-to-head (1v1 bracket) format — 2-player games only.
-export const H2H_ELIGIBLE_TYPES = ['chess'] as const
+// Games eligible for the head-to-head (bracket) format. Chess is the classic 1v1
+// (group size 2); Whot and Scrabble play in rooms of 4, where each round's single
+// room winner advances (group size 4). All are single-winner elimination games.
+export const H2H_ELIGIBLE_TYPES = ['chess', 'whot', 'scrabble'] as const
+
+// How many players share one bracket room per game. Chess is a duel; Whot and
+// Scrabble seat 4 and advance only the room winner. Drives the round grouping,
+// seating, and elimination math.
+export const H2H_GROUP_SIZES: Record<(typeof H2H_ELIGIBLE_TYPES)[number], number> = {
+  chess: 2,
+  whot: 4,
+  scrabble: 4,
+}
+
+/** Room size for a head-to-head game type; defaults to a duel (2) if unknown. */
+export function h2hGroupSize(gameType: string | null | undefined): number {
+  return H2H_GROUP_SIZES[gameType as (typeof H2H_ELIGIBLE_TYPES)[number]] ?? 2
+}
 
 // Games eligible for the knockout (group elimination) format — group games where
 // everyone plays at once and the field is cut by score each round.

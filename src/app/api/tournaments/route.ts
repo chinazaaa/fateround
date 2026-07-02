@@ -3,7 +3,12 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { generateGameCode, generateToken } from '@/lib/utils'
-import { createTournamentSchema, H2H_ELIGIBLE_TYPES, KNOCKOUT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
+import {
+  createTournamentSchema,
+  H2H_ELIGIBLE_TYPES,
+  h2hGroupSize,
+  KNOCKOUT_ELIGIBLE_TYPES,
+} from '@/lib/tournament-validation'
 
 const supabase = getSupabaseAnon()
 
@@ -54,7 +59,10 @@ export async function POST(req: NextRequest) {
           roundsCount: gameConfig?.roundsCount ?? 5,
           timerSeconds: gameConfig?.timerSeconds ?? 15,
         }
-      : null,
+      : isH2H
+        ? // Fixes the bracket room size for the whole tournament (chess: 2, Whot/Scrabble: 4).
+          { groupSize: h2hGroupSize(h2hGameType) }
+        : null,
     placement_points: placementPoints ?? [10, 7, 5, 3, 2, 1],
     target_game_count: targetGameCount ?? null,
     max_players: maxPlayers ?? null,
