@@ -13,9 +13,7 @@ vi.mock('@/lib/supabase', () => ({
   supabase: {
     from(table: string) {
       const result =
-        table === 'games'
-          ? { data: db.game, error: db.error }
-          : { data: db.error ? null : db.players, error: db.error }
+        table === 'games' ? { data: db.game, error: db.error } : { data: db.error ? null : db.players, error: db.error }
       // Chainable-and-awaitable builder, like supabase-js.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const b: any = {}
@@ -58,7 +56,10 @@ function renderPoll(status: Game['status'] | undefined = 'waiting') {
 describe('useGameRosterPoll', () => {
   it('refreshes the roster on each tick without running the full reload', async () => {
     const { setPlayers, setGame, reload } = renderPoll('waiting')
-    db.players = [{ id: 'p1', name: 'Ada' }, { id: 'p2', name: 'Grace' }]
+    db.players = [
+      { id: 'p1', name: 'Ada' },
+      { id: 'p2', name: 'Grace' },
+    ]
 
     await vi.advanceTimersByTimeAsync(TICK + 50)
     expect(setPlayers).toHaveBeenCalledWith(db.players as unknown as Player[])
