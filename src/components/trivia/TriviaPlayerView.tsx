@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
@@ -10,12 +10,12 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { triviaCategoryFromGame } from '@/lib/trivia'
 import { triviaCategoryLabel } from '@/lib/trivia-questions'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT, TRIVIA_ANSWER_SELECT } from '@/lib/supabase-selects'
-import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
-import { resolvePlayerSession } from '@/lib/player-resume'
-import type { Game, Player, Round, TriviaAnswer } from '@/types'
+import { ROUND_SELECT, TRIVIA_ANSWER_SELECT } from '@/lib/supabase-selects'
+import { clearPlayerSession } from '@/lib/utils'
+import type { Game, Round, TriviaAnswer } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -35,74 +35,59 @@ type Screen = 'loading' | 'join' | 'game_started_waiting' | 'late_join_choice' |
 export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
-  const [screen, setScreen] = useState<Screen>('loading')
-  const [game, setGame] = useState<Game | null>(null)
-  const [players, setPlayers] = useState<Player[]>([])
   const [rounds, setRounds] = useState<Round[]>([])
   const [answers, setAnswers] = useState<TriviaAnswer[]>([])
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
-  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
-  const [myPlayerName, setMyPlayerName] = useState('')
-  const [joinName, setJoinName] = useState('')
-  const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
-  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
-  const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes, rdsRes, ansRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+  // Game-specific load: fetch this game's rounds + trivia answers (the shared game/players
+  // fetch + session resolution lives in useGameViewBootstrap). Both reads are independent
+  // of the resolved playerId, so they belong here rather than in a post-resolve seam.
+  const loadGameState = useCallback(async (): Promise<{ state: null; ok: boolean }> => {
+    const [rdsRes, ansRes] = await Promise.all([
       supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).order('round_number'),
       supabase.from('trivia_answers').select(TRIVIA_ANSWER_SELECT).eq('game_id', gameCode),
     ])
-    if (!supabasePollOk(gameRes, plrsRes, rdsRes, ansRes)) return false
-
-    const gameData = gameRes.data
-    const plrs = plrsRes.data
-
-    if (!gameData) {
-      setScreen('not_found')
-      return true
-    }
-
-    setGame(gameData)
-    setPlayers(plrs ?? [])
-    setRounds(rdsRes.data ?? [])
-    setAnswers(ansRes.data ?? [])
-
-    const session = await resolvePlayerSession(gameCode, plrs)
-    const playerId = session?.playerId ?? null
-    if (session) {
-      setMyPlayerId(session.playerId)
-      setMyResumeToken(session.resumeToken ?? null)
-      setMyPlayerName(session.playerName)
-    } else {
-      setMyPlayerId(null)
-      setMyResumeToken(null)
-      setMyPlayerName('')
-    }
-
-    if (!playerId) {
-      const pre = preJoinScreen(gameData, false)
-      setScreen(
-        pre === 'game_started_waiting'
-          ? 'game_started_waiting'
-          : pre === 'late_join_choice'
-            ? 'late_join_choice'
-            : pre === 'game_ended'
-              ? 'game_ended'
-              : 'join'
-      )
-      return true
-    }
-
-    setScreen('playing')
-    return true
+    if (supabasePollOk(rdsRes)) setRounds(rdsRes.data ?? [])
+    if (supabasePollOk(ansRes)) setAnswers(ansRes.data ?? [])
+    return { state: null, ok: supabasePollOk(rdsRes, ansRes) }
   }, [gameCode])
 
-  useEffect(() => {
-    load()
-  }, [load])
+  const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'late_join_choice') return 'late_join_choice'
+      if (pre === 'game_ended') return 'game_ended'
+      return 'join'
+    }
+    return 'playing'
+  }, [])
+
+  const {
+    screen,
+    setScreen,
+    game,
+    players,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    setMyResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<Screen, null>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'not_found',
+    loadGameState,
+    computeScreen,
+    joinExtras,
+    onJoinError: toastError,
+  })
+
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'rounds', 'trivia_answers'], load)
@@ -112,13 +97,14 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
   const openLobbyJoin = useCallback(() => {
     setScreen('join')
     void load()
-  }, [load])
+  }, [setScreen, load])
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'game_started_waiting' || screen === 'late_join_choice') void load()
   })
 
   const me = players.find((p) => p.id === myPlayerId)
+  const myPlayerName = me?.name ?? ''
   const isViewer = !!(game && me && playerIsViewer(me, game))
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
     gameCode,
@@ -126,39 +112,6 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
     screen === 'late_join_choice'
   )
   const { context: viewerPromoteContext } = useLateJoinContext(gameCode, game, isViewer && screen === 'playing')
-
-  const joinGame = useCallback(
-    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-      const name = (opts?.name ?? joinName).trim()
-      if (!name) return
-      setJoining(true)
-      try {
-        const res = await fetch('/api/players', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameCode,
-            playerName: name,
-            ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer } : {}),
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-        setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-        setMyPlayerId(data.playerId)
-        setMyResumeToken(data.resumeToken ?? null)
-        setMyPlayerName(data.playerName)
-        setScreen('playing')
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to join')
-      } finally {
-        setJoining(false)
-      }
-    },
-    [game?.status, gameCode, joinExtras, joinName, load, toastError]
-  )
 
   useRoomMemberAutoJoin({
     gameCode,
@@ -168,14 +121,13 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
     gameStatus: game?.status,
     hasPlayerSession: !!myPlayerId,
     joining,
-    onJoin: (name) => joinGame({ name }),
+    onJoin: (name) => join({ name }),
   })
 
   const handlePlayerLeft = () => {
     clearPlayerSession(gameCode)
     setMyPlayerId(null)
     setMyResumeToken(null)
-    setMyPlayerName('')
     setJoinName('')
     setScreen('join')
   }
@@ -221,8 +173,8 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
         nameInput={joinName}
         onNameChange={setJoinName}
         joining={joining}
-        onJoinAsViewer={() => void joinGame({ joinAsViewer: true })}
-        onJoinAsPlayer={() => void joinGame({ joinAsViewer: false })}
+        onJoinAsViewer={() => void join({ joinAsViewer: true })}
+        onJoinAsPlayer={() => void join({ joinAsViewer: false })}
       />
     )
   }
@@ -251,7 +203,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
             ) : null
           }
         />
-        <NameJoinForm value={joinName} onChange={setJoinName} onSubmit={() => void joinGame()} joining={joining} />
+        <NameJoinForm value={joinName} onChange={setJoinName} onSubmit={() => void join()} joining={joining} />
       </GameJoinLobbyShell>
     )
   }
@@ -289,10 +241,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
             gameCode={gameCode}
             playerId={myPlayerId}
             currentName={myPlayerName}
-            onRenamed={(name) => {
-              setMyPlayerName(name)
-              setPlayerSession(gameCode, myPlayerId, name, 'both', myResumeToken)
-            }}
+            onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
             inLobby={game.status === 'waiting'}
           />
