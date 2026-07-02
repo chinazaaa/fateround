@@ -535,6 +535,26 @@ export default function TournamentLobbyPage() {
         ) ?? null)
       : null
 
+  // Decided matches grouped by round, for the on-page results view (final result
+  // plus every round). Includes byes; ordered round 1 → final.
+  const resultRounds = h2h
+    ? Object.values(
+        games
+          .filter((g) => g.round_number != null && (g.status === 'finished' || g.is_bye))
+          .reduce<Record<number, TournamentGame[]>>((acc, g) => {
+            const r = g.round_number as number
+            ;(acc[r] ??= []).push(g)
+            return acc
+          }, {})
+      )
+        .map((matches) => ({
+          round: matches[0].round_number as number,
+          entrants: matches.reduce((n, m) => n + (m.is_bye ? 1 : 2), 0),
+          matches: [...matches].sort((a, b) => (a.match_index ?? 0) - (b.match_index ?? 0)),
+        }))
+        .sort((a, b) => a.round - b.round)
+    : []
+
   return (
     <PageShell>
       {/* Header */}
@@ -1093,29 +1113,38 @@ export default function TournamentLobbyPage() {
         </div>
       )}
 
-      {/* Bracket results — head-to-head: who won each match. */}
-      {h2h && finishedGames.some((g) => g.round_number != null) && (
-        <div className="glass-card p-5 space-y-3">
+      {/* Bracket results — head-to-head: every decided round, newest info on page.
+          The champion banner above is the final result; this is the per-round
+          history, with a View button to open each match's final board. */}
+      {h2h && resultRounds.length > 0 && (
+        <div className="glass-card p-5 space-y-4">
           <p className="label-caps">Bracket results</p>
-          <div className="space-y-2">
-            {finishedGames
-              .filter((g) => g.round_number != null)
-              .map((g) => {
+          {resultRounds.map((rd) => (
+            <div key={rd.round} className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Round {rd.round} · {roundLabel(rd.entrants)}
+              </p>
+              {rd.matches.map((g) => {
                 const loserId = g.winner_player_id === g.player_a_id ? g.player_b_id : g.player_a_id
                 return (
                   <div key={g.id} className="result-row flex items-center justify-between gap-3 px-4 py-2.5">
-                    <span className="text-xs text-faint shrink-0">Round {g.round_number}</span>
-                    <span className="text-sm font-medium text-body text-right">
+                    <span className="min-w-0 truncate text-sm font-medium text-body">
                       {g.is_bye
                         ? `${playerNameById(g.player_a_id)} — bye`
                         : g.winner_player_id
-                          ? `${playerNameById(g.winner_player_id)} beat ${playerNameById(loserId)}`
+                          ? `✓ ${playerNameById(g.winner_player_id)} beat ${playerNameById(loserId)}`
                           : `${playerNameById(g.player_a_id)} vs ${playerNameById(g.player_b_id)}`}
                     </span>
+                    {!g.is_bye && g.game_id && (
+                      <button onClick={() => handleWatchGame(g.game_id!)} className="btn-ghost shrink-0 text-xs">
+                        View
+                      </button>
+                    )}
                   </div>
                 )
               })}
-          </div>
+            </div>
+          ))}
         </div>
       )}
 
