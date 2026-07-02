@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { tallyTriviaPlayerScores } from './trivia'
+import { splitKnockoutField } from './tournament-bracket'
 import type { TriviaAnswer, Player } from '@/types'
 import type { EliminationConfig } from '@/types/elimination'
 
@@ -104,6 +105,48 @@ async function computeTwoTruthsPlacements(
   return placements
 }
 
+/**
+ * Knockout advancement: rank the surviving field by this round's placements and
+ * eliminate the bottom half, so the top half (ceil(n/2)) advance — 16 → 8 → 4 →
+ * 2 → 1. Players who were still in but didn't play/answer this round rank last
+ * (a no-show forfeits). When one player remains, the tournament is finished.
+ *
+ * `placements` maps tournament_player id → rank (1 = best) for players who were
+ * in this round's game. Called only after the round row was atomically claimed,
+ * so it runs once per round.
+ */
+async function applyKnockoutCut(
+  supabase: SupabaseClient,
+  tournamentId: string,
+  placements: Record<string, number>
+): Promise<void> {
+  const { data: field } = await supabase
+    .from('tournament_players')
+    .select('id')
+    .eq('tournament_id', tournamentId)
+    .eq('is_eliminated', false)
+
+  const ids = (field ?? []).map((p) => p.id)
+  const n = ids.length
+  if (n <= 1) return
+
+  // Best rank first; anyone not in this round's placements (a no-show) ranks last.
+  const rankOf = (id: string) => placements[id] ?? Number.POSITIVE_INFINITY
+  const ranked = [...ids].sort((a, b) => rankOf(a) - rankOf(b))
+
+  const { eliminated } = splitKnockoutField(ranked)
+  if (eliminated.length > 0) {
+    await supabase
+      .from('tournament_players')
+      .update({ is_eliminated: true, eliminated_at: new Date().toISOString() })
+      .in('id', eliminated)
+  }
+
+  if (n - eliminated.length <= 1) {
+    await supabase.from('tournaments').update({ status: 'finished' }).eq('id', tournamentId)
+  }
+}
+
 export async function awardTournamentPlacements(supabase: SupabaseClient, gameId: string): Promise<void> {
   const { data: game } = await supabase.from('games').select('tournament_id, game_type').eq('id', gameId).maybeSingle()
 
@@ -113,7 +156,7 @@ export async function awardTournamentPlacements(supabase: SupabaseClient, gameId
 
   const { data: tournament } = await supabase
     .from('tournaments')
-    .select('placement_points, elimination_config')
+    .select('placement_points, elimination_config, format')
     .eq('id', tournamentId)
     .maybeSingle()
 
@@ -176,6 +219,13 @@ export async function awardTournamentPlacements(supabase: SupabaseClient, gameId
     .select('id')
 
   if (!claimed || claimed.length === 0) return
+
+  // Knockout: cut the bottom half of the field this round instead of awarding
+  // points/lives — the top half advance until one champion remains.
+  if (tournament.format === 'knockout') {
+    await applyKnockoutCut(supabase, tournamentId, placements)
+    return
+  }
 
   for (const [tpId, earned] of Object.entries(points)) {
     const { error: rpcError } = await supabase.rpc('increment_tournament_points', {

@@ -3,7 +3,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { generateGameCode, generateToken } from '@/lib/utils'
-import { createTournamentSchema, H2H_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
+import { createTournamentSchema, H2H_ELIGIBLE_TYPES, KNOCKOUT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
 
 const supabase = getSupabaseAnon()
 
@@ -11,14 +11,21 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, createTournamentSchema)
   if (bodyError) return bodyError
 
-  const { title, format, gameType, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = body
+  const { title, format, gameType, gameConfig, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = body
   const hostToken = generateToken()
 
-  // Head-to-head is played with a single 2-player game, chosen at creation.
+  // Head-to-head (1v1 bracket) and knockout (group elimination) are each played
+  // with a single game chosen at creation; knockout also stores its per-round
+  // group-game config (trivia: questions per round + timer).
   const isH2H = format === 'head-to-head'
+  const isKnockout = format === 'knockout'
   const h2hGameType = gameType ?? H2H_ELIGIBLE_TYPES[0]
+  const knockoutGameType = gameType ?? KNOCKOUT_ELIGIBLE_TYPES[0]
   if (isH2H && !H2H_ELIGIBLE_TYPES.includes(h2hGameType as (typeof H2H_ELIGIBLE_TYPES)[number])) {
     return NextResponse.json({ error: `Game "${gameType}" isn't available for head-to-head` }, { status: 400 })
+  }
+  if (isKnockout && !KNOCKOUT_ELIGIBLE_TYPES.includes(knockoutGameType as (typeof KNOCKOUT_ELIGIBLE_TYPES)[number])) {
+    return NextResponse.json({ error: `Game "${gameType}" isn't available for knockout` }, { status: 400 })
   }
 
   let tournamentCode = ''
@@ -40,7 +47,14 @@ export async function POST(req: NextRequest) {
     host_token: hostToken,
     title,
     format: format ?? 'round-robin',
-    game_type: isH2H ? h2hGameType : null,
+    game_type: isH2H ? h2hGameType : isKnockout ? knockoutGameType : null,
+    game_config: isKnockout
+      ? {
+          questionSource: gameConfig?.questionSource ?? 'platform',
+          roundsCount: gameConfig?.roundsCount ?? 5,
+          timerSeconds: gameConfig?.timerSeconds ?? 15,
+        }
+      : null,
     placement_points: placementPoints ?? [10, 7, 5, 3, 2, 1],
     target_game_count: targetGameCount ?? null,
     max_players: maxPlayers ?? null,

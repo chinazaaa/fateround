@@ -11,6 +11,9 @@ interface TournamentBracketBoardProps {
   nameOf: (id: string | null) => string
   /** Open a match room as a viewer. */
   onWatch: (gameId: string) => void
+  /** Host only: remove a player from a not-yet-decided match (e.g. a no-show).
+   *  The opponent then walks over. Omit to hide the remove controls. */
+  onRemovePlayer?: (playerId: string) => void
 }
 
 /**
@@ -25,10 +28,24 @@ export function TournamentBracketBoard({
   roundLabel,
   nameOf,
   onWatch,
+  onRemovePlayer,
 }: TournamentBracketBoardProps) {
   if (matches.length === 0) return null
 
   let gameNo = 0
+
+  const RemoveBtn = ({ id }: { id: string | null }) =>
+    onRemovePlayer && id ? (
+      <button
+        type="button"
+        onClick={() => onRemovePlayer(id)}
+        title={`Remove ${nameOf(id)}`}
+        aria-label={`Remove ${nameOf(id)}`}
+        className="shrink-0 rounded px-1 text-xs text-faint transition-colors hover:text-red-500"
+      >
+        ✕
+      </button>
+    ) : null
 
   return (
     <div className="glass-card p-5 space-y-3">
@@ -77,15 +94,21 @@ export function TournamentBracketBoard({
                 <p className="text-sm font-medium text-body">{nameOf(m.player_a_id)}</p>
               ) : (
                 <div className="space-y-0.5">
-                  <p className={`text-sm ${aWon ? 'font-bold text-body' : 'text-body'}`}>
-                    {aWon && <span aria-hidden="true">✓ </span>}
-                    {nameOf(m.player_a_id)}
-                  </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className={`text-sm ${aWon ? 'font-bold text-body' : 'text-body'}`}>
+                      {aWon && <span aria-hidden="true">✓ </span>}
+                      {nameOf(m.player_a_id)}
+                    </p>
+                    {m.status !== 'finished' && <RemoveBtn id={m.player_a_id} />}
+                  </div>
                   <p className="text-[0.625rem] text-faint uppercase tracking-wide">vs</p>
-                  <p className={`text-sm ${bWon ? 'font-bold text-body' : 'text-body'}`}>
-                    {bWon && <span aria-hidden="true">✓ </span>}
-                    {nameOf(m.player_b_id)}
-                  </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className={`text-sm ${bWon ? 'font-bold text-body' : 'text-body'}`}>
+                      {bWon && <span aria-hidden="true">✓ </span>}
+                      {nameOf(m.player_b_id)}
+                    </p>
+                    {m.status !== 'finished' && <RemoveBtn id={m.player_b_id} />}
+                  </div>
                 </div>
               )}
 

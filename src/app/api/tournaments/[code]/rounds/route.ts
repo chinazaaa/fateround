@@ -38,8 +38,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: tournament } = await admin.from('tournaments').select('*').eq('id', tournamentId).maybeSingle()
   if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
   if (tournament.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (tournament.format !== 'head-to-head') {
-    return NextResponse.json({ error: 'Not a head-to-head tournament' }, { status: 400 })
+  if (tournament.format !== 'head-to-head' && tournament.format !== 'knockout') {
+    return NextResponse.json({ error: 'This tournament does not run bracket rounds' }, { status: 400 })
   }
   if (tournament.status === 'finished') return NextResponse.json({ error: 'Tournament has ended' }, { status: 400 })
 
@@ -78,7 +78,89 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const roundNumber = (lastRow?.round_number ?? 0) + 1
   let nextOrder = (lastRow?.game_order ?? 0) + 1
 
-  const { matches, byes } = computeRoundPairings(shuffle(survivorIds))
+  // Knockout: one group game per round with all survivors in it (no pairing).
+  if (tournament.format === 'knockout') {
+    const config = (tournament.game_config ?? {}) as {
+      questionSource?: string
+      roundsCount?: number
+      timerSeconds?: number
+    }
+
+    let gameCode = ''
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const candidate = generateGameCode()
+      const { data: existing } = await admin.from('games').select('id').eq('id', candidate).maybeSingle()
+      if (!existing) {
+        gameCode = candidate
+        break
+      }
+    }
+    if (!gameCode) return NextResponse.json({ error: 'Failed to generate unique game code' }, { status: 500 })
+
+    // Carry question usage from earlier rounds so players who advance never see a
+    // repeated question — seed this round's game with prior rounds' usage, which
+    // pickTriviaQuestions then avoids.
+    const { data: priorTgames } = await admin
+      .from('tournament_games')
+      .select('game_id')
+      .eq('tournament_id', tournamentId)
+    const priorIds = (priorTgames ?? []).map((g) => g.game_id).filter((id): id is string => Boolean(id))
+    const seededTriviaUsage: Record<string, number> = {}
+    if (priorIds.length > 0) {
+      const { data: priorGames } = await admin.from('games').select('pool_usage').in('id', priorIds)
+      for (const g of priorGames ?? []) {
+        const trivia = (g.pool_usage as { trivia?: Record<string, number> } | null)?.trivia ?? {}
+        for (const [key, count] of Object.entries(trivia)) {
+          seededTriviaUsage[key] = (seededTriviaUsage[key] ?? 0) + (count as number)
+        }
+      }
+    }
+
+    const { error: gameError } = await admin.from('games').insert({
+      id: gameCode,
+      host_token: generateToken(),
+      title: `${tournament.title} — Round ${roundNumber}`,
+      game_type: tournament.game_type ?? 'trivia',
+      participant_mode: 'joiners',
+      rounds_count: config.roundsCount ?? 5,
+      timer_seconds: config.timerSeconds ?? 15,
+      question_source: config.questionSource ?? 'platform',
+      tournament_id: tournamentId,
+      ...(Object.keys(seededTriviaUsage).length > 0 ? { pool_usage: { trivia: seededTriviaUsage } } : {}),
+    })
+    if (gameError) {
+      return NextResponse.json({ error: internalErrorMessage('tournaments/code/rounds', gameError) }, { status: 500 })
+    }
+
+    const { error: tgError } = await admin.from('tournament_games').insert({
+      tournament_id: tournamentId,
+      game_id: gameCode,
+      game_order: nextOrder,
+      round_number: roundNumber,
+      status: 'pending',
+    })
+    if (tgError) {
+      await admin.from('games').delete().eq('id', gameCode)
+      return NextResponse.json({ error: internalErrorMessage('tournaments/code/rounds', tgError) }, { status: 500 })
+    }
+
+    if (tournament.status === 'waiting') {
+      await admin.from('tournaments').update({ status: 'active' }).eq('id', tournamentId)
+    }
+    return NextResponse.json({ roundNumber, players: survivorIds.length })
+  }
+
+  // Who got a bye last round — so the pairing doesn't hand the same player a bye
+  // two rounds running.
+  const { data: priorByeRows } = await admin
+    .from('tournament_games')
+    .select('player_a_id')
+    .eq('tournament_id', tournamentId)
+    .eq('round_number', roundNumber - 1)
+    .eq('is_bye', true)
+  const priorByeIds = (priorByeRows ?? []).map((r) => r.player_a_id).filter((id): id is string => Boolean(id))
+
+  const { matches, byes } = computeRoundPairings(shuffle(survivorIds), priorByeIds)
   const timer = timerSeconds ?? DEFAULT_TIMER_SECONDS
   const gameType = tournament.game_type ?? DEFAULT_H2H_GAME_TYPE
 
