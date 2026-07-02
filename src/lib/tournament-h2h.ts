@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { initializeChessGame } from '@/lib/chess'
-import { h2hGroupSize } from '@/lib/tournament-bracket'
+import { resolveGroupSize } from '@/lib/tournament-bracket'
 
 /**
  * Resolve a finished head-to-head chess match: record the winner, eliminate the
@@ -30,8 +30,7 @@ export async function resolveHeadToHeadMatch(supabase: SupabaseClient, gameId: s
 
   // Group bracket (Whot/Scrabble, rooms of 4): the room's single winner advances
   // and the rest are eliminated — a different resolution from the chess duel below.
-  const groupSize =
-    Number((tournament.game_config as { groupSize?: number } | null)?.groupSize) || h2hGroupSize(tournament.game_type)
+  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
   if (groupSize > 2) {
     await resolveGroupRoom(supabase, match, tournament.game_type, gameId)
     return

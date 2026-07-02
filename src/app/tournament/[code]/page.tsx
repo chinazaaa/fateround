@@ -5,8 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { useTournamentRealtime } from '@/hooks/useTournamentRealtime'
 import type { Tournament, TournamentPlayer, TournamentGame } from '@/types/tournament'
 import type { TriviaQuestion } from '@/types'
-import { TOURNAMENT_ELIGIBLE_TYPES, h2hGroupSize } from '@/lib/tournament-validation'
-import { groupRoundLabel, roundLabel } from '@/lib/tournament-bracket'
+import { TOURNAMENT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
+import { groupRoundLabel, resolveGroupSize, roundLabel } from '@/lib/tournament-bracket'
 import { gameTypeLabel } from '@/lib/game-types'
 import {
   parseTriviaQuestionImport,
@@ -624,7 +624,7 @@ export default function TournamentLobbyPage() {
   const bracket = h2h || knockout
   const roundRobin = !bracket
   // Bracket room size: chess is a 1v1 duel (2); Whot/Scrabble play in rooms of 4.
-  const groupSize = Number(tournament.game_config?.groupSize) || h2hGroupSize(tournament.game_type)
+  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
   const isGroupH2h = h2h && groupSize > 2
   const labelForRound = (entrants: number) => (isGroupH2h ? groupRoundLabel(entrants, groupSize) : roundLabel(entrants))
   const playerNameById = (id: string | null) => (id ? (players.find((p) => p.id === id)?.player_name ?? '—') : '—')

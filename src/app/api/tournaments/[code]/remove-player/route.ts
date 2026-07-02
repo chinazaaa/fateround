@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
-import { h2hGroupSize, removeTournamentPlayerSchema } from '@/lib/tournament-validation'
+import { removeTournamentPlayerSchema } from '@/lib/tournament-validation'
+import { resolveGroupSize } from '@/lib/tournament-bracket'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 /**
@@ -51,8 +52,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     )
   }
 
-  const groupSize =
-    Number((tournament.game_config as { groupSize?: number } | null)?.groupSize) || h2hGroupSize(tournament.game_type)
+  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
 
   // Group bracket (Whot/Scrabble): removing one member of a room of 4 doesn't void
   // it — the rest still play. Only step in if the room is now down to one live

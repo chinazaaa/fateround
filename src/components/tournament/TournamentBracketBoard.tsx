@@ -61,7 +61,9 @@ export function TournamentBracketBoard({
           const memberIds = m.member_ids?.length
             ? m.member_ids
             : [m.player_a_id, m.player_b_id].filter((id): id is string => Boolean(id))
-          const isRoom = (m.member_ids?.length ?? 0) > 2
+          // Any match carrying member_ids is a group room (even a 2-member remainder
+          // room, or one down to 2 after removals) — so it labels as "Room", not a duel.
+          const isRoom = Boolean(m.member_ids?.length)
           const canWatch = !isBye && Boolean(m.game_id) && (m.status === 'active' || m.status === 'finished')
 
           return (
@@ -110,7 +112,7 @@ export function TournamentBracketBoard({
                           {m.status !== 'finished' && <RemoveBtn id={pid} />}
                         </div>
                         {/* Only a duel gets the "vs" divider; a room is just a list. */}
-                        {memberIds.length === 2 && i === 0 && (
+                        {!isRoom && memberIds.length === 2 && i === 0 && (
                           <p className="text-[0.625rem] text-faint uppercase tracking-wide">vs</p>
                         )}
                       </div>

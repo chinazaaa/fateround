@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
 import { generateGameCode, generateToken } from '@/lib/utils'
-import { h2hGroupSize, startTournamentRoundSchema } from '@/lib/tournament-validation'
+import { startTournamentRoundSchema } from '@/lib/tournament-validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { computeRoundGroups, computeRoundPairings } from '@/lib/tournament-bracket'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { computeRoundGroups, computeRoundPairings, resolveGroupSize } from '@/lib/tournament-bracket'
 
 // Fallback for tournaments created before game_type was stored.
 const DEFAULT_H2H_GAME_TYPE = 'chess'
@@ -19,6 +20,16 @@ function shuffle<T>(items: T[]): T[] {
     ;[out[i], out[j]] = [out[j], out[i]]
   }
   return out
+}
+
+/** A game code not already taken, or null after 10 attempts. */
+async function uniqueGameCode(admin: SupabaseClient): Promise<string | null> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const candidate = generateGameCode()
+    const { data: existing } = await admin.from('games').select('id').eq('id', candidate).maybeSingle()
+    if (!existing) return candidate
+  }
+  return null
 }
 
 /**
@@ -88,15 +99,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       timerSeconds?: number
     }
 
-    let gameCode = ''
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const candidate = generateGameCode()
-      const { data: existing } = await admin.from('games').select('id').eq('id', candidate).maybeSingle()
-      if (!existing) {
-        gameCode = candidate
-        break
-      }
-    }
+    const gameCode = await uniqueGameCode(admin)
     if (!gameCode) return NextResponse.json({ error: 'Failed to generate unique game code' }, { status: 500 })
 
     // Carry question usage from earlier rounds so players who advance never see a
@@ -152,8 +155,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ roundNumber, players: survivorIds.length })
   }
 
-  const groupSize =
-    Number((tournament.game_config as { groupSize?: number } | null)?.groupSize) || h2hGroupSize(tournament.game_type)
+  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
 
   // Group bracket (Whot/Scrabble): split survivors into rooms of up to `groupSize`
   // and spawn one game room per group. Only the room's winner advances; the rest
@@ -164,15 +166,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     let matchIndex = 0
 
     for (const group of groups) {
-      let gameCode = ''
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const candidate = generateGameCode()
-        const { data: existing } = await admin.from('games').select('id').eq('id', candidate).maybeSingle()
-        if (!existing) {
-          gameCode = candidate
-          break
-        }
-      }
+      const gameCode = await uniqueGameCode(admin)
       if (!gameCode) return NextResponse.json({ error: 'Failed to generate unique game code' }, { status: 500 })
 
       const { error: gameError } = await admin.from('games').insert({
@@ -248,15 +242,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   let matchIndex = 0
 
   for (const [aId, bId] of matches) {
-    let gameCode = ''
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const candidate = generateGameCode()
-      const { data: existing } = await admin.from('games').select('id').eq('id', candidate).maybeSingle()
-      if (!existing) {
-        gameCode = candidate
-        break
-      }
-    }
+    const gameCode = await uniqueGameCode(admin)
     if (!gameCode) return NextResponse.json({ error: 'Failed to generate unique game code' }, { status: 500 })
 
     const { error: gameError } = await admin.from('games').insert({

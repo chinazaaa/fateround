@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
-import { h2hGroupSize, tournamentHostActionSchema } from '@/lib/tournament-validation'
+import { tournamentHostActionSchema } from '@/lib/tournament-validation'
+import { resolveGroupSize } from '@/lib/tournament-bracket'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { initializeChessGame } from '@/lib/chess'
 import { initializeWhotGame } from '@/lib/whot'
@@ -88,8 +89,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ started: 1, players: playing.length })
   }
 
-  const groupSize =
-    Number((tournament.game_config as { groupSize?: number } | null)?.groupSize) || h2hGroupSize(tournament.game_type)
+  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
 
   // Group bracket (Whot/Scrabble): each staged room holds the group's members,
   // who auto-join from the lobby. Seat the members who are present (≥ 2), deal the

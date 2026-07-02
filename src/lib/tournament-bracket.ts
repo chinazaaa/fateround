@@ -23,6 +23,17 @@ export function h2hGroupSize(gameType: string | null | undefined): number {
   return H2H_GROUP_SIZES[gameType as (typeof H2H_ELIGIBLE_TYPES)[number]] ?? 2
 }
 
+/**
+ * The room size an existing head-to-head tournament runs with: the size captured
+ * in game_config at creation, falling back to the game type's default. The single
+ * source of truth for every round/seat/resolve/UI path, so bracket sizing can't
+ * drift between them.
+ */
+export function resolveGroupSize(gameConfig: unknown, gameType: string | null | undefined): number {
+  const stored = (gameConfig as { groupSize?: number } | null)?.groupSize
+  return Number(stored) || h2hGroupSize(gameType)
+}
+
 /** Smallest power of two >= n (minimum 1). */
 export function nextPowerOfTwo(n: number): number {
   let p = 1

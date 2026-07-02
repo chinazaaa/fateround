@@ -81,7 +81,7 @@ export const TOURNAMENT_ELIGIBLE_TYPES = ['trivia'] as const
 // free module) so the bracket-resolution libs can read them without importing this
 // schema file — which would form an import cycle through ./validation. Re-exported
 // here so the create route/page keep their existing import site.
-export { H2H_ELIGIBLE_TYPES, H2H_GROUP_SIZES, h2hGroupSize } from './tournament-bracket'
+export { H2H_ELIGIBLE_TYPES, H2H_GROUP_SIZES, h2hGroupSize, resolveGroupSize } from './tournament-bracket'
 
 // Games eligible for the knockout (group elimination) format — group games where
 // everyone plays at once and the field is cut by score each round.
