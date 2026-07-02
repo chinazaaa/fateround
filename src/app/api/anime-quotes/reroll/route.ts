@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { fetchSingleAnimeQuote } from '@/lib/anime-quotes'
 import { rerollAnimeQuoteSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
-
-const supabase = getSupabaseAnon()
 
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, rerollAnimeQuoteSchema)

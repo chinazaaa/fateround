@@ -20,10 +20,7 @@ let anonClient: SupabaseClient | null = null
 export function getSupabaseAnon(): SupabaseClient {
   if (anonClient) return anonClient
 
-  anonClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  anonClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
   return anonClient
 }
