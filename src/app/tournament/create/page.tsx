@@ -3,8 +3,10 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageShell, Field, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
-import { H2H_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
+import { H2H_ELIGIBLE_TYPES, KNOCKOUT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
 import { gameTypeLabel } from '@/lib/game-types'
+
+type Format = 'round-robin' | 'head-to-head' | 'knockout'
 
 const DEFAULT_POINTS = [10, 7, 5, 3, 2, 1]
 
@@ -57,17 +59,29 @@ function Stepper({
 export default function TournamentCreatePage() {
   const router = useRouter()
   const [title, setTitle] = useState('')
-  const [format, setFormat] = useState<'round-robin' | 'head-to-head'>('round-robin')
+  const [format, setFormat] = useState<Format>('round-robin')
   const [gameType, setGameType] = useState<string>(H2H_ELIGIBLE_TYPES[0])
   const [targetGameCount, setTargetGameCount] = useState<string>('')
   const [maxPlayers, setMaxPlayers] = useState<string>('')
   const [livesEnabled, setLivesEnabled] = useState(false)
   const [startingLives, setStartingLives] = useState(3)
   const [eliminateCount, setEliminateCount] = useState(1)
+  // Knockout (group elimination) config.
+  const [questionsPerRound, setQuestionsPerRound] = useState(5)
+  const [triviaTimer, setTriviaTimer] = useState(15)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
   const isH2H = format === 'head-to-head'
+  const isKnockout = format === 'knockout'
+  const isRoundRobin = format === 'round-robin'
+
+  // Keep the chosen game valid for the format (chess for 1v1, trivia for group).
+  function pickFormat(next: Format) {
+    setFormat(next)
+    if (next === 'head-to-head') setGameType(H2H_ELIGIBLE_TYPES[0])
+    else if (next === 'knockout') setGameType(KNOCKOUT_ELIGIBLE_TYPES[0])
+  }
 
   async function handleCreate() {
     if (!title.trim()) {
@@ -83,16 +97,23 @@ export default function TournamentCreatePage() {
         title: title.trim(),
         format,
       }
-      if (isH2H) {
+      if (isH2H || isKnockout) {
         body.gameType = gameType
+      }
+      if (isKnockout) {
+        body.gameConfig = {
+          questionSource: 'platform',
+          roundsCount: questionsPerRound,
+          timerSeconds: triviaTimer,
+        }
       }
       const cap = Number(maxPlayers)
       if (Number.isInteger(cap) && cap >= 2 && cap <= 100) {
         body.maxPlayers = cap
       }
       // Placement points, target game count and lives mode only apply to the
-      // round-robin format. Head-to-head runs a bracket until one champion.
-      if (!isH2H) {
+      // round-robin format. Head-to-head and knockout run until one champion.
+      if (isRoundRobin) {
         body.placementPoints = DEFAULT_POINTS
         const count = Number(targetGameCount)
         if (Number.isInteger(count) && count >= 1 && count <= 100) {
@@ -152,32 +173,42 @@ export default function TournamentCreatePage() {
 
         <div>
           <p className="label-caps mb-2.5">Format</p>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
-              aria-pressed={!isH2H}
-              onClick={() => setFormat('round-robin')}
-              className={`chip flex-1 ${!isH2H ? 'chip-active' : ''}`}
+              aria-pressed={isRoundRobin}
+              onClick={() => pickFormat('round-robin')}
+              className={`chip ${isRoundRobin ? 'chip-active' : ''}`}
             >
               Round Robin
             </button>
             <button
               type="button"
               aria-pressed={isH2H}
-              onClick={() => setFormat('head-to-head')}
-              className={`chip flex-1 ${isH2H ? 'chip-active' : ''}`}
+              onClick={() => pickFormat('head-to-head')}
+              className={`chip ${isH2H ? 'chip-active' : ''}`}
             >
               Head-to-Head
+            </button>
+            <button
+              type="button"
+              aria-pressed={isKnockout}
+              onClick={() => pickFormat('knockout')}
+              className={`chip ${isKnockout ? 'chip-active' : ''}`}
+            >
+              Knockout
             </button>
           </div>
           <p className="text-faint text-xs mt-2">
             {isH2H
               ? 'Players are matched 1-v-1 and advance through rounds until one champion remains. Best for 2-player games like Chess.'
-              : 'Everyone plays each game together and earns placement points across multiple games.'}
+              : isKnockout
+                ? 'Everyone plays together each round; the bottom half is knocked out until one champion remains. Round of 16 → Quarterfinal → Semifinal → Final.'
+                : 'Everyone plays each game together and earns placement points across multiple games.'}
           </p>
         </div>
 
-        {isH2H && (
+        {(isH2H || isKnockout) && (
           <Field label="Game" htmlFor="tournament-game-type">
             <select
               id="tournament-game-type"
@@ -185,17 +216,39 @@ export default function TournamentCreatePage() {
               onChange={(e) => setGameType(e.target.value)}
               className="input-field"
             >
-              {H2H_ELIGIBLE_TYPES.map((t) => (
+              {(isH2H ? H2H_ELIGIBLE_TYPES : KNOCKOUT_ELIGIBLE_TYPES).map((t) => (
                 <option key={t} value={t}>
                   {gameTypeLabel(t) ?? t}
                 </option>
               ))}
             </select>
-            <p className="text-faint text-xs mt-1.5">The 2-player game every match is played with.</p>
+            <p className="text-faint text-xs mt-1.5">
+              {isH2H ? 'The 2-player game every match is played with.' : 'The game everyone plays together each round.'}
+            </p>
           </Field>
         )}
 
-        {!isH2H && (
+        {isKnockout && (
+          <div className="surface-inset p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-body text-sm font-medium">Questions per round</p>
+                <p className="text-faint text-xs mt-0.5">Each round is one quick trivia game</p>
+              </div>
+              <Stepper value={questionsPerRound} min={3} max={20} onChange={setQuestionsPerRound} />
+            </div>
+            <div className="divider-soft" />
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-body text-sm font-medium">Seconds per question</p>
+                <p className="text-faint text-xs mt-0.5">How long players have to answer each one</p>
+              </div>
+              <Stepper value={triviaTimer} min={5} max={60} onChange={setTriviaTimer} />
+            </div>
+          </div>
+        )}
+
+        {isRoundRobin && (
           <Field label="Target Games (optional)" htmlFor="tournament-target-games">
             <input
               id="tournament-target-games"
@@ -229,7 +282,7 @@ export default function TournamentCreatePage() {
           <p className="text-faint text-xs mt-1.5">Once full, new players can&apos;t join</p>
         </Field>
 
-        {!isH2H && (
+        {isRoundRobin && (
           <div className="space-y-3">
             <Toggle
               label="Lives mode"
@@ -264,7 +317,7 @@ export default function TournamentCreatePage() {
           </div>
         )}
 
-        {!isH2H && (
+        {isRoundRobin && (
           <div>
             <p className="label-caps mb-2.5">Placement Points</p>
             <div className="grid grid-cols-3 gap-2">

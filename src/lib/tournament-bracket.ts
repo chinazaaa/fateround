@@ -39,6 +39,16 @@ export function computeRoundPairings(seededIds: string[]): RoundPairing {
   return { matches, byes }
 }
 
+/**
+ * Knockout cut: given a field ranked best-first, the top half (ceil(n/2)) advance
+ * and the bottom half are eliminated — 16 → 8 → 4 → 2 → 1. A 2-player final cuts
+ * one, leaving the champion.
+ */
+export function splitKnockoutField(rankedIds: string[]): { advancing: string[]; eliminated: string[] } {
+  const advanceCount = Math.ceil(rankedIds.length / 2)
+  return { advancing: rankedIds.slice(0, advanceCount), eliminated: rankedIds.slice(advanceCount) }
+}
+
 /** Human label for a round given how many players enter it. */
 export function roundLabel(entrants: number): string {
   if (entrants <= 1) return 'Champion'

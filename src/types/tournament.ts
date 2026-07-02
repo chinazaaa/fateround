@@ -5,7 +5,16 @@ export interface TournamentEliminationConfig {
   eliminateCount: number
 }
 
-export type TournamentFormat = 'round-robin' | 'head-to-head'
+export type TournamentFormat = 'round-robin' | 'head-to-head' | 'knockout'
+
+// Per-round setup for the game a head-to-head/knockout tournament is played with,
+// captured at creation and reused every round. For trivia knockout: how many
+// questions each round's group game has and the per-question timer.
+export interface TournamentGameConfig {
+  questionSource?: 'platform' | 'custom'
+  roundsCount?: number
+  timerSeconds?: number
+}
 
 export interface Tournament {
   id: string
@@ -13,8 +22,10 @@ export interface Tournament {
   title: string
   status: 'waiting' | 'active' | 'finished'
   format: TournamentFormat
-  // The game a head-to-head bracket is played with (e.g. 'chess'); null for round-robin.
+  // The game a head-to-head/knockout tournament is played with (e.g. 'chess',
+  // 'trivia'); null for round-robin.
   game_type: string | null
+  game_config: TournamentGameConfig | null
   placement_points: number[]
   target_game_count: number | null
   max_players: number | null
@@ -41,6 +52,9 @@ export interface TournamentGame {
   game_id: string | null
   game_order: number
   status: 'pending' | 'active' | 'finished'
+  // The underlying game's own status ('waiting' before it's started), attached by
+  // the tournament GET so the lobby can start a spawned game without a dashboard.
+  game_status?: 'waiting' | 'active' | 'finished' | null
   placements: Record<string, number> | null
   // Head-to-head bracket fields (null for round-robin games).
   round_number: number | null
