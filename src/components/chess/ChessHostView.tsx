@@ -13,6 +13,7 @@ import { currentTurnPlayerId, CHESS_MIN_PLAYERS, isChessResultsPhase } from '@/l
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, CHESS_SESSION_SELECT } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
+import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player, ChessSession } from '@/types'
@@ -149,6 +150,9 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+
+  // Clear stale host-as-player state if the host's own row is removed elsewhere.
+  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 

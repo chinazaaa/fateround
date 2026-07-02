@@ -11,6 +11,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  migrations-check:
+    name: Migrations Check
+    runs-on: ubuntu-latest
+    # Runs on every push and PR (no secrets needed) so a duplicate migration
+    # version is caught before merge — never silently at deploy time. Two files
+    # sharing a <version>_ prefix make `supabase db push` abort on the second
+    # one's schema_migrations insert (duplicate pkey), skipping every migration
+    # queued behind it.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure migration versions are unique
+        run: |
+          dups="$(ls -1 supabase/migrations/*.sql 2>/dev/null \
+            | xargs -n1 basename \
+            | sed -E 's/^([0-9]+)_.*/\1/' \
+            | sort | uniq -d)"
+          if [ -n "$dups" ]; then
+            echo "::error::Duplicate migration version(s): $dups"
+            echo "Every file in supabase/migrations must have a unique <version>_ prefix."
+            for v in $dups; do echo "  clashing files for $v:"; ls -1 supabase/migrations/${v}_*.sql; done
+            exit 1
+          fi
+          echo "All migration versions are unique."
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -96,7 +120,7 @@ jobs:
 
   migrate:
     name: DB Migrate
-    needs: [build]
+    needs: [build, migrations-check]
     # Only on a push to dev or main — never an unmerged PR, and never another
     # branch (gating here, before `environment` attaches, keeps the Preview/
     # Production secrets off unrelated branch pushes).
@@ -122,8 +146,10 @@ jobs:
       # GitHub Environment's secrets (DB password differs per project).
       #   main -> Production project (skhvbzitwvnbhqxfitgh)
       #   dev  -> Preview project    (xzvsrzbbgxbaagqwtpts)
-      # --include-all pushes migrations whose version is older than the latest one
-      # already applied remotely (migrations land from separate PRs, out of order).
+      # --include-all applies every migration missing from the remote history
+      # table, regardless of version order (migrations land from separate PRs and
+      # can arrive older-than-latest). Already-applied versions are skipped, so
+      # re-runs are no-ops.
       - name: Apply migrations
         run: |
           if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ] || [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
@@ -140,26 +166,14 @@ jobs:
           esac
           supabase link --project-ref "$REF"
 
-          # `db push --include-all` can re-queue a migration that is already
-          # applied on the remote — e.g. a branch cut from an older dev carries
-          # its own copy of a migration that already landed via another PR. The
-          # migration SQL itself is idempotent (`create ... if not exists`), but
-          # the CLI's follow-up `INSERT INTO schema_migrations` is not: it aborts
-          # on the existing version row (duplicate schema_migrations_pkey). That
-          # one specific failure means "already applied", so swallow it and treat
-          # the push as successful. Any other failure still fails the job.
-          set +e
-          push_out="$(supabase db push --include-all 2>&1)"
-          push_rc=$?
-          set -e
-          echo "$push_out"
-          if [ "$push_rc" -ne 0 ]; then
-            if echo "$push_out" | grep -q 'schema_migrations_pkey'; then
-              echo "::warning::A migration is already recorded remotely (schema_migrations_pkey); treating it as applied."
-            else
-              exit "$push_rc"
-            fi
-          fi
+          # Fail loudly on any push error. We deliberately do NOT swallow the
+          # "duplicate schema_migrations_pkey" failure: the only thing that
+          # produced it was two files sharing a version, which db push applies in
+          # order until the second one's history insert collides — silently
+          # skipping every migration behind it. Unique versions are enforced by
+          # the migrations-check job, so a non-zero exit here is a genuine problem
+          # a human must look at, not something to paper over.
+          supabase db push --include-all
 
   security:
     name: Security Scan

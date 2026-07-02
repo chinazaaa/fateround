@@ -82,6 +82,14 @@ export async function assertHostLateJoinSettings(supabase: SupabaseClient, gameC
   })
 }
 
+/** Host may hand off control (nominate a successor) any time the game exists. */
+export async function assertHostTransfer(supabase: SupabaseClient, gameCode: string, hostToken: string) {
+  return assertHost(supabase, gameCode, hostToken, {
+    allowedStatuses: ['waiting', 'active', 'finished'],
+    statusError: 'Host cannot be transferred for this game',
+  })
+}
+
 export async function findJoinerParticipant(supabase: SupabaseClient, gameId: string, playerName: string) {
   const { data } = await supabase
     .from('participants')

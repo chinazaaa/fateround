@@ -28,6 +28,7 @@ import { useCodewordsNotifications } from '@/hooks/useCodewordsNotifications'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
+import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
 import type {
@@ -179,6 +180,9 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+
+  // Clear stale host-as-player state if the host's own row is removed elsewhere.
+  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
   const lateJoinNotifyReadyRef = useRef(false)
   const prevPlayerIdsRef = useRef<Set<string>>(new Set())
