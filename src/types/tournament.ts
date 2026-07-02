@@ -5,11 +5,16 @@ export interface TournamentEliminationConfig {
   eliminateCount: number
 }
 
+export type TournamentFormat = 'round-robin' | 'head-to-head'
+
 export interface Tournament {
   id: string
   host_token: string
   title: string
   status: 'waiting' | 'active' | 'finished'
+  format: TournamentFormat
+  // The game a head-to-head bracket is played with (e.g. 'chess'); null for round-robin.
+  game_type: string | null
   placement_points: number[]
   target_game_count: number | null
   max_players: number | null
@@ -32,8 +37,16 @@ export interface TournamentPlayer {
 export interface TournamentGame {
   id: string
   tournament_id: string
-  game_id: string
+  // Null for a bye row, which advances a player without a game room.
+  game_id: string | null
   game_order: number
   status: 'pending' | 'active' | 'finished'
   placements: Record<string, number> | null
+  // Head-to-head bracket fields (null for round-robin games).
+  round_number: number | null
+  match_index: number | null
+  player_a_id: string | null
+  player_b_id: string | null
+  winner_player_id: string | null
+  is_bye: boolean
 }

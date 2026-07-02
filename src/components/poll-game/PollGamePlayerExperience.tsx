@@ -388,6 +388,7 @@ export function PollGamePlayerExperience({
   customAssignmentsCallbackRef.current = setCustomAssignments
 
   const {
+    autoJoinPending,
     nameInput,
     selectedParticipantId,
     joinIdentityGender,
@@ -522,6 +523,10 @@ export function PollGamePlayerExperience({
   // ── Render ────────────────────────────────────────────────────────────────
   if (view === 'loading') return <FullLoader />
   if (view === 'not_found') return <NotFound onHome={() => router.push('/')} />
+  // A tournament link is auto-joining us — hold on a loader until it resolves so
+  // neither the generic name form nor a dedicated view's own lobby flashes first
+  // (dedicated views read the session the auto-join writes).
+  if (autoJoinPending) return <FullLoader />
   if (game) {
     const DedicatedView = PLAYER_VIEW_REGISTRY[parseGameType(game.game_type)]
     // Dedicated views only need `gameCode`: the `initialName` / `autoJoinAsViewer`
