@@ -70,14 +70,16 @@ function TournamentBanner({ gameCode, tournamentId }: { gameCode: string; tourna
     )
   }
 
+  // Parked top-left (not bottom-centre) so it never sits over the centred
+  // name/join controls — players couldn't edit their name past it.
   return (
-    <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
+    <div className="fixed left-3 top-3 z-50">
       <button
         type="button"
         onClick={() => router.push(`/tournament/${tournamentId}`)}
-        className="btn-secondary btn-fit text-sm"
+        className="btn-secondary btn-fit text-xs shadow-md"
       >
-        ← Back to Tournament
+        ← Tournament
       </button>
     </div>
   )
