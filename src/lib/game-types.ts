@@ -7,6 +7,7 @@ import type {
   PairVoteMode,
   ParticipantMode,
 } from '@/types'
+import { GAME_ACHIEVEMENTS } from '@/lib/community-achievements'
 
 export type VoteSlot = 'kiss' | 'marry' | 'kill'
 /** Tally keys — `smash` counts the kill slot (Red Flag / Kill). */
@@ -2052,10 +2053,32 @@ export function assignedCount(assignment: VoteAssignment, gameType?: GameType | 
 
 // Options for the admin "add game to community leaderboard" dropdown: every game
 // type with its display label and accent, sorted alphabetically by label.
-export function communityGameTypeOptions(): { id: GameType; label: string; accent: string }[] {
-  return Object.values(GAME_TYPE_CONFIG)
-    .map((cfg) => ({ id: cfg.id, label: cfg.label, accent: cfg.card.accent }))
+export function communityGameTypeOptions(): { id: string; label: string; accent: string }[] {
+  const base = Object.values(GAME_TYPE_CONFIG)
+    .map((cfg) => ({ id: cfg.id as string, label: cfg.label, accent: cfg.card.accent }))
     .sort((a, b) => a.label.localeCompare(b.label))
+
+  // Achievement entries (e.g. "Codewords — Best Spymaster") let the admin add a
+  // role-based leaderboard row. The dropdown label is prefixed with the base game
+  // so it reads clearly alongside the normal games.
+  const achievements = GAME_ACHIEVEMENTS.map((a) => ({
+    id: a.key,
+    label: `${GAME_TYPE_CONFIG[a.baseGameType as GameType]?.label ?? a.baseGameType} — ${a.label}`,
+    accent: a.accent,
+  })).sort((a, b) => a.label.localeCompare(b.label))
+
+  return [...base, ...achievements]
+}
+
+// Resolve the leaderboard-row defaults (name/accent) for a community game_type,
+// whether it's a real in-app game type or a synthetic achievement key. Used by the
+// admin add-game route so both kinds resolve through one place.
+export function communityGameTypeMeta(rawType: string): { id: string; name: string; accent: string | null } | null {
+  const cfg = GAME_TYPE_CONFIG[rawType as GameType]
+  if (cfg) return { id: cfg.id, name: cfg.label, accent: cfg.card.accent }
+  const achievement = GAME_ACHIEVEMENTS.find((a) => a.key === rawType)
+  if (achievement) return { id: achievement.key, name: achievement.label, accent: achievement.accent }
+  return null
 }
 
 // Display label for a game type id (falls back to the raw id if unknown).

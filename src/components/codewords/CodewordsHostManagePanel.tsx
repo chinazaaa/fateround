@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CodewordsEndGameStats } from '@/components/codewords/CodewordsEndGameStats'
+import { CodewordsAchievementPosts } from '@/components/codewords/CodewordsAchievementPosts'
 import { CodewordsFinalResultsShareBlock } from '@/components/codewords/CodewordsFinalResultsShareBlock'
 import { CodewordsBoardGrid } from '@/components/codewords/CodewordsBoardGrid'
 import { CodewordsLobbyRoster } from '@/components/codewords/CodewordsLobbyRoster'
@@ -68,6 +69,8 @@ export function CodewordsHostManagePanel({
   onEditWordPool,
   savingWordPool = false,
   settingsBottom,
+  hostPlayerId = null,
+  hostPlays = false,
 }: {
   game: Game
   gameCode: string
@@ -107,6 +110,10 @@ export function CodewordsHostManagePanel({
   savingWordPool?: boolean
   /** Rendered last inside the "Before you start" section (e.g. late-joiners). */
   settingsBottom?: React.ReactNode
+  /** The host's own player id + whether they're playing — used to auto-post the
+   *  host's role achievement to the community leaderboard when they win one. */
+  hostPlayerId?: string | null
+  hostPlays?: boolean
 }) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
@@ -228,6 +235,17 @@ export function CodewordsHostManagePanel({
             <CodewordsBoardGrid board={board} showKey cellAttribution={cellAttribution} />
             <CodewordsEndGameStats guesses={guesses} roles={roles} players={players} winner={board.winner} />
           </div>
+          {hostPlays && hostPlayerId && (
+            <CodewordsAchievementPosts
+              guesses={guesses}
+              roles={roles}
+              players={players}
+              winner={board.winner}
+              myPlayerId={hostPlayerId}
+              gameCode={gameCode}
+              roundKey={board.id}
+            />
+          )}
         </div>
       )}
 

@@ -268,6 +268,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          gameType="whot"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
           label=""
           footer={

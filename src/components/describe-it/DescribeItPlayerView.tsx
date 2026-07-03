@@ -272,6 +272,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          gameType="describe_it"
           footer={
             <p className="text-center pt-1">
               <GameRulesLink gameType="describe_it" variant="subtle" />

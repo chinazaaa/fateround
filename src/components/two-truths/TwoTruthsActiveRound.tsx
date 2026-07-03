@@ -5,6 +5,7 @@ import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
 import { TwoTruthsShareBlock } from '@/components/two-truths/TwoTruthsShareBlock'
 import { TwoTruthsSubmitterBadge } from '@/components/two-truths/TwoTruthsSubmitterBadge'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import {
   formatTtlChoiceLabel,
   parseTtlMetadata,
@@ -66,6 +67,26 @@ export function TwoTruthsActiveRound({
   )
   const leaderboard = useMemo(() => tallyTtlScores(guesses, players, rounds), [guesses, players, rounds])
   const featuredName = playerDisplayName(currentRound?.submitter_player_id, players)
+
+  // "Best guesser" achievement = whoever read the most lies correctly (not raw
+  // score, which also rewards fooling others). Only a genuine contested win counts:
+  // more than one player and at least one correct guess.
+  const bestGuesser = useMemo(
+    () =>
+      [...leaderboard].sort(
+        (a, b) => b.correctGuesses - a.correctGuesses || b.score - a.score || a.name.localeCompare(b.name)
+      )[0] ?? null,
+    [leaderboard]
+  )
+  const iAmBestGuesser =
+    !readOnly &&
+    !!bestGuesser &&
+    leaderboard.length > 1 &&
+    bestGuesser.correctGuesses > 0 &&
+    bestGuesser.id === myPlayerId
+  // Per-session dedup token: the last round's id changes when a new session is
+  // played, so replays post again but a single session can't post twice.
+  const ttlRoundKey = rounds.length > 0 ? (rounds[rounds.length - 1]?.id ?? null) : null
 
   const upcomingRound = useMemo(() => {
     if (game.status !== 'active') return null
@@ -157,6 +178,14 @@ export function TwoTruthsActiveRound({
             scoreLabel={(score) => `${score} pts`}
           />
         </TwoTruthsShareBlock>
+        {iAmBestGuesser && (
+          <PostWinToCommunity
+            gameType="two_truths_guesser"
+            gameCode={gameCode}
+            winnerName={bestGuesser.name}
+            roundKey={ttlRoundKey}
+          />
+        )}
         <p className="text-faint text-xs text-center">
           You&apos;ll return to the lobby automatically when the host starts another game.
         </p>
