@@ -28,6 +28,21 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
+/** Save a blob straight to the user's device, bypassing share/clipboard. */
+export function downloadBlobAsFile(blob: Blob, filename: string) {
+  downloadBlob(blob, filename)
+}
+
+/** Turn a title into a safe, lowercase filename stem (no extension). */
+export function shareFilenameStem(title: string, fallback = 'fateround'): string {
+  const slug = title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug || fallback
+}
+
 /** Share image via native sheet (mobile), clipboard (desktop), or download fallback. */
 export async function shareImageBlob(blob: Blob, filename = 'secret-message.png'): Promise<ShareImageResult> {
   if (prefersNativeShare()) {

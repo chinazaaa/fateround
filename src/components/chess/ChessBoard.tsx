@@ -117,6 +117,23 @@ function computeMaterial(chess: Chess): Material {
   return { capturedByWhite, capturedByBlack }
 }
 
+/** Side indicator with fixed piece colours (plus a contrasting outline) so it
+ *  never inverts with the light/dark theme. The raw ♔/♚ glyphs take the text
+ *  colour, which flipped the black king to white in dark mode. */
+function KingGlyph({ color }: { color: ChessColor }) {
+  return (
+    <span
+      aria-hidden
+      style={{
+        color: color === 'w' ? '#f5f5f5' : '#1a1a1a',
+        textShadow: color === 'w' ? '0 0 1.5px rgba(0,0,0,0.65)' : '0 0 1.5px rgba(255,255,255,0.75)',
+      }}
+    >
+      ♚
+    </span>
+  )
+}
+
 /** A player's row: name, captured opponent pieces, and clock. */
 function CapturedTray({
   name,
@@ -134,7 +151,7 @@ function CapturedTray({
   return (
     <div className="flex items-center gap-1.5 min-h-[1.75rem] px-1">
       <span className="text-xs font-bold shrink-0">
-        {glyphColor === 'w' ? '♚' : '♔'} {name}
+        <KingGlyph color={glyphColor} /> {name}
       </span>
       <div className="flex items-center flex-wrap gap-0.5 leading-none">
         {pieces.map((type, i) => (
@@ -368,9 +385,13 @@ export function ChessGamePanel({
       )}
 
       <ChessCard className="p-3 flex items-center justify-between text-sm">
-        <span className="font-bold">♔ {white?.name ?? 'White'}</span>
+        <span className="font-bold">
+          <KingGlyph color="w" /> {white?.name ?? 'White'}
+        </span>
         <span className="text-faint">vs</span>
-        <span className="font-bold">♚ {black?.name ?? 'Black'}</span>
+        <span className="font-bold">
+          <KingGlyph color="b" /> {black?.name ?? 'Black'}
+        </span>
       </ChessCard>
 
       {timed && timeControlSeconds ? (
@@ -400,7 +421,11 @@ export function ChessGamePanel({
             orderedFiles.map((file, fileIdx) => {
               const square = `${file}${rank}`
               const piece = chess.get(square as Square)
-              const isLight = (FILES.indexOf(file) + rank) % 2 === 1
+              // A square's colour is fixed by its coordinates: a1 (file 0, rank 1) is
+              // dark, and every step in file or rank flips it. So a square is light when
+              // (file index + rank) is even — that puts a8 and h1 (the canonical
+              // "light square on the right") on light, matching a real board.
+              const isLight = (FILES.indexOf(file) + rank) % 2 === 0
               const target = legalTargets.get(square)
               const isSelected = selected === square
               const isLastMove = session.last_move_from === square || session.last_move_to === square
@@ -490,7 +515,8 @@ export function ChessGamePanel({
       {myColor && session.status === 'active' && (
         <div className="space-y-2">
           <p className="text-center text-faint text-xs">
-            You are <span className="font-bold">{myColor === 'w' ? '♔ White' : '♚ Black'}</span>
+            You are <KingGlyph color={myColor} />{' '}
+            <span className="font-bold">{myColor === 'w' ? 'White' : 'Black'}</span>
             {isMyTurn
               ? ' · tap a piece, then its destination'
               : premove

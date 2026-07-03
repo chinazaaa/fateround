@@ -1,11 +1,14 @@
 import type { Metadata } from 'next'
+import Script from 'next/script'
 import { cookies } from 'next/headers'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { SoundToggle } from '@/components/SoundToggle'
-import { FeedbackButton } from '@/components/FeedbackButton'
-import { SupportButton } from '@/components/SupportButton'
+// Hidden for now — "Buy us a coffee" (support) and Feedback buttons.
+// import { FeedbackButton } from '@/components/FeedbackButton'
+// import { SupportButton } from '@/components/SupportButton'
+import { NetworkIndicator } from '@/components/NetworkIndicator'
 import { ToastProvider } from '@/components/ui/Toast'
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
 import { QueryProvider } from '@/components/QueryProvider'
@@ -31,15 +34,26 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" style={{ color: 'var(--foreground)' }}>
+        <Script src="https://www.googletagmanager.com/gtag/js?id=G-HPGR3FN0HX" strategy="afterInteractive" />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-HPGR3FN0HX');
+        `}
+        </Script>
         <ThemeProvider initialTheme={theme}>
           <ToastProvider>
             <ConfirmProvider>
               <QueryProvider>
                 <AppBackground />
+                <NetworkIndicator />
                 <ThemeToggle />
                 <SoundToggle />
+                {/* Hidden for now:
                 <SupportButton />
-                <FeedbackButton />
+                <FeedbackButton /> */}
                 {children}
               </QueryProvider>
             </ConfirmProvider>

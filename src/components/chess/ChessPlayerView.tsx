@@ -91,6 +91,14 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
 
   const computeScreen = useCallback(
     (gameData: Game, playerId: string | null, sessionData: ChessSession | null): Screen => {
+      // A finished game always shows its result — checked first, before anything
+      // that depends on the player session. Otherwise, when `resolvePlayerSession`
+      // hadn't resolved yet (or a spectator has no player row), a finished game
+      // fell through to preJoinScreen → 'game_ended' ("this link is no longer
+      // active"), which intermittently hid the result behind a dead-link screen.
+      // The results screen renders fine with a null viewer id, so gate this on the
+      // game state, not on having a player row.
+      if (isChessResultsPhase(gameData.status, sessionData)) return 'finished'
       if (!playerId) {
         const pre = preJoinScreen(gameData, false)
         if (pre === 'game_started_waiting') return 'game_started_waiting'
