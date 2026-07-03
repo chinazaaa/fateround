@@ -36,11 +36,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'Failed to join' }, { status: 500 })
   }
 
-  const result = (data ?? {}) as { error?: string; player?: unknown }
+  const result = (data ?? {}) as { error?: string; player?: unknown; token?: string }
   if (result.error) {
     const mapped = JOIN_ERRORS[result.error] ?? { message: 'Failed to join', status: 400 }
     return NextResponse.json({ error: mapped.message }, { status: mapped.status })
   }
 
-  return NextResponse.json({ player: result.player })
+  // `token` is the player's private identity secret — returned only here, to the
+  // client that just joined, so it can prove it's them when entering game rooms.
+  return NextResponse.json({ player: result.player, token: result.token })
 }

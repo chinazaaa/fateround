@@ -268,6 +268,9 @@ export default function TournamentLobbyPage() {
         return
       }
       localStorage.setItem(`tournament_player_${tournamentId}`, playerName.trim())
+      // Private identity secret — proves it's really this player when they enter each
+      // game room, so nobody can claim their seat by just knowing their name.
+      if (data.token) localStorage.setItem(`tournament_ptoken_${tournamentId}`, String(data.token))
       setJoined(true)
       fetchState()
     } catch {
