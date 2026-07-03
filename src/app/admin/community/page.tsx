@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
-import { MANAGER_CODE_MIN_LENGTH, POST_CODE_MIN_LENGTH } from '@/lib/manager-constants'
+import { MANAGER_CODE_MIN_LENGTH } from '@/lib/manager-constants'
 import { communityGameTypeOptions } from '@/lib/game-types'
 import type { CommunityGame } from '@/types/community'
 
@@ -130,20 +130,19 @@ export default function AdminCommunityPage() {
       <div>
         <h1 className="text-3xl font-black tracking-tight gradient-title">Community leaderboard</h1>
         <p className="text-muted text-sm mt-1">
-          Manage the games shown on the public leaderboard, the weekly code winners use to post their own wins, and the
-          access code your community manager uses to enter scores manually.
+          Manage the games shown on the public leaderboard and the access code your community manager uses to enter
+          scores manually. Winners of tracked games are added to the leaderboard automatically.
         </p>
       </div>
 
-      <PostCodePanel />
       <ManagerCodePanel />
       <WhatsAppPanel />
 
       <section className="space-y-3">
         <h2 className="text-lg font-bold">Games</h2>
         <p className="text-sm text-muted -mt-1">
-          Pick a game to add it to the leaderboard. Winners of that game can then post their own wins from the end
-          screen using this week’s code.
+          Pick a game to add it to the leaderboard. Winners of that game are added to the leaderboard automatically from
+          the end screen.
         </p>
         <div className="glass-card-strong p-4 flex flex-col gap-3 sm:flex-row sm:items-end">
           <label className="flex-1 text-sm">
@@ -362,22 +361,6 @@ function CodePanel({
         </div>
       </div>
     </section>
-  )
-}
-
-function PostCodePanel() {
-  return (
-    <CodePanel
-      title="Weekly post code"
-      endpoint="/api/admin/community/post-code"
-      minLength={POST_CODE_MIN_LENGTH}
-      describe={(configured) =>
-        configured
-          ? 'A code is set. Rotate it each week (Monday) and share the new code in the WhatsApp group. Winners enter it on the game end screen to post their win.'
-          : 'No code set yet. Create one and share it in the WhatsApp group — winners enter it on the game end screen to post their win to the leaderboard.'
-      }
-      hint={`Change this every week. A short, memorable word works well — at least ${POST_CODE_MIN_LENGTH} characters. Capitalisation and spaces don't matter.`}
-    />
   )
 }
 
