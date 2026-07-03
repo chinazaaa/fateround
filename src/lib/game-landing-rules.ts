@@ -979,7 +979,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         '2–4 players join a room. The host can play too.',
         'Everyone draws 7 random tiles onto their rack. Tiles stay hidden from opponents.',
-        'The first word of the game must cross the centre star.',
+        'The first word of the game must cross the center star.',
       ],
     },
     {

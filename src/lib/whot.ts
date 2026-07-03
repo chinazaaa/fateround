@@ -136,7 +136,7 @@ const DECK_COMPOSITION: Record<Exclude<WhotShape, 'whot'>, number[]> = {
   circle: [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14],
   triangle: [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14],
   cross: [1, 2, 3, 5, 7, 10, 11, 13, 14],
-  square: [1, 2, 3, 4, 5, 7, 8],
+  square: [1, 2, 3, 5, 7, 10, 11, 13, 14],
   star: [1, 2, 3, 4, 5, 7, 8],
 }
 
