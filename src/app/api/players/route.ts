@@ -214,6 +214,28 @@ export async function POST(req: NextRequest) {
     name = roomMember.display_name.trim()
   }
 
+  // Tournament games identify a player by their (tournament-unique) name and forward
+  // them into each room by name — there's no per-game login. So if a player with this
+  // name is already in the room, this is that same person coming back after losing
+  // their local session (a reload, a new tab, cleared storage, a dropped connection):
+  // resume their existing seat instead of rejecting the name as "taken". Without this
+  // they'd be locked out of their own game and told to change their name, as if a
+  // stranger had stolen it. Scoped to tournament rooms so public games keep their
+  // strict no-duplicate-names rule.
+  if (gameRow.tournament_id && name) {
+    const { data: existingRows } = await getSupabaseAdmin()
+      .from('players')
+      .select('id, name, gender, identity_gender, spectator, resume_token, joined_at')
+      .eq('game_id', gameId)
+      .ilike('name', name)
+      .order('joined_at', { ascending: true })
+      .limit(1)
+    const existing = existingRows?.[0]
+    if (existing) {
+      return jsonPlayerJoin(roomMemberId, existing, gameRow as Game)
+    }
+  }
+
   const rowGameType = parseGameType(gameRow.game_type)
   const lobbyLimits = await fetchGamePlayerLimits(supabase)
 
