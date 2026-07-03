@@ -4,7 +4,6 @@ import { cookies } from 'next/headers'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { ThemeToggle } from '@/components/ThemeToggle'
-import { SoundToggle } from '@/components/SoundToggle'
 // Hidden for now — "Buy us a coffee" (support) and Feedback buttons.
 // import { FeedbackButton } from '@/components/FeedbackButton'
 // import { SupportButton } from '@/components/SupportButton'
@@ -50,7 +49,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <AppBackground />
                 <NetworkIndicator />
                 <ThemeToggle />
-                <SoundToggle />
                 {/* Hidden for now:
                 <SupportButton />
                 <FeedbackButton /> */}
