@@ -175,7 +175,7 @@ export function computeSchoolRooms(players: SchoolPlayerLevel[]): SchoolRooms {
 
 /** The single player who repeats a school room: whoever holds the most cards at
  *  the end (most cards, then highest hand value, then id for a stable pick). */
-interface SchoolHand {
+export interface SchoolHand {
   tpId: string
   cardCount: number
   handSum: number
@@ -185,6 +185,23 @@ function schoolRepeater(hands: SchoolHand[]): SchoolHand | null {
   return [...hands].sort(
     (a, b) => b.cardCount - a.cardCount || b.handSum - a.handSum || a.tpId.localeCompare(b.tpId)
   )[0]
+}
+
+/**
+ * Who climbs a class after a school room, given each finisher's hand and the room's
+ * winner (if known). Everyone who finished advances except the single most-cards
+ * player who repeats — but:
+ *   - only when at least two players actually finished the room. If the others left
+ *     or were removed, the lone survivor won by walkover and advances (nobody repeats).
+ *   - the winner (emptied their hand / lowest hand at time-up) always advances, so a
+ *     win is never flipped into a repeat by opponents dropping out mid-room.
+ * Returns the tournament-player ids that should climb a class.
+ */
+export function schoolAdvancers(played: SchoolHand[], winnerTpId: string | null): string[] {
+  if (played.length <= 1) return played.map((p) => p.tpId)
+  const repeatable = played.filter((p) => p.tpId !== winnerTpId)
+  const repeater = repeatable.length > 0 ? schoolRepeater(repeatable) : null
+  return played.filter((p) => p.tpId !== repeater?.tpId).map((p) => p.tpId)
 }
 
 /**
@@ -258,17 +275,18 @@ export async function resolveSchoolMatch(supabase: SupabaseClient, gameId: strin
     .select('id')
   if (claimError || !claimed?.length) return
 
-  // Everyone who played climbs a class except the single most-cards player.
-  const repeater = schoolRepeater(played)
-  const advancers = played.filter((p) => p.tpId !== repeater?.tpId)
+  // Everyone who played climbs a class except the single most-cards player — unless
+  // the others dropped out, in which case the lone survivor (and the winner) still
+  // advance rather than being stuck repeating (see schoolAdvancers).
+  const advancers = schoolAdvancers(played, winnerTP?.id ?? null)
 
   const classCount = clampSchoolClassCount(
     (tournament.game_config as { schoolClassCount?: number } | null)?.schoolClassCount
   )
   let someoneGraduated = false
-  for (const a of advancers) {
-    const nextLevel = (levelById.get(a.tpId) ?? 0) + 1
-    await supabase.from('tournament_players').update({ school_level: nextLevel }).eq('id', a.tpId)
+  for (const tpId of advancers) {
+    const nextLevel = (levelById.get(tpId) ?? 0) + 1
+    await supabase.from('tournament_players').update({ school_level: nextLevel }).eq('id', tpId)
     if (hasGraduated(nextLevel, classCount)) someoneGraduated = true
   }
 

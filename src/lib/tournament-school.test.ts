@@ -10,7 +10,14 @@ import {
   SCHOOL_MAX_ROOM,
   schoolClassLabel,
   schoolLadder,
+  schoolAdvancers,
+  type SchoolHand,
 } from './tournament-school'
+
+/** Compact SchoolHand factory: cardCount drives the ranking; handSum defaults to it. */
+function hand(tpId: string, cardCount: number): SchoolHand {
+  return { tpId, cardCount, handSum: cardCount }
+}
 
 /** Room sizes (sorted) for a field of n players all in the same class. */
 function sameClassRoomSizes(n: number): number[] {
@@ -163,5 +170,31 @@ describe('computeSchoolRooms', () => {
   it('returns no rooms and no eliminations for a lone (or empty) field', () => {
     expect(computeSchoolRooms([{ id: 'only', level: 2 }])).toEqual({ rooms: [], eliminated: [] })
     expect(computeSchoolRooms([])).toEqual({ rooms: [], eliminated: [] })
+  })
+})
+
+describe('schoolAdvancers', () => {
+  it('advances everyone except the most-cards player when a full room finishes', () => {
+    // winner a (0 cards), b (3), c (5) — c holds the most and repeats.
+    const played = [hand('a', 0), hand('b', 3), hand('c', 5)]
+    expect(schoolAdvancers(played, 'a').sort()).toEqual(['a', 'b'])
+  })
+
+  it('advances the lone survivor when everyone else left the room', () => {
+    // The regression: a winner whose opponents dropped out was the only hand left,
+    // so the old logic picked them as the repeater and nobody climbed.
+    expect(schoolAdvancers([hand('a', 0)], 'a')).toEqual(['a'])
+  })
+
+  it('never turns the winner into the repeater', () => {
+    // Even if the winner somehow holds the most cards, they still advance and the
+    // other player is the one made to repeat.
+    const played = [hand('winner', 9), hand('other', 2)]
+    expect(schoolAdvancers(played, 'winner')).toEqual(['winner'])
+  })
+
+  it('falls back to most-cards repeats when the winner is unknown', () => {
+    const played = [hand('a', 1), hand('b', 4)]
+    expect(schoolAdvancers(played, null)).toEqual(['a'])
   })
 })
