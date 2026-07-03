@@ -6,6 +6,7 @@ import { captureElementAsImage } from '@/lib/capture-element-image'
 import { shareImageBlob } from '@/lib/share-image'
 import { appDomain } from '@/lib/site'
 import { gameTypeLabel } from '@/lib/game-types'
+import { clampSchoolClassCount, schoolClassLabel, hasGraduated } from '@/lib/tournament-school'
 import { useToast } from '@/components/ui/Toast'
 
 const MEDAL = ['🥇', '🥈', '🥉']
@@ -62,12 +63,26 @@ export function orderForStandings(
   })
 }
 
+/** School standings: highest class first (eliminated last), then by name. */
+export function orderSchoolStandings(players: TournamentPlayer[]): TournamentPlayer[] {
+  return [...players].sort((a, b) => {
+    if (a.is_eliminated !== b.is_eliminated) return a.is_eliminated ? 1 : -1
+    return (b.school_level ?? 0) - (a.school_level ?? 0) || a.player_name.localeCompare(b.player_name)
+  })
+}
+
 /** Plain-text fallback when image capture/share isn't available. */
-function buildShareText(title: string, players: TournamentPlayer[], h2h: boolean): string {
-  const lines = [`🏆 ${title}`, '', h2h ? 'Standings:' : 'Leaderboard:']
+function buildShareText(title: string, players: TournamentPlayer[], h2h: boolean, schoolClassCount?: number): string {
+  const school = schoolClassCount != null
+  const lines = [`🏆 ${title}`, '', h2h || school ? 'Standings:' : 'Leaderboard:']
   players.slice(0, 8).forEach((p, i) => {
     const rank = i < 3 ? MEDAL[i] : `${i + 1}.`
-    lines.push(`${rank} ${p.player_name}${h2h ? '' : ` — ${p.total_points} pts`}`)
+    const suffix = school
+      ? ` — ${schoolClassLabel(p.school_level ?? 0, schoolClassCount)}`
+      : h2h
+        ? ''
+        : ` — ${p.total_points} pts`
+    lines.push(`${rank} ${p.player_name}${suffix}`)
   })
   if (players.length > 8) lines.push(`…and ${players.length - 8} more`)
   lines.push('', `Play at ${appDomain()}`)
@@ -83,10 +98,13 @@ export function TournamentShareLeaderboard({
   tournament,
   players,
   games = [],
+  highlightPlayerId,
 }: {
   tournament: Tournament
   players: TournamentPlayer[]
   games?: TournamentGame[]
+  /** Outline this player's row (e.g. "you") — cosmetic; ignored in the shared image. */
+  highlightPlayerId?: string | null
 }) {
   const { success, error } = useToast()
   const captureRef = useRef<HTMLDivElement>(null)
@@ -97,10 +115,14 @@ export function TournamentShareLeaderboard({
   // player got (no points), with the lone survivor crowned champion.
   const knockout = tournament.format === 'knockout'
   const h2h = tournament.format === 'head-to-head' || knockout
+  const school = tournament.format === 'school'
+  const schoolClassCount = clampSchoolClassCount(
+    (tournament.game_config as { schoolClassCount?: number } | null)?.schoolClassCount
+  )
   // Knockout stores a per-round placements map we can rank the field by; head-to-head
   // resolves rounds by match winners, so it keeps the elimination-time ordering only.
   const lastRoundRank = knockout ? buildLastRoundRank(games) : undefined
-  const ranked = orderForStandings(players, h2h, lastRoundRank)
+  const ranked = school ? orderSchoolStandings(players) : orderForStandings(players, h2h, lastRoundRank)
 
   const handleShare = useCallback(async () => {
     if (sharingLock.current) return
@@ -122,7 +144,7 @@ export function TournamentShareLeaderboard({
       if (err instanceof DOMException && err.name === 'AbortError') return
       // Image capture failed (e.g. unsupported browser) — fall back to text.
       try {
-        const text = buildShareText(tournament.title, orderForStandings(players, h2h, lastRoundRank), h2h)
+        const text = buildShareText(tournament.title, ranked, h2h, school ? schoolClassCount : undefined)
         if (typeof navigator !== 'undefined' && navigator.share) {
           await navigator.share({ text })
         } else {
@@ -136,7 +158,7 @@ export function TournamentShareLeaderboard({
       sharingLock.current = false
       setSharing(false)
     }
-  }, [tournament.title, players, h2h, lastRoundRank, success, error])
+  }, [tournament.title, ranked, h2h, school, schoolClassCount, success, error])
 
   const isFinished = tournament.status === 'finished'
 
@@ -163,6 +185,11 @@ export function TournamentShareLeaderboard({
                 className={`result-row flex items-center justify-between px-4 py-2.5 ${
                   i === 0 ? 'result-row-winner-amber' : ''
                 } ${p.is_eliminated ? 'opacity-50' : ''}`}
+                style={
+                  highlightPlayerId && p.id === highlightPlayerId
+                    ? { boxShadow: 'inset 0 0 0 1px var(--primary)' }
+                    : undefined
+                }
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <span
@@ -178,7 +205,24 @@ export function TournamentShareLeaderboard({
                   {p.is_eliminated && <span className="text-xs text-red-400 ml-1 shrink-0">Eliminated</span>}
                 </div>
                 <div className="text-right shrink-0">
-                  {h2h ? (
+                  {school ? (
+                    // School: no points — show the class each player reached (the top
+                    // surviving class is crowned Champion once the tournament ends).
+                    !p.is_eliminated && isFinished && i === 0 ? (
+                      <span className="font-bold text-xs uppercase tracking-wide" style={{ color: 'var(--primary)' }}>
+                        Champion
+                      </span>
+                    ) : (
+                      <span
+                        className="chip text-[0.6875rem]"
+                        style={
+                          hasGraduated(p.school_level ?? 0, schoolClassCount) ? { color: 'var(--primary)' } : undefined
+                        }
+                      >
+                        {schoolClassLabel(p.school_level ?? 0, schoolClassCount)}
+                      </span>
+                    )
+                  ) : h2h ? (
                     // No points in a bracket — the champion is the lone survivor.
                     !p.is_eliminated &&
                     isFinished && (
