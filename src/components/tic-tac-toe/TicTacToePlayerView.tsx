@@ -22,6 +22,7 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
@@ -172,6 +173,12 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
     session,
     game?.status === 'active' && !isViewer
   )
+
+  useTurnNotifications({
+    status: game?.status,
+    isMyTurn: isViewer ? null : isMyTurn,
+    enabled: !isViewer,
+  })
 
   if (screen === 'loading') return <TicTacToeLoadingScreen />
 

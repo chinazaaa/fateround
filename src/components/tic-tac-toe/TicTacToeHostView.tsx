@@ -22,6 +22,7 @@ import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTicTacToeTurnTimer } from '@/hooks/useTicTacToeTurnTimer'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { TicTacToeGamePanel } from '@/components/tic-tac-toe/TicTacToeBoard'
 import { TicTacToeFinalResultsShareBlock } from '@/components/tic-tac-toe/TicTacToeFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -229,6 +230,11 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
     session,
     game?.status === 'active' && (tab === 'play' ? isHostTurn : true)
   )
+
+  useTurnNotifications({
+    status: game?.status,
+    isMyTurn: hostPlayerId ? isHostTurn : null,
+  })
 
   if (loading) {
     return (
