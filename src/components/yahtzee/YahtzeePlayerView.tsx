@@ -16,7 +16,7 @@ import { YahtzeeLeaderboard, YahtzeeScorecard } from '@/components/yahtzee/Yahtz
 import { YahtzeeFinalResultsShareBlock } from '@/components/yahtzee/YahtzeeFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId } from '@/lib/yahtzee'
+import { currentPlayerId, totalScore } from '@/lib/yahtzee'
 import { supabase } from '@/lib/supabase'
 import { YAHTZEE_PLAYER_SCORES_SELECT, YAHTZEE_SESSION_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
@@ -308,7 +308,14 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'finished') {
     const myName = players.find((p) => p.id === myPlayerId)?.name
-    const iWon = myPlayerId != null && session?.winner_player_id === myPlayerId
+    // Only surface the community-leaderboard button to a genuine winner: the
+    // server-picked winner, a positive total, AND more than one player (a solo
+    // game has no one to beat, so there's no real win). Matches the other
+    // score-based games.
+    const myScoreRow = scores.find((s) => s.player_id === myPlayerId)
+    const myTotal = myScoreRow ? totalScore(myScoreRow.scores.categories) : 0
+    const iWon =
+      myPlayerId != null && session?.winner_player_id === myPlayerId && myTotal > 0 && scores.length > 1
     const shareWinnerName = iWon ? myName : winner?.name
 
     return (

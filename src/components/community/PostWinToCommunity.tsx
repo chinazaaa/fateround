@@ -118,6 +118,12 @@ export function PostWinToCommunity({
 
   if (!eligible) return null
 
+  // Safety net for the "no winner" case: if there's no winner to name (e.g. the
+  // host ended the game early, or a draw), there's nothing to post — never show
+  // the button. Callers already gate on "did I win", but this guarantees the
+  // button can't appear without an actual winner even if a call site slips.
+  if (!winnerName.trim()) return null
+
   if (posted) {
     return (
       <div className="glass-card p-4 text-center text-sm text-[var(--marry)] font-semibold">
