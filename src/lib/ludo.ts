@@ -168,8 +168,12 @@ function trackPos(pos: number): number {
   return Number(pos)
 }
 
+function isSafeSquare(pos: number): boolean {
+  return SAFE_TRACK_POSITIONS.has(trackPos(pos))
+}
+
 function isCaptureAllowedAt(pos: number): boolean {
-  return !SAFE_TRACK_POSITIONS.has(trackPos(pos))
+  return !isSafeSquare(pos)
 }
 
 function wouldCaptureAt(
@@ -250,6 +254,10 @@ function canPassTrackSquare(
 ): boolean {
   const occ = occupants.get(trackPos(pos)) ?? []
   if (occ.length === 0) return true
+  // Safe squares (each colour's ★ start + the mid-arm stars) are shared ground:
+  // any number of pieces coexist there, so a stack sitting on one is never a
+  // blockade that can wall others off.
+  if (isSafeSquare(pos)) return true
   if (isOwnBlockade(occ, color)) return true
   if (isOpponentBlockade(occ, color)) return false
   return true
@@ -262,6 +270,7 @@ function canLandOnTrackSquare(
 ): boolean {
   const occ = occupants.get(trackPos(pos)) ?? []
   if (occ.length === 0) return true
+  if (isSafeSquare(pos)) return true
   if (isOpponentBlockade(occ, color)) return false
   if (occ.some((o) => o.color === color)) return true
   return true
@@ -299,8 +308,11 @@ export function getLegalMovesForSteps(
         // all in base — must bring one out on a 6
       }
       const start = START_POS[color]
-      const occ = occupants.get(start) ?? []
-      if (isOpponentBlockade(occ, color)) continue
+      // A colour's own start is a safe square, so opponents parked there (even a
+      // 2-piece stack) can never wall a player out of the board — the incoming
+      // piece simply shares the square. Without this, an opponent blockade on
+      // your start froze you: no bring-out and, if the yard was your only pieces,
+      // no legal move at all.
       const captures = wouldCaptureAt(allStates, start, color, playerId, piece.id)
       moves.push({
         pieceId: piece.id,
