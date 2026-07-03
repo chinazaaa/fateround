@@ -158,6 +158,18 @@ export default function TournamentLobbyPage() {
 
   useTournamentRealtime(tournamentId, fetchState)
 
+  // The "in the room" presence dots come from each staged game's own player roster,
+  // which the tournament realtime channel doesn't watch — so a player joining their
+  // room fires no update here and the host would keep seeing a stale "not in the room"
+  // marker. While a round is staged (pending rooms with players filing in), poll so
+  // the host sees who's actually ready before starting or removing anyone.
+  const hasStagedRoom = games.some((g) => g.status === 'pending' && Boolean(g.game_id))
+  useEffect(() => {
+    if (!isHost || !hasStagedRoom) return
+    const t = setInterval(fetchState, 4000)
+    return () => clearInterval(t)
+  }, [isHost, hasStagedRoom, fetchState])
+
   useEffect(() => {
     const savedName = localStorage.getItem(`tournament_player_${tournamentId}`)
     if (savedName) {
@@ -1363,9 +1375,11 @@ export default function TournamentLobbyPage() {
         <div className="glass-card-strong p-5 text-center space-y-2">
           <p className="font-bold text-body">You&apos;re out, {playerName}</p>
           <p className="text-muted text-sm">
-            {h2h
-              ? 'Knocked out of the bracket — thanks for playing! You can still watch the remaining matches below.'
-              : 'You’ve been eliminated, but you can stick around and watch the rest below.'}
+            {school
+              ? 'You were knocked out of the class ladder: there was no one left in your class to play — everyone still in had climbed to a higher class, so you couldn’t be matched. Thanks for playing! You can watch the rest below.'
+              : h2h
+                ? 'Knocked out of the bracket — thanks for playing! You can still watch the remaining matches below.'
+                : 'You’ve been eliminated, but you can stick around and watch the rest below.'}
           </p>
         </div>
       )}
@@ -1827,38 +1841,48 @@ export default function TournamentLobbyPage() {
         </details>
       )}
 
-      {/* Class standings (school) — everyone ranked by how far up the ladder they
-          are. Nobody is eliminated, so this is the live scoreboard. */}
+      {/* Class standings (school) — everyone ranked by how far up the ladder they are.
+          Eliminated players (a straggler with no class left to play, or a host removal)
+          sink to the bottom and are flagged so they aren't mistaken for active climbers. */}
       {school && players.length > 0 && (
         <div className="glass-card p-5 space-y-3">
           <p className="label-caps">Classes</p>
           <div className="space-y-2">
             {[...players]
-              .sort(
-                (a, b) => (b.school_level ?? 0) - (a.school_level ?? 0) || a.player_name.localeCompare(b.player_name)
-              )
+              .sort((a, b) => {
+                if (a.is_eliminated !== b.is_eliminated) return a.is_eliminated ? 1 : -1
+                return (b.school_level ?? 0) - (a.school_level ?? 0) || a.player_name.localeCompare(b.player_name)
+              })
               .map((p, i) => {
                 const graduated = hasGraduated(p.school_level ?? 0, schoolClassCount)
                 const isMe = me?.id === p.id
                 return (
                   <div
                     key={p.id}
-                    className="result-row flex items-center justify-between gap-3 px-4 py-2.5"
+                    className={`result-row flex items-center justify-between gap-3 px-4 py-2.5 ${
+                      p.is_eliminated ? 'opacity-60' : ''
+                    }`}
                     style={isMe ? { boxShadow: 'inset 0 0 0 1px var(--primary)' } : undefined}
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="text-xs text-faint tabular-nums w-5 text-right">{i + 1}</span>
-                      <span className="truncate text-sm font-medium text-body">
+                      <span
+                        className={`truncate text-sm font-medium ${p.is_eliminated ? 'text-faint line-through' : 'text-body'}`}
+                      >
                         {p.player_name}
-                        {isMe && <span className="text-faint"> (you)</span>}
+                        {isMe && <span className="text-faint no-underline"> (you)</span>}
                       </span>
                     </span>
-                    <span
-                      className="chip text-[0.6875rem] shrink-0"
-                      style={graduated ? { color: 'var(--primary)' } : undefined}
-                    >
-                      {schoolClassLabel(p.school_level ?? 0, schoolClassCount)}
-                    </span>
+                    {p.is_eliminated ? (
+                      <span className="chip text-[0.6875rem] shrink-0 text-red-400">Eliminated</span>
+                    ) : (
+                      <span
+                        className="chip text-[0.6875rem] shrink-0"
+                        style={graduated ? { color: 'var(--primary)' } : undefined}
+                      >
+                        {schoolClassLabel(p.school_level ?? 0, schoolClassCount)}
+                      </span>
+                    )}
                   </div>
                 )
               })}
