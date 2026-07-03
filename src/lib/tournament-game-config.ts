@@ -38,7 +38,7 @@ export function buildTournamentGameConfig(
     if (gameType === 'whot') {
       return {
         groupSize,
-        timerSeconds: clampBoardGameTurnTimer(gameConfig?.timerSeconds ?? 30, 'whot'),
+        timerSeconds: clampBoardGameTurnTimer(gameConfig?.timerSeconds ?? 15, 'whot'),
         gameDurationSeconds: clampWhotGameDuration(gameConfig?.gameDurationSeconds ?? 900),
         whotPick3: gameConfig?.whotPick3 ?? true,
         whotCards: gameConfig?.whotCards ?? true,

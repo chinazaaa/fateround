@@ -99,10 +99,10 @@ export function gameConfigForGame(
   gameType: string,
   prev: TournamentGameConfigValue
 ): TournamentGameConfigValue {
-  if (format === 'school') return { ...prev, turnTimer: 30, gameDuration: DEFAULT_SCHOOL_MATCH_SECONDS }
+  if (format === 'school') return { ...prev, turnTimer: 15, gameDuration: DEFAULT_SCHOOL_MATCH_SECONDS }
   if (format === 'head-to-head') {
     if (gameType === 'scrabble') return { ...prev, turnTimer: 60, gameDuration: 900 }
-    if (gameType === 'whot') return { ...prev, turnTimer: 30, gameDuration: 900 }
+    if (gameType === 'whot') return { ...prev, turnTimer: 15, gameDuration: 900 }
   }
   return prev
 }
@@ -175,7 +175,7 @@ export function gameConfigValueFromStored(
   }
   if (format === 'school') {
     v.schoolClassCount = c.schoolClassCount ?? MAX_SCHOOL_CLASSES
-    v.turnTimer = c.timerSeconds ?? 30
+    v.turnTimer = c.timerSeconds ?? 15
     v.gameDuration = c.gameDurationSeconds ?? DEFAULT_SCHOOL_MATCH_SECONDS
     v.whotPick3 = c.whotPick3 ?? true
     v.whotCards = c.whotCards ?? true
@@ -188,7 +188,7 @@ export function gameConfigValueFromStored(
       v.chessTimer = c.timerSeconds ?? 600
       return v
     }
-    v.turnTimer = c.timerSeconds ?? (gameType === 'scrabble' ? 60 : 30)
+    v.turnTimer = c.timerSeconds ?? (gameType === 'scrabble' ? 60 : 15)
     v.gameDuration = c.gameDurationSeconds ?? 900
     if (gameType === 'whot') {
       v.whotPick3 = c.whotPick3 ?? true
