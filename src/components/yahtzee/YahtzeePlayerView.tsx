@@ -270,6 +270,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          gameType="yahtzee"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
           label=""
         />

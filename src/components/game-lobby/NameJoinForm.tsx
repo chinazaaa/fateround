@@ -1,5 +1,7 @@
 'use client'
 
+import { LeaderboardJoinNote } from '@/components/game-lobby/LeaderboardJoinNote'
+
 type Props = {
   value: string
   onChange: (value: string) => void
@@ -12,6 +14,9 @@ type Props = {
   hint?: React.ReactNode
   footer?: React.ReactNode
   disabled?: boolean
+  // When set, shows a note that winning this game lands the player on the
+  // community leaderboard (only if the game type is actually tracked there).
+  gameType?: string
 }
 
 export function NameJoinForm({
@@ -26,6 +31,7 @@ export function NameJoinForm({
   hint,
   footer,
   disabled = false,
+  gameType,
 }: Props) {
   return (
     <div className="space-y-4">
@@ -42,6 +48,7 @@ export function NameJoinForm({
           autoComplete="name"
         />
       </div>
+      {gameType ? <LeaderboardJoinNote gameType={gameType} /> : null}
       {hint ? <div className="text-faint text-xs leading-relaxed">{hint}</div> : null}
       <button
         type="button"

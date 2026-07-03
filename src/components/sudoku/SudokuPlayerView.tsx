@@ -563,6 +563,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          gameType="sudoku"
           submitLabel="Join game"
           footer={
             <p className="text-center pt-1">

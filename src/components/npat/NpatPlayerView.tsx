@@ -194,7 +194,13 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
         gameCode={gameCode}
         header={<GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="i_call_on" />}
       >
-        <NameJoinForm value={joinName} onChange={setJoinName} onSubmit={() => void join()} joining={joining} />
+        <NameJoinForm
+          value={joinName}
+          onChange={setJoinName}
+          onSubmit={() => void join()}
+          joining={joining}
+          gameType="i_call_on"
+        />
       </GameJoinLobbyShell>
     )
   }

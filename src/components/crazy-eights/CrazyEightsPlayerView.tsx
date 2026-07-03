@@ -282,6 +282,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          gameType="crazy_eights"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
           label=""
           footer={
