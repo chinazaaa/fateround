@@ -249,7 +249,8 @@ const VIDEO_CALL: MarketingPageContent = {
       {
         game: (
           <>
-            <GameLink type="monopoly" /> / <GameLink type="whot" /> / <GameLink type="ludo" />
+            <GameLink type="monopoly" /> / <GameLink type="yahtzee" /> / <GameLink type="scrabble" /> /{' '}
+            <GameLink type="whot" /> / <GameLink type="ludo" />
           </>
         ),
         description: 'when the call turns into a proper game night.',
@@ -292,7 +293,7 @@ const LONG_DISTANCE: MarketingPageContent = {
   breadcrumbName: 'Long distance games',
   seoTitle: 'Free Online Games for Long Distance Couples & Friends',
   seoDescription:
-    'Miles apart? Fate Round keeps you close — one link, play together in real time. Free, no download, no sign-up. Voting games for two, plus Chess, Checkers, and card classics.',
+    'Miles apart? Fate Round keeps you close — one link, play together in real time. Free, no download, no sign-up. Two-player Chess, Monopoly, Yahtzee, Scrabble & Whot, plus voting games for two.',
   keywords: [
     'online games for long distance couples',
     'games to play with friends far away free',
@@ -309,7 +310,7 @@ const LONG_DISTANCE: MarketingPageContent = {
     'Made for two (and up)',
     'Real-time play from anywhere',
     'Free forever, no account',
-    'Chess, Checkers, Whot & Crazy Eights',
+    'Chess, Monopoly, Yahtzee, Scrabble & Whot',
   ],
   featureCards: [
     {
@@ -320,7 +321,7 @@ const LONG_DISTANCE: MarketingPageContent = {
     {
       emoji: '♟️',
       title: 'Two-player classics',
-      description: 'Chess, Checkers, Crazy Eights, Whot — settle it head-to-head.',
+      description: 'Chess, Monopoly, Yahtzee, Scrabble, Whot — a full game night for two.',
     },
     {
       emoji: '🤍',
@@ -358,12 +359,14 @@ const LONG_DISTANCE: MarketingPageContent = {
       </p>
       <p>
         For two people, that means quiet head-to-head games — <GameLink type="chess" />, <GameLink type="checkers" />,{' '}
-        <GameLink type="crazy_eights" />, <GameLink type="whot" /> — when you want something slow and competitive. And
-        when you want to learn each other, the two-player voting modes are perfect: <GameLink type="would_you_rather" />
-        , <GameLink type="never_have_i_ever" />, and <GameLink type="this_or_that" /> turn into little “how well do you
-        actually know me” moments. Got a few more friends scattered across cities? The same link scales up — and modes
-        like <GameLink type="most_likely_to" /> and <GameLink type="two_truths">Two Truths and a Lie</GameLink> kick in
-        once you&apos;re three or more.
+        <GameLink type="crazy_eights" />, <GameLink type="whot" /> — when you want something slow and competitive. Want a
+        proper game night instead? The board and word classics all play two: <GameLink type="monopoly" />,{' '}
+        <GameLink type="yahtzee" />, <GameLink type="scrabble" />, <GameLink type="ludo" />, and{' '}
+        <GameLink type="snake_and_ladder">Snakes &amp; Ladders</GameLink>. And when you want to learn each other, the
+        two-player voting modes are perfect: <GameLink type="would_you_rather" />, <GameLink type="never_have_i_ever" />,
+        and <GameLink type="this_or_that" /> turn into little “how well do you actually know me” moments. Got a few more
+        friends scattered across cities? The same link scales up — and modes like <GameLink type="most_likely_to" /> and{' '}
+        <GameLink type="two_truths">Two Truths and a Lie</GameLink> kick in once you&apos;re three or more.
       </p>
     </>
   ),
@@ -389,6 +392,23 @@ const LONG_DISTANCE: MarketingPageContent = {
         ),
         description: 'easy card nights that fill the quiet.',
       },
+      {
+        game: (
+          <>
+            <GameLink type="yahtzee" /> / <GameLink type="scrabble" />
+          </>
+        ),
+        description: 'dice and word games that go the distance — chase the high score or outspell each other.',
+      },
+      {
+        game: (
+          <>
+            <GameLink type="monopoly" /> / <GameLink type="ludo" /> /{' '}
+            <GameLink type="snake_and_ladder">Snakes &amp; Ladders</GameLink>
+          </>
+        ),
+        description: 'turn a quiet evening into a full board-game night, just the two of you.',
+      },
       { game: <GameLink type="tic_tac_toe" />, description: "the fast rematch you can't stop playing." },
     ],
     footnote: (
@@ -403,12 +423,12 @@ const LONG_DISTANCE: MarketingPageContent = {
     {
       question: 'What are good online games for long distance couples?',
       answer:
-        "For two people, Fate Round's Chess, Checkers, Crazy Eights, and Whot are great head-to-head, while Would You Rather, Never Have I Ever, and This or That are perfect for learning each other. All free, all in the browser.",
+        "For two people, Fate Round's Chess, Checkers, Crazy Eights, and Whot are great head-to-head, and the board and word classics all play two — Monopoly, Yahtzee, Scrabble, Ludo, and Snakes & Ladders — for a proper game night. When you want to learn each other, Would You Rather, Never Have I Ever, and This or That are perfect. All free, all in the browser.",
     },
     {
       question: 'Can just two people play?',
       answer:
-        'Yes — plenty of modes are built for two, including Would You Rather, Chess, Checkers, Whot, Crazy Eights, and Never Have I Ever. Group modes like Most Likely To unlock once a third friend joins.',
+        'Yes — plenty of modes are built for two, including Monopoly, Yahtzee, Scrabble, Chess, Checkers, Whot, Crazy Eights, Ludo, Would You Rather, and Never Have I Ever. Group modes like Most Likely To unlock once a third friend joins.',
     },
     {
       question: 'Do we need to download an app or make an account?',

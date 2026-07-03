@@ -1651,7 +1651,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'The classic crossword tile game — build words, hit the premium squares, outscore your friends.',
     bodyParagraph:
-      'Scrabble on Fate Round is the classic word game for 2–4 players on a full standard 15×15 board. Draw seven tiles, take turns building interlocking words outward from the centre star, and rack up points — letters are worth their standard values, and double/triple letter and word squares multiply your score. Every word you form is checked against a real dictionary, so only valid plays count. Use a blank tile as any letter, swap tiles you do not want, or pass. When the bag is empty and someone uses their last tile, the game ends and the highest score wins.',
+      'Scrabble on Fate Round is the classic word game for 2–4 players on a full standard 15×15 board. Draw seven tiles, take turns building interlocking words outward from the center star, and rack up points — letters are worth their standard values, and double/triple letter and word squares multiply your score. Every word you form is checked against a real dictionary, so only valid plays count. Use a blank tile as any letter, swap tiles you do not want, or pass. When the bag is empty and someone uses their last tile, the game ends and the highest score wins.',
     highlights: ['2–4 players', 'Real dictionary', 'Premium squares'],
     features: [
       {
@@ -1672,7 +1672,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         title: 'Build words',
         description:
-          'Tap tiles from your rack onto the board to form words. The first word must cross the centre star.',
+          'Tap tiles from your rack onto the board to form words. The first word must cross the center star.',
       },
       {
         title: 'Outscore everyone',

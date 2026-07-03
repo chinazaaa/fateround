@@ -109,7 +109,7 @@ export function validatePlacementGeometry(board: ScrabbleBoard, tiles: ScrabbleP
 
   if (isBoardEmpty(board)) {
     if (!tiles.some((t) => t.row === SCRABBLE_CENTER.row && t.col === SCRABBLE_CENTER.col)) {
-      return { ok: false, error: 'First word must cover the centre star' }
+      return { ok: false, error: 'First word must cover the center star' }
     }
     if (tiles.length < 2) return { ok: false, error: 'First word must be at least 2 letters' }
     return { ok: true, axis }
