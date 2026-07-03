@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   DescribeItCard,
@@ -20,19 +20,17 @@ import {
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { supabase } from '@/lib/supabase'
 import {
-  GAME_SELECT,
-  PLAYER_SELECT,
   DESCRIBE_IT_SESSION_SELECT,
   DESCRIBE_IT_PLAYER_SELECT,
   DESCRIBE_IT_WORD_SELECT,
   DESCRIBE_IT_GUESS_SELECT,
 } from '@/lib/supabase-selects'
-import { setPlayerSession, clearPlayerSession } from '@/lib/utils'
-import { resolvePlayerSession } from '@/lib/player-resume'
-import type { DescribeItGuess, DescribeItPlayer, DescribeItSession, DescribeItWord, Game, Player } from '@/types'
+import { clearPlayerSession } from '@/lib/utils'
+import type { DescribeItGuess, DescribeItPlayer, DescribeItSession, DescribeItWord, Game } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -62,50 +60,16 @@ type Screen =
 export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
-  const [screen, setScreen] = useState<Screen>('loading')
-  const [game, setGame] = useState<Game | null>(null)
-  const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<DescribeItSession | null>(null)
   const [teamRows, setTeamRows] = useState<DescribeItPlayer[]>([])
   const [words, setWords] = useState<DescribeItWord[]>([])
   const [guesses, setGuesses] = useState<DescribeItGuess[]>([])
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
-  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
-  const [joinName, setJoinName] = useState('')
-  const [joining, setJoining] = useState(false)
   const [acting, setActing] = useState(false)
   const [picking, setPicking] = useState(false)
 
-  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
-
-  const syncScreen = useCallback((g: Game, playerId: string | null, s: DescribeItSession | null) => {
-    if (!playerId) {
-      const pre = preJoinScreen(g, false)
-      if (pre === 'game_started_waiting') return setScreen('game_started_waiting')
-      if (pre === 'game_ended') return setScreen('game_ended')
-      if (pre === 'late_join_choice') return setScreen('late_join_choice')
-      return setScreen('join')
-    }
-    if (g.status === 'waiting') return setScreen('lobby')
-    if (isDescribeItResultsPhase(g.status, s)) return setScreen('finished')
-    if (g.status === 'active') return setScreen('active')
-    setScreen('lobby')
-  }, [])
-
-  const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-    ])
-    if (!supabasePollOk(gameRes, plrsRes)) return false
-    const gameData = gameRes.data
-    if (!gameData) {
-      setScreen('not_found')
-      return true
-    }
-    setGame(gameData)
-    setPlayers(plrsRes.data ?? [])
-
+  // Game-specific load: fetch the describe-it session + team/word/guess rows (the shared
+  // game/players fetch + session resolution lives in useGameViewBootstrap).
+  const loadGameState = useCallback(async (): Promise<{ state: DescribeItSession | null; ok: boolean }> => {
     const [sessionRes, teamRes, wordRes, guessRes] = await Promise.all([
       supabase.from('describe_it_sessions').select(DESCRIBE_IT_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
       supabase
@@ -126,18 +90,49 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     if (supabasePollOk(teamRes)) setTeamRows((teamRes.data ?? []) as DescribeItPlayer[])
     if (supabasePollOk(wordRes)) setWords((wordRes.data ?? []) as DescribeItWord[])
     if (supabasePollOk(guessRes)) setGuesses((guessRes.data ?? []) as DescribeItGuess[])
+    return { state: sessionData, ok: true }
+  }, [gameCode])
 
-    const sess = await resolvePlayerSession(gameCode, plrsRes.data)
-    const playerId = sess?.playerId ?? null
-    setMyPlayerId(playerId)
-    setMyResumeToken(sess?.resumeToken ?? null)
-    syncScreen(gameData, playerId, sessionData)
-    return true
-  }, [gameCode, syncScreen])
+  const computeScreen = useCallback(
+    (gameData: Game, playerId: string | null, sessionData: DescribeItSession | null): Screen => {
+      if (!playerId) {
+        const pre = preJoinScreen(gameData, false)
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'game_ended') return 'game_ended'
+        if (pre === 'late_join_choice') return 'late_join_choice'
+        return 'join'
+      }
+      if (gameData.status === 'waiting') return 'lobby'
+      if (isDescribeItResultsPhase(gameData.status, sessionData)) return 'finished'
+      if (gameData.status === 'active') return 'active'
+      return 'lobby'
+    },
+    []
+  )
 
-  useEffect(() => {
-    load()
-  }, [load])
+  const {
+    screen,
+    game,
+    players,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    setMyResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<Screen, DescribeItSession | null>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'not_found',
+    loadGameState,
+    computeScreen,
+    onJoinError: toastError,
+  })
+
+  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(
@@ -154,37 +149,6 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
-
-  const join = useCallback(
-    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-      const name = (opts?.name ?? joinName).trim()
-      if (!name) return
-      setJoining(true)
-      try {
-        const res = await fetch('/api/players', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameCode,
-            playerName: name,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer } : {}),
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-          toastError(data.error ?? 'Failed to join')
-          return
-        }
-        setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-        setMyPlayerId(data.playerId)
-        setMyResumeToken(data.resumeToken ?? null)
-        await load()
-      } finally {
-        setJoining(false)
-      }
-    },
-    [game?.status, gameCode, joinName, load, toastError]
-  )
 
   const pickTeam = async (team: number) => {
     if (!myPlayerId) return
