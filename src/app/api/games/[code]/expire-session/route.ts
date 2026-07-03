@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabaseAnon } from '@/lib/supabase-anon'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseGameType, isAnonymousMessagesGame } from '@/lib/game-types'
 import { anonymousSessionExpired, finishExpiredAnonymousSession } from '@/lib/anonymous-messages'
 
-const supabase = getSupabaseAnon()
-
+// Ending the session writes `games.status = 'finished'`. Since the core-gameplay RLS
+// lockdown (20260628132823) locked `games` to SELECT-only for anon, that write must
+// go through the service role, or it silently updates 0 rows and the session never ends.
+// This route is safe to run unauthenticated: it only finishes a session whose timer has
+// genuinely expired (verified server-side below), so there is nothing to forge.
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
+  const supabase = getSupabaseAdmin()
   const { code } = await params
   const gameId = code.toUpperCase()
 
