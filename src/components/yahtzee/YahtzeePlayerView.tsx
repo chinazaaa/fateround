@@ -314,8 +314,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     // score-based games.
     const myScoreRow = scores.find((s) => s.player_id === myPlayerId)
     const myTotal = myScoreRow ? totalScore(myScoreRow.scores.categories) : 0
-    const iWon =
-      myPlayerId != null && session?.winner_player_id === myPlayerId && myTotal > 0 && scores.length > 1
+    const iWon = myPlayerId != null && session?.winner_player_id === myPlayerId && myTotal > 0 && scores.length > 1
     const shareWinnerName = iWon ? myName : winner?.name
 
     return (
