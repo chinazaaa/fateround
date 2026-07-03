@@ -80,9 +80,7 @@ export default function TournamentLandingPage() {
       </div>
 
       <div className="glass-card p-5 text-center space-y-2.5">
-        <p className="text-sm font-semibold text-body">
-          Got no code? Not sure when the next game is?
-        </p>
+        <p className="text-sm font-semibold text-body">Got no code? Not sure when the next game is?</p>
         <p className="text-xs text-muted">
           Join our community to get tournament codes and find out when the next game goes live.
         </p>

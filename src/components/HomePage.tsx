@@ -123,9 +123,7 @@ export function HomePage() {
                 Run a multi-game bracket for your crew — winner takes all
               </p>
             </div>
-            <span className="text-white/90 text-sm shrink-0 transition-transform group-hover:translate-x-0.5">
-              →
-            </span>
+            <span className="text-white/90 text-sm shrink-0 transition-transform group-hover:translate-x-0.5">→</span>
           </Link>
 
           <div className="space-y-1.5 shrink-0 lg:col-start-2 lg:row-start-2">
