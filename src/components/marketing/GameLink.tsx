@@ -9,7 +9,10 @@ export function GameLink({ type, children }: { type: GameType; children?: ReactN
   const slug = gameLandingSlug(type)
   const label = children ?? gameTypeConfig(type).label
   return (
-    <Link href={`/games/${slug}`} className="font-medium text-body underline decoration-dotted underline-offset-2 hover:opacity-80 transition-opacity">
+    <Link
+      href={`/games/${slug}`}
+      className="font-medium text-body underline decoration-dotted underline-offset-2 hover:opacity-80 transition-opacity"
+    >
       {label}
     </Link>
   )

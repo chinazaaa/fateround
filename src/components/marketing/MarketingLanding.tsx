@@ -81,7 +81,11 @@ export function MarketingLanding({ content }: { content: MarketingPageContent })
           <div className="mx-auto max-w-3xl">
             <div className="grid sm:grid-cols-2 gap-3">
               {content.featureCards.map((f) => (
-                <div key={f.title} className="glass-card p-5 space-y-2 border-l-[3px]" style={{ borderLeftColor: accent }}>
+                <div
+                  key={f.title}
+                  className="glass-card p-5 space-y-2 border-l-[3px]"
+                  style={{ borderLeftColor: accent }}
+                >
                   <span className="text-2xl" aria-hidden>
                     {f.emoji}
                   </span>
@@ -165,7 +169,11 @@ export function MarketingLanding({ content }: { content: MarketingPageContent })
               <ul className="space-y-2.5">
                 {content.gameList.items.map((item, i) => (
                   <li key={i} className="flex gap-2.5 text-muted text-sm sm:text-base leading-relaxed">
-                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: accent }} aria-hidden />
+                    <span
+                      className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ background: accent }}
+                      aria-hidden
+                    />
                     <span>
                       <span className="font-bold text-body">{item.game}</span> — {item.description}
                     </span>
@@ -198,7 +206,10 @@ export function MarketingLanding({ content }: { content: MarketingPageContent })
         <section className="px-4 pb-14">
           <div
             className="mx-auto max-w-xl rounded-2xl border p-8 text-center space-y-4"
-            style={{ borderColor: `${accent}35`, background: `linear-gradient(165deg, ${accent}1f 0%, transparent 70%)` }}
+            style={{
+              borderColor: `${accent}35`,
+              background: `linear-gradient(165deg, ${accent}1f 0%, transparent 70%)`,
+            }}
           >
             <p className="text-2xl font-black gradient-title-subtle">{content.ctaHeading}</p>
             <p className="text-muted text-sm">{content.ctaSubtext}</p>

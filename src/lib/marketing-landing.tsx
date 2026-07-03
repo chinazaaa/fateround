@@ -108,16 +108,15 @@ const JACKBOX: MarketingPageContent = {
         Jackbox is great — and it costs money, needs a screen everyone can see, and locks each night to whichever pack
         the host owns. Fate Round keeps the part everyone actually loves (your phone is the controller, the reveals are
         the punchline) and drops the friction. There&apos;s no pack to buy, no download, and no account. You share a
-        link, your group joins from wherever they are, and you jump between{' '}
-        <GameLink type="custom">20+ games</GameLink> in the same room.
+        link, your group joins from wherever they are, and you jump between <GameLink type="custom">20+ games</GameLink>{' '}
+        in the same room.
       </p>
       <p>
-        And Fate Round isn&apos;t just party trivia. The same room that runs{' '}
-        <GameLink type="smash_marry_kill" /> and <GameLink type="would_you_rather" /> also runs{' '}
-        <GameLink type="monopoly" />, <GameLink type="yahtzee" />, <GameLink type="whot" />, <GameLink type="ludo" />,{' '}
-        <GameLink type="chess" />, <GameLink type="codewords" />, and <GameLink type="trivia" />. It&apos;s the whole
-        game night behind one link — not one pack at a time. Perfect over a Discord or Zoom call, on a couch, or across
-        the country.
+        And Fate Round isn&apos;t just party trivia. The same room that runs <GameLink type="smash_marry_kill" /> and{' '}
+        <GameLink type="would_you_rather" /> also runs <GameLink type="monopoly" />, <GameLink type="yahtzee" />,{' '}
+        <GameLink type="whot" />, <GameLink type="ludo" />, <GameLink type="chess" />, <GameLink type="codewords" />,
+        and <GameLink type="trivia" />. It&apos;s the whole game night behind one link — not one pack at a time. Perfect
+        over a Discord or Zoom call, on a couch, or across the country.
       </p>
     </>
   ),
@@ -232,20 +231,29 @@ const VIDEO_CALL: MarketingPageContent = {
         Because there are <GameLink type="custom">20+ modes</GameLink> behind one link, a single call can go anywhere.
         Break the ice with <GameLink type="most_likely_to" />, get spicy with <GameLink type="never_have_i_ever" />,
         settle a debate with <GameLink type="would_you_rather" />, then turn it into a real game night with{' '}
-        <GameLink type="monopoly" />, <GameLink type="whot" />, <GameLink type="ludo" />, or{' '}
-        <GameLink type="trivia" />. Long-distance friends, a Discord server, a family spread across three time zones —
-        same link, everyone&apos;s in.
+        <GameLink type="monopoly" />, <GameLink type="whot" />, <GameLink type="ludo" />, or <GameLink type="trivia" />.
+        Long-distance friends, a Discord server, a family spread across three time zones — same link, everyone&apos;s
+        in.
       </p>
     </>
   ),
   gameList: {
     heading: 'Best Fate Round games for a video call',
     items: [
-      { game: <GameLink type="would_you_rather" />, description: 'impossible choices, anonymous votes. Instant warm-up.' },
-      { game: <GameLink type="most_likely_to" />, description: 'vote for the friend who fits. Savage reveals, zero mercy.' },
+      {
+        game: <GameLink type="would_you_rather" />,
+        description: 'impossible choices, anonymous votes. Instant warm-up.',
+      },
+      {
+        game: <GameLink type="most_likely_to" />,
+        description: 'vote for the friend who fits. Savage reveals, zero mercy.',
+      },
       { game: <GameLink type="smash_marry_kill" />, description: 'three names a round, chaos guaranteed.' },
       { game: <GameLink type="trivia" />, description: 'fastest correct answer wins. Great for bigger groups.' },
-      { game: <GameLink type="codewords" />, description: 'two teams, one call, one spymaster each. Perfect for Discord.' },
+      {
+        game: <GameLink type="codewords" />,
+        description: 'two teams, one call, one spymaster each. Perfect for Discord.',
+      },
       {
         game: (
           <>
@@ -359,22 +367,29 @@ const LONG_DISTANCE: MarketingPageContent = {
       </p>
       <p>
         For two people, that means quiet head-to-head games — <GameLink type="chess" />, <GameLink type="checkers" />,{' '}
-        <GameLink type="crazy_eights" />, <GameLink type="whot" /> — when you want something slow and competitive. Want a
-        proper game night instead? The board and word classics all play two: <GameLink type="monopoly" />,{' '}
+        <GameLink type="crazy_eights" />, <GameLink type="whot" /> — when you want something slow and competitive. Want
+        a proper game night instead? The board and word classics all play two: <GameLink type="monopoly" />,{' '}
         <GameLink type="yahtzee" />, <GameLink type="scrabble" />, <GameLink type="ludo" />, and{' '}
         <GameLink type="snake_and_ladder">Snakes &amp; Ladders</GameLink>. And when you want to learn each other, the
-        two-player voting modes are perfect: <GameLink type="would_you_rather" />, <GameLink type="never_have_i_ever" />,
-        and <GameLink type="this_or_that" /> turn into little “how well do you actually know me” moments. Got a few more
-        friends scattered across cities? The same link scales up — and modes like <GameLink type="most_likely_to" /> and{' '}
-        <GameLink type="two_truths">Two Truths and a Lie</GameLink> kick in once you&apos;re three or more.
+        two-player voting modes are perfect: <GameLink type="would_you_rather" />, <GameLink type="never_have_i_ever" />
+        , and <GameLink type="this_or_that" /> turn into little “how well do you actually know me” moments. Got a few
+        more friends scattered across cities? The same link scales up — and modes like{' '}
+        <GameLink type="most_likely_to" /> and <GameLink type="two_truths">Two Truths and a Lie</GameLink> kick in once
+        you&apos;re three or more.
       </p>
     </>
   ),
   gameList: {
     heading: 'Best Fate Round games for long distance (just the two of you)',
     items: [
-      { game: <GameLink type="would_you_rather" />, description: 'trade impossible choices and find out how they think.' },
-      { game: <GameLink type="never_have_i_ever" />, description: 'a two-player confession round that gets tellingly honest.' },
+      {
+        game: <GameLink type="would_you_rather" />,
+        description: 'trade impossible choices and find out how they think.',
+      },
+      {
+        game: <GameLink type="never_have_i_ever" />,
+        description: 'a two-player confession round that gets tellingly honest.',
+      },
       { game: <GameLink type="this_or_that" />, description: 'quick-fire A or B; upload your own prompts.' },
       {
         game: (

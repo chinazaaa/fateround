@@ -1062,7 +1062,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'whot number cards',
       'whot vs uno',
       'whot card game how many players',
-      'whot 54 card deck',
+      'whot card deck size',
       'whot game strategy',
       'whot scoring points',
       'play whot with friends online',
@@ -1070,7 +1070,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle: 'The Nigerian card classic — match, stack, and call WHOT on your crew.',
     bodyParagraph:
       'Whot on Fate Round runs on the Nigerian house rules everyone actually plays by — match the top card by shape or number, drop WHOT to call the next shape, and keep those Pick 2 and Pick 3 stacks separate. The special cards are where it gets loud: Hold On buys you another go, Suspension skips the next player, General Market makes everyone draw, and the WHOT card (20) bends the whole game to your will. No shuffling, no lost cards, no arguments about the rules — deal a room, share the code, and play from any phone. First to empty their hand wins. Two to six players, free forever.',
-    highlights: ['54-card deck', '2–6 players', 'Naija house rules'],
+    highlights: ['52-card deck', '2–6 players', 'Naija house rules'],
     features: [
       {
         title: 'Match or WHOT',
@@ -1145,7 +1145,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How many cards are in a Whot deck?',
         answer:
-          'A Whot deck has 54 cards across five shapes — circle, triangle, cross, square, and star — plus the special WHOT cards numbered 20. Fate Round handles the full deck and the market (draw pile) for you.',
+          'The Fate Round Whot deck has 52 cards across five shapes — circle, triangle, cross, square, and star — plus the special WHOT cards numbered 20. Fate Round handles the full deck and the market (draw pile) for you.',
       },
       {
         question: 'How is Whot scored if the game is blocked or timed?',
@@ -1155,7 +1155,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Is Whot like Uno?',
         answer:
-          'They’re cousins. Both are shape/number-matching shedding games where you race to empty your hand, and Whot’s Pick 2, Pick 3, and WHOT card rhyme with Uno’s Draw 2, Draw 4, and Wild. Whot came first (1950s), uses shapes instead of colors, and adds Hold On and General Market. If you like Uno, Whot feels instantly familiar — and Fate Round has both.',
+          'They’re cousins. Both are shape/number-matching shedding games where you race to empty your hand, and Whot’s Pick 2, Pick 3, and WHOT card rhyme with Uno’s Draw 2, Draw 4, and Wild. Whot came first — invented in England in 1935 and popularized in Britain through the 1950s — uses shapes instead of colors, and adds Hold On and General Market. If you like Uno, Whot feels instantly familiar — and Fate Round has both.',
       },
       {
         question: 'Can you play Whot online for free?',

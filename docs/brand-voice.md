@@ -116,7 +116,7 @@ The voice is "playful with an edge aimed at the game, never the reader." That wo
 
 **Locked: American English for all UI and marketing prose.** It matches your largest search market (US), your `.com`, and most competitor copy. That means: *center, color, favorite, prioritize, canceled, gray, localization.* Keep game *names* and cultural terms authentic regardless ("Whot," "Naija house rules," "General Market") — localization applies to ordinary prose, not proper nouns or cultural vocabulary. Scrabble/Collins dictionary word-data is exempt (it's a real dictionary — leave it as-is).
 
-**Known inconsistencies in the current product prose to sweep** (all British → American): "centre star" → "center star" (Scrabble landing + rules), "colour-group" → "color-group" (Monopoly rules — *note: verify this isn't intentional UK-Monopoly styling before changing*), "Prioritise/prioritise" → "prioritize" (game-landing, participant-mode). Everything I write from here follows the American convention by default.
+**Known inconsistencies in the current product prose to sweep** (all British → American): "centre star" → "center star" (Scrabble landing + rules), "colour-group" → "color-group" (Monopoly rules — *note: verify this isn't intentional UK-Monopoly styling before changing*), "Prioritise" → "prioritize" (game-landing, participant-mode). Everything I write from here follows the American convention by default.
 
 Other conventions: curly quotes (''  "") in prose; Oxford comma on; numerals for selling-point numbers ("20+," "first to 100"); em dash — no spaces around it — as the house turn.
 

@@ -16,7 +16,7 @@ Google Search Console shows Fate Round already ranking for **yahtzee** and **who
 'whot online multiplayer', 'whot game with friends', 'whot card meanings',
 'what does whot mean', 'whot general market', 'whot hold on card', 'whot pick 2 pick 3',
 'whot number cards', 'whot vs uno', 'whot card game how many players',
-'whot 54 card deck', 'whot game strategy', 'whot scoring points', 'play whot with friends online'
+'whot card deck size', 'whot game strategy', 'whot scoring points', 'play whot with friends online'
 ```
 
 ### Stronger body paragraph (replace current)
@@ -43,13 +43,13 @@ Suspension is the 8 card. It skips the next player's turn entirely — brutal in
 Play the same card back. A Pick 2 (the 2 card) can only be blocked with another 2, which passes the penalty — now stacked — to the next player; Pick 3 (the 5 card) works the same with 5s. The stacks never mix: you can't answer a Pick 2 with a Pick 3, and you can't escape either by playing WHOT.
 
 **How many cards are in a Whot deck?**
-A Whot deck has 54 cards across five shapes — circle, triangle, cross, square, and star — plus the special WHOT cards numbered 20. Fate Round handles the full deck and the market (draw pile) for you.
+The Fate Round Whot deck has 52 cards across five shapes — circle, triangle, cross, square, and star — plus the special WHOT cards numbered 20. Fate Round handles the full deck and the market (draw pile) for you.
 
 **How is Whot scored if the game is blocked or timed?**
 If nobody can play or the round clock runs out, the player holding the fewest points wins. Cards score their face value and the WHOT card counts as 20 — so a light hand beats a heavy one. Empty your hand first and you win outright, no counting needed.
 
 **Is Whot like Uno?**
-They're cousins. Both are shape/number-matching shedding games where you race to empty your hand, and Whot's Pick 2, Pick 3, and WHOT card rhyme with Uno's Draw 2, Draw 4, and Wild. Whot came first (1950s), uses shapes instead of colors, and adds Hold On and General Market. If you like Uno, Whot feels instantly familiar — and Fate Round has both.
+They're cousins. Both are shape/number-matching shedding games where you race to empty your hand, and Whot's Pick 2, Pick 3, and WHOT card rhyme with Uno's Draw 2, Draw 4, and Wild. Whot came first — invented in England in 1935 and popularized in Britain through the 1950s — uses shapes instead of colors, and adds Hold On and General Market. If you like Uno, Whot feels instantly familiar — and Fate Round has both.
 
 **Can you play Whot online for free?**
 Yes — free forever on Fate Round, no sign-up and no download. Create a room, share the code, and two to six of you play from any browser. Perfect for Nigerian diaspora game nights over a video call.
