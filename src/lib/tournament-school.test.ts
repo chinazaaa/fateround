@@ -11,6 +11,7 @@ import {
   schoolClassLabel,
   schoolLadder,
   schoolAdvancers,
+  schoolFinalChampion,
   type SchoolHand,
 } from './tournament-school'
 
@@ -220,5 +221,30 @@ describe('schoolAdvancers', () => {
   it('falls back to most-cards repeats when the winner is unknown', () => {
     const played = [hand('a', 1), hand('b', 4)]
     expect(schoolAdvancers(played, null)).toEqual(['a'])
+  })
+})
+
+describe('schoolFinalChampion', () => {
+  it('crowns the room winner when known', () => {
+    const played = [hand('levi', 2), hand('demi', 5)]
+    expect(schoolFinalChampion(played, 'demi')).toBe('demi')
+  })
+
+  it('falls back to the fewest-cards finisher when there is no recorded winner', () => {
+    // Levi emptied more of their hand (2 cards vs 5) → champion at time-up.
+    const played = [hand('levi', 2), hand('demi', 5)]
+    expect(schoolFinalChampion(played, null)).toBe('levi')
+  })
+
+  it('breaks a card-count tie by lowest hand value', () => {
+    const played: SchoolHand[] = [
+      { tpId: 'a', cardCount: 3, handSum: 20 },
+      { tpId: 'b', cardCount: 3, handSum: 8 },
+    ]
+    expect(schoolFinalChampion(played, null)).toBe('b')
+  })
+
+  it('returns null when nobody played', () => {
+    expect(schoolFinalChampion([], null)).toBeNull()
   })
 })

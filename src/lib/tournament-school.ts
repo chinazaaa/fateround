@@ -212,6 +212,17 @@ export function schoolAdvancers(played: SchoolHand[], winnerTpId: string | null)
 }
 
 /**
+ * The champion of a school grand final (the room played when only two players remain):
+ * the room's Whot winner if known, otherwise whoever finished with the fewest cards
+ * (lowest hand value breaks a tie). Returns null only if nobody played.
+ */
+export function schoolFinalChampion(played: SchoolHand[], winnerTpId: string | null): string | null {
+  if (winnerTpId) return winnerTpId
+  if (played.length === 0) return null
+  return [...played].sort((a, b) => a.cardCount - b.cardCount || a.handSum - b.handSum)[0].tpId
+}
+
+/**
  * Resolve a finished school Whot room. Each round is one timed Whot match: a
  * player who empties their hand is done and climbs a class, and the rest keep
  * playing (the Whot engine already runs a timed game this way). When the match
@@ -281,6 +292,30 @@ export async function resolveSchoolMatch(supabase: SupabaseClient, gameId: strin
     .neq('status', 'finished')
     .select('id')
   if (claimError || !claimed?.length) return
+
+  // Grand final: once only two players are left in the whole tournament, this room
+  // decides it — the room's winner takes the championship and the other is out, rather
+  // than school's usual "winner climbs a class", which would otherwise drag the last two
+  // through more rounds until one finally graduated.
+  const { data: survivors } = await supabase
+    .from('tournament_players')
+    .select('id')
+    .eq('tournament_id', match.tournament_id)
+    .eq('is_eliminated', false)
+  if ((survivors?.length ?? 0) === 2) {
+    const championId = schoolFinalChampion(played, winnerTP?.id ?? null)
+    if (championId) {
+      const runnerUp = (survivors ?? []).find((s) => s.id !== championId)
+      if (runnerUp) {
+        await supabase
+          .from('tournament_players')
+          .update({ is_eliminated: true, eliminated_at: new Date().toISOString() })
+          .eq('id', runnerUp.id)
+      }
+      await supabase.from('tournaments').update({ status: 'finished' }).eq('id', match.tournament_id)
+      return
+    }
+  }
 
   // Everyone who played climbs a class except the single most-cards player — unless
   // the others dropped out, in which case the lone survivor (and the winner) still
