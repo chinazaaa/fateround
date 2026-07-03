@@ -19,6 +19,7 @@ import { unlockAudio } from '@/lib/sounds'
 import { PLAYER_SELECT } from '@/lib/supabase-selects'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { useToast } from '@/components/ui/Toast'
+import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import type { Game, Participant, Player, Round, ParticipantGender, PlayerGender } from '@/types'
 
 import type { View } from '@/hooks/useGameSession'
@@ -218,6 +219,9 @@ export function useJoinFlow(deps: JoinFlowDeps) {
       })
       const data = await res.json()
       if (data.playerId) {
+        // GA key event: a player joined a room via code/link (viral conversion).
+        // Only a real join (POST) counts — skip name edits (PATCH / isSelfEdit).
+        if (!isSelfEdit) trackEvent(GA_EVENTS.joinRoom)
         const [{ data: plrs }, { data: parts }] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
           supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
