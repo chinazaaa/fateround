@@ -217,10 +217,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (champion) {
       const losers = survivorIds.filter((id) => id !== champion)
       if (losers.length > 0) {
-        await admin
+        // Fail closed: if this doesn't land, the tournament would finish with several
+        // survivors and no clear champion (it's derived as the last non-eliminated).
+        const { error: eliminateError } = await admin
           .from('tournament_players')
           .update({ is_eliminated: true, eliminated_at: new Date().toISOString() })
           .in('id', losers)
+        if (eliminateError) {
+          return NextResponse.json(
+            { error: internalErrorMessage('tournaments/code/rounds', eliminateError) },
+            { status: 500 }
+          )
+        }
       }
       await admin.from('tournaments').update({ status: 'finished' }).eq('id', tournamentId)
       return NextResponse.json({ roundNumber, rooms: 0, champion: true, finished: true })
