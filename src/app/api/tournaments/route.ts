@@ -8,7 +8,9 @@ import {
   H2H_ELIGIBLE_TYPES,
   h2hGroupSize,
   KNOCKOUT_ELIGIBLE_TYPES,
+  SCHOOL_ELIGIBLE_TYPES,
 } from '@/lib/tournament-validation'
+import { clampSchoolClassCount, clampSchoolMatchSeconds } from '@/lib/tournament-school'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampChessTimer } from '@/lib/chess'
 import { clampWhotGameDuration } from '@/lib/whot'
@@ -29,13 +31,18 @@ export async function POST(req: NextRequest) {
   // group-game config (trivia: questions per round + timer).
   const isH2H = format === 'head-to-head'
   const isKnockout = format === 'knockout'
+  const isSchool = format === 'school'
   const h2hGameType = gameType ?? H2H_ELIGIBLE_TYPES[0]
   const knockoutGameType = gameType ?? KNOCKOUT_ELIGIBLE_TYPES[0]
+  const schoolGameType = gameType ?? SCHOOL_ELIGIBLE_TYPES[0]
   if (isH2H && !H2H_ELIGIBLE_TYPES.includes(h2hGameType as (typeof H2H_ELIGIBLE_TYPES)[number])) {
     return NextResponse.json({ error: `Game "${gameType}" isn't available for head-to-head` }, { status: 400 })
   }
   if (isKnockout && !KNOCKOUT_ELIGIBLE_TYPES.includes(knockoutGameType as (typeof KNOCKOUT_ELIGIBLE_TYPES)[number])) {
     return NextResponse.json({ error: `Game "${gameType}" isn't available for knockout` }, { status: 400 })
+  }
+  if (isSchool && !SCHOOL_ELIGIBLE_TYPES.includes(schoolGameType as (typeof SCHOOL_ELIGIBLE_TYPES)[number])) {
+    return NextResponse.json({ error: `Game "${gameType}" isn't available for school mode` }, { status: 400 })
   }
 
   let tournamentCode = ''
@@ -81,19 +88,38 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // School game_config: the chosen ladder length plus the Whot house rules /
+  // timers applied to every room. Rooms are sized 3–5 per round at pairing time
+  // (see computeSchoolRooms), so there's no fixed group size stored here.
+  let schoolGameConfig: Record<string, unknown> | null = null
+  if (isSchool) {
+    schoolGameConfig = {
+      schoolClassCount: clampSchoolClassCount(gameConfig?.schoolClassCount ?? 16),
+      timerSeconds: clampBoardGameTurnTimer(gameConfig?.timerSeconds ?? 30, 'whot'),
+      // One timed Whot match per round (2/3/4 min); lowest hand wins at time-up.
+      gameDurationSeconds: clampSchoolMatchSeconds(gameConfig?.gameDurationSeconds),
+      whotPick3: gameConfig?.whotPick3 ?? true,
+      whotCards: gameConfig?.whotCards ?? true,
+      whotNumberCalls: gameConfig?.whotNumberCalls ?? true,
+      whotPick2Stacking: gameConfig?.whotPick2Stacking ?? true,
+    }
+  }
+
   const { error } = await supabase.from('tournaments').insert({
     id: tournamentCode,
     host_token: hostToken,
     title,
     format: format ?? 'round-robin',
-    game_type: isH2H ? h2hGameType : isKnockout ? knockoutGameType : null,
+    game_type: isH2H ? h2hGameType : isKnockout ? knockoutGameType : isSchool ? schoolGameType : null,
     game_config: isKnockout
       ? {
           questionSource: gameConfig?.questionSource ?? 'platform',
           roundsCount: gameConfig?.roundsCount ?? 5,
           timerSeconds: gameConfig?.timerSeconds ?? 15,
         }
-      : h2hGameConfig,
+      : isSchool
+        ? schoolGameConfig
+        : h2hGameConfig,
     placement_points: placementPoints ?? [10, 7, 5, 3, 2, 1],
     target_game_count: targetGameCount ?? null,
     max_players: maxPlayers ?? null,

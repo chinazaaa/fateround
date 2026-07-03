@@ -28,7 +28,7 @@ export async function resolveHeadToHeadMatch(supabase: SupabaseClient, gameId: s
     .maybeSingle()
   if (!tournament || tournament.format !== 'head-to-head' || tournament.status === 'finished') return
 
-  // Group bracket (Whot/Scrabble, rooms of 4): the room's single winner advances
+  // Group bracket (Whot/Scrabble rooms): the room's single winner advances
   // and the rest are eliminated — a different resolution from the chess duel below.
   const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
   if (groupSize > 2) {

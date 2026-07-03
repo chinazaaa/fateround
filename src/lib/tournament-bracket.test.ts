@@ -3,9 +3,19 @@ import {
   nextPowerOfTwo,
   computeRoundPairings,
   computeRoundGroups,
+  h2hGroupSize,
   roundLabel,
   splitKnockoutField,
 } from './tournament-bracket'
+
+describe('h2hGroupSize', () => {
+  it('seats chess 1-v-1, Whot up to 5, Scrabble up to 4', () => {
+    expect(h2hGroupSize('chess')).toBe(2)
+    expect(h2hGroupSize('whot')).toBe(5)
+    expect(h2hGroupSize('scrabble')).toBe(4)
+    expect(h2hGroupSize('unknown')).toBe(2)
+  })
+})
 
 describe('nextPowerOfTwo', () => {
   it('returns the smallest power of two >= n', () => {
@@ -109,6 +119,15 @@ describe('computeRoundGroups', () => {
     [7, 4, [4, 3]],
     [2, 4, [2]],
     [3, 4, [3]],
+    // Whot rooms hold up to 5: pack into big rooms before adding another, so 10
+    // is 5+5 (not 4+3+3) and 13 is 5+4+4 (not 4+3+3+3).
+    [10, 5, [5, 5]],
+    [11, 5, [4, 4, 3]],
+    [12, 5, [4, 4, 4]],
+    [13, 5, [5, 4, 4]],
+    [9, 5, [5, 4]],
+    [6, 5, [3, 3]],
+    [5, 5, [5]],
   ])('for %i players at size %i yields rooms %j', (n, size, expectedSizes) => {
     const { groups, byes } = computeRoundGroups(ids(n), size)
     expect(byes).toEqual([])

@@ -8,6 +8,11 @@ vi.mock('@/lib/room-points', () => ({ awardRoomGamePoints: award }))
 const resolveH2H = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/tournament-h2h', () => ({ resolveHeadToHeadMatch: resolveH2H }))
 
+// Likewise the school (class-ladder) resolver — stubbed so these tests isolate
+// markGameFinished's own transition/award behavior.
+const resolveSchool = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/tournament-school', () => ({ resolveSchoolMatch: resolveSchool }))
+
 import { markGameFinished } from './game-finish'
 
 // Minimal Supabase stand-in: the games update builder is chainable and awaitable,
@@ -33,6 +38,7 @@ function makeSupabase(rows: unknown[] | null, error: unknown = null) {
 beforeEach(() => {
   award.mockReset()
   resolveH2H.mockReset()
+  resolveSchool.mockReset()
 })
 
 describe('markGameFinished', () => {
