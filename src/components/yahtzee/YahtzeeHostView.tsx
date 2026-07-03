@@ -272,7 +272,8 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
   const turnPlayer = players.find((p) => p.id === turnPlayerId)
   const winner = players.find((p) => p.id === session?.winner_player_id)
   // A playing host only counts as a community-leaderboard winner with a positive
-  // total — never at a score of 0 (mirrors the player view).
+  // total AND more than one player — never at a score of 0 or in a solo game
+  // (no one to beat). Mirrors the player view.
   const hostScoreRow = scores.find((s) => s.player_id === hostPlayerId)
   const hostTotal = hostScoreRow ? totalScore(hostScoreRow.scores.categories) : 0
   const hostPlays = hostMode === 'player' && !!hostPlayerId
@@ -456,7 +457,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
               </button>
             }
           />
-          {hostPlayerId && session?.winner_player_id === hostPlayerId && hostTotal > 0 && (
+          {hostPlayerId && session?.winner_player_id === hostPlayerId && hostTotal > 0 && scores.length > 1 && (
             <PostWinToCommunity
               gameType="yahtzee"
               gameCode={gameCode}

@@ -309,12 +309,13 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   if (screen === 'finished') {
     const myName = players.find((p) => p.id === myPlayerId)?.name
     // Only surface the community-leaderboard button to a genuine winner: the
-    // server-picked winner AND a positive total. Guards a zero-total "winner"
-    // (e.g. an all-zeroed solo game) from posting, matching the other
+    // server-picked winner, a positive total, AND more than one player (a solo
+    // game has no one to beat, so there's no real win). Matches the other
     // score-based games.
     const myScoreRow = scores.find((s) => s.player_id === myPlayerId)
     const myTotal = myScoreRow ? totalScore(myScoreRow.scores.categories) : 0
-    const iWon = myPlayerId != null && session?.winner_player_id === myPlayerId && myTotal > 0
+    const iWon =
+      myPlayerId != null && session?.winner_player_id === myPlayerId && myTotal > 0 && scores.length > 1
     const shareWinnerName = iWon ? myName : winner?.name
 
     return (

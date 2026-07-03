@@ -297,8 +297,11 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
 
   const leaderboard = tallySudokuScores(submissions, players)
   const hostSudokuRow = leaderboard.find((row) => row.player_id === hostPlayerId)
+  // A solo game has no one to beat, so it's not a community-leaderboard win:
+  // require more than one player in addition to the positive-score check.
   const hostWonSudoku =
     !!hostSudokuRow &&
+    leaderboard.length > 1 &&
     leaderboard[0] != null &&
     hostSudokuRow.points === leaderboard[0].points &&
     leaderboard[0].points > 0

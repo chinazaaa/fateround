@@ -615,8 +615,11 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
 
   if (view === 'finished') {
     const mySudokuRow = leaderboard.find((row) => row.player_id === myPlayerId)
+    // A solo game has no one to beat, so it's not a community-leaderboard win:
+    // require more than one player in addition to the positive-score check.
     const iWonSudoku =
       !!mySudokuRow &&
+      leaderboard.length > 1 &&
       leaderboard[0] != null &&
       mySudokuRow.points === leaderboard[0].points &&
       leaderboard[0].points > 0
