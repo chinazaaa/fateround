@@ -54,7 +54,7 @@ export function tournamentInviteUrl(code: string, origin: string = appOrigin()):
  *  player code appended, so pasting it anywhere resumes them (name + seat), exactly
  *  like a normal game's ?player= resume link. */
 export function tournamentPlayerResumeUrl(code: string, token: string, origin: string = appOrigin()): string {
-  return `${tournamentInviteUrl(code, origin)}?ptoken=${encodeURIComponent(token.trim().toUpperCase())}`
+  return `${tournamentInviteUrl(code, origin)}?player=${encodeURIComponent(token.trim().toUpperCase())}`
 }
 
 /** The host's link to manage a tournament from another device (carries the host token). */

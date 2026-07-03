@@ -729,28 +729,28 @@ const PARTY_HUB: MarketingPageContent = {
 const KAHOOT: MarketingPageContent = {
   slug: 'free-kahoot-alternative',
   breadcrumbName: 'Kahoot alternative',
-  seoTitle: 'Free Kahoot Alternative — No Login, No Player Limit',
+  seoTitle: 'Free Kahoot Alternative — No Login, Up to 40 Players',
   seoDescription:
-    'A free Kahoot alternative with no login and no player cap. Host trivia and 20+ games in the browser — share a code and unlimited players join from their phones. No account, no download.',
+    'A free Kahoot alternative with no login and no forced paywall. Host trivia and 20+ games in the browser — share a code and up to 40 players join from their phones. No account, no download.',
   keywords: [
     'free kahoot alternative',
     'kahoot alternative',
     'games like kahoot',
     'kahoot alternative free no login',
-    'kahoot alternative unlimited players',
+    'kahoot alternative for large groups',
     'free trivia game host',
     'kahoot free version',
     'quiz game like kahoot',
   ],
-  heroTitle: 'The free Kahoot alternative — no login, no player limit',
+  heroTitle: 'The free Kahoot alternative — no login, up to 40 players',
   heroSubtitle:
-    "Kahoot's free tier caps your players and nudges you to pay. Fate Round doesn't — host trivia and 20+ other games with no login and no cap. Share a code, everyone joins from their phone. Free forever.",
-  highlights: ['No player cap', 'No login to host or join', 'Trivia + 20 more games', 'Free forever'],
+    "Kahoot's free tier caps your players and nudges you to pay. Fate Round doesn't lock the essentials behind a paywall — host trivia and 20+ other games with no login, up to 40 players a room. Share a code, everyone joins from their phone. Free forever.",
+  highlights: ['Up to 40 players', 'No login to host or join', 'Trivia + 20 more games', 'Free forever'],
   featureCards: [
     {
-      emoji: '♾️',
-      title: 'No player cap',
-      description: "Invite two or two hundred. There's no free-tier limit pushing you to upgrade.",
+      emoji: '👥',
+      title: 'Up to 40 players',
+      description: 'Host a small group or a full class of 40 — no free-tier squeeze pushing you to upgrade.',
     },
     {
       emoji: '🔑',
@@ -775,7 +775,7 @@ const KAHOOT: MarketingPageContent = {
       title: 'Pick Trivia (or any mode)',
       description: 'Choose a category or upload your own questions — set rounds and a timer.',
     },
-    { title: 'Share the code', description: 'Players join from any browser with a nickname. No login, no limit.' },
+    { title: 'Share the code', description: 'Players join from any browser with a nickname. No login, no app.' },
     {
       title: 'Play & climb the board',
       description: 'Fastest correct answers score the most — the leaderboard updates live.',
@@ -785,7 +785,7 @@ const KAHOOT: MarketingPageContent = {
     <>
       <p>
         Kahoot is great for a classroom quiz — until the free plan caps your players and the paywall appears. Fate Round
-        keeps the fast-finger, big-screen energy without the limits: no login to host, no cap on how many join, and no
+        keeps the fast-finger, big-screen energy without the squeeze: no login to host, up to 40 players a room, and no
         premium tier gating your questions. Share a code and the whole class, team, or party jumps in from any browser.
       </p>
       <p>
@@ -801,19 +801,19 @@ const KAHOOT: MarketingPageContent = {
     columns: ['Fate Round', 'Kahoot (free)'],
     rows: [
       { label: 'Price', a: 'Free forever', b: 'Free tier limited; paid plans to unlock more' },
-      { label: 'Player limit', a: 'No cap', b: 'Capped on the free plan' },
+      { label: 'Player limit', a: 'Up to 40 in Trivia', b: 'Capped on the free plan' },
       { label: 'Login to host', a: 'None', b: 'Account required' },
       { label: 'Players join by', a: 'Code, any browser, nickname', b: 'Code via app or browser' },
       { label: 'Game types', a: 'Trivia + 20 party/board/word games', b: 'Quiz-style only' },
-      { label: 'Best for', a: 'Classrooms, teams, friends — any size', b: 'Classroom quizzes' },
+      { label: 'Best for', a: 'Classrooms, teams, friends', b: 'Classroom quizzes' },
     ],
     note: 'Kahoot free-tier limits vary — check kahoot.com for current player caps and pricing.',
   },
   faqs: [
     {
-      question: 'Does Fate Round limit how many players can join?',
+      question: 'How many players can join?',
       answer:
-        "No. There's no free-tier player cap — host a small group or a big crowd, and everyone joins from a code.",
+        "Trivia rooms hold up to 40 players — plenty for a full class or team, and there's no free-tier squeeze pushing you to pay. No account needed to host or join; everyone comes in from a code.",
     },
     {
       question: 'Do players need a Kahoot-style account or app?',
@@ -827,15 +827,15 @@ const KAHOOT: MarketingPageContent = {
     {
       question: 'Is it good for classrooms and teams?',
       answer:
-        'Yes — no login and no cap make it easy for a class or a whole team to jump in, and speed-based scoring keeps it competitive.',
+        'Yes — no login and room for up to 40 make it easy for a class or a whole team to jump in, and speed-based scoring keeps it competitive.',
     },
     {
       question: 'Is it really free?',
       answer: 'Yes, free forever — no premium tier gating players or questions.',
     },
   ],
-  ctaHeading: 'Host without the cap',
-  ctaSubtext: 'Free forever. No login, no player limit — start a game in under a minute.',
+  ctaHeading: 'Host without the login',
+  ctaSubtext: 'Free forever. No login, up to 40 players — start a game in under a minute.',
   accent: '#7c3aed',
 }
 

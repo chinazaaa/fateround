@@ -201,7 +201,7 @@ export default function TournamentLobbyPage() {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const host = params.get('host')
-    const ptoken = params.get('ptoken')
+    const ptoken = params.get('player')
     if (!host && !ptoken) return
 
     if (host) localStorage.setItem(`tournament_host_${tournamentId}`, host)
@@ -209,7 +209,7 @@ export default function TournamentLobbyPage() {
     const strip = () => {
       const url = new URL(window.location.href)
       url.searchParams.delete('host')
-      url.searchParams.delete('ptoken')
+      url.searchParams.delete('player')
       window.history.replaceState({}, '', url.pathname + url.search)
     }
 
