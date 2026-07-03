@@ -96,6 +96,9 @@ export async function POST(req: NextRequest) {
     })
 
     if (outcome === 'not_on_leaderboard') {
+      // Every winner now posts directly (the client no longer pre-checks), so an
+      // untracked game is the normal "not added" case — not spam. Refund the slot.
+      await clearPostWinAttempts(ip)
       return NextResponse.json({ error: 'This game isn’t on the community leaderboard.' }, { status: 404 })
     }
     if (outcome === 'already_posted') {
