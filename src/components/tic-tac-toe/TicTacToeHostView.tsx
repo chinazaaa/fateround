@@ -187,7 +187,6 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to start')
-      success('Game started!')
       await load()
       if (hostMode === 'player' && hostPlayerId) setTab('play')
     } catch (err) {
@@ -234,8 +233,6 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
   useTurnNotifications({
     status: game?.status,
     isMyTurn: hostPlayerId ? isHostTurn : null,
-    // startGame() already toasts "Game started!" for the host who clicks Start.
-    announceStart: false,
   })
 
   if (loading) {

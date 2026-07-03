@@ -25,7 +25,6 @@ export function useTurnNotifications({
   isMyTurn = null,
   enabled = true,
   announce = true,
-  announceStart = true,
   startMessage = 'Game started! 🎮',
   turnMessage = 'Your turn!',
 }: {
@@ -37,13 +36,6 @@ export function useTurnNotifications({
   enabled?: boolean
   /** Whether to show a toast alongside the sound. */
   announce?: boolean
-  /**
-   * Whether to announce the `waiting → active` start at all (toast + sound).
-   * Set `false` on host views whose own `startGame()` already toasts
-   * "Game started!", so the host who clicks Start doesn't get a duplicate.
-   * The turn cue still fires.
-   */
-  announceStart?: boolean
   startMessage?: string
   turnMessage?: string
 }) {
@@ -65,7 +57,7 @@ export function useTurnNotifications({
     const prevStatus = prevStatusRef.current
     const prevMyTurn = prevMyTurnRef.current
 
-    if (announceStart && prevStatus === 'waiting' && status === 'active') {
+    if (prevStatus === 'waiting' && status === 'active') {
       if (announce) info(startMessage)
       void playRoundStartSound()
     } else if (status === 'active' && prevStatus === 'active' && isMyTurn === true && prevMyTurn !== true) {
@@ -75,5 +67,5 @@ export function useTurnNotifications({
 
     prevStatusRef.current = status
     prevMyTurnRef.current = isMyTurn
-  }, [enabled, status, isMyTurn, announce, announceStart, startMessage, turnMessage, info])
+  }, [enabled, status, isMyTurn, announce, startMessage, turnMessage, info])
 }

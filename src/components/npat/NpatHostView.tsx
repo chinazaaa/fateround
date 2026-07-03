@@ -41,6 +41,7 @@ import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 
@@ -68,6 +69,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [tab, setTab] = useState<HostTab>('manage')
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
+  useTurnNotifications({ status: game?.status })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
@@ -208,7 +210,6 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to start')
       await load()
-      success('Game started!')
       if (hostMode === 'player' && hostPlayerId) setTab('play')
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to start')
