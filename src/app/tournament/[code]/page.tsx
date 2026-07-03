@@ -663,9 +663,13 @@ export default function TournamentLobbyPage() {
   const h2hChampion =
     (h2h || knockout) && isFinished && survivingCount === 1 ? (players.find((p) => !p.is_eliminated) ?? null) : null
   // School champion: the player who graduated past the top class. Nobody is
-  // eliminated, so the winner is whoever reached the ladder's end (not a lone survivor).
+  // eliminated, so the winner is whoever reached the ladder's end. Several players
+  // can graduate from the same final room at once; prefer the one who topped a
+  // room (its Whot winner) as the champion, else any graduate.
+  const schoolGraduates =
+    school && isFinished ? players.filter((p) => hasGraduated(p.school_level ?? 0, schoolClassCount)) : []
   const schoolChampion =
-    school && isFinished ? (players.find((p) => hasGraduated(p.school_level ?? 0, schoolClassCount)) ?? null) : null
+    schoolGraduates.find((p) => games.some((g) => g.winner_player_id === p.id)) ?? schoolGraduates[0] ?? null
 
   // Knockout derived state — one group game per round.
   const knockoutGames = knockout ? games.filter((g) => g.round_number != null) : []
@@ -1053,7 +1057,7 @@ export default function TournamentLobbyPage() {
               <p className="text-faint text-xs text-center">
                 {survivingCount < 2
                   ? 'Waiting for players to join before you can start.'
-                  : 'Groups everyone by class into Whot rooms of 3–5 and sends them in. Only each room’s winner climbs a class — everyone else repeats theirs.'}
+                  : 'Groups everyone by class into Whot rooms (up to 5) and sends them in. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats.'}
               </p>
             </div>
           )}
@@ -1303,21 +1307,22 @@ export default function TournamentLobbyPage() {
                   <span aria-hidden>▶️</span>
                   <span>
                     Tap <span className="text-body font-semibold">Start Round</span> — players are grouped by class into
-                    Whot rooms of 3–5 and sent in.
+                    Whot rooms (up to 5) and sent in.
                   </span>
                 </li>
                 <li className="flex gap-2.5">
                   <span aria-hidden>🃏</span>
                   <span>
                     Once players are in their rooms, tap <span className="text-body font-semibold">Start Rooms</span> to
-                    begin every game at once. You host from here — you don&apos;t play.
+                    begin every timed match at once. You host from here — you don&apos;t play.
                   </span>
                 </li>
                 <li className="flex gap-2.5">
                   <span aria-hidden>🔁</span>
                   <span>
-                    When the rooms finish, each room’s winner moves up a class and everyone else repeats theirs. Tap{' '}
-                    <span className="text-body font-semibold">Start Next Round</span> to group the next set.
+                    Empty your hand and you climb a class; when time’s up the player left holding the most cards
+                    repeats. Tap <span className="text-body font-semibold">Start Next Round</span> to group the next
+                    set.
                   </span>
                 </li>
                 <li className="flex gap-2.5">
@@ -1425,17 +1430,16 @@ export default function TournamentLobbyPage() {
               <li className="flex gap-2.5">
                 <span aria-hidden>🎓</span>
                 <span>
-                  Everyone starts in the lowest class. Each round you&apos;re grouped by class into one timed Whot room
-                  of 3–5.
+                  Everyone starts in the lowest class. Each round you&apos;re grouped with your classmates into one
+                  timed Whot room (up to 5).
                 </span>
               </li>
               <li className="flex gap-2.5">
                 <span aria-hidden>🃏</span>
                 <span>
-                  <span className="text-body font-semibold">
-                    Win your room to graduate to the next class; otherwise you repeat it.
-                  </span>{' '}
-                  Empty your hand first to win, or when time&apos;s up the lowest cards win. Nobody is knocked out.
+                  <span className="text-body font-semibold">Empty your hand and you climb to the next class.</span> The
+                  rest keep playing; when time&apos;s up the one left holding the most cards repeats the class. Nobody
+                  is knocked out.
                 </span>
               </li>
               <li className="flex gap-2.5">

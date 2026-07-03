@@ -87,10 +87,9 @@ export interface SchoolPlayerLevel {
   level: number
 }
 
-// Room-size bounds for a school round. Whot plays best in small groups, so each
-// round's rooms hold 3–5 players (only a 2-player final falls below the minimum,
-// when just two players remain overall).
-export const SCHOOL_MIN_ROOM = 3
+// The most players a school Whot room holds. There's no minimum: a class with
+// only two players just plays a room of two. Whot itself allows up to 6, which is
+// the ceiling a lone-player merge can briefly reach.
 export const SCHOOL_MAX_ROOM = 5
 
 export interface SchoolRooms {
@@ -98,46 +97,109 @@ export interface SchoolRooms {
   rooms: string[][]
 }
 
-/**
- * Group players into rooms for one school round. Players are sorted by class so
- * each room holds players in the same class or the nearest ones, then split into
- * the *fewest* rooms that keep every room at most SCHOOL_MAX_ROOM (5) — so the
- * field packs into big rooms before adding another, and the rooms are balanced to
- * within one player of each other. That yields 3–5 per room (e.g. 10 → 5+5, 11 →
- * 4+4+3, 13 → 5+4+4); the only sub-3 room is a 2-player final when exactly two
- * players remain. Nobody sits out — every player lands in a room.
- *
- * The caller shuffles `players` first; the sort here is stable, so players in the
- * same class keep that shuffled (random) order and groupings vary round to round.
- */
-export function computeSchoolRooms(players: SchoolPlayerLevel[]): SchoolRooms {
-  const n = players.length
-  if (n < 2) return { rooms: [] }
-
-  const sorted = [...players].sort((a, b) => a.level - b.level)
-  // Fewest rooms that keep every room ≤ MAX; balance the field across them so
-  // sizes differ by at most one (the first `remainder` rooms get one extra).
-  const roomCount = Math.max(1, Math.ceil(n / SCHOOL_MAX_ROOM))
-  const base = Math.floor(n / roomCount)
-  const remainder = n % roomCount
-
-  const rooms: string[][] = []
+/** Split ids into the fewest rooms that stay ≤ max, balanced to within one each. */
+function balancedChunks(ids: string[], max: number): string[][] {
+  const roomCount = Math.max(1, Math.ceil(ids.length / max))
+  const base = Math.floor(ids.length / roomCount)
+  const remainder = ids.length % roomCount
+  const out: string[][] = []
   let idx = 0
   for (let g = 0; g < roomCount; g++) {
     const size = base + (g < remainder ? 1 : 0)
-    rooms.push(sorted.slice(idx, idx + size).map((p) => p.id))
+    out.push(ids.slice(idx, idx + size))
     idx += size
   }
-  return { rooms }
+  return out
 }
 
 /**
- * Resolve a finished school Whot room: record the winner, climb them one class,
- * and finish the tournament if that graduates them. Every other player in the
- * room is left in place (never eliminated — they just repeat their class). Called
- * from markGameFinished, so every Whot finish path funnels here; it's a cheap
- * no-op for games that aren't part of a school tournament, and idempotent via the
- * same active→finished CAS the bracket uses.
+ * Group players into rooms for one school round, matched *by class*. Players in
+ * the same class play each other: a class with 6 players makes two rooms of 3, a
+ * class with just 2 makes a room of 2 (no minimum). Rooms hold at most 5.
+ *
+ * A class with a single lone player can't play alone, so lone players fall back to
+ * the nearest class: if two or more players are stranded alone in their classes,
+ * they group together (sorted by class, so the nearest classes pair up); a single
+ * stranded player joins the room nearest to their class. Either way every player
+ * gets a room whenever at least two remain — nobody sits out and it can't deadlock
+ * on one player stuck alone in the top class.
+ *
+ * The caller shuffles `players` first; the grouping preserves that order within a
+ * class, so rooms vary round to round.
+ */
+export function computeSchoolRooms(players: SchoolPlayerLevel[]): SchoolRooms {
+  if (players.length < 2) return { rooms: [] }
+
+  // Bucket by class, lowest first; same-class order stays as the caller shuffled it.
+  const byLevel = new Map<number, string[]>()
+  for (const p of players) {
+    const arr = byLevel.get(p.level) ?? []
+    arr.push(p.id)
+    byLevel.set(p.level, arr)
+  }
+  const levels = [...byLevel.keys()].sort((a, b) => a - b)
+
+  // Classes with ≥2 players form their own rooms; lone players are set aside.
+  const rooms: { ids: string[]; level: number }[] = []
+  const singles: { id: string; level: number }[] = []
+  for (const level of levels) {
+    const ids = byLevel.get(level) ?? []
+    if (ids.length < 2) {
+      singles.push({ id: ids[0], level })
+      continue
+    }
+    for (const chunk of balancedChunks(ids, SCHOOL_MAX_ROOM)) rooms.push({ ids: chunk, level })
+  }
+
+  // Place lone players in the nearest class. Two or more stranded players form
+  // their own rooms (sorted by class → nearest classes together); a single one
+  // joins the room closest to their class.
+  if (singles.length >= 2) {
+    for (const chunk of balancedChunks(
+      singles.map((s) => s.id),
+      SCHOOL_MAX_ROOM
+    )) {
+      rooms.push({ ids: chunk, level: 0 })
+    }
+  } else if (singles.length === 1 && rooms.length > 0) {
+    const lone = singles[0]
+    // Prefer a room with spare space; among those, the class-nearest one.
+    const target =
+      [...rooms]
+        .filter((r) => r.ids.length < SCHOOL_MAX_ROOM)
+        .sort((a, b) => Math.abs(a.level - lone.level) - Math.abs(b.level - lone.level))[0] ??
+      [...rooms].sort((a, b) => Math.abs(a.level - lone.level) - Math.abs(b.level - lone.level))[0]
+    target.ids.push(lone.id)
+  }
+
+  return { rooms: rooms.map((r) => r.ids) }
+}
+
+/** The single player who repeats a school room: whoever holds the most cards at
+ *  the end (most cards, then highest hand value, then id for a stable pick). */
+interface SchoolHand {
+  tpId: string
+  cardCount: number
+  handSum: number
+}
+function schoolRepeater(hands: SchoolHand[]): SchoolHand | null {
+  if (hands.length === 0) return null
+  return [...hands].sort(
+    (a, b) => b.cardCount - a.cardCount || b.handSum - a.handSum || a.tpId.localeCompare(b.tpId)
+  )[0]
+}
+
+/**
+ * Resolve a finished school Whot room. Each round is one timed Whot match: a
+ * player who empties their hand is done and climbs a class, and the rest keep
+ * playing (the Whot engine already runs a timed game this way). When the match
+ * ends — timer up, or one player left — everyone climbs a class *except* the
+ * single player holding the most cards, who repeats their class. Nobody is
+ * eliminated. Finishes the tournament the moment an advancer graduates past the
+ * top class.
+ *
+ * Called from markGameFinished, so every Whot finish path funnels here; it's a
+ * cheap no-op for non-school games, and idempotent via the active→finished CAS.
  */
 export async function resolveSchoolMatch(supabase: SupabaseClient, gameId: string): Promise<void> {
   const { data: match } = await supabase
@@ -154,49 +216,65 @@ export async function resolveSchoolMatch(supabase: SupabaseClient, gameId: strin
     .maybeSingle()
   if (!tournament || tournament.format !== 'school' || tournament.status === 'finished') return
 
-  // Whot always names a winner (first to empty hand, tiebroken by hand value).
-  const { data: session } = await supabase
-    .from('whot_sessions')
-    .select('winner_player_id')
-    .eq('game_id', gameId)
-    .maybeSingle()
-  if (!session?.winner_player_id) return // undecided — leave it for the host to sort out
-
-  // Map the winning game player (a players.id) to its tournament roster slot by
-  // name (unique per tournament), restricted to this room's members.
-  const { data: winnerRow } = await supabase
-    .from('players')
-    .select('name')
-    .eq('id', session.winner_player_id)
-    .maybeSingle()
-  const winnerName = winnerRow?.name?.toLowerCase() ?? null
-
   const memberIds = ((match.member_ids ?? []) as string[]).filter((id): id is string => Boolean(id))
-  const { data: tps } = await supabase
-    .from('tournament_players')
-    .select('id, player_name, school_level')
-    .in('id', memberIds.length ? memberIds : ['__none__'])
-  const roster = tps ?? []
-  const winnerTP = roster.find((p) => p.player_name.toLowerCase() === winnerName)
-  if (!winnerTP) return // couldn't map the winner — don't advance the wrong player
+  const [{ data: tps }, { data: hands }, { data: gamePlayers }, { data: session }] = await Promise.all([
+    supabase
+      .from('tournament_players')
+      .select('id, player_name, school_level')
+      .in('id', memberIds.length ? memberIds : ['__none__']),
+    supabase.from('whot_player_hands').select('player_id, cards').eq('game_id', gameId),
+    supabase.from('players').select('id, name').eq('game_id', gameId),
+    supabase.from('whot_sessions').select('winner_player_id').eq('game_id', gameId).maybeSingle(),
+  ])
 
-  // Claim the room (winning the active→finished race); only the request that
-  // flips the row goes on to climb the winner and check for a graduation.
+  const roster = tps ?? []
+  const tpByName = new Map(roster.map((p) => [p.player_name.toLowerCase(), p]))
+  const nameById = new Map((gamePlayers ?? []).map((p) => [p.id as string, (p.name as string).toLowerCase()]))
+  const levelById = new Map(roster.map((p) => [p.id, p.school_level ?? 0]))
+
+  // Map each seated player's final hand to its tournament roster slot by name.
+  const played: SchoolHand[] = []
+  for (const h of hands ?? []) {
+    const name = nameById.get(h.player_id as string)
+    const tp = name ? tpByName.get(name) : undefined
+    if (!tp) continue
+    const cards = (h.cards ?? []) as { number: number }[]
+    played.push({
+      tpId: tp.id,
+      cardCount: cards.length,
+      handSum: cards.reduce((sum, c) => sum + (c.number ?? 0), 0),
+    })
+  }
+  if (played.length === 0) return // nobody mapped — leave it for the host to sort out
+
+  // Claim the room (winning the active→finished race); only the request that flips
+  // the row advances players. winner_player_id records the room's top finisher
+  // (the Whot winner) for the results view.
+  const winnerName = session?.winner_player_id ? nameById.get(session.winner_player_id as string) : undefined
+  const winnerTP = winnerName ? tpByName.get(winnerName) : undefined
   const { data: claimed, error: claimError } = await supabase
     .from('tournament_games')
-    .update({ status: 'finished', winner_player_id: winnerTP.id })
+    .update({ status: 'finished', winner_player_id: winnerTP?.id ?? null })
     .eq('id', match.id)
     .neq('status', 'finished')
     .select('id')
   if (claimError || !claimed?.length) return
 
-  const nextLevel = (winnerTP.school_level ?? 0) + 1
-  await supabase.from('tournament_players').update({ school_level: nextLevel }).eq('id', winnerTP.id)
+  // Everyone who played climbs a class except the single most-cards player.
+  const repeater = schoolRepeater(played)
+  const advancers = played.filter((p) => p.tpId !== repeater?.tpId)
 
   const classCount = clampSchoolClassCount(
     (tournament.game_config as { schoolClassCount?: number } | null)?.schoolClassCount
   )
-  if (hasGraduated(nextLevel, classCount)) {
+  let someoneGraduated = false
+  for (const a of advancers) {
+    const nextLevel = (levelById.get(a.tpId) ?? 0) + 1
+    await supabase.from('tournament_players').update({ school_level: nextLevel }).eq('id', a.tpId)
+    if (hasGraduated(nextLevel, classCount)) someoneGraduated = true
+  }
+
+  if (someoneGraduated) {
     await supabase.from('tournaments').update({ status: 'finished' }).eq('id', match.tournament_id)
   }
 }

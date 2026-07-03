@@ -8,15 +8,16 @@ import {
   hasGraduated,
   MAX_SCHOOL_CLASSES,
   SCHOOL_MAX_ROOM,
-  SCHOOL_MIN_ROOM,
   schoolClassLabel,
   schoolLadder,
 } from './tournament-school'
 
-/** Room sizes for a flat field of n same-class players. */
-function roomSizes(n: number): number[] {
+/** Room sizes (sorted) for a field of n players all in the same class. */
+function sameClassRoomSizes(n: number): number[] {
   const players = Array.from({ length: n }, (_, i) => ({ id: `p${i}`, level: 0 }))
-  return computeSchoolRooms(players).rooms.map((r) => r.length)
+  return computeSchoolRooms(players)
+    .rooms.map((r) => r.length)
+    .sort((a, b) => b - a)
 }
 
 describe('clampSchoolClassCount', () => {
@@ -69,43 +70,65 @@ describe('schoolClassLabel / hasGraduated', () => {
 })
 
 describe('computeSchoolRooms', () => {
-  it('matches the host-specified room sizing (min rooms, 3–5 each, balanced)', () => {
-    expect(roomSizes(10)).toEqual([5, 5])
-    expect(roomSizes(11)).toEqual([4, 4, 3])
-    expect(roomSizes(12)).toEqual([4, 4, 4])
-    expect(roomSizes(13)).toEqual([5, 4, 4])
+  it('splits a single class into balanced rooms of at most 5 (no minimum)', () => {
+    expect(sameClassRoomSizes(2)).toEqual([2]) // two in a class just play each other
+    expect(sameClassRoomSizes(3)).toEqual([3])
+    expect(sameClassRoomSizes(5)).toEqual([5])
+    expect(sameClassRoomSizes(6)).toEqual([3, 3])
+    expect(sameClassRoomSizes(9)).toEqual([5, 4])
+    expect(sameClassRoomSizes(11)).toEqual([4, 4, 3])
   })
 
-  it('keeps every room within 3–5 for all fields of 3+ (only a 2-player final is smaller)', () => {
-    expect(roomSizes(2)).toEqual([2]) // unavoidable — just two players remain
-    for (let n = 3; n <= 60; n++) {
-      const sizes = roomSizes(n)
-      expect(sizes.reduce((a, b) => a + b, 0)).toBe(n) // everyone placed, nobody sits out
-      for (const s of sizes) {
-        expect(s).toBeGreaterThanOrEqual(SCHOOL_MIN_ROOM)
-        expect(s).toBeLessThanOrEqual(SCHOOL_MAX_ROOM)
-      }
-      // Balanced: sizes differ by at most one.
-      expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1)
+  it('never exceeds 5 and places everyone, for any single-class size 2–60', () => {
+    for (let n = 2; n <= 60; n++) {
+      const sizes = sameClassRoomSizes(n)
+      expect(sizes.reduce((a, b) => a + b, 0)).toBe(n)
+      for (const s of sizes) expect(s).toBeLessThanOrEqual(SCHOOL_MAX_ROOM)
     }
   })
 
-  it('groups players by class (rooms hold the same / nearest classes)', () => {
+  it('matches players by class — a class with only 2 gets its own room of 2', () => {
     const players = [
-      { id: 'uni1', level: 3 },
       { id: 'p1', level: 0 },
       { id: 'p2', level: 0 },
       { id: 'p3', level: 0 },
-      { id: 'uni2', level: 3 },
-      { id: 'uni3', level: 3 },
+      { id: 'ss2a', level: 9 },
+      { id: 'ss2b', level: 9 },
     ]
     const { rooms } = computeSchoolRooms(players)
     expect(rooms).toHaveLength(2)
     const roomOf = (id: string) => rooms.findIndex((r) => r.includes(id))
-    // The three level-0 players share a room; the three level-3 players share the other.
+    // The two SS2 players play each other; they are not absorbed into the P1 room.
+    expect(roomOf('ss2a')).toBe(roomOf('ss2b'))
+    expect(roomOf('ss2a')).not.toBe(roomOf('p1'))
+    expect(rooms.find((r) => r.includes('ss2a'))).toHaveLength(2)
     expect(new Set(['p1', 'p2', 'p3'].map(roomOf)).size).toBe(1)
-    expect(new Set(['uni1', 'uni2', 'uni3'].map(roomOf)).size).toBe(1)
-    expect(roomOf('p1')).not.toBe(roomOf('uni1'))
+  })
+
+  it('merges a single lone player into the nearest class room (no sit-out, no deadlock)', () => {
+    const players = [
+      { id: 'p1', level: 0 },
+      { id: 'p2', level: 0 },
+      { id: 'p3', level: 0 },
+      { id: 'lonely', level: 9 },
+    ]
+    const { rooms } = computeSchoolRooms(players)
+    // The lone SS2 player can't play alone, so they join the only room.
+    expect(rooms).toHaveLength(1)
+    expect(rooms[0]).toHaveLength(4)
+    expect(rooms[0]).toContain('lonely')
+  })
+
+  it('groups multiple stranded lone players together (nearest classes)', () => {
+    const players = [
+      { id: 'a', level: 0 },
+      { id: 'b', level: 1 },
+      { id: 'c', level: 2 },
+    ]
+    // Nobody has a same-class partner, so all three play one room.
+    const { rooms } = computeSchoolRooms(players)
+    expect(rooms).toHaveLength(1)
+    expect(rooms[0].sort()).toEqual(['a', 'b', 'c'])
   })
 
   it('returns no rooms for a lone (or empty) field', () => {

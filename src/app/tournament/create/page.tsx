@@ -302,7 +302,7 @@ export default function TournamentCreatePage() {
               : isKnockout
                 ? 'Everyone plays together each round; the bottom half is knocked out until one champion remains. Round of 16 → Quarterfinal → Semifinal → Final.'
                 : isSchool
-                  ? 'School Whot: everyone starts in the lowest class and is grouped by class into Whot rooms of 3–5 each round. Win your room to graduate to the next class; otherwise you repeat it. First to graduate past the top class wins — nobody is knocked out.'
+                  ? 'School Whot: everyone starts in the lowest class and is grouped with classmates into a timed Whot room (up to 5) each round. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats. First to graduate past the top class wins — nobody is knocked out.'
                   : 'Everyone plays each game together and earns placement points across multiple games.'}
           </p>
         </div>
@@ -413,7 +413,7 @@ export default function TournamentCreatePage() {
               </select>
               <p className="text-faint text-xs mt-1.5">
                 {isSchool
-                  ? 'How long each Whot match runs. Empty your hand first to win, or when time’s up the lowest cards win the room.'
+                  ? 'How long each match runs. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats.'
                   : 'Max length of each room — when time’s up the game ends and the leader wins, so rounds don’t drag on.'}
               </p>
             </Field>
