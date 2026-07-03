@@ -46,7 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     .maybeSingle()
   if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
   if (tournament.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (tournament.format !== 'head-to-head' && tournament.format !== 'knockout') {
+  if (tournament.format !== 'head-to-head' && tournament.format !== 'knockout' && tournament.format !== 'school') {
     return NextResponse.json({ error: 'This tournament does not run bracket rounds' }, { status: 400 })
   }
   if (tournament.status === 'finished') return NextResponse.json({ error: 'Tournament has ended' }, { status: 400 })
@@ -91,11 +91,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
 
-  // Group bracket (Whot/Scrabble): each staged room holds the group's members,
-  // who auto-join from the lobby. Seat the members who are present (≥ 2), deal the
-  // game, and flip the room live. A room without enough members stays pending so
-  // the host can retry once stragglers arrive (or remove a no-show for a walkover).
-  if (groupSize > 2) {
+  // Group rooms (head-to-head Whot/Scrabble, or school Whot): each staged room
+  // holds the group's members, who auto-join from the lobby. Seat the members who
+  // are present (≥ 2), deal the game, and flip the room live. A room without enough
+  // members stays pending so the host can retry once stragglers arrive (or remove a
+  // no-show for a walkover).
+  if (groupSize > 2 || tournament.format === 'school') {
     const roundRooms = pendingRows.filter((r) => r.round_number === roundNumber && !r.is_bye && r.game_id)
     const memberIds = [
       ...new Set(roundRooms.flatMap((r) => (r.member_ids ?? []) as string[]).filter((id): id is string => Boolean(id))),

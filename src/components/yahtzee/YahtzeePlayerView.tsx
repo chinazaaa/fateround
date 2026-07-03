@@ -2,7 +2,7 @@
 
 // Yahtzee: player-facing roll/hold/score loop.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   YahtzeeCard,
@@ -16,20 +16,15 @@ import { YahtzeeLeaderboard, YahtzeeScorecard } from '@/components/yahtzee/Yahtz
 import { YahtzeeFinalResultsShareBlock } from '@/components/yahtzee/YahtzeeFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId } from '@/lib/yahtzee'
+import { currentPlayerId, totalScore } from '@/lib/yahtzee'
 import { supabase } from '@/lib/supabase'
-import {
-  GAME_SELECT,
-  PLAYER_SELECT,
-  YAHTZEE_PLAYER_SCORES_SELECT,
-  YAHTZEE_SESSION_SELECT,
-} from '@/lib/supabase-selects'
-import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
-import { resolvePlayerSession } from '@/lib/player-resume'
-import type { Game, Player, YahtzeeCategory, YahtzeePlayerScore, YahtzeeSession } from '@/types'
+import { YAHTZEE_PLAYER_SCORES_SELECT, YAHTZEE_SESSION_SELECT } from '@/lib/supabase-selects'
+import { clearPlayerSession } from '@/lib/utils'
+import type { Game, YahtzeeCategory, YahtzeePlayerScore, YahtzeeSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -59,52 +54,17 @@ type Screen =
 export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
-  const [screen, setScreen] = useState<Screen>('loading')
-  const [game, setGame] = useState<Game | null>(null)
-  const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<YahtzeeSession | null>(null)
   const [scores, setScores] = useState<YahtzeePlayerScore[]>([])
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
-  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
-  const [joinName, setJoinName] = useState('')
-  const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
-  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   const [acting, setActing] = useState(false)
   const [localHeld, setLocalHeld] = useState<boolean[]>([false, false, false, false, false])
   const turnIndexRef = useRef<number | null>(null)
 
-  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
-
-  const syncScreen = useCallback((gameData: Game, playerId: string | null) => {
-    if (!playerId) {
-      const pre = preJoinScreen(gameData, false)
-      if (pre === 'game_started_waiting') {
-        setScreen('game_started_waiting')
-        return
-      }
-      if (pre === 'game_ended') {
-        setScreen('game_ended')
-        return
-      }
-      setScreen('join')
-      return
-    }
-    if (gameData.status === 'waiting') {
-      setScreen('waiting')
-      return
-    }
-    if (gameData.status === 'active') {
-      setScreen('active')
-      return
-    }
-    setScreen('finished')
-  }, [])
-
-  const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes, sessionRes, scoresRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+  // Game-specific load: fetch this game's yahtzee session + per-player scores (the shared
+  // game/players fetch + session resolution lives in useGameViewBootstrap).
+  const loadGameState = useCallback(async (): Promise<{ state: YahtzeeSession | null; ok: boolean }> => {
+    const [sessionRes, scoresRes] = await Promise.all([
       supabase.from('yahtzee_sessions').select(YAHTZEE_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
       supabase
         .from('yahtzee_player_scores')
@@ -112,48 +72,66 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
         .eq('game_id', gameCode)
         .order('player_order'),
     ])
-    if (!supabasePollOk(gameRes, plrsRes, sessionRes, scoresRes)) return false
+    const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as YahtzeeSession | null) : null
+    if (supabasePollOk(sessionRes)) setSession(sessionData)
+    if (supabasePollOk(scoresRes)) setScores((scoresRes.data as YahtzeePlayerScore[]) ?? [])
+    return { state: sessionData, ok: supabasePollOk(sessionRes, scoresRes) }
+  }, [gameCode])
 
-    const gameData = gameRes.data
-    const plrs = plrsRes.data
-    const sessionData = sessionRes.data as YahtzeeSession | null
+  // Post-resolve seam: keep mid-turn optimistic "held" dice from being clobbered by a
+  // reload. This needs the resolved playerId (to tell whose turn it is), so it runs after
+  // session resolution and before the screen is computed — exactly where the pre-migration
+  // inline sync sat. Side effect only (updates local held/turn refs); no screen change.
+  const afterResolve = useCallback((_game: Game, playerId: string | null, sessionData: YahtzeeSession | null): void => {
+    if (!sessionData) return
+    const turnChanged = turnIndexRef.current !== sessionData.current_turn_index
+    const isMyActiveTurn = playerId != null && currentPlayerId(sessionData) === playerId
+    const midTurn = (sessionData.rolls_this_turn ?? 0) > 0
 
-    if (!gameData) {
-      setScreen('not_found')
-      return true
+    if (turnChanged || !isMyActiveTurn || !midTurn) {
+      turnIndexRef.current = sessionData.current_turn_index
+      setLocalHeld(sessionData.held ?? [false, false, false, false, false])
     }
+  }, [])
 
-    setGame(gameData)
-    setPlayers(plrs ?? [])
-    setSession(sessionData)
-    setScores((scoresRes.data as YahtzeePlayerScore[]) ?? [])
-
-    const session = await resolvePlayerSession(gameCode, plrs)
-    const playerId = session?.playerId ?? null
-    if (session) {
-      setMyPlayerId(session.playerId)
-    } else {
-      setMyPlayerId(null)
+  const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'game_ended') return 'game_ended'
+      return 'join'
     }
-    setMyResumeToken(session?.resumeToken ?? null)
+    if (gameData.status === 'waiting') return 'waiting'
+    if (gameData.status === 'active') return 'active'
+    return 'finished'
+  }, [])
 
-    if (sessionData) {
-      const turnChanged = turnIndexRef.current !== sessionData.current_turn_index
-      const isMyActiveTurn = playerId != null && currentPlayerId(sessionData) === playerId
-      const midTurn = (sessionData.rolls_this_turn ?? 0) > 0
+  const {
+    screen,
+    setScreen,
+    game,
+    players,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<Screen, YahtzeeSession | null>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'not_found',
+    loadGameState,
+    computeScreen,
+    afterResolve,
+    joinExtras,
+    onJoinError: toastError,
+  })
 
-      if (turnChanged || !isMyActiveTurn || !midTurn) {
-        turnIndexRef.current = sessionData.current_turn_index
-        setLocalHeld(sessionData.held ?? [false, false, false, false, false])
-      }
-    }
-    syncScreen(gameData, playerId)
-    return true
-  }, [gameCode, syncScreen])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'yahtzee_sessions', 'yahtzee_player_scores'], load)
@@ -163,37 +141,6 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
   })
-
-  const join = useCallback(
-    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-      const name = (opts?.name ?? joinName).trim()
-      if (!name) return
-      setJoining(true)
-      try {
-        const res = await fetch('/api/players', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameCode,
-            playerName: name,
-            ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer ?? true } : {}),
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-        setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-        setMyPlayerId(data.playerId)
-        setMyResumeToken(data.resumeToken ?? null)
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to join')
-      } finally {
-        setJoining(false)
-      }
-    },
-    [game?.status, gameCode, joinExtras, joinName, load, toastError]
-  )
 
   useRoomMemberAutoJoin({
     gameCode,
@@ -361,7 +308,13 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'finished') {
     const myName = players.find((p) => p.id === myPlayerId)?.name
-    const iWon = myPlayerId != null && session?.winner_player_id === myPlayerId
+    // Only surface the community-leaderboard button to a genuine winner: the
+    // server-picked winner, a positive total, AND more than one player (a solo
+    // game has no one to beat, so there's no real win). Matches the other
+    // score-based games.
+    const myScoreRow = scores.find((s) => s.player_id === myPlayerId)
+    const myTotal = myScoreRow ? totalScore(myScoreRow.scores.categories) : 0
+    const iWon = myPlayerId != null && session?.winner_player_id === myPlayerId && myTotal > 0 && scores.length > 1
     const shareWinnerName = iWon ? myName : winner?.name
 
     return (

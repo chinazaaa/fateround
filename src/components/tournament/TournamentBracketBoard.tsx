@@ -9,6 +9,8 @@ interface TournamentBracketBoardProps {
   roundLabel: string
   /** Resolve a tournament player's id to their display name. */
   nameOf: (id: string | null) => string
+  /** Optional secondary label under each player (e.g. their School class). */
+  subOf?: (id: string | null) => string
   /** Open a match room as a viewer. */
   onWatch: (gameId: string) => void
   /** Host only: remove a player from a not-yet-decided match (e.g. a no-show).
@@ -27,6 +29,7 @@ export function TournamentBracketBoard({
   roundNumber,
   roundLabel,
   nameOf,
+  subOf,
   onWatch,
   onRemovePlayer,
 }: TournamentBracketBoardProps) {
@@ -108,6 +111,9 @@ export function TournamentBracketBoard({
                           <p className={`text-sm ${won ? 'font-bold text-body' : 'text-body'}`}>
                             {won && <span aria-hidden="true">✓ </span>}
                             {nameOf(pid)}
+                            {subOf?.(pid) ? (
+                              <span className="ml-1.5 text-[0.6875rem] font-normal text-faint">{subOf(pid)}</span>
+                            ) : null}
                           </p>
                           {m.status !== 'finished' && <RemoveBtn id={pid} />}
                         </div>

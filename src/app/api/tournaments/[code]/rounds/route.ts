@@ -6,6 +6,7 @@ import { startTournamentRoundSchema } from '@/lib/tournament-validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { computeRoundGroups, computeRoundPairings, resolveGroupSize } from '@/lib/tournament-bracket'
+import { computeSchoolRooms } from '@/lib/tournament-school'
 
 // Fallback for tournaments created before game_type was stored.
 const DEFAULT_H2H_GAME_TYPE = 'chess'
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: tournament } = await admin.from('tournaments').select('*').eq('id', tournamentId).maybeSingle()
   if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
   if (tournament.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (tournament.format !== 'head-to-head' && tournament.format !== 'knockout') {
+  if (tournament.format !== 'head-to-head' && tournament.format !== 'knockout' && tournament.format !== 'school') {
     return NextResponse.json({ error: 'This tournament does not run bracket rounds' }, { status: 400 })
   }
   if (tournament.status === 'finished') return NextResponse.json({ error: 'Tournament has ended' }, { status: 400 })
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // lands in the next phase; for round 1 this is simply everyone who joined.)
   const { data: survivorRows } = await admin
     .from('tournament_players')
-    .select('id')
+    .select('id, school_level')
     .eq('tournament_id', tournamentId)
     .eq('is_eliminated', false)
     .order('joined_at', { ascending: true })
@@ -153,6 +154,99 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       await admin.from('tournaments').update({ status: 'active' }).eq('id', tournamentId)
     }
     return NextResponse.json({ roundNumber, players: survivorIds.length })
+  }
+
+  // School (class ladder): group the survivors by class into Whot rooms and spawn
+  // one room per group. Players climb (or repeat) a class when the game finishes
+  // (resolved in tournament-school). A player left alone in a lower class is
+  // eliminated here at staging (see computeSchoolRooms); a lone frontrunner in the
+  // top class waits. If eliminating strands a single survivor, they win.
+  if (tournament.format === 'school') {
+    const shuffledSurvivors = shuffle((survivorRows ?? []).map((p) => ({ id: p.id, level: p.school_level ?? 0 })))
+    const { rooms, eliminated } = computeSchoolRooms(shuffledSurvivors)
+
+    if (eliminated.length > 0) {
+      const { error: eliminateError } = await admin
+        .from('tournament_players')
+        .update({ is_eliminated: true, eliminated_at: new Date().toISOString() })
+        .in('id', eliminated)
+      if (eliminateError) {
+        return NextResponse.json(
+          { error: internalErrorMessage('tournaments/code/rounds', eliminateError) },
+          { status: 500 }
+        )
+      }
+    }
+
+    // No rooms to play means the field has thinned to a single leader (the lone
+    // top-class player) — end the tournament with them as champion.
+    if (rooms.length === 0) {
+      const remaining = survivorIds.length - eliminated.length
+      if (remaining <= 1) {
+        await admin.from('tournaments').update({ status: 'finished' }).eq('id', tournamentId)
+        return NextResponse.json({ roundNumber, rooms: 0, eliminated: eliminated.length, finished: true })
+      }
+      return NextResponse.json({ error: 'Need at least 2 players in a class to start a round' }, { status: 400 })
+    }
+
+    const cfg = (tournament.game_config ?? {}) as {
+      timerSeconds?: number
+      gameDurationSeconds?: number
+      whotPick3?: boolean
+      whotCards?: boolean
+      whotNumberCalls?: boolean
+      whotPick2Stacking?: boolean
+    }
+    const roomTimer = typeof cfg.timerSeconds === 'number' ? cfg.timerSeconds : DEFAULT_GROUP_TURN_SECONDS
+    const roomDuration = typeof cfg.gameDurationSeconds === 'number' ? cfg.gameDurationSeconds : 0
+    const whotSettings = {
+      whot_pick3_enabled: cfg.whotPick3 ?? true,
+      whot_cards_enabled: cfg.whotCards ?? true,
+      whot_number_calls_enabled: cfg.whotNumberCalls ?? true,
+      whot_pick2_stacking: cfg.whotPick2Stacking ?? true,
+    }
+
+    let matchIndex = 0
+    for (const room of rooms) {
+      const gameCode = await uniqueGameCode(admin)
+      if (!gameCode) return NextResponse.json({ error: 'Failed to generate unique game code' }, { status: 500 })
+
+      const { error: gameError } = await admin.from('games').insert({
+        id: gameCode,
+        host_token: generateToken(),
+        title: `${tournament.title} — Room ${matchIndex + 1}`,
+        game_type: 'whot',
+        participant_mode: 'joiners',
+        rounds_count: 1,
+        timer_seconds: roomTimer,
+        game_duration_seconds: roomDuration,
+        tournament_id: tournamentId,
+        ...whotSettings,
+      })
+      if (gameError) {
+        return NextResponse.json({ error: internalErrorMessage('tournaments/code/rounds', gameError) }, { status: 500 })
+      }
+
+      const { error: tgError } = await admin.from('tournament_games').insert({
+        tournament_id: tournamentId,
+        game_id: gameCode,
+        game_order: nextOrder++,
+        round_number: roundNumber,
+        match_index: matchIndex,
+        member_ids: room,
+        status: 'pending',
+      })
+      if (tgError) {
+        await admin.from('games').delete().eq('id', gameCode)
+        return NextResponse.json({ error: internalErrorMessage('tournaments/code/rounds', tgError) }, { status: 500 })
+      }
+      matchIndex++
+    }
+
+    if (tournament.status === 'waiting') {
+      await admin.from('tournaments').update({ status: 'active' }).eq('id', tournamentId)
+    }
+    return NextResponse.json({ roundNumber, rooms: rooms.length, eliminated: eliminated.length })
   }
 
   const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)

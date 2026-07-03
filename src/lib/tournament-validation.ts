@@ -26,11 +26,13 @@ const gameConfigSchema = z.object({
   whotPick2Stacking: z.boolean().optional(),
   // Scrabble word list.
   scrabbleDictionary: z.string().min(1).max(40).optional(),
+  // School format: ladder length (number of classes). Re-clamped server-side.
+  schoolClassCount: z.coerce.number().int().min(2).max(16).optional(),
 })
 
 export const createTournamentSchema = z.object({
   title: sanitizedString(1, 100),
-  format: z.enum(['round-robin', 'head-to-head', 'knockout']).optional(),
+  format: z.enum(['round-robin', 'head-to-head', 'knockout', 'school']).optional(),
   gameType: z.string().min(1).max(40).optional(),
   gameConfig: gameConfigSchema.optional(),
   placementPoints: z.array(z.number().int().min(0)).min(1).max(20).optional(),
@@ -48,6 +50,9 @@ export const updateTournamentSchema = z.object({
   // Provided only when editing lives: an object enables/updates lives, null disables.
   // The route rejects this unless the tournament is still in 'waiting'.
   eliminationConfig: eliminationConfigSchema.nullable().optional(),
+  // Edited game setup (house rules, dictionary, timers, ladder). The route rejects
+  // it unless the tournament is still 'waiting', so an in-progress room is untouched.
+  gameConfig: gameConfigSchema.optional(),
 })
 
 export const joinTournamentSchema = z.object({
@@ -98,3 +103,8 @@ export { H2H_ELIGIBLE_TYPES, H2H_GROUP_SIZES, h2hGroupSize, resolveGroupSize } f
 // Games eligible for the knockout (group elimination) format — group games where
 // everyone plays at once and the field is cut by score each round.
 export const KNOCKOUT_ELIGIBLE_TYPES = ['trivia'] as const
+
+// Games eligible for the school (class-ladder) format. School Whot is the classic
+// — a 1-v-1 Whot match each round where the winner climbs a class. Other 1-v-1
+// games can be added here later.
+export const SCHOOL_ELIGIBLE_TYPES = ['whot'] as const

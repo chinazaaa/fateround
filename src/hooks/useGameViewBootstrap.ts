@@ -31,10 +31,32 @@ export interface UseGameViewBootstrapOptions<Screen extends string, GameState> {
   loadGameState: (game: Game, players: Player[]) => Promise<{ state: GameState; ok: boolean }>
   /** Map game status (+ resolved player + game state) to a screen. */
   computeScreen: (game: Game, playerId: string | null, state: GameState) => Screen
+  /** Run playerId-dependent side effects after the session resolves but before the
+   *  screen is computed — e.g. load this player's bingo card, restore a saved draft,
+   *  or sync mid-turn optimistic state. `loadGameState` runs *before* resolution and
+   *  so lacks `playerId`; this seam fills that gap. Return an enriched `GameState` to
+   *  hand `computeScreen` (for screens that depend on data only fetchable once the
+   *  player is known); return nothing to keep the `loadGameState` state unchanged. */
+  afterResolve?: (game: Game, playerId: string | null, state: GameState) => void | GameState | Promise<void | GameState>
   /** Extra fields merged into the join POST body (e.g. room-member identity). */
   joinExtras?: Record<string, unknown>
   /** Called with the API error message when a join fails. */
   onJoinError?: (message: string) => void
+  /** Called after a successful join with the raw `/api/players` response, after the
+   *  session is persisted and `myPlayerId`/`myResumeToken` are set but before the
+   *  reload — for custom post-join side effects (a "Joined as X" toast, a returned
+   *  role, etc.) beyond the standard session persistence. */
+  onJoinSuccess?: (data: JoinResponse) => void
+}
+
+/** Shape of the `/api/players` POST response the hook relies on. Game-specific routes
+ *  add extra keys (e.g. `codewordsRole`), surfaced via the index signature. */
+export interface JoinResponse {
+  playerId: string
+  playerName: string
+  resumeToken?: string
+  playerGender?: string
+  [key: string]: unknown
 }
 
 export interface UseGameViewBootstrapResult<Screen extends string> {
@@ -61,7 +83,17 @@ export interface UseGameViewBootstrapResult<Screen extends string> {
 export function useGameViewBootstrap<Screen extends string, GameState>(
   opts: UseGameViewBootstrapOptions<Screen, GameState>
 ): UseGameViewBootstrapResult<Screen> {
-  const { gameCode, loadingScreen, notFoundScreen, loadGameState, computeScreen, joinExtras, onJoinError } = opts
+  const {
+    gameCode,
+    loadingScreen,
+    notFoundScreen,
+    loadGameState,
+    computeScreen,
+    afterResolve,
+    joinExtras,
+    onJoinError,
+    onJoinSuccess,
+  } = opts
 
   const [screen, setScreen] = useState<Screen>(loadingScreen)
   const [game, setGame] = useState<Game | null>(null)
@@ -102,9 +134,24 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     setMyPlayerId(playerId)
     setMyResumeToken(playerSession?.resumeToken ?? null)
 
-    setScreen(computeScreen(gameData, playerId, state))
+    // Post-resolve seam: run playerId-dependent side effects and optionally enrich the
+    // state slice handed to computeScreen (undefined return => keep the loadGameState state).
+    let effectiveState = state
+    if (afterResolve) {
+      try {
+        const patched = await afterResolve(gameData, playerId, state)
+        if (patched !== undefined) effectiveState = patched
+      } catch (err) {
+        // A throwing afterResolve must not leave the hook stuck on the loading screen
+        // (or reject as an unhandled promise) — fall back to the loadGameState state and
+        // still compute + set the screen so bootstrap always completes.
+        console.error('useGameViewBootstrap: afterResolve failed', err)
+      }
+    }
+
+    setScreen(computeScreen(gameData, playerId, effectiveState))
     return ok
-  }, [gameCode, loadingScreen, notFoundScreen, loadGameState, computeScreen])
+  }, [gameCode, loadingScreen, notFoundScreen, loadGameState, computeScreen, afterResolve])
 
   useEffect(() => {
     void load()
@@ -134,6 +181,13 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
         setMyPlayerId(data.playerId)
         setMyResumeToken(data.resumeToken ?? null)
+        try {
+          onJoinSuccess?.(data as JoinResponse)
+        } catch (err) {
+          // Isolate the success callback: a throwing onJoinSuccess must not fall into the
+          // catch below and turn a completed join into a 'Failed to join' error or skip load().
+          console.error('useGameViewBootstrap: onJoinSuccess failed', err)
+        }
         await load()
       } catch {
         // Network failure / non-JSON body throws before the HTTP-status check above —
@@ -143,7 +197,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         setJoining(false)
       }
     },
-    [gameCode, joinName, joinExtras, game?.status, onJoinError, load]
+    [gameCode, joinName, joinExtras, game?.status, onJoinError, onJoinSuccess, load]
   )
 
   return {
