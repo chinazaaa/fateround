@@ -3,6 +3,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { updateTournamentSchema } from '@/lib/tournament-validation'
+import { buildTournamentGameConfig } from '@/lib/tournament-game-config'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
@@ -78,12 +79,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   const { data: body, error: bodyError } = await parseJsonBody(req, updateTournamentSchema)
   if (bodyError) return bodyError
 
-  const { hostToken, title, placementPoints, targetGameCount, maxPlayers, eliminationConfig } = body
+  const { hostToken, title, placementPoints, targetGameCount, maxPlayers, eliminationConfig, gameConfig } = body
 
   const admin = getSupabaseAdmin()
   const { data: tournament } = await admin
     .from('tournaments')
-    .select('host_token, status')
+    .select('host_token, status, format, game_type')
     .eq('id', tournamentId)
     .maybeSingle()
 
@@ -98,6 +99,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   if (editingLives && tournament.status !== 'waiting') {
     return NextResponse.json(
       { error: 'Lives settings can only be changed before the first game starts' },
+      { status: 400 }
+    )
+  }
+
+  // Game settings (house rules, dictionary, timers, ladder) can only change before
+  // the first game, so an in-progress room is never re-configured mid-match.
+  const editingGameConfig = gameConfig !== undefined
+  if (editingGameConfig && tournament.status !== 'waiting') {
+    return NextResponse.json(
+      { error: 'Game settings can only be changed before the first game starts' },
       { status: 400 }
     )
   }
@@ -121,6 +132,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   if (placementPoints !== undefined) updates.placement_points = placementPoints
   if (targetGameCount !== undefined) updates.target_game_count = targetGameCount
   if (maxPlayers !== undefined) updates.max_players = maxPlayers
+  if (editingGameConfig) {
+    updates.game_config = buildTournamentGameConfig(tournament.format, tournament.game_type, gameConfig)
+  }
 
   if (Object.keys(updates).length > 0) {
     const { error } = await admin.from('tournaments').update(updates).eq('id', tournamentId)

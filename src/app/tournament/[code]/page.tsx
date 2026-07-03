@@ -19,6 +19,14 @@ import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { TournamentShareLeaderboard } from '@/components/tournament/TournamentShareLeaderboard'
 import { TournamentBracketBoard } from '@/components/tournament/TournamentBracketBoard'
+import {
+  TournamentGameConfigFields,
+  defaultGameConfigValue,
+  gameConfigValueFromStored,
+  gameConfigRequestBody,
+  formatHasGameConfig,
+  type TournamentGameConfigValue,
+} from '@/components/tournament/TournamentGameConfigFields'
 
 /**
  * Whether a tournament player is in a bracket match — a chess duel (player_a/b)
@@ -118,6 +126,7 @@ export default function TournamentLobbyPage() {
   const [editLives, setEditLives] = useState(false)
   const [editStartingLives, setEditStartingLives] = useState(3)
   const [editEliminate, setEditEliminate] = useState(1)
+  const [editGameConfig, setEditGameConfig] = useState<TournamentGameConfigValue>(defaultGameConfigValue())
   const [savingEdit, setSavingEdit] = useState(false)
   const [editError, setEditError] = useState('')
 
@@ -274,6 +283,7 @@ export default function TournamentLobbyPage() {
     setEditLives(Boolean(tournament.elimination_config))
     setEditStartingLives(tournament.elimination_config?.startingLives ?? 3)
     setEditEliminate(tournament.elimination_config?.eliminateCount ?? 1)
+    setEditGameConfig(gameConfigValueFromStored(tournament.format, tournament.game_type, tournament.game_config))
     setEditError('')
     setShowEdit(true)
   }
@@ -306,7 +316,7 @@ export default function TournamentLobbyPage() {
       targetGameCount: editTarget.trim() ? target : null,
       maxPlayers: editMax.trim() ? cap : null,
     }
-    // Lives can only be edited before the first game starts.
+    // Lives and game settings can only be edited before the first game starts.
     if (tournament.status === 'waiting') {
       body.eliminationConfig = editLives
         ? {
@@ -316,6 +326,10 @@ export default function TournamentLobbyPage() {
             eliminateCount: editEliminate,
           }
         : null
+      if (tournament.game_type && formatHasGameConfig(tournament.format)) {
+        const gc = gameConfigRequestBody(tournament.format, tournament.game_type, editGameConfig)
+        if (gc) body.gameConfig = gc
+      }
     }
 
     try {
@@ -890,6 +904,26 @@ export default function TournamentLobbyPage() {
             </div>
           ) : (
             <p className="text-faint text-xs">Lives settings are locked once the first game starts.</p>
+          )}
+
+          {tournament.game_type && formatHasGameConfig(tournament.format) && (
+            <div className="space-y-3">
+              <div className="divider-soft" />
+              <p className="label-caps">Game settings</p>
+              {tournament.status === 'waiting' ? (
+                <TournamentGameConfigFields
+                  format={tournament.format}
+                  gameType={tournament.game_type}
+                  value={editGameConfig}
+                  onChange={setEditGameConfig}
+                />
+              ) : (
+                <p className="text-faint text-xs">
+                  House rules, timings{tournament.format === 'school' ? ', and the class ladder' : ''} are locked once
+                  the first game starts, so a live room is never changed mid-play.
+                </p>
+              )}
+            </div>
           )}
 
           {editError && <p className="text-red-400 text-sm">{editError}</p>}
