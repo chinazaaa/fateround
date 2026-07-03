@@ -60,12 +60,7 @@ export function useTurnNotifications({
     if (prevStatus === 'waiting' && status === 'active') {
       if (announce) info(startMessage)
       void playRoundStartSound()
-    } else if (
-      status === 'active' &&
-      prevStatus === 'active' &&
-      isMyTurn === true &&
-      prevMyTurn !== true
-    ) {
+    } else if (status === 'active' && prevStatus === 'active' && isMyTurn === true && prevMyTurn !== true) {
       if (announce) info(turnMessage)
       void playRoundStartSound()
     }

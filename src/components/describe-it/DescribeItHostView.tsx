@@ -30,6 +30,7 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useDescribeItTimer } from '@/hooks/useDescribeItTimer'
 import { useDescribeItSounds } from '@/hooks/useDescribeItSounds'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import {
   clampDescribeItTeams,
   clampDescribeItRounds,
@@ -107,6 +108,8 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   const wordsFileRef = useRef<HTMLInputElement>(null)
 
   useApplyGameTheme(game?.theme)
+
+  useTurnNotifications({ status: game?.status })
 
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes] = await Promise.all([

@@ -35,6 +35,7 @@ import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useToast } from '@/components/ui/Toast'
 
 type SudokuHostMode = 'spectator' | 'player'
@@ -77,6 +78,8 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
       return () => clearInterval(interval)
     }
   }, [game?.status])
+
+  useTurnNotifications({ status: game?.status })
 
   const load = useCallback(async () => {
     const [{ data: gameData }, { data: playersData }] = await Promise.all([

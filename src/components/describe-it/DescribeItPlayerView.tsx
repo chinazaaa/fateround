@@ -40,6 +40,7 @@ import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useDescribeItTimer } from '@/hooks/useDescribeItTimer'
 import { useDescribeItSounds } from '@/hooks/useDescribeItSounds'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 
 type Screen =
   | 'loading'
@@ -144,6 +145,8 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
+
+  useTurnNotifications({ status: game?.status })
 
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(

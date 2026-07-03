@@ -23,6 +23,7 @@ import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { PLAYER_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
@@ -180,6 +181,8 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+
+  useTurnNotifications({ status: game?.status })
 
   const { label: timeLabel, timeUp, secondsLeft } = useWordHuntGameTimer(gameCode, game, () => void load())
 

@@ -31,6 +31,7 @@ import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
@@ -50,6 +51,8 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
   const [tab, setTab] = useState<'play' | 'manage'>('manage')
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
+
+  useTurnNotifications({ status: game?.status })
 
   const lobbyActionsEnabled = game?.status === 'waiting' || game?.status === 'active'
   const { bans, banForPlayer, reload: reloadBans } = useAnonymousRoomBans(gameCode, !!lobbyActionsEnabled)
