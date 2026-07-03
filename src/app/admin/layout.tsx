@@ -43,7 +43,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 Library
               </AdminNavLink>
               <AdminNavLink href="/admin/community" active={pathname === '/admin/community'}>
-                Leaderboard
+                Community
               </AdminNavLink>
             </nav>
           </div>

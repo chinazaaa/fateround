@@ -8,20 +8,14 @@ import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
 import { formatBingoNumber, hasBingoWin } from '@/lib/bingo'
 import { supabase } from '@/lib/supabase'
-import {
-  BINGO_CALLED_NUMBER_SELECT,
-  BINGO_CARD_SELECT,
-  BINGO_CLAIM_SELECT,
-  GAME_SELECT,
-  PLAYER_SELECT,
-} from '@/lib/supabase-selects'
-import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
-import { resolvePlayerSession } from '@/lib/player-resume'
-import type { BingoCalledNumber, BingoCard, BingoClaim, Game, Player } from '@/types'
+import { BINGO_CALLED_NUMBER_SELECT, BINGO_CARD_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
+import { clearPlayerSession } from '@/lib/utils'
+import type { BingoCalledNumber, BingoCard, BingoClaim, Game } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useBingoNotifications'
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
@@ -52,50 +46,12 @@ type Screen =
 export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { success, error: toastError } = useToast()
-  const [screen, setScreen] = useState<Screen>('loading')
-  const [game, setGame] = useState<Game | null>(null)
-  const [players, setPlayers] = useState<Player[]>([])
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
-  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
-  const [myPlayerName, setMyPlayerName] = useState('')
-  const [joinName, setJoinName] = useState('')
-  const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
-  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   const [card, setCard] = useState<BingoCard | null>(null)
   const [calledNumbers, setCalledNumbers] = useState<BingoCalledNumber[]>([])
   const [winner, setWinner] = useState<BingoClaim | null>(null)
   const [claiming, setClaiming] = useState(false)
   const [marking, setMarking] = useState(false)
-
-  const syncScreen = useCallback((gameData: Game, playerId: string | null) => {
-    if (!playerId) {
-      const pre = preJoinScreen(gameData, false)
-      if (pre === 'game_started_waiting') {
-        setScreen('game_started_waiting')
-        return
-      }
-      if (pre === 'late_join_choice') {
-        setScreen('late_join_choice')
-        return
-      }
-      if (pre === 'game_ended') {
-        setScreen('game_ended')
-        return
-      }
-      setScreen('join')
-      return
-    }
-    if (gameData.status === 'waiting') {
-      setScreen(playerId ? 'waiting' : 'join')
-      return
-    }
-    if (gameData.status === 'active') {
-      setScreen(playerId ? 'active' : 'join')
-      return
-    }
-    setScreen(playerId ? 'finished' : 'game_ended')
-  }, [])
 
   const loadCard = useCallback(
     async (playerId: string): Promise<boolean> => {
@@ -112,10 +68,11 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     [gameCode]
   )
 
-  const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes, calledRes, claimRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+  // Game-specific load: fetch this game's called numbers + the approved winning claim
+  // (both playerId-independent). The shared game/players fetch + session resolution
+  // lives in useGameViewBootstrap.
+  const loadGameState = useCallback(async (): Promise<{ state: null; ok: boolean }> => {
+    const [calledRes, claimRes] = await Promise.all([
       supabase
         .from('bingo_called_numbers')
         .select(BINGO_CALLED_NUMBER_SELECT)
@@ -128,45 +85,68 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         .eq('status', 'approved')
         .maybeSingle(),
     ])
-    if (!supabasePollOk(gameRes, plrsRes, calledRes, claimRes)) return false
-
-    const gameData = gameRes.data
-    const plrs = plrsRes.data
-
-    if (!gameData) {
-      setScreen('not_found')
-      return true
+    const ok = supabasePollOk(calledRes, claimRes)
+    if (ok) {
+      setCalledNumbers(calledRes.data ?? [])
+      setWinner(claimRes.data ?? null)
     }
+    return { state: null, ok }
+  }, [gameCode])
 
-    setGame(gameData)
-    setPlayers(plrs ?? [])
-    setCalledNumbers(calledRes.data ?? [])
-    setWinner(claimRes.data ?? null)
-
-    const session = await resolvePlayerSession(gameCode, plrs)
-    const playerId = session?.playerId ?? null
-    if (session) {
-      setMyPlayerId(session.playerId)
-      setMyResumeToken(session.resumeToken ?? null)
-      setMyPlayerName(session.playerName)
-      if (gameData.status === 'waiting') {
-        setCard(null)
+  // Post-resolve seam: this player's bingo card is only fetchable once the session
+  // resolves to a playerId, and only when a card has been dealt (not while `waiting`).
+  // Side effect only — it sets card state and doesn't drive the screen, so returns void.
+  const afterResolve = useCallback(
+    async (gameData: Game, playerId: string | null): Promise<void> => {
+      if (playerId && gameData.status !== 'waiting') {
+        await loadCard(playerId)
       } else {
-        await loadCard(session.playerId)
+        setCard(null)
       }
-    } else {
-      setMyPlayerId(null)
-      setMyResumeToken(null)
-      setMyPlayerName('')
-      setCard(null)
-    }
-    syncScreen(gameData, playerId)
-    return true
-  }, [gameCode, loadCard, syncScreen])
+    },
+    [loadCard]
+  )
 
-  useEffect(() => {
-    load()
-  }, [load])
+  const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'late_join_choice') return 'late_join_choice'
+      if (pre === 'game_ended') return 'game_ended'
+      return 'join'
+    }
+    if (gameData.status === 'waiting') return 'waiting'
+    if (gameData.status === 'active') return 'active'
+    return 'finished'
+  }, [])
+
+  const {
+    screen,
+    setScreen,
+    game,
+    players,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    setMyResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<Screen, null>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'not_found',
+    loadGameState,
+    computeScreen,
+    afterResolve,
+    joinExtras,
+    onJoinError: toastError,
+    onJoinSuccess: (data) => success(`Joined as ${data.playerName}`),
+  })
+
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
   usePolling(() => (myPlayerId ? loadCard(myPlayerId) : Promise.resolve(true)), [myPlayerId, loadCard], {
     intervalMs: POLL_INTERVALS.lobby,
@@ -224,13 +204,14 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const openLobbyJoin = useCallback(() => {
     setScreen('join')
     void load()
-  }, [load])
+  }, [setScreen, load])
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting' || screen === 'late_join_choice') void load()
   })
 
   const me = players.find((p) => p.id === myPlayerId)
+  const myPlayerName = me?.name ?? ''
   const isViewer = !!(game && me && playerIsViewer(me, game))
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
     gameCode,
@@ -252,40 +233,6 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     onSynced: load,
   })
 
-  const joinGame = useCallback(
-    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-      const name = (opts?.name ?? joinName).trim()
-      if (!name) return
-      setJoining(true)
-      try {
-        const res = await fetch('/api/players', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameCode,
-            playerName: name,
-            ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer } : {}),
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-
-        setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
-        setMyPlayerId(data.playerId)
-        setMyResumeToken(data.resumeToken ?? null)
-        setMyPlayerName(data.playerName)
-        await load()
-        success(`Joined as ${data.playerName}`)
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to join')
-      } finally {
-        setJoining(false)
-      }
-    },
-    [game?.status, gameCode, joinExtras, joinName, load, success, toastError]
-  )
-
   useRoomMemberAutoJoin({
     gameCode,
     displayName: roomDisplayName,
@@ -294,7 +241,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     gameStatus: game?.status,
     hasPlayerSession: !!myPlayerId,
     joining,
-    onJoin: (name) => joinGame({ name }),
+    onJoin: (name) => join({ name }),
   })
 
   const markCell = async (index: number) => {
@@ -350,7 +297,6 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     clearPlayerSession(gameCode)
     setMyPlayerId(null)
     setMyResumeToken(null)
-    setMyPlayerName('')
     setJoinName('')
     setScreen('join')
   }
@@ -414,8 +360,8 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         nameInput={joinName}
         onNameChange={setJoinName}
         joining={joining}
-        onJoinAsViewer={() => void joinGame({ joinAsViewer: true })}
-        onJoinAsPlayer={() => void joinGame({ joinAsViewer: false })}
+        onJoinAsViewer={() => void join({ joinAsViewer: true })}
+        onJoinAsPlayer={() => void join({ joinAsViewer: false })}
       />
     )
   }
@@ -437,7 +383,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         <NameJoinForm
           value={joinName}
           onChange={setJoinName}
-          onSubmit={() => void joinGame()}
+          onSubmit={() => void join()}
           joining={joining}
           submitLabel="Join Bingo"
           hint={
@@ -470,7 +416,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={myPlayerName}
-          onRenamed={(name) => setMyPlayerName(name)}
+          onRenamed={() => void load()}
           onLeft={handlePlayerLeft}
           title={`You're in, ${myPlayerName}!`}
           description={
@@ -557,7 +503,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
             gameCode={gameCode}
             playerId={myPlayerId}
             currentName={myPlayerName}
-            onRenamed={(name) => setMyPlayerName(name)}
+            onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
           />
         )}

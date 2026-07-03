@@ -5,7 +5,7 @@ export interface TournamentEliminationConfig {
   eliminateCount: number
 }
 
-export type TournamentFormat = 'round-robin' | 'head-to-head' | 'knockout'
+export type TournamentFormat = 'round-robin' | 'head-to-head' | 'knockout' | 'school'
 
 // Per-round setup for the game a head-to-head/knockout tournament is played with,
 // captured at creation and reused every round. For trivia knockout: how many
@@ -28,6 +28,10 @@ export interface TournamentGameConfig {
   whotPick2Stacking?: boolean
   // Scrabble word list id (see SCRABBLE_DICTIONARY_OPTIONS).
   scrabbleDictionary?: string
+  // School format: how many classes make up the ladder (e.g. 6 = Primary only,
+  // 16 = the full Primary→University ladder). Winning while in the top class
+  // graduates a player and wins the tournament.
+  schoolClassCount?: number
 }
 
 export interface Tournament {
@@ -57,6 +61,9 @@ export interface TournamentPlayer {
   lives_remaining: number | null
   is_eliminated: boolean
   eliminated_at?: string | null
+  // School format: 0-based index of the class this player is currently in
+  // (0 = the lowest class). Reaching the tournament's schoolClassCount = graduated.
+  school_level?: number
 }
 
 export interface TournamentGame {

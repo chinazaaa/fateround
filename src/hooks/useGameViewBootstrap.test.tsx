@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import { renderHook, waitFor, act } from '@testing-library/react'
 
 const h = vi.hoisted(() => ({ gameRow: null as Record<string, unknown> | null, players: [] as unknown[] }))
 
@@ -30,7 +30,7 @@ beforeEach(() => {
   h.players = []
 })
 
-function setup() {
+function setup(extra: Record<string, unknown> = {}) {
   const loadGameState = vi.fn(async () => ({ state: 'STATE', ok: true }))
   const computeScreen = vi.fn((g: { status?: string }) => (g.status === 'waiting' ? 'waiting' : 'active'))
   const rendered = renderHook(() =>
@@ -40,6 +40,7 @@ function setup() {
       notFoundScreen: 'not_found',
       loadGameState,
       computeScreen,
+      ...extra,
     })
   )
   return { ...rendered, loadGameState, computeScreen }
@@ -67,5 +68,82 @@ describe('useGameViewBootstrap', () => {
     const { result, loadGameState } = setup()
     await waitFor(() => expect(result.current.screen).toBe('not_found'))
     expect(loadGameState).not.toHaveBeenCalled() // short-circuits before the game-specific fetch
+  })
+
+  it('runs afterResolve after session resolution and enriches the state passed to computeScreen', async () => {
+    h.gameRow = { id: 'ABCD', status: 'active' }
+    h.players = [{ id: 'p1' }]
+    const afterResolve = vi.fn(async () => 'ENRICHED')
+    const { computeScreen } = setup({ afterResolve })
+    await waitFor(() => expect(afterResolve).toHaveBeenCalled())
+    // seam receives the resolved playerId (null via the mocked session) + the loadGameState state
+    expect(afterResolve).toHaveBeenCalledWith({ id: 'ABCD', status: 'active' }, null, 'STATE')
+    // the enriched return value — not the original 'STATE' — is what computeScreen sees
+    expect(computeScreen).toHaveBeenLastCalledWith({ id: 'ABCD', status: 'active' }, null, 'ENRICHED')
+  })
+
+  it('keeps the loadGameState state when afterResolve returns nothing', async () => {
+    h.gameRow = { id: 'ABCD', status: 'active' }
+    const afterResolve = vi.fn(() => {})
+    const { computeScreen } = setup({ afterResolve })
+    await waitFor(() => expect(computeScreen).toHaveBeenCalled())
+    expect(computeScreen).toHaveBeenLastCalledWith({ id: 'ABCD', status: 'active' }, null, 'STATE')
+  })
+
+  it('calls onJoinSuccess with the raw API data after a successful join', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    const onJoinSuccess = vi.fn()
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ playerId: 'p9', playerName: 'Zed', resumeToken: 'RT', codewordsRole: 'spy' }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = setup({ onJoinSuccess })
+    await waitFor(() => expect(result.current.screen).toBe('waiting'))
+    await act(async () => {
+      await result.current.join({ name: 'Zed' })
+    })
+    expect(onJoinSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({ playerId: 'p9', playerName: 'Zed', codewordsRole: 'spy' })
+    )
+    vi.unstubAllGlobals()
+  })
+
+  it('completes bootstrap even if afterResolve throws (falls back to loadGameState state)', async () => {
+    h.gameRow = { id: 'ABCD', status: 'active' }
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const afterResolve = vi.fn(async () => {
+      throw new Error('boom')
+    })
+    const { result, computeScreen } = setup({ afterResolve })
+    // screen is still computed (not stuck on 'loading') using the un-enriched state
+    await waitFor(() => expect(result.current.screen).toBe('active'))
+    expect(computeScreen).toHaveBeenLastCalledWith({ id: 'ABCD', status: 'active' }, null, 'STATE')
+    errSpy.mockRestore()
+  })
+
+  it('keeps a successful join successful when onJoinSuccess throws', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const onJoinError = vi.fn()
+    const onJoinSuccess = vi.fn(() => {
+      throw new Error('callback boom')
+    })
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ playerId: 'p9', playerName: 'Zed', resumeToken: 'RT' }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { result, loadGameState } = setup({ onJoinSuccess, onJoinError })
+    await waitFor(() => expect(result.current.screen).toBe('waiting'))
+    expect(loadGameState).toHaveBeenCalledTimes(1) // initial mount load
+    await act(async () => {
+      await result.current.join({ name: 'Zed' })
+    })
+    expect(onJoinSuccess).toHaveBeenCalled()
+    expect(onJoinError).not.toHaveBeenCalled() // the throw was isolated, not treated as a join failure
+    expect(loadGameState).toHaveBeenCalledTimes(2) // the post-join load() still ran despite the throw
+    errSpy.mockRestore()
+    vi.unstubAllGlobals()
   })
 })

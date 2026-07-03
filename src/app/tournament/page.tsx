@@ -1,12 +1,31 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
+import { DEFAULT_WHATSAPP_INVITE_URL } from '@/lib/community-constants'
 
 export default function TournamentLandingPage() {
   const router = useRouter()
   const [code, setCode] = useState('')
+  // Community invite link — admin-configured (same link the leaderboard uses),
+  // with the default as a fallback so the prompt always works.
+  const [communityUrl, setCommunityUrl] = useState(DEFAULT_WHATSAPP_INVITE_URL)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/community/link', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && d.whatsappInviteUrl) setCommunityUrl(d.whatsappInviteUrl)
+      })
+      .catch(() => {
+        /* keep the default */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const trimmed = code.trim().toUpperCase()
 
@@ -58,6 +77,21 @@ export default function TournamentLandingPage() {
             </button>
           </div>
         </Field>
+      </div>
+
+      <div className="glass-card p-5 text-center space-y-2.5">
+        <p className="text-sm font-semibold text-body">Got no code? Not sure when the next game is?</p>
+        <p className="text-xs text-muted">
+          Join our community to get tournament codes and find out when the next game goes live.
+        </p>
+        <a
+          href={communityUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-600 transition-colors hover:bg-emerald-500/25"
+        >
+          💬 Join our community
+        </a>
       </div>
     </PageShell>
   )

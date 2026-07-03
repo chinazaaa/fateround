@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { awardRoomGamePoints } from '@/lib/room-points'
 import { resolveHeadToHeadMatch } from '@/lib/tournament-h2h'
+import { resolveSchoolMatch } from '@/lib/tournament-school'
 
 export async function markGameFinished(
   supabase: SupabaseClient,
@@ -34,6 +35,14 @@ export async function markGameFinished(
       await resolveHeadToHeadMatch(supabase, gameId)
     } catch (err) {
       console.error(`resolveHeadToHeadMatch failed for game ${gameId}`, err)
+    }
+    try {
+      // Advance a school (class-ladder) match: climb the winner a class, or finish
+      // the tournament if that graduates them. No-op for every other game; core
+      // tournament state, so surface a failure rather than swallow it.
+      await resolveSchoolMatch(supabase, gameId)
+    } catch (err) {
+      console.error(`resolveSchoolMatch failed for game ${gameId}`, err)
     }
   }
 

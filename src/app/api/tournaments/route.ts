@@ -6,14 +6,10 @@ import { generateGameCode, generateToken } from '@/lib/utils'
 import {
   createTournamentSchema,
   H2H_ELIGIBLE_TYPES,
-  h2hGroupSize,
   KNOCKOUT_ELIGIBLE_TYPES,
+  SCHOOL_ELIGIBLE_TYPES,
 } from '@/lib/tournament-validation'
-import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
-import { clampChessTimer } from '@/lib/chess'
-import { clampWhotGameDuration } from '@/lib/whot'
-import { clampScrabbleTimer, clampScrabbleGameDuration } from '@/lib/scrabble'
-import { parseScrabbleDictionaryId } from '@/lib/scrabble-dictionary-meta'
+import { buildTournamentGameConfig } from '@/lib/tournament-game-config'
 
 const supabase = getSupabaseAnon()
 
@@ -29,13 +25,18 @@ export async function POST(req: NextRequest) {
   // group-game config (trivia: questions per round + timer).
   const isH2H = format === 'head-to-head'
   const isKnockout = format === 'knockout'
+  const isSchool = format === 'school'
   const h2hGameType = gameType ?? H2H_ELIGIBLE_TYPES[0]
   const knockoutGameType = gameType ?? KNOCKOUT_ELIGIBLE_TYPES[0]
+  const schoolGameType = gameType ?? SCHOOL_ELIGIBLE_TYPES[0]
   if (isH2H && !H2H_ELIGIBLE_TYPES.includes(h2hGameType as (typeof H2H_ELIGIBLE_TYPES)[number])) {
     return NextResponse.json({ error: `Game "${gameType}" isn't available for head-to-head` }, { status: 400 })
   }
   if (isKnockout && !KNOCKOUT_ELIGIBLE_TYPES.includes(knockoutGameType as (typeof KNOCKOUT_ELIGIBLE_TYPES)[number])) {
     return NextResponse.json({ error: `Game "${gameType}" isn't available for knockout` }, { status: 400 })
+  }
+  if (isSchool && !SCHOOL_ELIGIBLE_TYPES.includes(schoolGameType as (typeof SCHOOL_ELIGIBLE_TYPES)[number])) {
+    return NextResponse.json({ error: `Game "${gameType}" isn't available for school mode` }, { status: 400 })
   }
 
   let tournamentCode = ''
@@ -52,48 +53,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to generate unique code' }, { status: 500 })
   }
 
-  // Head-to-head game_config: the fixed room size (chess 2, Whot/Scrabble 4) plus,
-  // for the group games, the house rules / dictionary and per-turn timer the host
-  // picked — applied to every room the bracket spawns.
-  let h2hGameConfig: Record<string, unknown> | null = null
-  if (isH2H) {
-    const groupSize = h2hGroupSize(h2hGameType)
-    if (h2hGameType === 'whot') {
-      h2hGameConfig = {
-        groupSize,
-        timerSeconds: clampBoardGameTurnTimer(gameConfig?.timerSeconds ?? 30, 'whot'),
-        gameDurationSeconds: clampWhotGameDuration(gameConfig?.gameDurationSeconds ?? 900),
-        whotPick3: gameConfig?.whotPick3 ?? true,
-        whotCards: gameConfig?.whotCards ?? true,
-        whotNumberCalls: gameConfig?.whotNumberCalls ?? true,
-        whotPick2Stacking: gameConfig?.whotPick2Stacking ?? true,
-      }
-    } else if (h2hGameType === 'scrabble') {
-      h2hGameConfig = {
-        groupSize,
-        timerSeconds: clampScrabbleTimer(gameConfig?.timerSeconds ?? 60),
-        gameDurationSeconds: clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 900),
-        scrabbleDictionary: parseScrabbleDictionaryId(gameConfig?.scrabbleDictionary),
-      }
-    } else {
-      // Chess: the per-player clock (0 = untimed) applied to every match.
-      h2hGameConfig = { groupSize, timerSeconds: clampChessTimer(gameConfig?.timerSeconds ?? 600) }
-    }
-  }
+  // The game a bracket/knockout/school tournament is played with, and its per-round
+  // config (house rules, dictionary, timers, ladder, trivia settings) — clamped by
+  // the shared builder so creation and later host edits produce the same shape.
+  const resolvedFormat = format ?? 'round-robin'
+  const resolvedGameType = isH2H ? h2hGameType : isKnockout ? knockoutGameType : isSchool ? schoolGameType : null
 
   const { error } = await supabase.from('tournaments').insert({
     id: tournamentCode,
     host_token: hostToken,
     title,
-    format: format ?? 'round-robin',
-    game_type: isH2H ? h2hGameType : isKnockout ? knockoutGameType : null,
-    game_config: isKnockout
-      ? {
-          questionSource: gameConfig?.questionSource ?? 'platform',
-          roundsCount: gameConfig?.roundsCount ?? 5,
-          timerSeconds: gameConfig?.timerSeconds ?? 15,
-        }
-      : h2hGameConfig,
+    format: resolvedFormat,
+    game_type: resolvedGameType,
+    game_config: buildTournamentGameConfig(resolvedFormat, resolvedGameType, gameConfig),
     placement_points: placementPoints ?? [10, 7, 5, 3, 2, 1],
     target_game_count: targetGameCount ?? null,
     max_players: maxPlayers ?? null,

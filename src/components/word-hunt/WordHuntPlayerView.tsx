@@ -21,13 +21,13 @@ import { useWordHuntGameTimer } from '@/hooks/useWordHuntGameTimer'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
-import { resolvePlayerSession } from '@/lib/player-resume'
-import { GAME_SELECT, PLAYER_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
+import { PLAYER_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
-import { clearPlayerSession, setPlayerSession } from '@/lib/utils'
+import { clearPlayerSession } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
-import type { Game, Player } from '@/types'
+import type { Game } from '@/types'
 
 const WORD_HUNT_SUBMISSION_SELECT = 'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
 
@@ -42,7 +42,7 @@ interface WordHuntSubmission {
   submitted_at: string
 }
 
-type View =
+type Screen =
   | 'loading'
   | 'not_found'
   | 'join'
@@ -56,16 +56,7 @@ type View =
 export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const { error: toastError } = useToast()
   const cfg = gameTypeConfig('word_hunt')
-  const [view, setView] = useState<View>('loading')
-  const [game, setGame] = useState<Game | null>(null)
-  const [players, setPlayers] = useState<Player[]>([])
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
-  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
-  const [myPlayerName, setMyPlayerName] = useState('')
-  const [joinName, setJoinName] = useState('')
-  const [joining, setJoining] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
-  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   const [roundId, setRoundId] = useState<string | null>(null)
   const [grid, setGrid] = useState<string[][] | null>(null)
   const [validWords, setValidWords] = useState<Set<string>>(new Set())
@@ -80,90 +71,46 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     setTimeout(() => setToast(null), 3000)
   }
 
-  const syncView = useCallback((gameData: Game, playerId: string | null) => {
-    if (!playerId) {
-      const pre = preJoinScreen(gameData, false)
-      if (pre === 'game_started_waiting') {
-        setView('game_started_waiting')
-        return
-      }
-      if (pre === 'game_ended') {
-        setView('game_ended')
-        return
-      }
-      if (pre === 'late_join_choice') {
-        setView('late_join_choice')
-        return
-      }
-      setView('join')
-      return
-    }
-    if (gameData.status === 'waiting') {
-      setView('waiting')
-      return
-    }
-    if (gameData.status === 'finished') {
-      setView('finished')
-      return
-    }
-    setView('playing')
+  // The shared game/players fetch + session resolution lives in useGameViewBootstrap.
+  // Everything word-hunt-specific (the round grid + submissions) is gated on the resolved
+  // playerId, so there's nothing playerId-independent to fetch here.
+  const loadGameState = useCallback(async (): Promise<{ state: null; ok: boolean }> => {
+    return { state: null, ok: true }
   }, [])
 
-  const load = useCallback(async () => {
-    const [{ data: gameData }, { data: playersData }] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-    ])
-
-    if (!gameData) {
-      setView('not_found')
-      return
-    }
-
-    const plrs = (playersData ?? []) as Player[]
-    setGame(gameData as Game)
-    setPlayers(plrs)
-
-    const session = await resolvePlayerSession(gameCode, plrs)
-    const playerId = session?.playerId ?? null
-    if (session) {
-      setMyPlayerId(session.playerId)
-      setMyPlayerName(session.playerName)
-      setMyResumeToken(session.resumeToken ?? null)
-    } else {
-      setMyPlayerId(null)
-      setMyPlayerName('')
-      setMyResumeToken(null)
-    }
-
-    if (gameData.status === 'finished' && playerId) {
-      const [{ data: subs }, { data: roundData }] = await Promise.all([
-        supabase.from('word_hunt_submissions').select(WORD_HUNT_SUBMISSION_SELECT).eq('game_id', gameCode),
-        supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).eq('round_number', 1).maybeSingle(),
-      ])
-      setSubmissions((subs ?? []) as WordHuntSubmission[])
-      if (roundData) {
-        const meta = parseWordHuntMetadata((roundData as Record<string, unknown>).word_hunt_metadata)
+  // Post-resolve seam: reproduce the original status+playerId-gated round/submission load
+  // exactly (it needs the resolved playerId, so it can't live in loadGameState). The screen
+  // itself doesn't depend on this data — see computeScreen — so this only drives the view's
+  // own grid/submissions state via setters.
+  const afterResolve = useCallback(
+    async (gameData: Game, playerId: string | null) => {
+      if (gameData.status === 'finished' && playerId) {
+        const [{ data: subs }, { data: roundData }] = await Promise.all([
+          supabase.from('word_hunt_submissions').select(WORD_HUNT_SUBMISSION_SELECT).eq('game_id', gameCode),
+          supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).eq('round_number', 1).maybeSingle(),
+        ])
+        setSubmissions((subs ?? []) as WordHuntSubmission[])
+        const meta = roundData ? parseWordHuntMetadata((roundData as Record<string, unknown>).word_hunt_metadata) : null
         if (meta) {
           setGrid(meta.grid)
           setValidWords(validWordsSetFromMetadata(meta.valid_words))
+        } else {
+          setGrid(null)
+          setValidWords(new Set())
         }
+        return
       }
-      setView('finished')
-      return
-    }
 
-    if (gameData.status === 'active' && playerId) {
-      const { data: roundData } = await supabase
-        .from('rounds')
-        .select(ROUND_SELECT)
-        .eq('game_id', gameCode)
-        .eq('round_number', 1)
-        .maybeSingle()
+      if (gameData.status === 'active' && playerId) {
+        const { data: roundData } = await supabase
+          .from('rounds')
+          .select(ROUND_SELECT)
+          .eq('game_id', gameCode)
+          .eq('round_number', 1)
+          .maybeSingle()
 
-      if (roundData) {
-        const meta = parseWordHuntMetadata((roundData as Record<string, unknown>).word_hunt_metadata)
-        if (meta) {
+        const meta = roundData ? parseWordHuntMetadata((roundData as Record<string, unknown>).word_hunt_metadata) : null
+        if (roundData && meta) {
           setGrid(meta.grid)
           setValidWords(validWordsSetFromMetadata(meta.valid_words))
           setRoundId(roundData.id as string)
@@ -173,22 +120,70 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
             .select(WORD_HUNT_SUBMISSION_SELECT)
             .eq('round_id', roundData.id)
           setSubmissions((subs ?? []) as WordHuntSubmission[])
+        } else {
+          // Round not ready / metadata invalid — clear so we never render a prior round's board.
+          setGrid(null)
+          setValidWords(new Set())
+          setRoundId(null)
+          setSubmissions([])
         }
+      } else {
+        setGrid(null)
+        setValidWords(new Set())
+        setRoundId(null)
+        setSubmissions([])
       }
-    } else {
-      setGrid(null)
-      setValidWords(new Set())
-      setRoundId(null)
-      setSubmissions([])
+    },
+    [gameCode]
+  )
+
+  // Screen derivation — an exact port of the old `syncView`: it depends only on the game
+  // status and the resolved playerId, never on whether the round loaded (active+playerId is
+  // always 'playing', with the grid rendered conditionally below).
+  const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'game_ended') return 'game_ended'
+      if (pre === 'late_join_choice') return 'late_join_choice'
+      return 'join'
     }
+    if (gameData.status === 'waiting') return 'waiting'
+    if (gameData.status === 'finished') return 'finished'
+    return 'playing'
+  }, [])
 
-    syncView(gameData as Game, playerId)
-  }, [gameCode, syncView])
+  const {
+    screen,
+    game,
+    setGame,
+    players,
+    setPlayers,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<Screen, null>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'not_found',
+    loadGameState,
+    computeScreen,
+    afterResolve,
+    joinExtras,
+    onJoinError: toastError,
+  })
 
-  const { label: timeLabel, timeUp, secondsLeft } = useWordHuntGameTimer(gameCode, game, load)
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+
+  const { label: timeLabel, timeUp, secondsLeft } = useWordHuntGameTimer(gameCode, game, () => void load())
 
   useLobbyOpenNotification(game?.status, () => {
-    if (view === 'finished' || view === 'game_started_waiting' || view === 'late_join_choice') void load()
+    if (screen === 'finished' || screen === 'game_started_waiting' || screen === 'late_join_choice') void load()
   })
 
   const me = players.find((p) => p.id === myPlayerId)
@@ -196,24 +191,20 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const { context: lateJoinContext, loading: lateJoinContextLoading } = useLateJoinContext(
     gameCode,
     game,
-    view === 'late_join_choice',
+    screen === 'late_join_choice',
     secondsLeft
   )
   const { context: viewerPromoteContext } = useLateJoinContext(
     gameCode,
     game,
-    isViewer && view === 'playing',
+    isViewer && screen === 'playing',
     secondsLeft
   )
-
-  useEffect(() => {
-    void load()
-  }, [load])
 
   // Realtime-fallback poll: keeps the lobby roster fresh (and catches missed
   // status transitions) when a players/games realtime event is dropped. The full
   // load() only runs on a transition, so in-round play state is never clobbered.
-  useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
+  useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: () => void load() })
 
   useEffect(() => {
     const ch = supabase
@@ -230,7 +221,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     return () => {
       void supabase.removeChannel(ch)
     }
-  }, [gameCode, load])
+  }, [gameCode, load, setGame])
 
   useEffect(() => {
     if (!roundId) return
@@ -270,7 +261,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
             .eq('game_id', gameCode)
             .order('joined_at')
             .then(({ data }) => {
-              if (data) setPlayers(data as Player[])
+              if (data) setPlayers(data)
             })
         }
       )
@@ -278,62 +269,22 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     return () => {
       void supabase.removeChannel(ch)
     }
-  }, [gameCode])
-
-  const joinGame = useCallback(
-    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-      const name = (opts?.name ?? joinName).trim()
-      if (!name) return
-      setJoining(true)
-      try {
-        const res = await fetch('/api/players', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameCode,
-            playerName: name,
-            ...joinExtras,
-            ...(game?.status === 'active' ? { joinAsViewer: opts?.joinAsViewer } : {}),
-          }),
-        })
-        const json = await res.json()
-        if (!res.ok) {
-          toastError(json.error ?? 'Failed to join')
-          return
-        }
-        setPlayerSession(
-          gameCode,
-          json.playerId,
-          json.playerName,
-          json.playerGender ?? 'no_pref',
-          json.resumeToken ?? null
-        )
-        setMyPlayerId(json.playerId)
-        setMyPlayerName(json.playerName)
-        setMyResumeToken(json.resumeToken ?? null)
-        await load()
-      } finally {
-        setJoining(false)
-      }
-    },
-    [game?.status, gameCode, joinExtras, joinName, load, toastError]
-  )
+  }, [gameCode, setPlayers])
 
   useRoomMemberAutoJoin({
     gameCode,
     displayName: roomDisplayName,
     resolving: resolvingRoomMember,
-    screen: view,
+    screen,
     gameStatus: game?.status,
     hasPlayerSession: !!myPlayerId,
     joining,
-    onJoin: (name) => joinGame({ name }),
+    onJoin: (name) => join({ name }),
   })
 
   const handlePlayerLeft = () => {
     clearPlayerSession(gameCode)
     setMyPlayerId(null)
-    setMyPlayerName('')
     void load()
   }
 
@@ -455,7 +406,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const myFoundWords = mySubmissions.map((s) => s.word)
   const myPoints = mySubmissions.reduce((sum, s) => sum + s.points_awarded, 0)
   const leaderboard = tallyWordHuntScores(submissions, players)
-  const displayName = myPlayerName || me?.name || 'Player'
+  const displayName = me?.name || 'Player'
 
   // Viewers watch one player's hunt at a time — the shared grid is static, so the
   // interesting part is seeing a chosen player's words and score fill in live.
@@ -469,7 +420,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const watchedFoundWords = watchedSubmissions.map((s) => s.word)
   const watchedPoints = watchedSubmissions.reduce((sum, s) => sum + s.points_awarded, 0)
 
-  if (view === 'loading') {
+  if (screen === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-muted">Loading…</p>
@@ -477,7 +428,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  if (view === 'not_found') {
+  if (screen === 'not_found') {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-muted text-center">Game not found.</p>
@@ -485,7 +436,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  if (view === 'join') {
+  if (screen === 'join') {
     if (resolvingRoomMember) {
       return (
         <div className="min-h-screen flex items-center justify-center">
@@ -509,7 +460,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
         <NameJoinForm
           value={joinName}
           onChange={setJoinName}
-          onSubmit={() => void joinGame()}
+          onSubmit={() => void join()}
           joining={joining}
           footer={
             <p className="text-center pt-1">
@@ -521,11 +472,11 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  if (view === 'game_started_waiting') {
+  if (screen === 'game_started_waiting') {
     return <GameStartedWaiting gameCode={gameCode} game={game} onLobbyOpen={() => void load()} />
   }
 
-  if (view === 'late_join_choice' && game) {
+  if (screen === 'late_join_choice' && game) {
     return (
       <LateJoinChoice
         gameCode={gameCode}
@@ -537,17 +488,17 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
         nameInput={joinName}
         onNameChange={setJoinName}
         joining={joining}
-        onJoinAsViewer={() => void joinGame({ joinAsViewer: true })}
-        onJoinAsPlayer={() => void joinGame({ joinAsViewer: false })}
+        onJoinAsViewer={() => void join({ joinAsViewer: true })}
+        onJoinAsPlayer={() => void join({ joinAsViewer: false })}
       />
     )
   }
 
-  if (view === 'game_ended') {
+  if (screen === 'game_ended') {
     return <GameEndedScreen game={game} />
   }
 
-  if (view === 'waiting') {
+  if (screen === 'waiting') {
     return (
       <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
         <GameLobbyWaitingPanel
@@ -556,8 +507,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
           players={players}
           myPlayerId={myPlayerId}
           myPlayerName={displayName}
-          onRenamed={(name) => {
-            setMyPlayerName(name)
+          onRenamed={() => {
             void load()
           }}
           onLeft={handlePlayerLeft}
@@ -579,7 +529,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  if (view === 'finished' && game) {
+  if (screen === 'finished' && game) {
     return (
       <div className="min-h-screen flex flex-col">
         <GamePlayerChrome />
