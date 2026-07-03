@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { copyToClipboard } from '@/lib/copy'
 import { useToast } from '@/components/ui/Toast'
+import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 
 interface CopyLinkButtonProps {
   value: string
@@ -25,6 +26,8 @@ export function CopyLinkButton({
   const handleCopy = async () => {
     const ok = await copyToClipboard(value)
     if (ok) {
+      // GA key event: an invite/game link was copied to share.
+      trackEvent(GA_EVENTS.shareLink)
       toast.success(successMessage)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)

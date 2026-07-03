@@ -17,8 +17,13 @@ import {
 } from '@/lib/custom-questions'
 import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useToast } from '@/components/ui/Toast'
 import { TournamentShareLeaderboard } from '@/components/tournament/TournamentShareLeaderboard'
 import { TournamentBracketBoard } from '@/components/tournament/TournamentBracketBoard'
+import { TournamentContinueCard, TournamentResumeEntry } from '@/components/tournament/TournamentPlayerCode'
+import { GameLinkQrModal } from '@/components/GameLinkQrModal'
+import { tournamentHostUrl, shareOrigin } from '@/lib/site'
+import { copyToClipboard } from '@/lib/copy'
 import {
   TournamentGameConfigFields,
   defaultGameConfigValue,
@@ -82,6 +87,7 @@ export default function TournamentLobbyPage() {
   const router = useRouter()
   const tournamentId = (Array.isArray(code) ? code[0] : code).toUpperCase()
   const { confirm } = useConfirm()
+  const { success } = useToast()
 
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [players, setPlayers] = useState<TournamentPlayer[]>([])
@@ -92,6 +98,10 @@ export default function TournamentLobbyPage() {
   const [playerName, setPlayerName] = useState('')
   const [joined, setJoined] = useState(false)
   const [joinError, setJoinError] = useState('')
+  // This player's private code (cross-device resume + seat reclaim), read from
+  // localStorage; empty for the host or before joining.
+  const [myCode, setMyCode] = useState('')
+  const [hostQrOpen, setHostQrOpen] = useState(false)
   // Visitor chose "just watching" — opts out of playing (no roster slot) and gets
   // auto-forwarded into each game as a viewer.
   const [spectating, setSpectating] = useState(false)
@@ -176,10 +186,62 @@ export default function TournamentLobbyPage() {
       setPlayerName(savedName)
       setJoined(true)
     }
+    setMyCode(localStorage.getItem(`tournament_ptoken_${tournamentId}`) ?? '')
     if (localStorage.getItem(`tournament_spectator_${tournamentId}`) === '1') {
       setSpectating(true)
     }
   }, [tournamentId])
+
+  // Cross-device entry: a host or player opening their shared link carries their
+  // credential in the URL — the host token (like a normal game's host link) or the
+  // player's resume code (like a normal game's ?player= link). Save it to this device,
+  // then strip it from the address bar so it isn't shoulder-surfed or re-shared. A
+  // player code is exchanged (server-side) for their name + seat.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const host = params.get('host')
+    const ptoken = params.get('player')
+    if (!host && !ptoken) return
+
+    if (host) localStorage.setItem(`tournament_host_${tournamentId}`, host)
+
+    const strip = () => {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('host')
+      url.searchParams.delete('player')
+      window.history.replaceState({}, '', url.pathname + url.search)
+    }
+
+    if (ptoken) {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/tournaments/${tournamentId}/player-resume`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: ptoken }),
+          })
+          const data = await res.json()
+          if (res.ok && data.playerName) {
+            localStorage.setItem(`tournament_player_${tournamentId}`, data.playerName)
+            localStorage.setItem(`tournament_ptoken_${tournamentId}`, String(data.token))
+            setPlayerName(data.playerName)
+            setMyCode(String(data.token))
+            setJoined(true)
+          } else {
+            setJoinError(data.error ?? 'Could not restore your player code')
+          }
+        } finally {
+          strip()
+          fetchState()
+        }
+      })()
+    } else {
+      strip()
+      // Host credential is read from localStorage at render — nudge a re-render.
+      fetchState()
+    }
+  }, [tournamentId, fetchState])
 
   // Auto-forward opted-in spectators into each game as a viewer when it starts.
   // (Head-to-head runs many simultaneous matches — spectators pick one from the
@@ -268,11 +330,28 @@ export default function TournamentLobbyPage() {
         return
       }
       localStorage.setItem(`tournament_player_${tournamentId}`, playerName.trim())
+      // Private player code — used to reclaim this seat and to continue on another
+      // device, so nobody can take the seat by just knowing the name.
+      if (data.token) {
+        localStorage.setItem(`tournament_ptoken_${tournamentId}`, String(data.token))
+        setMyCode(String(data.token))
+      }
       setJoined(true)
       fetchState()
     } catch {
       setJoinError('Something went wrong')
     }
+  }
+
+  // Restore this player on this device from their code (entered on the join screen).
+  function handleResumedByCode(name: string, code: string) {
+    localStorage.setItem(`tournament_player_${tournamentId}`, name)
+    localStorage.setItem(`tournament_ptoken_${tournamentId}`, code)
+    setPlayerName(name)
+    setMyCode(code)
+    setJoined(true)
+    setJoinError('')
+    fetchState()
   }
 
   async function handleShare() {
@@ -837,13 +916,42 @@ export default function TournamentLobbyPage() {
               {copied ? '✓ Link copied' : '🔗 Copy invite link'}
             </button>
             {isHost && (
-              <button onClick={openEditSettings} className="btn-secondary btn-fit text-sm">
-                ⚙️ Edit settings
-              </button>
+              <>
+                <button
+                  onClick={async () => {
+                    const ok = await copyToClipboard(tournamentHostUrl(tournamentId, hostToken ?? '', shareOrigin()))
+                    setCopied(false)
+                    if (ok) success('Host link copied — open it to manage from another device')
+                    else setError('Could not copy host link')
+                  }}
+                  className="btn-secondary btn-fit text-sm"
+                  title="Manage this tournament from another device"
+                >
+                  🛠 Copy host link
+                </button>
+                <button onClick={() => setHostQrOpen(true)} className="btn-secondary btn-fit text-sm">
+                  Host QR
+                </button>
+                <button onClick={openEditSettings} className="btn-secondary btn-fit text-sm">
+                  ⚙️ Edit settings
+                </button>
+              </>
             )}
           </div>
         )}
       </div>
+
+      {isHost && (
+        <GameLinkQrModal
+          open={hostQrOpen}
+          onClose={() => setHostQrOpen(false)}
+          url={tournamentHostUrl(tournamentId, hostToken ?? '', shareOrigin())}
+          title="Scan to host on another device"
+          subtitle="Opening this link makes that device the host — keep it private."
+          copyLabel="Copy host link"
+          copySuccessMessage="Host link copied"
+        />
+      )}
 
       {/* Edit settings (host) */}
       {isHost && showEdit && !isFinished && (
@@ -1296,6 +1404,22 @@ export default function TournamentLobbyPage() {
       )}
 
       {/* Join Form */}
+      {/* Reconnect — once joining is closed (tournament started or full), a player who
+          lost their session or is on a new device can still get back into their seat
+          with the player code they saved. (Pre-start, the same entry lives, collapsed,
+          inside the Join card.) */}
+      {!joined && !isHost && !isFinished && (hasStarted || isFull) && !spectating && (
+        <div className="glass-card p-5 space-y-2">
+          <p className="label-caps">Already in this tournament?</p>
+          <p className="text-muted text-xs">
+            Reconnecting, or on another device? Enter the player code you saved when you joined to get back into your
+            seat — this works even after the tournament has started.
+          </p>
+          {joinError && <p className="text-red-400 text-xs">{joinError}</p>}
+          <TournamentResumeEntry tournamentId={tournamentId} onResumed={handleResumedByCode} alwaysOpen />
+        </div>
+      )}
+
       {!joined && !isHost && !isFinished && hasStarted && !spectating && (
         <div className="glass-card-strong p-5 text-center space-y-2">
           <p className="font-bold text-body">Tournament already started</p>
@@ -1353,6 +1477,7 @@ export default function TournamentLobbyPage() {
             </PrimaryBtn>
           </div>
           {joinError && <p className="text-red-400 text-xs">{joinError}</p>}
+          <TournamentResumeEntry tournamentId={tournamentId} onResumed={handleResumedByCode} />
           <button onClick={startSpectating} className="btn-ghost text-xs mx-auto block">
             👁 Just here to watch — don&apos;t add me as a player
           </button>
@@ -1414,6 +1539,11 @@ export default function TournamentLobbyPage() {
               <span className="text-sm font-semibold text-body">
                 You have {myLives} {myLives === 1 ? 'life' : 'lives'} left
               </span>
+            </div>
+          )}
+          {myCode && (
+            <div className="pt-1">
+              <TournamentContinueCard tournamentId={tournamentId} code={myCode} />
             </div>
           )}
         </div>
@@ -1844,57 +1974,14 @@ export default function TournamentLobbyPage() {
         </details>
       )}
 
-      {/* Class standings (school) — everyone ranked by how far up the ladder they are.
-          Eliminated players (a straggler with no class left to play, or a host removal)
-          sink to the bottom and are flagged so they aren't mistaken for active climbers. */}
-      {school && players.length > 0 && (
-        <div className="glass-card p-5 space-y-3">
-          <p className="label-caps">Classes</p>
-          <div className="space-y-2">
-            {[...players]
-              .sort((a, b) => {
-                if (a.is_eliminated !== b.is_eliminated) return a.is_eliminated ? 1 : -1
-                return (b.school_level ?? 0) - (a.school_level ?? 0) || a.player_name.localeCompare(b.player_name)
-              })
-              .map((p, i) => {
-                const graduated = hasGraduated(p.school_level ?? 0, schoolClassCount)
-                const isMe = me?.id === p.id
-                return (
-                  <div
-                    key={p.id}
-                    className={`result-row flex items-center justify-between gap-3 px-4 py-2.5 ${
-                      p.is_eliminated ? 'opacity-60' : ''
-                    }`}
-                    style={isMe ? { boxShadow: 'inset 0 0 0 1px var(--primary)' } : undefined}
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="text-xs text-faint tabular-nums w-5 text-right">{i + 1}</span>
-                      <span
-                        className={`truncate text-sm font-medium ${p.is_eliminated ? 'text-faint line-through' : 'text-body'}`}
-                      >
-                        {p.player_name}
-                        {isMe && <span className="text-faint no-underline"> (you)</span>}
-                      </span>
-                    </span>
-                    {p.is_eliminated ? (
-                      <span className="chip text-[0.6875rem] shrink-0 text-red-400">Eliminated</span>
-                    ) : (
-                      <span
-                        className="chip text-[0.6875rem] shrink-0"
-                        style={graduated ? { color: 'var(--primary)' } : undefined}
-                      >
-                        {schoolClassLabel(p.school_level ?? 0, schoolClassCount)}
-                      </span>
-                    )}
-                  </div>
-                )
-              })}
-          </div>
-        </div>
-      )}
-
-      {/* Leaderboard — with "Share results" image export (points-based formats only). */}
-      {!school && <TournamentShareLeaderboard tournament={tournament} players={players} games={games} />}
+      {/* Standings + "Share results" image export — for every format, including School
+          (class ladder), so every tournament game can share its result. */}
+      <TournamentShareLeaderboard
+        tournament={tournament}
+        players={players}
+        games={games}
+        highlightPlayerId={me?.id ?? null}
+      />
 
       {/* Knockout round results — how the field narrowed each round. */}
       {knockout && knockoutResultRounds.length > 0 && (

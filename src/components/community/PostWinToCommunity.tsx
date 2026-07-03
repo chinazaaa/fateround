@@ -7,12 +7,16 @@ import { useEffect, useRef, useState } from 'react'
 // Automatically posts the winner to the community leaderboard: no code, no
 // button — reaching the win screen puts you on the board.
 //
+// It posts DIRECTLY rather than gating on a separate eligibility check first: the
+// POST itself is the source of truth (a 404 means the game isn't tracked), and
+// firing it straight away means the win still records even if this screen unmounts
+// a moment later — which is common on race/quiz games where live updates can flip
+// the view right after it finishes. Waiting on a prior GET was silently dropping
+// those wins.
+//
 // Dedup is PER ROUND: `roundKey` should be a value that changes when the host
 // plays again (the session row id, which is recreated each round). That way the
-// win posts once per round, and a fresh round posts again.
-//
-// Renders nothing unless the game maps to an active leaderboard row, so it
-// silently no-ops for games that aren't tracked.
+// win posts once per round, and a fresh round posts again. The server also dedups.
 //
 // `gameType` is the leaderboard entry to post to. For normal games it's the real
 // game type (e.g. "whot"); for role-based awards it's an achievement key (e.g.
@@ -29,17 +33,14 @@ export function PostWinToCommunity({
   winnerName: string
   roundKey?: string | null
 }) {
-  const [eligible, setEligible] = useState(false)
-  const [status, setStatus] = useState<'idle' | 'posting' | 'posted' | 'error'>('idle')
-  // Bumped by the Retry button to re-run the auto-post effect. Retries are driven
-  // by this counter — NOT by `status` — because the effect calls setStatus('posting')
-  // itself; if `status` were a dependency that call would re-run the effect and its
-  // cleanup would cancel its own in-flight request.
+  // 'idle' = posting or not yet resolved; 'untracked' = game isn't on the board.
+  const [status, setStatus] = useState<'idle' | 'posted' | 'error' | 'untracked'>('idle')
+  // Bumped by the Retry button to re-run the auto-post effect.
   const [retry, setRetry] = useState(0)
 
   const postedKey = `community_posted_${gameCode}_${roundKey ?? 'default'}`
   // Guards against double-posting from a re-render/StrictMode within one mount;
-  // localStorage guards across reloads.
+  // localStorage guards across reloads; the server dedups as the backstop.
   const attemptedRef = useRef(false)
 
   // Already posted this round on this device? Show the confirmed state up front.
@@ -51,26 +52,8 @@ export function PostWinToCommunity({
     }
   }, [postedKey])
 
-  // Check eligibility (game is on the leaderboard).
+  // Auto-post the win as soon as we have a winner name.
   useEffect(() => {
-    let cancelled = false
-    fetch(`/api/community/post-win?gameType=${encodeURIComponent(gameType)}`, { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled) setEligible(Boolean(d.eligible))
-      })
-      .catch(() => {
-        if (!cancelled) setEligible(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [gameType])
-
-  // Auto-post the win once we know the game is tracked and we have a winner name.
-  // `status` is deliberately NOT a dependency (see the `retry` note above).
-  useEffect(() => {
-    if (!eligible) return
     if (!winnerName.trim()) return
     if (attemptedRef.current) return
     // Already posted this round on this device — confirm and skip re-posting.
@@ -95,7 +78,6 @@ export function PostWinToCommunity({
       }
     }
 
-    setStatus('posting')
     fetch('/api/community/post-win', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -106,13 +88,19 @@ export function PostWinToCommunity({
         leaderboardType: gameType,
       }),
     })
-      .then(async (res) => {
+      .then((res) => {
+        if (cancelled) return
         // 409 = already recorded (e.g. posted from another device) — treat as done.
         if (res.ok || res.status === 409) {
           markPosted()
           return
         }
-        if (!cancelled) setStatus('error')
+        // 404 = this game isn't on the community leaderboard — silently render nothing.
+        if (res.status === 404) {
+          setStatus('untracked')
+          return
+        }
+        setStatus('error')
       })
       .catch(() => {
         if (!cancelled) setStatus('error')
@@ -121,12 +109,10 @@ export function PostWinToCommunity({
     return () => {
       cancelled = true
     }
-  }, [eligible, winnerName, retry, postedKey, gameCode, roundKey, gameType])
+  }, [winnerName, retry, postedKey, gameCode, roundKey, gameType])
 
-  // Nothing to show until we've confirmed the game is tracked and there's a
-  // winner to post. Callers already gate on "did I win", but this guarantees we
-  // never post a blank win even if a call site slips.
-  if (!eligible || !winnerName.trim()) return null
+  // Nothing to show without a winner, or when the game isn't tracked.
+  if (!winnerName.trim() || status === 'untracked') return null
 
   if (status === 'error') {
     return (
@@ -155,8 +141,7 @@ export function PostWinToCommunity({
     )
   }
 
-  // idle / posting
-  return (
-    <div className="glass-card p-4 text-center text-sm text-muted">Adding your win to the community leaderboard…</div>
-  )
+  // idle / posting — render nothing until the post resolves, so games that aren't
+  // tracked never flash a message.
+  return null
 }

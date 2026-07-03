@@ -25,6 +25,17 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const cookieStore = await cookies()
   const theme = parseThemeCookie(cookieStore.get(THEME_COOKIE)?.value)
 
+  // Only load Google Analytics in a production build — never in local dev
+  // (`pnpm dev`), so our own testing doesn't inflate the numbers. The Measurement
+  // ID can be overridden via NEXT_PUBLIC_GA_ID (defaults to the live property).
+  // To silence a staging/preview environment too, leave NEXT_PUBLIC_GA_ID unset
+  // there and set NEXT_PUBLIC_ANALYTICS_DISABLED=1.
+  const gaMeasurementId = process.env.NEXT_PUBLIC_GA_ID ?? 'G-HPGR3FN0HX'
+  const analyticsEnabled =
+    process.env.NODE_ENV === 'production' &&
+    process.env.NEXT_PUBLIC_ANALYTICS_DISABLED !== '1' &&
+    Boolean(gaMeasurementId)
+
   return (
     <html
       lang="en"
@@ -33,15 +44,22 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" style={{ color: 'var(--foreground)' }}>
-        <Script src="https://www.googletagmanager.com/gtag/js?id=G-HPGR3FN0HX" strategy="afterInteractive" />
-        <Script id="google-analytics" strategy="afterInteractive">
-          {`
+        {analyticsEnabled && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`}
+              strategy="afterInteractive"
+            />
+            <Script id="google-analytics" strategy="afterInteractive">
+              {`
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
           gtag('js', new Date());
-          gtag('config', 'G-HPGR3FN0HX');
+          gtag('config', '${gaMeasurementId}');
         `}
-        </Script>
+            </Script>
+          </>
+        )}
         <ThemeProvider initialTheme={theme}>
           <ToastProvider>
             <ConfirmProvider>
