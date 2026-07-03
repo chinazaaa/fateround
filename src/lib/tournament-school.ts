@@ -91,6 +91,12 @@ export interface SchoolPlayerLevel {
 // only two players just plays a room of two (Whot itself allows up to 6).
 export const SCHOOL_MAX_ROOM = 5
 
+// How far apart (in classes) two lone players may be and still be matched. Stragglers
+// only play someone within this many classes, so the field never lumps a Primary into
+// a room with a University player — anyone stranded further than this is out of
+// contention and eliminated, which narrows a spread-out endgame toward a champion.
+export const STRAGGLER_MAX_GAP = 1
+
 export interface SchoolRooms {
   /** Groups of player ids that each play one Whot game this round. */
   rooms: string[][]
@@ -119,14 +125,13 @@ function balancedChunks(ids: string[], max: number): string[][] {
  * in the same class play each other: a class with 6 players makes two rooms of 3, a
  * class with just 2 makes a room of 2 (no minimum). Rooms hold at most 5.
  *
- * A player alone in their class can't play their classmates, but they're only
- * eliminated if they truly have no one to play. Lone players from different classes
- * are paired off with each other first (nearest classes together) — so a straggler
- * plays another straggler (e.g. the loser from another room) rather than being cut.
- * Only when a single lone player is left with nobody to pair with is anyone out, and
- * even then a lone player in the *top* class is the frontrunner, not a straggler:
- * they aren't eliminated, they just wait for someone to climb up to them. So the top
- * class can never be eliminated and a tournament always keeps a winner.
+ * A player alone in their class is a straggler. Stragglers are paired with the nearest
+ * other straggler, but only within STRAGGLER_MAX_GAP classes — a fair match, never a
+ * Primary lumped in with a University player. A straggler with nobody within that gap
+ * is out of contention and eliminated, EXCEPT the frontrunner in the top class, who is
+ * never cut: they wait for the field to climb up to them. So the top class can never be
+ * eliminated, lopsided rooms don't happen, and a spread-out endgame narrows toward a
+ * single champion instead of cycling everyone through one room forever.
  *
  * The caller shuffles `players` first; the grouping preserves that order within a
  * class, so rooms vary round to round.
@@ -153,22 +158,24 @@ export function computeSchoolRooms(players: SchoolPlayerLevel[]): SchoolRooms {
     else singles.push({ id: ids[0], level })
   }
 
+  // Pair stragglers with the nearest one, but only within STRAGGLER_MAX_GAP classes.
+  // `singles` is sorted by level, so adjacent entries are the closest pairings; walk
+  // them low-to-high, pairing when close enough. Anyone left unpaired is stranded: cut
+  // them if they're below the top class, or let them wait if they're the frontrunner.
   const eliminated: string[] = []
-  if (singles.length >= 2) {
-    // Two or more stragglers — pair them off with each other (nearest classes
-    // first, since `singles` is already class-sorted). Nobody is left without a game.
-    rooms.push(
-      ...balancedChunks(
-        singles.map((s) => s.id),
-        SCHOOL_MAX_ROOM
-      )
-    )
-  } else if (singles.length === 1 && singles[0].level < topLevel) {
-    // The only straggler, and everyone else is locked into their own class's rooms —
-    // no one left to play, and others have moved up past them. Eliminated.
-    eliminated.push(singles[0].id)
+  let i = 0
+  while (i < singles.length) {
+    const cur = singles[i]
+    const next = singles[i + 1]
+    if (next && next.level - cur.level <= STRAGGLER_MAX_GAP) {
+      rooms.push([cur.id, next.id])
+      i += 2
+    } else {
+      if (cur.level < topLevel) eliminated.push(cur.id)
+      // else: lone frontrunner at the top class — waits, never cut.
+      i += 1
+    }
   }
-  // A lone player in the top class (singles[0].level === topLevel) waits — never cut.
 
   return { rooms, eliminated }
 }

@@ -155,16 +155,40 @@ describe('computeSchoolRooms', () => {
     expect(rooms.flat()).not.toContain('leader')
   })
 
-  it('pairs multiple stranded lone players into one room (nobody out)', () => {
+  it('pairs the two lowest adjacent stragglers; the frontrunner waits (nobody out)', () => {
     const players = [
       { id: 'a', level: 0 },
       { id: 'b', level: 1 },
-      { id: 'c', level: 2 },
+      { id: 'c', level: 2 }, // frontrunner — waits rather than joining a lopsided room
     ]
     const { rooms, eliminated } = computeSchoolRooms(players)
     expect(eliminated).toEqual([])
-    expect(rooms).toHaveLength(1)
-    expect([...rooms[0]].sort()).toEqual(['a', 'b', 'c'])
+    expect(rooms).toEqual([['a', 'b']]) // a(0) & b(1) are within one class
+    expect(rooms.flat()).not.toContain('c') // c waits for the field to reach level 2
+  })
+
+  it('eliminates a straggler stranded more than one class below the pack', () => {
+    // The reported case: SS1 / SS3 / Uni100 / Uni200 (levels 9, 11, 12, 13).
+    const players = [
+      { id: 'winnie', level: 9 }, // SS1 — 2 classes below the next, out of contention
+      { id: 'demi', level: 11 }, // SS3
+      { id: 'leviathan', level: 12 }, // Uni 100
+      { id: 'mojito', level: 13 }, // Uni 200 — frontrunner, waits
+    ]
+    const { rooms, eliminated } = computeSchoolRooms(players)
+    expect(eliminated).toEqual(['winnie'])
+    expect(rooms).toEqual([['demi', 'leviathan']]) // SS3 & Uni100 are one class apart
+    expect(rooms.flat()).not.toContain('mojito') // Uni200 waits, never cut
+  })
+
+  it('crowns the leader when the last two players are more than a class apart', () => {
+    // No fair match possible → the lower is out, leaving a single survivor to win.
+    const { rooms, eliminated } = computeSchoolRooms([
+      { id: 'low', level: 5 },
+      { id: 'high', level: 9 },
+    ])
+    expect(rooms).toEqual([])
+    expect(eliminated).toEqual(['low'])
   })
 
   it('returns no rooms and no eliminations for a lone (or empty) field', () => {
