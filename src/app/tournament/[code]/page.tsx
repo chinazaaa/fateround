@@ -564,9 +564,12 @@ export default function TournamentLobbyPage() {
       const data = await res.json()
       if (!res.ok) setError(data.error ?? 'Failed to start matches')
       else {
-        if (data.waiting > 0) {
+        if (data.waiting > 0 || data.resolved > 0) {
+          const parts = [`${data.started} started`]
+          if (data.resolved > 0) parts.push(`${data.resolved} cleared (too few players)`)
+          if (data.waiting > 0) parts.push(`${data.waiting} still waiting for everyone to join`)
           setError(
-            `${data.started} started, ${data.waiting} still waiting for both players — try again once they join.`
+            parts.join(', ') + (data.waiting > 0 ? " — try again once they're all in, or remove a no-show." : '.')
           )
         }
         fetchState()
@@ -999,6 +1002,43 @@ export default function TournamentLobbyPage() {
               ? 'Players are joining the room — the host starts the game shortly.'
               : 'Everyone is answering now. The bottom half will be knocked out.'}
           </p>
+          {/* Who's in the room vs. still on their way — so the host knows who a
+              staged round is waiting on before starting. */}
+          {(() => {
+            const survivors = players.filter((p) => !p.is_eliminated)
+            const inRoom = new Set(knockoutRoundGame.joined_member_ids ?? [])
+            const inCount = survivors.filter((p) => inRoom.has(p.id)).length
+            return (
+              <div className="space-y-1.5">
+                <p className="text-[0.6875rem] uppercase tracking-wide text-faint">
+                  In the room · {inCount}/{survivors.length}
+                </p>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                  {survivors.map((p) => {
+                    const isIn = inRoom.has(p.id)
+                    return (
+                      <div key={p.id} className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          title={isIn ? 'In the room' : 'Not in the room yet'}
+                          aria-label={isIn ? 'In the room' : 'Not in the room yet'}
+                          className="inline-block h-2 w-2 shrink-0 rounded-full"
+                          style={
+                            isIn
+                              ? { background: 'var(--primary)' }
+                              : { border: '1px solid var(--faint)', background: 'transparent' }
+                          }
+                        />
+                        <span className={`truncate text-sm ${isIn ? 'text-body' : 'text-faint'}`}>
+                          {p.player_name}
+                          {me?.id === p.id && <span className="text-faint"> (you)</span>}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
           {knockoutRoundGame.game_id &&
             (me && !me.is_eliminated ? (
               // A surviving player who came back to the lobby rejoins as a player
@@ -1827,7 +1867,7 @@ export default function TournamentLobbyPage() {
       )}
 
       {/* Leaderboard — with "Share results" image export (points-based formats only). */}
-      {!school && <TournamentShareLeaderboard tournament={tournament} players={players} />}
+      {!school && <TournamentShareLeaderboard tournament={tournament} players={players} games={games} />}
 
       {/* Knockout round results — how the field narrowed each round. */}
       {knockout && knockoutResultRounds.length > 0 && (
