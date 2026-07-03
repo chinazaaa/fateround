@@ -11,6 +11,10 @@ interface TournamentBracketBoardProps {
   nameOf: (id: string | null) => string
   /** Optional secondary label under each player (e.g. their School class). */
   subOf?: (id: string | null) => string
+  /** Whether a player has been removed/eliminated from the tournament — shown as
+   *  "Removed" on the tile (dimmed, no presence dot, not removable) so a member the
+   *  host already took out isn't still listed as if the room is waiting on them. */
+  isEliminated?: (id: string | null) => boolean
   /** Open a match room as a viewer. */
   onWatch: (gameId: string) => void
   /** Host only: remove a player from a not-yet-decided match (e.g. a no-show).
@@ -30,6 +34,7 @@ export function TournamentBracketBoard({
   roundLabel,
   nameOf,
   subOf,
+  isEliminated,
   onWatch,
   onRemovePlayer,
 }: TournamentBracketBoardProps) {
@@ -110,13 +115,16 @@ export function TournamentBracketBoard({
                   {memberIds.map((pid, i) => {
                     const won = m.winner_player_id != null && m.winner_player_id === pid
                     const joined = joinedIds.has(pid)
+                    // A member the host already removed stays in the room's member_ids,
+                    // but shouldn't read as "waiting" — the room no longer needs them.
+                    const removed = isEliminated?.(pid) === true
                     return (
                       <div key={pid}>
                         <div className="flex items-center justify-between gap-2">
                           <p
-                            className={`text-sm flex items-center gap-1.5 ${won ? 'font-bold text-body' : 'text-body'}`}
+                            className={`text-sm flex items-center gap-1.5 ${removed ? 'text-faint line-through' : won ? 'font-bold text-body' : 'text-body'}`}
                           >
-                            {showPresence && (
+                            {showPresence && !removed && (
                               <span
                                 title={joined ? 'In the room' : 'Not in the room yet'}
                                 aria-label={joined ? 'In the room' : 'Not in the room yet'}
@@ -131,13 +139,20 @@ export function TournamentBracketBoard({
                             {won && <span aria-hidden="true">✓ </span>}
                             {nameOf(pid)}
                             {subOf?.(pid) ? (
-                              <span className="ml-1.5 text-[0.6875rem] font-normal text-faint">{subOf(pid)}</span>
+                              <span className="ml-1.5 text-[0.6875rem] font-normal text-faint no-underline">
+                                {subOf(pid)}
+                              </span>
                             ) : null}
-                            {showPresence && !joined && (
-                              <span className="ml-1 text-[0.6875rem] font-normal text-faint">waiting…</span>
+                            {removed ? (
+                              <span className="ml-1 text-[0.6875rem] font-normal text-red-400 no-underline">
+                                Removed
+                              </span>
+                            ) : (
+                              showPresence &&
+                              !joined && <span className="ml-1 text-[0.6875rem] font-normal text-faint">waiting…</span>
                             )}
                           </p>
-                          {m.status !== 'finished' && <RemoveBtn id={pid} />}
+                          {m.status !== 'finished' && !removed && <RemoveBtn id={pid} />}
                         </div>
                         {/* Only a duel gets the "vs" divider; a room is just a list. */}
                         {!isRoom && memberIds.length === 2 && i === 0 && (

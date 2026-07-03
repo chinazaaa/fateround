@@ -686,6 +686,8 @@ export default function TournamentLobbyPage() {
     const p = id ? players.find((pl) => pl.id === id) : null
     return p ? schoolClassLabel(p.school_level ?? 0, schoolClassCount) : ''
   }
+  const isEliminatedById = (id: string | null) =>
+    id ? players.find((pl) => pl.id === id)?.is_eliminated === true : false
   // Bracket room size: chess is a 1v1 duel (2); Whot rooms hold up to 5, Scrabble up to 4.
   const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
   const isGroupH2h = h2h && groupSize > 2
@@ -994,6 +996,7 @@ export default function TournamentLobbyPage() {
           roundLabel={school ? 'Whot rooms' : labelForRound(currentRoundEntrants)}
           nameOf={playerNameById}
           subOf={school ? classLabelOf : undefined}
+          isEliminated={isEliminatedById}
           onWatch={handleWatchGame}
           onRemovePlayer={isHost ? handleRemovePlayer : undefined}
         />
