@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MonopolyActiveLayout } from '@/components/monopoly/MonopolyActiveLayout'
 import { MonopolyJoinForm } from '@/components/monopoly/MonopolyJoinForm'
@@ -16,19 +16,13 @@ import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFi
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { buildMonopolyStandings, MONOPOLY_MIN_PLAYERS, MONOPOLY_STARTING_CASH } from '@/lib/monopoly'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
-import {
-  getPlayerSession,
-  setPlayerSession,
-  clearPlayerSession,
-  isFetchNetworkError,
-  messageFromFetchActionError,
-} from '@/lib/utils'
-import { resolvePlayerSession } from '@/lib/player-resume'
-import type { Game, MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
+import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT } from '@/lib/supabase-selects'
+import { clearPlayerSession, isFetchNetworkError, messageFromFetchActionError } from '@/lib/utils'
+import type { Game, MonopolyBoard, MonopolyPlayerState } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -59,53 +53,22 @@ function colorBarClass(color?: MonopolyColorGroup): string {
 export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
-  const [screen, setScreen] = useState<Screen>('loading')
-  const [game, setGame] = useState<Game | null>(null)
-  const [players, setPlayers] = useState<Player[]>([])
   const [board, setBoard] = useState<MonopolyBoard | null>(null)
   const [states, setStates] = useState<MonopolyPlayerState[]>([])
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
-  const [myPlayerName, setMyPlayerName] = useState<string | null>(null)
-  const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
-  const [joinName, setJoinName] = useState('')
   const [joinToken, setJoinToken] = useState<MonopolyTokenId | null>(null)
-  const [joining, setJoining] = useState(false)
-  const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
-  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+  const {
+    displayName: roomDisplayName,
+    joinExtras: roomExtras,
+    resolving: resolvingRoomMember,
+  } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
   const actingRef = useRef(false)
 
-  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
-
-  const syncScreen = useCallback((gameData: Game, playerId: string | null) => {
-    if (!playerId) {
-      const pre = preJoinScreen(gameData, false)
-      if (pre === 'game_started_waiting') {
-        setScreen('game_started_waiting')
-        return
-      }
-      if (pre === 'game_ended') {
-        setScreen('game_ended')
-        return
-      }
-      setScreen('join')
-      return
-    }
-    if (gameData.status === 'waiting') {
-      setScreen(playerId ? 'waiting' : 'join')
-      return
-    }
-    if (gameData.status === 'active') {
-      setScreen(playerId ? 'active' : 'join')
-      return
-    }
-    setScreen(playerId ? 'finished' : 'game_ended')
-  }, [])
-
-  const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes, boardRes, stateRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+  // Game-specific load: fetch the monopoly board + per-player state (both playerId-
+  // independent). The shared game/players fetch + session resolution lives in
+  // useGameViewBootstrap.
+  const loadGameState = useCallback(async (): Promise<{ state: null; ok: boolean }> => {
+    const [boardRes, stateRes] = await Promise.all([
       supabase.from('monopoly_boards').select(MONOPOLY_BOARD_SELECT).eq('game_id', gameCode).maybeSingle(),
       supabase
         .from('monopoly_player_state')
@@ -113,38 +76,61 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         .eq('game_id', gameCode)
         .order('player_order'),
     ])
-    if (!supabasePollOk(gameRes, plrsRes, boardRes, stateRes)) return false
-
-    const gameData = gameRes.data
-    const plrs = plrsRes.data
-
-    if (!gameData) {
-      setScreen('not_found')
-      return true
+    const ok = supabasePollOk(boardRes, stateRes)
+    if (ok) {
+      setBoard(boardRes.data as MonopolyBoard | null)
+      setStates((stateRes.data as MonopolyPlayerState[]) ?? [])
     }
+    return { state: null, ok }
+  }, [gameCode])
 
-    setGame(gameData)
-    setPlayers(plrs ?? [])
-    setBoard(boardRes.data as MonopolyBoard | null)
-    setStates((stateRes.data as MonopolyPlayerState[]) ?? [])
-
-    const session = await resolvePlayerSession(gameCode, plrs)
-    const playerId = session?.playerId ?? null
-    if (session) {
-      setMyPlayerId(session.playerId)
-      setMyPlayerName(session.playerName)
-    } else {
-      setMyPlayerId(null)
-      setMyPlayerName(null)
+  // Pure status → screen mapping (the board is playerId-independent, so no afterResolve).
+  const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
+    if (!playerId) {
+      const pre = preJoinScreen(gameData, false)
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'game_ended') return 'game_ended'
+      return 'join'
     }
-    setMyResumeToken(session?.resumeToken ?? null)
-    syncScreen(gameData, playerId)
-    return true
-  }, [gameCode, syncScreen])
+    if (gameData.status === 'waiting') return 'waiting'
+    if (gameData.status === 'active') return 'active'
+    return 'finished'
+  }, [])
 
-  useEffect(() => {
-    load()
-  }, [load])
+  // Reproduce the original conditional join body without changing the hook. The original
+  // sent `{ monopolyToken }` for a player join and `{ joinAsViewer }` for a viewer (active
+  // game) join. A viewer join carries no board token (the picker is hidden and the submit
+  // guard below only requires a token when NOT joining as a viewer), so the presence of
+  // `joinToken` cleanly distinguishes the two: token → player join body; no token → viewer
+  // join, where the hook appends `joinAsViewer` off its own resolved game status.
+  const joinExtras: Record<string, unknown> = joinToken ? { ...roomExtras, monopolyToken: joinToken } : roomExtras
+
+  const {
+    screen,
+    setScreen,
+    game,
+    players,
+    myPlayerId,
+    setMyPlayerId,
+    myResumeToken,
+    setMyResumeToken,
+    joinName,
+    setJoinName,
+    joining,
+    load,
+    join,
+  } = useGameViewBootstrap<Screen, null>({
+    gameCode,
+    loadingScreen: 'loading',
+    notFoundScreen: 'not_found',
+    loadGameState,
+    computeScreen,
+    joinExtras,
+    onJoinError: toastError,
+  })
+
+  useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
+  useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
 
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(
@@ -158,46 +144,11 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const openLobbyJoin = useCallback(() => {
     setScreen('join')
     void load()
-  }, [load])
+  }, [setScreen, load])
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
   })
-
-  const join = useCallback(
-    async (opts?: { joinAsViewer?: boolean; name?: string }) => {
-      const name = (opts?.name ?? joinName).trim()
-      if (!name) return
-      const joiningAsViewer = game?.status === 'active'
-      if (!joiningAsViewer && !joinToken) return
-      setJoining(true)
-      try {
-        const res = await fetch('/api/players', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameCode,
-            playerName: name,
-            ...joinExtras,
-            ...(joiningAsViewer ? { joinAsViewer: opts?.joinAsViewer ?? true } : { monopolyToken: joinToken }),
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'Failed to join')
-        setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
-        setMyPlayerId(data.playerId)
-        setMyPlayerName(data.playerName)
-        setMyResumeToken(data.resumeToken ?? null)
-        await load()
-      } catch (err) {
-        toastError(err instanceof Error ? err.message : 'Failed to join')
-        await load()
-      } finally {
-        setJoining(false)
-      }
-    },
-    [game?.status, gameCode, joinExtras, joinName, joinToken, load, toastError]
-  )
 
   const postAction = async (url: string, body: Record<string, unknown> = {}) => {
     if (!myPlayerId || actingRef.current) return
@@ -233,15 +184,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const handlePlayerLeft = () => {
     clearPlayerSession(gameCode)
     setMyPlayerId(null)
-    setMyPlayerName(null)
     setMyResumeToken(null)
     setJoinName('')
+    setJoinToken(null) // reset the token picker so a re-join starts clean (no stale token reuse)
     setScreen('join')
   }
 
   const cfg = gameTypeConfig('monopoly')
   const myState = states.find((s) => s.player_id === myPlayerId)
   const me = myPlayerId ? players.find((p) => p.id === myPlayerId) : null
+  const myPlayerName = me?.name ?? null
 
   useMonopolyNotifications({
     game,
@@ -304,7 +256,11 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           joining={joining}
           joiningAsViewer={joiningAsViewer}
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join Monopoly'}
-          onSubmit={() => void join()}
+          onSubmit={() => {
+            // Non-viewer joins require a board token before we hit the hook's join.
+            if (!joiningAsViewer && !joinToken) return
+            void join()
+          }}
         />
         <p className="text-faint text-xs leading-relaxed text-center">
           {joiningAsViewer
@@ -389,10 +345,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               gameCode={gameCode}
               playerId={myPlayerId}
               currentName={displayName}
-              onRenamed={(name) => {
-                setMyPlayerName(name)
-                setPlayerSession(gameCode, myPlayerId, name, 'both', myResumeToken)
-              }}
+              onRenamed={() => void load()}
               onLeft={handlePlayerLeft}
               inLobby
             />
@@ -472,10 +425,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               gameCode={gameCode}
               playerId={myPlayerId}
               currentName={sessionName}
-              onRenamed={(name) => {
-                setMyPlayerName(name)
-                setPlayerSession(gameCode, myPlayerId, name, 'both', myResumeToken)
-              }}
+              onRenamed={() => void load()}
               onLeft={handlePlayerLeft}
               align="center"
             />
