@@ -234,6 +234,8 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
   useTurnNotifications({
     status: game?.status,
     isMyTurn: hostPlayerId ? isHostTurn : null,
+    // startGame() already toasts "Game started!" for the host who clicks Start.
+    announceStart: false,
   })
 
   if (loading) {
