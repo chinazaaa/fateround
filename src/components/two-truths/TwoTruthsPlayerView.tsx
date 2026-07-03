@@ -59,6 +59,8 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   }, [gameCode])
 
   const computeScreen = useCallback((gameData: Game, playerId: string | null): Screen => {
+    // A finished game shows the ended screen to everyone, including joined players.
+    if (gameData.status === 'finished') return 'game_ended'
     if (!playerId) {
       const pre = preJoinScreen(gameData, false)
       if (pre === 'game_started_waiting') return 'game_started_waiting'
