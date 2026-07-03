@@ -3,6 +3,7 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getPlayerSession, setPlayerSession, clearPlayerSession } from '@/lib/utils'
+import { currentTournamentPlayerToken } from '@/lib/tournament-player-token'
 import { parseGameType, isNameOnlyPlayerJoin } from '@/lib/game-types'
 import {
   genderLabel,
@@ -64,6 +65,9 @@ export function useJoinFlow(deps: JoinFlowDeps) {
   } = deps
   const toast = useToast()
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
+  // Tournament rooms are reached via a ?tournament= link; the player's secret token
+  // (saved at tournament join) rides along so the server can seat/reclaim only them.
+  const tournamentToken = currentTournamentPlayerToken()
 
   const [nameInput, setNameInput] = useState(initialName ?? '')
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null)
@@ -209,7 +213,7 @@ export function useJoinFlow(deps: JoinFlowDeps) {
         body: JSON.stringify(
           isSelfEdit
             ? { ...body, playerId: myPlayerId, resumeToken: editResumeToken }
-            : { ...body, ...activeJoinExtras, ...joinExtras }
+            : { ...body, ...activeJoinExtras, ...joinExtras, ...(tournamentToken ? { tournamentToken } : {}) }
         ),
       })
       const data = await res.json()

@@ -6,6 +6,7 @@ import { supabasePollOk } from '@/hooks/usePolling'
 import { resolvePlayerSession } from '@/lib/player-resume'
 import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { setPlayerSession } from '@/lib/utils'
+import { currentTournamentPlayerToken } from '@/lib/tournament-player-token'
 import type { Game, Player } from '@/types'
 
 /**
@@ -102,6 +103,9 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   const [myResumeToken, setMyResumeToken] = useState<string | null>(null)
   const [joinName, setJoinName] = useState('')
   const [joining, setJoining] = useState(false)
+  // Tournament rooms are opened via a ?tournament= link; the player's secret token
+  // (saved at tournament join) rides along so the server seats/reclaims only them.
+  const tournamentToken = currentTournamentPlayerToken()
 
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes] = await Promise.all([
@@ -170,6 +174,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
             gameCode,
             playerName: name,
             ...joinExtras,
+            ...(tournamentToken ? { tournamentToken } : {}),
             ...(game?.status === 'active' ? { joinAsViewer: joinOpts?.joinAsViewer ?? true } : {}),
           }),
         })
@@ -197,7 +202,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         setJoining(false)
       }
     },
-    [gameCode, joinName, joinExtras, game?.status, onJoinError, onJoinSuccess, load]
+    [gameCode, joinName, joinExtras, tournamentToken, game?.status, onJoinError, onJoinSuccess, load]
   )
 
   return {

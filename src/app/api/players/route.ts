@@ -201,6 +201,7 @@ export async function POST(req: NextRequest) {
     joinAsViewer: rawJoinAsViewer,
     monopolyToken: rawMonopolyToken,
     roomMemberCode,
+    tournamentToken,
   } = body
 
   let name = playerName?.trim() ?? ''
@@ -212,6 +213,63 @@ export async function POST(req: NextRequest) {
   const roomMemberId = roomMember?.id ?? null
   if (!name && roomMember?.display_name) {
     name = roomMember.display_name.trim()
+  }
+
+  // Tournament games have no per-game login: a player is identified by the secret
+  // token they got when they joined the tournament (kept in their browser, sent here).
+  // Verify it so only the real player can take or reclaim their seat, and so a reload /
+  // new tab / reconnect lands them back in it instead of being told their name is taken.
+  if (gameRow.tournament_id) {
+    const admin = getSupabaseAdmin()
+    let verifiedName: string | null = null
+    if (tournamentToken) {
+      const { data: tokenRow } = await admin
+        .from('tournament_player_tokens')
+        .select('player_id')
+        .eq('tournament_id', gameRow.tournament_id)
+        .eq('token', tournamentToken)
+        .maybeSingle()
+      if (tokenRow) {
+        const { data: tp } = await admin
+          .from('tournament_players')
+          .select('player_name')
+          .eq('id', tokenRow.player_id)
+          .maybeSingle()
+        if (tp) verifiedName = tp.player_name
+      }
+    }
+
+    if (verifiedName) {
+      // Identity proven: force the canonical tournament name (ignore any spoofed name),
+      // and resume an existing seat in this room if there is one.
+      name = verifiedName
+      const { data: existingRows } = await admin
+        .from('players')
+        .select('id, name, gender, identity_gender, spectator, resume_token, joined_at')
+        .eq('game_id', gameId)
+        .ilike('name', name)
+        .order('joined_at', { ascending: true })
+        .limit(1)
+      const existing = existingRows?.[0]
+      if (existing) return jsonPlayerJoin(roomMemberId, existing, gameRow as Game)
+      // Otherwise fall through to a normal first-time seat under the canonical name.
+    } else if (name) {
+      // No valid token: refuse to let this join take a name that belongs to a
+      // tournament participant — that's the impersonation we're preventing. Watchers
+      // use generated names that never match a participant, so they're unaffected.
+      const { data: clash } = await admin
+        .from('tournament_players')
+        .select('id')
+        .eq('tournament_id', gameRow.tournament_id)
+        .ilike('player_name', name)
+        .maybeSingle()
+      if (clash) {
+        return NextResponse.json(
+          { error: 'That name belongs to a tournament player — open the game from your tournament lobby to join.' },
+          { status: 403 }
+        )
+      }
+    }
   }
 
   const rowGameType = parseGameType(gameRow.game_type)
