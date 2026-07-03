@@ -91,11 +91,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
 
-  // Group bracket (Whot/Scrabble): each staged room holds the group's members,
-  // who auto-join from the lobby. Seat the members who are present (≥ 2), deal the
-  // game, and flip the room live. A room without enough members stays pending so
-  // the host can retry once stragglers arrive (or remove a no-show for a walkover).
-  if (groupSize > 2) {
+  // Group rooms (head-to-head Whot/Scrabble, or school Whot): each staged room
+  // holds the group's members, who auto-join from the lobby. Seat the members who
+  // are present (≥ 2), deal the game, and flip the room live. A room without enough
+  // members stays pending so the host can retry once stragglers arrive (or remove a
+  // no-show for a walkover).
+  if (groupSize > 2 || tournament.format === 'school') {
     const roundRooms = pendingRows.filter((r) => r.round_number === roundNumber && !r.is_bye && r.game_id)
     const memberIds = [
       ...new Set(roundRooms.flatMap((r) => (r.member_ids ?? []) as string[]).filter((id): id is string => Boolean(id))),
@@ -189,19 +190,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       continue
     }
 
-    // School runs its 1-v-1 rounds as Whot; head-to-head 1-v-1 is chess.
-    const { error: initError } =
-      tournament.format === 'school'
-        ? await initializeWhotGame(
-            admin,
-            gameId,
-            pairedSeats.map((p) => p.id)
-          )
-        : await initializeChessGame(
-            admin,
-            gameId,
-            pairedSeats.map((p) => p.id)
-          )
+    const { error: initError } = await initializeChessGame(
+      admin,
+      gameId,
+      pairedSeats.map((p) => p.id)
+    )
     if (initError) return NextResponse.json({ error: initError }, { status: 500 })
 
     const { error: gameError } = await admin

@@ -73,64 +73,62 @@ export interface SchoolPlayerLevel {
   level: number
 }
 
-export interface SchoolPairing {
-  /** Pairs of player ids that play a Whot match this round. */
-  matches: [string, string][]
-  /** Player ids with no match this round — they sit out and keep their class. */
-  sitOut: string[]
+// Room-size bounds for a school round. Whot plays best in small groups, so each
+// round's rooms hold 3–5 players (only a 2-player final falls below the minimum,
+// when just two players remain overall).
+export const SCHOOL_MIN_ROOM = 3
+export const SCHOOL_MAX_ROOM = 5
+
+export interface SchoolRooms {
+  /** Groups of player ids that each play one Whot game this round. */
+  rooms: string[][]
 }
 
 /**
- * Pair players for one school round. Players are matched by class: the list is
- * sorted by level so each pair is between players in the same class or the
- * nearest ones, then paired adjacently. When the count is odd exactly one player
- * sits out (no match, no class change) — chosen to avoid whoever sat out last
- * round when possible, so nobody is benched twice running.
+ * Group players into rooms for one school round. Players are sorted by class so
+ * each room holds players in the same class or the nearest ones, then split into
+ * the *fewest* rooms that keep every room at most SCHOOL_MAX_ROOM (5) — so the
+ * field packs into big rooms before adding another, and the rooms are balanced to
+ * within one player of each other. That yields 3–5 per room (e.g. 10 → 5+5, 11 →
+ * 4+4+3, 13 → 5+4+4); the only sub-3 room is a 2-player final when exactly two
+ * players remain. Nobody sits out — every player lands in a room.
  *
  * The caller shuffles `players` first; the sort here is stable, so players in the
- * same class keep that shuffled (random) order and pairings vary round to round.
- * Unlike an elimination bye, a sit-out does NOT advance — it produces no game row.
+ * same class keep that shuffled (random) order and groupings vary round to round.
  */
-export function computeSchoolPairings(players: SchoolPlayerLevel[], avoidSitOutIds: string[] = []): SchoolPairing {
-  if (players.length < 2) return { matches: [], sitOut: players.map((p) => p.id) }
+export function computeSchoolRooms(players: SchoolPlayerLevel[]): SchoolRooms {
+  const n = players.length
+  if (n < 2) return { rooms: [] }
 
   const sorted = [...players].sort((a, b) => a.level - b.level)
+  // Fewest rooms that keep every room ≤ MAX; balance the field across them so
+  // sizes differ by at most one (the first `remainder` rooms get one extra).
+  const roomCount = Math.max(1, Math.ceil(n / SCHOOL_MAX_ROOM))
+  const base = Math.floor(n / roomCount)
+  const remainder = n % roomCount
 
-  let benched: SchoolPlayerLevel[] = []
-  if (sorted.length % 2 === 1) {
-    const avoid = new Set(avoidSitOutIds)
-    // Prefer to bench someone who didn't sit out last round; the same-class order
-    // is already shuffled, so scanning from the end is an effectively random pick
-    // among the highest eligible class.
-    let idx = sorted.length - 1
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      if (!avoid.has(sorted[i].id)) {
-        idx = i
-        break
-      }
-    }
-    benched = [sorted[idx]]
-    sorted.splice(idx, 1)
+  const rooms: string[][] = []
+  let idx = 0
+  for (let g = 0; g < roomCount; g++) {
+    const size = base + (g < remainder ? 1 : 0)
+    rooms.push(sorted.slice(idx, idx + size).map((p) => p.id))
+    idx += size
   }
-
-  const matches: [string, string][] = []
-  for (let i = 0; i + 1 < sorted.length; i += 2) {
-    matches.push([sorted[i].id, sorted[i + 1].id])
-  }
-  return { matches, sitOut: benched.map((p) => p.id) }
+  return { rooms }
 }
 
 /**
- * Resolve a finished school Whot match: record the winner, climb them one class,
- * and finish the tournament if that graduates them. The loser is left in place
- * (never eliminated). Called from markGameFinished, so every Whot finish path
- * funnels here; it's a cheap no-op for games that aren't part of a school
- * tournament, and idempotent via the same active→finished CAS the bracket uses.
+ * Resolve a finished school Whot room: record the winner, climb them one class,
+ * and finish the tournament if that graduates them. Every other player in the
+ * room is left in place (never eliminated — they just repeat their class). Called
+ * from markGameFinished, so every Whot finish path funnels here; it's a cheap
+ * no-op for games that aren't part of a school tournament, and idempotent via the
+ * same active→finished CAS the bracket uses.
  */
 export async function resolveSchoolMatch(supabase: SupabaseClient, gameId: string): Promise<void> {
   const { data: match } = await supabase
     .from('tournament_games')
-    .select('id, tournament_id, player_a_id, player_b_id, status, is_bye')
+    .select('id, tournament_id, member_ids, status, is_bye')
     .eq('game_id', gameId)
     .maybeSingle()
   if (!match || match.is_bye || match.status === 'finished') return
@@ -151,7 +149,7 @@ export async function resolveSchoolMatch(supabase: SupabaseClient, gameId: strin
   if (!session?.winner_player_id) return // undecided — leave it for the host to sort out
 
   // Map the winning game player (a players.id) to its tournament roster slot by
-  // name (unique per tournament), restricted to this match's two players.
+  // name (unique per tournament), restricted to this room's members.
   const { data: winnerRow } = await supabase
     .from('players')
     .select('name')
@@ -159,16 +157,16 @@ export async function resolveSchoolMatch(supabase: SupabaseClient, gameId: strin
     .maybeSingle()
   const winnerName = winnerRow?.name?.toLowerCase() ?? null
 
-  const rosterIds = [match.player_a_id, match.player_b_id].filter((id): id is string => Boolean(id))
+  const memberIds = ((match.member_ids ?? []) as string[]).filter((id): id is string => Boolean(id))
   const { data: tps } = await supabase
     .from('tournament_players')
     .select('id, player_name, school_level')
-    .in('id', rosterIds.length ? rosterIds : ['__none__'])
+    .in('id', memberIds.length ? memberIds : ['__none__'])
   const roster = tps ?? []
   const winnerTP = roster.find((p) => p.player_name.toLowerCase() === winnerName)
   if (!winnerTP) return // couldn't map the winner — don't advance the wrong player
 
-  // Claim the match (winning the active→finished race); only the request that
+  // Claim the room (winning the active→finished race); only the request that
   // flips the row goes on to climb the winner and check for a graduation.
   const { data: claimed, error: claimError } = await supabase
     .from('tournament_games')

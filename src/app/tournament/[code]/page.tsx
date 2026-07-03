@@ -629,7 +629,7 @@ export default function TournamentLobbyPage() {
   const h2h = tournament.format === 'head-to-head'
   const knockout = tournament.format === 'knockout'
   const school = tournament.format === 'school'
-  // 1-v-1 room formats sharing the head-to-head board + round plumbing.
+  // Formats that run per-round match/room rows on the head-to-head board.
   const duel = h2h || school
   const bracket = h2h || knockout || school
   const roundRobin = !bracket
@@ -644,6 +644,8 @@ export default function TournamentLobbyPage() {
   // Bracket room size: chess is a 1v1 duel (2); Whot/Scrabble play in rooms of 4.
   const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
   const isGroupH2h = h2h && groupSize > 2
+  // Multi-player rooms (winner advances) vs a 1-v-1 duel — school always plays in rooms.
+  const groupRooms = isGroupH2h || school
   const labelForRound = (entrants: number) => (isGroupH2h ? groupRoundLabel(entrants, groupSize) : roundLabel(entrants))
   const playerNameById = (id: string | null) => (id ? (players.find((p) => p.id === id)?.player_name ?? '—') : '—')
   const h2hMatches = duel ? games.filter((g) => g.round_number != null) : []
@@ -909,7 +911,7 @@ export default function TournamentLobbyPage() {
         <TournamentBracketBoard
           matches={currentRoundMatches}
           roundNumber={currentRoundNumber}
-          roundLabel={school ? 'Whot matches' : labelForRound(currentRoundEntrants)}
+          roundLabel={school ? 'Whot rooms' : labelForRound(currentRoundEntrants)}
           nameOf={playerNameById}
           subOf={school ? classLabelOf : undefined}
           onWatch={handleWatchGame}
@@ -1036,9 +1038,9 @@ export default function TournamentLobbyPage() {
         </div>
       )}
 
-      {/* Host Controls — school (class ladder). Same round plumbing as head-to-head
-          (pair → start the 1-v-1 Whot rooms), but winners climb a class instead of
-          knocking losers out. */}
+      {/* Host Controls — school (class ladder). Same round plumbing as the group
+          bracket (group → start the Whot rooms), but the room winner climbs a class
+          instead of the losers being knocked out. */}
       {isHost && !isFinished && school && (
         <div className="glass-card-strong p-5 space-y-4">
           <p className="label-caps">School controls</p>
@@ -1046,12 +1048,12 @@ export default function TournamentLobbyPage() {
           {!roundInProgress && (
             <div className="space-y-1.5">
               <PrimaryBtn onClick={handleStartRound} disabled={actionLoading || survivingCount < 2}>
-                {actionLoading ? 'Pairing…' : currentRoundNumber > 0 ? 'Start Next Round' : 'Start Round'}
+                {actionLoading ? 'Grouping…' : currentRoundNumber > 0 ? 'Start Next Round' : 'Start Round'}
               </PrimaryBtn>
               <p className="text-faint text-xs text-center">
                 {survivingCount < 2
                   ? 'Waiting for players to join before you can start.'
-                  : 'Pairs everyone by class and sends them to their Whot match rooms. With an odd number, one player sits the round out and keeps their class.'}
+                  : 'Groups everyone by class into Whot rooms of 3–5 and sends them in. Only each room’s winner climbs a class — everyone else repeats theirs.'}
               </p>
             </div>
           )}
@@ -1061,10 +1063,10 @@ export default function TournamentLobbyPage() {
               <PrimaryBtn onClick={handleStartMatches} disabled={actionLoading}>
                 {actionLoading
                   ? 'Starting…'
-                  : `Start ${stagedMatches.length} Match${stagedMatches.length === 1 ? '' : 'es'}`}
+                  : `Start ${stagedMatches.length} Room${stagedMatches.length === 1 ? '' : 's'}`}
               </PrimaryBtn>
               <p className="text-faint text-xs text-center">
-                Starts every match at once. Players must be in their rooms first.
+                Starts every room at once. Players must be in their rooms first.
               </p>
             </div>
           )}
@@ -1300,22 +1302,22 @@ export default function TournamentLobbyPage() {
                 <li className="flex gap-2.5">
                   <span aria-hidden>▶️</span>
                   <span>
-                    Tap <span className="text-body font-semibold">Start Round</span> — players are paired by class and
-                    sent to their 1-v-1 Whot rooms. An odd one out sits the round out.
+                    Tap <span className="text-body font-semibold">Start Round</span> — players are grouped by class into
+                    Whot rooms of 3–5 and sent in.
                   </span>
                 </li>
                 <li className="flex gap-2.5">
                   <span aria-hidden>🃏</span>
                   <span>
-                    Once players are in their rooms, tap <span className="text-body font-semibold">Start Matches</span>{' '}
-                    to begin every game at once. You host from here — you don&apos;t play.
+                    Once players are in their rooms, tap <span className="text-body font-semibold">Start Rooms</span> to
+                    begin every game at once. You host from here — you don&apos;t play.
                   </span>
                 </li>
                 <li className="flex gap-2.5">
                   <span aria-hidden>🔁</span>
                   <span>
-                    When the matches finish, each winner moves up a class and the loser repeats it. Tap{' '}
-                    <span className="text-body font-semibold">Start Next Round</span> to pair the next set.
+                    When the rooms finish, each room’s winner moves up a class and everyone else repeats theirs. Tap{' '}
+                    <span className="text-body font-semibold">Start Next Round</span> to group the next set.
                   </span>
                 </li>
                 <li className="flex gap-2.5">
@@ -1423,24 +1425,21 @@ export default function TournamentLobbyPage() {
               <li className="flex gap-2.5">
                 <span aria-hidden>🎓</span>
                 <span>
-                  Everyone starts in the lowest class. Each round the host pairs you 1-v-1 by class for a Whot match.
+                  Everyone starts in the lowest class. Each round you&apos;re grouped by class into a Whot room of 3–5.
                 </span>
               </li>
               <li className="flex gap-2.5">
                 <span aria-hidden>🃏</span>
                 <span>
                   <span className="text-body font-semibold">
-                    Win to graduate to the next class; lose and you repeat it.
+                    Win your room to graduate to the next class; otherwise you repeat it.
                   </span>{' '}
                   Nobody is knocked out.
                 </span>
               </li>
               <li className="flex gap-2.5">
                 <span aria-hidden>🚀</span>
-                <span>
-                  When the host starts a round you&apos;re taken straight to your match room. With an odd number, one
-                  player sits the round out and keeps their class.
-                </span>
+                <span>When the host starts a round you&apos;re taken straight to your Whot room.</span>
               </li>
               <li className="flex gap-2.5">
                 <span aria-hidden>👑</span>
@@ -1720,10 +1719,10 @@ export default function TournamentLobbyPage() {
                       {g.is_bye
                         ? `${playerNameById(g.player_a_id)} — bye`
                         : g.winner_player_id
-                          ? isGroupH2h
+                          ? groupRooms
                             ? `✓ ${playerNameById(g.winner_player_id)} won the room`
                             : `✓ ${playerNameById(g.winner_player_id)} beat ${playerNameById(loserId)}${winReasonLabel(g.win_reason)}`
-                          : isGroupH2h
+                          : groupRooms
                             ? roomLabel
                             : `${playerNameById(g.player_a_id)} vs ${playerNameById(g.player_b_id)}`}
                     </span>

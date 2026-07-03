@@ -1,13 +1,21 @@
 import { describe, it, expect } from 'vitest'
 import {
   clampSchoolClassCount,
-  computeSchoolPairings,
+  computeSchoolRooms,
   GRADUATE_LABEL,
   hasGraduated,
   MAX_SCHOOL_CLASSES,
+  SCHOOL_MAX_ROOM,
+  SCHOOL_MIN_ROOM,
   schoolClassLabel,
   schoolLadder,
 } from './tournament-school'
+
+/** Room sizes for a flat field of n same-class players. */
+function roomSizes(n: number): number[] {
+  const players = Array.from({ length: n }, (_, i) => ({ id: `p${i}`, level: 0 }))
+  return computeSchoolRooms(players).rooms.map((r) => r.length)
+}
 
 describe('clampSchoolClassCount', () => {
   it('clamps to the valid ladder range and floors non-integers', () => {
@@ -45,60 +53,48 @@ describe('schoolClassLabel / hasGraduated', () => {
   })
 })
 
-describe('computeSchoolPairings', () => {
-  it('pairs an even field entirely, with nobody sitting out', () => {
-    const { matches, sitOut } = computeSchoolPairings([
-      { id: 'a', level: 0 },
-      { id: 'b', level: 0 },
-      { id: 'c', level: 1 },
-      { id: 'd', level: 1 },
-    ])
-    expect(matches).toHaveLength(2)
-    expect(sitOut).toHaveLength(0)
+describe('computeSchoolRooms', () => {
+  it('matches the host-specified room sizing (min rooms, 3–5 each, balanced)', () => {
+    expect(roomSizes(10)).toEqual([5, 5])
+    expect(roomSizes(11)).toEqual([4, 4, 3])
+    expect(roomSizes(12)).toEqual([4, 4, 4])
+    expect(roomSizes(13)).toEqual([5, 4, 4])
   })
 
-  it('pairs players by class (adjacent after sorting by level)', () => {
-    const { matches } = computeSchoolPairings([
-      { id: 'high', level: 3 },
-      { id: 'low1', level: 0 },
-      { id: 'low2', level: 0 },
-      { id: 'mid', level: 3 },
-    ])
-    // low1/low2 are the two level-0 players; high/mid are the two level-3 players.
-    const pairKeys = matches.map((m) => [...m].sort().join('-'))
-    expect(pairKeys).toContain('low1-low2')
-    expect(pairKeys).toContain('high-mid')
+  it('keeps every room within 3–5 for all fields of 3+ (only a 2-player final is smaller)', () => {
+    expect(roomSizes(2)).toEqual([2]) // unavoidable — just two players remain
+    for (let n = 3; n <= 60; n++) {
+      const sizes = roomSizes(n)
+      expect(sizes.reduce((a, b) => a + b, 0)).toBe(n) // everyone placed, nobody sits out
+      for (const s of sizes) {
+        expect(s).toBeGreaterThanOrEqual(SCHOOL_MIN_ROOM)
+        expect(s).toBeLessThanOrEqual(SCHOOL_MAX_ROOM)
+      }
+      // Balanced: sizes differ by at most one.
+      expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1)
+    }
   })
 
-  it('sits exactly one player out on an odd field', () => {
-    const { matches, sitOut } = computeSchoolPairings([
-      { id: 'a', level: 0 },
-      { id: 'b', level: 0 },
-      { id: 'c', level: 0 },
-    ])
-    expect(matches).toHaveLength(1)
-    expect(sitOut).toHaveLength(1)
-    // Everyone appears exactly once across matches + sit-out.
-    const seen = [...matches.flat(), ...sitOut].sort()
-    expect(seen).toEqual(['a', 'b', 'c'])
-  })
-
-  it('prefers to sit out someone who did not sit out last round', () => {
+  it('groups players by class (rooms hold the same / nearest classes)', () => {
     const players = [
-      { id: 'a', level: 0 },
-      { id: 'b', level: 0 },
-      { id: 'c', level: 0 },
+      { id: 'uni1', level: 3 },
+      { id: 'p1', level: 0 },
+      { id: 'p2', level: 0 },
+      { id: 'p3', level: 0 },
+      { id: 'uni2', level: 3 },
+      { id: 'uni3', level: 3 },
     ]
-    // 'c' would be the default sit-out (last in sorted order); avoiding it should
-    // bench someone else instead.
-    const { sitOut } = computeSchoolPairings(players, ['c'])
-    expect(sitOut).toHaveLength(1)
-    expect(sitOut[0]).not.toBe('c')
+    const { rooms } = computeSchoolRooms(players)
+    expect(rooms).toHaveLength(2)
+    const roomOf = (id: string) => rooms.findIndex((r) => r.includes(id))
+    // The three level-0 players share a room; the three level-3 players share the other.
+    expect(new Set(['p1', 'p2', 'p3'].map(roomOf)).size).toBe(1)
+    expect(new Set(['uni1', 'uni2', 'uni3'].map(roomOf)).size).toBe(1)
+    expect(roomOf('p1')).not.toBe(roomOf('uni1'))
   })
 
-  it('treats a lone player as a sit-out with no match', () => {
-    const { matches, sitOut } = computeSchoolPairings([{ id: 'only', level: 2 }])
-    expect(matches).toHaveLength(0)
-    expect(sitOut).toEqual(['only'])
+  it('returns no rooms for a lone (or empty) field', () => {
+    expect(computeSchoolRooms([{ id: 'only', level: 2 }]).rooms).toEqual([])
+    expect(computeSchoolRooms([]).rooms).toEqual([])
   })
 })

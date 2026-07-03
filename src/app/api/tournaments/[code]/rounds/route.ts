@@ -6,7 +6,7 @@ import { startTournamentRoundSchema } from '@/lib/tournament-validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { computeRoundGroups, computeRoundPairings, resolveGroupSize } from '@/lib/tournament-bracket'
-import { computeSchoolPairings } from '@/lib/tournament-school'
+import { computeSchoolRooms } from '@/lib/tournament-school'
 
 // Fallback for tournaments created before game_type was stored.
 const DEFAULT_H2H_GAME_TYPE = 'chess'
@@ -156,26 +156,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ roundNumber, players: survivorIds.length })
   }
 
-  // School (class ladder): pair the survivors by class and spawn a 1-v-1 Whot room
-  // per pair. The winner climbs a class when the match finishes (resolved in
-  // tournament-school); the loser repeats their class. Nobody is eliminated, so an
-  // odd player out simply sits the round out — no game row, no class change.
+  // School (class ladder): group the survivors by class into Whot rooms of 3–5 and
+  // spawn one room per group. Only the room's winner climbs a class when the game
+  // finishes (resolved in tournament-school); everyone else repeats their class.
+  // Nobody is eliminated, and every player lands in a room (no byes).
   if (tournament.format === 'school') {
-    // Who sat out last round (had no match row) — so the pairing doesn't bench the
-    // same player twice running.
-    const { data: priorRows } = await admin
-      .from('tournament_games')
-      .select('player_a_id, player_b_id')
-      .eq('tournament_id', tournamentId)
-      .eq('round_number', roundNumber - 1)
-    const playedLast = new Set(
-      (priorRows ?? []).flatMap((r) => [r.player_a_id, r.player_b_id]).filter((id): id is string => Boolean(id))
-    )
-    const avoidSitOutIds = survivorIds.filter((id) => !playedLast.has(id))
-
     const shuffledSurvivors = shuffle((survivorRows ?? []).map((p) => ({ id: p.id, level: p.school_level ?? 0 })))
-    const { matches, sitOut } = computeSchoolPairings(shuffledSurvivors, avoidSitOutIds)
-    if (matches.length === 0) {
+    const { rooms } = computeSchoolRooms(shuffledSurvivors)
+    if (rooms.length === 0) {
       return NextResponse.json({ error: 'Need at least 2 players to start a round' }, { status: 400 })
     }
 
@@ -197,14 +185,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
 
     let matchIndex = 0
-    for (const [aId, bId] of matches) {
+    for (const room of rooms) {
       const gameCode = await uniqueGameCode(admin)
       if (!gameCode) return NextResponse.json({ error: 'Failed to generate unique game code' }, { status: 500 })
 
       const { error: gameError } = await admin.from('games').insert({
         id: gameCode,
         host_token: generateToken(),
-        title: `${tournament.title} — Match ${matchIndex + 1}`,
+        title: `${tournament.title} — Room ${matchIndex + 1}`,
         game_type: 'whot',
         participant_mode: 'joiners',
         rounds_count: 1,
@@ -223,8 +211,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         game_order: nextOrder++,
         round_number: roundNumber,
         match_index: matchIndex,
-        player_a_id: aId,
-        player_b_id: bId,
+        member_ids: room,
         status: 'pending',
       })
       if (tgError) {
@@ -237,7 +224,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (tournament.status === 'waiting') {
       await admin.from('tournaments').update({ status: 'active' }).eq('id', tournamentId)
     }
-    return NextResponse.json({ roundNumber, matches: matches.length, sitOut: sitOut.length })
+    return NextResponse.json({ roundNumber, rooms: rooms.length })
   }
 
   const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)

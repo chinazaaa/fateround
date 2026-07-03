@@ -88,12 +88,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // School game_config: a 1-v-1 Whot match each round (groupSize 2), the chosen
-  // ladder length, plus the Whot house rules / timers applied to every match room.
+  // School game_config: the chosen ladder length plus the Whot house rules /
+  // timers applied to every room. Rooms are sized 3–5 per round at pairing time
+  // (see computeSchoolRooms), so there's no fixed group size stored here.
   let schoolGameConfig: Record<string, unknown> | null = null
   if (isSchool) {
     schoolGameConfig = {
-      groupSize: 2,
       schoolClassCount: clampSchoolClassCount(gameConfig?.schoolClassCount ?? 16),
       timerSeconds: clampBoardGameTurnTimer(gameConfig?.timerSeconds ?? 30, 'whot'),
       gameDurationSeconds: clampWhotGameDuration(gameConfig?.gameDurationSeconds ?? 900),
