@@ -46,6 +46,7 @@ import {
   isSnakeAndLadderGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
+import { parseLudoVariant } from '@/lib/ludo'
 import {
   clampHotSeatMaxCap,
   hotSeatMaxCapUpperBound,
@@ -261,6 +262,7 @@ export async function POST(req: NextRequest) {
     crazy8_action_cards: rawCrazy8ActionCards,
     crazy8_jokers: rawCrazy8Jokers,
     crazy8_pick2_stacking: rawCrazy8Pick2Stacking,
+    ludo_variant: rawLudoVariant,
     scrabble_dictionary_id: rawScrabbleDictionaryId,
     chess_board_theme: rawChessBoardTheme,
     chess_piece_set: rawChessPieceSet,
@@ -687,7 +689,9 @@ export async function POST(req: NextRequest) {
               crazy8_jokers: rawCrazy8Jokers === true,
               crazy8_pick2_stacking: rawCrazy8Pick2Stacking !== false,
             }
-          : {}),
+          : isLudoGame(game_type)
+            ? { ludo_variant: parseLudoVariant(rawLudoVariant) }
+            : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {

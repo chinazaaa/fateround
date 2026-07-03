@@ -51,21 +51,35 @@ export function unlockAudio(): void {
 }
 
 /**
- * Attach a one-time document listener that pre-warms the AudioContext
- * on the first user interaction. Call once on game/host pages.
+ * Keep the AudioContext warm for the lifetime of the page. Call once on
+ * game/host pages.
+ *
+ * This deliberately does NOT remove its listeners after the first gesture:
+ * mobile browsers (and desktop tab-backgrounding) re-suspend the context when
+ * the page loses focus or idles, which would leave later realtime-triggered
+ * sounds (your turn, host started, timer ticks) silently dead. Re-warming on
+ * every gesture — and when the tab becomes visible again — keeps sounds firing
+ * consistently. `ensureContext()` is a cheap no-op once the context is already
+ * running, so the persistent listeners are effectively free.
  */
 export function setupAudioUnlock(): () => void {
   if (typeof window === 'undefined') return () => {}
   const unlock = () => {
     void ensureContext()
-    document.removeEventListener('pointerdown', unlock, true)
-    document.removeEventListener('keydown', unlock, true)
   }
-  document.addEventListener('pointerdown', unlock, true)
-  document.addEventListener('keydown', unlock, true)
+  const gestureEvents = ['pointerdown', 'keydown', 'touchstart'] as const
+  for (const evt of gestureEvents) {
+    document.addEventListener(evt, unlock, { capture: true, passive: true })
+  }
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') void ensureContext()
+  }
+  document.addEventListener('visibilitychange', onVisible)
   return () => {
-    document.removeEventListener('pointerdown', unlock, true)
-    document.removeEventListener('keydown', unlock, true)
+    for (const evt of gestureEvents) {
+      document.removeEventListener(evt, unlock, { capture: true })
+    }
+    document.removeEventListener('visibilitychange', onVisible)
   }
 }
 

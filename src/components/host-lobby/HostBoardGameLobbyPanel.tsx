@@ -16,9 +16,9 @@ import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
-import { Toggle } from '@/components/ui/PageShell'
+import { Chip, Toggle } from '@/components/ui/PageShell'
 import { useToast } from '@/components/ui/Toast'
-import type { Game } from '@/types'
+import type { Game, LudoVariant } from '@/types'
 
 type Props = {
   gameCode: string
@@ -64,6 +64,7 @@ export function HostBoardGameLobbyPanel({
   const [crazy8ActionCards, setCrazy8ActionCards] = useState(true)
   const [crazy8Jokers, setCrazy8Jokers] = useState(false)
   const [crazy8Pick2Stacking, setCrazy8Pick2Stacking] = useState(true)
+  const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -91,6 +92,9 @@ export function HostBoardGameLobbyPanel({
       setCrazy8ActionCards(game.crazy8_action_cards !== false)
       setCrazy8Jokers(game.crazy8_jokers === true)
       setCrazy8Pick2Stacking(game.crazy8_pick2_stacking !== false)
+    }
+    if (boardGameType === 'ludo') {
+      setLudoVariant(game.ludo_variant === 'traditional' ? 'traditional' : 'modern')
     }
   }, [boardGameType, game, limits])
 
@@ -165,6 +169,12 @@ export function HostBoardGameLobbyPanel({
     void patchSettings(patch)
   }
 
+  const onLudoVariantChange = (next: LudoVariant) => {
+    if (next === ludoVariant) return
+    setLudoVariant(next)
+    void patchSettings({ ludo_variant: next })
+  }
+
   const maxPlayerOptions = useMemo(
     () =>
       playerCountOptions(minPlayers, maxCap).map((n) => ({
@@ -210,12 +220,15 @@ export function HostBoardGameLobbyPanel({
     if (boardGameType === 'monopoly' || boardGameType === 'whot' || boardGameType === 'crazy_eights') {
       parts.push(durationFormatter(gameDuration))
     }
+    if (boardGameType === 'ludo') {
+      parts.push(ludoVariant === 'traditional' ? 'Traditional' : 'Modern')
+    }
     if (gameSupportsViewerSetting(game.game_type)) {
       const policy = lateJoinPolicyFromGame(game)
       parts.push(policy === 'lobby_only' ? 'Lobby only' : policy === 'viewers_only' ? 'Viewers OK' : 'Late play OK')
     }
     return parts.join(' · ')
-  }, [boardGameType, durationFormatter, game, gameDuration, maxPlayers, turnTimer])
+  }, [boardGameType, durationFormatter, game, gameDuration, ludoVariant, maxPlayers, turnTimer])
 
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
@@ -293,6 +306,32 @@ export function HostBoardGameLobbyPanel({
                 />
               </div>
             </div>
+          </HostLobbySettingBlock>
+        )}
+
+        {boardGameType === 'ludo' && (
+          <HostLobbySettingBlock title="Rules" className="sm:col-span-2">
+            <div className="flex flex-wrap gap-1.5">
+              <Chip
+                active={ludoVariant === 'modern'}
+                onClick={() => onLudoVariantChange('modern')}
+                className="px-2.5 py-1.5 text-xs font-semibold"
+              >
+                Modern
+              </Chip>
+              <Chip
+                active={ludoVariant === 'traditional'}
+                onClick={() => onLudoVariantChange('traditional')}
+                className="px-2.5 py-1.5 text-xs font-semibold"
+              >
+                Traditional
+              </Chip>
+            </div>
+            <p className="mt-1.5 text-xs text-white/60">
+              {ludoVariant === 'traditional'
+                ? 'No safe squares on the track — only your own home column is protected.'
+                : 'Every start and the 4 star squares are safe from capture.'}
+            </p>
           </HostLobbySettingBlock>
         )}
 
