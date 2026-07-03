@@ -938,6 +938,13 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'online dice game with friends',
       'roll hold scorecard',
       'play yahtzee friends',
+      'play yahtzee online with friends free',
+      'yahtzee online multiplayer no download',
+      'yahtzee printable scorecard',
+      'yatzy online',
+      'five dice game online',
+      'yahtzee 2 player',
+      'is yahtzee a game of luck or skill',
     ],
     heroSubtitle: 'The classic dice puzzle — score straights, full houses, and Yahtzees together.',
     bodyParagraph:
@@ -1012,12 +1019,22 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Is there any strategy to Yahtzee?',
         answer:
-          'Yes. Prioritise the upper section early to chase the 63-point threshold for the 35-point bonus, keep Chance as a flexible fallback for a bad roll, and only zero out a category (like Yahtzee) when you have no better option. Deciding which dice to hold between rolls is where most of the skill lives.',
+          'Yes. Prioritize the upper section early to chase the 63-point threshold for the 35-point bonus, keep Chance as a flexible fallback for a bad roll, and only zero out a category (like Yahtzee) when you have no better option. Deciding which dice to hold between rolls is where most of the skill lives.',
       },
       {
         question: 'Can you play Yahtzee solo?',
         answer:
           'Yes. Fate Round lets you start a Yahtzee room on your own and play through the full scorecard to chase a high score — no other players required. Add friends any time by sharing the room code.',
+      },
+      {
+        question: 'Where can I find a Yahtzee scorecard?',
+        answer:
+          'You don’t need one — Fate Round keeps a full digital scorecard for every player automatically, tracking all 13 categories, both bonuses, and the running total. No printing, no maths, no smudged pencil columns.',
+      },
+      {
+        question: 'Is Yahtzee luck or skill?',
+        answer:
+          'Both. The dice are luck, but which dice you hold, which category you fill, and when you chase the upper-section bonus are all skill — which is why a good player beats a lucky one over a full card. Fate Round handles the scoring so you can focus on the decisions.',
       },
     ],
   }),
@@ -1034,10 +1051,25 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'nigerian whot game',
       'whot special cards',
       'play whot friends',
+      'play whot online free',
+      'whot online multiplayer',
+      'whot game with friends',
+      'whot card meanings',
+      'what does whot mean',
+      'whot general market',
+      'whot hold on card',
+      'whot pick 2 pick 3',
+      'whot number cards',
+      'whot vs uno',
+      'whot card game how many players',
+      'whot 54 card deck',
+      'whot game strategy',
+      'whot scoring points',
+      'play whot with friends online',
     ],
     heroSubtitle: 'The Nigerian card classic — match, stack, and call WHOT on your crew.',
     bodyParagraph:
-      'Whot on Fate Round follows common Nigerian house rules: match the top card by shape or number, play WHOT to call the next match, and keep Pick 2 and Pick 3 stacks separate. Special cards — Hold On, Suspension, General Market — keep the table lively. First to empty their hand wins.',
+      'Whot on Fate Round runs on the Nigerian house rules everyone actually plays by — match the top card by shape or number, drop WHOT to call the next shape, and keep those Pick 2 and Pick 3 stacks separate. The special cards are where it gets loud: Hold On buys you another go, Suspension skips the next player, General Market makes everyone draw, and the WHOT card (20) bends the whole game to your will. No shuffling, no lost cards, no arguments about the rules — deal a room, share the code, and play from any phone. First to empty their hand wins. Two to six players, free forever.',
     highlights: ['54-card deck', '2–6 players', 'Naija house rules'],
     features: [
       {
@@ -1079,6 +1111,56 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'What are the special cards in Whot?',
         answer:
           '1 = Hold On (extra turn), 2 = Pick 2, 5 = Pick 3, 8 = Suspension (skip next player), 14 = General Market (others draw), 20 = WHOT (call shape or number). Pick 2 and Pick 3 stacks cannot be mixed.',
+      },
+      {
+        question: 'How many players can play Whot?',
+        answer:
+          'Whot on Fate Round is built for two to six players. Two-player games deal six cards each; three or more deal five. Share one room code and everyone joins from their own phone — no deck, no dealing by hand.',
+      },
+      {
+        question: 'What does WHOT mean / what is the WHOT card?',
+        answer:
+          'WHOT is the wild card, numbered 20. Play it on almost any card, then call the shape everyone must match next — circle, cross, triangle, square, or star. It’s your reset button when your hand doesn’t fit the pile. It’s worth 20 points if you’re caught holding it at the end, so don’t sit on it too long.',
+      },
+      {
+        question: 'What is General Market in Whot?',
+        answer:
+          'General Market is the 14 card. Play it and every other player draws one card from the market while you go again — a fast way to punish the whole table at once. On Fate Round the draws happen automatically the moment you play it.',
+      },
+      {
+        question: 'What does the Hold On card do in Whot?',
+        answer:
+          'Hold On is the 1 card. Play it and you take another turn immediately — everyone else is skipped for that beat. Chain a few and you can dump a big chunk of your hand before anyone else moves.',
+      },
+      {
+        question: 'What is Suspension in Whot?',
+        answer:
+          'Suspension is the 8 card. It skips the next player’s turn entirely — brutal in a two-player game, where it just hands the turn straight back to you.',
+      },
+      {
+        question: 'How do you defend against Pick 2 and Pick 3?',
+        answer:
+          'Play the same card back. A Pick 2 (the 2 card) can only be blocked with another 2, which passes the penalty — now stacked — to the next player; Pick 3 (the 5 card) works the same with 5s. The stacks never mix: you can’t answer a Pick 2 with a Pick 3, and you can’t escape either by playing WHOT.',
+      },
+      {
+        question: 'How many cards are in a Whot deck?',
+        answer:
+          'A Whot deck has 54 cards across five shapes — circle, triangle, cross, square, and star — plus the special WHOT cards numbered 20. Fate Round handles the full deck and the market (draw pile) for you.',
+      },
+      {
+        question: 'How is Whot scored if the game is blocked or timed?',
+        answer:
+          'If nobody can play or the round clock runs out, the player holding the fewest points wins. Cards score their face value and the WHOT card counts as 20 — so a light hand beats a heavy one. Empty your hand first and you win outright, no counting needed.',
+      },
+      {
+        question: 'Is Whot like Uno?',
+        answer:
+          'They’re cousins. Both are shape/number-matching shedding games where you race to empty your hand, and Whot’s Pick 2, Pick 3, and WHOT card rhyme with Uno’s Draw 2, Draw 4, and Wild. Whot came first (1950s), uses shapes instead of colors, and adds Hold On and General Market. If you like Uno, Whot feels instantly familiar — and Fate Round has both.',
+      },
+      {
+        question: 'Can you play Whot online for free?',
+        answer:
+          'Yes — free forever on Fate Round, no sign-up and no download. Create a room, share the code, and two to six of you play from any browser. Perfect for Nigerian diaspora game nights over a video call.',
       },
     ],
   }),

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next'
 import { ALL_GAME_LANDING_SLUGS } from '@/lib/game-landing'
+import { ALL_MARKETING_SLUGS } from '@/lib/marketing-landing'
 import { appOrigin } from '@/lib/site'
 
 /** Indexable marketing/app pages (exclude noindex routes: /game, /host, /history, /admin). */
@@ -24,5 +25,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.85,
   }))
 
-  return [...staticPages, ...gamePages]
+  const marketingPages = ALL_MARKETING_SLUGS.map((slug) => ({
+    url: `${origin}/${slug}`,
+    lastModified,
+    changeFrequency: 'monthly' as const,
+    priority: 0.8,
+  }))
+
+  return [...staticPages, ...gamePages, ...marketingPages]
 }
