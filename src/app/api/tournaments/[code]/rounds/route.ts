@@ -7,6 +7,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { computeRoundGroups, computeRoundPairings, resolveGroupSize } from '@/lib/tournament-bracket'
 import { computeSchoolRooms } from '@/lib/tournament-school'
+import { parseStoredTriviaQuestions } from '@/lib/custom-questions'
+import { triviaQuestionKey } from '@/lib/trivia-questions'
 
 // Fallback for tournaments created before game_type was stored.
 const DEFAULT_H2H_GAME_TYPE = 'chess'
@@ -145,15 +147,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
           ? customQuestions
           : previousCustom
         : null
-    const useCustomQuestions =
-      questionSource === 'custom' && Array.isArray(effectiveCustom) && effectiveCustom.length > 0
+    // Validate against UNSEEN questions, not raw pack size. pickCustomTriviaQuestions
+    // only avoids repeats while unused questions remain; once they run out it recycles
+    // already-seen ones. So a pack reused across rounds must still have >= roundsCount
+    // questions not already used in an earlier round, or advancing players would see a
+    // repeat. Parse + key exactly as the picker does so the count matches what it selects.
+    const parsedCustom = Array.isArray(effectiveCustom) ? parseStoredTriviaQuestions(effectiveCustom) : []
+    const unseenCustomCount = parsedCustom.filter((q) => (seededTriviaUsage[triviaQuestionKey(q)] ?? 0) === 0).length
+    const useCustomQuestions = questionSource === 'custom' && parsedCustom.length > 0
 
-    if (questionSource === 'custom' && (!Array.isArray(effectiveCustom) || effectiveCustom.length < roundsCount)) {
+    if (questionSource === 'custom' && unseenCustomCount < roundsCount) {
       return NextResponse.json(
         {
           error:
-            Array.isArray(effectiveCustom) && effectiveCustom.length > 0
-              ? `Need at least ${roundsCount} custom questions for ${roundsCount} rounds — upload more or lower the questions per round`
+            parsedCustom.length > 0
+              ? `This round needs ${roundsCount} new question${roundsCount === 1 ? '' : 's'}, but only ${unseenCustomCount} of your pack ${unseenCustomCount === 1 ? 'is' : 'are'} unused — upload a fresh CSV for this round.`
               : 'No questions to use for this round — upload a CSV or switch to the built-in pack',
         },
         { status: 400 }
