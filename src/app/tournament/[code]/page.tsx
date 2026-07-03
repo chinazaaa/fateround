@@ -192,54 +192,21 @@ export default function TournamentLobbyPage() {
     }
   }, [tournamentId])
 
-  // Cross-device entry: a host or player arriving from a shared link carries their
-  // credential in the URL. Save it to this device (so it sticks like a normal join)
-  // and strip it from the address bar so it isn't shoulder-surfed or accidentally
-  // re-shared. A player code is exchanged (server-side) for their name + seat.
+  // Host cross-device entry: a host opening their shared link carries the host token
+  // in the URL (like a normal game's host link). Save it to this device, then strip it
+  // from the address bar so it isn't shoulder-surfed or re-shared. Players don't use a
+  // URL token — they open the normal tournament link and type their player code.
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const host = params.get('host')
-    const ptoken = params.get('ptoken')
-    if (!host && !ptoken) return
-
-    if (host) localStorage.setItem(`tournament_host_${tournamentId}`, host)
-
-    const strip = () => {
-      const url = new URL(window.location.href)
-      url.searchParams.delete('host')
-      url.searchParams.delete('ptoken')
-      window.history.replaceState({}, '', url.pathname + url.search)
-    }
-
-    if (ptoken) {
-      void (async () => {
-        try {
-          const res = await fetch(`/api/tournaments/${tournamentId}/player-resume`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: ptoken }),
-          })
-          const data = await res.json()
-          if (res.ok && data.playerName) {
-            localStorage.setItem(`tournament_player_${tournamentId}`, data.playerName)
-            localStorage.setItem(`tournament_ptoken_${tournamentId}`, String(data.token))
-            setPlayerName(data.playerName)
-            setMyCode(String(data.token))
-            setJoined(true)
-          } else {
-            setJoinError(data.error ?? 'Could not restore your player code')
-          }
-        } finally {
-          strip()
-          fetchState()
-        }
-      })()
-    } else {
-      strip()
-      // Host credential is read from localStorage at render — nudge a re-render.
-      fetchState()
-    }
+    if (!host) return
+    localStorage.setItem(`tournament_host_${tournamentId}`, host)
+    const url = new URL(window.location.href)
+    url.searchParams.delete('host')
+    window.history.replaceState({}, '', url.pathname + url.search)
+    // Host credential is read from localStorage at render — nudge a re-render.
+    fetchState()
   }, [tournamentId, fetchState])
 
   // Auto-forward opted-in spectators into each game as a viewer when it starts.
@@ -1972,57 +1939,14 @@ export default function TournamentLobbyPage() {
         </details>
       )}
 
-      {/* Class standings (school) — everyone ranked by how far up the ladder they are.
-          Eliminated players (a straggler with no class left to play, or a host removal)
-          sink to the bottom and are flagged so they aren't mistaken for active climbers. */}
-      {school && players.length > 0 && (
-        <div className="glass-card p-5 space-y-3">
-          <p className="label-caps">Classes</p>
-          <div className="space-y-2">
-            {[...players]
-              .sort((a, b) => {
-                if (a.is_eliminated !== b.is_eliminated) return a.is_eliminated ? 1 : -1
-                return (b.school_level ?? 0) - (a.school_level ?? 0) || a.player_name.localeCompare(b.player_name)
-              })
-              .map((p, i) => {
-                const graduated = hasGraduated(p.school_level ?? 0, schoolClassCount)
-                const isMe = me?.id === p.id
-                return (
-                  <div
-                    key={p.id}
-                    className={`result-row flex items-center justify-between gap-3 px-4 py-2.5 ${
-                      p.is_eliminated ? 'opacity-60' : ''
-                    }`}
-                    style={isMe ? { boxShadow: 'inset 0 0 0 1px var(--primary)' } : undefined}
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="text-xs text-faint tabular-nums w-5 text-right">{i + 1}</span>
-                      <span
-                        className={`truncate text-sm font-medium ${p.is_eliminated ? 'text-faint line-through' : 'text-body'}`}
-                      >
-                        {p.player_name}
-                        {isMe && <span className="text-faint no-underline"> (you)</span>}
-                      </span>
-                    </span>
-                    {p.is_eliminated ? (
-                      <span className="chip text-[0.6875rem] shrink-0 text-red-400">Eliminated</span>
-                    ) : (
-                      <span
-                        className="chip text-[0.6875rem] shrink-0"
-                        style={graduated ? { color: 'var(--primary)' } : undefined}
-                      >
-                        {schoolClassLabel(p.school_level ?? 0, schoolClassCount)}
-                      </span>
-                    )}
-                  </div>
-                )
-              })}
-          </div>
-        </div>
-      )}
-
-      {/* Leaderboard — with "Share results" image export (points-based formats only). */}
-      {!school && <TournamentShareLeaderboard tournament={tournament} players={players} games={games} />}
+      {/* Standings + "Share results" image export — for every format, including School
+          (class ladder), so every tournament game can share its result. */}
+      <TournamentShareLeaderboard
+        tournament={tournament}
+        players={players}
+        games={games}
+        highlightPlayerId={me?.id ?? null}
+      />
 
       {/* Knockout round results — how the field narrowed each round. */}
       {knockout && knockoutResultRounds.length > 0 && (
