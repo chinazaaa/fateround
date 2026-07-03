@@ -1,4 +1,32 @@
-const WA_URL = 'https://whatsapp.com/channel/0029VbD1Abu2v1ImDQEhfz0o'
+'use client'
+
+import { useEffect, useState } from 'react'
+import { DEFAULT_WHATSAPP_INVITE_URL } from '@/lib/community-constants'
+
+/**
+ * The admin-configured community WhatsApp link (set in /admin/community, the same
+ * link the leaderboard uses), fetched from the public /api/community/link endpoint.
+ * Falls back to the default until it loads / if the request fails, so the button
+ * always resolves to a working link.
+ */
+function useCommunityLink(): string {
+  const [url, setUrl] = useState(DEFAULT_WHATSAPP_INVITE_URL)
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/community/link', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && d.whatsappInviteUrl) setUrl(d.whatsappInviteUrl)
+      })
+      .catch(() => {
+        /* keep the default */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  return url
+}
 
 const WhatsAppIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden>
@@ -8,12 +36,13 @@ const WhatsAppIcon = () => (
 
 /** Icon-only button for use in fixed headers. */
 export function WhatsAppHeaderIcon() {
+  const url = useCommunityLink()
   return (
     <a
-      href={WA_URL}
+      href={url}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label="Join our WhatsApp channel"
+      aria-label="Join our community"
       className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#25D366] hover:bg-[#25D366]/10 transition-colors"
     >
       <WhatsAppIcon />
@@ -23,9 +52,10 @@ export function WhatsAppHeaderIcon() {
 
 /** Full pill link with text, for use in cards and footers. */
 export function WhatsAppChannelLink({ className = '' }: { className?: string }) {
+  const url = useCommunityLink()
   return (
     <a
-      href={WA_URL}
+      href={url}
       target="_blank"
       rel="noopener noreferrer"
       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors
@@ -33,7 +63,7 @@ export function WhatsAppChannelLink({ className = '' }: { className?: string }) 
         ${className}`}
     >
       <WhatsAppIcon />
-      Join our WhatsApp channel
+      Join our community
     </a>
   )
 }
