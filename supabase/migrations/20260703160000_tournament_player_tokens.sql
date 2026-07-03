@@ -1,15 +1,17 @@
--- Per-player secret identity for tournaments.
+-- Per-player secret identity for tournaments — the player's cross-device "code".
 --
 -- Tournament players were identified only by their (unique) display name, and the
 -- game rooms trust whoever arrives with that name. That let anyone who knew a name
 -- claim that player's seat, and left a real player locked out ("name already taken")
 -- whenever they lost their local session and came back.
 --
--- Give each player a secret token at join time. The token is stored here — a table
--- only the service role can read (RLS on, no policy, privileges revoked) — so it
--- never reaches the browser except in the single join response that mints it, and it
--- is never exposed by the anon-readable tournament_players table or its realtime feed.
--- The game-join route (service role) verifies the token to seat / reclaim a player.
+-- Give each player a short secret code at join time (like the per-game resume_token).
+-- It's stored here — a table only the service role can read (RLS on, no policy,
+-- privileges revoked) — so it never reaches the browser except in the join/resume
+-- response that hands it to its owner, and is never exposed by the anon-readable
+-- tournament_players table or its realtime feed. The game-join and resume routes
+-- (service role) verify the code to seat / reclaim / restore a player, and the player
+-- can read it out or scan it to continue on another device.
 
 create table if not exists tournament_player_tokens (
   player_id uuid primary key references tournament_players(id) on delete cascade,
@@ -18,22 +20,56 @@ create table if not exists tournament_player_tokens (
   created_at timestamptz not null default now()
 );
 
-create index if not exists idx_tournament_player_tokens_lookup
+-- Unique per tournament so lookups by (tournament, code) resolve to one player.
+create unique index if not exists idx_tournament_player_tokens_unique
   on tournament_player_tokens (tournament_id, token);
 
 alter table tournament_player_tokens enable row level security;
 -- No policy + revoked privileges: anon/authenticated get nothing; only the service
--- role (which bypasses RLS) can read or write tokens.
+-- role (which bypasses RLS) can read or write codes.
 revoke all on tournament_player_tokens from anon, authenticated;
 
--- Backfill a token for every existing player so in-flight tournaments keep working
--- once their clients pick the token up on the next join/forward.
-insert into tournament_player_tokens (player_id, tournament_id, token)
-  select id, tournament_id, gen_random_uuid()::text
-    from tournament_players
-  on conflict (player_id) do nothing;
+-- Generate a short, readable code unique within a tournament. Charset drops the
+-- confusable I/O/0/1 (same as the per-game resume_token); 8 chars keeps it easy to
+-- read aloud while giving ~40 bits — plenty for a casual tournament seat.
+create or replace function gen_tournament_player_token(p_tournament_id text)
+returns text language plpgsql as $$
+declare
+  chars text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  candidate text;
+  attempts int := 0;
+begin
+  loop
+    candidate := '';
+    for i in 1..8 loop
+      candidate := candidate || substr(chars, floor(random() * length(chars))::int + 1, 1);
+    end loop;
+    if not exists (
+      select 1 from tournament_player_tokens
+      where tournament_id = p_tournament_id and token = candidate
+    ) then
+      return candidate;
+    end if;
+    attempts := attempts + 1;
+    if attempts > 30 then raise exception 'Could not generate tournament player token'; end if;
+  end loop;
+end; $$;
 
--- Re-declare the atomic join to also mint + return the player's token. SECURITY
+-- Backfill a code for every existing player (one row at a time, so each generation
+-- sees the codes minted just before it) so in-flight tournaments keep working.
+do $$
+declare r record;
+begin
+  for r in
+    select id, tournament_id from tournament_players
+    where id not in (select player_id from tournament_player_tokens)
+  loop
+    insert into tournament_player_tokens (player_id, tournament_id, token)
+      values (r.id, r.tournament_id, gen_tournament_player_token(r.tournament_id));
+  end loop;
+end $$;
+
+-- Re-declare the atomic join to also mint + return the player's code. SECURITY
 -- DEFINER so it can write the service-role-only tokens table; search_path pinned for
 -- safety. Behaviour is otherwise identical to the prior version.
 create or replace function join_tournament(p_tournament_id text, p_player_name text)
@@ -72,7 +108,7 @@ begin
   insert into tournament_players (tournament_id, player_name, lives_remaining)
     values (p_tournament_id, p_player_name, v_lives) returning * into v_player;
 
-  v_token := gen_random_uuid()::text;
+  v_token := gen_tournament_player_token(p_tournament_id);
   insert into tournament_player_tokens (player_id, tournament_id, token)
     values (v_player.id, p_tournament_id, v_token);
 

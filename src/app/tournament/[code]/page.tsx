@@ -17,8 +17,13 @@ import {
 } from '@/lib/custom-questions'
 import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useToast } from '@/components/ui/Toast'
 import { TournamentShareLeaderboard } from '@/components/tournament/TournamentShareLeaderboard'
 import { TournamentBracketBoard } from '@/components/tournament/TournamentBracketBoard'
+import { TournamentContinueCard, TournamentResumeEntry } from '@/components/tournament/TournamentPlayerCode'
+import { GameLinkQrModal } from '@/components/GameLinkQrModal'
+import { tournamentHostUrl, shareOrigin } from '@/lib/site'
+import { copyToClipboard } from '@/lib/copy'
 import {
   TournamentGameConfigFields,
   defaultGameConfigValue,
@@ -82,6 +87,7 @@ export default function TournamentLobbyPage() {
   const router = useRouter()
   const tournamentId = (Array.isArray(code) ? code[0] : code).toUpperCase()
   const { confirm } = useConfirm()
+  const { success } = useToast()
 
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [players, setPlayers] = useState<TournamentPlayer[]>([])
@@ -92,6 +98,10 @@ export default function TournamentLobbyPage() {
   const [playerName, setPlayerName] = useState('')
   const [joined, setJoined] = useState(false)
   const [joinError, setJoinError] = useState('')
+  // This player's private code (cross-device resume + seat reclaim), read from
+  // localStorage; empty for the host or before joining.
+  const [myCode, setMyCode] = useState('')
+  const [hostQrOpen, setHostQrOpen] = useState(false)
   // Visitor chose "just watching" — opts out of playing (no roster slot) and gets
   // auto-forwarded into each game as a viewer.
   const [spectating, setSpectating] = useState(false)
@@ -176,10 +186,61 @@ export default function TournamentLobbyPage() {
       setPlayerName(savedName)
       setJoined(true)
     }
+    setMyCode(localStorage.getItem(`tournament_ptoken_${tournamentId}`) ?? '')
     if (localStorage.getItem(`tournament_spectator_${tournamentId}`) === '1') {
       setSpectating(true)
     }
   }, [tournamentId])
+
+  // Cross-device entry: a host or player arriving from a shared link carries their
+  // credential in the URL. Save it to this device (so it sticks like a normal join)
+  // and strip it from the address bar so it isn't shoulder-surfed or accidentally
+  // re-shared. A player code is exchanged (server-side) for their name + seat.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const host = params.get('host')
+    const ptoken = params.get('ptoken')
+    if (!host && !ptoken) return
+
+    if (host) localStorage.setItem(`tournament_host_${tournamentId}`, host)
+
+    const strip = () => {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('host')
+      url.searchParams.delete('ptoken')
+      window.history.replaceState({}, '', url.pathname + url.search)
+    }
+
+    if (ptoken) {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/tournaments/${tournamentId}/player-resume`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: ptoken }),
+          })
+          const data = await res.json()
+          if (res.ok && data.playerName) {
+            localStorage.setItem(`tournament_player_${tournamentId}`, data.playerName)
+            localStorage.setItem(`tournament_ptoken_${tournamentId}`, String(data.token))
+            setPlayerName(data.playerName)
+            setMyCode(String(data.token))
+            setJoined(true)
+          } else {
+            setJoinError(data.error ?? 'Could not restore your player code')
+          }
+        } finally {
+          strip()
+          fetchState()
+        }
+      })()
+    } else {
+      strip()
+      // Host credential is read from localStorage at render — nudge a re-render.
+      fetchState()
+    }
+  }, [tournamentId, fetchState])
 
   // Auto-forward opted-in spectators into each game as a viewer when it starts.
   // (Head-to-head runs many simultaneous matches — spectators pick one from the
@@ -268,14 +329,28 @@ export default function TournamentLobbyPage() {
         return
       }
       localStorage.setItem(`tournament_player_${tournamentId}`, playerName.trim())
-      // Private identity secret — proves it's really this player when they enter each
-      // game room, so nobody can claim their seat by just knowing their name.
-      if (data.token) localStorage.setItem(`tournament_ptoken_${tournamentId}`, String(data.token))
+      // Private player code — used to reclaim this seat and to continue on another
+      // device, so nobody can take the seat by just knowing the name.
+      if (data.token) {
+        localStorage.setItem(`tournament_ptoken_${tournamentId}`, String(data.token))
+        setMyCode(String(data.token))
+      }
       setJoined(true)
       fetchState()
     } catch {
       setJoinError('Something went wrong')
     }
+  }
+
+  // Restore this player on this device from their code (entered on the join screen).
+  function handleResumedByCode(name: string, code: string) {
+    localStorage.setItem(`tournament_player_${tournamentId}`, name)
+    localStorage.setItem(`tournament_ptoken_${tournamentId}`, code)
+    setPlayerName(name)
+    setMyCode(code)
+    setJoined(true)
+    setJoinError('')
+    fetchState()
   }
 
   async function handleShare() {
@@ -840,13 +915,42 @@ export default function TournamentLobbyPage() {
               {copied ? '✓ Link copied' : '🔗 Copy invite link'}
             </button>
             {isHost && (
-              <button onClick={openEditSettings} className="btn-secondary btn-fit text-sm">
-                ⚙️ Edit settings
-              </button>
+              <>
+                <button
+                  onClick={async () => {
+                    const ok = await copyToClipboard(tournamentHostUrl(tournamentId, hostToken ?? '', shareOrigin()))
+                    setCopied(false)
+                    if (ok) success('Host link copied — open it to manage from another device')
+                    else setError('Could not copy host link')
+                  }}
+                  className="btn-secondary btn-fit text-sm"
+                  title="Manage this tournament from another device"
+                >
+                  🛠 Copy host link
+                </button>
+                <button onClick={() => setHostQrOpen(true)} className="btn-secondary btn-fit text-sm">
+                  Host QR
+                </button>
+                <button onClick={openEditSettings} className="btn-secondary btn-fit text-sm">
+                  ⚙️ Edit settings
+                </button>
+              </>
             )}
           </div>
         )}
       </div>
+
+      {isHost && (
+        <GameLinkQrModal
+          open={hostQrOpen}
+          onClose={() => setHostQrOpen(false)}
+          url={tournamentHostUrl(tournamentId, hostToken ?? '', shareOrigin())}
+          title="Scan to host on another device"
+          subtitle="Opening this link makes that device the host — keep it private."
+          copyLabel="Copy host link"
+          copySuccessMessage="Host link copied"
+        />
+      )}
 
       {/* Edit settings (host) */}
       {isHost && showEdit && !isFinished && (
@@ -1356,6 +1460,7 @@ export default function TournamentLobbyPage() {
             </PrimaryBtn>
           </div>
           {joinError && <p className="text-red-400 text-xs">{joinError}</p>}
+          <TournamentResumeEntry tournamentId={tournamentId} onResumed={handleResumedByCode} />
           <button onClick={startSpectating} className="btn-ghost text-xs mx-auto block">
             👁 Just here to watch — don&apos;t add me as a player
           </button>
@@ -1417,6 +1522,11 @@ export default function TournamentLobbyPage() {
               <span className="text-sm font-semibold text-body">
                 You have {myLives} {myLives === 1 ? 'life' : 'lives'} left
               </span>
+            </div>
+          )}
+          {myCode && (
+            <div className="pt-1">
+              <TournamentContinueCard tournamentId={tournamentId} code={myCode} />
             </div>
           )}
         </div>

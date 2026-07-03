@@ -45,6 +45,22 @@ export function hostGameUrl(gameCode: string, hostToken: string, origin: string 
   return `${origin.replace(/\/$/, '')}/host/${code}?token=${encodeURIComponent(token)}`
 }
 
+/** The public tournament lobby link — anyone can open it and join with a name. */
+export function tournamentInviteUrl(code: string, origin: string = appOrigin()): string {
+  return `${origin.replace(/\/$/, '')}/tournament/${code.trim().toUpperCase()}`
+}
+
+/** A player's "continue on another device" link — carries their secret code so they
+ *  resume as themselves (name + seat) instead of joining fresh. */
+export function tournamentPlayerResumeUrl(code: string, token: string, origin: string = appOrigin()): string {
+  return `${tournamentInviteUrl(code, origin)}?ptoken=${encodeURIComponent(token.trim().toUpperCase())}`
+}
+
+/** The host's link to manage a tournament from another device (carries the host token). */
+export function tournamentHostUrl(code: string, hostToken: string, origin: string = appOrigin()): string {
+  return `${tournamentInviteUrl(code, origin)}?host=${encodeURIComponent(hostToken.trim())}`
+}
+
 /** Host panel + your player seat — manage and play from one link. */
 export function hostPlayerUrl(
   gameCode: string,
