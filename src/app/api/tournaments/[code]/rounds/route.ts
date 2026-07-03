@@ -166,10 +166,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const { rooms, eliminated } = computeSchoolRooms(shuffledSurvivors)
 
     if (eliminated.length > 0) {
-      await admin
+      const { error: eliminateError } = await admin
         .from('tournament_players')
         .update({ is_eliminated: true, eliminated_at: new Date().toISOString() })
         .in('id', eliminated)
+      if (eliminateError) {
+        return NextResponse.json(
+          { error: internalErrorMessage('tournaments/code/rounds', eliminateError) },
+          { status: 500 }
+        )
+      }
     }
 
     // No rooms to play means the field has thinned to a single leader (the lone

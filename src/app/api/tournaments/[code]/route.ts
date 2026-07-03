@@ -3,7 +3,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { updateTournamentSchema } from '@/lib/tournament-validation'
-import { buildTournamentGameConfig } from '@/lib/tournament-game-config'
+import { buildTournamentGameConfig, type TournamentGameConfigInput } from '@/lib/tournament-game-config'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
@@ -84,7 +84,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   const admin = getSupabaseAdmin()
   const { data: tournament } = await admin
     .from('tournaments')
-    .select('host_token, status, format, game_type')
+    .select('host_token, status, format, game_type, game_config')
     .eq('id', tournamentId)
     .maybeSingle()
 
@@ -133,7 +133,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   if (targetGameCount !== undefined) updates.target_game_count = targetGameCount
   if (maxPlayers !== undefined) updates.max_players = maxPlayers
   if (editingGameConfig) {
-    updates.game_config = buildTournamentGameConfig(tournament.format, tournament.game_type, gameConfig)
+    // Merge over the stored config so a partial edit only changes the fields it
+    // sends — omitted fields keep their prior value instead of resetting to a
+    // hard-coded default in buildTournamentGameConfig.
+    const merged = {
+      ...((tournament.game_config as TournamentGameConfigInput | null) ?? {}),
+      ...gameConfig,
+    }
+    updates.game_config = buildTournamentGameConfig(tournament.format, tournament.game_type, merged)
   }
 
   if (Object.keys(updates).length > 0) {
