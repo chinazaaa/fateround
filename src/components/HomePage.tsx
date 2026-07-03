@@ -120,7 +120,7 @@ export function HomePage() {
             <div className="flex-1 min-w-0 relative">
               <p className="text-sm font-black text-white leading-tight">Tournaments</p>
               <p className="text-[11px] sm:text-xs text-white/85 leading-snug">
-                Run a multi-game bracket for your crew — winner takes all
+                Create or join a multi-game bracket — tap to get started
               </p>
             </div>
             <span className="text-white/90 text-sm shrink-0 transition-transform group-hover:translate-x-0.5">→</span>
