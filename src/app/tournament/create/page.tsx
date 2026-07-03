@@ -9,7 +9,11 @@ import {
   KNOCKOUT_ELIGIBLE_TYPES,
   SCHOOL_ELIGIBLE_TYPES,
 } from '@/lib/tournament-validation'
-import { SCHOOL_LADDER_OPTIONS } from '@/lib/tournament-school'
+import {
+  SCHOOL_LADDER_OPTIONS,
+  SCHOOL_MATCH_SECONDS_OPTIONS,
+  DEFAULT_SCHOOL_MATCH_SECONDS,
+} from '@/lib/tournament-school'
 import { gameTypeLabel } from '@/lib/game-types'
 import { SCRABBLE_DICTIONARY_LABELS, SCRABBLE_DICTIONARY_OPTIONS } from '@/lib/scrabble-dictionary-meta'
 
@@ -121,9 +125,9 @@ export default function TournamentCreatePage() {
     else if (next === 'knockout') setGameType(KNOCKOUT_ELIGIBLE_TYPES[0])
     else if (next === 'school') {
       setGameType(SCHOOL_ELIGIBLE_TYPES[0])
-      // School Whot plays fast — mirror the head-to-head Whot defaults.
+      // School Whot: a short per-turn timer and a 2–4 min match (default 3 min).
       setH2hTurnTimer(30)
-      setH2hGameDuration(900)
+      setH2hGameDuration(DEFAULT_SCHOOL_MATCH_SECONDS)
     }
   }
 
@@ -371,38 +375,46 @@ export default function TournamentCreatePage() {
 
         {((isH2H && (gameType === 'whot' || gameType === 'scrabble')) || isSchool) && (
           <div className="surface-inset p-4 space-y-4">
-            <Field label="Time per turn" htmlFor="h2h-turn-timer">
-              <select
-                id="h2h-turn-timer"
-                value={h2hTurnTimer}
-                onChange={(e) => setH2hTurnTimer(Number(e.target.value))}
-                className="input-field"
-              >
-                {(gameType === 'whot' ? WHOT_TURN_OPTIONS : SCRABBLE_TURN_OPTIONS).map((s) => (
-                  <option key={s} value={s}>
-                    {fmtTurn(s)}
-                  </option>
-                ))}
-              </select>
-              <p className="text-faint text-xs mt-1.5">How long each player has on their turn in every room.</p>
-            </Field>
+            {!isSchool && (
+              <Field label="Time per turn" htmlFor="h2h-turn-timer">
+                <select
+                  id="h2h-turn-timer"
+                  value={h2hTurnTimer}
+                  onChange={(e) => setH2hTurnTimer(Number(e.target.value))}
+                  className="input-field"
+                >
+                  {(gameType === 'whot' ? WHOT_TURN_OPTIONS : SCRABBLE_TURN_OPTIONS).map((s) => (
+                    <option key={s} value={s}>
+                      {fmtTurn(s)}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-faint text-xs mt-1.5">How long each player has on their turn in every room.</p>
+              </Field>
+            )}
 
-            <Field label="Game length" htmlFor="h2h-game-duration">
+            <Field label={isSchool ? 'Match length' : 'Game length'} htmlFor="h2h-game-duration">
               <select
                 id="h2h-game-duration"
                 value={h2hGameDuration}
                 onChange={(e) => setH2hGameDuration(Number(e.target.value))}
                 className="input-field"
               >
-                {(gameType === 'whot' ? WHOT_DURATION_OPTIONS : SCRABBLE_DURATION_OPTIONS).map((s) => (
+                {(isSchool
+                  ? SCHOOL_MATCH_SECONDS_OPTIONS
+                  : gameType === 'whot'
+                    ? WHOT_DURATION_OPTIONS
+                    : SCRABBLE_DURATION_OPTIONS
+                ).map((s) => (
                   <option key={s} value={s}>
                     {fmtDuration(s)}
                   </option>
                 ))}
               </select>
               <p className="text-faint text-xs mt-1.5">
-                Max length of each room — when time&apos;s up the game ends and the leader wins, so rounds don&apos;t
-                drag on.
+                {isSchool
+                  ? 'How long each Whot match runs. Empty your hand first to win, or when time’s up the lowest cards win the room.'
+                  : 'Max length of each room — when time’s up the game ends and the leader wins, so rounds don’t drag on.'}
               </p>
             </Field>
 

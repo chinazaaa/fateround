@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   clampSchoolClassCount,
+  clampSchoolMatchSeconds,
   computeSchoolRooms,
+  DEFAULT_SCHOOL_MATCH_SECONDS,
   GRADUATE_LABEL,
   hasGraduated,
   MAX_SCHOOL_CLASSES,
@@ -29,6 +31,19 @@ describe('clampSchoolClassCount', () => {
   it('defaults to the full ladder for junk input', () => {
     expect(clampSchoolClassCount(undefined)).toBe(MAX_SCHOOL_CLASSES)
     expect(clampSchoolClassCount('nope')).toBe(MAX_SCHOOL_CLASSES)
+  })
+})
+
+describe('clampSchoolMatchSeconds', () => {
+  it('accepts the 2/3/4-minute options and defaults to 3 minutes otherwise', () => {
+    expect(clampSchoolMatchSeconds(120)).toBe(120)
+    expect(clampSchoolMatchSeconds(180)).toBe(180)
+    expect(clampSchoolMatchSeconds(240)).toBe(240)
+    expect(DEFAULT_SCHOOL_MATCH_SECONDS).toBe(180)
+    // Anything else (including the longer regular-Whot durations) falls back to default.
+    expect(clampSchoolMatchSeconds(900)).toBe(DEFAULT_SCHOOL_MATCH_SECONDS)
+    expect(clampSchoolMatchSeconds(0)).toBe(DEFAULT_SCHOOL_MATCH_SECONDS)
+    expect(clampSchoolMatchSeconds(undefined)).toBe(DEFAULT_SCHOOL_MATCH_SECONDS)
   })
 })
 

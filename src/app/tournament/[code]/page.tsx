@@ -1425,7 +1425,8 @@ export default function TournamentLobbyPage() {
               <li className="flex gap-2.5">
                 <span aria-hidden>🎓</span>
                 <span>
-                  Everyone starts in the lowest class. Each round you&apos;re grouped by class into a Whot room of 3–5.
+                  Everyone starts in the lowest class. Each round you&apos;re grouped by class into one timed Whot room
+                  of 3–5.
                 </span>
               </li>
               <li className="flex gap-2.5">
@@ -1434,7 +1435,7 @@ export default function TournamentLobbyPage() {
                   <span className="text-body font-semibold">
                     Win your room to graduate to the next class; otherwise you repeat it.
                   </span>{' '}
-                  Nobody is knocked out.
+                  Empty your hand first to win, or when time&apos;s up the lowest cards win. Nobody is knocked out.
                 </span>
               </li>
               <li className="flex gap-2.5">

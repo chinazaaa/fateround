@@ -10,7 +10,7 @@ import {
   KNOCKOUT_ELIGIBLE_TYPES,
   SCHOOL_ELIGIBLE_TYPES,
 } from '@/lib/tournament-validation'
-import { clampSchoolClassCount } from '@/lib/tournament-school'
+import { clampSchoolClassCount, clampSchoolMatchSeconds } from '@/lib/tournament-school'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampChessTimer } from '@/lib/chess'
 import { clampWhotGameDuration } from '@/lib/whot'
@@ -96,7 +96,8 @@ export async function POST(req: NextRequest) {
     schoolGameConfig = {
       schoolClassCount: clampSchoolClassCount(gameConfig?.schoolClassCount ?? 16),
       timerSeconds: clampBoardGameTurnTimer(gameConfig?.timerSeconds ?? 30, 'whot'),
-      gameDurationSeconds: clampWhotGameDuration(gameConfig?.gameDurationSeconds ?? 900),
+      // One timed Whot match per round (2/3/4 min); lowest hand wins at time-up.
+      gameDurationSeconds: clampSchoolMatchSeconds(gameConfig?.gameDurationSeconds),
       whotPick3: gameConfig?.whotPick3 ?? true,
       whotCards: gameConfig?.whotCards ?? true,
       whotNumberCalls: gameConfig?.whotNumberCalls ?? true,

@@ -41,6 +41,20 @@ export const SCHOOL_LADDER_OPTIONS = [
   { count: MAX_SCHOOL_CLASSES, label: 'Full ladder', hint: 'Primary 1 → University 400L → Graduate' },
 ] as const
 
+// Match-length choices for a school round, in seconds. Each round is one timed
+// Whot match: whoever empties their hand first wins, otherwise at time-up the
+// lowest hand total wins the room. Shorter than the regular Whot game-duration
+// options (which start at 10 min), so School clamps its own value rather than
+// going through clampWhotGameDuration.
+export const SCHOOL_MATCH_SECONDS_OPTIONS = [120, 180, 240] as const
+export const DEFAULT_SCHOOL_MATCH_SECONDS = 180
+
+/** Clamp a school match length to one of the allowed options (default 3 min). */
+export function clampSchoolMatchSeconds(raw: unknown): number {
+  const n = Math.floor(Number(raw))
+  return (SCHOOL_MATCH_SECONDS_OPTIONS as readonly number[]).includes(n) ? n : DEFAULT_SCHOOL_MATCH_SECONDS
+}
+
 /** Clamp an arbitrary class-count input to a valid ladder length (2…max). */
 export function clampSchoolClassCount(value: unknown): number {
   const n = Math.floor(Number(value))
