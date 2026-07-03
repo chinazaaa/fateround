@@ -24,6 +24,8 @@ export const GAME_ACHIEVEMENTS: Achievement[] = [
   { key: 'codewords_spymaster', label: 'Best Spymaster', baseGameType: 'codewords', accent: '#14b8a6' },
   { key: 'codewords_operative', label: 'Best Operative', baseGameType: 'codewords', accent: '#0ea5e9' },
   { key: 'two_truths_guesser', label: 'Best Guesser', baseGameType: 'two_truths', accent: '#8b5cf6' },
+  { key: 'describe_it_describer', label: 'Best Describer', baseGameType: 'describe_it', accent: '#f59e0b' },
+  { key: 'describe_it_guesser', label: 'Best Guesser', baseGameType: 'describe_it', accent: '#22c55e' },
 ]
 
 export function achievementByKey(key: string): Achievement | null {

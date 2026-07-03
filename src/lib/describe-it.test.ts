@@ -1,6 +1,60 @@
 import { describe, it, expect } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { describerForIndividualTurn, nextIndividualDescriberIndex, processDescribeItAdvance } from './describe-it'
+import {
+  describeItRoleLeaderboards,
+  describerForIndividualTurn,
+  nextIndividualDescriberIndex,
+  processDescribeItAdvance,
+} from './describe-it'
+
+describe('describeItRoleLeaderboards', () => {
+  const players = [
+    { id: 'A', name: 'Ann' },
+    { id: 'B', name: 'Bob' },
+    { id: 'C', name: 'Cid' },
+  ]
+  // roster A,B,C over 2 rounds → turns: 0=A 1=B 2=C 3=A 4=B 5=C describe.
+  const roster = ['A', 'B', 'C']
+
+  it('splits guesser and describer points from the raw scored guesses', () => {
+    const guesses = [
+      // Turn 0 (A describes): B and C guess correctly.
+      { player_id: 'B', turn_index: 0, points: 30 },
+      { player_id: 'C', turn_index: 0, points: 20 },
+      // Turn 1 (B describes): A guesses.
+      { player_id: 'A', turn_index: 1, points: 40 },
+      // Turn 2 (C describes): A guesses.
+      { player_id: 'A', turn_index: 2, points: 10 },
+    ]
+    const { guessers, describers } = describeItRoleLeaderboards(guesses, roster, players)
+
+    // Guesser totals: A=50, B=30, C=20.
+    expect(guessers.map((g) => [g.id, g.score])).toEqual([
+      ['A', 50],
+      ['B', 30],
+      ['C', 20],
+    ])
+    // Describer totals: A earned 30+20=50 (turn 0), B earned 40 (turn 1), C earned 10 (turn 2).
+    expect(describers.map((d) => [d.id, d.score])).toEqual([
+      ['A', 50],
+      ['B', 40],
+      ['C', 10],
+    ])
+  })
+
+  it('ignores unscored (team-mode) guesses and excludes spectators', () => {
+    const guesses = [
+      { player_id: 'B', turn_index: 0, points: 0 }, // team-mode: points 0 → ignored
+      { player_id: 'C', turn_index: 0, points: 15 },
+    ]
+    const withSpectator = [...players, { id: 'S', name: 'Spec', spectator: true }]
+    const { guessers, describers } = describeItRoleLeaderboards(guesses, roster, withSpectator)
+    expect(guessers.find((g) => g.id === 'S')).toBeUndefined()
+    expect(guessers[0]).toEqual({ id: 'C', name: 'Cid', score: 15 })
+    // A described turn 0, so A gets C's 15 describer points.
+    expect(describers[0]).toEqual({ id: 'A', name: 'Ann', score: 15 })
+  })
+})
 
 describe('nextIndividualDescriberIndex', () => {
   const roster = ['A', 'B', 'C'] // rounds=2 → 6 turns: A B C A B C
