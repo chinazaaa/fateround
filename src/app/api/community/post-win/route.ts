@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getGameByType, postWinFromGame } from '@/lib/community-data'
+import { isValidLeaderboardType } from '@/lib/community-achievements'
 import { watToday } from '@/lib/community-dates'
 import { clearPostWinAttempts, clientIp, reservePostWinSlot } from '@/lib/community-rate-limit'
 import { getSupabaseAdmin, hasServiceRoleKey } from '@/lib/supabase-admin'
@@ -45,6 +46,11 @@ export async function POST(req: NextRequest) {
         ? body.sourceGameId.trim()
         : ''
   const roundKey = typeof body.roundKey === 'string' ? body.roundKey.trim() : ''
+  // Which leaderboard entry to post to: the real game type for normal games, or an
+  // achievement key (e.g. 'codewords_spymaster') for role-based awards. Validated
+  // below against the game actually played. Older callers omit it — fall back to
+  // the real game type so they behave exactly as before.
+  const leaderboardType = typeof body.leaderboardType === 'string' ? body.leaderboardType.trim() : ''
 
   if (!playerName) return NextResponse.json({ error: 'Enter your name' }, { status: 400 })
   if (!gameId) return NextResponse.json({ error: 'Missing game reference' }, { status: 400 })
@@ -72,9 +78,18 @@ export async function POST(req: NextRequest) {
     if (!game?.game_type) {
       return NextResponse.json({ error: 'Game not found.' }, { status: 404 })
     }
+    const realGameType = game.game_type as string
+
+    // The target board is the real game type by default, or a requested achievement
+    // that belongs to it. Reject anything else so a crafted request can't post a win
+    // onto an unrelated leaderboard row.
+    const targetType = leaderboardType || realGameType
+    if (!isValidLeaderboardType(realGameType, targetType)) {
+      return NextResponse.json({ error: 'This win does not belong to that leaderboard.' }, { status: 400 })
+    }
 
     const outcome = await postWinFromGame({
-      gameType: game.game_type as string,
+      gameType: targetType,
       playerName,
       sourceGameId: ledgerKey,
       dateStr: watToday(),

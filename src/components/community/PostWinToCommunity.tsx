@@ -13,6 +13,11 @@ import { useEffect, useRef, useState } from 'react'
 //
 // Renders nothing unless the game maps to an active leaderboard row, so it
 // silently no-ops for games that aren't tracked.
+//
+// `gameType` is the leaderboard entry to post to. For normal games it's the real
+// game type (e.g. "whot"); for role-based awards it's an achievement key (e.g.
+// "codewords_spymaster"). The server independently derives the game actually
+// played from `gameCode` and rejects a mismatch, so this can't be spoofed.
 export function PostWinToCommunity({
   gameType,
   gameCode,
@@ -84,6 +89,7 @@ export function PostWinToCommunity({
         playerName: winnerName.trim(),
         gameId: gameCode,
         roundKey: roundKey ?? null,
+        leaderboardType: gameType,
       }),
     })
       .then(async (res) => {

@@ -15,8 +15,9 @@ type Props = {
   footer?: React.ReactNode
   disabled?: boolean
   // When set, shows a note that winning this game lands the player on the
-  // community leaderboard (only if the game type is actually tracked there).
-  gameType?: string
+  // community leaderboard (only if the game type is actually tracked there). May be
+  // several entries for role-based games that feed more than one leaderboard row.
+  gameType?: string | string[]
 }
 
 export function NameJoinForm({

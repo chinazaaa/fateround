@@ -205,7 +205,13 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         gameCode={gameCode}
         header={<GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="two_truths" />}
       >
-        <NameJoinForm value={joinName} onChange={setJoinName} onSubmit={() => void join()} joining={joining} />
+        <NameJoinForm
+          value={joinName}
+          onChange={setJoinName}
+          onSubmit={() => void join()}
+          joining={joining}
+          gameType="two_truths_guesser"
+        />
       </GameJoinLobbyShell>
     )
   }
