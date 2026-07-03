@@ -662,14 +662,16 @@ export default function TournamentLobbyPage() {
   // several still standing, and that has no winner.
   const h2hChampion =
     (h2h || knockout) && isFinished && survivingCount === 1 ? (players.find((p) => !p.is_eliminated) ?? null) : null
-  // School champion: the player who graduated past the top class. Nobody is
-  // eliminated, so the winner is whoever reached the ladder's end. Several players
-  // can graduate from the same final room at once; prefer the one who topped a
-  // room (its Whot winner) as the champion, else any graduate.
+  // School champion: whoever reached the ladder's end, or the last player left
+  // standing once everyone else was left behind and eliminated. Several players can
+  // graduate from the same final room at once; prefer the one who topped a room
+  // (its Whot winner), else any graduate, else the sole survivor.
   const schoolGraduates =
     school && isFinished ? players.filter((p) => hasGraduated(p.school_level ?? 0, schoolClassCount)) : []
   const schoolChampion =
-    schoolGraduates.find((p) => games.some((g) => g.winner_player_id === p.id)) ?? schoolGraduates[0] ?? null
+    schoolGraduates.find((p) => games.some((g) => g.winner_player_id === p.id)) ??
+    schoolGraduates[0] ??
+    (school && isFinished && survivingCount === 1 ? (players.find((p) => !p.is_eliminated) ?? null) : null)
 
   // Knockout derived state — one group game per round.
   const knockoutGames = knockout ? games.filter((g) => g.round_number != null) : []
@@ -1057,7 +1059,7 @@ export default function TournamentLobbyPage() {
               <p className="text-faint text-xs text-center">
                 {survivingCount < 2
                   ? 'Waiting for players to join before you can start.'
-                  : 'Groups everyone by class into Whot rooms (up to 5) and sends them in. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats.'}
+                  : 'Groups everyone by class into Whot rooms (up to 5) and sends them in. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats. A player left alone in a class the others have moved past is out.'}
               </p>
             </div>
           )}
@@ -1438,8 +1440,8 @@ export default function TournamentLobbyPage() {
                 <span aria-hidden>🃏</span>
                 <span>
                   <span className="text-body font-semibold">Empty your hand and you climb to the next class.</span> The
-                  rest keep playing; when time&apos;s up the one left holding the most cards repeats the class. Nobody
-                  is knocked out.
+                  rest keep playing; when time&apos;s up the one left holding the most cards repeats the class. If you
+                  end up the only one left in your class while others have moved up, you&apos;re out.
                 </span>
               </li>
               <li className="flex gap-2.5">
@@ -1578,7 +1580,9 @@ export default function TournamentLobbyPage() {
           <p className="text-4xl" aria-hidden="true">
             🎓
           </p>
-          <p className="label-caps">Graduated — Champion</p>
+          <p className="label-caps">
+            {hasGraduated(schoolChampion.school_level ?? 0, schoolClassCount) ? 'Graduated — Champion' : 'Champion'}
+          </p>
           <p className="text-2xl font-black gradient-title">{schoolChampion.player_name}</p>
         </div>
       )}

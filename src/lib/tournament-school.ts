@@ -88,13 +88,15 @@ export interface SchoolPlayerLevel {
 }
 
 // The most players a school Whot room holds. There's no minimum: a class with
-// only two players just plays a room of two. Whot itself allows up to 6, which is
-// the ceiling a lone-player merge can briefly reach.
+// only two players just plays a room of two (Whot itself allows up to 6).
 export const SCHOOL_MAX_ROOM = 5
 
 export interface SchoolRooms {
   /** Groups of player ids that each play one Whot game this round. */
   rooms: string[][]
+  /** Lone players with nobody left in their class and someone in a higher class —
+   *  left behind, so they're eliminated. */
+  eliminated: string[]
 }
 
 /** Split ids into the fewest rooms that stay ≤ max, balanced to within one each. */
@@ -117,18 +119,19 @@ function balancedChunks(ids: string[], max: number): string[][] {
  * the same class play each other: a class with 6 players makes two rooms of 3, a
  * class with just 2 makes a room of 2 (no minimum). Rooms hold at most 5.
  *
- * A class with a single lone player can't play alone, so lone players fall back to
- * the nearest class: if two or more players are stranded alone in their classes,
- * they group together (sorted by class, so the nearest classes pair up); a single
- * stranded player joins the room nearest to their class. Either way every player
- * gets a room whenever at least two remain — nobody sits out and it can't deadlock
- * on one player stuck alone in the top class.
+ * A player alone in their class can't play. If anyone is in a *higher* class, that
+ * lone player has been left behind — everyone else moved up and they're stuck
+ * repeating alone — so they're eliminated. A lone player in the *highest* class is
+ * the frontrunner, not a straggler: they aren't eliminated, they simply wait for
+ * someone to climb up to them (or win by last-one-standing if the field thins out).
+ * This means the top class can never be eliminated, so a tournament always keeps a
+ * winner.
  *
  * The caller shuffles `players` first; the grouping preserves that order within a
  * class, so rooms vary round to round.
  */
 export function computeSchoolRooms(players: SchoolPlayerLevel[]): SchoolRooms {
-  if (players.length < 2) return { rooms: [] }
+  if (players.length < 2) return { rooms: [], eliminated: [] }
 
   // Bucket by class, lowest first; same-class order stays as the caller shuffled it.
   const byLevel = new Map<number, string[]>()
@@ -138,41 +141,22 @@ export function computeSchoolRooms(players: SchoolPlayerLevel[]): SchoolRooms {
     byLevel.set(p.level, arr)
   }
   const levels = [...byLevel.keys()].sort((a, b) => a - b)
+  const topLevel = levels[levels.length - 1]
 
-  // Classes with ≥2 players form their own rooms; lone players are set aside.
-  const rooms: { ids: string[]; level: number }[] = []
-  const singles: { id: string; level: number }[] = []
+  const rooms: string[][] = []
+  const eliminated: string[] = []
   for (const level of levels) {
     const ids = byLevel.get(level) ?? []
-    if (ids.length < 2) {
-      singles.push({ id: ids[0], level })
-      continue
+    if (ids.length >= 2) {
+      rooms.push(...balancedChunks(ids, SCHOOL_MAX_ROOM))
+    } else if (level < topLevel) {
+      // Alone in a lower class — left behind by everyone above. Eliminated.
+      eliminated.push(ids[0])
     }
-    for (const chunk of balancedChunks(ids, SCHOOL_MAX_ROOM)) rooms.push({ ids: chunk, level })
+    // A lone player in the top class waits (not eliminated) — see the note above.
   }
 
-  // Place lone players in the nearest class. Two or more stranded players form
-  // their own rooms (sorted by class → nearest classes together); a single one
-  // joins the room closest to their class.
-  if (singles.length >= 2) {
-    for (const chunk of balancedChunks(
-      singles.map((s) => s.id),
-      SCHOOL_MAX_ROOM
-    )) {
-      rooms.push({ ids: chunk, level: 0 })
-    }
-  } else if (singles.length === 1 && rooms.length > 0) {
-    const lone = singles[0]
-    // Prefer a room with spare space; among those, the class-nearest one.
-    const target =
-      [...rooms]
-        .filter((r) => r.ids.length < SCHOOL_MAX_ROOM)
-        .sort((a, b) => Math.abs(a.level - lone.level) - Math.abs(b.level - lone.level))[0] ??
-      [...rooms].sort((a, b) => Math.abs(a.level - lone.level) - Math.abs(b.level - lone.level))[0]
-    target.ids.push(lone.id)
-  }
-
-  return { rooms: rooms.map((r) => r.ids) }
+  return { rooms, eliminated }
 }
 
 /** The single player who repeats a school room: whoever holds the most cards at
