@@ -103,26 +103,59 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     ]
     const { data: rosterRows } = await admin
       .from('tournament_players')
-      .select('id, player_name')
+      .select('id, player_name, is_eliminated')
       .in('id', memberIds.length ? memberIds : ['__none__'])
-    const nameById = new Map((rosterRows ?? []).map((p) => [p.id, p.player_name.toLowerCase()]))
+    const rosterById = new Map(
+      (rosterRows ?? []).map((p) => [p.id, { name: p.player_name.toLowerCase(), eliminated: p.is_eliminated === true }])
+    )
 
     const sessionStartedAt = new Date().toISOString()
     let started = 0
     let waiting = 0
+    let resolved = 0
 
     for (const room of roundRooms) {
       const gameId = room.game_id as string
-      const expectedNames = new Set(
-        ((room.member_ids ?? []) as string[]).map((id) => nameById.get(id)).filter((n): n is string => Boolean(n))
-      )
+      // The members this room still expects to seat: everyone in member_ids who hasn't
+      // been removed/eliminated. A removed no-show drops out of the set, so the host can
+      // unblock a stuck room by removing someone who never shows (as in head-to-head).
+      const activeMembers = ((room.member_ids ?? []) as string[])
+        .map((id) => ({ id, info: rosterById.get(id) }))
+        .filter((x): x is { id: string; info: { name: string; eliminated: boolean } } => {
+          return x.info != null && !x.info.eliminated
+        })
+
+      // Too few players left to run this room — every no-show got removed, or a
+      // remainder room shrank below two. Clear it so it never blocks the round: a lone
+      // survivor walks over (advances), an empty room is voided. Without this, a room
+      // that can't reach 2 seated members would sit `pending` forever and the host
+      // could never stage the next round.
+      if (activeMembers.length < 2) {
+        const walkoverWinner = activeMembers[0]?.id ?? null
+        await admin
+          .from('tournament_games')
+          .update({
+            status: 'finished',
+            winner_player_id: walkoverWinner,
+            win_reason: walkoverWinner ? 'walkover' : null,
+          })
+          .eq('id', room.id)
+          .neq('status', 'finished')
+        await admin.from('games').update({ status: 'finished' }).eq('id', gameId)
+        resolved++
+        continue
+      }
+
+      const expectedNames = new Set(activeMembers.map((m) => m.info.name))
       const { data: gamePlayers } = await admin.from('players').select('id, name, spectator').eq('game_id', gameId)
       const seated = (gamePlayers ?? []).filter((p) => p.spectator !== true)
-      // Seat only this room's expected members (never a stray joiner). A game needs
-      // at least 2; a no-show member is simply absent and gets eliminated as a
-      // non-winner when the room resolves.
+      // Seat only this room's expected members (never a stray joiner).
       const memberSeats = seated.filter((p) => expectedNames.has(p.name.toLowerCase()))
-      if (memberSeats.length < 2) {
+      // Wait until EVERY expected member is actually seated before dealing. Whot/Scrabble
+      // can't add a player once the game is live, so starting while a member is still
+      // mid-join would strand them as a spectator for the whole round. Genuine no-shows
+      // are cleared by the host removing them, which drops them from expectedNames.
+      if (memberSeats.length < expectedNames.size) {
         waiting++
         continue
       }
@@ -156,7 +189,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       started++
     }
 
-    return NextResponse.json({ started, waiting })
+    return NextResponse.json({ started, waiting, resolved })
   }
 
   const roundMatches = pendingRows.filter((r) => r.round_number === roundNumber && !r.is_bye && r.game_id)
