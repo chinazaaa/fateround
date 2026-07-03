@@ -140,10 +140,8 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   // computeScreen can pick 'playing' vs 'waiting'.
   const afterResolve = useCallback(
     async (gameData: Game, playerId: string | null): Promise<SudokuGameState> => {
-      if (!playerId) return { hasValidRound: false }
-
-      if (gameData.status === 'waiting') return { hasValidRound: false }
-
+      // A finished game shows the final leaderboard to everyone — including a
+      // session-less visitor — so load submissions before the playerId guard.
       if (gameData.status === 'finished') {
         const { data: subs } = await supabase
           .from('sudoku_submissions')
@@ -152,6 +150,10 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         setSubmissions((subs ?? []) as SudokuSubmission[])
         return { hasValidRound: false }
       }
+
+      if (!playerId) return { hasValidRound: false }
+
+      if (gameData.status === 'waiting') return { hasValidRound: false }
 
       const { data: roundData } = await supabase
         .from('rounds')
@@ -187,12 +189,13 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   // otherwise the screen follows game status, dropping to 'waiting' when the active game
   // has no valid round/puzzle yet.
   const computeScreen = useCallback((gameData: Game, playerId: string | null, state: SudokuGameState): View => {
+    // A finished game shows the leaderboard to everyone, session or not.
+    if (gameData.status === 'finished') return 'finished'
     if (!playerId) {
       const pre = preJoinScreen(gameData, false)
       return pre === 'late_join_choice' ? 'late_join_choice' : 'join'
     }
     if (gameData.status === 'waiting') return 'waiting'
-    if (gameData.status === 'finished') return 'finished'
     return state.hasValidRound ? 'playing' : 'waiting'
   }, [])
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   DescribeItCard,
@@ -61,6 +61,9 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [session, setSession] = useState<DescribeItSession | null>(null)
+  // Last successfully-read session — returned as the load state when a session read fails,
+  // so computeScreen keeps the current screen instead of flipping (e.g. finished→active).
+  const sessionRef = useRef<DescribeItSession | null>(null)
   const [teamRows, setTeamRows] = useState<DescribeItPlayer[]>([])
   const [words, setWords] = useState<DescribeItWord[]>([])
   const [guesses, setGuesses] = useState<DescribeItGuess[]>([])
@@ -85,12 +88,25 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
         .order('created_at', { ascending: false })
         .limit(40),
     ])
-    const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as DescribeItSession | null) : null
-    if (sessionData) setSession(sessionData)
+    const sessionOk = supabasePollOk(sessionRes)
+    const sessionData = sessionOk ? (sessionRes.data as DescribeItSession | null) : null
+    // Only touch the session when its own read succeeded: this clears a stale session
+    // when the query returns no row, while a *non-session* query failing leaves the
+    // real session (and screen) intact — no spurious results→active flash.
+    if (sessionOk) {
+      setSession(sessionData)
+      sessionRef.current = sessionData
+    }
     if (supabasePollOk(teamRes)) setTeamRows((teamRes.data ?? []) as DescribeItPlayer[])
     if (supabasePollOk(wordRes)) setWords((wordRes.data ?? []) as DescribeItWord[])
     if (supabasePollOk(guessRes)) setGuesses((guessRes.data ?? []) as DescribeItGuess[])
-    return { state: sessionData, ok: true }
+    // `ok` gates the polling fallback's back-off — only "ok" when every read succeeded.
+    // On a failed session read, hand computeScreen the last-known session (not null) so the
+    // screen doesn't briefly flip (e.g. finished→active) on a transient error.
+    return {
+      state: sessionOk ? sessionData : sessionRef.current,
+      ok: supabasePollOk(sessionRes, teamRes, wordRes, guessRes),
+    }
   }, [gameCode])
 
   const computeScreen = useCallback(

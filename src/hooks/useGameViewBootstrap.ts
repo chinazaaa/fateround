@@ -138,8 +138,15 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     // state slice handed to computeScreen (undefined return => keep the loadGameState state).
     let effectiveState = state
     if (afterResolve) {
-      const patched = await afterResolve(gameData, playerId, state)
-      if (patched !== undefined) effectiveState = patched
+      try {
+        const patched = await afterResolve(gameData, playerId, state)
+        if (patched !== undefined) effectiveState = patched
+      } catch (err) {
+        // A throwing afterResolve must not leave the hook stuck on the loading screen
+        // (or reject as an unhandled promise) — fall back to the loadGameState state and
+        // still compute + set the screen so bootstrap always completes.
+        console.error('useGameViewBootstrap: afterResolve failed', err)
+      }
     }
 
     setScreen(computeScreen(gameData, playerId, effectiveState))
@@ -174,7 +181,13 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
         setMyPlayerId(data.playerId)
         setMyResumeToken(data.resumeToken ?? null)
-        onJoinSuccess?.(data as JoinResponse)
+        try {
+          onJoinSuccess?.(data as JoinResponse)
+        } catch (err) {
+          // Isolate the success callback: a throwing onJoinSuccess must not fall into the
+          // catch below and turn a completed join into a 'Failed to join' error or skip load().
+          console.error('useGameViewBootstrap: onJoinSuccess failed', err)
+        }
         await load()
       } catch {
         // Network failure / non-JSON body throws before the HTTP-status check above —

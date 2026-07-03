@@ -186,6 +186,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     setMyPlayerId(null)
     setMyResumeToken(null)
     setJoinName('')
+    setJoinToken(null) // reset the token picker so a re-join starts clean (no stale token reuse)
     setScreen('join')
   }
 
