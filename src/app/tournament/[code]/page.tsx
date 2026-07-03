@@ -7,6 +7,7 @@ import type { Tournament, TournamentPlayer, TournamentGame } from '@/types/tourn
 import type { TriviaQuestion } from '@/types'
 import { TOURNAMENT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
 import { groupRoundLabel, resolveGroupSize, roundLabel } from '@/lib/tournament-bracket'
+import { clampSchoolClassCount, hasGraduated, schoolClassLabel } from '@/lib/tournament-school'
 import { gameTypeLabel } from '@/lib/game-types'
 import {
   parseTriviaQuestionImport,
@@ -164,7 +165,9 @@ export default function TournamentLobbyPage() {
   // bracket board rather than being pulled into a single game.)
   useEffect(() => {
     if (joined || isHost || !spectating || tournament?.status === 'finished') return
-    if (tournament?.format === 'head-to-head') return
+    // Bracket-style formats run many simultaneous 1-v-1 rooms — spectators pick one
+    // from the board rather than being pulled into a single game.
+    if (tournament?.format === 'head-to-head' || tournament?.format === 'school') return
     const active = games.find((g) => g.status === 'active')
     if (!active || watchedGameRef.current === active.game_id) return
     watchedGameRef.current = active.game_id
@@ -206,11 +209,12 @@ export default function TournamentLobbyPage() {
     router.push(`/game/${roundGame.game_id}${suffix}`)
   }, [joined, isHost, tournament?.format, tournament?.status, games, players, tournamentId, router])
 
-  // Head-to-head: forward each joined player to their own match room for the
-  // current round (once it's staged or live). Bye players and eliminated players
-  // stay on the lobby.
+  // Head-to-head / school: forward each joined player to their own 1-v-1 match
+  // room for the current round (once it's staged or live). Bye / sit-out players
+  // and eliminated players stay on the lobby.
   useEffect(() => {
-    if (!joined || isHost || tournament?.format !== 'head-to-head' || tournament?.status === 'finished') return
+    const duel = tournament?.format === 'head-to-head' || tournament?.format === 'school'
+    if (!joined || isHost || !duel || tournament?.status === 'finished') return
     const name = localStorage.getItem(`tournament_player_${tournamentId}`)
     const me = name ? players.find((p) => p.player_name.toLowerCase() === name.toLowerCase()) : null
     if (!me || me.is_eliminated) return
@@ -620,18 +624,29 @@ export default function TournamentLobbyPage() {
   const effectiveCustomCount = customTrivia.length > 0 ? customTrivia.length : (carriedCustomCount ?? 0)
   const canStartCustom = !isCustom || effectiveCustomCount >= rounds
 
-  // Format derived state. Head-to-head (1v1 bracket) and knockout (group
-  // elimination) both run rounds toward a champion; round-robin does not.
+  // Format derived state. Head-to-head (1v1 bracket), knockout (group
+  // elimination), and school (class ladder) all run rounds; round-robin does not.
   const h2h = tournament.format === 'head-to-head'
   const knockout = tournament.format === 'knockout'
-  const bracket = h2h || knockout
+  const school = tournament.format === 'school'
+  // 1-v-1 room formats sharing the head-to-head board + round plumbing.
+  const duel = h2h || school
+  const bracket = h2h || knockout || school
   const roundRobin = !bracket
+  // School: the class ladder length; a win climbs a class, graduating past the top wins.
+  const schoolClassCount = clampSchoolClassCount(
+    (tournament.game_config as { schoolClassCount?: number } | null)?.schoolClassCount
+  )
+  const classLabelOf = (id: string | null) => {
+    const p = id ? players.find((pl) => pl.id === id) : null
+    return p ? schoolClassLabel(p.school_level ?? 0, schoolClassCount) : ''
+  }
   // Bracket room size: chess is a 1v1 duel (2); Whot/Scrabble play in rooms of 4.
   const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
   const isGroupH2h = h2h && groupSize > 2
   const labelForRound = (entrants: number) => (isGroupH2h ? groupRoundLabel(entrants, groupSize) : roundLabel(entrants))
   const playerNameById = (id: string | null) => (id ? (players.find((p) => p.id === id)?.player_name ?? '—') : '—')
-  const h2hMatches = h2h ? games.filter((g) => g.round_number != null) : []
+  const h2hMatches = duel ? games.filter((g) => g.round_number != null) : []
   const currentRoundNumber = h2hMatches.length ? Math.max(...h2hMatches.map((g) => g.round_number ?? 0)) : 0
   const currentRoundMatches = h2hMatches.filter((g) => g.round_number === currentRoundNumber)
   const currentRoundEntrants = currentRoundMatches.reduce((n, m) => n + (m.is_bye ? 1 : matchMemberIds(m).length), 0)
@@ -644,7 +659,11 @@ export default function TournamentLobbyPage() {
   // one when exactly one player is left — a host can End Tournament early with
   // several still standing, and that has no winner.
   const h2hChampion =
-    bracket && isFinished && survivingCount === 1 ? (players.find((p) => !p.is_eliminated) ?? null) : null
+    (h2h || knockout) && isFinished && survivingCount === 1 ? (players.find((p) => !p.is_eliminated) ?? null) : null
+  // School champion: the player who graduated past the top class. Nobody is
+  // eliminated, so the winner is whoever reached the ladder's end (not a lone survivor).
+  const schoolChampion =
+    school && isFinished ? (players.find((p) => hasGraduated(p.school_level ?? 0, schoolClassCount)) ?? null) : null
 
   // Knockout derived state — one group game per round.
   const knockoutGames = knockout ? games.filter((g) => g.round_number != null) : []
@@ -665,7 +684,7 @@ export default function TournamentLobbyPage() {
     : []
   // The current player's live/staged match this round (for a "return to match" CTA).
   const myCurrentMatch =
-    h2h && me && !me.is_eliminated
+    duel && me && !me.is_eliminated
       ? (currentRoundMatches.find(
           (g) => !g.is_bye && g.game_id && matchHasPlayer(g, me.id) && (g.status === 'pending' || g.status === 'active')
         ) ?? null)
@@ -673,7 +692,7 @@ export default function TournamentLobbyPage() {
 
   // Decided matches grouped by round, for the on-page results view (final result
   // plus every round). Includes byes; ordered round 1 → final.
-  const resultRounds = h2h
+  const resultRounds = duel
     ? Object.values(
         games
           .filter((g) => g.round_number != null && (g.status === 'finished' || g.is_bye))
@@ -714,16 +733,20 @@ export default function TournamentLobbyPage() {
               ? `${isGroupH2h ? '🎮' : '♟'} ${gameTypeLabel(tournament.game_type) ?? 'Chess'}`
               : knockout
                 ? `🧠 ${gameTypeLabel(tournament.game_type) ?? 'Trivia'}`
-                : '🎮 Trivia'}
+                : school
+                  ? `🃏 ${gameTypeLabel(tournament.game_type) ?? 'Whot'}`
+                  : '🎮 Trivia'}
           </span>
           <span className="chip text-xs">
             {h2h
               ? '🏆 Head-to-Head'
               : knockout
                 ? '🏆 Knockout'
-                : tournament.target_game_count
-                  ? `Best of ${tournament.target_game_count}`
-                  : 'Unlimited games'}
+                : school
+                  ? '🎓 School'
+                  : tournament.target_game_count
+                    ? `Best of ${tournament.target_game_count}`
+                    : 'Unlimited games'}
           </span>
           {lives && (
             <span className="chip text-xs">
@@ -882,12 +905,13 @@ export default function TournamentLobbyPage() {
 
       {/* Head-to-head bracket board — the spectator view of the current round.
           Watch a match, then use its "Back to Tournament" button to switch. */}
-      {h2h && currentRoundMatches.length > 0 && (
+      {duel && currentRoundMatches.length > 0 && (
         <TournamentBracketBoard
           matches={currentRoundMatches}
           roundNumber={currentRoundNumber}
-          roundLabel={labelForRound(currentRoundEntrants)}
+          roundLabel={school ? 'Whot matches' : labelForRound(currentRoundEntrants)}
           nameOf={playerNameById}
+          subOf={school ? classLabelOf : undefined}
           onWatch={handleWatchGame}
           onRemovePlayer={isHost ? handleRemovePlayer : undefined}
         />
@@ -1003,6 +1027,45 @@ export default function TournamentLobbyPage() {
                 {actionLoading ? 'Starting…' : 'Start Game'}
               </PrimaryBtn>
               <p className="text-faint text-xs text-center">Starts the trivia game once players are in the room.</p>
+            </div>
+          )}
+
+          <button onClick={handleEndTournament} disabled={actionLoading} className="btn-danger-soft">
+            End Tournament
+          </button>
+        </div>
+      )}
+
+      {/* Host Controls — school (class ladder). Same round plumbing as head-to-head
+          (pair → start the 1-v-1 Whot rooms), but winners climb a class instead of
+          knocking losers out. */}
+      {isHost && !isFinished && school && (
+        <div className="glass-card-strong p-5 space-y-4">
+          <p className="label-caps">School controls</p>
+
+          {!roundInProgress && (
+            <div className="space-y-1.5">
+              <PrimaryBtn onClick={handleStartRound} disabled={actionLoading || survivingCount < 2}>
+                {actionLoading ? 'Pairing…' : currentRoundNumber > 0 ? 'Start Next Round' : 'Start Round'}
+              </PrimaryBtn>
+              <p className="text-faint text-xs text-center">
+                {survivingCount < 2
+                  ? 'Waiting for players to join before you can start.'
+                  : 'Pairs everyone by class and sends them to their Whot match rooms. With an odd number, one player sits the round out and keeps their class.'}
+              </p>
+            </div>
+          )}
+
+          {stagedMatches.length > 0 && (
+            <div className="space-y-1.5">
+              <PrimaryBtn onClick={handleStartMatches} disabled={actionLoading}>
+                {actionLoading
+                  ? 'Starting…'
+                  : `Start ${stagedMatches.length} Match${stagedMatches.length === 1 ? '' : 'es'}`}
+              </PrimaryBtn>
+              <p className="text-faint text-xs text-center">
+                Starts every match at once. Players must be in their rooms first.
+              </p>
             </div>
           )}
 
@@ -1224,6 +1287,42 @@ export default function TournamentLobbyPage() {
                   <span>Last player standing wins — or tap End Tournament anytime.</span>
                 </li>
               </ul>
+            ) : school ? (
+              <ul className="space-y-2 text-sm text-muted">
+                <li className="flex gap-2.5">
+                  <span aria-hidden>📣</span>
+                  <span>
+                    Share the invite link so players join. The roster{' '}
+                    <span className="text-body font-semibold">locks</span> when you start the first round. Everyone
+                    begins in the lowest class.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>▶️</span>
+                  <span>
+                    Tap <span className="text-body font-semibold">Start Round</span> — players are paired by class and
+                    sent to their 1-v-1 Whot rooms. An odd one out sits the round out.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>🃏</span>
+                  <span>
+                    Once players are in their rooms, tap <span className="text-body font-semibold">Start Matches</span>{' '}
+                    to begin every game at once. You host from here — you don&apos;t play.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>🔁</span>
+                  <span>
+                    When the matches finish, each winner moves up a class and the loser repeats it. Tap{' '}
+                    <span className="text-body font-semibold">Start Next Round</span> to pair the next set.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>🎓</span>
+                  <span>The first player to graduate past the top class wins — or tap End Tournament anytime.</span>
+                </li>
+              </ul>
             ) : (
               <ul className="space-y-2 text-sm text-muted">
                 <li className="flex gap-2.5">
@@ -1317,6 +1416,35 @@ export default function TournamentLobbyPage() {
               <li className="flex gap-2.5">
                 <span aria-hidden>👑</span>
                 <span>Survive every round to become champion.</span>
+              </li>
+            </ul>
+          ) : school ? (
+            <ul className="space-y-2 text-sm text-muted">
+              <li className="flex gap-2.5">
+                <span aria-hidden>🎓</span>
+                <span>
+                  Everyone starts in the lowest class. Each round the host pairs you 1-v-1 by class for a Whot match.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>🃏</span>
+                <span>
+                  <span className="text-body font-semibold">
+                    Win to graduate to the next class; lose and you repeat it.
+                  </span>{' '}
+                  Nobody is knocked out.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>🚀</span>
+                <span>
+                  When the host starts a round you&apos;re taken straight to your match room. With an odd number, one
+                  player sits the round out and keeps their class.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>👑</span>
+                <span>Be the first to graduate past the top class to win.</span>
               </li>
             </ul>
           ) : (
@@ -1437,6 +1565,20 @@ export default function TournamentLobbyPage() {
         </div>
       )}
 
+      {/* School champion — the first player to graduate. */}
+      {schoolChampion && (
+        <div
+          className="glass-card-strong p-6 text-center space-y-1.5"
+          style={{ boxShadow: '0 0 0 1px var(--primary), var(--card-shadow-glow)' }}
+        >
+          <p className="text-4xl" aria-hidden="true">
+            🎓
+          </p>
+          <p className="label-caps">Graduated — Champion</p>
+          <p className="text-2xl font-black gradient-title">{schoolChampion.player_name}</p>
+        </div>
+      )}
+
       {/* Manage players — host can remove anyone (e.g. a no-show blocking a match).
           The entry point for knockout / round-robin; head-to-head also has the ✕
           on the board. */}
@@ -1480,8 +1622,47 @@ export default function TournamentLobbyPage() {
         </details>
       )}
 
-      {/* Leaderboard — with "Share results" image export */}
-      <TournamentShareLeaderboard tournament={tournament} players={players} />
+      {/* Class standings (school) — everyone ranked by how far up the ladder they
+          are. Nobody is eliminated, so this is the live scoreboard. */}
+      {school && players.length > 0 && (
+        <div className="glass-card p-5 space-y-3">
+          <p className="label-caps">Classes</p>
+          <div className="space-y-2">
+            {[...players]
+              .sort(
+                (a, b) => (b.school_level ?? 0) - (a.school_level ?? 0) || a.player_name.localeCompare(b.player_name)
+              )
+              .map((p, i) => {
+                const graduated = hasGraduated(p.school_level ?? 0, schoolClassCount)
+                const isMe = me?.id === p.id
+                return (
+                  <div
+                    key={p.id}
+                    className="result-row flex items-center justify-between gap-3 px-4 py-2.5"
+                    style={isMe ? { boxShadow: 'inset 0 0 0 1px var(--primary)' } : undefined}
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="text-xs text-faint tabular-nums w-5 text-right">{i + 1}</span>
+                      <span className="truncate text-sm font-medium text-body">
+                        {p.player_name}
+                        {isMe && <span className="text-faint"> (you)</span>}
+                      </span>
+                    </span>
+                    <span
+                      className="chip text-[0.6875rem] shrink-0"
+                      style={graduated ? { color: 'var(--primary)' } : undefined}
+                    >
+                      {schoolClassLabel(p.school_level ?? 0, schoolClassCount)}
+                    </span>
+                  </div>
+                )
+              })}
+          </div>
+        </div>
+      )}
+
+      {/* Leaderboard — with "Share results" image export (points-based formats only). */}
+      {!school && <TournamentShareLeaderboard tournament={tournament} players={players} />}
 
       {/* Knockout round results — how the field narrowed each round. */}
       {knockout && knockoutResultRounds.length > 0 && (
@@ -1522,13 +1703,13 @@ export default function TournamentLobbyPage() {
       {/* Bracket results — head-to-head: every decided round, newest info on page.
           The champion banner above is the final result; this is the per-round
           history, with a View button to open each match's final board. */}
-      {h2h && resultRounds.length > 0 && (
+      {duel && resultRounds.length > 0 && (
         <div className="glass-card p-5 space-y-4">
-          <p className="label-caps">Bracket results</p>
+          <p className="label-caps">{school ? 'Match results' : 'Bracket results'}</p>
           {resultRounds.map((rd) => (
             <div key={rd.round} className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Round {rd.round} · {labelForRound(rd.entrants)}
+                {school ? `Round ${rd.round}` : `Round ${rd.round} · ${labelForRound(rd.entrants)}`}
               </p>
               {rd.matches.map((g) => {
                 const loserId = g.winner_player_id === g.player_a_id ? g.player_b_id : g.player_a_id

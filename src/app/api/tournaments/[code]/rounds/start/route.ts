@@ -46,7 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     .maybeSingle()
   if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
   if (tournament.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (tournament.format !== 'head-to-head' && tournament.format !== 'knockout') {
+  if (tournament.format !== 'head-to-head' && tournament.format !== 'knockout' && tournament.format !== 'school') {
     return NextResponse.json({ error: 'This tournament does not run bracket rounds' }, { status: 400 })
   }
   if (tournament.status === 'finished') return NextResponse.json({ error: 'Tournament has ended' }, { status: 400 })
@@ -189,11 +189,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       continue
     }
 
-    const { error: initError } = await initializeChessGame(
-      admin,
-      gameId,
-      pairedSeats.map((p) => p.id)
-    )
+    // School runs its 1-v-1 rounds as Whot; head-to-head 1-v-1 is chess.
+    const { error: initError } =
+      tournament.format === 'school'
+        ? await initializeWhotGame(
+            admin,
+            gameId,
+            pairedSeats.map((p) => p.id)
+          )
+        : await initializeChessGame(
+            admin,
+            gameId,
+            pairedSeats.map((p) => p.id)
+          )
     if (initError) return NextResponse.json({ error: initError }, { status: 500 })
 
     const { error: gameError } = await admin

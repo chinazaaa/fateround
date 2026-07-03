@@ -3,11 +3,17 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageShell, Field, Toggle, PrimaryBtn } from '@/components/ui/PageShell'
-import { H2H_ELIGIBLE_TYPES, h2hGroupSize, KNOCKOUT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
+import {
+  H2H_ELIGIBLE_TYPES,
+  h2hGroupSize,
+  KNOCKOUT_ELIGIBLE_TYPES,
+  SCHOOL_ELIGIBLE_TYPES,
+} from '@/lib/tournament-validation'
+import { SCHOOL_LADDER_OPTIONS } from '@/lib/tournament-school'
 import { gameTypeLabel } from '@/lib/game-types'
 import { SCRABBLE_DICTIONARY_LABELS, SCRABBLE_DICTIONARY_OPTIONS } from '@/lib/scrabble-dictionary-meta'
 
-type Format = 'round-robin' | 'head-to-head' | 'knockout'
+type Format = 'round-robin' | 'head-to-head' | 'knockout' | 'school'
 
 const DEFAULT_POINTS = [10, 7, 5, 3, 2, 1]
 
@@ -95,18 +101,30 @@ export default function TournamentCreatePage() {
   const [whotNumberCalls, setWhotNumberCalls] = useState(true)
   const [whotPick2Stacking, setWhotPick2Stacking] = useState(true)
   const [scrabbleDictionary, setScrabbleDictionary] = useState('enable')
+  // School (class ladder) config: how many classes long the ladder is.
+  const [schoolClassCount, setSchoolClassCount] = useState<number>(
+    SCHOOL_LADDER_OPTIONS[SCHOOL_LADDER_OPTIONS.length - 1].count
+  )
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
   const isH2H = format === 'head-to-head'
   const isKnockout = format === 'knockout'
+  const isSchool = format === 'school'
   const isRoundRobin = format === 'round-robin'
 
-  // Keep the chosen game valid for the format (chess for 1v1, trivia for group).
+  // Keep the chosen game valid for the format (chess for 1v1, trivia for group,
+  // Whot for school).
   function pickFormat(next: Format) {
     setFormat(next)
     if (next === 'head-to-head') setGameType(H2H_ELIGIBLE_TYPES[0])
     else if (next === 'knockout') setGameType(KNOCKOUT_ELIGIBLE_TYPES[0])
+    else if (next === 'school') {
+      setGameType(SCHOOL_ELIGIBLE_TYPES[0])
+      // School Whot plays fast — mirror the head-to-head Whot defaults.
+      setH2hTurnTimer(30)
+      setH2hGameDuration(900)
+    }
   }
 
   // Switching the head-to-head game resets the per-turn timer + room-length to
@@ -136,7 +154,7 @@ export default function TournamentCreatePage() {
         title: title.trim(),
         format,
       }
-      if (isH2H || isKnockout) {
+      if (isH2H || isKnockout || isSchool) {
         body.gameType = gameType
       }
       if (isKnockout) {
@@ -162,6 +180,16 @@ export default function TournamentCreatePage() {
           timerSeconds: h2hTurnTimer,
           gameDurationSeconds: h2hGameDuration,
           scrabbleDictionary,
+        }
+      } else if (isSchool) {
+        body.gameConfig = {
+          schoolClassCount,
+          timerSeconds: h2hTurnTimer,
+          gameDurationSeconds: h2hGameDuration,
+          whotPick3,
+          whotCards,
+          whotNumberCalls,
+          whotPick2Stacking,
         }
       }
       const cap = Number(maxPlayers)
@@ -230,7 +258,7 @@ export default function TournamentCreatePage() {
 
         <div>
           <p className="label-caps mb-2.5">Format</p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               aria-pressed={isRoundRobin}
@@ -255,13 +283,23 @@ export default function TournamentCreatePage() {
             >
               Knockout
             </button>
+            <button
+              type="button"
+              aria-pressed={isSchool}
+              onClick={() => pickFormat('school')}
+              className={`chip ${isSchool ? 'chip-active' : ''}`}
+            >
+              🎓 School
+            </button>
           </div>
           <p className="text-faint text-xs mt-2">
             {isH2H
               ? 'Players are grouped into rooms each round and only the winner of each room advances, until one champion remains. Chess is 1-v-1; Whot and Scrabble play in rooms of 4.'
               : isKnockout
                 ? 'Everyone plays together each round; the bottom half is knocked out until one champion remains. Round of 16 → Quarterfinal → Semifinal → Final.'
-                : 'Everyone plays each game together and earns placement points across multiple games.'}
+                : isSchool
+                  ? 'School Whot: everyone starts in the lowest class and is paired 1-v-1 each round. Win to graduate to the next class; lose and you repeat it. First to graduate past the top class wins — nobody is knocked out.'
+                  : 'Everyone plays each game together and earns placement points across multiple games.'}
           </p>
         </div>
 
@@ -289,6 +327,28 @@ export default function TournamentCreatePage() {
           </Field>
         )}
 
+        {isSchool && (
+          <Field label="Class ladder" htmlFor="school-ladder">
+            <select
+              id="school-ladder"
+              value={schoolClassCount}
+              onChange={(e) => setSchoolClassCount(Number(e.target.value))}
+              className="input-field"
+            >
+              {SCHOOL_LADDER_OPTIONS.map((o) => (
+                <option key={o.count} value={o.count}>
+                  {o.label} ({o.count} classes)
+                </option>
+              ))}
+            </select>
+            <p className="text-faint text-xs mt-1.5">
+              {SCHOOL_LADDER_OPTIONS.find((o) => o.count === schoolClassCount)?.hint ??
+                'How many classes players climb before graduating.'}{' '}
+              Every win moves a player up one class.
+            </p>
+          </Field>
+        )}
+
         {isH2H && gameType === 'chess' && (
           <div className="surface-inset p-4">
             <Field label="Time per player" htmlFor="h2h-chess-timer">
@@ -309,7 +369,7 @@ export default function TournamentCreatePage() {
           </div>
         )}
 
-        {isH2H && (gameType === 'whot' || gameType === 'scrabble') && (
+        {((isH2H && (gameType === 'whot' || gameType === 'scrabble')) || isSchool) && (
           <div className="surface-inset p-4 space-y-4">
             <Field label="Time per turn" htmlFor="h2h-turn-timer">
               <select
