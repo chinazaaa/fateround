@@ -31,6 +31,11 @@ export function PostWinToCommunity({
 }) {
   const [eligible, setEligible] = useState(false)
   const [status, setStatus] = useState<'idle' | 'posting' | 'posted' | 'error'>('idle')
+  // Bumped by the Retry button to re-run the auto-post effect. Retries are driven
+  // by this counter — NOT by `status` — because the effect calls setStatus('posting')
+  // itself; if `status` were a dependency that call would re-run the effect and its
+  // cleanup would cancel its own in-flight request.
+  const [retry, setRetry] = useState(0)
 
   const postedKey = `community_posted_${gameCode}_${roundKey ?? 'default'}`
   // Guards against double-posting from a re-render/StrictMode within one mount;
@@ -63,11 +68,20 @@ export function PostWinToCommunity({
   }, [gameType])
 
   // Auto-post the win once we know the game is tracked and we have a winner name.
+  // `status` is deliberately NOT a dependency (see the `retry` note above).
   useEffect(() => {
     if (!eligible) return
     if (!winnerName.trim()) return
-    if (status === 'posted') return
     if (attemptedRef.current) return
+    // Already posted this round on this device — confirm and skip re-posting.
+    try {
+      if (localStorage.getItem(postedKey) === '1') {
+        setStatus('posted')
+        return
+      }
+    } catch {
+      /* ignore */
+    }
     attemptedRef.current = true
 
     let cancelled = false
@@ -107,8 +121,7 @@ export function PostWinToCommunity({
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eligible, winnerName, status])
+  }, [eligible, winnerName, retry, postedKey, gameCode, roundKey, gameType])
 
   // Nothing to show until we've confirmed the game is tracked and there's a
   // winner to post. Callers already gate on "did I win", but this guarantees we
@@ -124,6 +137,7 @@ export function PostWinToCommunity({
           onClick={() => {
             attemptedRef.current = false
             setStatus('idle')
+            setRetry((n) => n + 1)
           }}
           className="font-semibold text-emerald-600 hover:underline"
         >
