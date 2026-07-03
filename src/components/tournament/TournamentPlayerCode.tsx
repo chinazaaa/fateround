@@ -136,7 +136,7 @@ export function TournamentResumeEntry({
           onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
           placeholder="Your player code"
           aria-label="Your player code"
-          maxLength={12}
+          maxLength={40}
           className="input-field flex-1 font-mono tracking-widest"
           onKeyDown={(e) => e.key === 'Enter' && submit()}
         />

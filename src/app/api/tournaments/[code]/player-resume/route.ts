@@ -19,29 +19,36 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: body, error: bodyError } = await parseJsonBody(req, resumeSchema)
   if (bodyError) return bodyError
 
-  const token = body.token.trim().toUpperCase()
+  // Match case-insensitively so legacy lowercase UUID codes still resolve alongside the
+  // short uppercase codes; the input has no % / _ so ilike is an exact (case-fold) match.
+  const token = body.token.trim()
   const admin = getSupabaseAdmin()
 
-  const { data: tokenRow } = await admin
+  const { data: tokenRow, error: tokenError } = await admin
     .from('tournament_player_tokens')
-    .select('player_id')
+    .select('player_id, token')
     .eq('tournament_id', tournamentId)
-    .eq('token', token)
+    .ilike('token', token)
     .maybeSingle()
+  // A query error (DB/RLS failure) must not masquerade as "not found".
+  if (tokenError) return NextResponse.json({ error: 'Failed to look up player code' }, { status: 500 })
   if (!tokenRow) {
     return NextResponse.json({ error: 'Player code not found — check the code and try again' }, { status: 404 })
   }
 
-  const { data: player } = await admin
+  const { data: player, error: playerError } = await admin
     .from('tournament_players')
     .select('player_name, is_eliminated')
     .eq('id', tokenRow.player_id)
     .maybeSingle()
+  if (playerError) return NextResponse.json({ error: 'Failed to look up player' }, { status: 500 })
   if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
 
   return NextResponse.json({
     playerName: player.player_name,
-    token,
+    // Return the stored code (correct case) so the client saves what the game-join
+    // reclaim will match exactly.
+    token: tokenRow.token,
     eliminated: player.is_eliminated === true,
   })
 }

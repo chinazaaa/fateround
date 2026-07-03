@@ -1415,6 +1415,7 @@ export default function TournamentLobbyPage() {
             Reconnecting, or on another device? Enter the player code you saved when you joined to get back into your
             seat — this works even after the tournament has started.
           </p>
+          {joinError && <p className="text-red-400 text-xs">{joinError}</p>}
           <TournamentResumeEntry tournamentId={tournamentId} onResumed={handleResumedByCode} alwaysOpen />
         </div>
       )}
