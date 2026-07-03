@@ -1059,7 +1059,7 @@ export default function TournamentLobbyPage() {
               <p className="text-faint text-xs text-center">
                 {survivingCount < 2
                   ? 'Waiting for players to join before you can start.'
-                  : 'Groups everyone by class into Whot rooms (up to 5) and sends them in. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats. A player left alone in a class the others have moved past is out.'}
+                  : 'Groups everyone by class into Whot rooms (up to 5) and sends them in. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats. A player left with no one to play — no classmate and no other straggler to pair with — is out.'}
               </p>
             </div>
           )}
@@ -1440,8 +1440,8 @@ export default function TournamentLobbyPage() {
                 <span aria-hidden>🃏</span>
                 <span>
                   <span className="text-body font-semibold">Empty your hand and you climb to the next class.</span> The
-                  rest keep playing; when time&apos;s up the one left holding the most cards repeats the class. If you
-                  end up the only one left in your class while others have moved up, you&apos;re out.
+                  rest keep playing; when time&apos;s up the one left holding the most cards repeats the class.
+                  You&apos;re only out if you&apos;re ever left with no one to play.
                 </span>
               </li>
               <li className="flex gap-2.5">

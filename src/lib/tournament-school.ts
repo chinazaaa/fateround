@@ -115,17 +115,18 @@ function balancedChunks(ids: string[], max: number): string[][] {
 }
 
 /**
- * Group players into rooms for one school round, matched *by class*. Players in
- * the same class play each other: a class with 6 players makes two rooms of 3, a
+ * Group players into rooms for one school round, matched *by class* first. Players
+ * in the same class play each other: a class with 6 players makes two rooms of 3, a
  * class with just 2 makes a room of 2 (no minimum). Rooms hold at most 5.
  *
- * A player alone in their class can't play. If anyone is in a *higher* class, that
- * lone player has been left behind — everyone else moved up and they're stuck
- * repeating alone — so they're eliminated. A lone player in the *highest* class is
- * the frontrunner, not a straggler: they aren't eliminated, they simply wait for
- * someone to climb up to them (or win by last-one-standing if the field thins out).
- * This means the top class can never be eliminated, so a tournament always keeps a
- * winner.
+ * A player alone in their class can't play their classmates, but they're only
+ * eliminated if they truly have no one to play. Lone players from different classes
+ * are paired off with each other first (nearest classes together) — so a straggler
+ * plays another straggler (e.g. the loser from another room) rather than being cut.
+ * Only when a single lone player is left with nobody to pair with is anyone out, and
+ * even then a lone player in the *top* class is the frontrunner, not a straggler:
+ * they aren't eliminated, they just wait for someone to climb up to them. So the top
+ * class can never be eliminated and a tournament always keeps a winner.
  *
  * The caller shuffles `players` first; the grouping preserves that order within a
  * class, so rooms vary round to round.
@@ -143,18 +144,31 @@ export function computeSchoolRooms(players: SchoolPlayerLevel[]): SchoolRooms {
   const levels = [...byLevel.keys()].sort((a, b) => a - b)
   const topLevel = levels[levels.length - 1]
 
+  // Classes with ≥2 players form their own rooms; lone players are set aside.
   const rooms: string[][] = []
-  const eliminated: string[] = []
+  const singles: { id: string; level: number }[] = []
   for (const level of levels) {
     const ids = byLevel.get(level) ?? []
-    if (ids.length >= 2) {
-      rooms.push(...balancedChunks(ids, SCHOOL_MAX_ROOM))
-    } else if (level < topLevel) {
-      // Alone in a lower class — left behind by everyone above. Eliminated.
-      eliminated.push(ids[0])
-    }
-    // A lone player in the top class waits (not eliminated) — see the note above.
+    if (ids.length >= 2) rooms.push(...balancedChunks(ids, SCHOOL_MAX_ROOM))
+    else singles.push({ id: ids[0], level })
   }
+
+  const eliminated: string[] = []
+  if (singles.length >= 2) {
+    // Two or more stragglers — pair them off with each other (nearest classes
+    // first, since `singles` is already class-sorted). Nobody is left without a game.
+    rooms.push(
+      ...balancedChunks(
+        singles.map((s) => s.id),
+        SCHOOL_MAX_ROOM
+      )
+    )
+  } else if (singles.length === 1 && singles[0].level < topLevel) {
+    // The only straggler, and everyone else is locked into their own class's rooms —
+    // no one left to play, and others have moved up past them. Eliminated.
+    eliminated.push(singles[0].id)
+  }
+  // A lone player in the top class (singles[0].level === topLevel) waits — never cut.
 
   return { rooms, eliminated }
 }

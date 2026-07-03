@@ -106,17 +106,33 @@ describe('computeSchoolRooms', () => {
     expect(new Set(['p1', 'p2', 'p3'].map(roomOf)).size).toBe(1)
   })
 
-  it('eliminates a player left alone in a lower class while the others moved up (Michelle case)', () => {
+  it('eliminates the sole straggler with no one left to play (Michelle case)', () => {
     const players = [
-      { id: 'bola', level: 1 }, // Primary 2
+      { id: 'bola', level: 1 }, // Primary 2 — a full room of their own
       { id: 'klaus', level: 1 },
       { id: 'naza', level: 1 },
-      { id: 'michelle', level: 0 }, // alone in Primary 1, everyone else moved up
+      { id: 'michelle', level: 0 }, // alone in Primary 1, and no other straggler to pair with
     ]
     const { rooms, eliminated } = computeSchoolRooms(players)
     expect(eliminated).toEqual(['michelle'])
     expect(rooms).toHaveLength(1)
     expect([...rooms[0]].sort()).toEqual(['bola', 'klaus', 'naza'])
+  })
+
+  it('pairs a straggler with another room’s straggler instead of eliminating them', () => {
+    const players = [
+      { id: 'bola', level: 2 }, // a room at level 2
+      { id: 'klaus', level: 2 },
+      { id: 'naza', level: 2 },
+      { id: 'michelle', level: 0 }, // alone in her class...
+      { id: 'ada', level: 1 }, // ...but another player is stranded alone too
+    ]
+    const { rooms, eliminated } = computeSchoolRooms(players)
+    expect(eliminated).toEqual([]) // both stragglers have an opponent now
+    // Michelle and Ada play each other; Bola/Klaus/Naza keep their own room.
+    const michelleRoom = rooms.find((r) => r.includes('michelle'))
+    expect(michelleRoom).toBeDefined()
+    expect([...(michelleRoom ?? [])].sort()).toEqual(['ada', 'michelle'])
   })
 
   it('does NOT eliminate a lone frontrunner in the top class — they wait', () => {
@@ -132,15 +148,16 @@ describe('computeSchoolRooms', () => {
     expect(rooms.flat()).not.toContain('leader')
   })
 
-  it('eliminates every stranded lower player, leaving the top one to win by last-standing', () => {
+  it('pairs multiple stranded lone players into one room (nobody out)', () => {
     const players = [
       { id: 'a', level: 0 },
       { id: 'b', level: 1 },
-      { id: 'c', level: 2 }, // top — survives
+      { id: 'c', level: 2 },
     ]
     const { rooms, eliminated } = computeSchoolRooms(players)
-    expect(rooms).toEqual([])
-    expect([...eliminated].sort()).toEqual(['a', 'b'])
+    expect(eliminated).toEqual([])
+    expect(rooms).toHaveLength(1)
+    expect([...rooms[0]].sort()).toEqual(['a', 'b', 'c'])
   })
 
   it('returns no rooms and no eliminations for a lone (or empty) field', () => {
