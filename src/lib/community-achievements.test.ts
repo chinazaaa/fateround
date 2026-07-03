@@ -23,6 +23,8 @@ describe('community achievements', () => {
     expect(isValidLeaderboardType('codewords', 'codewords_spymaster')).toBe(true)
     expect(isValidLeaderboardType('codewords', 'codewords_operative')).toBe(true)
     expect(isValidLeaderboardType('two_truths', 'two_truths_guesser')).toBe(true)
+    expect(isValidLeaderboardType('describe_it', 'describe_it_describer')).toBe(true)
+    expect(isValidLeaderboardType('describe_it', 'describe_it_guesser')).toBe(true)
   })
 
   it('rejects an achievement steered onto an unrelated game', () => {
@@ -30,6 +32,8 @@ describe('community achievements', () => {
     expect(isValidLeaderboardType('whot', 'codewords_spymaster')).toBe(false)
     expect(isValidLeaderboardType('two_truths', 'codewords_operative')).toBe(false)
     expect(isValidLeaderboardType('codewords', 'two_truths_guesser')).toBe(false)
+    expect(isValidLeaderboardType('describe_it', 'two_truths_guesser')).toBe(false)
+    expect(isValidLeaderboardType('two_truths', 'describe_it_guesser')).toBe(false)
     expect(isValidLeaderboardType('whot', 'chess')).toBe(false)
   })
 })
