@@ -50,6 +50,13 @@ export function tournamentInviteUrl(code: string, origin: string = appOrigin()):
   return `${origin.replace(/\/$/, '')}/tournament/${code.trim().toUpperCase()}`
 }
 
+/** A player's "continue on another device" link — the tournament link with their
+ *  player code appended, so pasting it anywhere resumes them (name + seat), exactly
+ *  like a normal game's ?player= resume link. */
+export function tournamentPlayerResumeUrl(code: string, token: string, origin: string = appOrigin()): string {
+  return `${tournamentInviteUrl(code, origin)}?ptoken=${encodeURIComponent(token.trim().toUpperCase())}`
+}
+
 /** The host's link to manage a tournament from another device (carries the host token). */
 export function tournamentHostUrl(code: string, hostToken: string, origin: string = appOrigin()): string {
   return `${tournamentInviteUrl(code, origin)}?host=${encodeURIComponent(hostToken.trim())}`

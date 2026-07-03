@@ -192,21 +192,55 @@ export default function TournamentLobbyPage() {
     }
   }, [tournamentId])
 
-  // Host cross-device entry: a host opening their shared link carries the host token
-  // in the URL (like a normal game's host link). Save it to this device, then strip it
-  // from the address bar so it isn't shoulder-surfed or re-shared. Players don't use a
-  // URL token — they open the normal tournament link and type their player code.
+  // Cross-device entry: a host or player opening their shared link carries their
+  // credential in the URL — the host token (like a normal game's host link) or the
+  // player's resume code (like a normal game's ?player= link). Save it to this device,
+  // then strip it from the address bar so it isn't shoulder-surfed or re-shared. A
+  // player code is exchanged (server-side) for their name + seat.
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const host = params.get('host')
-    if (!host) return
-    localStorage.setItem(`tournament_host_${tournamentId}`, host)
-    const url = new URL(window.location.href)
-    url.searchParams.delete('host')
-    window.history.replaceState({}, '', url.pathname + url.search)
-    // Host credential is read from localStorage at render — nudge a re-render.
-    fetchState()
+    const ptoken = params.get('ptoken')
+    if (!host && !ptoken) return
+
+    if (host) localStorage.setItem(`tournament_host_${tournamentId}`, host)
+
+    const strip = () => {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('host')
+      url.searchParams.delete('ptoken')
+      window.history.replaceState({}, '', url.pathname + url.search)
+    }
+
+    if (ptoken) {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/tournaments/${tournamentId}/player-resume`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: ptoken }),
+          })
+          const data = await res.json()
+          if (res.ok && data.playerName) {
+            localStorage.setItem(`tournament_player_${tournamentId}`, data.playerName)
+            localStorage.setItem(`tournament_ptoken_${tournamentId}`, String(data.token))
+            setPlayerName(data.playerName)
+            setMyCode(String(data.token))
+            setJoined(true)
+          } else {
+            setJoinError(data.error ?? 'Could not restore your player code')
+          }
+        } finally {
+          strip()
+          fetchState()
+        }
+      })()
+    } else {
+      strip()
+      // Host credential is read from localStorage at render — nudge a re-render.
+      fetchState()
+    }
   }, [tournamentId, fetchState])
 
   // Auto-forward opted-in spectators into each game as a viewer when it starts.

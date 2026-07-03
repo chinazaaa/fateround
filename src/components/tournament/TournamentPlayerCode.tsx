@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { GameLinkQrModal } from '@/components/GameLinkQrModal'
 import { copyToClipboard } from '@/lib/copy'
-import { tournamentInviteUrl, shareOrigin } from '@/lib/site'
+import { tournamentPlayerResumeUrl, shareOrigin } from '@/lib/site'
 import { useToast } from '@/components/ui/Toast'
 
 /**
@@ -17,8 +17,9 @@ export function TournamentContinueCard({ tournamentId, code }: { tournamentId: s
   const [copied, setCopied] = useState(false)
   const [qrOpen, setQrOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
-  // The plain tournament link — the code is entered on the page, never put in the URL.
-  const url = tournamentInviteUrl(tournamentId, shareOrigin())
+  // The resume link — the tournament link with the code appended, so pasting it
+  // anywhere continues this player (like a normal game's ?player= link).
+  const url = tournamentPlayerResumeUrl(tournamentId, code, shareOrigin())
 
   const copyCode = async () => {
     const ok = await copyToClipboard(code)
@@ -41,10 +42,10 @@ export function TournamentContinueCard({ tournamentId, code }: { tournamentId: s
 
   return (
     <div className="surface-inset p-4 space-y-3 text-center">
-      <p className="label-caps">Your player code</p>
+      <p className="label-caps">Continue on another device</p>
       <p className="text-muted text-xs">
-        📌 Save this code — it&apos;s the only way back into your seat if you switch devices, lose this tab, or need to
-        reconnect. On the other device, open this tournament (link or QR below) and enter this code.
+        📌 Save your link or code. Paste the link on any device to drop straight back into your seat — or open the
+        tournament and enter the code by hand. It&apos;s the only way back if you switch devices or lose this tab.
       </p>
       <button onClick={copyCode} className="font-mono font-bold text-2xl tracking-widest text-body" title="Copy code">
         {copied ? 'Copied ✓' : code}
@@ -54,7 +55,7 @@ export function TournamentContinueCard({ tournamentId, code }: { tournamentId: s
           type="button"
           onClick={async () => {
             const ok = await copyToClipboard(url)
-            toast[ok ? 'success' : 'error'](ok ? 'Tournament link copied' : 'Could not copy — try again')
+            toast[ok ? 'success' : 'error'](ok ? 'Resume link copied' : 'Could not copy — try again')
           }}
           className="btn-secondary text-xs py-1.5 px-3"
         >
@@ -68,10 +69,10 @@ export function TournamentContinueCard({ tournamentId, code }: { tournamentId: s
         open={qrOpen}
         onClose={() => setQrOpen(false)}
         url={url}
-        title="Open on another device"
-        subtitle="Scan to open this tournament, then enter your player code."
-        copyLabel="Copy tournament link"
-        copySuccessMessage="Tournament link copied"
+        title="Scan to continue"
+        subtitle="Scan on your other device to drop straight back into your seat."
+        copyLabel="Copy resume link"
+        copySuccessMessage="Resume link copied"
       />
     </div>
   )
