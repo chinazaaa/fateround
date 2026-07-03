@@ -102,6 +102,30 @@ export function HomePage() {
             <span className="text-faint text-sm shrink-0">→</span>
           </Link>
 
+          <Link
+            href="/tournament"
+            className="group relative overflow-hidden flex items-center gap-3 rounded-2xl p-3.5 sm:p-4 no-underline shrink-0 lg:col-start-2 lg:row-start-3"
+            style={{
+              background:
+                'linear-gradient(135deg, color-mix(in srgb, var(--primary) 90%, black) 0%, var(--primary) 45%, var(--marry) 130%)',
+              boxShadow: '0 8px 28px var(--primary-glow)',
+            }}
+          >
+            <span
+              aria-hidden
+              className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full opacity-30 blur-xl"
+              style={{ background: 'radial-gradient(circle, #fff 0%, transparent 70%)' }}
+            />
+            <span className="text-2xl shrink-0 drop-shadow">🏆</span>
+            <div className="flex-1 min-w-0 relative">
+              <p className="text-sm font-black text-white leading-tight">Tournaments</p>
+              <p className="text-[11px] sm:text-xs text-white/85 leading-snug">
+                Run a multi-game bracket for your crew — winner takes all
+              </p>
+            </div>
+            <span className="text-white/90 text-sm shrink-0 transition-transform group-hover:translate-x-0.5">→</span>
+          </Link>
+
           <div className="space-y-1.5 shrink-0 lg:col-start-2 lg:row-start-2">
             <p className="label-caps text-center lg:text-left text-[10px] sm:text-xs">Popular games</p>
             <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
