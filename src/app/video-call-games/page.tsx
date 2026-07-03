@@ -1,29 +1,8 @@
-import type { Metadata } from 'next'
 import { MarketingLanding } from '@/components/marketing/MarketingLanding'
-import { getMarketingPage } from '@/lib/marketing-landing'
-import { SITE_NAME, OG_IMAGE } from '@/lib/seo'
+import { getMarketingPage, marketingMetadata } from '@/lib/marketing-landing'
 
-const content = getMarketingPage('video-call-games')!
-
-export const metadata: Metadata = {
-  title: content.seoTitle,
-  description: content.seoDescription,
-  keywords: content.keywords,
-  alternates: { canonical: `/${content.slug}` },
-  openGraph: {
-    title: `${content.seoTitle} | ${SITE_NAME}`,
-    description: content.seoDescription,
-    url: `/${content.slug}`,
-    images: [OG_IMAGE],
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: `${content.seoTitle} | ${SITE_NAME}`,
-    description: content.seoDescription,
-    images: [OG_IMAGE.url],
-  },
-}
+export const metadata = marketingMetadata('video-call-games')
 
 export default function VideoCallGamesPage() {
-  return <MarketingLanding content={content} />
+  return <MarketingLanding content={getMarketingPage('video-call-games')!} />
 }
