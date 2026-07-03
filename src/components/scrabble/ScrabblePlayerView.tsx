@@ -259,6 +259,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          gameType="scrabble"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
           footer={
             <p className="text-center pt-1">

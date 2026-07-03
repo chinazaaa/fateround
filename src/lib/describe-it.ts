@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage, internalFailure } from '@/lib/api-errors'
 import { markGameFinished } from '@/lib/game-finish'
-import type { DescribeItMode, DescribeItSession, DescribeItWord, Game } from '@/types'
+import type { DescribeItGuess, DescribeItMode, DescribeItSession, DescribeItWord, Game } from '@/types'
 import { DESCRIBE_IT_WORD_POOL, parseStoredDescribeItWords, pickDescribeWord } from '@/lib/describe-it-words'
 
 export const DESCRIBE_IT_MIN_PLAYERS = 4
@@ -1019,6 +1019,45 @@ export function describeItIndividualLeaderboard(
   return playerRows
     .map((r) => ({ id: r.player_id, name: nameById.get(r.player_id) ?? 'Player', score: r.score ?? 0 }))
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+}
+
+// Individual-mode role leaderboards, highest first. The single per-player `score`
+// column merges both roles, so these split it back out from the raw scored guesses:
+//   - guesser points: what a player scored on their OWN correct guesses.
+//   - describer points: what everyone scored during the turns THAT player described
+//     (describers rotate through `roster`, so turn_index maps back to a describer).
+// Only scored guesses (points > 0) exist in individual mode — team-mode guesses store
+// points = 0 and are naturally ignored. Spectators are excluded.
+export function describeItRoleLeaderboards(
+  guesses: Array<Pick<DescribeItGuess, 'player_id' | 'turn_index' | 'points'>>,
+  roster: string[],
+  players: Array<{ id: string; name: string; spectator?: boolean | null }>
+): { guessers: DescribeItPlayerScore[]; describers: DescribeItPlayerScore[] } {
+  const active = players.filter((p) => p.spectator !== true)
+  const nameById = new Map(active.map((p) => [p.id, p.name]))
+  const guesserPoints = new Map<string, number>()
+  const describerPoints = new Map<string, number>()
+
+  for (const g of guesses) {
+    const points = g.points ?? 0
+    if (points <= 0) continue
+    // Guesser credit — only for a still-present (non-spectator) player.
+    if (nameById.has(g.player_id)) {
+      guesserPoints.set(g.player_id, (guesserPoints.get(g.player_id) ?? 0) + points)
+    }
+    // Describer credit — the player whose turn this guess landed on.
+    const describerId = describerForIndividualTurn(roster, g.turn_index)
+    if (describerId && nameById.has(describerId)) {
+      describerPoints.set(describerId, (describerPoints.get(describerId) ?? 0) + points)
+    }
+  }
+
+  const rank = (totals: Map<string, number>): DescribeItPlayerScore[] =>
+    active
+      .map((p) => ({ id: p.id, name: p.name, score: totals.get(p.id) ?? 0 }))
+      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+
+  return { guessers: rank(guesserPoints), describers: rank(describerPoints) }
 }
 
 export function isDescribeItResultsPhase(

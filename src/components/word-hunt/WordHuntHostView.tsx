@@ -14,6 +14,7 @@ import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { WordHuntBoard } from '@/components/word-hunt/WordHuntBoard'
 import { WordHuntPlayerView } from '@/components/word-hunt/WordHuntPlayerView'
 import { WordHuntFinalResultsShareBlock } from '@/components/word-hunt/WordHuntFinalResultsShareBlock'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { parseWordHuntMetadata, tallyWordHuntScores, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { validWordsSetFromMetadata } from '@/lib/word-hunt-client'
@@ -25,6 +26,7 @@ import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useToast } from '@/components/ui/Toast'
 
 const WORD_HUNT_SUBMISSION_SELECT = 'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
@@ -70,6 +72,8 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
+
+  useTurnNotifications({ status: game?.status })
 
   const load = useCallback(async () => {
     const [{ data: gameData }, { data: playersData }] = await Promise.all([
@@ -455,26 +459,50 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
     </div>
   )
 
+  // A playing host counts as a community-leaderboard winner only with a genuine
+  // (contested) win: top of the points board, more than one player, and a
+  // positive score. Mirrors the player view and the other score-based games.
+  const hostWordHuntRow = leaderboard.find((row) => row.player_id === hostPlayerId)
+  const hostWon =
+    hostPlays &&
+    !!hostWordHuntRow &&
+    leaderboard.length > 1 &&
+    leaderboard[0] != null &&
+    hostWordHuntRow.points === leaderboard[0].points &&
+    leaderboard[0].points > 0
+
   const finished = (
-    <WordHuntFinalResultsShareBlock
-      game={game}
-      players={players}
-      leaderboard={leaderboard}
-      highlightPlayerId={hostPlayerId}
-      mySubmissions={hostMySubmissions}
-      allSubmissions={submissions}
-      validWords={validWords.length > 0 ? validWords : undefined}
-      playAgainButton={
-        <button
-          type="button"
-          onClick={() => void handlePlayAgain()}
-          disabled={playingAgain}
-          className="btn-primary w-full py-3 font-bold"
-        >
-          {playingAgain ? 'Resetting…' : 'Play again'}
-        </button>
-      }
-    />
+    <>
+      <WordHuntFinalResultsShareBlock
+        game={game}
+        players={players}
+        leaderboard={leaderboard}
+        highlightPlayerId={hostPlayerId}
+        mySubmissions={hostMySubmissions}
+        allSubmissions={submissions}
+        validWords={validWords.length > 0 ? validWords : undefined}
+        playAgainButton={
+          <button
+            type="button"
+            onClick={() => void handlePlayAgain()}
+            disabled={playingAgain}
+            className="btn-primary w-full py-3 font-bold"
+          >
+            {playingAgain ? 'Resetting…' : 'Play again'}
+          </button>
+        }
+      />
+      {hostWon && (
+        <div className="mt-4">
+          <PostWinToCommunity
+            gameType="word_hunt"
+            gameCode={gameCode}
+            winnerName={hostWordHuntRow?.name ?? ''}
+            roundKey={game?.session_started_at ?? undefined}
+          />
+        </div>
+      )}
+    </>
   )
 
   return (

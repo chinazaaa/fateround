@@ -274,6 +274,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          gameType="snake_and_ladder"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
           footer={
             <p className="text-center pt-1">

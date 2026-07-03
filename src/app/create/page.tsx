@@ -9,6 +9,7 @@ import type {
   PlayerQuestionsOrder,
   TriviaCategory,
   TriviaQuestion,
+  LudoVariant,
 } from '@/types'
 import type { Settings, Step, ParticipantTab, QuestionTab } from './types'
 import { LIBRARY_GAME_TYPE_MAP } from './constants'
@@ -281,6 +282,7 @@ function CreateGameInner() {
   const [crazy8Jokers, setCrazy8Jokers] = useState(false)
   const [crazy8Pick2Stacking, setCrazy8Pick2Stacking] = useState(true)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
+  const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
   const [snakeLadderMaxPlayers, setSnakeLadderMaxPlayers] = useState(SNAKE_LADDER_DEFAULT_MAX_PLAYERS)
   const [npatMaxPlayers, setNpatMaxPlayers] = useState(NPAT_DEFAULT_MAX_PLAYERS)
   const [sudokuMaxPlayers, setSudokuMaxPlayers] = useState(20)
@@ -1248,6 +1250,7 @@ function CreateGameInner() {
           crazy8_action_cards: isCrazy8 ? crazy8ActionCards : undefined,
           crazy8_jokers: isCrazy8 ? crazy8Jokers : undefined,
           crazy8_pick2_stacking: isCrazy8 ? crazy8Pick2Stacking : undefined,
+          ludo_variant: isLudo ? ludoVariant : undefined,
           scrabble_dictionary_id: isScrabble ? scrabbleDictionary : undefined,
           chess_board_theme: isChess ? chessBoardTheme : undefined,
           chess_piece_set: isChess ? chessPieceSet : undefined,
@@ -1767,12 +1770,23 @@ function CreateGameInner() {
                     <option value={90}>90 seconds</option>
                   </select>
                 </Field>
+                <Field label="Rules">
+                  <select
+                    value={ludoVariant}
+                    onChange={(e) => setLudoVariant(e.target.value as LudoVariant)}
+                    className="input-field w-full"
+                  >
+                    <option value="modern">Modern — 8 safe squares (starts + star squares)</option>
+                    <option value="traditional">Traditional — no safe squares except your home column</option>
+                  </select>
+                </Field>
                 <Field label="Late joiners">
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ludo" />
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
-                  Classic Ludo — roll two dice to enter, race around the board, capture opponents, and block with pairs.
-                  Exact rolls needed to finish. First to get all four pieces home wins!
+                  {ludoVariant === 'traditional'
+                    ? 'Traditional Ludo — the only safe spot is your own coloured home column; anywhere on the shared track, a lone piece can be captured. Roll two dice to enter, race around, and get all four pieces home to win.'
+                    : 'Modern Ludo — star squares and every start are safe from capture. Roll two dice to enter, race around the board, capture opponents, and block with pairs. First to get all four pieces home wins!'}
                 </p>
               </SettingsGroup>
             ) : isSnakeLadder ? (

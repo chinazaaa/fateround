@@ -30,6 +30,7 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useDescribeItTimer } from '@/hooks/useDescribeItTimer'
 import { useDescribeItSounds } from '@/hooks/useDescribeItSounds'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import {
   clampDescribeItTeams,
   clampDescribeItRounds,
@@ -60,7 +61,7 @@ import {
 } from '@/components/describe-it/DescribeItChrome'
 import { DescribeItPlayPanel } from '@/components/describe-it/DescribeItPlay'
 import { DescribeItFinalResultsShareBlock } from '@/components/describe-it/DescribeItFinalResultsShareBlock'
-import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { DescribeItAchievementPosts } from '@/components/describe-it/DescribeItAchievementPosts'
 
 type HostMode = 'spectator' | 'player'
 type HostTab = 'play' | 'manage'
@@ -107,6 +108,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   const wordsFileRef = useRef<HTMLInputElement>(null)
 
   useApplyGameTheme(game?.theme)
+  useTurnNotifications({ status: game?.status })
 
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes] = await Promise.all([
@@ -329,7 +331,6 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to start')
-      success('Game started!')
       await load()
       if (hostMode === 'player' && hostPlayerId) setTab('play')
     } catch (err) {
@@ -886,15 +887,6 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     </div>
   )
 
-  // Individual mode only — team mode has no single-player winner.
-  const hostIndividualLb = isIndividual ? describeItIndividualLeaderboard(playerScores, players) : []
-  const hostDescRow = hostIndividualLb.find((row) => row.id === hostPlayerId)
-  const hostWonDescribe =
-    !!hostDescRow &&
-    hostIndividualLb[0] != null &&
-    hostDescRow.score === hostIndividualLb[0].score &&
-    hostIndividualLb[0].score > 0
-
   const finished = gameFinished && (
     <>
       <DescribeItFinalResultsShareBlock
@@ -910,11 +902,14 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
           </DescribeItPrimaryButton>
         }
       />
-      {hostWonDescribe && (
-        <PostWinToCommunity
-          gameType="describe_it"
+      {hostPlays && hostPlayerId && (
+        <DescribeItAchievementPosts
+          guesses={guesses}
+          roster={session?.roster ?? []}
+          players={players}
+          isIndividual={isIndividual}
+          myPlayerId={hostPlayerId}
           gameCode={gameCode}
-          winnerName={hostDescRow?.name ?? ''}
           roundKey={session?.id}
         />
       )}

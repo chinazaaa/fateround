@@ -61,9 +61,16 @@ export const joinTournamentSchema = z.object({
 
 // Head-to-head: host stages the next bracket round. `timerSeconds` is the shared
 // per-player chess clock applied to every match in the round (0 = untimed).
+// Knockout trivia additionally accepts a per-round question pack: `questionSource`
+// picks built-in vs custom, and `customQuestions` carries the CSV the host uploaded
+// for this specific round (re-validated server-side via parseStoredTriviaQuestions).
+// This lets the host ramp difficulty round to round; omitting a new pack reuses the
+// previous round's. Ignored by head-to-head/school rounds.
 export const startTournamentRoundSchema = z.object({
   hostToken: hostTokenString(),
   timerSeconds: z.coerce.number().int().min(0).max(3600).optional(),
+  questionSource: z.enum(['platform', 'custom']).optional(),
+  customQuestions: z.array(z.unknown()).max(1000).optional().nullable(),
 })
 
 export const tournamentHostActionSchema = z.object({

@@ -67,6 +67,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     crazy8_action_cards,
     crazy8_jokers,
     crazy8_pick2_stacking,
+    ludo_variant,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -80,7 +81,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     whot_pick2_stacking === undefined &&
     crazy8_action_cards === undefined &&
     crazy8_jokers === undefined &&
-    crazy8_pick2_stacking === undefined
+    crazy8_pick2_stacking === undefined &&
+    ludo_variant === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -170,6 +172,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (crazy8_pick2_stacking !== undefined) gameUpdate.crazy8_pick2_stacking = crazy8_pick2_stacking
   } else if (crazy8_action_cards !== undefined || crazy8_jokers !== undefined || crazy8_pick2_stacking !== undefined) {
     return NextResponse.json({ error: 'House rules only apply to Crazy Eights games' }, { status: 400 })
+  }
+
+  if (boardLobbyType === 'ludo') {
+    if (ludo_variant !== undefined) gameUpdate.ludo_variant = ludo_variant
+  } else if (ludo_variant !== undefined) {
+    return NextResponse.json({ error: 'The Ludo variant only applies to Ludo games' }, { status: 400 })
   }
 
   const { data: updated, error } = await getSupabaseAdmin()

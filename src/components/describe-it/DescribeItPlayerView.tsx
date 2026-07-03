@@ -11,13 +11,8 @@ import {
 import { DescribeItPlayPanel } from '@/components/describe-it/DescribeItPlay'
 import { DescribeItFinalResultsShareBlock } from '@/components/describe-it/DescribeItFinalResultsShareBlock'
 import { gameTypeConfig } from '@/lib/game-types'
-import {
-  clampDescribeItMode,
-  clampDescribeItTeams,
-  describeItIndividualLeaderboard,
-  isDescribeItResultsPhase,
-} from '@/lib/describe-it'
-import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { clampDescribeItMode, clampDescribeItTeams, isDescribeItResultsPhase } from '@/lib/describe-it'
+import { DescribeItAchievementPosts } from '@/components/describe-it/DescribeItAchievementPosts'
 import { supabase } from '@/lib/supabase'
 import {
   DESCRIBE_IT_SESSION_SELECT,
@@ -45,6 +40,7 @@ import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useDescribeItTimer } from '@/hooks/useDescribeItTimer'
 import { useDescribeItSounds } from '@/hooks/useDescribeItSounds'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 
 type Screen =
   | 'loading'
@@ -149,6 +145,8 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
+
+  useTurnNotifications({ status: game?.status })
 
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(
@@ -272,6 +270,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          gameType={['describe_it_describer', 'describe_it_guesser']}
           footer={
             <p className="text-center pt-1">
               <GameRulesLink gameType="describe_it" variant="subtle" />
@@ -359,11 +358,6 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (screen === 'finished') {
-    // Individual mode only — team mode has no single-player winner.
-    const individualLb = isIndividual ? describeItIndividualLeaderboard(playerScores, players) : []
-    const myDescRow = individualLb.find((row) => row.id === myPlayerId)
-    const iWonDescribe =
-      !!myDescRow && individualLb[0] != null && myDescRow.score === individualLb[0].score && individualLb[0].score > 0
     return (
       <DescribeItShell compact>
         {game && (
@@ -376,11 +370,14 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             playerScores={playerScores}
           />
         )}
-        {iWonDescribe && game && (
-          <PostWinToCommunity
-            gameType="describe_it"
+        {myPlayerId && (
+          <DescribeItAchievementPosts
+            guesses={guesses}
+            roster={session?.roster ?? []}
+            players={players}
+            isIndividual={isIndividual}
+            myPlayerId={myPlayerId}
             gameCode={gameCode}
-            winnerName={myName || (myDescRow?.name ?? '')}
             roundKey={session?.id}
           />
         )}

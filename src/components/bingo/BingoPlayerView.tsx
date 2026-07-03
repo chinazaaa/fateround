@@ -385,6 +385,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          gameType="bingo"
           submitLabel="Join Bingo"
           hint={
             <>

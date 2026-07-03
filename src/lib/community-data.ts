@@ -178,10 +178,10 @@ export async function addResult(
 
 export type PostWinOutcome = 'recorded' | 'already_posted' | 'not_on_leaderboard'
 
-// Winner self-report path: the winner of an in-app game (sourceGameId) posts
-// their win for today. Deduped via community_self_posts so the same match can't
-// be posted twice by the same player. Assumes the access code was already
-// verified by the caller. Records under recorded_by = 'self'.
+// Winner self-report path: the winner of an in-app game (sourceGameId) is posted
+// automatically for today from their end screen. Deduped via community_self_posts
+// so the same match can't be posted twice by the same player. Records under
+// recorded_by = 'self'.
 export async function postWinFromGame(args: {
   gameType: string
   playerName: string

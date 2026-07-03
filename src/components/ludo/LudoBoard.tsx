@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, type ReactNode } from 'react'
-import type { LudoColor, LudoDiceRoll, LudoPlayerState, LudoSession, Player } from '@/types'
+import type { LudoColor, LudoDiceRoll, LudoPlayerState, LudoSession, LudoVariant, Player } from '@/types'
 import {
   LUDO_COLOR_HEX,
   LUDO_COLOR_LABELS,
@@ -181,6 +181,7 @@ export function LudoBoard({
   selectablePieceIds,
   highlightCells,
   center,
+  variant = 'modern',
 }: {
   session: LudoSession
   states: LudoPlayerState[]
@@ -190,6 +191,7 @@ export function LudoBoard({
   selectablePieceIds?: number[]
   highlightCells?: Set<string>
   center?: ReactNode
+  variant?: LudoVariant
 }) {
   const myColor = states.find((s) => s.player_id === myPlayerId)?.color
   const activeColors = useMemo(() => new Set(states.map((s) => s.color)), [states])
@@ -292,7 +294,11 @@ export function LudoBoard({
   const cells: React.ReactNode[] = []
   for (let r = 0; r < 15; r += 1) {
     for (let c = 0; c < 15; c += 1) {
-      const kind = boardCellKind(r, c)
+      const rawKind = boardCellKind(r, c)
+      // Traditional Ludo has no mid-arm safe stars — render those cells as plain
+      // track (no ★, no white safe tint). Start cells are unchanged.
+      const kind =
+        variant === 'traditional' && rawKind.kind === 'safe' ? ({ kind: 'track' } as typeof rawKind) : rawKind
       const isHighlight = highlightCells?.has(`${r},${c}`)
       const isStart = kind.kind === 'start'
       const isSafe = kind.kind === 'safe'
@@ -544,6 +550,7 @@ export function LudoGamePanel({
   acting,
   rolling,
   displayDice,
+  variant = 'modern',
 }: {
   session: LudoSession
   states: LudoPlayerState[]
@@ -558,6 +565,7 @@ export function LudoGamePanel({
   acting?: boolean
   rolling?: boolean
   displayDice?: LudoDiceRoll | null
+  variant?: LudoVariant
 }) {
   const turnPlayer = players.find((p) => p.id === session.turn_order[session.current_turn_index])
   const myState = states.find((s) => s.player_id === myPlayerId)
@@ -568,8 +576,8 @@ export function LudoGamePanel({
     if (!isMyTurn || session.phase !== 'move' || !myState || remainingDice.length === 0 || !myPlayerId) {
       return []
     }
-    return getLegalMovesFromRemaining(myState.color, myState.pieces, remainingDice, states, myPlayerId)
-  }, [isMyTurn, session.phase, myState, states, myPlayerId, remainingDice])
+    return getLegalMovesFromRemaining(myState.color, myState.pieces, remainingDice, states, myPlayerId, variant)
+  }, [isMyTurn, session.phase, myState, states, myPlayerId, remainingDice, variant])
 
   const displayMoves = useMemo(() => dedupeLudoMovesForUi(legalMoves), [legalMoves])
 
@@ -646,6 +654,7 @@ export function LudoGamePanel({
             onMovePiece={isMyTurn && session.phase === 'move' ? handleMovePiece : undefined}
             selectablePieceIds={selectablePieceIds}
             highlightCells={highlightCells}
+            variant={variant}
           />
 
           {/* Bottom corners: yellow (BL) · blue (BR) */}

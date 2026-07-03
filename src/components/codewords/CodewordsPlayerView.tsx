@@ -25,6 +25,7 @@ import {
   teamLabel,
   waitingTurnMessage,
 } from '@/lib/codewords'
+import { CodewordsAchievementPosts } from '@/components/codewords/CodewordsAchievementPosts'
 import { useCodewordsRealtime } from '@/hooks/useCodewordsRealtime'
 import { useCodewordsNotifications } from '@/hooks/useCodewordsNotifications'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
@@ -448,6 +449,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void joinGame()}
           joining={joining}
+          gameType={['codewords_spymaster', 'codewords_operative']}
           hint={
             game?.status === 'active'
               ? lateJoinAllowed
@@ -681,6 +683,15 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
               winner={board.winner}
             />
           </div>
+          <CodewordsAchievementPosts
+            guesses={guesses}
+            roles={allRoles}
+            players={allPlayers}
+            winner={board.winner}
+            myPlayerId={myPlayerId}
+            gameCode={gameCode}
+            roundKey={board.id}
+          />
         </div>
       </div>
     )

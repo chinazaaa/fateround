@@ -583,6 +583,8 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
         roles={roles}
         board={board}
         guesses={guesses}
+        hostPlayerId={hostPlayerId}
+        hostPlays={hostPlays}
         spymasterTimer={spymasterTimer}
         operativeTimer={operativeTimer}
         savingTimers={savingTimers}

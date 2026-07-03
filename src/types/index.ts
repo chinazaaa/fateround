@@ -292,6 +292,8 @@ export interface Game {
   crazy8_jokers?: boolean
   /** Crazy Eights — allow stacking/defending a Pick Two (2) instead of forcing the draw. */
   crazy8_pick2_stacking?: boolean
+  /** Ludo — 'modern' (start + mid-arm safe stars) or 'traditional' (no track safe squares). */
+  ludo_variant?: LudoVariant
 }
 
 export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'auction' | 'raise_funds' | 'finished'
@@ -531,6 +533,7 @@ export interface CrazyEightsPlayerHand {
 export type LudoColor = 'red' | 'green' | 'yellow' | 'blue'
 export type LudoPieceZone = 'base' | 'track' | 'home' | 'finished'
 export type LudoPhase = 'roll' | 'move' | 'finished'
+export type LudoVariant = 'modern' | 'traditional'
 
 export interface LudoDiceRoll {
   d1: number
