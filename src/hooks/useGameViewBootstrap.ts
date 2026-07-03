@@ -7,6 +7,7 @@ import { resolvePlayerSession } from '@/lib/player-resume'
 import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
 import { setPlayerSession } from '@/lib/utils'
 import { currentTournamentPlayerToken } from '@/lib/tournament-player-token'
+import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import type { Game, Player } from '@/types'
 
 /**
@@ -186,6 +187,8 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
         setMyPlayerId(data.playerId)
         setMyResumeToken(data.resumeToken ?? null)
+        // GA key event: a player joined a room via code/link (viral conversion).
+        trackEvent(GA_EVENTS.joinRoom)
         try {
           onJoinSuccess?.(data as JoinResponse)
         } catch (err) {
