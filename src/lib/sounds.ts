@@ -6,10 +6,49 @@ export const TIMER_TICK_THRESHOLD = 5
 /** localStorage key for the global sound mute preference. */
 export const SOUND_MUTED_STORAGE_KEY = 'kmk-sound-muted'
 
+/** Same-tab event fired when the mute preference changes (storage events only
+ * fire in *other* tabs, so we dispatch this for the current tab). */
+export const SOUND_MUTED_EVENT = 'kmk-sound-muted-change'
+
 /** Check whether the user has muted all game sounds via the toggle. */
 export function isSoundMuted(): boolean {
   if (typeof window === 'undefined') return false
   return localStorage.getItem(SOUND_MUTED_STORAGE_KEY) === 'true'
+}
+
+/**
+ * Persist the global mute preference and notify every listener (this tab via a
+ * custom event, other tabs via the native `storage` event). Pre-warms the audio
+ * context on unmute so subsequent realtime sounds work; silences timer music on
+ * mute.
+ */
+export function setSoundMuted(muted: boolean): void {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(SOUND_MUTED_STORAGE_KEY, String(muted))
+  window.dispatchEvent(new CustomEvent(SOUND_MUTED_EVENT, { detail: muted }))
+  if (muted) {
+    stopTimerMusic()
+  } else {
+    unlockAudio() // pre-warm context on unmute (user gesture)
+  }
+}
+
+/**
+ * Subscribe to mute-preference changes from any source (this tab's toggle,
+ * another tab, or a direct `setSoundMuted` call). Returns an unsubscribe fn.
+ */
+export function subscribeSoundMuted(callback: (muted: boolean) => void): () => void {
+  if (typeof window === 'undefined') return () => {}
+  const onCustom = () => callback(isSoundMuted())
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === SOUND_MUTED_STORAGE_KEY) callback(isSoundMuted())
+  }
+  window.addEventListener(SOUND_MUTED_EVENT, onCustom)
+  window.addEventListener('storage', onStorage)
+  return () => {
+    window.removeEventListener(SOUND_MUTED_EVENT, onCustom)
+    window.removeEventListener('storage', onStorage)
+  }
 }
 
 /**
