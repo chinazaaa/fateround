@@ -13,6 +13,7 @@ import type {
 } from '@/types'
 import type { Settings, Step, ParticipantTab, QuestionTab } from './types'
 import { LIBRARY_GAME_TYPE_MAP } from './constants'
+import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { GenderBadge } from './components/GenderBadge'
 import { Avatar } from './components/Avatar'
 import { CopyCard } from './components/CopyCard'
@@ -1275,6 +1276,8 @@ function CreateGameInner() {
       })
       const data = await res.json()
       if (data.gameCode) {
+        // GA key event: a host successfully created a game (primary conversion).
+        trackEvent(GA_EVENTS.createGame, { game_type: settings.game_type })
         // Mirror the host's chosen look into this device's personal preference so
         // the host sees exactly what they picked, rather than a leftover override
         // from a previous game. Done only once the game is actually created — not
