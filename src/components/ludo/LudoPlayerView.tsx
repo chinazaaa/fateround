@@ -13,7 +13,7 @@ import { LudoGamePanel } from '@/components/ludo/LudoBoard'
 import { LudoFinalResultsShareBlock } from '@/components/ludo/LudoFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentPlayerId, parseLudoDice } from '@/lib/ludo'
+import { currentPlayerId, parseLudoDice, parseLudoVariant } from '@/lib/ludo'
 import { supabase } from '@/lib/supabase'
 import { LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
@@ -342,6 +342,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
           acting={acting}
           rolling={rolling}
           displayDice={displayDice}
+          variant={parseLudoVariant(game?.ludo_variant)}
         />
       )}
       {myPlayerId && myName && (

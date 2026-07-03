@@ -514,19 +514,35 @@ export default function TournamentLobbyPage() {
   }
 
   // Head-to-head: stage the next bracket round (pairs survivors, creates match rooms).
+  // Knockout trivia also passes this round's question pack (built-in or a freshly
+  // uploaded / carried-over custom CSV) so the host can vary difficulty per round.
   async function handleStartRound() {
     if (!hostToken) return
     setActionLoading(true)
     setError('')
+    // For knockout, an empty local pack means "reuse the previous round's" — the
+    // server carries it forward, so send null rather than blocking the request.
+    const isKnockout = tournament?.format === 'knockout'
+    const knockoutQuestionBody = isKnockout
+      ? questionSource === 'custom'
+        ? { questionSource: 'custom' as const, customQuestions: customTrivia.length > 0 ? customTrivia : null }
+        : { questionSource: 'platform' as const }
+      : {}
     try {
       const res = await fetch(`/api/tournaments/${tournamentId}/rounds`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken, timerSeconds: parseInt(h2hTimer, 10) || 0 }),
+        body: JSON.stringify({ hostToken, timerSeconds: parseInt(h2hTimer, 10) || 0, ...knockoutQuestionBody }),
       })
       const data = await res.json()
       if (!res.ok) setError(data.error ?? 'Failed to start round')
-      else fetchState()
+      else {
+        // Clear the freshly-uploaded pack so the next round shows the carried-over
+        // pack and invites a new upload (to ramp difficulty) rather than silently
+        // reusing the loaded file.
+        if (isKnockout) clearCustom()
+        fetchState()
+      }
     } catch {
       setError('Something went wrong')
     } finally {
@@ -693,6 +709,15 @@ export default function TournamentLobbyPage() {
   const knockoutRoundGame = knockoutGames.find((g) => g.round_number === knockoutRoundNumber) ?? null
   const knockoutRoundStaged = knockoutRoundGame?.status === 'pending'
   const knockoutRoundInProgress = knockoutRoundGame?.status === 'pending' || knockoutRoundGame?.status === 'active'
+  // Per-round question pack for knockout trivia. The host can upload a fresh CSV
+  // before each round (to ramp difficulty) or reuse the previous round's pack. Uses
+  // the same upload state as the round-robin "Start Next Game" panel — the two panels
+  // never render together, so sharing is safe.
+  const knockoutTrivia = knockout && (tournament.game_type ?? 'trivia') === 'trivia'
+  const knockoutQuestionsPerRound = tournament.game_config?.roundsCount ?? 5
+  const knockoutCustom = knockoutTrivia && questionSource === 'custom'
+  const knockoutEffectiveCount = customTrivia.length > 0 ? customTrivia.length : (carriedCustomCount ?? 0)
+  const canStartKnockoutRound = !knockoutCustom || knockoutEffectiveCount >= knockoutQuestionsPerRound
   // Finished knockout rounds, for the results list. Entrants come from the round's
   // stored placements; the top half advanced.
   const knockoutResultRounds = knockout
@@ -1051,15 +1076,113 @@ export default function TournamentLobbyPage() {
           <p className="label-caps">Knockout controls</p>
 
           {!knockoutRoundInProgress && (
-            <div className="space-y-1.5">
-              <PrimaryBtn onClick={handleStartRound} disabled={actionLoading || survivingCount < 2}>
-                {actionLoading ? 'Setting up…' : knockoutRoundNumber > 0 ? 'Start Next Round' : 'Start Round'}
-              </PrimaryBtn>
-              <p className="text-faint text-xs text-center">
-                {survivingCount < 2
-                  ? 'Waiting for players to join before you can start.'
-                  : 'Sends everyone into one trivia game for this round.'}
-              </p>
+            <div className="space-y-3">
+              {/* Per-round questions: choose the built-in pack or upload a CSV for
+                  this round. Uploading a fresh CSV each round lets the host ramp up
+                  difficulty (round of 16 → quarter → semi → final). */}
+              {knockoutTrivia && (
+                <Field
+                  label={`Questions for this round${knockoutRoundNumber > 0 ? ` · ${roundLabel(survivingCount)}` : ''}`}
+                >
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      aria-pressed={questionSource === 'platform'}
+                      onClick={() => setQuestionSource('platform')}
+                      className={`chip flex-1 ${questionSource === 'platform' ? 'chip-active' : ''}`}
+                    >
+                      Built-in pack
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={questionSource === 'custom'}
+                      onClick={() => setQuestionSource('custom')}
+                      className={`chip flex-1 ${questionSource === 'custom' ? 'chip-active' : ''}`}
+                    >
+                      Upload CSV
+                    </button>
+                  </div>
+
+                  {questionSource === 'custom' && (
+                    <div className="surface-inset p-4 mt-3 space-y-3">
+                      <input
+                        ref={fileRef}
+                        type="file"
+                        accept=".csv,.xlsx,.xls"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0]
+                          if (f) handleFile(f)
+                        }}
+                        className="hidden"
+                      />
+                      {customTrivia.length === 0 ? (
+                        <div className="space-y-2">
+                          {carriedCustomCount != null && (
+                            <div className="surface-inset p-3 space-y-1" style={{ borderColor: 'var(--primary)' }}>
+                              <p className="text-sm text-body font-medium">
+                                ✓ Reusing your pack ({carriedCustomCount} question
+                                {carriedCustomCount === 1 ? '' : 's'}) from the last round
+                              </p>
+                              <p className="text-faint text-xs">
+                                Already-seen questions are skipped automatically. Upload a new file below to make this
+                                round harder.
+                              </p>
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => fileRef.current?.click()}
+                            className="btn-secondary w-full"
+                          >
+                            {carriedCustomCount != null ? 'Upload a different file' : 'Choose CSV or Excel file'}
+                          </button>
+                          <p className="text-faint text-xs">
+                            Columns: question, option_a–option_d, correct (A–D).{' '}
+                            <a
+                              href={questionSampleFile('trivia').href}
+                              download={questionSampleFile('trivia').download}
+                              className="underline hover:text-body"
+                              style={{ color: 'var(--primary)' }}
+                            >
+                              Download sample
+                            </a>
+                          </p>
+                          <p className="text-faint text-xs">
+                            Need at least {knockoutQuestionsPerRound} question
+                            {knockoutQuestionsPerRound === 1 ? '' : 's'} (one per question in the round).
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm text-body font-medium">
+                            ✓ {customTrivia.length} question{customTrivia.length === 1 ? '' : 's'} loaded
+                          </p>
+                          <button type="button" onClick={clearCustom} className="btn-ghost text-xs">
+                            Clear
+                          </button>
+                        </div>
+                      )}
+                      {uploadMsg && <p className="text-faint text-xs">{uploadMsg}</p>}
+                    </div>
+                  )}
+                </Field>
+              )}
+
+              <div className="space-y-1.5">
+                <PrimaryBtn
+                  onClick={handleStartRound}
+                  disabled={actionLoading || survivingCount < 2 || !canStartKnockoutRound}
+                >
+                  {actionLoading ? 'Setting up…' : knockoutRoundNumber > 0 ? 'Start Next Round' : 'Start Round'}
+                </PrimaryBtn>
+                <p className="text-faint text-xs text-center">
+                  {survivingCount < 2
+                    ? 'Waiting for players to join before you can start.'
+                    : knockoutCustom && !canStartKnockoutRound
+                      ? `Upload at least ${knockoutQuestionsPerRound} question${knockoutQuestionsPerRound === 1 ? '' : 's'} to start this round.`
+                      : 'Sends everyone into one trivia game for this round.'}
+                </p>
+              </div>
             </div>
           )}
 

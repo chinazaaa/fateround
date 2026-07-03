@@ -6,6 +6,7 @@ import { filterParticipantsInRounds } from '@/lib/utils'
 import { hexToRgba } from '@/lib/color'
 import { LOAD_TIMEOUT_MS, POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useScrollHostViewToTop, scrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import {
   CONFESSION_SELECT,
@@ -206,6 +207,8 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [confessions, setConfessions] = useState<Confession[]>([])
 
   useScrollHostViewToTop({ gameStatus: game?.status })
+
+  useTurnNotifications({ status: game?.status })
 
   useEffect(() => {
     if (!loading && game) scrollHostViewToTop()

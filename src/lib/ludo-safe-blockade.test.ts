@@ -43,6 +43,34 @@ describe('safe-square stacks are not blockades', () => {
     expect(moves.some((m) => m.to.zone === 'track' && m.to.pos === 9)).toBe(true)
   })
 
+  it('traditional variant: a lone piece on a start square CAN be captured', () => {
+    // Green sits on its own start (pos 0). Red is one step behind (pos 12) and
+    // rolls a 1 to land on pos 13... no — reach pos 0 from red's perspective.
+    // Red start = 13, so red at pos 51 rolling 1 lands on pos 0 (green's start).
+    const green: LudoPiece[] = [{ id: 0, zone: 'track', pos: 0 }]
+    const red: LudoPiece[] = [{ id: 0, zone: 'track', pos: 51 }]
+    const states = [state('green', green, 'p-green'), state('red', red, 'p-red')]
+
+    // Modern: start is safe → no capture.
+    const modern = getLegalMovesForSteps('red', red, 1, states, 'p-red', 'modern')
+    expect(modern.find((m) => m.to.zone === 'track' && m.to.pos === 0)?.captures).toBe(false)
+
+    // Traditional: start is NOT safe → capturing move.
+    const traditional = getLegalMovesForSteps('red', red, 1, states, 'p-red', 'traditional')
+    expect(traditional.find((m) => m.to.zone === 'track' && m.to.pos === 0)?.captures).toBe(true)
+  })
+
+  it('traditional variant: mid-arm star is not safe (capture allowed there)', () => {
+    // Blue lone piece on the star at index 8; green lands on it.
+    const green: LudoPiece[] = [{ id: 0, zone: 'track', pos: 6 }]
+    const blue: LudoPiece[] = [{ id: 0, zone: 'track', pos: 8 }]
+    const states = [state('green', green, 'p-green'), state('blue', blue, 'p-blue')]
+    const traditional = getLegalMovesForSteps('green', green, 2, states, 'p-green', 'traditional')
+    expect(traditional.find((m) => m.to.zone === 'track' && m.to.pos === 8)?.captures).toBe(true)
+    const modern = getLegalMovesForSteps('green', green, 2, states, 'p-green', 'modern')
+    expect(modern.find((m) => m.to.zone === 'track' && m.to.pos === 8)?.captures).toBe(false)
+  })
+
   it('still blocks an opponent blockade on a NON-safe square', () => {
     const green: LudoPiece[] = [{ id: 0, zone: 'track', pos: 1 }]
     const red: LudoPiece[] = [
