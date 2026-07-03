@@ -50,6 +50,9 @@ export const updateTournamentSchema = z.object({
   // Provided only when editing lives: an object enables/updates lives, null disables.
   // The route rejects this unless the tournament is still in 'waiting'.
   eliminationConfig: eliminationConfigSchema.nullable().optional(),
+  // Edited game setup (house rules, dictionary, timers, ladder). The route rejects
+  // it unless the tournament is still 'waiting', so an in-progress room is untouched.
+  gameConfig: gameConfigSchema.optional(),
 })
 
 export const joinTournamentSchema = z.object({

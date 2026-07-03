@@ -19,6 +19,14 @@ import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { TournamentShareLeaderboard } from '@/components/tournament/TournamentShareLeaderboard'
 import { TournamentBracketBoard } from '@/components/tournament/TournamentBracketBoard'
+import {
+  TournamentGameConfigFields,
+  defaultGameConfigValue,
+  gameConfigValueFromStored,
+  gameConfigRequestBody,
+  formatHasGameConfig,
+  type TournamentGameConfigValue,
+} from '@/components/tournament/TournamentGameConfigFields'
 
 /**
  * Whether a tournament player is in a bracket match — a chess duel (player_a/b)
@@ -118,6 +126,7 @@ export default function TournamentLobbyPage() {
   const [editLives, setEditLives] = useState(false)
   const [editStartingLives, setEditStartingLives] = useState(3)
   const [editEliminate, setEditEliminate] = useState(1)
+  const [editGameConfig, setEditGameConfig] = useState<TournamentGameConfigValue>(defaultGameConfigValue())
   const [savingEdit, setSavingEdit] = useState(false)
   const [editError, setEditError] = useState('')
 
@@ -274,6 +283,7 @@ export default function TournamentLobbyPage() {
     setEditLives(Boolean(tournament.elimination_config))
     setEditStartingLives(tournament.elimination_config?.startingLives ?? 3)
     setEditEliminate(tournament.elimination_config?.eliminateCount ?? 1)
+    setEditGameConfig(gameConfigValueFromStored(tournament.format, tournament.game_type, tournament.game_config))
     setEditError('')
     setShowEdit(true)
   }
@@ -306,7 +316,7 @@ export default function TournamentLobbyPage() {
       targetGameCount: editTarget.trim() ? target : null,
       maxPlayers: editMax.trim() ? cap : null,
     }
-    // Lives can only be edited before the first game starts.
+    // Lives and game settings can only be edited before the first game starts.
     if (tournament.status === 'waiting') {
       body.eliminationConfig = editLives
         ? {
@@ -316,6 +326,10 @@ export default function TournamentLobbyPage() {
             eliminateCount: editEliminate,
           }
         : null
+      if (tournament.game_type && formatHasGameConfig(tournament.format)) {
+        const gc = gameConfigRequestBody(tournament.format, tournament.game_type, editGameConfig)
+        if (gc) body.gameConfig = gc
+      }
     }
 
     try {
@@ -662,14 +676,16 @@ export default function TournamentLobbyPage() {
   // several still standing, and that has no winner.
   const h2hChampion =
     (h2h || knockout) && isFinished && survivingCount === 1 ? (players.find((p) => !p.is_eliminated) ?? null) : null
-  // School champion: the player who graduated past the top class. Nobody is
-  // eliminated, so the winner is whoever reached the ladder's end. Several players
-  // can graduate from the same final room at once; prefer the one who topped a
-  // room (its Whot winner) as the champion, else any graduate.
+  // School champion: whoever reached the ladder's end, or the last player left
+  // standing once everyone else was left behind and eliminated. Several players can
+  // graduate from the same final room at once; prefer the one who topped a room
+  // (its Whot winner), else any graduate, else the sole survivor.
   const schoolGraduates =
     school && isFinished ? players.filter((p) => hasGraduated(p.school_level ?? 0, schoolClassCount)) : []
   const schoolChampion =
-    schoolGraduates.find((p) => games.some((g) => g.winner_player_id === p.id)) ?? schoolGraduates[0] ?? null
+    schoolGraduates.find((p) => games.some((g) => g.winner_player_id === p.id)) ??
+    schoolGraduates[0] ??
+    (school && isFinished && survivingCount === 1 ? (players.find((p) => !p.is_eliminated) ?? null) : null)
 
   // Knockout derived state — one group game per round.
   const knockoutGames = knockout ? games.filter((g) => g.round_number != null) : []
@@ -890,6 +906,26 @@ export default function TournamentLobbyPage() {
             <p className="text-faint text-xs">Lives settings are locked once the first game starts.</p>
           )}
 
+          {tournament.game_type && formatHasGameConfig(tournament.format) && (
+            <div className="space-y-3">
+              <div className="divider-soft" />
+              <p className="label-caps">Game settings</p>
+              {tournament.status === 'waiting' ? (
+                <TournamentGameConfigFields
+                  format={tournament.format}
+                  gameType={tournament.game_type}
+                  value={editGameConfig}
+                  onChange={setEditGameConfig}
+                />
+              ) : (
+                <p className="text-faint text-xs">
+                  House rules, timings{tournament.format === 'school' ? ', and the class ladder' : ''} are locked once
+                  the first game starts, so a live room is never changed mid-play.
+                </p>
+              )}
+            </div>
+          )}
+
           {editError && <p className="text-red-400 text-sm">{editError}</p>}
 
           <PrimaryBtn onClick={handleSaveSettings} disabled={savingEdit}>
@@ -1057,7 +1093,7 @@ export default function TournamentLobbyPage() {
               <p className="text-faint text-xs text-center">
                 {survivingCount < 2
                   ? 'Waiting for players to join before you can start.'
-                  : 'Groups everyone by class into Whot rooms (up to 5) and sends them in. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats.'}
+                  : 'Groups everyone by class into Whot rooms (up to 5) and sends them in. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats. A player left with no one to play — no classmate and no other straggler to pair with — is out.'}
               </p>
             </div>
           )}
@@ -1438,8 +1474,8 @@ export default function TournamentLobbyPage() {
                 <span aria-hidden>🃏</span>
                 <span>
                   <span className="text-body font-semibold">Empty your hand and you climb to the next class.</span> The
-                  rest keep playing; when time&apos;s up the one left holding the most cards repeats the class. Nobody
-                  is knocked out.
+                  rest keep playing; when time&apos;s up the one left holding the most cards repeats the class.
+                  You&apos;re only out if you&apos;re ever left with no one to play.
                 </span>
               </li>
               <li className="flex gap-2.5">
@@ -1578,7 +1614,9 @@ export default function TournamentLobbyPage() {
           <p className="text-4xl" aria-hidden="true">
             🎓
           </p>
-          <p className="label-caps">Graduated — Champion</p>
+          <p className="label-caps">
+            {hasGraduated(schoolChampion.school_level ?? 0, schoolClassCount) ? 'Graduated — Champion' : 'Champion'}
+          </p>
           <p className="text-2xl font-black gradient-title">{schoolChampion.player_name}</p>
         </div>
       )}

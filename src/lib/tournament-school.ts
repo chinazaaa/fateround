@@ -88,13 +88,15 @@ export interface SchoolPlayerLevel {
 }
 
 // The most players a school Whot room holds. There's no minimum: a class with
-// only two players just plays a room of two. Whot itself allows up to 6, which is
-// the ceiling a lone-player merge can briefly reach.
+// only two players just plays a room of two (Whot itself allows up to 6).
 export const SCHOOL_MAX_ROOM = 5
 
 export interface SchoolRooms {
   /** Groups of player ids that each play one Whot game this round. */
   rooms: string[][]
+  /** Lone players with nobody left in their class and someone in a higher class —
+   *  left behind, so they're eliminated. */
+  eliminated: string[]
 }
 
 /** Split ids into the fewest rooms that stay ≤ max, balanced to within one each. */
@@ -113,22 +115,24 @@ function balancedChunks(ids: string[], max: number): string[][] {
 }
 
 /**
- * Group players into rooms for one school round, matched *by class*. Players in
- * the same class play each other: a class with 6 players makes two rooms of 3, a
+ * Group players into rooms for one school round, matched *by class* first. Players
+ * in the same class play each other: a class with 6 players makes two rooms of 3, a
  * class with just 2 makes a room of 2 (no minimum). Rooms hold at most 5.
  *
- * A class with a single lone player can't play alone, so lone players fall back to
- * the nearest class: if two or more players are stranded alone in their classes,
- * they group together (sorted by class, so the nearest classes pair up); a single
- * stranded player joins the room nearest to their class. Either way every player
- * gets a room whenever at least two remain — nobody sits out and it can't deadlock
- * on one player stuck alone in the top class.
+ * A player alone in their class can't play their classmates, but they're only
+ * eliminated if they truly have no one to play. Lone players from different classes
+ * are paired off with each other first (nearest classes together) — so a straggler
+ * plays another straggler (e.g. the loser from another room) rather than being cut.
+ * Only when a single lone player is left with nobody to pair with is anyone out, and
+ * even then a lone player in the *top* class is the frontrunner, not a straggler:
+ * they aren't eliminated, they just wait for someone to climb up to them. So the top
+ * class can never be eliminated and a tournament always keeps a winner.
  *
  * The caller shuffles `players` first; the grouping preserves that order within a
  * class, so rooms vary round to round.
  */
 export function computeSchoolRooms(players: SchoolPlayerLevel[]): SchoolRooms {
-  if (players.length < 2) return { rooms: [] }
+  if (players.length < 2) return { rooms: [], eliminated: [] }
 
   // Bucket by class, lowest first; same-class order stays as the caller shuffled it.
   const byLevel = new Map<number, string[]>()
@@ -138,41 +142,35 @@ export function computeSchoolRooms(players: SchoolPlayerLevel[]): SchoolRooms {
     byLevel.set(p.level, arr)
   }
   const levels = [...byLevel.keys()].sort((a, b) => a - b)
+  const topLevel = levels[levels.length - 1]
 
   // Classes with ≥2 players form their own rooms; lone players are set aside.
-  const rooms: { ids: string[]; level: number }[] = []
+  const rooms: string[][] = []
   const singles: { id: string; level: number }[] = []
   for (const level of levels) {
     const ids = byLevel.get(level) ?? []
-    if (ids.length < 2) {
-      singles.push({ id: ids[0], level })
-      continue
-    }
-    for (const chunk of balancedChunks(ids, SCHOOL_MAX_ROOM)) rooms.push({ ids: chunk, level })
+    if (ids.length >= 2) rooms.push(...balancedChunks(ids, SCHOOL_MAX_ROOM))
+    else singles.push({ id: ids[0], level })
   }
 
-  // Place lone players in the nearest class. Two or more stranded players form
-  // their own rooms (sorted by class → nearest classes together); a single one
-  // joins the room closest to their class.
+  const eliminated: string[] = []
   if (singles.length >= 2) {
-    for (const chunk of balancedChunks(
-      singles.map((s) => s.id),
-      SCHOOL_MAX_ROOM
-    )) {
-      rooms.push({ ids: chunk, level: 0 })
-    }
-  } else if (singles.length === 1 && rooms.length > 0) {
-    const lone = singles[0]
-    // Prefer a room with spare space; among those, the class-nearest one.
-    const target =
-      [...rooms]
-        .filter((r) => r.ids.length < SCHOOL_MAX_ROOM)
-        .sort((a, b) => Math.abs(a.level - lone.level) - Math.abs(b.level - lone.level))[0] ??
-      [...rooms].sort((a, b) => Math.abs(a.level - lone.level) - Math.abs(b.level - lone.level))[0]
-    target.ids.push(lone.id)
+    // Two or more stragglers — pair them off with each other (nearest classes
+    // first, since `singles` is already class-sorted). Nobody is left without a game.
+    rooms.push(
+      ...balancedChunks(
+        singles.map((s) => s.id),
+        SCHOOL_MAX_ROOM
+      )
+    )
+  } else if (singles.length === 1 && singles[0].level < topLevel) {
+    // The only straggler, and everyone else is locked into their own class's rooms —
+    // no one left to play, and others have moved up past them. Eliminated.
+    eliminated.push(singles[0].id)
   }
+  // A lone player in the top class (singles[0].level === topLevel) waits — never cut.
 
-  return { rooms: rooms.map((r) => r.ids) }
+  return { rooms, eliminated }
 }
 
 /** The single player who repeats a school room: whoever holds the most cards at

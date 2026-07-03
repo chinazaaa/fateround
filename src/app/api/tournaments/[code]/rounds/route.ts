@@ -156,15 +156,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ roundNumber, players: survivorIds.length })
   }
 
-  // School (class ladder): group the survivors by class into Whot rooms of 3–5 and
-  // spawn one room per group. Only the room's winner climbs a class when the game
-  // finishes (resolved in tournament-school); everyone else repeats their class.
-  // Nobody is eliminated, and every player lands in a room (no byes).
+  // School (class ladder): group the survivors by class into Whot rooms and spawn
+  // one room per group. Players climb (or repeat) a class when the game finishes
+  // (resolved in tournament-school). A player left alone in a lower class is
+  // eliminated here at staging (see computeSchoolRooms); a lone frontrunner in the
+  // top class waits. If eliminating strands a single survivor, they win.
   if (tournament.format === 'school') {
     const shuffledSurvivors = shuffle((survivorRows ?? []).map((p) => ({ id: p.id, level: p.school_level ?? 0 })))
-    const { rooms } = computeSchoolRooms(shuffledSurvivors)
+    const { rooms, eliminated } = computeSchoolRooms(shuffledSurvivors)
+
+    if (eliminated.length > 0) {
+      const { error: eliminateError } = await admin
+        .from('tournament_players')
+        .update({ is_eliminated: true, eliminated_at: new Date().toISOString() })
+        .in('id', eliminated)
+      if (eliminateError) {
+        return NextResponse.json(
+          { error: internalErrorMessage('tournaments/code/rounds', eliminateError) },
+          { status: 500 }
+        )
+      }
+    }
+
+    // No rooms to play means the field has thinned to a single leader (the lone
+    // top-class player) — end the tournament with them as champion.
     if (rooms.length === 0) {
-      return NextResponse.json({ error: 'Need at least 2 players to start a round' }, { status: 400 })
+      const remaining = survivorIds.length - eliminated.length
+      if (remaining <= 1) {
+        await admin.from('tournaments').update({ status: 'finished' }).eq('id', tournamentId)
+        return NextResponse.json({ roundNumber, rooms: 0, eliminated: eliminated.length, finished: true })
+      }
+      return NextResponse.json({ error: 'Need at least 2 players in a class to start a round' }, { status: 400 })
     }
 
     const cfg = (tournament.game_config ?? {}) as {
@@ -224,7 +246,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (tournament.status === 'waiting') {
       await admin.from('tournaments').update({ status: 'active' }).eq('id', tournamentId)
     }
-    return NextResponse.json({ roundNumber, rooms: rooms.length })
+    return NextResponse.json({ roundNumber, rooms: rooms.length, eliminated: eliminated.length })
   }
 
   const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
