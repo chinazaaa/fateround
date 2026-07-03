@@ -103,6 +103,27 @@ export interface SchoolRooms {
   /** Lone players with nobody left in their class and someone in a higher class —
    *  left behind, so they're eliminated. */
   eliminated: string[]
+  /** Set when a lone frontrunner is far enough clear of the field to win outright
+   *  (no one within a class of them): the tournament ends with them as champion, so
+   *  the field doesn't have to grind on until someone graduates. */
+  champion?: string
+}
+
+/**
+ * The lone champion, if the tournament is effectively decided: a single player at the
+ * top class with nobody within one class of them (so no one can reach them next round).
+ * They win now rather than waiting to graduate. Returns null when the top class is
+ * shared, or a challenger sits one class below, or there aren't enough players.
+ */
+export function schoolLoneChampion(players: SchoolPlayerLevel[]): string | null {
+  if (players.length < 2) return null
+  let topLevel = Number.NEGATIVE_INFINITY
+  for (const p of players) if (p.level > topLevel) topLevel = p.level
+  const atTop = players.filter((p) => p.level === topLevel)
+  if (atTop.length !== 1) return null
+  // Someone one class below could climb and force a real final — not decided yet.
+  if (players.some((p) => p.level === topLevel - 1)) return null
+  return atTop[0].id
 }
 
 /** Split ids into the fewest rooms that stay ≤ max, balanced to within one each. */
@@ -138,6 +159,10 @@ function balancedChunks(ids: string[], max: number): string[][] {
  */
 export function computeSchoolRooms(players: SchoolPlayerLevel[]): SchoolRooms {
   if (players.length < 2) return { rooms: [], eliminated: [] }
+
+  // Decided already? A lone frontrunner clear of the field wins now — no round to stage.
+  const champion = schoolLoneChampion(players)
+  if (champion) return { rooms: [], eliminated: [], champion }
 
   // Bucket by class, lowest first; same-class order stays as the caller shuffled it.
   const byLevel = new Map<number, string[]>()
@@ -333,6 +358,27 @@ export async function resolveSchoolMatch(supabase: SupabaseClient, gameId: strin
   }
 
   if (someoneGraduated) {
+    await supabase.from('tournaments').update({ status: 'finished' }).eq('id', match.tournament_id)
+    return
+  }
+
+  // After this round's climbs, is one player now clear of the whole field (alone at the
+  // top with nobody within a class)? Then they've won — end the tournament and knock out
+  // the rest, rather than making everyone grind on until a graduation.
+  const { data: field } = await supabase
+    .from('tournament_players')
+    .select('id, school_level')
+    .eq('tournament_id', match.tournament_id)
+    .eq('is_eliminated', false)
+  const champ = schoolLoneChampion((field ?? []).map((p) => ({ id: p.id, level: p.school_level ?? 0 })))
+  if (champ) {
+    const losers = (field ?? []).map((p) => p.id).filter((id) => id !== champ)
+    if (losers.length > 0) {
+      await supabase
+        .from('tournament_players')
+        .update({ is_eliminated: true, eliminated_at: new Date().toISOString() })
+        .in('id', losers)
+    }
     await supabase.from('tournaments').update({ status: 'finished' }).eq('id', match.tournament_id)
   }
 }

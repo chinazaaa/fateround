@@ -12,6 +12,7 @@ import {
   schoolLadder,
   schoolAdvancers,
   schoolFinalChampion,
+  schoolLoneChampion,
   type SchoolHand,
 } from './tournament-school'
 
@@ -143,16 +144,30 @@ describe('computeSchoolRooms', () => {
     expect([...(michelleRoom ?? [])].sort()).toEqual(['ada', 'michelle'])
   })
 
-  it('does NOT eliminate a lone frontrunner in the top class — they wait', () => {
+  it('crowns a lone frontrunner clear of the whole field (no waiting to graduate)', () => {
     const players = [
       { id: 'p1', level: 0 },
       { id: 'p2', level: 0 },
       { id: 'p3', level: 0 },
-      { id: 'leader', level: 9 }, // alone, but at the top — the frontrunner
+      { id: 'leader', level: 9 }, // 9 classes clear — the tournament is decided
     ]
-    const { rooms, eliminated } = computeSchoolRooms(players)
-    expect(eliminated).toEqual([]) // the leader is not knocked out
-    expect(rooms).toEqual([['p1', 'p2', 'p3']]) // leader waits, isn't forced into a room
+    const { rooms, eliminated, champion } = computeSchoolRooms(players)
+    expect(champion).toBe('leader')
+    expect(rooms).toEqual([])
+    expect(eliminated).toEqual([])
+  })
+
+  it('a lone frontrunner still waits when a challenger sits one class below', () => {
+    const players = [
+      { id: 'a', level: 1 },
+      { id: 'b', level: 1 },
+      { id: 'c', level: 1 }, // a room one class below the leader
+      { id: 'leader', level: 2 }, // only one class clear — someone could climb to meet them
+    ]
+    const { rooms, eliminated, champion } = computeSchoolRooms(players)
+    expect(champion).toBeUndefined()
+    expect(eliminated).toEqual([])
+    expect(rooms).toEqual([['a', 'b', 'c']]) // leader waits, isn't crowned yet
     expect(rooms.flat()).not.toContain('leader')
   })
 
@@ -182,14 +197,14 @@ describe('computeSchoolRooms', () => {
     expect(rooms.flat()).not.toContain('mojito') // Uni200 waits, never cut
   })
 
-  it('crowns the leader when the last two players are more than a class apart', () => {
-    // No fair match possible → the lower is out, leaving a single survivor to win.
-    const { rooms, eliminated } = computeSchoolRooms([
+  it('crowns the leader outright when the last two players are more than a class apart', () => {
+    // No fair match possible and the leader is clear → they win now, no room played.
+    const { rooms, champion } = computeSchoolRooms([
       { id: 'low', level: 5 },
       { id: 'high', level: 9 },
     ])
+    expect(champion).toBe('high')
     expect(rooms).toEqual([])
-    expect(eliminated).toEqual(['low'])
   })
 
   it('returns no rooms and no eliminations for a lone (or empty) field', () => {
@@ -246,5 +261,30 @@ describe('schoolFinalChampion', () => {
 
   it('returns null when nobody played', () => {
     expect(schoolFinalChampion([], null)).toBeNull()
+  })
+})
+
+describe('schoolLoneChampion', () => {
+  const lvl = (id: string, level: number) => ({ id, level })
+
+  it('crowns a unique top player with nobody within one class below', () => {
+    expect(schoolLoneChampion([lvl('a', 0), lvl('b', 0), lvl('leader', 9)])).toBe('leader')
+  })
+
+  it('does not crown when a challenger sits exactly one class below', () => {
+    expect(schoolLoneChampion([lvl('a', 8), lvl('leader', 9)])).toBeNull()
+  })
+
+  it('does not crown when the top class is shared', () => {
+    expect(schoolLoneChampion([lvl('a', 9), lvl('b', 9), lvl('c', 2)])).toBeNull()
+  })
+
+  it('crowns when the gap to the rest is two or more classes', () => {
+    expect(schoolLoneChampion([lvl('a', 7), lvl('leader', 9)])).toBe('leader')
+  })
+
+  it('returns null for a lone or empty field', () => {
+    expect(schoolLoneChampion([lvl('only', 3)])).toBeNull()
+    expect(schoolLoneChampion([])).toBeNull()
   })
 })
