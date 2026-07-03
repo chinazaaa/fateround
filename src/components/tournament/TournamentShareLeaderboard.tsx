@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
-import type { Tournament, TournamentPlayer } from '@/types/tournament'
+import type { Tournament, TournamentPlayer, TournamentGame } from '@/types/tournament'
 import { captureElementAsImage } from '@/lib/capture-element-image'
 import { shareImageBlob } from '@/lib/share-image'
 import { appDomain } from '@/lib/site'
@@ -12,17 +12,53 @@ const MEDAL = ['🥇', '🥈', '🥉']
 const RANK_COLOR = ['var(--marry)', '#64748b', '#b45309']
 
 /**
- * Head-to-head has no points — rank by how far each player got: the champion
- * (not eliminated) first, then the most recently eliminated (they lost latest,
- * so they placed higher). Round-robin keeps its incoming points order.
+ * For each player, their placement (1 = best) in the most recent finished round
+ * they played — the placements map of the highest-numbered finished game that
+ * includes them. Since a knockout player appears in every round until they're cut,
+ * this is their current-round rank for survivors and their final-round rank for the
+ * eliminated. Used to order knockout standings by last-round performance instead of
+ * join order (knockout awards no points, so points can't rank the field).
  */
-function orderForStandings(players: TournamentPlayer[], h2h: boolean): TournamentPlayer[] {
+export function buildLastRoundRank(games: TournamentGame[]): Map<string, number> {
+  const byPlayer = new Map<string, number>()
+  const finished = games
+    .filter((g) => g.status === 'finished' && g.placements && g.round_number != null)
+    .sort((a, b) => (a.round_number as number) - (b.round_number as number))
+  // Ascending by round, so a later round overwrites an earlier one — each player
+  // ends up mapped to their most recent placement.
+  for (const g of finished) {
+    for (const [playerId, rank] of Object.entries(g.placements as Record<string, number>)) {
+      byPlayer.set(playerId, rank)
+    }
+  }
+  return byPlayer
+}
+
+/**
+ * Head-to-head and knockout have no points — rank by how far each player got: the
+ * champion (not eliminated) first, then the most recently eliminated (they lost
+ * latest, so they placed higher). For knockout, `lastRoundRank` breaks ties within
+ * a group — survivors and players cut in the same round — by their placement in the
+ * last round they played, so the board reflects the latest round rather than join
+ * order. Round-robin keeps its incoming points order.
+ */
+export function orderForStandings(
+  players: TournamentPlayer[],
+  h2h: boolean,
+  lastRoundRank?: Map<string, number>
+): TournamentPlayer[] {
   if (!h2h) return players
+  const rankOf = (id: string) => lastRoundRank?.get(id) ?? Number.POSITIVE_INFINITY
   return [...players].sort((a, b) => {
     if (a.is_eliminated !== b.is_eliminated) return a.is_eliminated ? 1 : -1
-    const ta = a.eliminated_at ? Date.parse(a.eliminated_at) : 0
-    const tb = b.eliminated_at ? Date.parse(b.eliminated_at) : 0
-    return tb - ta
+    if (a.is_eliminated) {
+      // Both eliminated: whoever lasted longer (later elimination) ranks higher.
+      const ta = a.eliminated_at ? Date.parse(a.eliminated_at) : 0
+      const tb = b.eliminated_at ? Date.parse(b.eliminated_at) : 0
+      if (tb !== ta) return tb - ta
+    }
+    // Both survivors, or eliminated in the same round: order by last-round placement.
+    return rankOf(a.id) - rankOf(b.id)
   })
 }
 
@@ -46,9 +82,11 @@ function buildShareText(title: string, players: TournamentPlayer[], h2h: boolean
 export function TournamentShareLeaderboard({
   tournament,
   players,
+  games = [],
 }: {
   tournament: Tournament
   players: TournamentPlayer[]
+  games?: TournamentGame[]
 }) {
   const { success, error } = useToast()
   const captureRef = useRef<HTMLDivElement>(null)
@@ -57,8 +95,12 @@ export function TournamentShareLeaderboard({
 
   // Head-to-head and knockout are both bracket-style: ranked by how far each
   // player got (no points), with the lone survivor crowned champion.
-  const h2h = tournament.format === 'head-to-head' || tournament.format === 'knockout'
-  const ranked = orderForStandings(players, h2h)
+  const knockout = tournament.format === 'knockout'
+  const h2h = tournament.format === 'head-to-head' || knockout
+  // Knockout stores a per-round placements map we can rank the field by; head-to-head
+  // resolves rounds by match winners, so it keeps the elimination-time ordering only.
+  const lastRoundRank = knockout ? buildLastRoundRank(games) : undefined
+  const ranked = orderForStandings(players, h2h, lastRoundRank)
 
   const handleShare = useCallback(async () => {
     if (sharingLock.current) return
@@ -80,7 +122,7 @@ export function TournamentShareLeaderboard({
       if (err instanceof DOMException && err.name === 'AbortError') return
       // Image capture failed (e.g. unsupported browser) — fall back to text.
       try {
-        const text = buildShareText(tournament.title, orderForStandings(players, h2h), h2h)
+        const text = buildShareText(tournament.title, orderForStandings(players, h2h, lastRoundRank), h2h)
         if (typeof navigator !== 'undefined' && navigator.share) {
           await navigator.share({ text })
         } else {
@@ -94,7 +136,7 @@ export function TournamentShareLeaderboard({
       sharingLock.current = false
       setSharing(false)
     }
-  }, [tournament.title, players, h2h, success, error])
+  }, [tournament.title, players, h2h, lastRoundRank, success, error])
 
   const isFinished = tournament.status === 'finished'
 
