@@ -1403,6 +1403,21 @@ export default function TournamentLobbyPage() {
       )}
 
       {/* Join Form */}
+      {/* Reconnect — once joining is closed (tournament started or full), a player who
+          lost their session or is on a new device can still get back into their seat
+          with the player code they saved. (Pre-start, the same entry lives, collapsed,
+          inside the Join card.) */}
+      {!joined && !isHost && !isFinished && (hasStarted || isFull) && !spectating && (
+        <div className="glass-card p-5 space-y-2">
+          <p className="label-caps">Already in this tournament?</p>
+          <p className="text-muted text-xs">
+            Reconnecting, or on another device? Enter the player code you saved when you joined to get back into your
+            seat — this works even after the tournament has started.
+          </p>
+          <TournamentResumeEntry tournamentId={tournamentId} onResumed={handleResumedByCode} alwaysOpen />
+        </div>
+      )}
+
       {!joined && !isHost && !isFinished && hasStarted && !spectating && (
         <div className="glass-card-strong p-5 text-center space-y-2">
           <p className="font-bold text-body">Tournament already started</p>

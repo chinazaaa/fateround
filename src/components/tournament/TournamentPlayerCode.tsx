@@ -40,9 +40,10 @@ export function TournamentContinueCard({ tournamentId, code }: { tournamentId: s
 
   return (
     <div className="surface-inset p-4 space-y-3 text-center">
-      <p className="label-caps">Continue on another device</p>
+      <p className="label-caps">Your player code</p>
       <p className="text-muted text-xs">
-        Enter this code, open the link, or scan the QR on your other device to pick up your seat.
+        📌 Save this code (or the link/QR). It&apos;s the only way back into your seat if you switch devices, lose this
+        tab, or need to reconnect — enter it on the tournament page from any device.
       </p>
       <button onClick={copyCode} className="font-mono font-bold text-2xl tracking-widest text-body" title="Copy code">
         {copied ? 'Copied ✓' : code}
@@ -82,11 +83,15 @@ export function TournamentContinueCard({ tournamentId, code }: { tournamentId: s
 export function TournamentResumeEntry({
   tournamentId,
   onResumed,
+  alwaysOpen = false,
 }: {
   tournamentId: string
   onResumed: (playerName: string, code: string) => void
+  /** Show the code input directly instead of behind an "Enter your code" toggle —
+   *  for the standalone reconnect card (where the whole card is the prompt). */
+  alwaysOpen?: boolean
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(alwaysOpen)
   const [codeInput, setCodeInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -115,7 +120,7 @@ export function TournamentResumeEntry({
   if (!expanded) {
     return (
       <button onClick={() => setExpanded(true)} className="btn-ghost text-xs mx-auto block">
-        Already joined on another device? Enter your code
+        Already joined? Enter your player code
       </button>
     )
   }
