@@ -9,6 +9,7 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { WordHuntPlaySurface } from '@/components/word-hunt/WordHuntPlaySurface'
 import { WordHuntFinalResultsShareBlock } from '@/components/word-hunt/WordHuntFinalResultsShareBlock'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
@@ -462,6 +463,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          gameType="word_hunt"
           footer={
             <p className="text-center pt-1">
               <GameRulesLink gameType="word_hunt" variant="subtle" />
@@ -530,10 +532,20 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (screen === 'finished' && game) {
+    const myWordHuntRow = leaderboard.find((row) => row.player_id === myPlayerId)
+    // Winner = top of the points leaderboard, but only a genuine (contested)
+    // win: more than one player AND a positive score. A solo hunt or an all-zero
+    // round has no real winner. Mirrors the other score-based games.
+    const iWon =
+      !!myWordHuntRow &&
+      leaderboard.length > 1 &&
+      leaderboard[0] != null &&
+      myWordHuntRow.points === leaderboard[0].points &&
+      leaderboard[0].points > 0
     return (
       <div className="min-h-screen flex flex-col">
         <GamePlayerChrome />
-        <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full">
+        <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-4">
           <WordHuntFinalResultsShareBlock
             game={game}
             players={players}
@@ -544,6 +556,14 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
             validWords={validWords.size > 0 ? Array.from(validWords) : undefined}
             showCreateNewGame
           />
+          {iWon && (
+            <PostWinToCommunity
+              gameType="word_hunt"
+              gameCode={gameCode}
+              winnerName={myWordHuntRow?.name ?? ''}
+              roundKey={game?.session_started_at ?? undefined}
+            />
+          )}
         </main>
       </div>
     )
