@@ -158,6 +158,18 @@ export default function TournamentLobbyPage() {
 
   useTournamentRealtime(tournamentId, fetchState)
 
+  // The "in the room" presence dots come from each staged game's own player roster,
+  // which the tournament realtime channel doesn't watch — so a player joining their
+  // room fires no update here and the host would keep seeing a stale "not in the room"
+  // marker. While a round is staged (pending rooms with players filing in), poll so
+  // the host sees who's actually ready before starting or removing anyone.
+  const hasStagedRoom = games.some((g) => g.status === 'pending' && Boolean(g.game_id))
+  useEffect(() => {
+    if (!isHost || !hasStagedRoom) return
+    const t = setInterval(fetchState, 4000)
+    return () => clearInterval(t)
+  }, [isHost, hasStagedRoom, fetchState])
+
   useEffect(() => {
     const savedName = localStorage.getItem(`tournament_player_${tournamentId}`)
     if (savedName) {
