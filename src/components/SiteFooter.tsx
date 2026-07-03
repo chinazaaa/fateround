@@ -56,7 +56,7 @@ function marketingLinks(slugs: string[]): FooterLink[] {
 
 function FooterColumn({ title, links }: { title: string; links: FooterLink[] }) {
   return (
-    <nav className="space-y-2.5">
+    <nav className="space-y-2.5" aria-label={title}>
       <h2 className="label-caps">{title}</h2>
       <ul className="space-y-2">
         {links.map((link) => (
