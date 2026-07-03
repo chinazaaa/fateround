@@ -85,12 +85,17 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
         .order('created_at', { ascending: false })
         .limit(40),
     ])
-    const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as DescribeItSession | null) : null
-    if (sessionData) setSession(sessionData)
+    const sessionOk = supabasePollOk(sessionRes)
+    const sessionData = sessionOk ? (sessionRes.data as DescribeItSession | null) : null
+    // Only touch the session when its own read succeeded: this clears a stale session
+    // when the query returns no row, while a *non-session* query failing leaves the
+    // real session (and screen) intact — no spurious results→active flash.
+    if (sessionOk) setSession(sessionData)
     if (supabasePollOk(teamRes)) setTeamRows((teamRes.data ?? []) as DescribeItPlayer[])
     if (supabasePollOk(wordRes)) setWords((wordRes.data ?? []) as DescribeItWord[])
     if (supabasePollOk(guessRes)) setGuesses((guessRes.data ?? []) as DescribeItGuess[])
-    return { state: sessionData, ok: true }
+    // `ok` gates the polling fallback's back-off — only "ok" when every read succeeded.
+    return { state: sessionData, ok: supabasePollOk(sessionRes, teamRes, wordRes, guessRes) }
   }, [gameCode])
 
   const computeScreen = useCallback(

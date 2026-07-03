@@ -90,12 +90,13 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
           supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).eq('round_number', 1).maybeSingle(),
         ])
         setSubmissions((subs ?? []) as WordHuntSubmission[])
-        if (roundData) {
-          const meta = parseWordHuntMetadata((roundData as Record<string, unknown>).word_hunt_metadata)
-          if (meta) {
-            setGrid(meta.grid)
-            setValidWords(validWordsSetFromMetadata(meta.valid_words))
-          }
+        const meta = roundData ? parseWordHuntMetadata((roundData as Record<string, unknown>).word_hunt_metadata) : null
+        if (meta) {
+          setGrid(meta.grid)
+          setValidWords(validWordsSetFromMetadata(meta.valid_words))
+        } else {
+          setGrid(null)
+          setValidWords(new Set())
         }
         return
       }
@@ -108,19 +109,23 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
           .eq('round_number', 1)
           .maybeSingle()
 
-        if (roundData) {
-          const meta = parseWordHuntMetadata((roundData as Record<string, unknown>).word_hunt_metadata)
-          if (meta) {
-            setGrid(meta.grid)
-            setValidWords(validWordsSetFromMetadata(meta.valid_words))
-            setRoundId(roundData.id as string)
+        const meta = roundData ? parseWordHuntMetadata((roundData as Record<string, unknown>).word_hunt_metadata) : null
+        if (roundData && meta) {
+          setGrid(meta.grid)
+          setValidWords(validWordsSetFromMetadata(meta.valid_words))
+          setRoundId(roundData.id as string)
 
-            const { data: subs } = await supabase
-              .from('word_hunt_submissions')
-              .select(WORD_HUNT_SUBMISSION_SELECT)
-              .eq('round_id', roundData.id)
-            setSubmissions((subs ?? []) as WordHuntSubmission[])
-          }
+          const { data: subs } = await supabase
+            .from('word_hunt_submissions')
+            .select(WORD_HUNT_SUBMISSION_SELECT)
+            .eq('round_id', roundData.id)
+          setSubmissions((subs ?? []) as WordHuntSubmission[])
+        } else {
+          // Round not ready / metadata invalid — clear so we never render a prior round's board.
+          setGrid(null)
+          setValidWords(new Set())
+          setRoundId(null)
+          setSubmissions([])
         }
       } else {
         setGrid(null)
