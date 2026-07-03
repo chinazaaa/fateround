@@ -46,7 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: body, error: bodyError } = await parseJsonBody(req, startTournamentRoundSchema)
   if (bodyError) return bodyError
 
-  const { hostToken, timerSeconds } = body
+  const { hostToken, timerSeconds, questionSource, customQuestions } = body
   const admin = getSupabaseAdmin()
 
   const { data: tournament } = await admin.from('tournaments').select('*').eq('id', tournamentId).maybeSingle()
@@ -103,23 +103,61 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const gameCode = await uniqueGameCode(admin)
     if (!gameCode) return NextResponse.json({ error: 'Failed to generate unique game code' }, { status: 500 })
 
+    const roundsCount = config.roundsCount ?? 5
+
     // Carry question usage from earlier rounds so players who advance never see a
     // repeated question — seed this round's game with prior rounds' usage, which
-    // pickTriviaQuestions then avoids.
+    // pickTriviaQuestions then avoids. In the same pass, grab the most recent
+    // round's custom pack so a host who ramps difficulty by uploading a fresh CSV
+    // each round can also just reuse the previous round's pack by not uploading.
     const { data: priorTgames } = await admin
       .from('tournament_games')
       .select('game_id')
       .eq('tournament_id', tournamentId)
     const priorIds = (priorTgames ?? []).map((g) => g.game_id).filter((id): id is string => Boolean(id))
     const seededTriviaUsage: Record<string, number> = {}
+    let previousCustom: unknown[] | null = null
     if (priorIds.length > 0) {
-      const { data: priorGames } = await admin.from('games').select('pool_usage').in('id', priorIds)
+      const { data: priorGames } = await admin
+        .from('games')
+        .select('pool_usage, custom_questions, created_at')
+        .in('id', priorIds)
+      let latestCustom: { created_at: string; questions: unknown[] } | null = null
       for (const g of priorGames ?? []) {
         const trivia = (g.pool_usage as { trivia?: Record<string, number> } | null)?.trivia ?? {}
         for (const [key, count] of Object.entries(trivia)) {
           seededTriviaUsage[key] = (seededTriviaUsage[key] ?? 0) + (count as number)
         }
+        if (Array.isArray(g.custom_questions) && g.custom_questions.length > 0) {
+          if (!latestCustom || String(g.created_at) > latestCustom.created_at) {
+            latestCustom = { created_at: String(g.created_at), questions: g.custom_questions }
+          }
+        }
       }
+      previousCustom = latestCustom?.questions ?? null
+    }
+
+    // Effective per-round pack: a freshly uploaded pack wins; otherwise reuse the
+    // previous round's. Falls back to the built-in pack when neither is present.
+    const effectiveCustom =
+      questionSource === 'custom'
+        ? Array.isArray(customQuestions) && customQuestions.length > 0
+          ? customQuestions
+          : previousCustom
+        : null
+    const useCustomQuestions =
+      questionSource === 'custom' && Array.isArray(effectiveCustom) && effectiveCustom.length > 0
+
+    if (questionSource === 'custom' && (!Array.isArray(effectiveCustom) || effectiveCustom.length < roundsCount)) {
+      return NextResponse.json(
+        {
+          error:
+            Array.isArray(effectiveCustom) && effectiveCustom.length > 0
+              ? `Need at least ${roundsCount} custom questions for ${roundsCount} rounds — upload more or lower the questions per round`
+              : 'No questions to use for this round — upload a CSV or switch to the built-in pack',
+        },
+        { status: 400 }
+      )
     }
 
     const { error: gameError } = await admin.from('games').insert({
@@ -128,9 +166,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       title: `${tournament.title} — Round ${roundNumber}`,
       game_type: tournament.game_type ?? 'trivia',
       participant_mode: 'joiners',
-      rounds_count: config.roundsCount ?? 5,
+      rounds_count: roundsCount,
       timer_seconds: config.timerSeconds ?? 15,
-      question_source: config.questionSource ?? 'platform',
+      question_source: useCustomQuestions ? 'custom' : 'platform',
+      custom_questions: useCustomQuestions ? effectiveCustom : null,
       tournament_id: tournamentId,
       ...(Object.keys(seededTriviaUsage).length > 0 ? { pool_usage: { trivia: seededTriviaUsage } } : {}),
     })
