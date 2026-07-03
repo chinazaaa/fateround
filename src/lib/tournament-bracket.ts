@@ -3,18 +3,20 @@
 // round-spawn endpoint (which handles shuffling + I/O).
 
 // Games eligible for the head-to-head (bracket) format. Chess is the classic 1v1
-// (group size 2); Whot and Scrabble play in rooms of 4, where each round's single
-// room winner advances (group size 4). All are single-winner elimination games.
-// Kept here (a dependency-free module) so the resolution libs can read the room
-// size without importing the schema file, which would form an import cycle.
+// (group size 2); Whot and Scrabble play in small rooms where each round's single
+// room winner advances. All are single-winner elimination games. Kept here (a
+// dependency-free module) so the resolution libs can read the room size without
+// importing the schema file, which would form an import cycle.
 export const H2H_ELIGIBLE_TYPES = ['chess', 'whot', 'scrabble'] as const
 
-// How many players share one bracket room per game. Chess is a duel; Whot and
-// Scrabble seat 4 and advance only the room winner. Drives the round grouping,
-// seating, and elimination math.
+// The maximum players a bracket room holds per game — the field is split into the
+// fewest rooms that stay at or under this, balanced to within one player each (see
+// computeRoundGroups), so it's really "up to N". Chess is a duel (2). Whot seats up
+// to 5 (10 → 5+5, 13 → 5+4+4), which plays better than packing 4s and leaving a
+// stray 2; Scrabble stays at 4. Drives the round grouping, seating, and elimination.
 export const H2H_GROUP_SIZES: Record<(typeof H2H_ELIGIBLE_TYPES)[number], number> = {
   chess: 2,
-  whot: 4,
+  whot: 5,
   scrabble: 4,
 }
 

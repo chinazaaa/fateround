@@ -641,7 +641,7 @@ export default function TournamentLobbyPage() {
     const p = id ? players.find((pl) => pl.id === id) : null
     return p ? schoolClassLabel(p.school_level ?? 0, schoolClassCount) : ''
   }
-  // Bracket room size: chess is a 1v1 duel (2); Whot/Scrabble play in rooms of 4.
+  // Bracket room size: chess is a 1v1 duel (2); Whot rooms hold up to 5, Scrabble up to 4.
   const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
   const isGroupH2h = h2h && groupSize > 2
   // Multi-player rooms (winner advances) vs a 1-v-1 duel — school always plays in rooms.
@@ -974,7 +974,7 @@ export default function TournamentLobbyPage() {
                   {survivingCount < 2
                     ? 'Waiting for players to join before you can start.'
                     : isGroupH2h
-                      ? `Splits everyone into rooms of ${groupSize} and sends them in.`
+                      ? `Splits everyone into rooms of up to ${groupSize} and sends them in.`
                       : 'Pairs everyone up and sends them to their match rooms.'}
                 </p>
               </div>

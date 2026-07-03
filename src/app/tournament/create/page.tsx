@@ -294,7 +294,7 @@ export default function TournamentCreatePage() {
           </div>
           <p className="text-faint text-xs mt-2">
             {isH2H
-              ? 'Players are grouped into rooms each round and only the winner of each room advances, until one champion remains. Chess is 1-v-1; Whot and Scrabble play in rooms of 4.'
+              ? 'Players are grouped into rooms each round and only the winner of each room advances, until one champion remains. Chess is 1-v-1; Whot plays in rooms of up to 5, Scrabble up to 4.'
               : isKnockout
                 ? 'Everyone plays together each round; the bottom half is knocked out until one champion remains. Round of 16 → Quarterfinal → Semifinal → Final.'
                 : isSchool
@@ -320,7 +320,7 @@ export default function TournamentCreatePage() {
             <p className="text-faint text-xs mt-1.5">
               {isH2H
                 ? h2hGroupSize(gameType) > 2
-                  ? `Played in rooms of ${h2hGroupSize(gameType)} — only each room's winner advances.`
+                  ? `Played in rooms of up to ${h2hGroupSize(gameType)} — only each room's winner advances.`
                   : 'A 1-v-1 duel each round — the winner advances.'
                 : 'The game everyone plays together each round.'}
             </p>
