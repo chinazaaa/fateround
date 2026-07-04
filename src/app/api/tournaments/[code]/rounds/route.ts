@@ -94,8 +94,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const roundNumber = (lastRow?.round_number ?? 0) + 1
   let nextOrder = (lastRow?.game_order ?? 0) + 1
 
-  // Knockout: one group game per round with all survivors in it (no pairing).
-  if (tournament.format === 'knockout') {
+  // Room size for the group-bracket formats (head-to-head Whot/Scrabble, and
+  // Scrabble knockout). > 2 means "play in rooms"; trivia knockout stays at 2.
+  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
+
+  // Trivia knockout: one group game per round with all survivors in it (no pairing).
+  // Scrabble knockout plays in rooms instead, so it falls through to the group
+  // staging below — it's ranked as one field at resolution, not per room.
+  if (tournament.format === 'knockout' && groupSize <= 2) {
     const config = (tournament.game_config ?? {}) as {
       questionSource?: string
       roundsCount?: number
@@ -318,11 +324,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ roundNumber, rooms: rooms.length, eliminated: eliminated.length })
   }
 
-  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
-
-  // Group bracket (Whot/Scrabble): split survivors into rooms of up to `groupSize`
-  // and spawn one game room per group. Only the room's winner advances; the rest
-  // are eliminated when the game finishes (resolved in tournament-h2h).
+  // Group bracket (head-to-head Whot/Scrabble, or Scrabble knockout): split
+  // survivors into rooms of up to `groupSize` and spawn one game room per group.
+  // Head-to-head advances only each room's winner; knockout ranks the whole field
+  // by score and cuts the bottom half. Both are resolved when the games finish
+  // (head-to-head in tournament-h2h, knockout in tournament-scoring).
   if (groupSize > 2) {
     const gameType = tournament.game_type ?? DEFAULT_H2H_GAME_TYPE
     const { groups, byes } = computeRoundGroups(shuffle(survivorIds), groupSize)
