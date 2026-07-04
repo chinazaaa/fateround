@@ -219,9 +219,9 @@ export function useJoinFlow(deps: JoinFlowDeps) {
       })
       const data = await res.json()
       if (data.playerId) {
-        // GA key event: a player joined a game via code/link (viral conversion).
+        // GA key event: a player joined a room via code/link (viral conversion).
         // Only a real join (POST) counts — skip name edits (PATCH / isSelfEdit).
-        if (!isSelfEdit) trackEvent(GA_EVENTS.joinGame)
+        if (!isSelfEdit) trackEvent(GA_EVENTS.joinRoom)
         const [{ data: plrs }, { data: parts }] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
           supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),

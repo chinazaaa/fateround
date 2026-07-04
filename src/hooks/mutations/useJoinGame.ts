@@ -9,8 +9,8 @@ export function useJoinGame(gameCode: string) {
   return useMutation({
     mutationFn: (data: Record<string, unknown>) => api.post('/players', { gameCode, ...data }),
     onSuccess: () => {
-      // GA key event: a player joined a game via code/link (viral conversion).
-      trackEvent(GA_EVENTS.joinGame)
+      // GA key event: a player joined a room via code/link (viral conversion).
+      trackEvent(GA_EVENTS.joinRoom)
       queryClient.invalidateQueries({ queryKey: gameKeys.players(gameCode) })
     },
   })
