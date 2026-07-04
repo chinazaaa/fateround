@@ -127,7 +127,12 @@ describe('formatScrabbleClock', () => {
 // (session CAS updates, per-player state updates, the games finish flag) land on the
 // shared `session` / `states` / `games` objects so tests can assert on them directly.
 type Row = Record<string, unknown>
-function makeChessSupabase(init: { clockSeconds: number; session: Row; states: Row[]; players: { id: string; name: string }[] }) {
+function makeChessSupabase(init: {
+  clockSeconds: number
+  session: Row
+  states: Row[]
+  players: { id: string; name: string }[]
+}) {
   const games: Row = {
     id: 'G',
     timer_seconds: 0,
@@ -162,7 +167,8 @@ function makeChessSupabase(init: { clockSeconds: number; session: Row; states: R
     function many(): Row {
       if (op === 'update' && table === 'scrabble_sessions') {
         // CAS on updated_at — mirror persistSession's optimistic-concurrency claim.
-        if (filters.updated_at !== undefined && filters.updated_at !== session.updated_at) return { data: [], error: null }
+        if (filters.updated_at !== undefined && filters.updated_at !== session.updated_at)
+          return { data: [], error: null }
         Object.assign(session, payload as Row)
         session.updated_at = `u${++bump}`
         return { data: [{ game_id: 'G' }], error: null }
@@ -176,7 +182,8 @@ function makeChessSupabase(init: { clockSeconds: number; session: Row; states: R
         Object.assign(games, payload as Row)
         return { data: [{ id: 'G' }], error: null }
       }
-      if (op === 'select' && table === 'scrabble_player_state') return { data: states.map((s) => ({ ...s })), error: null }
+      if (op === 'select' && table === 'scrabble_player_state')
+        return { data: states.map((s) => ({ ...s })), error: null }
       if (op === 'select' && table === 'players') return { data: players.map((p) => ({ ...p })), error: null }
       return { data: [], error: null }
     }
@@ -220,8 +227,26 @@ describe('processScrabbleExpireTurn — chess-clock flag-out', () => {
       ],
       session: chessSession({ current_turn_index: 0 }),
       states: [
-        { id: 'sa', game_id: 'G', player_id: 'A', rack: ['A'], score: 10, player_order: 0, clock_ms_remaining: 5_000, timed_out: false },
-        { id: 'sb', game_id: 'G', player_id: 'B', rack: ['B'], score: 3, player_order: 1, clock_ms_remaining: 200_000, timed_out: false },
+        {
+          id: 'sa',
+          game_id: 'G',
+          player_id: 'A',
+          rack: ['A'],
+          score: 10,
+          player_order: 0,
+          clock_ms_remaining: 5_000,
+          timed_out: false,
+        },
+        {
+          id: 'sb',
+          game_id: 'G',
+          player_id: 'B',
+          rack: ['B'],
+          score: 3,
+          player_order: 1,
+          clock_ms_remaining: 200_000,
+          timed_out: false,
+        },
       ],
     })
 
@@ -244,8 +269,26 @@ describe('processScrabbleExpireTurn — chess-clock flag-out', () => {
       // Alice already flagged out; Bob is the last on the clock and now runs out too.
       session: chessSession({ current_turn_index: 1 }),
       states: [
-        { id: 'sa', game_id: 'G', player_id: 'A', rack: [], score: 40, player_order: 0, clock_ms_remaining: 0, timed_out: true },
-        { id: 'sb', game_id: 'G', player_id: 'B', rack: [], score: 12, player_order: 1, clock_ms_remaining: 2_000, timed_out: false },
+        {
+          id: 'sa',
+          game_id: 'G',
+          player_id: 'A',
+          rack: [],
+          score: 40,
+          player_order: 0,
+          clock_ms_remaining: 0,
+          timed_out: true,
+        },
+        {
+          id: 'sb',
+          game_id: 'G',
+          player_id: 'B',
+          rack: [],
+          score: 12,
+          player_order: 1,
+          clock_ms_remaining: 2_000,
+          timed_out: false,
+        },
       ],
     })
 
@@ -266,8 +309,26 @@ describe('processScrabbleExpireTurn — chess-clock flag-out', () => {
       // Turn started 60s ago but Alice has 200s banked — not actually expired.
       session: chessSession({ current_turn_index: 0 }),
       states: [
-        { id: 'sa', game_id: 'G', player_id: 'A', rack: ['A'], score: 10, player_order: 0, clock_ms_remaining: 200_000, timed_out: false },
-        { id: 'sb', game_id: 'G', player_id: 'B', rack: ['B'], score: 3, player_order: 1, clock_ms_remaining: 200_000, timed_out: false },
+        {
+          id: 'sa',
+          game_id: 'G',
+          player_id: 'A',
+          rack: ['A'],
+          score: 10,
+          player_order: 0,
+          clock_ms_remaining: 200_000,
+          timed_out: false,
+        },
+        {
+          id: 'sb',
+          game_id: 'G',
+          player_id: 'B',
+          rack: ['B'],
+          score: 3,
+          player_order: 1,
+          clock_ms_remaining: 200_000,
+          timed_out: false,
+        },
       ],
     })
 

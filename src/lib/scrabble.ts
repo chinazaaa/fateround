@@ -688,10 +688,7 @@ export async function processScrabblePlay(
   )
   if (!won) return {}
 
-  const { error: stateError } = await supabase
-    .from('scrabble_player_state')
-    .update(moverStateWrite)
-    .eq('id', state.id)
+  const { error: stateError } = await supabase.from('scrabble_player_state').update(moverStateWrite).eq('id', state.id)
   if (stateError) return { error: internalErrorMessage('scrabble', stateError) }
 
   return {}
