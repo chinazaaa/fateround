@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { GameLinkQrModal } from '@/components/GameLinkQrModal'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
+import { ShareInviteButton } from '@/components/ShareInviteButton'
 import { Modal } from '@/components/ui/Modal'
 import { hostGameUrl, hostPlayerUrl, playerGameUrl, playerResumeUrl, shareOrigin } from '@/lib/site'
 
@@ -29,6 +30,7 @@ function ShareLinkSection({
   copySuccessMessage,
   qr,
   onShowQr,
+  nativeShare,
 }: {
   title: string
   description: string
@@ -37,6 +39,9 @@ function ShareLinkSection({
   copySuccessMessage: string
   qr: QrConfig
   onShowQr: (config: QrConfig) => void
+  /** When set, show a one-tap native Share button (mobile share sheet → WhatsApp/etc.)
+   *  as the primary action. Only used for the player invite link. */
+  nativeShare?: { text: string }
 }) {
   return (
     <section className="space-y-2">
@@ -45,6 +50,9 @@ function ShareLinkSection({
         <p className="text-muted text-xs sm:text-sm leading-relaxed">{description}</p>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {nativeShare ? (
+          <ShareInviteButton url={url} text={nativeShare.text} className="text-xs sm:text-sm py-1.5 px-3" />
+        ) : null}
         <CopyLinkButton value={url} label={copyLabel} successMessage={copySuccessMessage} />
         <button
           type="button"
@@ -97,6 +105,7 @@ export function GameShareMenu({ gameCode, hostToken, resumeToken, className = ''
             title="Invite players"
             description="Send this to friends so they can join the game."
             url={inviteUrl}
+            nativeShare={{ text: 'Join my game on Fate Round:' }}
             copyLabel="Copy invite link"
             copySuccessMessage="Invite link copied"
             qr={{
