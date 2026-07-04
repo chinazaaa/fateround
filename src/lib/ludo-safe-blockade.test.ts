@@ -71,18 +71,21 @@ describe('safe-square stacks are not blockades', () => {
     expect(modern.find((m) => m.to.zone === 'track' && m.to.pos === 8)?.captures).toBe(false)
   })
 
-  it('still blocks an opponent blockade on a NON-safe square', () => {
+  it('blockades removed: a piece may land on and pass through an opponent stack', () => {
     const green: LudoPiece[] = [{ id: 0, zone: 'track', pos: 1 }]
     const red: LudoPiece[] = [
-      { id: 0, zone: 'track', pos: 3 }, // non-safe
+      { id: 0, zone: 'track', pos: 3 }, // non-safe, two pieces stacked
       { id: 1, zone: 'track', pos: 3 },
     ]
     const states = [state('green', green, 'p-green'), state('red', red, 'p-red')]
-    // Roll of 2 would land on the opponent blockade at index 3 — must be illegal.
+    // Roll of 2 lands on the opponent stack at index 3 — now legal (no blockade rule).
     const land = getLegalMovesForSteps('green', green, 2, states, 'p-green')
-    expect(land.some((m) => m.to.zone === 'track' && m.to.pos === 3)).toBe(false)
-    // Roll of 4 would pass through the blockade at index 3 — must be illegal too.
+    const landing = land.find((m) => m.to.zone === 'track' && m.to.pos === 3)
+    expect(landing).toBeDefined()
+    // A 2-stack is not a lone piece, so landing on it does not capture — pieces coexist.
+    expect(landing?.captures).toBe(false)
+    // Roll of 4 passes through the stack at index 3 and lands on index 5 — now legal.
     const pass = getLegalMovesForSteps('green', green, 4, states, 'p-green')
-    expect(pass.some((m) => m.to.zone === 'track' && m.to.pos === 5)).toBe(false)
+    expect(pass.some((m) => m.to.zone === 'track' && m.to.pos === 5)).toBe(true)
   })
 })
