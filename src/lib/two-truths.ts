@@ -9,8 +9,8 @@ function ttlHostModeKey(gameCode: string) {
 }
 
 export function getTtlHostMode(gameCode: string): TtlHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return localStorage.getItem(ttlHostModeKey(gameCode)) === 'player' ? 'player' : 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return localStorage.getItem(ttlHostModeKey(gameCode)) === 'spectator' ? 'spectator' : 'player'
 }
 
 export function setTtlHostMode(gameCode: string, mode: TtlHostMode) {

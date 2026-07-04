@@ -60,7 +60,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
   const [hands, setHands] = useState<CrazyEightsPlayerHand[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostMode] = useState<CrazyEightsHostMode>('spectator')
+  const [hostMode, setHostMode] = useState<CrazyEightsHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')

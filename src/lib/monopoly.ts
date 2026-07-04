@@ -2796,8 +2796,8 @@ export type MonopolyHostMode = 'spectator' | 'player'
 const monopolyHostModeKey = (gameCode: string) => `monopoly_host_mode_${gameCode}`
 
 export function getMonopolyHostMode(gameCode: string): MonopolyHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return localStorage.getItem(monopolyHostModeKey(gameCode)) === 'player' ? 'player' : 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return localStorage.getItem(monopolyHostModeKey(gameCode)) === 'spectator' ? 'spectator' : 'player'
 }
 
 export function setMonopolyHostMode(gameCode: string, mode: MonopolyHostMode): void {

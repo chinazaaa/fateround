@@ -35,8 +35,8 @@ type ChessHostMode = 'spectator' | 'player'
 const HOST_MODE_KEY = 'chess_host_mode'
 
 function getHostMode(gameCode: string): ChessHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as ChessHostMode) ?? 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as ChessHostMode) ?? 'player'
 }
 
 function setHostMode(gameCode: string, mode: ChessHostMode): void {
@@ -52,7 +52,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const [session, setSession] = useState<ChessSession | null>(null)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostModeState] = useState<ChessHostMode>('spectator')
+  const [hostMode, setHostModeState] = useState<ChessHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')

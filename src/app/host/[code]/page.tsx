@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useParams, useSearchParams, useRouter } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { LOAD_TIMEOUT_MS, supabasePollOk } from '@/hooks/usePolling'
 import { HOST_GAME_SELECT } from '@/lib/supabase-selects'
@@ -9,6 +9,8 @@ import { parseGameType } from '@/lib/game-types'
 import { HOST_VIEW_REGISTRY } from '@/components/game-host-views'
 import { PollHostView } from '@/components/poll-game/PollHostView'
 import { readNominee, rememberNominee } from '@/lib/host-transfer'
+import { rememberHostToken, clearHostToken } from '@/lib/host-session'
+import { useHostToken } from '@/hooks/useHostToken'
 import type { Game } from '@/types'
 
 /**
@@ -19,10 +21,12 @@ import type { Game } from '@/types'
  */
 export default function HostPage() {
   const { code } = useParams<{ code: string }>()
-  const searchParams = useSearchParams()
   const router = useRouter()
   const gameCode = (Array.isArray(code) ? code[0] : code).toUpperCase()
-  const hostToken = searchParams.get('token') ?? ''
+  // URL token drives the primary flow; when it's absent (host reopened /host/[code] on
+  // this device) we fall back to the remembered token — resolved in an effect so there's
+  // no hydration mismatch, and `resolved` lets us hold off "access denied" until checked.
+  const { hostToken, resolved } = useHostToken(gameCode)
 
   const [game, setGame] = useState<Game | null>(null)
   const [loading, setLoading] = useState(true)
@@ -45,10 +49,24 @@ export default function HostPage() {
   }, [gameCode])
 
   useEffect(() => {
+    // Hold off until the token is resolved (URL, or the storage fallback checked in an
+    // effect) so a clean /host/[code] URL doesn't flash "access denied" before storage reads.
+    if (!resolved) return
     let cancelled = false
 
     async function load() {
       setLoadError(false)
+      // Re-evaluate access on every attempt so a transient empty token (e.g. mid client-
+      // navigation, before storage resolves) can't leave "access denied" stuck on screen.
+      setAuthError(false)
+      if (!hostToken) {
+        // Resolved with no token anywhere → genuine denial (no URL token, nothing stored).
+        if (!cancelled) {
+          setAuthError(true)
+          setLoading(false)
+        }
+        return
+      }
       const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), LOAD_TIMEOUT_MS))
       try {
         await Promise.race([
@@ -68,17 +86,25 @@ export default function HostPage() {
               // actually cleared (nominee claimed); otherwise it's a plain access denial.
               const handoff = await confirmHandoff()
               if (cancelled) return
-              if (handoff) setTransferred(handoff)
-              else setAuthError(true)
+              if (handoff) {
+                // Host handed the game off — the remembered token is now dead weight.
+                clearHostToken(gameCode)
+                setTransferred(handoff)
+              } else setAuthError(true)
               return
             }
 
+            // Token is valid — remember it on this device so the host can reopen the
+            // panel later without the saved link (e.g. after closing the tab).
+            rememberHostToken(gameCode, hostToken)
+
             const gameRes = await supabase.from('games').select(HOST_GAME_SELECT).eq('id', gameCode).maybeSingle()
             if (!supabasePollOk(gameRes)) throw new Error('unavailable')
-            if (!gameRes.data) {
-              if (!cancelled) setAuthError(true)
-              return
-            }
+            // The token already verified above, so any failure to load the game row is a
+            // load/schema problem — NOT an auth problem. Surface it as the server-error state
+            // rather than the misleading "invalid or missing host token" screen. (A real
+            // query error like a missing column otherwise slipped through to "Access Denied".)
+            if (gameRes.error || !gameRes.data) throw new Error('unavailable')
             if (!cancelled) setGame(gameRes.data)
           })(),
           timeout,
@@ -94,7 +120,7 @@ export default function HostPage() {
     return () => {
       cancelled = true
     }
-  }, [gameCode, hostToken, confirmHandoff])
+  }, [gameCode, hostToken, confirmHandoff, resolved])
 
   // Once authorized, re-check the token periodically. If it stops working while the host is
   // watching AND the nomination has cleared, the nominee accepted — swap to the hand-off

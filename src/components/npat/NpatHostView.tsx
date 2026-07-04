@@ -65,7 +65,7 @@ export function NpatHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
-  const [hostMode, setHostMode] = useState<NpatHostMode>('spectator')
+  const [hostMode, setHostMode] = useState<NpatHostMode>('player')
   const [tab, setTab] = useState<HostTab>('manage')
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })

@@ -56,7 +56,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
   const [playingAgain, setPlayingAgain] = useState(false)
 
   // Host+play mode
-  const [hostMode, setHostMode] = useState<YahtzeeHostMode>('spectator')
+  const [hostMode, setHostMode] = useState<YahtzeeHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')

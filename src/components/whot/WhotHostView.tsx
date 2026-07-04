@@ -53,7 +53,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [hands, setHands] = useState<WhotPlayerHand[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostMode] = useState<WhotHostMode>('spectator')
+  const [hostMode, setHostMode] = useState<WhotHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
