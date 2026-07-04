@@ -1,20 +1,42 @@
 # Party Games (Kiss Marry Kill & More)
 
-A real-time multiplayer party game app with 20+ game modes. Create a room, share the code, and play with friends.
+A real-time multiplayer party game app with 30+ game modes and built-in voice chat.
+Create a room, share the code, and play with friends.
 
 ## Game Modes
+
+**Voting & social**
 
 - **Smash Marry Kill** -- Pick one to smash, marry, or kill from 3 people
 - **Red Flag / Green Flag** -- Rate each person green or red
 - **Smash or Pass** -- Quick binary choice on each person
-- **Would You Rather** -- Pick between two options (anonymous)
-- **Most Likely To** -- Vote for the friend who fits each prompt
-- **Who Said This** -- Guess who wrote the anonymous quote
+- **Date My Kid** -- Approve or pass on each candidate
+- **Would You Rather** / **This or That** -- Pick between two options (anonymous)
+- **Never Have I Ever**, **Most Likely To**, **Who Said This**, **Hot Seat**, **Pick a Number**
+
+**Word, trivia & puzzle**
+
+- **Trivia**, **Two Truths and a Lie**, **Codewords**, **NPAT** (name, place, animal, thing)
+- **Scrabble** (English, French, German & Spanish editions), **Word Hunt**, **Sudoku**, **Bingo**, **Text Charades**
+
+**Board & card**
+
+- **Chess**, **Checkers**, **Ludo**, **Snakes & Ladders**, **Tic-Tac-Toe**
+- **Whot**, **Crazy Eights**, **Monopoly**, **Yahtzee**
+
+**Anonymous & custom**
+
+- **Anonymous Messages**, **Secret Message**, and **Custom** game modes
+
+Many modes also support **tournaments** (brackets / head-to-head) and **elimination** rounds.
 
 ## Features
 
-- Real-time game updates via Supabase Realtime
-- 20+ game modes — voting, trivia, board games, and more
+- Real-time gameplay via Supabase Realtime, with a polling fallback
+- Built-in **voice chat** (self-hosted LiveKit)
+- 30+ game modes — voting, trivia, word/puzzle, and turn-based board & card games
+- Tournaments (bracket & head-to-head) and elimination mode
+- Viewers & late-join support
 - Player photo uploads for avatars
 - Player-submitted questions in lobby
 - Anonymous confessions during gameplay
@@ -28,7 +50,8 @@ A real-time multiplayer party game app with 20+ game modes. Create a room, share
 
 - Next.js 16 (App Router)
 - React 19
-- Supabase (Postgres + Realtime)
+- Supabase (Postgres + Realtime + Storage)
+- LiveKit (self-hosted, voice chat)
 - Tailwind CSS 4
 - TypeScript
 - Zod (input validation)
@@ -37,14 +60,21 @@ A real-time multiplayer party game app with 20+ game modes. Create a room, share
 
 ```bash
 pnpm install
-cp .env.example .env.local  # Add your Supabase credentials
+cp .env.example .env.local  # fill in your Supabase + LiveKit credentials
 pnpm dev
 ```
 
 ## Environment Variables
 
+See `.env.example` for the full list. At minimum:
+
 - `NEXT_PUBLIC_SUPABASE_URL` -- Supabase project URL
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` -- Supabase anon/public key
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` -- Supabase anon/public (publishable) key
+- `NEXT_PUBLIC_LIVEKIT_URL` -- LiveKit server URL (voice chat)
+- `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` -- LiveKit server credentials
+
+The full per-environment value map (dev vs prod) and where each secret lives is
+documented in [docs/environments.md](docs/environments.md).
 
 ## Database Setup
 
