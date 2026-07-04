@@ -1377,7 +1377,8 @@ const NAIJA: MarketingPageContent = {
     {
       emoji: '🎲',
       title: 'Ludo & the classics',
-      description: 'Ludo, Draughts, Snakes & Ladders, and “Stop” (Name, Place, Animal, Thing) — the games you grew up on.',
+      description:
+        'Ludo, Draughts, Snakes & Ladders, and “Stop” (Name, Place, Animal, Thing) — the games you grew up on.',
     },
     {
       emoji: '🌍',
@@ -1393,7 +1394,10 @@ const NAIJA: MarketingPageContent = {
   stepsHeading: 'How it works',
   steps: [
     { title: 'Pick a game', description: 'Whot, Ludo, Draughts, Snakes & Ladders, or Stop — whatever the crew wants.' },
-    { title: 'Share the link on WhatsApp', description: 'One code in the group chat — everyone joins from their phone.' },
+    {
+      title: 'Share the link on WhatsApp',
+      description: 'One code in the group chat — everyone joins from their phone.',
+    },
     { title: 'Play together, live', description: 'Same board in real time, wherever everyone is in the world.' },
   ],
   body: (
@@ -1406,19 +1410,25 @@ const NAIJA: MarketingPageContent = {
       </p>
       <p>
         Play proper Naija <GameLink type="whot" /> with the real house rules — call WHOT, stack Pick 2 and Pick 3, Hold
-        On, and General Market — then run it back with <GameLink type="ludo" />, <GameLink type="checkers">Draughts</GameLink>,{' '}
-        <GameLink type="snake_and_ladder">Snakes &amp; Ladders</GameLink>, and{' '}
-        <GameLink type="i_call_on">Stop (Name, Place, Animal, Thing)</GameLink>. Feeling competitive? Bankrupt the family
-        in <GameLink type="monopoly" />. It’s the whole game night behind one link — perfect for the diaspora keeping
-        game night alive across time zones.
+        On, and General Market — then run it back with <GameLink type="ludo" />,{' '}
+        <GameLink type="checkers">Draughts</GameLink>, <GameLink type="snake_and_ladder">Snakes &amp; Ladders</GameLink>
+        , and <GameLink type="i_call_on">Stop (Name, Place, Animal, Thing)</GameLink>. Feeling competitive? Bankrupt the
+        family in <GameLink type="monopoly" />. It’s the whole game night behind one link — perfect for the diaspora
+        keeping game night alive across time zones.
       </p>
     </>
   ),
   gameList: {
     heading: 'Naija games to play online',
     items: [
-      { game: <GameLink type="whot" />, description: 'the Nigerian card classic — match, stack, and call WHOT on your crew.' },
-      { game: <GameLink type="ludo" />, description: 'roll, race, capture, and block your way home. Game night staple.' },
+      {
+        game: <GameLink type="whot" />,
+        description: 'the Nigerian card classic — match, stack, and call WHOT on your crew.',
+      },
+      {
+        game: <GameLink type="ludo" />,
+        description: 'roll, race, capture, and block your way home. Game night staple.',
+      },
       {
         game: <GameLink type="checkers">Draughts</GameLink>,
         description: 'the veranda classic — jump your opponent’s pieces and crown your kings.',
@@ -1431,7 +1441,10 @@ const NAIJA: MarketingPageContent = {
         game: <GameLink type="i_call_on">Stop (Name, Place, Animal, Thing)</GameLink>,
         description: 'call a letter and race to fill the categories — unique answers score big.',
       },
-      { game: <GameLink type="monopoly" />, description: 'roll, buy, and bankrupt the family. Last one standing wins.' },
+      {
+        game: <GameLink type="monopoly" />,
+        description: 'roll, buy, and bankrupt the family. Last one standing wins.',
+      },
     ],
   },
   faqs: [
@@ -1488,9 +1501,21 @@ const LUDO_KING: MarketingPageContent = {
     'Love Ludo, tired of the app, the ads, and the download? Play Ludo free in your browser — share one link and 2 to 4 of you roll, race, and capture in real time. No install, no sign-up.',
   highlights: ['Free, no ads to dodge', 'No app or download', 'Share a link — everyone joins', 'Play on any device'],
   featureCards: [
-    { emoji: '🎲', title: 'Classic Ludo rules', description: 'Roll, bring pieces out on a 6, capture, blockade, and race all four home.' },
-    { emoji: '🔗', title: 'No app — just a link', description: 'Share one code; players join from any phone or laptop browser. Nothing to install.' },
-    { emoji: '🌍', title: 'Play from anywhere', description: 'Friends and family in different cities join the same board in real time.' },
+    {
+      emoji: '🎲',
+      title: 'Classic Ludo rules',
+      description: 'Roll, bring pieces out on a 6, capture, blockade, and race all four home.',
+    },
+    {
+      emoji: '🔗',
+      title: 'No app — just a link',
+      description: 'Share one code; players join from any phone or laptop browser. Nothing to install.',
+    },
+    {
+      emoji: '🌍',
+      title: 'Play from anywhere',
+      description: 'Friends and family in different cities join the same board in real time.',
+    },
     { emoji: '🆓', title: 'Free, no upsell', description: 'No ads gating your game, no coins to buy — just play.' },
   ],
   stepsHeading: 'How it works',
@@ -1510,8 +1535,9 @@ const LUDO_KING: MarketingPageContent = {
       <p>
         It’s perfect for playing with friends and family in different cities, or for the diaspora keeping game night
         alive across time zones. And once the Ludo’s done, the same room runs <GameLink type="whot" />,{' '}
-        <GameLink type="checkers">Draughts</GameLink>, and <GameLink type="snake_and_ladder">Snakes &amp; Ladders</GameLink>{' '}
-        — see the full <HubLink>Naija game night</HubLink> lineup.
+        <GameLink type="checkers">Draughts</GameLink>, and{' '}
+        <GameLink type="snake_and_ladder">Snakes &amp; Ladders</GameLink> — see the full{' '}
+        <HubLink>Naija game night</HubLink> lineup.
       </p>
     </>
   ),
@@ -1575,18 +1601,45 @@ const WHOT_UNO: MarketingPageContent = {
   heroTitle: 'Whot vs Uno — cousins, not twins (and you can play both)',
   heroSubtitle:
     'Whot and Uno are close cousins: match, shed your hand, and use wild cards to bend the game. Here’s how they differ — and how to play both free in your browser, no app, no sign-up.',
-  highlights: ['Whot: shapes + WHOT wilds', 'Uno-style: colours + wilds', 'Play both free online', 'No app, no sign-up'],
+  highlights: [
+    'Whot: shapes + WHOT wilds',
+    'Uno-style: colours + wilds',
+    'Play both free online',
+    'No app, no sign-up',
+  ],
   featureCards: [
-    { emoji: '🃏', title: 'Both are shedding games', description: 'Match by rank or shape/colour and race to empty your hand first — same core loop.' },
-    { emoji: '🔀', title: 'Whot came first', description: 'Whot (1950s) uses five shapes and the WHOT wild; Uno (1971) uses four colours and Wild cards.' },
-    { emoji: '⚡', title: 'Similar special cards', description: 'Whot’s Pick 2, Pick 3 & WHOT mirror Uno’s Draw 2, Draw 4 & Wild — plus Hold On and General Market.' },
-    { emoji: '🎮', title: 'Play both here', description: 'Fate Round has Whot and Crazy Eights (the worldwide Uno-style classic) — free, in the browser.' },
+    {
+      emoji: '🃏',
+      title: 'Both are shedding games',
+      description: 'Match by rank or shape/colour and race to empty your hand first — same core loop.',
+    },
+    {
+      emoji: '🔀',
+      title: 'Whot came first',
+      description: 'Whot (1950s) uses five shapes and the WHOT wild; Uno (1971) uses four colours and Wild cards.',
+    },
+    {
+      emoji: '⚡',
+      title: 'Similar special cards',
+      description: 'Whot’s Pick 2, Pick 3 & WHOT mirror Uno’s Draw 2, Draw 4 & Wild — plus Hold On and General Market.',
+    },
+    {
+      emoji: '🎮',
+      title: 'Play both here',
+      description: 'Fate Round has Whot and Crazy Eights (the worldwide Uno-style classic) — free, in the browser.',
+    },
   ],
   stepsHeading: 'How they compare',
   steps: [
     { title: 'The goal is the same', description: 'Empty your hand first by matching the top card and playing wilds.' },
-    { title: 'The look differs', description: 'Whot uses shapes (circle, cross, triangle, square, star); Uno-style uses colours.' },
-    { title: 'Try each free', description: 'Play Whot or Crazy Eights on Fate Round — share a link and your crew joins.' },
+    {
+      title: 'The look differs',
+      description: 'Whot uses shapes (circle, cross, triangle, square, star); Uno-style uses colours.',
+    },
+    {
+      title: 'Try each free',
+      description: 'Play Whot or Crazy Eights on Fate Round — share a link and your crew joins.',
+    },
   ],
   body: (
     <>
@@ -1665,18 +1718,48 @@ const CHRISTMAS: MarketingPageContent = {
   heroTitle: 'Christmas game night — wherever the family is this year',
   heroSubtitle:
     'Everyone home, or scattered across the world? Either way, the game night happens. Share one Fate Round link over WhatsApp and the whole family plays from their phones — Whot, Ludo, Bingo, trivia and more. Free, no app, no sign-up.',
-  highlights: ['Whot, Ludo, Bingo & more', 'Everyone plays from their phone', 'Share once on WhatsApp', 'Free, no app, no sign-up'],
+  highlights: [
+    'Whot, Ludo, Bingo & more',
+    'Everyone plays from their phone',
+    'Share once on WhatsApp',
+    'Free, no app, no sign-up',
+  ],
   featureCards: [
-    { emoji: '🎄', title: 'Made for the season', description: 'Detty December energy or a quiet Christmas at home — one link keeps the whole family in the game.' },
-    { emoji: '🌍', title: 'Home or abroad', description: 'Family in Lagos, London, or Houston all join the same game in real time. No one misses out.' },
-    { emoji: '📱', title: "Everyone's own phone", description: 'No board to pass around, no app to install — each person plays from their own device.' },
-    { emoji: '👵', title: 'Elders to kids', description: 'From a Bingo call for the aunties to a Ludo grudge match for the cousins — a game for everyone.' },
+    {
+      emoji: '🎄',
+      title: 'Made for the season',
+      description: 'Detty December energy or a quiet Christmas at home — one link keeps the whole family in the game.',
+    },
+    {
+      emoji: '🌍',
+      title: 'Home or abroad',
+      description: 'Family in Lagos, London, or Houston all join the same game in real time. No one misses out.',
+    },
+    {
+      emoji: '📱',
+      title: "Everyone's own phone",
+      description: 'No board to pass around, no app to install — each person plays from their own device.',
+    },
+    {
+      emoji: '👵',
+      title: 'Elders to kids',
+      description: 'From a Bingo call for the aunties to a Ludo grudge match for the cousins — a game for everyone.',
+    },
   ],
   stepsHeading: 'How it works',
   steps: [
-    { title: 'Pick a game', description: 'Whot, Ludo, Bingo, trivia, or a party round — whatever the family’s in the mood for.' },
-    { title: 'Share the link on WhatsApp', description: 'One code in the family group chat — everyone taps in from their phone.' },
-    { title: 'Play together, live', description: 'Same game, real time, whether you’re all in one house or across the world.' },
+    {
+      title: 'Pick a game',
+      description: 'Whot, Ludo, Bingo, trivia, or a party round — whatever the family’s in the mood for.',
+    },
+    {
+      title: 'Share the link on WhatsApp',
+      description: 'One code in the family group chat — everyone taps in from their phone.',
+    },
+    {
+      title: 'Play together, live',
+      description: 'Same game, real time, whether you’re all in one house or across the world.',
+    },
   ],
   body: (
     <>
@@ -1688,8 +1771,8 @@ const CHRISTMAS: MarketingPageContent = {
       </p>
       <p>
         Deal a round of Naija <GameLink type="whot" />, run a <GameLink type="ludo" /> grudge match, call{' '}
-        <GameLink type="bingo" /> for the whole house, test everyone with a festive <GameLink type="trivia" />, or settle
-        in for <GameLink type="monopoly" />. Warm up the crowd with <GameLink type="would_you_rather" /> and{' '}
+        <GameLink type="bingo" /> for the whole house, test everyone with a festive <GameLink type="trivia" />, or
+        settle in for <GameLink type="monopoly" />. Warm up the crowd with <GameLink type="would_you_rather" /> and{' '}
         <GameLink type="most_likely_to" />. It’s the whole holiday game night behind one link — see the full{' '}
         <HubLink>Naija game night</HubLink> lineup.
       </p>

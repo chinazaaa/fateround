@@ -301,8 +301,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Share a code and play in the browser on any phone.',
+        answer: 'Yes — free forever, no account and no download. Share a code and play in the browser on any phone.',
       },
     ],
   }),
@@ -360,8 +359,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         question: 'How many people can play?',
-        answer:
-          'Three or more. Everyone votes anonymously from their own phone — perfect for a party or a group call.',
+        answer: 'Three or more. Everyone votes anonymously from their own phone — perfect for a party or a group call.',
       },
       {
         question: 'Is it free with no sign-up?',
@@ -971,8 +969,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Share one link and your group is posting in seconds.',
+        answer: 'Yes — free forever, no account and no download. Share one link and your group is posting in seconds.',
       },
     ],
   }),
@@ -1351,7 +1348,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
       {
         question: 'Is it free with no sign-up?',
-        answer: 'Yes — free forever, no account and no download. Create a game, share the code, and play in any browser.',
+        answer:
+          'Yes — free forever, no account and no download. Create a game, share the code, and play in any browser.',
       },
     ],
   }),
