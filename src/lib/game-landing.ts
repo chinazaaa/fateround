@@ -113,7 +113,19 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Smash Marry Kill Online — Free Party Game',
     seoDescription:
       'Play Smash Marry Kill online with friends for free. Three names each round — pick one to smash, one to marry, one to kill. No download, no sign-up.',
-    keywords: ['smash marry kill online', 'smash marry kill game', 'kiss marry kill online', 'free smash marry kill'],
+    keywords: [
+      'smash marry kill online',
+      'smash marry kill game',
+      'kiss marry kill online',
+      'free smash marry kill',
+      'play smash marry kill online free',
+      'kiss marry kill game online',
+      'smash marry kill with friends',
+      'smash marry kill celebrities',
+      'smash marry kill party game',
+      'kiss marry kill online free',
+      'smash marry kill online no sign up',
+    ],
     heroSubtitle:
       'The classic party game, upgraded. Three faces land each round — your group assigns smash, marry, and kill. Results get messy.',
     bodyParagraph:
@@ -151,6 +163,21 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Smash Marry Kill gives you three names each round and you must assign smash, marry, and kill to each one. Smash or Pass is simpler — two names per round and you only decide smash or pass on each person individually. Both are free on Fate Round.',
       },
+      {
+        question: 'How do you play Smash Marry Kill?',
+        answer:
+          'Each round drops three names — celebrities, friends from a list you upload, or names players add in the lobby. Everyone privately assigns one “smash,” one “marry,” and one “kill,” and the reveal shows how the group voted. It’s the classic Kiss Marry Kill, run so votes stay private until the big reveal.',
+      },
+      {
+        question: 'Can I use celebrities or my own list of names?',
+        answer:
+          'Yes. Upload a list of celebrities, fictional characters, or your own friends, or let players add names live in the lobby. You control who ends up in the hot seat.',
+      },
+      {
+        question: 'Are the votes anonymous?',
+        answer:
+          'Everyone votes privately, so the reveal shows the group’s picks without pinning each vote on a name. That’s what keeps it fun rather than personal.',
+      },
     ],
   }),
 
@@ -158,7 +185,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Red Flag Green Flag Game Online — Free',
     seoDescription:
       'Play Red Flag Green Flag online with friends. Two names per round — rate each person green flag or red flag. Free, instant, no sign-up.',
-    keywords: ['red flag green flag game', 'green flag red flag online', 'red flag game with friends'],
+    keywords: [
+      'red flag green flag game',
+      'green flag red flag online',
+      'red flag game with friends',
+      'play red flag green flag online free',
+      'red flag green flag party game',
+      'red flag green flag with friends online',
+      'dating red flags game',
+      'green flag red flag game online free',
+      'red flag green flag online no sign up',
+    ],
     heroSubtitle:
       'Two names, two judgments. Each round your group decides who’s a green flag and who’s a red flag — separately, honestly, and out loud.',
     bodyParagraph:
@@ -186,6 +223,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Red Flag Green Flag rates two people separately on a green-or-red scale — both names get judged each round. Smash or Pass is a simple smash-or-pass binary on each person. Both are free on Fate Round.',
       },
+      {
+        question: 'How do you play Red Flag Green Flag?',
+        answer:
+          'Each round shows two names, and everyone privately rates each one a green flag (into it) or a red flag (hard no). The reveal shows how the group scored each person. It’s a fun way to debate what counts as a dealbreaker.',
+      },
     ],
   }),
 
@@ -193,7 +235,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Smash or Pass Game Online — Free with Friends',
     seoDescription:
       'Play Smash or Pass online for free. Two names each round — smash or pass on each person. Quick rounds, live results, no sign-up.',
-    keywords: ['smash or pass game', 'smash or pass online', 'smash pass party game'],
+    keywords: [
+      'smash or pass game',
+      'smash or pass online',
+      'smash pass party game',
+      'play smash or pass online free',
+      'smash or pass with friends',
+      'smash or pass celebrities',
+      'smash or pass online free no download',
+      'smash or pass game online',
+      'smash or pass online no sign up',
+    ],
     heroSubtitle:
       'Fast, bold, and brutally simple. Two names show up — your group smashes or passes on each one. No overthinking required.',
     bodyParagraph:
@@ -217,6 +269,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Smash or Pass shows two names per round and you pick smash or pass on each person. Smash Marry Kill gives you three names and you must assign smash, marry, and kill to all three. Smash or Pass is faster; Smash Marry Kill has more chaos.',
       },
+      {
+        question: 'How do you play Smash or Pass?',
+        answer:
+          'Two names show up each round and everyone privately picks “smash” or “pass” on each one. The reveal shows how the group voted. It’s fast, bold, and no overthinking — the quickest of the party voting games.',
+      },
+      {
+        question: 'Can I use my own list of names or celebrities?',
+        answer:
+          'Yes. Upload a custom list, or let players add names live in the lobby. Celebrities, fictional characters, or your own friends — your call.',
+      },
     ],
   }),
 
@@ -224,7 +286,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Date My Kid Game Online — Free Party Game',
     seoDescription:
       'Play Date My Kid online for free. One name each round — would you let your son or daughter date or marry them? Yes or no votes, live results, no sign-up.',
-    keywords: ['date my kid game', 'parent approval game', 'would you let your kid date them', 'party game online'],
+    keywords: [
+      'date my kid game',
+      'parent approval game',
+      'would you let your kid date them',
+      'party game online',
+      'play date my kid online free',
+      'meet the parents game online',
+      'date my kid party game',
+      'parent approval game online free',
+      'date my kid game with friends',
+    ],
     heroSubtitle:
       'One name steps into the spotlight. Everyone votes yes or no — would you let your son or daughter date or marry this person?',
     bodyParagraph:
@@ -256,6 +328,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Yes. Upload a custom name list with celebrities, fictional characters, or anyone your group wants to judge. You can also let players join the poll and add names live when creating the room.',
       },
+      {
+        question: 'How do you play Date My Kid?',
+        answer:
+          'One name steps into the spotlight each round, and everyone plays the overprotective parent — voting yes or no on whether you’d let your son or daughter date them. The reveal shows how the group ruled. It’s pure “meet the parents” comedy.',
+      },
     ],
   }),
 
@@ -263,7 +340,20 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Would You Rather Online — Free Party Game',
     seoDescription:
       'Play Would You Rather online with friends for free. Hundreds of prompts or bring your own — anonymous votes, instant reveals.',
-    keywords: ['would you rather online', 'would you rather game', 'wyr with friends', 'would you rather no signup'],
+    keywords: [
+      'would you rather online',
+      'would you rather game',
+      'wyr with friends',
+      'would you rather no signup',
+      'play would you rather online free',
+      'would you rather questions',
+      'would you rather for groups',
+      'would you rather online multiplayer',
+      'would you rather party game',
+      'would you rather with friends online',
+      'anonymous would you rather',
+      'would you rather game online free no download',
+    ],
     heroSubtitle:
       'Impossible choices, anonymous votes. Every round pits two options against each other — see where your group actually stands.',
     bodyParagraph:
@@ -295,6 +385,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Yes. Fate Round includes a built-in question pool, and you can upload your own prompts when creating a room. Pick round count, set a timer, and share the link — no participant list required.',
       },
+      {
+        question: 'How do you play Would You Rather?',
+        answer:
+          'Each round puts two options on the screen — “would you rather A or B?” Everyone picks one privately on their phone, and the reveal shows how the group split. There’s no wrong answer; the fun is seeing where your friends land and arguing about it after.',
+      },
+      {
+        question: 'Are the votes anonymous?',
+        answer:
+          'Yes — everyone votes privately and the reveal shows the split without naming who picked what (unless you want to fess up). That’s what makes the spicier questions actually fun.',
+      },
     ],
   }),
 
@@ -307,6 +407,13 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'never have i ever game',
       'nhie party game',
       'never have i ever with friends',
+      'play never have i ever online free',
+      'never have i ever questions',
+      'never have i ever online with friends',
+      'never have i ever for groups',
+      'never have i ever game online free no download',
+      'anonymous never have i ever',
+      'never have i ever party game online',
     ],
     heroSubtitle:
       "Classic confession game, online. Each prompt asks who's done it — anonymous votes reveal how spicy the group really is.",
@@ -339,6 +446,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Yes. Fate Round includes a built-in prompt pool, and you can upload your own statements when creating a room. The "Never have I ever" prefix is added automatically — just upload the action (e.g. "been skydiving").',
       },
+      {
+        question: 'How do you play Never Have I Ever online?',
+        answer:
+          'Each round shows a “Never have I ever…” statement. Everyone privately marks whether they have or haven’t, and the reveal shows how many in the group are guilty — without forcing anyone to drink or confess out loud unless they want to. It’s the classic game, just cleaner to run over a call.',
+      },
+      {
+        question: 'Are answers anonymous?',
+        answer:
+          'Yes — votes are private and the reveal shows the count, not the names. That’s what lets the spicier prompts stay fun instead of awkward.',
+      },
     ],
   }),
 
@@ -346,7 +463,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Pick a Number Game Online — Free Party Question Game',
     seoDescription:
       'Play Pick a Number online with friends. Choose a number from a hidden list — answer the question it reveals. Built-in or custom questions, free, no sign-up.',
-    keywords: ['pick a number game', 'pick a number questions', 'party question game', 'number question game'],
+    keywords: [
+      'pick a number game',
+      'pick a number questions',
+      'party question game',
+      'number question game',
+      'play pick a number online free',
+      'pick a number game online',
+      'pick a number party game',
+      'pick a number question game online',
+      'pick a number with friends online',
+    ],
     heroSubtitle:
       "Pick a number between 1 and X — you won't know the question until after you choose. Then answer whatever gets revealed.",
     bodyParagraph:
@@ -381,6 +508,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Yes. Upload one question per row in our CSV format — row 1 is question #1, row 2 is #2, and so on. Or use the built-in question pool.',
       },
+      {
+        question: 'How do you play Pick a Number?',
+        answer:
+          'Each round you pick a number before you know what it means — then the hidden question tied to that number is revealed, and you answer it. It’s the suspense of not knowing whether you just signed up for an easy one or a spicy one that makes it fun.',
+      },
     ],
   }),
 
@@ -388,7 +520,18 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'This or That Game Online — Free with Custom Questions',
     seoDescription:
       'Play This or That online with friends. Upload your own “Coffee or Tea?” prompts — anonymous A/B votes, instant reveals, no sign-up.',
-    keywords: ['this or that game', 'this or that online', 'this or that with friends', 'coffee or tea game'],
+    keywords: [
+      'this or that game',
+      'this or that online',
+      'this or that with friends',
+      'coffee or tea game',
+      'play this or that online free',
+      'this or that questions',
+      'this or that game online free',
+      'this or that party game',
+      'this or that with friends online',
+      'would you rather alternative',
+    ],
     heroSubtitle:
       'Your prompts, your vibe. Upload “Coffee or Tea?” style questions — everyone picks A or B and you see where the group lands.',
     bodyParagraph:
@@ -423,6 +566,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Would You Rather uses Fate Round’s built-in impossible-choice prompts. This or That lets you upload your own “X or Y?” questions — ideal for themed nights, team meetings, or inside jokes. Both use anonymous A/B voting.',
       },
+      {
+        question: 'How do you play This or That?',
+        answer:
+          'Each round shows two options — “coffee or tea?”, “beach or mountains?” — and everyone privately picks A or B. The reveal shows how the group split. Simple, fast, and endlessly customisable with your own prompts.',
+      },
+      {
+        question: 'Are the votes anonymous?',
+        answer:
+          'Yes — everyone votes from their own phone privately, and the reveal shows the split without naming who picked what.',
+      },
     ],
   }),
 
@@ -430,7 +583,19 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Most Likely To Game Online — Free with Friends',
     seoDescription:
       'Play Most Likely To online for free. Vote on who fits each prompt — anonymous, hilarious, built for friend groups.',
-    keywords: ['most likely to game', 'most likely to online', 'mlt party game', 'most likely to with friends'],
+    keywords: [
+      'most likely to game',
+      'most likely to online',
+      'mlt party game',
+      'most likely to with friends',
+      'play most likely to online free',
+      'most likely to questions',
+      'most likely to game online free no download',
+      'most likely to with friends online',
+      'who is most likely to game',
+      'most likely to party game online',
+      'anonymous most likely to',
+    ],
     heroSubtitle:
       '“Most likely to…” prompts meet your actual friend group. Anonymous votes, savage reveals, zero mercy.',
     bodyParagraph:
@@ -458,6 +623,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Yes. Fate Round includes built-in prompts and supports custom questions when you create a game. Vote on your friend group directly or import a name list — results reveal anonymously round by round.',
       },
+      {
+        question: 'How do you play Most Likely To?',
+        answer:
+          'Each round shows a “Most likely to…” prompt, and everyone secretly votes for the friend who fits best. The reveal shows who got the most votes — with no mercy. It works on your actual friend group, so the call-outs land.',
+      },
+      {
+        question: 'Are the votes anonymous?',
+        answer:
+          'Yes — everyone votes privately and only the tally is revealed, so nobody knows exactly who threw them under the bus. That’s half the fun.',
+      },
     ],
   }),
 
@@ -465,7 +640,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Who Said This Game Online — Free Quote Guessing',
     seoDescription:
       'Play Who Said This online. Submit quotes in the lobby, then guess who said each one. Free party game for friend groups.',
-    keywords: ['who said this game', 'guess the quote game', 'who said it party game'],
+    keywords: [
+      'who said this game',
+      'guess the quote game',
+      'who said it party game',
+      'play who said this online free',
+      'who said this game online',
+      'anonymous quote guessing game',
+      'who said it game online',
+      'who said this with friends online',
+      'guess who said it game',
+    ],
     heroSubtitle:
       'Your group writes the content. Quotes hit the pool, everyone guesses the author — and friendships get tested.',
     bodyParagraph:
@@ -500,6 +685,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Yes. Everyone joins the lobby, claims their name, and adds quotes to the pool before the host starts. Only pooled quotes become rounds — so the more your group submits, the better the game gets.',
       },
+      {
+        question: 'How do you play Who Said This?',
+        answer:
+          'Everyone secretly submits quotes to a shared pool in the lobby — real things they’ve said, hot takes, or made-up lines. Then each round shows one anonymous quote and the group guesses who wrote it. Half the fun is realising how well (or badly) you know your friends.',
+      },
     ],
   }),
 
@@ -507,7 +697,17 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Hot Seat Party Game Online — Free',
     seoDescription:
       'Play Hot Seat online with friends. Take turns in the spotlight while everyone submits a compliment, observation, or roast.',
-    keywords: ['hot seat game', 'hot seat party game online', 'roast compliment game'],
+    keywords: [
+      'hot seat game',
+      'hot seat party game online',
+      'roast compliment game',
+      'play hot seat online free',
+      'hot seat questions game',
+      'hot seat game with friends',
+      'compliment and roast game',
+      'hot seat game online free',
+      'hot seat party game with friends',
+    ],
     heroSubtitle:
       'One person in the hot seat. Everyone else drops a compliment, observation, or roast. Take turns until nobody’s safe.',
     bodyParagraph:
@@ -535,6 +735,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Yes. When someone is in the hot seat, every other player submits one compliment, observation, or roast anonymously. Submissions reveal one by one — the person in the seat sees what the room really thinks.',
       },
+      {
+        question: 'How do you play Hot Seat?',
+        answer:
+          'One person takes the hot seat, and everyone else anonymously submits one thing about them — a compliment, an observation, or a light roast. The submissions reveal one by one, then a new person takes the seat. It’s a warm, funny way to hype up (and gently tease) your friends.',
+      },
     ],
   }),
 
@@ -542,7 +747,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Custom Voting Party Game — Build Your Own Categories',
     seoDescription:
       'Create a custom online voting game with your own categories — Date, Friendzone, or anything you want. Free on Fate Round.',
-    keywords: ['custom party game', 'make your own voting game', 'custom categories game online'],
+    keywords: [
+      'custom party game',
+      'make your own voting game',
+      'custom categories game online',
+      'create your own party game online',
+      'custom voting game free',
+      'make your own game online free',
+      'custom party game with friends',
+      'build your own voting game',
+    ],
     heroTitle: 'Custom Voting Game',
     heroSubtitle:
       'You name the slots. Date, Friendzone, CEO — whatever fits your group. Build categories, pick rules, run the poll.',
@@ -575,6 +789,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'You can define 2–5 custom slots when creating a room — each with its own label, emoji, and color. Assign one person per slot each round, then reveal the group’s picks together.',
       },
+      {
+        question: 'How does the custom game work?',
+        answer:
+          'You invent the categories. Name your slots — Date, Friendzone, CEO, whatever fits your group — give each an emoji and colour, then run the poll. Each round your group assigns one person to each slot and the reveal shows where everyone landed. It’s Fate Round’s voting engine with your own rules.',
+      },
     ],
   }),
 
@@ -582,7 +801,18 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Anonymous Room — Free Live Anonymous Chat Game',
     seoDescription:
       'Create a free anonymous room for your group. Auto-assigned lobby names, fully anonymous messages, live for everyone — no sign-up.',
-    keywords: ['anonymous chat game', 'anonymous messages party', 'anonymous room online', 'free anonymous chat'],
+    keywords: [
+      'anonymous chat game',
+      'anonymous messages party',
+      'anonymous room online',
+      'free anonymous chat',
+      'anonymous message board online',
+      'anonymous group chat room',
+      'anonymous wall for friends',
+      'free anonymous chat room',
+      'anonymous room with friends',
+      'anonymous confessions online',
+    ],
     heroSubtitle:
       'A live anonymous wall for your group. Join with one tap, get a random lobby name, and post messages everyone sees in real time — with no names attached.',
     bodyParagraph:
@@ -614,6 +844,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Yes. Players get auto-assigned random lobby names and messages never show who sent them. Everyone in the room sees the live feed — but no one can tell which message came from which person.',
       },
+      {
+        question: 'How does the Anonymous Room work?',
+        answer:
+          'The host creates a room and shares one link. Everyone joins with one tap, gets a random lobby name, and can post to a live wall that the whole group sees — with no names attached. It’s a shared anonymous feed for your group, in real time.',
+      },
+      {
+        question: 'Is it safe and can the host moderate?',
+        answer:
+          'Anonymous doesn’t mean consequence-free — keep it fun and kind. The host can remove messages and ban a lobby name if someone crosses the line, so the room stays a good time for everyone.',
+      },
     ],
   }),
 
@@ -626,6 +866,12 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'anonymous message inbox',
       'send me anonymous messages',
       'instagram anonymous messages',
+      'anonymous message link',
+      'get anonymous messages',
+      'ngl alternative',
+      'anonymous q and a link',
+      'anonymous message link for instagram',
+      'free anonymous message link',
     ],
     heroSubtitle:
       'Like a private suggestion box for your link. Share once — anyone can send you a message, and only you read them.',
@@ -658,6 +904,21 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'No. Only the host sees the private inbox. Senders open your link, type a message, and send — they never see other submissions or who else wrote in.',
       },
+      {
+        question: 'How does Secret Message work?',
+        answer:
+          'You create one link and share it — in your bio, a story, or a group chat. Anyone with the link can send you an anonymous message, and only you see them in your private inbox. It’s a simple anonymous Q&A / message box, free and with no app.',
+      },
+      {
+        question: 'Can I share my link on Instagram or WhatsApp?',
+        answer:
+          'Yes — that’s the point. Drop your link in your Instagram bio or story, or a WhatsApp group, and people tap through to send you anonymous messages. A free alternative to apps like NGL.',
+      },
+      {
+        question: 'Is it really anonymous?',
+        answer:
+          'Senders aren’t shown to you, and they can’t see who else wrote in. As with anything anonymous, encourage people to keep it kind.',
+      },
     ],
   }),
 
@@ -672,6 +933,13 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'free bingo party',
       'number bingo multiplayer',
       'host bingo night',
+      'play bingo online free',
+      'virtual bingo',
+      'bingo with friends online',
+      '75 ball bingo online',
+      'host bingo online free',
+      'online bingo caller',
+      'bingo for parties online',
     ],
     heroSubtitle:
       'Classic 75-ball bingo for parties and game nights. Everyone gets their own card on their phone — you call the numbers, they mark and shout BINGO.',
@@ -719,6 +987,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Yes. When the host starts the game, every player receives a unique 5×5 bingo card automatically. Numbers called by the host sync in real time across all devices.',
       },
+      {
+        question: 'Can I host virtual Bingo for a group over a call?',
+        answer:
+          'Yes — that’s the sweet spot. You call the numbers (or let them auto-call) while everyone marks their own card from wherever they are, over Zoom, FaceTime, or Discord. Perfect for remote game nights and family bingo.',
+      },
     ],
   }),
 
@@ -726,7 +999,22 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Codewords — Free Online Word Spy Game',
     seoDescription:
       'Play Codewords online with friends. Two teams, spymasters give clues, operatives guess the secret words on a 5×5 grid.',
-    keywords: ['codenames online', 'codewords party game', 'word spy game', 'free codenames alternative'],
+    keywords: [
+      'codenames online',
+      'codewords party game',
+      'word spy game',
+      'free codenames alternative',
+      'play codenames online free',
+      'codenames with friends online',
+      'codewords online',
+      'codewords rules',
+      'how to play codewords',
+      'word association spy game online',
+      'spymaster game online',
+      'free codenames online no account',
+      'codenames online multiplayer',
+      'codewords online free no download',
+    ],
     heroSubtitle:
       'The classic word-association spy game online. Red vs Blue — spymasters know the secret key, operatives guess the right words. One wrong pick on the assassin ends it all.',
     bodyParagraph:
@@ -758,6 +1046,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Codewords follows the same word-association spy game format — two teams, spymaster clues, and a 5×5 word grid — playable free in your browser on Fate Round with no board or app required.',
       },
+      {
+        question: 'How do you play Codewords?',
+        answer:
+          'Two teams, Red and Blue, each with a spymaster who can see which words on the 5×5 grid belong to their team. Spymasters take turns giving a one-word clue plus a number, and their operatives guess which words it points to. Guess your own team’s words to win — but avoid the other team’s words and the single assassin word, which loses the game instantly.',
+      },
+      {
+        question: 'What is the assassin word?',
+        answer:
+          'One hidden word on the grid is the assassin. If a team guesses it, they lose the game immediately — so spymasters have to give clues that steer their operatives well clear of it. It’s what makes every clue a gamble.',
+      },
     ],
   }),
 
@@ -765,7 +1063,23 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Trivia — Free Online Quiz Game',
     seoDescription:
       'Host a fast-finger trivia game online. Tech or general knowledge — fastest correct answers climb the leaderboard.',
-    keywords: ['online trivia game', 'quiz party game', 'tech trivia', 'general knowledge quiz'],
+    keywords: [
+      'online trivia game',
+      'quiz party game',
+      'tech trivia',
+      'general knowledge quiz',
+      'free trivia game online',
+      'play trivia online with friends',
+      'trivia for groups',
+      'online quiz with friends',
+      'virtual trivia game',
+      'trivia night online',
+      'custom trivia questions',
+      'team trivia game',
+      'trivia game no sign up',
+      'free online quiz game',
+      'host a trivia game online',
+    ],
     heroSubtitle:
       'Speed-based trivia for groups. Pick Tech or General Knowledge, or upload your own questions. Fastest correct answers score the most.',
     bodyParagraph:
@@ -800,6 +1114,21 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Yes. Pick Tech or General Knowledge from the built-in pool, or upload a CSV with your own multiple-choice questions when creating a room. Fastest correct answers earn speed bonus points.',
       },
+      {
+        question: 'How does scoring work?',
+        answer:
+          'Every correct answer earns base points plus a speed bonus, and the very first correct answer each round gets an extra boost — so fast, accurate players climb fastest. The leaderboard updates live after every question.',
+      },
+      {
+        question: 'What trivia categories are there?',
+        answer:
+          'Built-in Tech and General Knowledge pools, or upload your own CSV of multiple-choice questions to run themed rounds — office trivia, a birthday quiz, a classroom review, whatever you need.',
+      },
+      {
+        question: 'Is it good for classrooms, teams, and pub quizzes?',
+        answer:
+          'Yes. No login and room for up to 40 make it easy for a class, a remote team, or a pub-quiz crowd to jump in, and speed-based scoring keeps it competitive. Play it right in the browser over a call or on a big screen.',
+      },
     ],
   }),
 
@@ -807,7 +1136,18 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Two Truths and a Lie — Free Online Party Game',
     seoDescription:
       'Play Two Truths and a Lie online with friends. Everyone submits statements — guess the lie each round and climb the leaderboard.',
-    keywords: ['two truths and a lie online', 'party game', 'icebreaker game', 'social deduction'],
+    keywords: [
+      'two truths and a lie online',
+      'party game',
+      'icebreaker game',
+      'social deduction',
+      'play two truths and a lie online free',
+      'two truths and a lie game online',
+      'two truths one lie online',
+      'virtual icebreaker game',
+      'two truths and a lie with friends online',
+      'icebreaker game for work online',
+    ],
     heroSubtitle:
       'Classic icebreaker, online. Write two truths and a lie, then take turns in the hot seat while everyone guesses the fib.',
     bodyParagraph:
@@ -839,6 +1179,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'In the lobby before the host starts. Each player submits two true statements and one lie about themselves. Once the game begins, one player’s statements are shown each round for the group to guess.',
       },
+      {
+        question: 'How do you play Two Truths and a Lie?',
+        answer:
+          'Everyone writes two true things and one lie about themselves. Each round, one person’s three statements are shown and the rest of the group guesses which one is the lie. It’s the classic icebreaker — great for getting to know a new group.',
+      },
+      {
+        question: 'Is it good as a virtual icebreaker for work?',
+        answer:
+          'Yes — it’s one of the best remote-team icebreakers, and it runs in the browser over a video call with no download and no accounts. Just share a code and go.',
+      },
     ],
   }),
 
@@ -853,6 +1203,12 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'free monopoly multiplayer',
       'board game night',
       'property game online',
+      'play monopoly online free',
+      'monopoly with friends online',
+      'monopoly online multiplayer free',
+      'monopoly online no download',
+      'free monopoly online with friends',
+      'play monopoly online with friends free no download',
     ],
     heroSubtitle:
       'Classic Monopoly on your phones. Join a room, roll the dice, buy properties, and be the last player standing.',
@@ -908,9 +1264,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Pay the £50 fine before your next roll, use a Get Out of Jail Free card, or roll doubles on any of your next three turns. After three turns without doubles, you pay £50 and move by your roll.',
       },
       {
-        question: 'How many people can play Monopoly online?',
+        question: 'Can I set how long a Monopoly game lasts?',
         answer:
-          'Monopoly on Fate Round supports 2–6 players in one room. Everyone joins with a display name, starts on GO with £1,500, and takes turns rolling dice until one player bankrupts the rest.',
+          'Yes. The host can set an optional game duration so a session doesn’t run forever — when time’s up, the richest player (cash plus property) wins. Leave it off for a classic last-player-standing game.',
       },
     ],
   }),
@@ -1113,11 +1469,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           '1 = Hold On (extra turn), 2 = Pick 2, 5 = Pick 3, 8 = Suspension (skip next player), 14 = General Market (others draw), 20 = WHOT (call shape or number). Pick 2 and Pick 3 stacks cannot be mixed.',
       },
       {
-        question: 'How many players can play Whot?',
-        answer:
-          'Whot on Fate Round is built for two to six players. Two-player games deal six cards each; three or more deal five. Share one room code and everyone joins from their own phone — no deck, no dealing by hand.',
-      },
-      {
         question: 'What does WHOT mean / what is the WHOT card?',
         answer:
           'WHOT is the wild card, numbered 20. Play it on almost any card, then call the shape everyone must match next — circle, cross, triangle, square, or star. It’s your reset button when your hand doesn’t fit the pile. It’s worth 20 points if you’re caught holding it at the end, so don’t sit on it too long.',
@@ -1157,11 +1508,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'They’re cousins. Both are shape/number-matching shedding games where you race to empty your hand, and Whot’s Pick 2, Pick 3, and WHOT card rhyme with Uno’s Draw 2, Draw 4, and Wild. Whot came first — invented in England in 1935 and popularized in Britain through the 1950s — uses shapes instead of colors, and adds Hold On and General Market. If you like Uno, Whot feels instantly familiar — and Fate Round has both.',
       },
-      {
-        question: 'Can you play Whot online for free?',
-        answer:
-          'Yes — free forever on Fate Round, no sign-up and no download. Create a room, share the code, and two to six of you play from any browser. Perfect for Nigerian diaspora game nights over a video call.',
-      },
     ],
   }),
   crazy_eights: landing('crazy_eights', {
@@ -1176,6 +1522,12 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'play crazy eights friends',
       'crazy eights multiplayer',
       'crazy 8s online',
+      'play crazy eights online free',
+      'crazy eights with friends online',
+      'crazy eights vs uno',
+      'is crazy eights like uno',
+      'crazy eights online free no download',
+      'crazy 8s multiplayer online',
     ],
     heroSubtitle: 'The worldwide card classic — match, go wild on 8s, and empty your hand first.',
     bodyParagraph:
@@ -1222,6 +1574,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           '8 = Wild (name the suit), 2 = Pick Two (next player draws two or stacks their own 2), Jack = Skip, Queen = Reverse, Ace = Skip. With Jokers enabled, a Joker is wild and makes the next player draw five. Action cards are an optional host setting.',
       },
+      {
+        question: 'Is Crazy Eights like Uno?',
+        answer:
+          'Very much — Uno is a branded descendant of Crazy Eights. Both are match-by-rank-or-suit shedding games where you race to empty your hand, and Crazy Eights’ wild 8s and action cards mirror Uno’s Wilds and Draw/Skip/Reverse cards. If you like Uno, you already know how to play. Fate Round has both.',
+      },
     ],
   }),
   ludo: landing('ludo', {
@@ -1235,6 +1592,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'play ludo friends',
       'ludo board game multiplayer',
       'ludo game online free',
+      'play ludo online free',
+      'ludo with friends online',
+      'ludo king alternative',
+      'ludo 2 player',
+      'ludo 4 player',
+      'ludo rules for beginners',
+      'ludo online no download',
+      'ludo safe squares',
+      'play ludo online with friends free no download',
+      'naija ludo online',
     ],
     heroSubtitle: 'The classic board game — roll two dice, race, capture, and be first to get all four pieces home.',
     bodyParagraph:
@@ -1289,6 +1656,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Do I need an exact roll to finish?',
         answer: 'Yes. A piece can only enter the home triangle with an exact roll — overshooting is not allowed.',
       },
+      {
+        question: 'What are safe squares in Ludo?',
+        answer:
+          'Safe squares — the starred cells and each colour’s start square — protect your piece from capture: an opponent landing there can’t send you home. Fate Round marks the safe squares on the board and enforces them automatically.',
+      },
     ],
   }),
 
@@ -1296,7 +1668,19 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Sudoku — Multiplayer Puzzle Race Online',
     seoDescription:
       'Play multiplayer Sudoku online. Race your friends cell by cell — first correct answer claims the cell for +10 pts, wrong answers cost points.',
-    keywords: ['multiplayer sudoku', 'sudoku online', 'puzzle race game', 'party game sudoku'],
+    keywords: [
+      'multiplayer sudoku',
+      'sudoku online',
+      'puzzle race game',
+      'party game sudoku',
+      'play sudoku online free',
+      'sudoku with friends online',
+      'competitive sudoku online',
+      'multiplayer sudoku online free',
+      'sudoku race game',
+      'online sudoku with friends',
+      'sudoku online no sign up',
+    ],
     heroSubtitle:
       'Everyone solves the same 9×9 puzzle. Claim cells before your friends — correct answers score +10 pts, mistakes cost −3.',
     highlights: ['Race to claim cells', 'Color-coded ownership', 'Live real-time puzzle'],
@@ -1343,13 +1727,35 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Can multiple players solve the same cell?',
         answer: 'No — the first player to submit the correct number claims that cell. Everyone else must move on.',
       },
+      {
+        question: 'How does multiplayer Sudoku work?',
+        answer:
+          'Everyone races on the same 9×9 puzzle at once. Instead of solving quietly, you compete to claim cells: submit the correct number for a cell before anyone else and it’s yours. It turns a solo puzzle into a fast, competitive race.',
+      },
+      {
+        question: 'How does scoring work?',
+        answer:
+          'A correct answer scores +10 points and claims the cell; a wrong guess costs −3, so speed and accuracy both matter. Highest score when the grid is finished wins.',
+      },
     ],
   }),
   i_call_on: landing('i_call_on', {
     seoTitle: 'I Call On — Free Online Party Game',
     seoDescription:
       'Play I Call On online. Call a letter, fill five categories, mark answers together — duplicates score 5, unique answers earn 10.',
-    keywords: ['i call on', 'stop game', 'categories game', 'party game online'],
+    keywords: [
+      'i call on',
+      'stop game',
+      'categories game',
+      'party game online',
+      'name place animal thing game',
+      'scattergories online',
+      'stop game online free',
+      'categories game online free',
+      'name place animal thing online',
+      'npat game online',
+      'play stop the bus game online',
+    ],
     heroSubtitle:
       'The classic A–Z categories game. Someone calls a letter — everyone fills Name, Animal, Place, Thing, and Food before time runs out.',
     highlights: ['Rotating letter caller', 'Live transparent scoring', 'Duplicate detection'],
@@ -1386,6 +1792,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Each unique valid answer earns 10 points per category (50 max per round). If two or more players write the same answer in a category, everyone with that duplicate gets 5 for it. Reviewers mark whether an answer actually fits its category.',
       },
+      {
+        question: 'How do you play I Call On?',
+        answer:
+          'A letter is called, then everyone races to fill each category — Name, Animal, Place, Thing, Food — with a word starting with that letter before time runs out. It’s the classic Name-Place-Animal-Thing (Scattergories / “Stop the Bus”) game, scored so unique answers beat ones everyone else also wrote.',
+      },
     ],
   }),
 
@@ -1393,7 +1804,19 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Word Hunt — Multiplayer Boggle-Style Game Online',
     seoDescription:
       'Play Word Hunt online with friends. Race on a 4×4 letter grid — connect adjacent letters to spell words before time runs out.',
-    keywords: ['word hunt', 'boggle online', 'word game multiplayer', 'letter grid game'],
+    keywords: [
+      'word hunt',
+      'boggle online',
+      'word game multiplayer',
+      'letter grid game',
+      'play word hunt online free',
+      'boggle with friends online',
+      'boggle online multiplayer',
+      'word search race game',
+      'letter grid word game online',
+      'word hunt with friends online',
+      'boggle online free no download',
+    ],
     heroSubtitle:
       'Everyone gets the same 4×4 grid — spell words from adjacent letters and rack up points before the clock hits zero.',
     highlights: ['4×4 letter grid', 'Timed race', 'Live leaderboard'],
@@ -1427,6 +1850,18 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
     ],
     perfectFor: ['Word game fans', 'Classrooms', 'Family game night', 'Quick party rounds'],
+    extraFaqs: [
+      {
+        question: 'How do you play Word Hunt?',
+        answer:
+          'Everyone gets the same grid of letters. Spell words by tapping adjacent letters — up, down, sideways, or diagonally — and submit as many valid dictionary words as you can before the timer runs out. It’s the classic Boggle-style word race, online.',
+      },
+      {
+        question: 'How is it scored?',
+        answer:
+          'Longer words are worth more points, so it pays to find the big ones, not just the easy three-letter words. Only valid dictionary words count. Highest score when the clock hits zero wins.',
+      },
+    ],
   }),
 
   tic_tac_toe: landing('tic_tac_toe', {
@@ -1439,6 +1874,12 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'play tic tac toe with friends',
       'noughts and crosses online',
       'XO game online',
+      'play tic tac toe online free',
+      'ultimate tic tac toe rules',
+      'tic tac toe 2 player online',
+      'tic tac toe with friends online',
+      'tic tac toe online no sign up',
+      'ultimate tic tac toe online free',
     ],
     heroSubtitle: 'Ultimate Tic-Tac-Toe — nine boards in one, win three boards in a row to win it all.',
     bodyParagraph:
@@ -1486,6 +1927,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'No — Tic-Tac-Toe is strictly 2 players. The host can play as one of the two if they want in on the match.',
       },
+      {
+        question: 'How do you play Ultimate Tic-Tac-Toe?',
+        answer:
+          'It’s nine tic-tac-toe boards arranged in a big 3×3 grid. The square you play in decides which board your opponent must play in next. Win a small board by getting three in a row, and win the whole game by winning three small boards in a row. It turns a solved kids’ game into a real strategy battle.',
+      },
+      {
+        question: 'How is it different from regular Tic-Tac-Toe?',
+        answer:
+          'Regular tic-tac-toe is easily drawn once you know it. Ultimate adds a layer — because each move sends your opponent to a specific board, you have to think several moves ahead about where you’re sending them. Far deeper, and much harder to force a draw.',
+      },
     ],
   }),
 
@@ -1493,7 +1944,26 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Chess Online — Play with a Friend',
     seoDescription:
       'Play chess online with a friend. Two players, full standard rules and move validation — checkmate your opponent to win. No sign-up.',
-    keywords: ['chess online', 'play chess with friends', 'online chess 2 player', 'chess with a friend'],
+    keywords: [
+      'chess online',
+      'play chess online free',
+      'play chess with friends',
+      'chess with friends online',
+      'online chess 2 player',
+      'chess with a friend',
+      'chess online no sign up',
+      'chess rules',
+      'how to play chess',
+      'castling rules',
+      'en passant',
+      'checkmate',
+      'stalemate',
+      'chess clock online',
+      'blitz chess online',
+      'play chess online with friends free no download',
+      'two player chess online',
+      'chess online with link',
+    ],
     heroSubtitle: 'Classic chess, head-to-head — outsmart your friend and checkmate to win.',
     bodyParagraph:
       'Chess on Fate Round is a clean two-player game of full standard chess. One player joins a room as White, the other as Black, and White moves first. Every move is validated by the rules — legal moves only, with castling, en passant, and pawn promotion all handled. Check, checkmate, stalemate, and draws are detected automatically. Add an optional chess clock — each player gets their own time bank (3, 5, or 10 minutes) that only ticks on their turn, just like online chess, and the first to flag loses.',
@@ -1538,6 +2008,31 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Can more than 2 people play?',
         answer: 'No — chess is strictly 2 players. The host can play as one of the two if they want in on the match.',
       },
+      {
+        question: 'How do you play chess?',
+        answer:
+          'Each player commands 16 pieces. Pawns move forward one square (two on their first move) and capture diagonally; rooks move in straight lines; bishops diagonally; the queen any direction; the king one square; and knights in an L-shape, jumping over pieces. White moves first, then players alternate. The goal is checkmate — trapping the opposing king so it can’t escape capture. Fate Round only allows legal moves, so you can’t make an illegal one by mistake.',
+      },
+      {
+        question: 'What is castling?',
+        answer:
+          'Castling is a special move that tucks your king to safety and activates a rook. If neither the king nor the chosen rook has moved, no pieces sit between them, and the king isn’t in or moving through check, the king shifts two squares toward the rook and the rook hops to the other side. Fate Round handles both kingside and queenside castling automatically.',
+      },
+      {
+        question: 'What is en passant?',
+        answer:
+          'En passant (“in passing”) lets a pawn capture an enemy pawn that just advanced two squares, as if it had only moved one. You must take it on the very next move or the chance is gone. Fate Round detects and offers en passant for you.',
+      },
+      {
+        question: 'What is the difference between checkmate and stalemate?',
+        answer:
+          'Checkmate ends the game: the king is in check and has no legal move to escape — the attacker wins. Stalemate is a draw: the player to move is not in check but has no legal move at all. Fate Round detects checkmate, stalemate, insufficient material, and draws automatically.',
+      },
+      {
+        question: 'Can we play timed or blitz chess?',
+        answer:
+          'Yes. Turn on the chess clock and pick 3, 5, or 10 minutes each for a blitz or rapid game — your clock only ticks on your turn, and running out of time loses. Leave it off for a relaxed, untimed match.',
+      },
     ],
   }),
 
@@ -1545,7 +2040,20 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     seoTitle: 'Checkers Online — Play Draughts with a Friend',
     seoDescription:
       'Play checkers (draughts) online with a friend. Two players, forced jumps, multi-jump chains and king promotion — capture every piece to win. No sign-up.',
-    keywords: ['checkers online', 'play checkers with friends', 'online draughts 2 player', 'checkers with a friend'],
+    keywords: [
+      'checkers online',
+      'play checkers with friends',
+      'online draughts 2 player',
+      'checkers with a friend',
+      'play checkers online free',
+      'checkers with friends online',
+      'checkers rules',
+      'how to play checkers',
+      'draughts online',
+      'two player checkers online',
+      'checkers online free no download',
+      'checkers online no sign up',
+    ],
     heroSubtitle: 'Classic checkers, head-to-head — jump your friend’s pieces and crown your kings.',
     bodyParagraph:
       'Checkers on Fate Round is a clean two-player game of standard American (8×8) draughts. One player joins a room as Black, the other as Red, and Black moves first. Men slide one square diagonally forward; jump an adjacent opponent to capture it — and if a jump is on offer you must take it, chaining multiple jumps in a single turn. Reach the far row to crown a king that moves and captures both directions. Capture all of your opponent’s pieces, or leave them with no legal move, to win. Add an optional clock — each player gets their own time bank (3, 5, or 10 minutes) that only ticks on their turn, and the first to flag loses.',
@@ -1592,6 +2100,16 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'No — checkers is strictly 2 players. The host can play as one of the two if they want in on the match.',
       },
+      {
+        question: 'How do you play checkers?',
+        answer:
+          'Each player has 12 pieces that move diagonally forward one square. You capture by jumping an adjacent enemy piece into the empty square beyond, and captures are forced — if you can jump, you must. Reach the far row and your piece becomes a king that can move and jump both directions. Win by capturing all your opponent’s pieces or leaving them with no legal move.',
+      },
+      {
+        question: 'How do you get a king in checkers?',
+        answer:
+          'Move one of your pieces all the way to the opponent’s back row. It’s crowned a king and can then move and capture both forwards and backwards, which makes it much stronger. Fate Round crowns kings automatically.',
+      },
     ],
   }),
 
@@ -1605,6 +2123,13 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'password game online',
       'catch phrase online',
       'word guessing game',
+      'text charades online',
+      'play describe it online free',
+      'catchphrase online free',
+      'team guessing game online',
+      'describe the word game online',
+      'password game with friends online',
+      'heads up alternative online',
     ],
     heroSubtitle:
       'Split into teams, describe the word without saying it, and guess as many as you can before time runs out.',
@@ -1637,6 +2162,18 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       },
     ],
     perfectFor: ['Parties', 'Team building', 'Family game night', 'Big groups'],
+    extraFaqs: [
+      {
+        question: 'How do you play Describe It?',
+        answer:
+          'Split into teams. Each round, one teammate gets a secret word and describes it — without saying the word itself — while the rest of their team races to guess. Guess as many as you can before the timer runs out, then it’s the next team’s turn. It’s the classic describe-and-guess party game (think Catchphrase or Password), online.',
+      },
+      {
+        question: 'Can I use my own words?',
+        answer:
+          'Yes. Use the built-in word pool or upload your own list when you create the game — handy for themed rounds, inside jokes, or a work-friendly set. Great for tailoring the game to your group.',
+      },
+    ],
   }),
 
   scrabble: landing('scrabble', {
@@ -1648,6 +2185,14 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'play scrabble with friends',
       'online scrabble multiplayer',
       'word game with friends',
+      'play scrabble online free',
+      'scrabble with friends online',
+      'scrabble rules',
+      'how to play scrabble',
+      'words with friends alternative',
+      'scrabble online free no download',
+      'online word game with friends free',
+      'scrabble online no sign up',
     ],
     heroSubtitle: 'The classic crossword tile game — build words, hit the premium squares, outscore your friends.',
     bodyParagraph:
@@ -1692,8 +2237,14 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'A blank can stand in for any letter — you choose which when you place it. It scores zero points but lets you complete words you otherwise could not.',
       },
       {
-        question: 'How many people can play?',
-        answer: 'Scrabble supports 2 to 4 players. The host can join as one of the players.',
+        question: 'How do you play Scrabble?',
+        answer:
+          'Each player draws seven letter tiles. On your turn you build a word on the 15×15 board, connecting to tiles already down (the first word crosses the centre star). You score the letter values, boosted by any double/triple letter and word squares your tiles cover, then draw back up to seven. Play until the bag is empty and someone uses their last tile — highest score wins.',
+      },
+      {
+        question: 'How does scoring work?',
+        answer:
+          'Each letter has a point value, and premium squares multiply a letter or the whole word. Playing all seven tiles in one turn earns a 50-point “bingo” bonus. Fate Round tallies every play automatically, so there’s no maths or arguing over the pad.',
       },
     ],
   }),
@@ -1708,6 +2259,12 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'how to play snakes and ladders',
       'play snakes and ladders friends',
       'snakes and ladders multiplayer',
+      'play snakes and ladders online free',
+      'snakes and ladders with friends online',
+      'chutes and ladders online',
+      'snakes and ladders online no download',
+      'snakes and ladders family game online',
+      'snakes and ladders online free no sign up',
     ],
     heroSubtitle: 'The timeless race to 100 — roll the die, ride the ladders, slip down the snakes.',
     bodyParagraph:
@@ -1749,10 +2306,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Does rolling a 6 do anything special?',
         answer:
           'Yes — rolling a 6 earns you another roll. But roll three 6s in a row and your turn is forfeited, so press your luck carefully.',
-      },
-      {
-        question: 'How many people can play?',
-        answer: 'Snakes and Ladders supports 2 to 6 players. The host can join as one of the players.',
       },
     ],
   }),
