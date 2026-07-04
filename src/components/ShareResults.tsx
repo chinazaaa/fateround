@@ -212,7 +212,9 @@ function buildShareText({
 
   if (isBingoGame(gameType) && (bingoWinnerName || bingoEndedEarly)) {
     if (bingoWinnerName) {
-      return [...gameHeader, '🏆', '', 'BINGO!', '', `${bingoWinnerName} wins!`, '', `Play at ${appDomain()}`].join('\n')
+      return [...gameHeader, '🏆', '', 'BINGO!', '', `${bingoWinnerName} wins!`, '', `Play at ${appDomain()}`].join(
+        '\n'
+      )
     }
     return [...gameHeader, '🏁', '', 'Game ended early', '', `Play at ${appDomain()}`].join('\n')
   }
