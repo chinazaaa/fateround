@@ -23,15 +23,14 @@ async function ejectFromLiveRoom(
 ): Promise<void> {
   if (gameType !== 'whot' && gameType !== 'scrabble') return
   try {
-    const { data: gp } = await admin
-      .from('players')
-      .select('id')
-      .eq('game_id', gameId)
-      .eq('name', playerName)
-      .maybeSingle()
-    if (!gp) return
+    // Match the seat case-insensitively in code: players.name isn't unique-constrained
+    // so an exact eq() can miss on case, and ilike() would treat % / _ in a name as
+    // wildcards — either would silently no-op and leave the room stuck.
+    const { data: rows } = await admin.from('players').select('id, name').eq('game_id', gameId)
+    const target = (rows ?? []).find((p) => p.name?.toLowerCase() === playerName.toLowerCase())
+    if (!target) return
     const remove = gameType === 'whot' ? removeWhotPlayer : removeScrabblePlayer
-    await remove(admin, gameId, gp.id, playerName)
+    await remove(admin, gameId, target.id, playerName)
   } catch (err) {
     console.error(`ejectFromLiveRoom failed for game ${gameId}`, err)
   }
