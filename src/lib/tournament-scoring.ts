@@ -188,6 +188,15 @@ export async function resolveKnockoutGroupRoom(supabase: SupabaseClient, gameId:
       .select('id, player_name')
       .in('id', memberIds.length ? memberIds : ['__none__']),
   ])
+  // If any of the three score-loading queries failed, bail *before* the CAS. The
+  // room stays unfinished so a retry (or the round-start reconcile) can recompute:
+  // committing here on a transient error would store empty/partial scores, and
+  // since a score-less player ranks at the top of the cut (never eliminated), that
+  // would let a legitimately low-scoring player survive — with no path to redo it.
+  if (gamePlayersRes.error || statesRes.error || tpsRes.error) {
+    console.error(`resolveKnockoutGroupRoom: failed to load scoring data for room ${room.id}`)
+    return
+  }
   const scoreByPlayerId = new Map((statesRes.data ?? []).map((s) => [s.player_id as string, Number(s.score ?? 0)]))
   const tpByName = new Map((tpsRes.data ?? []).map((t) => [t.player_name.toLowerCase(), t.id as string]))
   const placements: Record<string, number> = {}
@@ -255,11 +264,18 @@ export async function applyKnockoutGroupCut(
     for (const [tpId, score] of Object.entries(roomPlacements)) scoreByTp.set(tpId, Number(score))
   }
 
+  // Order the field deterministically (earliest joiner first, id as final
+  // tiebreak) so a tie *at the cut boundary* always resolves the same way. Without
+  // an explicit order the DB could return equal-scored players in any order across
+  // retries/query plans, eliminating a different player each time; rankKnockoutScores
+  // keeps this order on ties, so seniority decides who advances.
   const { data: field } = await supabase
     .from('tournament_players')
     .select('id')
     .eq('tournament_id', tournamentId)
     .eq('is_eliminated', false)
+    .order('joined_at', { ascending: true })
+    .order('id', { ascending: true })
   const ids = (field ?? []).map((p) => p.id as string)
   if (ids.length <= 1) return
 
