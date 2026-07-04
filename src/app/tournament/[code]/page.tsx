@@ -87,7 +87,7 @@ export default function TournamentLobbyPage() {
   const router = useRouter()
   const tournamentId = (Array.isArray(code) ? code[0] : code).toUpperCase()
   const { confirm } = useConfirm()
-  const { success } = useToast()
+  const { success, error: toastError } = useToast()
 
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [players, setPlayers] = useState<TournamentPlayer[]>([])
@@ -352,6 +352,50 @@ export default function TournamentLobbyPage() {
       fetchState()
     } catch {
       setJoinError('Something went wrong')
+    }
+  }
+
+  // Leave the tournament from the lobby (before it starts) — gives up this seat so
+  // the name frees up and the slot reopens. Authenticated by the player's private
+  // code, so this only ever removes the player who's actually on this device.
+  async function handleLeave() {
+    const ok = await confirm({
+      title: 'Leave this tournament?',
+      message: "You'll give up your spot and be taken off the player list. You can rejoin later if there's still room.",
+      confirmLabel: 'Leave',
+      destructive: true,
+    })
+    if (!ok) return
+
+    const token = localStorage.getItem(`tournament_ptoken_${tournamentId}`) ?? myCode
+    if (!token) {
+      toastError('Could not verify your spot — try refreshing')
+      return
+    }
+
+    setActionLoading(true)
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/leave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toastError(data.error ?? 'Failed to leave')
+        return
+      }
+      localStorage.removeItem(`tournament_player_${tournamentId}`)
+      localStorage.removeItem(`tournament_ptoken_${tournamentId}`)
+      setJoined(false)
+      setMyCode('')
+      setPlayerName('')
+      fetchState()
+      success('You left the tournament')
+    } catch {
+      toastError('Something went wrong')
+    } finally {
+      setActionLoading(false)
     }
   }
 
@@ -1572,6 +1616,17 @@ export default function TournamentLobbyPage() {
             <div className="pt-1">
               <TournamentContinueCard tournamentId={tournamentId} code={myCode} />
             </div>
+          )}
+          {/* Bow out before it kicks off — no leaving mid-tournament (it'd break the bracket). */}
+          {!hasStarted && (
+            <button
+              onClick={handleLeave}
+              disabled={actionLoading}
+              className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <span aria-hidden>🚪</span>
+              <span className="underline underline-offset-2">Leave tournament</span>
+            </button>
           )}
         </div>
       )}
