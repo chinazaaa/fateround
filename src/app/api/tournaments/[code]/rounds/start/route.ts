@@ -9,6 +9,7 @@ import { initializeWhotGame } from '@/lib/whot'
 import { initializeScrabbleGame } from '@/lib/scrabble'
 import { startKnockoutRoundGame } from '@/lib/tournament-knockout'
 import { applyKnockoutGroupCut } from '@/lib/tournament-scoring'
+import { resolveHeadToHeadMatch } from '@/lib/tournament-h2h'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
@@ -18,10 +19,13 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  *   - `proceed: true`             → game is still `waiting`; deal it normally
  *   - `proceed: false, started`   → game is already `active`; the bracket row was nudged
  *                                   back to `active` (its write may have lagged the game's)
- *   - `proceed: false`            → game is `finished`; skip it and leave the bracket row
- *                                   for the finish finalizer, which sets status + winner
- *                                   together (and guards on `status != 'finished'`), so
- *                                   forcing `finished` here with no winner would strand it
+ *   - `proceed: false`            → game is `finished`; skip re-init and re-run the finish
+ *                                   finalizer to reconcile the bracket row (it may still
+ *                                   read `pending` if the finalizer lost its CAS or never
+ *                                   fired). We re-run rather than flip the row to `finished`
+ *                                   ourselves: a bare `finished` write has no winner and
+ *                                   would block the finalizer (it guards on
+ *                                   `status != 'finished'`), stranding the match.
  *   - `error`                     → status lookup failed; surface it instead of re-dealing
  */
 async function reconcileNonWaitingGame(
@@ -36,6 +40,10 @@ async function reconcileNonWaitingGame(
     await admin.from('tournament_games').update({ status: 'active' }).eq('id', tournamentGameId).eq('status', 'pending')
     return { proceed: false, started: true }
   }
+  // Finished: reconcile a bracket row that may be stuck `pending`. resolveHeadToHeadMatch
+  // is idempotent (no-ops if already finished or not head-to-head) and sets the winner +
+  // eliminations correctly, so the round can advance without corrupting the bracket.
+  await resolveHeadToHeadMatch(admin, gameId)
   return { proceed: false }
 }
 
