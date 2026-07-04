@@ -30,6 +30,7 @@ import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 
 type HostTab = 'play' | 'manage'
 
@@ -49,11 +50,12 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
-  const [hostMode, setHostMode] = useState<TtlHostMode>('spectator')
+  const [hostMode, setHostMode] = useState<TtlHostMode>('player')
   const [tab, setTab] = useState<HostTab>('manage')
   const [editingStatements, setEditingStatements] = useState(false)
 
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
+  useTurnNotifications({ status: game?.status })
 
   const handlePlayerRemoved = useCallback(
     (playerId: string) => {
@@ -173,7 +175,6 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to start')
       await load()
-      success('Game started!')
       if (hostMode === 'player' && hostPlayerId) setTab('play')
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to start')

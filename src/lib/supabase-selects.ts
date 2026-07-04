@@ -6,7 +6,7 @@
 // server-side via the service role. Anon `select('*')` on games/players now ERRORS, so
 // client reads must use these curated lists.
 export const GAME_SELECT =
-  'id,title,rounds_count,timer_seconds,operative_timer_seconds,anonymous,auto_reveal,auto_submit_behavior,participant_mode,participant_filter,pair_vote_mode,question_source,custom_questions,player_questions_enabled,player_questions_order,game_type,theme,status,current_round_number,created_at,finished_at,session_started_at,allow_viewers,allow_late_players,max_players,anonymous_messages_trimmed_at,wst_quote_source,custom_slots,gender_based,codewords_player_picks,codewords_late_join,codewords_randomize_teams,describe_it_num_teams,describe_it_mode,pool_usage,trivia_category,bingo_call_mode,bingo_call_interval_seconds,game_duration_seconds,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,scrabble_dictionary_id,chess_board_theme,chess_piece_set,tournament_id,pending_host_player_id'
+  'id,title,rounds_count,timer_seconds,operative_timer_seconds,anonymous,auto_reveal,auto_submit_behavior,participant_mode,participant_filter,pair_vote_mode,question_source,custom_questions,player_questions_enabled,player_questions_order,game_type,theme,status,current_round_number,created_at,finished_at,session_started_at,allow_viewers,allow_late_players,max_players,anonymous_messages_trimmed_at,wst_quote_source,custom_slots,gender_based,codewords_player_picks,codewords_late_join,codewords_randomize_teams,describe_it_num_teams,describe_it_mode,pool_usage,trivia_category,bingo_call_mode,bingo_call_interval_seconds,game_duration_seconds,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,ludo_variant,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,chess_board_theme,chess_piece_set,tournament_id,pending_host_player_id'
 
 export const PLAYER_SELECT = 'id,game_id,name,gender,identity_gender,participant_id,joined_at,spectator,monopoly_token'
 
@@ -94,9 +94,10 @@ export const DESCRIBE_IT_WORD_SELECT =
 export const DESCRIBE_IT_GUESS_SELECT = 'id,game_id,turn_index,player_id,team,text,correct,points,created_at'
 
 export const SCRABBLE_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,board,bag,phase,consecutive_passes,last_move,winner_player_id,is_tie,status_message,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,board,bag,phase,consecutive_passes,last_move,winner_player_id,is_tie,status_message,turn_deadline_at,clock_mode,turn_started_at,created_at,updated_at'
 
-export const SCRABBLE_PLAYER_STATE_SELECT = 'id,game_id,player_id,rack,score,player_order,created_at'
+export const SCRABBLE_PLAYER_STATE_SELECT =
+  'id,game_id,player_id,rack,score,player_order,clock_ms_remaining,timed_out,created_at'
 
 export const BINGO_CALLED_NUMBER_SELECT = 'id,game_id,number,called_at'
 

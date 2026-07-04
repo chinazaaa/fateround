@@ -146,6 +146,25 @@ export function splitKnockoutField(rankedIds: string[]): { advancing: string[]; 
 }
 
 /**
+ * Rank a Scrabble-knockout field best-first for the round-wide cut: highest score
+ * first, so splitKnockoutField keeps the top half. A player with no recorded score
+ * ranks at the very top — in this format that only happens by advancing without
+ * playing (a bye or a walkover), so they're kept, never cut. The comparator is
+ * NaN-safe on equal scores (including two +Infinity byes) so the sort stays stable
+ * — it preserves the input order on ties, so callers must pass `ids` in a
+ * deterministic order (e.g. by join time) for tie-at-the-boundary cuts to be stable.
+ */
+export function rankKnockoutScores(ids: string[], scoreByTp: Map<string, number>): string[] {
+  const scoreOf = (id: string) => (scoreByTp.has(id) ? (scoreByTp.get(id) as number) : Number.POSITIVE_INFINITY)
+  return [...ids].sort((a, b) => {
+    const sa = scoreOf(a)
+    const sb = scoreOf(b)
+    if (sa === sb) return 0
+    return sb > sa ? 1 : -1
+  })
+}
+
+/**
  * Round label for a *group* bracket, named by how many rooms the entrants form:
  * one room is the Final, two rooms the Semifinals, otherwise "Round of N". (Chess
  * keeps the power-of-two `roundLabel`; this suits Whot/Scrabble's 16 → 4 → 1.)

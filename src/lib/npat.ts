@@ -11,8 +11,8 @@ function npatHostModeKey(gameCode: string) {
 }
 
 export function getNpatHostMode(gameCode: string): NpatHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return localStorage.getItem(npatHostModeKey(gameCode)) === 'player' ? 'player' : 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return localStorage.getItem(npatHostModeKey(gameCode)) === 'spectator' ? 'spectator' : 'player'
 }
 
 export function setNpatHostMode(gameCode: string, mode: NpatHostMode) {

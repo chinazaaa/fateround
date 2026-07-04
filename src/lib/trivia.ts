@@ -20,8 +20,8 @@ function triviaHostModeKey(gameCode: string) {
 }
 
 export function getTriviaHostMode(gameCode: string): TriviaHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return localStorage.getItem(triviaHostModeKey(gameCode)) === 'player' ? 'player' : 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return localStorage.getItem(triviaHostModeKey(gameCode)) === 'spectator' ? 'spectator' : 'player'
 }
 
 export function setTriviaHostMode(gameCode: string, mode: TriviaHostMode) {

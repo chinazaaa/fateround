@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { isRoomLobbyPath } from '@/lib/room-routes'
-import { isSoundMuted, SOUND_MUTED_STORAGE_KEY, stopTimerMusic, unlockAudio } from '@/lib/sounds'
+import { isSoundMuted, setSoundMuted, subscribeSoundMuted } from '@/lib/sounds'
 
 type SoundToggleProps = {
   variant?: 'fixed' | 'inline'
@@ -16,6 +16,7 @@ export function SoundToggle({ variant = 'fixed', className = '' }: SoundTogglePr
 
   useEffect(() => {
     setMuted(isSoundMuted())
+    return subscribeSoundMuted(setMuted)
   }, [])
 
   const onGamePage = /^\/(game|host)\/[^/]+/.test(pathname ?? '')
@@ -23,14 +24,7 @@ export function SoundToggle({ variant = 'fixed', className = '' }: SoundTogglePr
   if (variant === 'fixed' && (onGamePage || onRoomPage)) return null
 
   const toggle = () => {
-    const next = !muted
-    setMuted(next)
-    localStorage.setItem(SOUND_MUTED_STORAGE_KEY, String(next))
-    if (next) {
-      stopTimerMusic()
-    } else {
-      unlockAudio() // pre-warm context on unmute (user gesture)
-    }
+    setSoundMuted(!muted)
   }
 
   const positionClass = variant === 'fixed' ? 'fixed bottom-4 left-4 z-50' : 'shrink-0'

@@ -18,6 +18,7 @@ import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
@@ -100,6 +101,8 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+
+  useTurnNotifications({ status: game?.status })
 
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'rounds', 'npat_answers', 'npat_marks'], load)
@@ -194,7 +197,13 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
         gameCode={gameCode}
         header={<GameJoinHeader emoji={cfg.headerEmoji} title={game?.title} gameType="i_call_on" />}
       >
-        <NameJoinForm value={joinName} onChange={setJoinName} onSubmit={() => void join()} joining={joining} />
+        <NameJoinForm
+          value={joinName}
+          onChange={setJoinName}
+          onSubmit={() => void join()}
+          joining={joining}
+          gameType="i_call_on"
+        />
       </GameJoinLobbyShell>
     )
   }

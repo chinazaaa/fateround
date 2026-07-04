@@ -6,10 +6,49 @@ export const TIMER_TICK_THRESHOLD = 5
 /** localStorage key for the global sound mute preference. */
 export const SOUND_MUTED_STORAGE_KEY = 'kmk-sound-muted'
 
+/** Same-tab event fired when the mute preference changes (storage events only
+ * fire in *other* tabs, so we dispatch this for the current tab). */
+export const SOUND_MUTED_EVENT = 'kmk-sound-muted-change'
+
 /** Check whether the user has muted all game sounds via the toggle. */
 export function isSoundMuted(): boolean {
   if (typeof window === 'undefined') return false
   return localStorage.getItem(SOUND_MUTED_STORAGE_KEY) === 'true'
+}
+
+/**
+ * Persist the global mute preference and notify every listener (this tab via a
+ * custom event, other tabs via the native `storage` event). Pre-warms the audio
+ * context on unmute so subsequent realtime sounds work; silences timer music on
+ * mute.
+ */
+export function setSoundMuted(muted: boolean): void {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(SOUND_MUTED_STORAGE_KEY, String(muted))
+  window.dispatchEvent(new CustomEvent(SOUND_MUTED_EVENT, { detail: muted }))
+  if (muted) {
+    stopTimerMusic()
+  } else {
+    unlockAudio() // pre-warm context on unmute (user gesture)
+  }
+}
+
+/**
+ * Subscribe to mute-preference changes from any source (this tab's toggle,
+ * another tab, or a direct `setSoundMuted` call). Returns an unsubscribe fn.
+ */
+export function subscribeSoundMuted(callback: (muted: boolean) => void): () => void {
+  if (typeof window === 'undefined') return () => {}
+  const onCustom = () => callback(isSoundMuted())
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === SOUND_MUTED_STORAGE_KEY) callback(isSoundMuted())
+  }
+  window.addEventListener(SOUND_MUTED_EVENT, onCustom)
+  window.addEventListener('storage', onStorage)
+  return () => {
+    window.removeEventListener(SOUND_MUTED_EVENT, onCustom)
+    window.removeEventListener('storage', onStorage)
+  }
 }
 
 /**
@@ -51,21 +90,35 @@ export function unlockAudio(): void {
 }
 
 /**
- * Attach a one-time document listener that pre-warms the AudioContext
- * on the first user interaction. Call once on game/host pages.
+ * Keep the AudioContext warm for the lifetime of the page. Call once on
+ * game/host pages.
+ *
+ * This deliberately does NOT remove its listeners after the first gesture:
+ * mobile browsers (and desktop tab-backgrounding) re-suspend the context when
+ * the page loses focus or idles, which would leave later realtime-triggered
+ * sounds (your turn, host started, timer ticks) silently dead. Re-warming on
+ * every gesture — and when the tab becomes visible again — keeps sounds firing
+ * consistently. `ensureContext()` is a cheap no-op once the context is already
+ * running, so the persistent listeners are effectively free.
  */
 export function setupAudioUnlock(): () => void {
   if (typeof window === 'undefined') return () => {}
   const unlock = () => {
     void ensureContext()
-    document.removeEventListener('pointerdown', unlock, true)
-    document.removeEventListener('keydown', unlock, true)
   }
-  document.addEventListener('pointerdown', unlock, true)
-  document.addEventListener('keydown', unlock, true)
+  const gestureEvents = ['pointerdown', 'keydown', 'touchstart'] as const
+  for (const evt of gestureEvents) {
+    document.addEventListener(evt, unlock, { capture: true, passive: true })
+  }
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') void ensureContext()
+  }
+  document.addEventListener('visibilitychange', onVisible)
   return () => {
-    document.removeEventListener('pointerdown', unlock, true)
-    document.removeEventListener('keydown', unlock, true)
+    for (const evt of gestureEvents) {
+      document.removeEventListener(evt, unlock, { capture: true })
+    }
+    document.removeEventListener('visibilitychange', onVisible)
   }
 }
 

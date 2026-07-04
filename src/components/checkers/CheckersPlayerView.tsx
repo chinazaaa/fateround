@@ -241,6 +241,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          gameType="checkers"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
           footer={
             <p className="text-center pt-1">

@@ -91,12 +91,39 @@ export interface SchoolPlayerLevel {
 // only two players just plays a room of two (Whot itself allows up to 6).
 export const SCHOOL_MAX_ROOM = 5
 
+// How far apart (in classes) two lone players may be and still be matched. Stragglers
+// only play someone within this many classes, so the field never lumps a Primary into
+// a room with a University player — anyone stranded further than this is out of
+// contention and eliminated, which narrows a spread-out endgame toward a champion.
+export const STRAGGLER_MAX_GAP = 1
+
 export interface SchoolRooms {
   /** Groups of player ids that each play one Whot game this round. */
   rooms: string[][]
   /** Lone players with nobody left in their class and someone in a higher class —
    *  left behind, so they're eliminated. */
   eliminated: string[]
+  /** Set when a lone frontrunner is far enough clear of the field to win outright
+   *  (no one within a class of them): the tournament ends with them as champion, so
+   *  the field doesn't have to grind on until someone graduates. */
+  champion?: string
+}
+
+/**
+ * The lone champion, if the tournament is effectively decided: a single player at the
+ * top class with nobody within one class of them (so no one can reach them next round).
+ * They win now rather than waiting to graduate. Returns null when the top class is
+ * shared, or a challenger sits one class below, or there aren't enough players.
+ */
+export function schoolLoneChampion(players: SchoolPlayerLevel[]): string | null {
+  if (players.length < 2) return null
+  let topLevel = Number.NEGATIVE_INFINITY
+  for (const p of players) if (p.level > topLevel) topLevel = p.level
+  const atTop = players.filter((p) => p.level === topLevel)
+  if (atTop.length !== 1) return null
+  // Someone one class below could climb and force a real final — not decided yet.
+  if (players.some((p) => p.level === topLevel - 1)) return null
+  return atTop[0].id
 }
 
 /** Split ids into the fewest rooms that stay ≤ max, balanced to within one each. */
@@ -119,20 +146,23 @@ function balancedChunks(ids: string[], max: number): string[][] {
  * in the same class play each other: a class with 6 players makes two rooms of 3, a
  * class with just 2 makes a room of 2 (no minimum). Rooms hold at most 5.
  *
- * A player alone in their class can't play their classmates, but they're only
- * eliminated if they truly have no one to play. Lone players from different classes
- * are paired off with each other first (nearest classes together) — so a straggler
- * plays another straggler (e.g. the loser from another room) rather than being cut.
- * Only when a single lone player is left with nobody to pair with is anyone out, and
- * even then a lone player in the *top* class is the frontrunner, not a straggler:
- * they aren't eliminated, they just wait for someone to climb up to them. So the top
- * class can never be eliminated and a tournament always keeps a winner.
+ * A player alone in their class is a straggler. Stragglers are paired with the nearest
+ * other straggler, but only within STRAGGLER_MAX_GAP classes — a fair match, never a
+ * Primary lumped in with a University player. A straggler with nobody within that gap
+ * is out of contention and eliminated, EXCEPT the frontrunner in the top class, who is
+ * never cut: they wait for the field to climb up to them. So the top class can never be
+ * eliminated, lopsided rooms don't happen, and a spread-out endgame narrows toward a
+ * single champion instead of cycling everyone through one room forever.
  *
  * The caller shuffles `players` first; the grouping preserves that order within a
  * class, so rooms vary round to round.
  */
 export function computeSchoolRooms(players: SchoolPlayerLevel[]): SchoolRooms {
   if (players.length < 2) return { rooms: [], eliminated: [] }
+
+  // Decided already? A lone frontrunner clear of the field wins now — no round to stage.
+  const champion = schoolLoneChampion(players)
+  if (champion) return { rooms: [], eliminated: [], champion }
 
   // Bucket by class, lowest first; same-class order stays as the caller shuffled it.
   const byLevel = new Map<number, string[]>()
@@ -153,29 +183,31 @@ export function computeSchoolRooms(players: SchoolPlayerLevel[]): SchoolRooms {
     else singles.push({ id: ids[0], level })
   }
 
+  // Pair stragglers with the nearest one, but only within STRAGGLER_MAX_GAP classes.
+  // `singles` is sorted by level, so adjacent entries are the closest pairings; walk
+  // them low-to-high, pairing when close enough. Anyone left unpaired is stranded: cut
+  // them if they're below the top class, or let them wait if they're the frontrunner.
   const eliminated: string[] = []
-  if (singles.length >= 2) {
-    // Two or more stragglers — pair them off with each other (nearest classes
-    // first, since `singles` is already class-sorted). Nobody is left without a game.
-    rooms.push(
-      ...balancedChunks(
-        singles.map((s) => s.id),
-        SCHOOL_MAX_ROOM
-      )
-    )
-  } else if (singles.length === 1 && singles[0].level < topLevel) {
-    // The only straggler, and everyone else is locked into their own class's rooms —
-    // no one left to play, and others have moved up past them. Eliminated.
-    eliminated.push(singles[0].id)
+  let i = 0
+  while (i < singles.length) {
+    const cur = singles[i]
+    const next = singles[i + 1]
+    if (next && next.level - cur.level <= STRAGGLER_MAX_GAP) {
+      rooms.push([cur.id, next.id])
+      i += 2
+    } else {
+      if (cur.level < topLevel) eliminated.push(cur.id)
+      // else: lone frontrunner at the top class — waits, never cut.
+      i += 1
+    }
   }
-  // A lone player in the top class (singles[0].level === topLevel) waits — never cut.
 
   return { rooms, eliminated }
 }
 
 /** The single player who repeats a school room: whoever holds the most cards at
  *  the end (most cards, then highest hand value, then id for a stable pick). */
-interface SchoolHand {
+export interface SchoolHand {
   tpId: string
   cardCount: number
   handSum: number
@@ -185,6 +217,34 @@ function schoolRepeater(hands: SchoolHand[]): SchoolHand | null {
   return [...hands].sort(
     (a, b) => b.cardCount - a.cardCount || b.handSum - a.handSum || a.tpId.localeCompare(b.tpId)
   )[0]
+}
+
+/**
+ * Who climbs a class after a school room, given each finisher's hand and the room's
+ * winner (if known). Everyone who finished advances except the single most-cards
+ * player who repeats — but:
+ *   - only when at least two players actually finished the room. If the others left
+ *     or were removed, the lone survivor won by walkover and advances (nobody repeats).
+ *   - the winner (emptied their hand / lowest hand at time-up) always advances, so a
+ *     win is never flipped into a repeat by opponents dropping out mid-room.
+ * Returns the tournament-player ids that should climb a class.
+ */
+export function schoolAdvancers(played: SchoolHand[], winnerTpId: string | null): string[] {
+  if (played.length <= 1) return played.map((p) => p.tpId)
+  const repeatable = played.filter((p) => p.tpId !== winnerTpId)
+  const repeater = repeatable.length > 0 ? schoolRepeater(repeatable) : null
+  return played.filter((p) => p.tpId !== repeater?.tpId).map((p) => p.tpId)
+}
+
+/**
+ * The champion of a school grand final (the room played when only two players remain):
+ * the room's Whot winner if known, otherwise whoever finished with the fewest cards
+ * (lowest hand value breaks a tie). Returns null only if nobody played.
+ */
+export function schoolFinalChampion(played: SchoolHand[], winnerTpId: string | null): string | null {
+  if (winnerTpId) return winnerTpId
+  if (played.length === 0) return null
+  return [...played].sort((a, b) => a.cardCount - b.cardCount || a.handSum - b.handSum)[0].tpId
 }
 
 /**
@@ -258,21 +318,67 @@ export async function resolveSchoolMatch(supabase: SupabaseClient, gameId: strin
     .select('id')
   if (claimError || !claimed?.length) return
 
-  // Everyone who played climbs a class except the single most-cards player.
-  const repeater = schoolRepeater(played)
-  const advancers = played.filter((p) => p.tpId !== repeater?.tpId)
+  // Grand final: once only two players are left in the whole tournament, this room
+  // decides it — the room's winner takes the championship and the other is out, rather
+  // than school's usual "winner climbs a class", which would otherwise drag the last two
+  // through more rounds until one finally graduated.
+  const { data: survivors } = await supabase
+    .from('tournament_players')
+    .select('id')
+    .eq('tournament_id', match.tournament_id)
+    .eq('is_eliminated', false)
+  if ((survivors?.length ?? 0) === 2) {
+    const championId = schoolFinalChampion(played, winnerTP?.id ?? null)
+    if (championId) {
+      const runnerUp = (survivors ?? []).find((s) => s.id !== championId)
+      if (runnerUp) {
+        await supabase
+          .from('tournament_players')
+          .update({ is_eliminated: true, eliminated_at: new Date().toISOString() })
+          .eq('id', runnerUp.id)
+      }
+      await supabase.from('tournaments').update({ status: 'finished' }).eq('id', match.tournament_id)
+      return
+    }
+  }
+
+  // Everyone who played climbs a class except the single most-cards player — unless
+  // the others dropped out, in which case the lone survivor (and the winner) still
+  // advance rather than being stuck repeating (see schoolAdvancers).
+  const advancers = schoolAdvancers(played, winnerTP?.id ?? null)
 
   const classCount = clampSchoolClassCount(
     (tournament.game_config as { schoolClassCount?: number } | null)?.schoolClassCount
   )
   let someoneGraduated = false
-  for (const a of advancers) {
-    const nextLevel = (levelById.get(a.tpId) ?? 0) + 1
-    await supabase.from('tournament_players').update({ school_level: nextLevel }).eq('id', a.tpId)
+  for (const tpId of advancers) {
+    const nextLevel = (levelById.get(tpId) ?? 0) + 1
+    await supabase.from('tournament_players').update({ school_level: nextLevel }).eq('id', tpId)
     if (hasGraduated(nextLevel, classCount)) someoneGraduated = true
   }
 
   if (someoneGraduated) {
+    await supabase.from('tournaments').update({ status: 'finished' }).eq('id', match.tournament_id)
+    return
+  }
+
+  // After this round's climbs, is one player now clear of the whole field (alone at the
+  // top with nobody within a class)? Then they've won — end the tournament and knock out
+  // the rest, rather than making everyone grind on until a graduation.
+  const { data: field } = await supabase
+    .from('tournament_players')
+    .select('id, school_level')
+    .eq('tournament_id', match.tournament_id)
+    .eq('is_eliminated', false)
+  const champ = schoolLoneChampion((field ?? []).map((p) => ({ id: p.id, level: p.school_level ?? 0 })))
+  if (champ) {
+    const losers = (field ?? []).map((p) => p.id).filter((id) => id !== champ)
+    if (losers.length > 0) {
+      await supabase
+        .from('tournament_players')
+        .update({ is_eliminated: true, eliminated_at: new Date().toISOString() })
+        .in('id', losers)
+    }
     await supabase.from('tournaments').update({ status: 'finished' }).eq('id', match.tournament_id)
   }
 }

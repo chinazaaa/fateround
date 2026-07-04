@@ -8,7 +8,48 @@ import { initializeChessGame } from '@/lib/chess'
 import { initializeWhotGame } from '@/lib/whot'
 import { initializeScrabbleGame } from '@/lib/scrabble'
 import { startKnockoutRoundGame } from '@/lib/tournament-knockout'
+import { applyKnockoutGroupCut, resolveKnockoutGroupRoom } from '@/lib/tournament-scoring'
+import { resolveHeadToHeadMatch } from '@/lib/tournament-h2h'
 import type { SupabaseClient } from '@supabase/supabase-js'
+
+/**
+ * Guard against re-initializing a bracket room/match whose game is no longer `waiting`.
+ * A repeat "Start" tap must never re-deal a live game — that deletes every player's state
+ * and resets scores to 0. Returns whether the caller should proceed to initialize:
+ *   - `proceed: true`             → game is still `waiting`; deal it normally
+ *   - `proceed: false, started`   → game is already `active`; the bracket row was nudged
+ *                                   back to `active` (its write may have lagged the game's)
+ *   - `proceed: false`            → game is `finished`; skip re-init and re-run the finish
+ *                                   finalizer to reconcile the bracket row (it may still
+ *                                   read `pending` if the finalizer lost its CAS or never
+ *                                   fired). We re-run rather than flip the row to `finished`
+ *                                   ourselves: a bare `finished` write has no winner and
+ *                                   would block the finalizer (it guards on
+ *                                   `status != 'finished'`), stranding the match.
+ *   - `error`                     → status lookup failed; surface it instead of re-dealing
+ */
+async function reconcileNonWaitingGame(
+  admin: SupabaseClient,
+  gameId: string,
+  tournamentGameId: string
+): Promise<{ proceed: boolean; started?: boolean; error?: string }> {
+  const { data: game, error } = await admin.from('games').select('status').eq('id', gameId).maybeSingle()
+  if (error) return { proceed: false, error: internalErrorMessage('tournaments/code/rounds/start', error) }
+  if (!game || game.status === 'waiting') return { proceed: true }
+  if (game.status === 'active') {
+    await admin.from('tournament_games').update({ status: 'active' }).eq('id', tournamentGameId).eq('status', 'pending')
+    return { proceed: false, started: true }
+  }
+  // Finished: reconcile a bracket row that may be stuck `pending` (its finish
+  // finalizer lost its CAS or never fired). Both resolvers are idempotent and
+  // format-gated no-ops off their own format: resolveHeadToHeadMatch records the
+  // winner + eliminations for a head-to-head/group bracket, while
+  // resolveKnockoutGroupRoom scores a Scrabble knockout room and runs the field-wide
+  // cut once its round is complete — so the round can advance either way.
+  await resolveHeadToHeadMatch(admin, gameId)
+  await resolveKnockoutGroupRoom(admin, gameId)
+  return { proceed: false }
+}
 
 /** Deal + start the right group game for a Whot/Scrabble bracket room. */
 function initializeGroupGame(
@@ -61,9 +102,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // Start the latest staged round only.
   const roundNumber = Math.max(...pendingRows.map((r) => r.round_number ?? 0))
 
-  // Knockout: the round is a single group game — start it server-side (pick
-  // questions + activate). It then runs and finishes on its own.
-  if (tournament.format === 'knockout') {
+  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
+
+  // Trivia knockout: the round is a single group game — start it server-side (pick
+  // questions + activate). It then runs and finishes on its own. Scrabble knockout
+  // plays in rooms (groupSize > 2), so it uses the group-room start path below.
+  if (tournament.format === 'knockout' && groupSize <= 2) {
     const groupRow = pendingRows.find((r) => r.round_number === roundNumber && r.game_id)
     if (!groupRow?.game_id) return NextResponse.json({ error: 'No game to start' }, { status: 400 })
 
@@ -89,13 +133,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ started: 1, players: playing.length })
   }
 
-  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
-
-  // Group rooms (head-to-head Whot/Scrabble, or school Whot): each staged room
-  // holds the group's members, who auto-join from the lobby. Seat the members who
-  // are present (≥ 2), deal the game, and flip the room live. A room without enough
-  // members stays pending so the host can retry once stragglers arrive (or remove a
-  // no-show for a walkover).
+  // Group rooms (head-to-head Whot/Scrabble, Scrabble knockout, or school Whot):
+  // each staged room holds the group's members, who auto-join from the lobby. Seat
+  // the members who are present (≥ 2), deal the game, and flip the room live. A room
+  // without enough members stays pending so the host can retry once stragglers
+  // arrive (or remove a no-show for a walkover).
   if (groupSize > 2 || tournament.format === 'school') {
     const roundRooms = pendingRows.filter((r) => r.round_number === roundNumber && !r.is_bye && r.game_id)
     const memberIds = [
@@ -103,26 +145,70 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     ]
     const { data: rosterRows } = await admin
       .from('tournament_players')
-      .select('id, player_name')
+      .select('id, player_name, is_eliminated')
       .in('id', memberIds.length ? memberIds : ['__none__'])
-    const nameById = new Map((rosterRows ?? []).map((p) => [p.id, p.player_name.toLowerCase()]))
+    const rosterById = new Map(
+      (rosterRows ?? []).map((p) => [p.id, { name: p.player_name.toLowerCase(), eliminated: p.is_eliminated === true }])
+    )
 
     const sessionStartedAt = new Date().toISOString()
     let started = 0
     let waiting = 0
+    let resolved = 0
 
     for (const room of roundRooms) {
       const gameId = room.game_id as string
-      const expectedNames = new Set(
-        ((room.member_ids ?? []) as string[]).map((id) => nameById.get(id)).filter((n): n is string => Boolean(n))
-      )
+
+      // Never re-deal a room whose game is already live or finished. A second
+      // "Start Rooms" tap (e.g. after waiting on stragglers) must not re-initialize
+      // a game in progress — that deletes every player's state and resets scores to zero.
+      const roomReconcile = await reconcileNonWaitingGame(admin, gameId, room.id)
+      if (roomReconcile.error) return NextResponse.json({ error: roomReconcile.error }, { status: 500 })
+      if (!roomReconcile.proceed) {
+        if (roomReconcile.started) started++
+        continue
+      }
+
+      // The members this room still expects to seat: everyone in member_ids who hasn't
+      // been removed/eliminated. A removed no-show drops out of the set, so the host can
+      // unblock a stuck room by removing someone who never shows (as in head-to-head).
+      const activeMembers = ((room.member_ids ?? []) as string[])
+        .map((id) => ({ id, info: rosterById.get(id) }))
+        .filter((x): x is { id: string; info: { name: string; eliminated: boolean } } => {
+          return x.info != null && !x.info.eliminated
+        })
+
+      // Too few players left to run this room — every no-show got removed, or a
+      // remainder room shrank below two. Clear it so it never blocks the round: a lone
+      // survivor walks over (advances), an empty room is voided. Without this, a room
+      // that can't reach 2 seated members would sit `pending` forever and the host
+      // could never stage the next round.
+      if (activeMembers.length < 2) {
+        const walkoverWinner = activeMembers[0]?.id ?? null
+        await admin
+          .from('tournament_games')
+          .update({
+            status: 'finished',
+            winner_player_id: walkoverWinner,
+            win_reason: walkoverWinner ? 'walkover' : null,
+          })
+          .eq('id', room.id)
+          .neq('status', 'finished')
+        await admin.from('games').update({ status: 'finished' }).eq('id', gameId)
+        resolved++
+        continue
+      }
+
+      const expectedNames = new Set(activeMembers.map((m) => m.info.name))
       const { data: gamePlayers } = await admin.from('players').select('id, name, spectator').eq('game_id', gameId)
       const seated = (gamePlayers ?? []).filter((p) => p.spectator !== true)
-      // Seat only this room's expected members (never a stray joiner). A game needs
-      // at least 2; a no-show member is simply absent and gets eliminated as a
-      // non-winner when the room resolves.
+      // Seat only this room's expected members (never a stray joiner).
       const memberSeats = seated.filter((p) => expectedNames.has(p.name.toLowerCase()))
-      if (memberSeats.length < 2) {
+      // Wait until EVERY expected member is actually seated before dealing. Whot/Scrabble
+      // can't add a player once the game is live, so starting while a member is still
+      // mid-join would strand them as a spectator for the whole round. Genuine no-shows
+      // are cleared by the host removing them, which drops them from expectedNames.
+      if (memberSeats.length < expectedNames.size) {
         waiting++
         continue
       }
@@ -156,7 +242,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       started++
     }
 
-    return NextResponse.json({ started, waiting })
+    // Safety net for Scrabble knockout: if every room resolved to a walkover (no game
+    // to finish, so no markGameFinished fires the resolver), try the round-wide cut
+    // here. A no-op unless the whole round is finished and not yet cut.
+    if (tournament.format === 'knockout') {
+      await applyKnockoutGroupCut(admin, tournamentId, roundNumber)
+    }
+
+    return NextResponse.json({ started, waiting, resolved })
   }
 
   const roundMatches = pendingRows.filter((r) => r.round_number === roundNumber && !r.is_bye && r.game_id)
@@ -176,6 +269,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   for (const match of roundMatches) {
     const gameId = match.game_id as string
+
+    // Never re-initialize a match whose game is already live or finished — a repeat
+    // "Start Matches" tap would otherwise reset the board mid-game.
+    const matchReconcile = await reconcileNonWaitingGame(admin, gameId, match.id)
+    if (matchReconcile.error) return NextResponse.json({ error: matchReconcile.error }, { status: 500 })
+    if (!matchReconcile.proceed) {
+      if (matchReconcile.started) started++
+      continue
+    }
+
     const expectedNames = new Set(
       [nameById.get(match.player_a_id ?? ''), nameById.get(match.player_b_id ?? '')].filter(Boolean)
     )

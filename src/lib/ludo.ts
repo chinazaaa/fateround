@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
-import type { LudoColor, LudoDiceRoll, LudoPiece, LudoPlayerState, LudoSession, Player } from '@/types'
+import type { LudoColor, LudoDiceRoll, LudoPiece, LudoPlayerState, LudoSession, LudoVariant, Player } from '@/types'
 
 export const LUDO_MIN_PLAYERS = 2
 export const LUDO_MAX_PLAYERS = 4
@@ -50,20 +50,42 @@ export const START_POS: Record<LudoColor, number> = {
 }
 
 /**
- * ★ safe cells on the 52-cell track — pieces cannot be captured here. The 8
- * standard safe squares: each colour's start, plus the mid-arm star 8 squares
- * clockwise from each start (the last safe square before a colour's home gate).
+ * Two rule variants differ only in which track squares are safe from capture:
+ *
+ * - `modern`: the 8 standard safe squares — each colour's ★ start plus the
+ *   mid-arm star 8 squares clockwise from each start.
+ * - `traditional`: NO safe squares on the 52-cell track. The only refuge is a
+ *   colour's own home column (the coloured lane to the finish), which opponents
+ *   can never enter anyway, so nothing on the shared track is protected.
  */
-const SAFE_TRACK_POSITIONS: ReadonlySet<number> = new Set([
-  START_POS.red,
-  START_POS.green,
-  START_POS.yellow,
-  START_POS.blue,
+export const LUDO_DEFAULT_VARIANT: LudoVariant = 'modern'
+
+export function parseLudoVariant(raw: unknown): LudoVariant {
+  return raw === 'traditional' ? 'traditional' : 'modern'
+}
+
+/** Mid-arm safe stars — the last safe square before each colour's home gate. */
+const MID_ARM_SAFE_STARS = [
   8, // safe star [2,6] — guards red's home
   21, // safe star [6,12] — guards blue's home
   34, // safe star [12,8] — guards yellow's home
   47, // safe star [8,2] — guards green's home
+] as const
+
+const MODERN_SAFE_TRACK_POSITIONS: ReadonlySet<number> = new Set([
+  START_POS.red,
+  START_POS.green,
+  START_POS.yellow,
+  START_POS.blue,
+  ...MID_ARM_SAFE_STARS,
 ])
+
+/** Traditional has no capture-safe squares on the shared track. */
+const TRADITIONAL_SAFE_TRACK_POSITIONS: ReadonlySet<number> = new Set()
+
+function safeTrackPositions(variant: LudoVariant): ReadonlySet<number> {
+  return variant === 'traditional' ? TRADITIONAL_SAFE_TRACK_POSITIONS : MODERN_SAFE_TRACK_POSITIONS
+}
 
 /**
  * Colors used for each player count. With 2 players they take diagonally
@@ -168,8 +190,12 @@ function trackPos(pos: number): number {
   return Number(pos)
 }
 
-function isCaptureAllowedAt(pos: number): boolean {
-  return !SAFE_TRACK_POSITIONS.has(trackPos(pos))
+function isSafeSquare(pos: number, variant: LudoVariant): boolean {
+  return safeTrackPositions(variant).has(trackPos(pos))
+}
+
+function isCaptureAllowedAt(pos: number, variant: LudoVariant): boolean {
+  return !isSafeSquare(pos, variant)
 }
 
 function wouldCaptureAt(
@@ -177,10 +203,11 @@ function wouldCaptureAt(
   destPos: number,
   color: LudoColor,
   movingPlayerId: string,
-  movingPieceId: number
+  movingPieceId: number,
+  variant: LudoVariant
 ): boolean {
   const pos = trackPos(destPos)
-  if (!isCaptureAllowedAt(pos)) return false
+  if (!isCaptureAllowedAt(pos, variant)) return false
   const occ = trackOccupants(states, movingPlayerId, movingPieceId).get(pos) ?? []
   return occ.some((o) => o.color !== color && o.count === 1)
 }
@@ -246,10 +273,15 @@ function isOwnBlockade(
 function canPassTrackSquare(
   pos: number,
   color: LudoColor,
-  occupants: Map<number, { color: LudoColor; playerId: string; pieceId: number; count: number }[]>
+  occupants: Map<number, { color: LudoColor; playerId: string; pieceId: number; count: number }[]>,
+  variant: LudoVariant
 ): boolean {
   const occ = occupants.get(trackPos(pos)) ?? []
   if (occ.length === 0) return true
+  // Safe squares (each colour's ★ start + the mid-arm stars) are shared ground:
+  // any number of pieces coexist there, so a stack sitting on one is never a
+  // blockade that can wall others off.
+  if (isSafeSquare(pos, variant)) return true
   if (isOwnBlockade(occ, color)) return true
   if (isOpponentBlockade(occ, color)) return false
   return true
@@ -258,10 +290,12 @@ function canPassTrackSquare(
 function canLandOnTrackSquare(
   pos: number,
   color: LudoColor,
-  occupants: Map<number, { color: LudoColor; playerId: string; pieceId: number; count: number }[]>
+  occupants: Map<number, { color: LudoColor; playerId: string; pieceId: number; count: number }[]>,
+  variant: LudoVariant
 ): boolean {
   const occ = occupants.get(trackPos(pos)) ?? []
   if (occ.length === 0) return true
+  if (isSafeSquare(pos, variant)) return true
   if (isOpponentBlockade(occ, color)) return false
   if (occ.some((o) => o.color === color)) return true
   return true
@@ -283,7 +317,8 @@ export function getLegalMovesForSteps(
   pieces: LudoPiece[],
   steps: number,
   allStates: LudoPlayerState[],
-  playerId: string
+  playerId: string,
+  variant: LudoVariant = LUDO_DEFAULT_VARIANT
 ): Omit<LudoMoveOption, 'diceIndex' | 'diceValue'>[] {
   const moves: Omit<LudoMoveOption, 'diceIndex' | 'diceValue'>[] = []
   const occupants = trackOccupants(allStates)
@@ -299,9 +334,12 @@ export function getLegalMovesForSteps(
         // all in base — must bring one out on a 6
       }
       const start = START_POS[color]
-      const occ = occupants.get(start) ?? []
-      if (isOpponentBlockade(occ, color)) continue
-      const captures = wouldCaptureAt(allStates, start, color, playerId, piece.id)
+      // A colour's own start is a safe square, so opponents parked there (even a
+      // 2-piece stack) can never wall a player out of the board — the incoming
+      // piece simply shares the square. Without this, an opponent blockade on
+      // your start froze you: no bring-out and, if the yard was your only pieces,
+      // no legal move at all.
+      const captures = wouldCaptureAt(allStates, start, color, playerId, piece.id, variant)
       moves.push({
         pieceId: piece.id,
         from: piece,
@@ -333,7 +371,7 @@ export function getLegalMovesForSteps(
       const intermediateSteps = currentSteps + step
       if (intermediateSteps >= HOME_ENTRY_STEPS) break
       const intermediatePos = (START_POS[color] + intermediateSteps) % TRACK_LENGTH
-      if (step < steps && !canPassTrackSquare(intermediatePos, color, occupants)) {
+      if (step < steps && !canPassTrackSquare(intermediatePos, color, occupants, variant)) {
         blocked = true
         break
       }
@@ -342,8 +380,8 @@ export function getLegalMovesForSteps(
 
     const dest = pieceAtSteps(color, newSteps)
     if (dest.zone === 'track') {
-      if (!canLandOnTrackSquare(dest.pos, color, occupants)) continue
-      const captures = wouldCaptureAt(allStates, dest.pos, color, playerId, piece.id)
+      if (!canLandOnTrackSquare(dest.pos, color, occupants, variant)) continue
+      const captures = wouldCaptureAt(allStates, dest.pos, color, playerId, piece.id, variant)
       moves.push({
         pieceId: piece.id,
         from: piece,
@@ -368,12 +406,13 @@ export function getLegalMovesFromRemaining(
   pieces: LudoPiece[],
   remainingDice: number[],
   allStates: LudoPlayerState[],
-  playerId: string
+  playerId: string,
+  variant: LudoVariant = LUDO_DEFAULT_VARIANT
 ): LudoMoveOption[] {
   const moves: LudoMoveOption[] = []
   for (let diceIndex = 0; diceIndex < remainingDice.length; diceIndex += 1) {
     const steps = remainingDice[diceIndex]!
-    const stepMoves = getLegalMovesForSteps(color, pieces, steps, allStates, playerId)
+    const stepMoves = getLegalMovesForSteps(color, pieces, steps, allStates, playerId, variant)
     for (const move of stepMoves) {
       moves.push({ ...move, diceIndex, diceValue: steps })
     }
@@ -385,10 +424,11 @@ function applyMoveLocally(
   states: LudoPlayerState[],
   playerId: string,
   move: Omit<LudoMoveOption, 'diceIndex' | 'diceValue'>,
-  color: LudoColor
+  color: LudoColor,
+  variant: LudoVariant
 ): LudoPlayerState[] {
   const captureVictims =
-    move.to.zone === 'track' && wouldCaptureAt(states, move.to.pos, color, playerId, move.pieceId)
+    move.to.zone === 'track' && wouldCaptureAt(states, move.to.pos, color, playerId, move.pieceId, variant)
       ? victimsAtTrackPos(states, move.to.pos, color)
       : []
   const victimKeys = new Set(captureVictims.map((v) => `${v.playerId}:${v.pieceId}`))
@@ -523,12 +563,13 @@ async function loadGameState(
   session: LudoSession | null
   states: LudoPlayerState[]
   timerSeconds: number
+  variant: LudoVariant
   playerNames: Map<string, string>
 }> {
   const [sessionRes, statesRes, gameRes, playersRes] = await Promise.all([
     supabase.from('ludo_sessions').select('*').eq('game_id', gameId).maybeSingle(),
     supabase.from('ludo_player_state').select('*').eq('game_id', gameId).order('player_order'),
-    supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle(),
+    supabase.from('games').select('timer_seconds, ludo_variant').eq('id', gameId).maybeSingle(),
     supabase.from('players').select('id, name').eq('game_id', gameId),
   ])
 
@@ -541,6 +582,7 @@ async function loadGameState(
     session: sessionRes.data as LudoSession | null,
     states: (statesRes.data as LudoPlayerState[]) ?? [],
     timerSeconds: gameRes.data?.timer_seconds ?? 0,
+    variant: parseLudoVariant(gameRes.data?.ludo_variant),
     playerNames,
   }
 }
@@ -638,12 +680,13 @@ async function persistMove(
   playerId: string,
   move: LudoMoveOption,
   timerSeconds: number,
-  playerNames: Map<string, string>
+  playerNames: Map<string, string>,
+  variant: LudoVariant
 ): Promise<{ error?: string }> {
   const playerRow = states.find((s) => s.player_id === playerId)
   if (!playerRow) return { error: 'Player state not found' }
 
-  const nextStates = applyMoveLocally(states, playerId, move, playerRow.color)
+  const nextStates = applyMoveLocally(states, playerId, move, playerRow.color, variant)
 
   const myPieces = nextStates.find((s) => s.player_id === playerId)?.pieces ?? []
   const won = allPiecesFinished(myPieces)
@@ -657,7 +700,7 @@ async function persistMove(
   const didCapture =
     move.to.zone === 'track' &&
     victimsAtTrackPos(states, move.to.pos, playerRow.color).length > 0 &&
-    wouldCaptureAt(states, move.to.pos, playerRow.color, playerId, move.pieceId)
+    wouldCaptureAt(states, move.to.pos, playerRow.color, playerId, move.pieceId, variant)
   const moveNote = didCapture
     ? 'ate an opponent and sent it home, racing their own piece home!'
     : movedFromBase
@@ -678,7 +721,14 @@ async function persistMove(
     phase = 'finished'
     statusMessage = `${name} wins!`
   } else if (remainingAfter.length > 0) {
-    const nextMoves = getLegalMovesFromRemaining(playerRow.color, myPieces, remainingAfter, nextStates, playerId)
+    const nextMoves = getLegalMovesFromRemaining(
+      playerRow.color,
+      myPieces,
+      remainingAfter,
+      nextStates,
+      playerId,
+      variant
+    )
     if (nextMoves.length > 0) {
       phase = 'move'
       lastDice = roll
@@ -775,7 +825,7 @@ export async function processLudoRoll(
   gameId: string,
   playerId: string
 ): Promise<{ error?: string; dice?: LudoDiceRoll }> {
-  const { session, states, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
+  const { session, states, timerSeconds, variant, playerNames } = await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase !== 'roll') return { error: 'Not roll phase' }
   if (currentPlayerId(session) !== playerId) return { error: 'Not your turn' }
@@ -790,7 +840,7 @@ export async function processLudoRoll(
   // the turn if the remaining die can't be used. (Requiring the full two-die
   // sequence to be playable here wrongly skipped turns where only one die moved.)
   const canPlay =
-    getLegalMovesFromRemaining(playerRow.color, playerRow.pieces, remainingDice, states, playerId).length > 0
+    getLegalMovesFromRemaining(playerRow.color, playerRow.pieces, remainingDice, states, playerId, variant).length > 0
   const name = playerNames.get(playerId) ?? 'Player'
   const rollLabel = formatLudoDiceRoll(dice)
 
@@ -877,7 +927,7 @@ export async function processLudoMove(
   pieceId: number,
   diceIndex?: number
 ): Promise<{ error?: string }> {
-  const { session, states, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
+  const { session, states, timerSeconds, variant, playerNames } = await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase !== 'move') return { error: 'Not move phase' }
   if (currentPlayerId(session) !== playerId) return { error: 'Not your turn' }
@@ -889,7 +939,7 @@ export async function processLudoMove(
   const remaining = resolveRemainingDice(session)
   if (remaining.length === 0) return { error: 'No dice left to play' }
 
-  const moves = getLegalMovesFromRemaining(playerRow.color, playerRow.pieces, remaining, states, playerId)
+  const moves = getLegalMovesFromRemaining(playerRow.color, playerRow.pieces, remaining, states, playerId, variant)
 
   let move = diceIndex != null ? moves.find((m) => m.pieceId === pieceId && m.diceIndex === diceIndex) : undefined
 
@@ -899,7 +949,7 @@ export async function processLudoMove(
 
   if (!move) return { error: 'Invalid move' }
 
-  return persistMove(supabase, gameId, session, states, playerId, move, timerSeconds, playerNames)
+  return persistMove(supabase, gameId, session, states, playerId, move, timerSeconds, playerNames, variant)
 }
 
 export async function processLudoExpireTurn(supabase: SupabaseClient, gameId: string): Promise<{ error?: string }> {
@@ -943,8 +993,8 @@ export type LudoHostMode = 'spectator' | 'player'
 const LUDO_HOST_MODE_KEY = 'ludo_host_mode'
 
 export function getLudoHostMode(gameCode: string): LudoHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(`${LUDO_HOST_MODE_KEY}_${gameCode}`) as LudoHostMode) ?? 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return (localStorage.getItem(`${LUDO_HOST_MODE_KEY}_${gameCode}`) as LudoHostMode) ?? 'player'
 }
 
 export function setLudoHostMode(gameCode: string, mode: LudoHostMode): void {

@@ -2,12 +2,15 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import { gameKeys } from '@/lib/query-keys'
 import { getPlayerSession } from '@/lib/utils'
+import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 
 export function useJoinGame(gameCode: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (data: Record<string, unknown>) => api.post('/players', { gameCode, ...data }),
     onSuccess: () => {
+      // GA key event: a player joined a game via code/link (viral conversion).
+      trackEvent(GA_EVENTS.joinGame)
       queryClient.invalidateQueries({ queryKey: gameKeys.players(gameCode) })
     },
   })

@@ -203,7 +203,13 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
             ) : null
           }
         />
-        <NameJoinForm value={joinName} onChange={setJoinName} onSubmit={() => void join()} joining={joining} />
+        <NameJoinForm
+          value={joinName}
+          onChange={setJoinName}
+          onSubmit={() => void join()}
+          joining={joining}
+          gameType="trivia"
+        />
       </GameJoinLobbyShell>
     )
   }

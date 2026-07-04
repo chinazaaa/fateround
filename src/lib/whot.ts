@@ -136,7 +136,7 @@ const DECK_COMPOSITION: Record<Exclude<WhotShape, 'whot'>, number[]> = {
   circle: [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14],
   triangle: [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14],
   cross: [1, 2, 3, 5, 7, 10, 11, 13, 14],
-  square: [1, 2, 3, 4, 5, 7, 8],
+  square: [1, 2, 3, 5, 7, 10, 11, 13, 14],
   star: [1, 2, 3, 4, 5, 7, 8],
 }
 
@@ -1201,8 +1201,8 @@ export type WhotHostMode = 'spectator' | 'player'
 const WHOT_HOST_MODE_KEY = 'whot_host_mode'
 
 export function getWhotHostMode(gameCode: string): WhotHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(`${WHOT_HOST_MODE_KEY}_${gameCode}`) as WhotHostMode) ?? 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return (localStorage.getItem(`${WHOT_HOST_MODE_KEY}_${gameCode}`) as WhotHostMode) ?? 'player'
 }
 
 export function setWhotHostMode(gameCode: string, mode: WhotHostMode): void {

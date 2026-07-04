@@ -34,6 +34,7 @@ import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useRoomMemberAutoJoin, useRoomMemberJoin } from '@/hooks/useRoomMemberJoin'
 import { markPlayerReady } from '@/lib/player-ready'
 import { allowLateJoin, playerIsViewer, preJoinScreen } from '@/lib/viewers'
@@ -68,6 +69,8 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   const { banForPlayer } = useAnonymousRoomBans(gameCode, bansEnabled)
   const { broadcastReaction, reactions: reactionsMap } = useAnonymousReactions(gameCode, screen === 'active')
   useAnonymousMessageTrim(gameCode, screen === 'active')
+
+  useTurnNotifications({ status: game?.status })
 
   const syncScreen = useCallback((gameData: Game, playerId: string | null) => {
     if (gameData.status === 'waiting') {

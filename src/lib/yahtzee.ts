@@ -638,8 +638,8 @@ export type YahtzeeHostMode = 'spectator' | 'player'
 const yahtzeeHostModeKey = (gameCode: string) => `yahtzee_host_mode_${gameCode}`
 
 export function getYahtzeeHostMode(gameCode: string): YahtzeeHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return localStorage.getItem(yahtzeeHostModeKey(gameCode)) === 'player' ? 'player' : 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return localStorage.getItem(yahtzeeHostModeKey(gameCode)) === 'spectator' ? 'spectator' : 'player'
 }
 
 export function setYahtzeeHostMode(gameCode: string, mode: YahtzeeHostMode): void {

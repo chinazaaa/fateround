@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { awardRoomGamePoints } from '@/lib/room-points'
 import { resolveHeadToHeadMatch } from '@/lib/tournament-h2h'
 import { resolveSchoolMatch } from '@/lib/tournament-school'
+import { resolveKnockoutGroupRoom } from '@/lib/tournament-scoring'
 
 export async function markGameFinished(
   supabase: SupabaseClient,
@@ -43,6 +44,14 @@ export async function markGameFinished(
       await resolveSchoolMatch(supabase, gameId)
     } catch (err) {
       console.error(`resolveSchoolMatch failed for game ${gameId}`, err)
+    }
+    try {
+      // Score a finished Scrabble knockout room and, once the round's last room is
+      // in, cut the bottom half of the whole field. No-op for every other game;
+      // core tournament state, so surface a failure rather than swallow it.
+      await resolveKnockoutGroupRoom(supabase, gameId)
+    } catch (err) {
+      console.error(`resolveKnockoutGroupRoom failed for game ${gameId}`, err)
     }
   }
 

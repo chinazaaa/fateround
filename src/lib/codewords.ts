@@ -542,8 +542,8 @@ function codewordsHostModeKey(gameCode: string) {
 }
 
 export function getCodewordsHostMode(gameCode: string): CodewordsHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return localStorage.getItem(codewordsHostModeKey(gameCode)) === 'player' ? 'player' : 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return localStorage.getItem(codewordsHostModeKey(gameCode)) === 'spectator' ? 'spectator' : 'player'
 }
 
 export function setCodewordsHostMode(gameCode: string, mode: CodewordsHostMode) {

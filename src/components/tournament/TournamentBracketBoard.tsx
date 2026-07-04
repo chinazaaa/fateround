@@ -11,6 +11,10 @@ interface TournamentBracketBoardProps {
   nameOf: (id: string | null) => string
   /** Optional secondary label under each player (e.g. their School class). */
   subOf?: (id: string | null) => string
+  /** Whether a player has been removed/eliminated from the tournament — shown as
+   *  "Removed" on the tile (dimmed, no presence dot, not removable) so a member the
+   *  host already took out isn't still listed as if the room is waiting on them. */
+  isEliminated?: (id: string | null) => boolean
   /** Open a match room as a viewer. */
   onWatch: (gameId: string) => void
   /** Host only: remove a player from a not-yet-decided match (e.g. a no-show).
@@ -30,6 +34,7 @@ export function TournamentBracketBoard({
   roundLabel,
   nameOf,
   subOf,
+  isEliminated,
   onWatch,
   onRemovePlayer,
 }: TournamentBracketBoardProps) {
@@ -68,6 +73,10 @@ export function TournamentBracketBoard({
           // room, or one down to 2 after removals) — so it labels as "Room", not a duel.
           const isRoom = Boolean(m.member_ids?.length)
           const canWatch = !isBye && Boolean(m.game_id) && (m.status === 'active' || m.status === 'finished')
+          // Before a room goes final, show who's actually in it — a green dot for
+          // members who've joined to play, a hollow one for those still on their way.
+          const showPresence = !isBye && Boolean(m.game_id) && m.status !== 'finished'
+          const joinedIds = new Set(m.joined_member_ids ?? [])
 
           return (
             <div key={m.id} className="surface-inset p-3 space-y-2">
@@ -105,17 +114,45 @@ export function TournamentBracketBoard({
                 <div className="space-y-0.5">
                   {memberIds.map((pid, i) => {
                     const won = m.winner_player_id != null && m.winner_player_id === pid
+                    const joined = joinedIds.has(pid)
+                    // A member the host already removed stays in the room's member_ids,
+                    // but shouldn't read as "waiting" — the room no longer needs them.
+                    const removed = isEliminated?.(pid) === true
                     return (
                       <div key={pid}>
                         <div className="flex items-center justify-between gap-2">
-                          <p className={`text-sm ${won ? 'font-bold text-body' : 'text-body'}`}>
+                          <p
+                            className={`text-sm flex items-center gap-1.5 ${removed ? 'text-faint line-through' : won ? 'font-bold text-body' : 'text-body'}`}
+                          >
+                            {showPresence && !removed && (
+                              <span
+                                title={joined ? 'In the room' : 'Not in the room yet'}
+                                aria-label={joined ? 'In the room' : 'Not in the room yet'}
+                                className="inline-block h-2 w-2 shrink-0 rounded-full"
+                                style={
+                                  joined
+                                    ? { background: 'var(--primary)' }
+                                    : { border: '1px solid var(--faint)', background: 'transparent' }
+                                }
+                              />
+                            )}
                             {won && <span aria-hidden="true">✓ </span>}
                             {nameOf(pid)}
                             {subOf?.(pid) ? (
-                              <span className="ml-1.5 text-[0.6875rem] font-normal text-faint">{subOf(pid)}</span>
+                              <span className="ml-1.5 text-[0.6875rem] font-normal text-faint no-underline">
+                                {subOf(pid)}
+                              </span>
                             ) : null}
+                            {removed ? (
+                              <span className="ml-1 text-[0.6875rem] font-normal text-red-400 no-underline">
+                                Removed
+                              </span>
+                            ) : (
+                              showPresence &&
+                              !joined && <span className="ml-1 text-[0.6875rem] font-normal text-faint">waiting…</span>
+                            )}
                           </p>
-                          {m.status !== 'finished' && <RemoveBtn id={pid} />}
+                          {m.status !== 'finished' && !removed && <RemoveBtn id={pid} />}
                         </div>
                         {/* Only a duel gets the "vs" divider; a room is just a list. */}
                         {!isRoom && memberIds.length === 2 && i === 0 && (

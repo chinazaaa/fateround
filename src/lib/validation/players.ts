@@ -12,6 +12,9 @@ export const createPlayerSchema = z.object({
   joinAsViewer: z.boolean().optional(),
   monopolyToken: z.enum(MONOPOLY_TOKEN_ID_LIST as [string, ...string[]]).optional(),
   roomMemberCode: z.string().trim().toUpperCase().max(12).optional(),
+  // Private tournament identity secret (see tournament-player-token). Proves the
+  // joiner really is the named tournament player, so only they can take/reclaim the seat.
+  tournamentToken: z.string().trim().max(100).optional(),
 })
 
 export type CreatePlayerInput = z.infer<typeof createPlayerSchema>

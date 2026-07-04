@@ -47,12 +47,51 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
   const gameIds = games.map((g) => g.game_id).filter((id): id is string => Boolean(id))
   if (gameIds.length > 0) {
     const admin = getSupabaseAdmin()
-    const { data: priorGames } = await admin
-      .from('games')
-      .select('id, status, custom_questions, created_at')
-      .in('id', gameIds)
+    const [{ data: priorGames }, { data: roomPlayers }] = await Promise.all([
+      admin.from('games').select('id, status, custom_questions, created_at').in('id', gameIds),
+      // Who's actually in each room right now — used to show the host which members
+      // have joined vs. who a staged round is still waiting on. Only players who
+      // joined to play (not spectators) count as "in the room".
+      admin.from('players').select('game_id, name, spectator').in('game_id', gameIds),
+    ])
     const statusById = new Map((priorGames ?? []).map((g) => [g.id, g.status]))
-    gamesOut = games.map((g) => ({ ...g, game_status: g.game_id ? (statusById.get(g.game_id) ?? null) : null }))
+
+    // Non-spectator player names present in each game room, lowercased for matching.
+    const presentNamesByGame = new Map<string, Set<string>>()
+    for (const p of roomPlayers ?? []) {
+      if (p.spectator === true) continue
+      const set = presentNamesByGame.get(p.game_id) ?? new Set<string>()
+      set.add(p.name.toLowerCase())
+      presentNamesByGame.set(p.game_id, set)
+    }
+    // Tournament-player id → display name, to map a room's member ids to names.
+    const tpNameById = new Map((playersRes.data ?? []).map((p) => [p.id, (p.player_name as string).toLowerCase()]))
+    // Knockout runs one room per round for the whole surviving field, so its game
+    // rows carry no member_ids — fall back to every still-in player as the expected roster.
+    const survivingIds = (playersRes.data ?? []).filter((p) => p.is_eliminated !== true).map((p) => p.id as string)
+    // For each game, the subset of its members who have joined the room to play.
+    const joinedMemberIds = (g: (typeof games)[number]): string[] => {
+      if (!g.game_id) return []
+      const present = presentNamesByGame.get(g.game_id)
+      if (!present) return []
+      const members = g.member_ids?.length
+        ? (g.member_ids as string[])
+        : g.player_a_id || g.player_b_id
+          ? [g.player_a_id, g.player_b_id].filter((id): id is string => Boolean(id))
+          : tournament.format === 'knockout'
+            ? survivingIds
+            : []
+      return members.filter((id) => {
+        const name = tpNameById.get(id)
+        return name != null && present.has(name)
+      })
+    }
+
+    gamesOut = games.map((g) => ({
+      ...g,
+      game_status: g.game_id ? (statusById.get(g.game_id) ?? null) : null,
+      joined_member_ids: joinedMemberIds(g),
+    }))
     let latest: { created_at: string; count: number } | null = null
     for (const g of priorGames ?? []) {
       if (Array.isArray(g.custom_questions) && g.custom_questions.length > 0) {

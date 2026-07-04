@@ -28,6 +28,7 @@ import { clearPlayerSession } from '@/lib/utils'
 import { formatMinutesSeconds } from '@/lib/timer-format'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
@@ -228,6 +229,8 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
+
+  useTurnNotifications({ status: game?.status })
 
   useEffect(() => {
     if (view === 'playing') {
@@ -563,6 +566,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          gameType="sudoku"
           submitLabel="Join game"
           footer={
             <p className="text-center pt-1">

@@ -7,6 +7,9 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { computeRoundGroups, computeRoundPairings, resolveGroupSize } from '@/lib/tournament-bracket'
 import { computeSchoolRooms } from '@/lib/tournament-school'
+import { parseScrabbleClockMode, clampScrabbleClockSeconds } from '@/lib/scrabble'
+import { parseStoredTriviaQuestions } from '@/lib/custom-questions'
+import { triviaQuestionKey } from '@/lib/trivia-questions'
 
 // Fallback for tournaments created before game_type was stored.
 const DEFAULT_H2H_GAME_TYPE = 'chess'
@@ -46,7 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: body, error: bodyError } = await parseJsonBody(req, startTournamentRoundSchema)
   if (bodyError) return bodyError
 
-  const { hostToken, timerSeconds } = body
+  const { hostToken, timerSeconds, questionSource, customQuestions } = body
   const admin = getSupabaseAdmin()
 
   const { data: tournament } = await admin.from('tournaments').select('*').eq('id', tournamentId).maybeSingle()
@@ -92,8 +95,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const roundNumber = (lastRow?.round_number ?? 0) + 1
   let nextOrder = (lastRow?.game_order ?? 0) + 1
 
-  // Knockout: one group game per round with all survivors in it (no pairing).
-  if (tournament.format === 'knockout') {
+  // Room size for the group-bracket formats (head-to-head Whot/Scrabble, and
+  // Scrabble knockout). > 2 means "play in rooms"; trivia knockout stays at 2.
+  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
+
+  // Trivia knockout: one group game per round with all survivors in it (no pairing).
+  // Scrabble knockout plays in rooms instead, so it falls through to the group
+  // staging below — it's ranked as one field at resolution, not per room.
+  if (tournament.format === 'knockout' && groupSize <= 2) {
     const config = (tournament.game_config ?? {}) as {
       questionSource?: string
       roundsCount?: number
@@ -103,23 +112,67 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     const gameCode = await uniqueGameCode(admin)
     if (!gameCode) return NextResponse.json({ error: 'Failed to generate unique game code' }, { status: 500 })
 
+    const roundsCount = config.roundsCount ?? 5
+
     // Carry question usage from earlier rounds so players who advance never see a
     // repeated question — seed this round's game with prior rounds' usage, which
-    // pickTriviaQuestions then avoids.
+    // pickTriviaQuestions then avoids. In the same pass, grab the most recent
+    // round's custom pack so a host who ramps difficulty by uploading a fresh CSV
+    // each round can also just reuse the previous round's pack by not uploading.
     const { data: priorTgames } = await admin
       .from('tournament_games')
       .select('game_id')
       .eq('tournament_id', tournamentId)
     const priorIds = (priorTgames ?? []).map((g) => g.game_id).filter((id): id is string => Boolean(id))
     const seededTriviaUsage: Record<string, number> = {}
+    let previousCustom: unknown[] | null = null
     if (priorIds.length > 0) {
-      const { data: priorGames } = await admin.from('games').select('pool_usage').in('id', priorIds)
+      const { data: priorGames } = await admin
+        .from('games')
+        .select('pool_usage, custom_questions, created_at')
+        .in('id', priorIds)
+      let latestCustom: { created_at: string; questions: unknown[] } | null = null
       for (const g of priorGames ?? []) {
         const trivia = (g.pool_usage as { trivia?: Record<string, number> } | null)?.trivia ?? {}
         for (const [key, count] of Object.entries(trivia)) {
           seededTriviaUsage[key] = (seededTriviaUsage[key] ?? 0) + (count as number)
         }
+        if (Array.isArray(g.custom_questions) && g.custom_questions.length > 0) {
+          if (!latestCustom || String(g.created_at) > latestCustom.created_at) {
+            latestCustom = { created_at: String(g.created_at), questions: g.custom_questions }
+          }
+        }
       }
+      previousCustom = latestCustom?.questions ?? null
+    }
+
+    // Effective per-round pack: a freshly uploaded pack wins; otherwise reuse the
+    // previous round's. Falls back to the built-in pack when neither is present.
+    const effectiveCustom =
+      questionSource === 'custom'
+        ? Array.isArray(customQuestions) && customQuestions.length > 0
+          ? customQuestions
+          : previousCustom
+        : null
+    // Validate against UNSEEN questions, not raw pack size. pickCustomTriviaQuestions
+    // only avoids repeats while unused questions remain; once they run out it recycles
+    // already-seen ones. So a pack reused across rounds must still have >= roundsCount
+    // questions not already used in an earlier round, or advancing players would see a
+    // repeat. Parse + key exactly as the picker does so the count matches what it selects.
+    const parsedCustom = Array.isArray(effectiveCustom) ? parseStoredTriviaQuestions(effectiveCustom) : []
+    const unseenCustomCount = parsedCustom.filter((q) => (seededTriviaUsage[triviaQuestionKey(q)] ?? 0) === 0).length
+    const useCustomQuestions = questionSource === 'custom' && parsedCustom.length > 0
+
+    if (questionSource === 'custom' && unseenCustomCount < roundsCount) {
+      return NextResponse.json(
+        {
+          error:
+            parsedCustom.length > 0
+              ? `This round needs ${roundsCount} new question${roundsCount === 1 ? '' : 's'}, but only ${unseenCustomCount} of your pack ${unseenCustomCount === 1 ? 'is' : 'are'} unused — upload a fresh CSV for this round.`
+              : 'No questions to use for this round — upload a CSV or switch to the built-in pack',
+        },
+        { status: 400 }
+      )
     }
 
     const { error: gameError } = await admin.from('games').insert({
@@ -128,9 +181,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       title: `${tournament.title} — Round ${roundNumber}`,
       game_type: tournament.game_type ?? 'trivia',
       participant_mode: 'joiners',
-      rounds_count: config.roundsCount ?? 5,
+      rounds_count: roundsCount,
       timer_seconds: config.timerSeconds ?? 15,
-      question_source: config.questionSource ?? 'platform',
+      question_source: useCustomQuestions ? 'custom' : 'platform',
+      custom_questions: useCustomQuestions ? effectiveCustom : null,
       tournament_id: tournamentId,
       ...(Object.keys(seededTriviaUsage).length > 0 ? { pool_usage: { trivia: seededTriviaUsage } } : {}),
     })
@@ -163,7 +217,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // top class waits. If eliminating strands a single survivor, they win.
   if (tournament.format === 'school') {
     const shuffledSurvivors = shuffle((survivorRows ?? []).map((p) => ({ id: p.id, level: p.school_level ?? 0 })))
-    const { rooms, eliminated } = computeSchoolRooms(shuffledSurvivors)
+    const { rooms, eliminated, champion } = computeSchoolRooms(shuffledSurvivors)
+
+    // A lone frontrunner is already clear of the field — crown them and end the
+    // tournament (knocking out the rest) rather than staging another round.
+    if (champion) {
+      const losers = survivorIds.filter((id) => id !== champion)
+      if (losers.length > 0) {
+        // Fail closed: if this doesn't land, the tournament would finish with several
+        // survivors and no clear champion (it's derived as the last non-eliminated).
+        const { error: eliminateError } = await admin
+          .from('tournament_players')
+          .update({ is_eliminated: true, eliminated_at: new Date().toISOString() })
+          .in('id', losers)
+        if (eliminateError) {
+          return NextResponse.json(
+            { error: internalErrorMessage('tournaments/code/rounds', eliminateError) },
+            { status: 500 }
+          )
+        }
+      }
+      await admin.from('tournaments').update({ status: 'finished' }).eq('id', tournamentId)
+      return NextResponse.json({ roundNumber, rooms: 0, champion: true, finished: true })
+    }
 
     if (eliminated.length > 0) {
       const { error: eliminateError } = await admin
@@ -249,11 +325,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ roundNumber, rooms: rooms.length, eliminated: eliminated.length })
   }
 
-  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
-
-  // Group bracket (Whot/Scrabble): split survivors into rooms of up to `groupSize`
-  // and spawn one game room per group. Only the room's winner advances; the rest
-  // are eliminated when the game finishes (resolved in tournament-h2h).
+  // Group bracket (head-to-head Whot/Scrabble, or Scrabble knockout): split
+  // survivors into rooms of up to `groupSize` and spawn one game room per group.
+  // Head-to-head advances only each room's winner; knockout ranks the whole field
+  // by score and cuts the bottom half. Both are resolved when the games finish
+  // (head-to-head in tournament-h2h, knockout in tournament-scoring).
   if (groupSize > 2) {
     const gameType = tournament.game_type ?? DEFAULT_H2H_GAME_TYPE
     const { groups, byes } = computeRoundGroups(shuffle(survivorIds), groupSize)
@@ -269,10 +345,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       whotNumberCalls?: boolean
       whotPick2Stacking?: boolean
       scrabbleDictionary?: string
+      scrabbleClockMode?: string
+      scrabbleClockSeconds?: number
     }
     const roomTimer = typeof cfg.timerSeconds === 'number' ? cfg.timerSeconds : DEFAULT_GROUP_TURN_SECONDS
-    // Overall room-length cap (0 = no limit); the games auto-finish past it.
-    const roomDuration = typeof cfg.gameDurationSeconds === 'number' ? cfg.gameDurationSeconds : 0
+    // Reuse the canonical clock helpers so a stored value always lands on the same
+    // allowed option set as buildTournamentGameConfig / loadClockConfig.
+    const scrabbleClockMode = parseScrabbleClockMode(cfg.scrabbleClockMode)
+    // Overall room-length cap (0 = no limit); the games auto-finish past it. Chess
+    // clock has no whole-game cap, so its rooms always run uncapped.
+    const roomDuration =
+      scrabbleClockMode === 'chess' ? 0 : typeof cfg.gameDurationSeconds === 'number' ? cfg.gameDurationSeconds : 0
     const gameSettings: Record<string, unknown> =
       gameType === 'whot'
         ? {
@@ -282,7 +365,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
             whot_pick2_stacking: cfg.whotPick2Stacking ?? true,
           }
         : gameType === 'scrabble'
-          ? { scrabble_dictionary_id: cfg.scrabbleDictionary ?? 'enable' }
+          ? {
+              scrabble_dictionary_id: cfg.scrabbleDictionary ?? 'enable',
+              scrabble_clock_mode: scrabbleClockMode,
+              scrabble_clock_seconds:
+                scrabbleClockMode === 'chess' ? clampScrabbleClockSeconds(cfg.scrabbleClockSeconds) : 0,
+            }
           : {}
 
     for (const group of groups) {

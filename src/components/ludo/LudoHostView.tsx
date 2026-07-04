@@ -13,6 +13,7 @@ import {
   getLudoHostMode,
   LUDO_MIN_PLAYERS,
   parseLudoDice,
+  parseLudoVariant,
   setLudoHostMode,
   type LudoHostMode,
 } from '@/lib/ludo'
@@ -51,7 +52,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [states, setStates] = useState<LudoPlayerState[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostModeState] = useState<LudoHostMode>('spectator')
+  const [hostMode, setHostModeState] = useState<LudoHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
@@ -277,6 +278,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       acting={hostActing}
       rolling={rolling}
       displayDice={displayDice}
+      variant={parseLudoVariant(game?.ludo_variant)}
     />
   )
 
@@ -290,6 +292,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       secondsLeft={secondsLeft}
       hasTimer={hasTimer}
       urgent={urgent}
+      variant={parseLudoVariant(game?.ludo_variant)}
     />
   ) : (
     <p className="text-muted text-sm text-center">Waiting for the round to begin…</p>

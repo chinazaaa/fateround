@@ -10,6 +10,7 @@ import { MONOPOLY_COLOR_CLASSES } from '@/lib/monopoly'
 import type { MonopolyColorGroup } from '@/lib/monopoly'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
+import { LeaderboardJoinNote } from '@/components/game-lobby/LeaderboardJoinNote'
 import { MonopolyPageHeader } from '@/components/monopoly/MonopolyChrome'
 import { gameTypeConfig } from '@/lib/game-types'
 import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFinalResultsShareBlock'
@@ -262,6 +263,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
             void join()
           }}
         />
+        <LeaderboardJoinNote gameType="monopoly" />
         <p className="text-faint text-xs leading-relaxed text-center">
           {joiningAsViewer
             ? 'This game is in progress — you will join as a viewer and watch live (read-only).'

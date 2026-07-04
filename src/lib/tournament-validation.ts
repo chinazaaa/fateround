@@ -26,6 +26,9 @@ const gameConfigSchema = z.object({
   whotPick2Stacking: z.boolean().optional(),
   // Scrabble word list.
   scrabbleDictionary: z.string().min(1).max(40).optional(),
+  // Scrabble timing: 'standard' per-turn timer vs 'chess' per-player bank (+ bank size).
+  scrabbleClockMode: z.enum(['standard', 'chess']).optional(),
+  scrabbleClockSeconds: z.coerce.number().int().min(0).max(3600).optional(),
   // School format: ladder length (number of classes). Re-clamped server-side.
   schoolClassCount: z.coerce.number().int().min(2).max(16).optional(),
 })
@@ -61,9 +64,16 @@ export const joinTournamentSchema = z.object({
 
 // Head-to-head: host stages the next bracket round. `timerSeconds` is the shared
 // per-player chess clock applied to every match in the round (0 = untimed).
+// Knockout trivia additionally accepts a per-round question pack: `questionSource`
+// picks built-in vs custom, and `customQuestions` carries the CSV the host uploaded
+// for this specific round (re-validated server-side via parseStoredTriviaQuestions).
+// This lets the host ramp difficulty round to round; omitting a new pack reuses the
+// previous round's. Ignored by head-to-head/school rounds.
 export const startTournamentRoundSchema = z.object({
   hostToken: hostTokenString(),
   timerSeconds: z.coerce.number().int().min(0).max(3600).optional(),
+  questionSource: z.enum(['platform', 'custom']).optional(),
+  customQuestions: z.array(z.unknown()).max(1000).optional().nullable(),
 })
 
 export const tournamentHostActionSchema = z.object({
@@ -100,9 +110,11 @@ export const TOURNAMENT_ELIGIBLE_TYPES = ['trivia'] as const
 // here so the create route/page keep their existing import site.
 export { H2H_ELIGIBLE_TYPES, H2H_GROUP_SIZES, h2hGroupSize, resolveGroupSize } from './tournament-bracket'
 
-// Games eligible for the knockout (group elimination) format — group games where
-// everyone plays at once and the field is cut by score each round.
-export const KNOCKOUT_ELIGIBLE_TYPES = ['trivia'] as const
+// Games eligible for the knockout (group elimination) format — the field is cut
+// by score each round. Trivia seats the whole field in one game; Scrabble plays in
+// rooms of up to 4 but everyone is ranked together by score, so it doesn't matter
+// which room a player was in — the bottom half of the whole field is knocked out.
+export const KNOCKOUT_ELIGIBLE_TYPES = ['trivia', 'scrabble'] as const
 
 // Games eligible for the school (class-ladder) format. School Whot is the classic
 // — a 1-v-1 Whot match each round where the winner climbs a class. Other 1-v-1

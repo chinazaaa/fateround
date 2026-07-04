@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getGames } from '@/lib/community-data'
-import { GAME_TYPE_CONFIG } from '@/lib/game-types'
-import type { GameType } from '@/types'
+import { communityGameTypeMeta } from '@/lib/game-types'
 import { getSupabaseAdmin, hasServiceRoleKey } from '@/lib/supabase-admin'
 
 function slugify(name: string): string {
@@ -47,12 +46,13 @@ export async function POST(req: NextRequest) {
   // name/accent/slug from the game-type config so the leaderboard row maps
   // exactly to an in-app GameType. Name/accent overrides are still honoured.
   const rawType = typeof body.gameType === 'string' ? body.gameType : ''
-  const cfg = rawType ? GAME_TYPE_CONFIG[rawType as GameType] : undefined
-  if (rawType && !cfg) return NextResponse.json({ error: 'Unknown game type' }, { status: 400 })
+  // Resolves both real in-app game types and synthetic achievement keys.
+  const meta = rawType ? communityGameTypeMeta(rawType) : null
+  if (rawType && !meta) return NextResponse.json({ error: 'Unknown game type' }, { status: 400 })
 
-  const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : (cfg?.label ?? '')
-  const accent = typeof body.accent === 'string' && body.accent.trim() ? body.accent.trim() : (cfg?.card.accent ?? null)
-  const gameType = cfg?.id ?? null
+  const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : (meta?.name ?? '')
+  const accent = typeof body.accent === 'string' && body.accent.trim() ? body.accent.trim() : (meta?.accent ?? null)
+  const gameType = meta?.id ?? null
   if (!name) return NextResponse.json({ error: 'Pick a game type' }, { status: 400 })
 
   const supabase = getSupabaseAdmin()
@@ -95,7 +95,7 @@ export async function PATCH(req: NextRequest) {
   if (typeof body.sort_order === 'number' && Number.isInteger(body.sort_order)) update.sort_order = body.sort_order
   if ('game_type' in body) {
     const gt = typeof body.game_type === 'string' ? body.game_type.trim() : ''
-    if (gt && !GAME_TYPE_CONFIG[gt as GameType]) {
+    if (gt && !communityGameTypeMeta(gt)) {
       return NextResponse.json({ error: 'Unknown game type' }, { status: 400 })
     }
     update.game_type = gt || null

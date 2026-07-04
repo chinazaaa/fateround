@@ -67,7 +67,7 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
   const [operativeTimer, setOperativeTimer] = useState(CODEWORDS_DEFAULT_OPERATIVE_TIMER)
   const [savingTimers, setSavingTimers] = useState(false)
   const [benchingPlayerId, setBenchingPlayerId] = useState<string | null>(null)
-  const [hostMode, setHostMode] = useState<CodewordsHostMode>('spectator')
+  const [hostMode, setHostMode] = useState<CodewordsHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
@@ -583,6 +583,8 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
         roles={roles}
         board={board}
         guesses={guesses}
+        hostPlayerId={hostPlayerId}
+        hostPlays={hostPlays}
         spymasterTimer={spymasterTimer}
         operativeTimer={operativeTimer}
         savingTimers={savingTimers}

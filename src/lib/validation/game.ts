@@ -78,7 +78,10 @@ export const createGameSchema = z.object({
   crazy8_action_cards: z.boolean().optional(),
   crazy8_jokers: z.boolean().optional(),
   crazy8_pick2_stacking: z.boolean().optional(),
+  ludo_variant: z.enum(['modern', 'traditional']).optional(),
   scrabble_dictionary_id: z.enum(SCRABBLE_DICTIONARY_OPTIONS).optional(),
+  scrabble_clock_mode: z.enum(['standard', 'chess']).optional(),
+  scrabble_clock_seconds: z.coerce.number().optional(),
   chess_board_theme: z.string().optional(),
   chess_piece_set: z.string().optional(),
   custom_slots: z
@@ -115,6 +118,8 @@ export const updateGameSchema = z.object({
   operative_timer_seconds: z.coerce.number().optional(),
   game_duration_seconds: z.coerce.number().optional(),
   scrabble_dictionary_id: z.enum(SCRABBLE_DICTIONARY_OPTIONS).optional(),
+  scrabble_clock_mode: z.enum(['standard', 'chess']).optional(),
+  scrabble_clock_seconds: z.coerce.number().optional(),
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
   pair_vote_mode: pairVoteModeEnum.optional(),
@@ -203,6 +208,7 @@ export const boardGameLobbySettingsSchema = z.object({
   crazy8_action_cards: z.boolean().optional(),
   crazy8_jokers: z.boolean().optional(),
   crazy8_pick2_stacking: z.boolean().optional(),
+  ludo_variant: z.enum(['modern', 'traditional']).optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>

@@ -515,6 +515,7 @@ export function PollGamePlayerExperience({
         onChangeName={useFreeNameJoin ? undefined : openEditJoin}
         changeNameLabel={isNameOnlyJoin || !joinNeedsGender ? 'Change name' : 'Change name or gender'}
         inLobby={view === 'waiting'}
+        spectating={isViewer}
       />
     ) : viewerBanner ? (
       <div className="mb-4">{viewerBanner}</div>
@@ -2717,6 +2718,8 @@ function FinalResultsView({
   hotSeatSubmissions: { id: string; round_id: string; text: string; submission_type: string }[]
 }) {
   const gameType = parseGameType(game.game_type)
+  const myPlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
+  const isViewer = !!(myPlayer && playerIsViewer(myPlayer, game))
   const playedParticipants = filterParticipantsInRounds(participants, rounds)
   const isBinaryGameType = isBinaryChoiceGame(gameType)
   const isNhie = isNeverHaveIEver(gameType)
@@ -2748,6 +2751,7 @@ function FinalResultsView({
           name={myPlayerName}
           onRenamed={onPlayerRenamed}
           onLeft={onPlayerLeft}
+          spectating={isViewer}
         />
       ) : null}
       <div className="text-center">

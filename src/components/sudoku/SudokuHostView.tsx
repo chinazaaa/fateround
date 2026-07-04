@@ -35,6 +35,7 @@ import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useToast } from '@/components/ui/Toast'
 
 type SudokuHostMode = 'spectator' | 'player'
@@ -43,8 +44,8 @@ type HostTab = 'manage' | 'play'
 const HOST_MODE_KEY = (code: string) => `sudoku_host_mode_${code.toUpperCase()}`
 
 function getSudokuHostMode(gameCode: string): SudokuHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(HOST_MODE_KEY(gameCode)) as SudokuHostMode) ?? 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return (localStorage.getItem(HOST_MODE_KEY(gameCode)) as SudokuHostMode) ?? 'player'
 }
 function setSudokuHostMode(gameCode: string, mode: SudokuHostMode) {
   localStorage.setItem(HOST_MODE_KEY(gameCode), mode)
@@ -61,7 +62,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
   const [playingAgain, setPlayingAgain] = useState(false)
   const [starting, setStarting] = useState(false)
 
-  const [hostMode, setHostModeState] = useState<SudokuHostMode>('spectator')
+  const [hostMode, setHostModeState] = useState<SudokuHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
@@ -77,6 +78,8 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
       return () => clearInterval(interval)
     }
   }, [game?.status])
+
+  useTurnNotifications({ status: game?.status })
 
   const load = useCallback(async () => {
     const [{ data: gameData }, { data: playersData }] = await Promise.all([

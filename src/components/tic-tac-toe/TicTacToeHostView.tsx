@@ -22,6 +22,7 @@ import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTicTacToeTurnTimer } from '@/hooks/useTicTacToeTurnTimer'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { TicTacToeGamePanel } from '@/components/tic-tac-toe/TicTacToeBoard'
 import { TicTacToeFinalResultsShareBlock } from '@/components/tic-tac-toe/TicTacToeFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -33,8 +34,8 @@ type TicTacToeHostMode = 'spectator' | 'player'
 const HOST_MODE_KEY = 'tic_tac_toe_host_mode'
 
 function getHostMode(gameCode: string): TicTacToeHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as TicTacToeHostMode) ?? 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as TicTacToeHostMode) ?? 'player'
 }
 
 function setHostMode(gameCode: string, mode: TicTacToeHostMode): void {
@@ -49,7 +50,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
   const [session, setSession] = useState<TicTacToeSession | null>(null)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostModeState] = useState<TicTacToeHostMode>('spectator')
+  const [hostMode, setHostModeState] = useState<TicTacToeHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
@@ -186,7 +187,6 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to start')
-      success('Game started!')
       await load()
       if (hostMode === 'player' && hostPlayerId) setTab('play')
     } catch (err) {
@@ -229,6 +229,11 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
     session,
     game?.status === 'active' && (tab === 'play' ? isHostTurn : true)
   )
+
+  useTurnNotifications({
+    status: game?.status,
+    isMyTurn: hostPlayerId ? isHostTurn : null,
+  })
 
   if (loading) {
     return (

@@ -22,6 +22,7 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
@@ -173,6 +174,12 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
     game?.status === 'active' && !isViewer
   )
 
+  useTurnNotifications({
+    status: game?.status,
+    isMyTurn: isViewer ? null : isMyTurn,
+    enabled: !isViewer,
+  })
+
   if (screen === 'loading') return <TicTacToeLoadingScreen />
 
   if (screen === 'not_found') {
@@ -213,6 +220,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
           onChange={setJoinName}
           onSubmit={() => void join()}
           joining={joining}
+          gameType="tic_tac_toe"
           submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
           footer={
             <p className="text-center pt-1">

@@ -1,22 +1,27 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { useToast } from '@/components/ui/Toast'
-import { POST_CODE_MIN_LENGTH } from '@/lib/manager-constants'
-import { DEFAULT_WHATSAPP_INVITE_URL } from '@/lib/community-constants'
+import { useEffect, useRef, useState } from 'react'
 
 // Shown on a game's end screen to the WINNER only (the caller gates on "did I
 // win this game" — works for both a winning player and a host who plays).
-// Lets the winner post their win to the community leaderboard using the weekly
-// post code the admin shares in the WhatsApp group.
+// Automatically posts the winner to the community leaderboard: no code, no
+// button — reaching the win screen puts you on the board.
+//
+// It posts DIRECTLY rather than gating on a separate eligibility check first: the
+// POST itself is the source of truth (a 404 means the game isn't tracked), and
+// firing it straight away means the win still records even if this screen unmounts
+// a moment later — which is common on race/quiz games where live updates can flip
+// the view right after it finishes. Waiting on a prior GET was silently dropping
+// those wins.
 //
 // Dedup is PER ROUND: `roundKey` should be a value that changes when the host
 // plays again (the session row id, which is recreated each round). That way the
-// button re-enables for the next round but can't be submitted twice for the same
-// one. Falls back to per-game if no roundKey is given.
+// win posts once per round, and a fresh round posts again. The server also dedups.
 //
-// Renders nothing unless the game maps to an active leaderboard row and a weekly
-// code is configured, so it silently no-ops for games that aren't tracked.
+// `gameType` is the leaderboard entry to post to. For normal games it's the real
+// game type (e.g. "whot"); for role-based awards it's an achievement key (e.g.
+// "codewords_spymaster"). The server independently derives the game actually
+// played from `gameCode` and rejects a mismatch, so this can't be spoofed.
 export function PostWinToCommunity({
   gameType,
   gameCode,
@@ -28,180 +33,115 @@ export function PostWinToCommunity({
   winnerName: string
   roundKey?: string | null
 }) {
-  const { success, error } = useToast()
-  const [eligible, setEligible] = useState(false)
-  const [whatsappUrl, setWhatsappUrl] = useState(DEFAULT_WHATSAPP_INVITE_URL)
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState(winnerName)
-  const [code, setCode] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [posted, setPosted] = useState(false)
+  // 'idle' = posting or not yet resolved; 'untracked' = game isn't on the board.
+  const [status, setStatus] = useState<'idle' | 'posted' | 'error' | 'untracked'>('idle')
+  // Bumped by the Retry button to re-run the auto-post effect.
+  const [retry, setRetry] = useState(0)
 
   const postedKey = `community_posted_${gameCode}_${roundKey ?? 'default'}`
+  // Guards against double-posting from a re-render/StrictMode within one mount;
+  // localStorage guards across reloads; the server dedups as the backstop.
+  const attemptedRef = useRef(false)
 
   // Already posted this round on this device? Show the confirmed state up front.
   useEffect(() => {
     try {
-      setPosted(localStorage.getItem(postedKey) === '1')
-    } catch {
-      setPosted(false)
-    }
-  }, [postedKey])
-
-  useEffect(() => setName(winnerName), [winnerName])
-
-  // Check eligibility (game is on the leaderboard + weekly code is set).
-  useEffect(() => {
-    let cancelled = false
-    fetch(`/api/community/post-win?gameType=${encodeURIComponent(gameType)}`, { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => {
-        if (cancelled) return
-        setEligible(Boolean(d.eligible) && Boolean(d.codeConfigured))
-        if (d.whatsappInviteUrl) setWhatsappUrl(d.whatsappInviteUrl)
-      })
-      .catch(() => {
-        if (!cancelled) setEligible(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [gameType])
-
-  const markPosted = useCallback(() => {
-    setPosted(true)
-    setOpen(false)
-    try {
-      localStorage.setItem(postedKey, '1')
+      if (localStorage.getItem(postedKey) === '1') setStatus('posted')
     } catch {
       /* ignore */
     }
   }, [postedKey])
 
-  const submit = async () => {
-    if (!name.trim()) {
-      error('Enter your name')
-      return
-    }
-    if (code.trim().length < POST_CODE_MIN_LENGTH) {
-      error(`The code is at least ${POST_CODE_MIN_LENGTH} characters`)
-      return
-    }
-    setSubmitting(true)
+  // Auto-post the win as soon as we have a winner name.
+  useEffect(() => {
+    if (!winnerName.trim()) return
+    if (attemptedRef.current) return
+    // Already posted this round on this device — confirm and skip re-posting.
     try {
-      const res = await fetch('/api/community/post-win', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playerName: name.trim(),
-          code: code.trim(),
-          gameId: gameCode,
-          roundKey: roundKey ?? null,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (res.status === 409) {
-        // Already recorded (e.g. posted from another device) — treat as done.
-        markPosted()
-        success('This win is already on the leaderboard')
+      if (localStorage.getItem(postedKey) === '1') {
+        setStatus('posted')
         return
       }
-      if (!res.ok) throw new Error(data.error ?? 'Could not post your win')
-      markPosted()
-      success('Win posted to the community leaderboard! 🏆')
-    } catch (err) {
-      error(err instanceof Error ? err.message : 'Could not post your win')
-    } finally {
-      setSubmitting(false)
+    } catch {
+      /* ignore */
     }
-  }
+    attemptedRef.current = true
 
-  if (!eligible) return null
+    let cancelled = false
+    const markPosted = () => {
+      if (cancelled) return
+      setStatus('posted')
+      try {
+        localStorage.setItem(postedKey, '1')
+      } catch {
+        /* ignore */
+      }
+    }
 
-  // Safety net for the "no winner" case: if there's no winner to name (e.g. the
-  // host ended the game early, or a draw), there's nothing to post — never show
-  // the button. Callers already gate on "did I win", but this guarantees the
-  // button can't appear without an actual winner even if a call site slips.
-  if (!winnerName.trim()) return null
+    fetch('/api/community/post-win', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playerName: winnerName.trim(),
+        gameId: gameCode,
+        roundKey: roundKey ?? null,
+        leaderboardType: gameType,
+      }),
+    })
+      .then((res) => {
+        if (cancelled) return
+        // 409 = already recorded (e.g. posted from another device) — treat as done.
+        if (res.ok || res.status === 409) {
+          markPosted()
+          return
+        }
+        // 404 = this game isn't on the community leaderboard — silently render nothing.
+        if (res.status === 404) {
+          setStatus('untracked')
+          return
+        }
+        setStatus('error')
+      })
+      .catch(() => {
+        if (!cancelled) setStatus('error')
+      })
 
-  if (posted) {
+    return () => {
+      cancelled = true
+    }
+  }, [winnerName, retry, postedKey, gameCode, roundKey, gameType])
+
+  // Nothing to show without a winner, or when the game isn't tracked.
+  if (!winnerName.trim() || status === 'untracked') return null
+
+  if (status === 'error') {
     return (
-      <div className="glass-card p-4 text-center text-sm text-[var(--marry)] font-semibold">
-        ✓ Submitted to the community leaderboard
-      </div>
-    )
-  }
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="btn-primary w-full py-3 flex items-center justify-center gap-2"
-      >
-        🏆 Post win to community leaderboard
-      </button>
-    )
-  }
-
-  return (
-    <div className="glass-card-strong p-5 space-y-3">
-      <div>
-        <p className="font-bold">Post your win</p>
-        <p className="text-xs text-muted mt-0.5">
-          Enter this week’s community code to add this win to the leaderboard.
-        </p>
-      </div>
-      <label className="block text-sm">
-        <span className="text-muted">Your name</span>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Your name"
-          className="input-field w-full mt-1"
-          autoComplete="off"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="text-muted">This week’s code</span>
-        <input
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-          placeholder="Enter the code"
-          className="input-field w-full mt-1"
-          autoComplete="off"
-        />
-      </label>
-      <p className="text-xs text-muted">
-        Don’t have the code?{' '}
-        <a
-          href={whatsappUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+      <div className="glass-card p-4 text-center text-sm text-muted">
+        Couldn’t add this win to the community leaderboard.{' '}
+        <button
+          type="button"
+          onClick={() => {
+            attemptedRef.current = false
+            setStatus('idle')
+            setRetry((n) => n + 1)
+          }}
           className="font-semibold text-emerald-600 hover:underline"
         >
-          Join the community to get it →
-        </a>
-      </p>
-      <div className="flex gap-2 pt-1">
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="btn-secondary btn-fit px-4 py-2.5"
-          disabled={submitting}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={submit}
-          disabled={submitting}
-          className="btn-primary flex-1 py-2.5 disabled:opacity-60"
-        >
-          {submitting ? 'Posting…' : 'Post win'}
+          Retry
         </button>
       </div>
-    </div>
-  )
+    )
+  }
+
+  if (status === 'posted') {
+    return (
+      <div className="glass-card p-4 text-center text-sm text-[var(--marry)] font-semibold">
+        ✓ Added to the community leaderboard 🏆
+      </div>
+    )
+  }
+
+  // idle / posting — render nothing until the post resolves, so games that aren't
+  // tracked never flash a message.
+  return null
 }

@@ -54,10 +54,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
 
-  // Group bracket (Whot/Scrabble): removing one member of a room of 4 doesn't void
-  // it — the rest still play. Only step in if the room is now down to one live
-  // member (walkover) or none (void); otherwise leave the room to finish normally.
-  if (tournament.format === 'head-to-head' && groupSize > 2) {
+  // Group/room formats (Whot/Scrabble bracket rooms, and School class rooms):
+  // removing one member of a larger room doesn't void it — the rest still play. Only
+  // step in if the room is now down to one live member (walkover) or none (void);
+  // otherwise leave the room to finish normally. Resolving here means a no-show
+  // removal instantly clears a room that can no longer field two players, so the
+  // round is never left blocked by a `pending` room that will never start.
+  if ((tournament.format === 'head-to-head' && groupSize > 2) || tournament.format === 'school') {
     const { data: rows } = await admin
       .from('tournament_games')
       .select('id, game_id, round_number, member_ids, winner_player_id, status, is_bye')
