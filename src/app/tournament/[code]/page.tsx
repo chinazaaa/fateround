@@ -660,6 +660,39 @@ export default function TournamentLobbyPage() {
     }
   }
 
+  // Host "run it back": reset a finished tournament to a fresh waiting lobby with the
+  // same players — scores/eliminations/lives cleared and round history wiped.
+  async function handleRestartTournament() {
+    if (!hostToken) return
+    const ok = await confirm({
+      title: 'Restart the tournament?',
+      message: 'Same players and settings — scores reset and everyone goes back to the waiting lobby to play again.',
+      confirmLabel: 'Restart',
+    })
+    if (!ok) return
+    setActionLoading(true)
+    setError('')
+
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/restart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error ?? 'Failed to restart tournament')
+      } else {
+        success('Tournament restarted — players are back in the lobby')
+      }
+      fetchState()
+    } catch {
+      setError('Something went wrong')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   // Head-to-head: stage the next bracket round (pairs survivors, creates match rooms).
   // Knockout trivia also passes this round's question pack (built-in or a freshly
   // uploaded / carried-over custom CSV) so the host can vary difficulty per round.
@@ -1016,6 +1049,19 @@ export default function TournamentLobbyPage() {
           copyLabel="Copy host link"
           copySuccessMessage="Host link copied"
         />
+      )}
+
+      {/* Run it back — host resets a finished tournament with the same roster. */}
+      {isHost && isFinished && (
+        <div className="glass-card-strong p-5 space-y-3 text-center">
+          <p className="label-caps">Run it back</p>
+          <PrimaryBtn onClick={handleRestartTournament} disabled={actionLoading} className="btn-fit mx-auto">
+            {actionLoading ? 'Restarting…' : '🔄 Restart tournament'}
+          </PrimaryBtn>
+          <p className="text-muted text-xs">
+            Same players and settings — scores reset and everyone returns to the lobby to play again.
+          </p>
+        </div>
       )}
 
       {/* Edit settings (host) */}
