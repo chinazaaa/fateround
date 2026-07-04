@@ -29,9 +29,11 @@ const SOCIAL_LINKS: SocialLink[] = [
 ]
 
 const PRIMARY_LINKS: FooterLink[] = [
-  { href: '/', label: 'Home' },
   { href: '/games', label: 'All games' },
   { href: '/create', label: 'Create a game' },
+  { href: '/tournament', label: 'Tournaments' },
+  { href: '/rooms', label: 'Rooms' },
+  { href: '/leaderboard', label: 'Leaderboard' },
 ]
 
 /** Curated order for the two marketing columns. Unlisted marketing pages simply don't appear here. */
@@ -43,9 +45,17 @@ const WAYS_TO_PLAY_SLUGS = [
   'virtual-game-night',
   'virtual-team-games',
   'long-distance-games',
+  'nigerian-games',
+  'christmas-games-online',
 ]
 
-const ALTERNATIVE_SLUGS = ['free-jackbox-alternative', 'free-kahoot-alternative', 'houseparty-alternative']
+const ALTERNATIVE_SLUGS = [
+  'free-jackbox-alternative',
+  'free-kahoot-alternative',
+  'houseparty-alternative',
+  'free-ludo-king-alternative',
+  'whot-vs-uno',
+]
 
 function marketingLinks(slugs: string[]): FooterLink[] {
   return slugs.flatMap((slug) => {
