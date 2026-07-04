@@ -29,15 +29,12 @@ export function NotificationToggle({ gameCode, resumeToken }: Props) {
       if (!pushSupported() || Notification.permission === 'denied') return
 
       if (Notification.permission === 'granted') {
-        if (await isSubscribed()) {
-          // Already opted in — ensure this game has a row for this device, show "on".
-          await subscribeToGamePush(gameCode, resumeToken)
-          if (!cancelled) {
-            setState('on')
-            setUndecided(false)
-          }
-        } else if (!cancelled) {
-          setState('off')
+        // Already opted in — ensure this game has a row for this device. Only show
+        // "on" if that registration actually succeeded; otherwise report "off" so the
+        // bell doesn't promise alerts the server never recorded (e.g. a failed call).
+        const ok = (await isSubscribed()) && (await subscribeToGamePush(gameCode, resumeToken))
+        if (!cancelled) {
+          setState(ok ? 'on' : 'off')
           setUndecided(false)
         }
         return
