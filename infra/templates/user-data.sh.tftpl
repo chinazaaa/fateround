@@ -69,8 +69,21 @@ LIVEKIT_API_SECRET=$(get_param --with-decryption --name "/$PREFIX/LIVEKIT_API_SE
 
 # Web push (optional). These params only exist when push is configured, so read
 # them without retry and default to empty — a missing key just means the feature is
-# off, and must never fail the deploy.
-get_param_opt() { aws ssm get-parameter --region "$REGION" "$@" --query 'Parameter.Value' --output text 2>/dev/null || echo ""; }
+# off, and must never fail the deploy. A *missing* parameter (ParameterNotFound) is
+# expected and stays silent; any other failure (IAM/region/throttling) is a real
+# misconfiguration, so surface it in the deploy log while still returning empty.
+get_param_opt() {
+  local val err_file
+  err_file=$(mktemp)
+  if val=$(aws ssm get-parameter --region "$REGION" "$@" --query 'Parameter.Value' --output text 2>"$err_file"); then
+    rm -f "$err_file"
+    echo "$val"
+  else
+    grep -q "ParameterNotFound" "$err_file" || echo "WARN: get_param_opt: SSM lookup failed for '$*' -- $(tr -d '\n' < "$err_file")" >&2
+    rm -f "$err_file"
+    echo ""
+  fi
+}
 VAPID_PRIVATE_KEY=$(get_param_opt --with-decryption --name "/$PREFIX/VAPID_PRIVATE_KEY")
 VAPID_SUBJECT=$(get_param_opt --name "/$PREFIX/VAPID_SUBJECT")
 
