@@ -697,6 +697,16 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
     {
+      title: 'Card values (for scoring)',
+      points: [
+        'Values only matter when a timed game ends before someone empties their hand — the lowest hand total wins, so hold cheap cards.',
+        'Ace — 1 point.',
+        'Number cards 2–10 — worth their face value (a 2 is 2 points, a 10 is 10 points, and so on).',
+        'Jack, Queen, King — 10 points each.',
+        '8 (Wild) and Joker — 50 points each, so avoid getting stuck holding them.',
+      ],
+    },
+    {
       title: 'Game length',
       points: [
         'The host can set a game length (10, 15, 30 minutes, etc.) or play with no limit.',
