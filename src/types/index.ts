@@ -217,6 +217,10 @@ export interface Game {
   timer_seconds: number
   /** Scrabble — which word list to validate plays against (default 'enable'). */
   scrabble_dictionary_id?: string | null
+  /** Scrabble — 'standard' (per-turn timer / whole-game cap) or 'chess' (per-player time bank). */
+  scrabble_clock_mode?: 'standard' | 'chess'
+  /** Scrabble chess-clock mode — each player's time bank in seconds (0 = unused). */
+  scrabble_clock_seconds?: number
   /** Chess — host's default board theme / piece set (players may override locally). */
   chess_board_theme?: string | null
   chess_piece_set?: string | null
@@ -830,6 +834,10 @@ export interface ScrabbleSession {
   is_tie: boolean
   status_message: string | null
   turn_deadline_at: string | null
+  /** 'standard' (per-turn timer) or 'chess' (per-player time bank). Snapshot of the game's mode. */
+  clock_mode: 'standard' | 'chess'
+  /** Chess-clock mode — when the current active player's clock started ticking. Null in standard mode. */
+  turn_started_at: string | null
   created_at: string
   updated_at: string
 }
@@ -842,6 +850,10 @@ export interface ScrabblePlayerState {
   rack: string[]
   score: number
   player_order: number
+  /** Chess-clock mode — remaining time bank in ms. Null in standard mode. */
+  clock_ms_remaining: number | null
+  /** Chess-clock mode — true once this player's clock hit zero (spectating, seat skipped). */
+  timed_out: boolean
   created_at: string
 }
 

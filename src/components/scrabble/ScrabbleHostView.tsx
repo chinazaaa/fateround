@@ -32,7 +32,13 @@ import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ScrabblePrimaryButton } from '@/components/scrabble/ScrabbleChrome'
 import { ScrabbleHostTimeExtension } from '@/components/scrabble/ScrabbleHostTimeExtension'
 import { ScrabbleGameTimerBar } from '@/components/scrabble/ScrabbleGameTimerBar'
-import { SCRABBLE_GAME_DURATION_OPTIONS, formatScrabbleGameDuration } from '@/lib/scrabble'
+import {
+  SCRABBLE_GAME_DURATION_OPTIONS,
+  formatScrabbleGameDuration,
+  SCRABBLE_CLOCK_OPTIONS,
+  SCRABBLE_DEFAULT_CLOCK_SECONDS,
+  parseScrabbleClockMode,
+} from '@/lib/scrabble'
 import {
   SCRABBLE_DICTIONARY_OPTIONS,
   SCRABBLE_DICTIONARY_LABELS,
@@ -388,40 +394,89 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
             <div className="glass-card-strong p-5 space-y-3">
               <p className="label-caps">Game settings</p>
               <div className="grid grid-cols-2 gap-3">
-                <label className="block space-y-1.5">
-                  <span className="text-sm font-semibold text-[var(--foreground)]">Time per turn</span>
+                <label className="block space-y-1.5 col-span-2">
+                  <span className="text-sm font-semibold text-[var(--foreground)]">Game mode</span>
                   <select
-                    value={[0, 60, 120, 180, 300].includes(game.timer_seconds) ? game.timer_seconds : 0}
-                    onChange={(e) => void savePatch({ timer_seconds: Number(e.target.value) })}
-                    className="input-field w-full"
-                  >
-                    <option value={0}>No timer</option>
-                    <option value={60}>1 minute</option>
-                    <option value={120}>2 minutes</option>
-                    <option value={180}>3 minutes</option>
-                    <option value={300}>5 minutes</option>
-                  </select>
-                </label>
-                <label className="block space-y-1.5">
-                  <span className="text-sm font-semibold text-[var(--foreground)]">Whole game</span>
-                  <select
-                    value={
-                      SCRABBLE_GAME_DURATION_OPTIONS.includes(
-                        (game.game_duration_seconds ?? 0) as (typeof SCRABBLE_GAME_DURATION_OPTIONS)[number]
+                    value={parseScrabbleClockMode(game.scrabble_clock_mode)}
+                    onChange={(e) =>
+                      void savePatch(
+                        e.target.value === 'chess'
+                          ? {
+                              scrabble_clock_mode: 'chess',
+                              scrabble_clock_seconds: SCRABBLE_CLOCK_OPTIONS.includes(
+                                (game.scrabble_clock_seconds ?? 0) as (typeof SCRABBLE_CLOCK_OPTIONS)[number]
+                              )
+                                ? game.scrabble_clock_seconds
+                                : SCRABBLE_DEFAULT_CLOCK_SECONDS,
+                            }
+                          : { scrabble_clock_mode: 'standard' }
                       )
-                        ? (game.game_duration_seconds ?? 0)
-                        : 0
                     }
-                    onChange={(e) => void savePatch({ game_duration_seconds: Number(e.target.value) })}
                     className="input-field w-full"
                   >
-                    {SCRABBLE_GAME_DURATION_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {formatScrabbleGameDuration(s)}
-                      </option>
-                    ))}
+                    <option value="standard">Normal (per-turn timer)</option>
+                    <option value="chess">Chess clock (per-player bank)</option>
                   </select>
                 </label>
+                {parseScrabbleClockMode(game.scrabble_clock_mode) === 'chess' ? (
+                  <label className="block space-y-1.5 col-span-2">
+                    <span className="text-sm font-semibold text-[var(--foreground)]">Time per player</span>
+                    <select
+                      value={
+                        SCRABBLE_CLOCK_OPTIONS.includes(
+                          (game.scrabble_clock_seconds ?? 0) as (typeof SCRABBLE_CLOCK_OPTIONS)[number]
+                        )
+                          ? (game.scrabble_clock_seconds ?? SCRABBLE_DEFAULT_CLOCK_SECONDS)
+                          : SCRABBLE_DEFAULT_CLOCK_SECONDS
+                      }
+                      onChange={(e) => void savePatch({ scrabble_clock_seconds: Number(e.target.value) })}
+                      className="input-field w-full"
+                    >
+                      {SCRABBLE_CLOCK_OPTIONS.map((s) => (
+                        <option key={s} value={s}>
+                          {s / 60} minutes
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <>
+                    <label className="block space-y-1.5">
+                      <span className="text-sm font-semibold text-[var(--foreground)]">Time per turn</span>
+                      <select
+                        value={[0, 60, 120, 180, 300].includes(game.timer_seconds) ? game.timer_seconds : 0}
+                        onChange={(e) => void savePatch({ timer_seconds: Number(e.target.value) })}
+                        className="input-field w-full"
+                      >
+                        <option value={0}>No timer</option>
+                        <option value={60}>1 minute</option>
+                        <option value={120}>2 minutes</option>
+                        <option value={180}>3 minutes</option>
+                        <option value={300}>5 minutes</option>
+                      </select>
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-sm font-semibold text-[var(--foreground)]">Whole game</span>
+                      <select
+                        value={
+                          SCRABBLE_GAME_DURATION_OPTIONS.includes(
+                            (game.game_duration_seconds ?? 0) as (typeof SCRABBLE_GAME_DURATION_OPTIONS)[number]
+                          )
+                            ? (game.game_duration_seconds ?? 0)
+                            : 0
+                        }
+                        onChange={(e) => void savePatch({ game_duration_seconds: Number(e.target.value) })}
+                        className="input-field w-full"
+                      >
+                        {SCRABBLE_GAME_DURATION_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {formatScrabbleGameDuration(s)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                )}
                 <label className="block space-y-1.5 col-span-2">
                   <span className="text-sm font-semibold text-[var(--foreground)]">Dictionary</span>
                   <select

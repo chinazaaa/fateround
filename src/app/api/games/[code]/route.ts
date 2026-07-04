@@ -21,7 +21,12 @@ import {
 } from '@/lib/game-types'
 import { clampNpatGameDuration, clampNpatMarkingTimer, clampNpatTimer } from '@/lib/npat'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
-import { clampScrabbleTimer, clampScrabbleGameDuration } from '@/lib/scrabble'
+import {
+  clampScrabbleTimer,
+  clampScrabbleGameDuration,
+  clampScrabbleClockSeconds,
+  parseScrabbleClockMode,
+} from '@/lib/scrabble'
 import { parseScrabbleDictionaryId } from '@/lib/scrabble-dictionary-meta'
 import { isCustomTwoSlotGame } from '@/lib/custom-game'
 import { clampHotSeatMaxCap, HOT_SEAT_MIN_PLAYERS, hotSeatJoinedPlayers, hotSeatMaxCapUpperBound } from '@/lib/hot-seat'
@@ -45,6 +50,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     operative_timer_seconds: rawOperativeTimerSeconds,
     game_duration_seconds: rawGameDurationSeconds,
     scrabble_dictionary_id: rawScrabbleDictionaryId,
+    scrabble_clock_mode: rawScrabbleClockMode,
+    scrabble_clock_seconds: rawScrabbleClockSeconds,
     participant_filter,
   } = body
 
@@ -131,6 +138,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
 
   if (rawScrabbleDictionaryId !== undefined && isScrabbleGame(gameType)) {
     updatePayload.scrabble_dictionary_id = parseScrabbleDictionaryId(rawScrabbleDictionaryId)
+  }
+
+  if (isScrabbleGame(gameType)) {
+    if (rawScrabbleClockMode !== undefined) {
+      const clockMode = parseScrabbleClockMode(rawScrabbleClockMode)
+      updatePayload.scrabble_clock_mode = clockMode
+      // Leaving chess mode zeroes the (now unused) bank; entering it takes the bank
+      // sent alongside (if any) — init falls back to the default when it's still 0.
+      if (clockMode === 'standard') {
+        updatePayload.scrabble_clock_seconds = 0
+      } else {
+        // Chess mode has no whole-game cap; zero it so the whole-game expiry can't
+        // fire against a chess game switched over from a timed standard config.
+        updatePayload.game_duration_seconds = 0
+        if (rawScrabbleClockSeconds !== undefined)
+          updatePayload.scrabble_clock_seconds = clampScrabbleClockSeconds(rawScrabbleClockSeconds)
+      }
+    } else if (rawScrabbleClockSeconds !== undefined) {
+      updatePayload.scrabble_clock_seconds = clampScrabbleClockSeconds(rawScrabbleClockSeconds)
+    }
   }
 
   if (participant_filter !== undefined) {

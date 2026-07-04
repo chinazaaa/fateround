@@ -7,6 +7,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { computeRoundGroups, computeRoundPairings, resolveGroupSize } from '@/lib/tournament-bracket'
 import { computeSchoolRooms } from '@/lib/tournament-school'
+import { parseScrabbleClockMode, clampScrabbleClockSeconds } from '@/lib/scrabble'
 import { parseStoredTriviaQuestions } from '@/lib/custom-questions'
 import { triviaQuestionKey } from '@/lib/trivia-questions'
 
@@ -344,10 +345,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       whotNumberCalls?: boolean
       whotPick2Stacking?: boolean
       scrabbleDictionary?: string
+      scrabbleClockMode?: string
+      scrabbleClockSeconds?: number
     }
     const roomTimer = typeof cfg.timerSeconds === 'number' ? cfg.timerSeconds : DEFAULT_GROUP_TURN_SECONDS
-    // Overall room-length cap (0 = no limit); the games auto-finish past it.
-    const roomDuration = typeof cfg.gameDurationSeconds === 'number' ? cfg.gameDurationSeconds : 0
+    // Reuse the canonical clock helpers so a stored value always lands on the same
+    // allowed option set as buildTournamentGameConfig / loadClockConfig.
+    const scrabbleClockMode = parseScrabbleClockMode(cfg.scrabbleClockMode)
+    // Overall room-length cap (0 = no limit); the games auto-finish past it. Chess
+    // clock has no whole-game cap, so its rooms always run uncapped.
+    const roomDuration =
+      scrabbleClockMode === 'chess' ? 0 : typeof cfg.gameDurationSeconds === 'number' ? cfg.gameDurationSeconds : 0
     const gameSettings: Record<string, unknown> =
       gameType === 'whot'
         ? {
@@ -357,7 +365,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
             whot_pick2_stacking: cfg.whotPick2Stacking ?? true,
           }
         : gameType === 'scrabble'
-          ? { scrabble_dictionary_id: cfg.scrabbleDictionary ?? 'enable' }
+          ? {
+              scrabble_dictionary_id: cfg.scrabbleDictionary ?? 'enable',
+              scrabble_clock_mode: scrabbleClockMode,
+              scrabble_clock_seconds:
+                scrabbleClockMode === 'chess' ? clampScrabbleClockSeconds(cfg.scrabbleClockSeconds) : 0,
+            }
           : {}
 
     for (const group of groups) {

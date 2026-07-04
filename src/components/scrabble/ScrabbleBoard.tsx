@@ -5,8 +5,9 @@ import type { Player, ScrabbleSession, ScrabblePlayerState, ScrabblePlacedTile }
 import { SCRABBLE_BOARD_SIZE, SCRABBLE_CENTER, scrabblePremiumAt, type ScrabblePremium } from '@/lib/scrabble-constants'
 import { currentTurnPlayerId, scorePlacement } from '@/lib/scrabble-board'
 import { ScrabbleCard, ScrabbleTurnBar } from '@/components/scrabble/ScrabbleChrome'
-import { useScrabbleTurnTimer } from '@/hooks/useScrabbleTurnTimer'
+import { useScrabbleChessClock, useScrabbleTurnTimer } from '@/hooks/useScrabbleTurnTimer'
 import { useScrabbleTurnSound } from '@/hooks/useScrabbleTurnSound'
+import { formatScrabbleClock } from '@/lib/scrabble'
 import {
   DndContext,
   DragOverlay,
@@ -263,6 +264,8 @@ function BoardScores({
   finished,
   topScore,
   compact,
+  clockMode = false,
+  clocksByPlayer,
 }: {
   session: ScrabbleSession
   players: Player[]
@@ -272,6 +275,8 @@ function BoardScores({
   finished: boolean
   topScore: number
   compact?: boolean
+  clockMode?: boolean
+  clocksByPlayer?: Map<string, number>
 }) {
   const rows = session.turn_order
     .map((pid, index) => {
@@ -288,6 +293,10 @@ function BoardScores({
         onTurn: pid === turnPlayerId && !finished,
         isMe: pid === myPlayerId,
         isLeader: score > 0 && score === topScore,
+        timedOut: !!st?.timed_out,
+        clockLabel: clockMode
+          ? formatScrabbleClock(clocksByPlayer?.get(pid) ?? (st?.clock_ms_remaining ?? 0) / 1000)
+          : null,
       }
     })
     // Highest score first (like Snake & Ladder). Tie-break: player on the move
@@ -311,7 +320,29 @@ function BoardScores({
           >
             {r.onTurn && <span className="text-[var(--primary)]">▶</span>}
             {r.isLeader && <span>👑</span>}
-            <span className="font-bold text-[var(--foreground)] max-w-[7rem] truncate">{r.name}</span>
+            <span
+              className={[
+                'font-bold max-w-[7rem] truncate',
+                r.timedOut ? 'text-faint line-through' : 'text-[var(--foreground)]',
+              ].join(' ')}
+            >
+              {r.name}
+            </span>
+            {r.clockLabel != null &&
+              (r.timedOut ? (
+                <span className="rounded bg-[var(--surface-inset-bg)] px-1 text-[11px] font-semibold text-faint">
+                  ⏳ out
+                </span>
+              ) : (
+                <span
+                  className={[
+                    'rounded px-1 text-[11px] font-bold tabular-nums',
+                    r.onTurn ? 'bg-[var(--primary)]/20 text-[var(--primary)]' : 'text-muted',
+                  ].join(' ')}
+                >
+                  {r.clockLabel}
+                </span>
+              ))}
             <span className="font-black tabular-nums text-[var(--foreground)]">{r.score}</span>
           </div>
         ))}
@@ -340,11 +371,30 @@ function BoardScores({
                   👑
                 </span>
               )}
-              <span className="truncate">{r.name}</span>
+              <span className={['truncate', r.timedOut ? 'text-faint line-through' : ''].join(' ')}>{r.name}</span>
               {r.isMe && <span className="shrink-0 text-faint text-xs font-normal">you</span>}
             </span>
-            <span className="shrink-0 rounded-lg bg-[var(--background)] px-2.5 py-1 text-lg font-black tabular-nums text-[var(--foreground)] shadow-sm">
-              {r.score}
+            <span className="flex shrink-0 items-center gap-2">
+              {r.clockLabel != null &&
+                (r.timedOut ? (
+                  <span className="rounded-md bg-[var(--surface-inset-bg)] px-2 py-1 text-xs font-semibold text-faint">
+                    ⏳ Out of time
+                  </span>
+                ) : (
+                  <span
+                    className={[
+                      'rounded-md px-2 py-1 text-sm font-bold tabular-nums',
+                      r.onTurn
+                        ? 'bg-[var(--primary)]/20 text-[var(--primary)]'
+                        : 'bg-[var(--surface-inset-bg)] text-muted',
+                    ].join(' ')}
+                  >
+                    {r.clockLabel}
+                  </span>
+                ))}
+              <span className="rounded-lg bg-[var(--background)] px-2.5 py-1 text-lg font-black tabular-nums text-[var(--foreground)] shadow-sm">
+                {r.score}
+              </span>
             </span>
           </div>
         ))}
@@ -439,7 +489,13 @@ export function ScrabbleGamePanel({
   }, [playerStates])
   const topScore = useMemo(() => Math.max(0, ...playerStates.map((s) => s.score)), [playerStates])
 
-  const { secondsLeft, hasTimer, urgent: timerUrgent } = useScrabbleTurnTimer(session)
+  // Two timing models: standard per-turn deadline vs. a per-player chess clock. Both
+  // hooks run every render (rules of hooks) but each is inert outside its own mode.
+  const standardTimer = useScrabbleTurnTimer(session)
+  const chessClock = useScrabbleChessClock(session, playerStates)
+  const secondsLeft = chessClock.isChess ? chessClock.activeSecondsLeft : standardTimer.secondsLeft
+  const hasTimer = chessClock.isChess ? chessClock.active : standardTimer.hasTimer
+  const timerUrgent = chessClock.isChess ? chessClock.urgent : standardTimer.urgent
   useScrabbleTurnSound(session, myPlayerId, true)
 
   const pendingAt = (row: number, col: number) => pending.find((p) => p.row === row && p.col === col)
@@ -670,6 +726,8 @@ export function ScrabbleGamePanel({
             finished={finished}
             topScore={topScore}
             compact
+            clockMode={chessClock.isChess}
+            clocksByPlayer={chessClock.clocksByPlayer}
           />
         </div>
 
@@ -684,6 +742,12 @@ export function ScrabbleGamePanel({
               urgent={timerUrgent}
               tilesInBag={session.bag.length}
             />
+
+            {chessClock.isChess && myState?.timed_out && !finished && (
+              <div className="rounded-xl border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] px-3 py-2 text-center text-sm font-semibold text-muted">
+                ⏳ You&apos;re out of time — spectating. The game ends when every clock runs out.
+              </div>
+            )}
 
             {lastMove && lastMovePlayer && (
               <p className="text-center text-xs text-faint">
@@ -907,6 +971,8 @@ export function ScrabbleGamePanel({
               myPlayerId={myPlayerId}
               finished={finished}
               topScore={topScore}
+              clockMode={chessClock.isChess}
+              clocksByPlayer={chessClock.clocksByPlayer}
             />
           </div>
         </div>

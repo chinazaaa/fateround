@@ -26,6 +26,9 @@ const gameConfigSchema = z.object({
   whotPick2Stacking: z.boolean().optional(),
   // Scrabble word list.
   scrabbleDictionary: z.string().min(1).max(40).optional(),
+  // Scrabble timing: 'standard' per-turn timer vs 'chess' per-player bank (+ bank size).
+  scrabbleClockMode: z.enum(['standard', 'chess']).optional(),
+  scrabbleClockSeconds: z.coerce.number().int().min(0).max(3600).optional(),
   // School format: ladder length (number of classes). Re-clamped server-side.
   schoolClassCount: z.coerce.number().int().min(2).max(16).optional(),
 })

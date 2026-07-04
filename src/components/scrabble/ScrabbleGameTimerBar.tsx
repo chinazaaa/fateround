@@ -8,9 +8,11 @@ export function ScrabbleGameTimerBar({
   game,
 }: {
   gameCode: string
-  game: Pick<Game, 'status' | 'session_started_at' | 'game_duration_seconds'> | null
+  game: Pick<Game, 'status' | 'session_started_at' | 'game_duration_seconds' | 'scrabble_clock_mode'> | null
 }) {
   const { active, label, secondsLeft, durationSeconds } = useScrabbleGameTimer(gameCode, game)
+  // Chess-clock mode has no whole-game cap — the per-player banks drive timing instead.
+  if (game?.scrabble_clock_mode === 'chess') return null
   if (!active) return null
 
   const urgent = secondsLeft <= 60

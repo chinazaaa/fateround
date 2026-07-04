@@ -3,7 +3,12 @@ import { clampSchoolClassCount, clampSchoolMatchSeconds } from './tournament-sch
 import { clampBoardGameTurnTimer } from './board-game-lobby-settings'
 import { clampChessTimer } from './chess'
 import { clampWhotGameDuration } from './whot'
-import { clampScrabbleTimer, clampScrabbleGameDuration } from './scrabble'
+import {
+  clampScrabbleTimer,
+  clampScrabbleGameDuration,
+  clampScrabbleClockSeconds,
+  parseScrabbleClockMode,
+} from './scrabble'
 import { parseScrabbleDictionaryId } from './scrabble-dictionary-meta'
 
 // The per-round game setup a tournament stores at creation (and, before it starts,
@@ -19,7 +24,21 @@ export interface TournamentGameConfigInput {
   whotNumberCalls?: boolean
   whotPick2Stacking?: boolean
   scrabbleDictionary?: string
+  scrabbleClockMode?: string
+  scrabbleClockSeconds?: number
   schoolClassCount?: number
+}
+
+/** Build the Scrabble room timing fields (shared by head-to-head and knockout).
+ *  Chess-clock mode has no whole-game cap, so it forces `gameDurationSeconds` to 0 —
+ *  otherwise the room's whole-game expiry could end a chess game early. */
+function scrabbleRoomTiming(gameConfig: TournamentGameConfigInput | undefined): Record<string, unknown> {
+  const clockMode = parseScrabbleClockMode(gameConfig?.scrabbleClockMode)
+  return {
+    gameDurationSeconds: clockMode === 'chess' ? 0 : clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 900),
+    scrabbleClockMode: clockMode,
+    scrabbleClockSeconds: clockMode === 'chess' ? clampScrabbleClockSeconds(gameConfig?.scrabbleClockSeconds) : 0,
+  }
 }
 
 /**
@@ -50,8 +69,8 @@ export function buildTournamentGameConfig(
       return {
         groupSize,
         timerSeconds: clampScrabbleTimer(gameConfig?.timerSeconds ?? 60),
-        gameDurationSeconds: clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 900),
         scrabbleDictionary: parseScrabbleDictionaryId(gameConfig?.scrabbleDictionary),
+        ...scrabbleRoomTiming(gameConfig),
       }
     }
     // Chess: the per-player clock (0 = untimed) applied to every match.
@@ -67,8 +86,8 @@ export function buildTournamentGameConfig(
       return {
         groupSize: h2hGroupSize('scrabble'),
         timerSeconds: clampScrabbleTimer(gameConfig?.timerSeconds ?? 60),
-        gameDurationSeconds: clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 900),
         scrabbleDictionary: parseScrabbleDictionaryId(gameConfig?.scrabbleDictionary),
+        ...scrabbleRoomTiming(gameConfig),
       }
     }
     return {
