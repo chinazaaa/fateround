@@ -256,51 +256,6 @@ function trackOccupants(
   return map
 }
 
-function isOpponentBlockade(
-  occupants: { color: LudoColor; playerId: string; count: number }[],
-  myColor: LudoColor
-): boolean {
-  return occupants.some((o) => o.color !== myColor && o.count >= 2)
-}
-
-function isOwnBlockade(
-  occupants: { color: LudoColor; playerId: string; count: number }[],
-  myColor: LudoColor
-): boolean {
-  return occupants.some((o) => o.color === myColor && o.count >= 2)
-}
-
-function canPassTrackSquare(
-  pos: number,
-  color: LudoColor,
-  occupants: Map<number, { color: LudoColor; playerId: string; pieceId: number; count: number }[]>,
-  variant: LudoVariant
-): boolean {
-  const occ = occupants.get(trackPos(pos)) ?? []
-  if (occ.length === 0) return true
-  // Safe squares (each colour's ★ start + the mid-arm stars) are shared ground:
-  // any number of pieces coexist there, so a stack sitting on one is never a
-  // blockade that can wall others off.
-  if (isSafeSquare(pos, variant)) return true
-  if (isOwnBlockade(occ, color)) return true
-  if (isOpponentBlockade(occ, color)) return false
-  return true
-}
-
-function canLandOnTrackSquare(
-  pos: number,
-  color: LudoColor,
-  occupants: Map<number, { color: LudoColor; playerId: string; pieceId: number; count: number }[]>,
-  variant: LudoVariant
-): boolean {
-  const occ = occupants.get(trackPos(pos)) ?? []
-  if (occ.length === 0) return true
-  if (isSafeSquare(pos, variant)) return true
-  if (isOpponentBlockade(occ, color)) return false
-  if (occ.some((o) => o.color === color)) return true
-  return true
-}
-
 export interface LudoMoveOption {
   pieceId: number
   from: LudoPiece
@@ -321,7 +276,6 @@ export function getLegalMovesForSteps(
   variant: LudoVariant = LUDO_DEFAULT_VARIANT
 ): Omit<LudoMoveOption, 'diceIndex' | 'diceValue'>[] {
   const moves: Omit<LudoMoveOption, 'diceIndex' | 'diceValue'>[] = []
-  const occupants = trackOccupants(allStates)
 
   const hasInPlay = pieces.some((p) => p.zone !== 'base')
 
@@ -334,11 +288,8 @@ export function getLegalMovesForSteps(
         // all in base — must bring one out on a 6
       }
       const start = START_POS[color]
-      // A colour's own start is a safe square, so opponents parked there (even a
-      // 2-piece stack) can never wall a player out of the board — the incoming
-      // piece simply shares the square. Without this, an opponent blockade on
-      // your start froze you: no bring-out and, if the yard was your only pieces,
-      // no legal move at all.
+      // Bringing a piece out always lands it on the colour's own start square;
+      // any pieces already there simply share the square.
       const captures = wouldCaptureAt(allStates, start, color, playerId, piece.id, variant)
       moves.push({
         pieceId: piece.id,
@@ -366,21 +317,8 @@ export function getLegalMovesForSteps(
       continue
     }
 
-    let blocked = false
-    for (let step = 1; step <= steps; step += 1) {
-      const intermediateSteps = currentSteps + step
-      if (intermediateSteps >= HOME_ENTRY_STEPS) break
-      const intermediatePos = (START_POS[color] + intermediateSteps) % TRACK_LENGTH
-      if (step < steps && !canPassTrackSquare(intermediatePos, color, occupants, variant)) {
-        blocked = true
-        break
-      }
-    }
-    if (blocked) continue
-
     const dest = pieceAtSteps(color, newSteps)
     if (dest.zone === 'track') {
-      if (!canLandOnTrackSquare(dest.pos, color, occupants, variant)) continue
       const captures = wouldCaptureAt(allStates, dest.pos, color, playerId, piece.id, variant)
       moves.push({
         pieceId: piece.id,

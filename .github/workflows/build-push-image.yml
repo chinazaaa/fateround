@@ -55,10 +55,10 @@ jobs:
                 echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_daKXZ2-HKxB6k3rAy1tmGw_jQuACg0K"
                 echo "NEXT_PUBLIC_APP_URL=https://fateround.com"
                 echo "NEXT_PUBLIC_LIVEKIT_URL=wss://livekit.fateround.com"
-                # Web push: reusing the same VAPID keypair as dev (public key is
-                # public by design). The matching VAPID_PRIVATE_KEY is a runtime secret
-                # in the prod SSM params (see infra/terraform.prod.tfvars).
-                echo "NEXT_PUBLIC_VAPID_PUBLIC_KEY=BAZctYb9L5IkQB-W6k9eewWMrgl65EXBwqKPW9Mq7NVJY5ED_ODVPUV7W9B9f_VhZbaO_l2gu90XLBLzUOO3EXg"
+                # Web push: prod's VAPID public key — public by design, safe to hardcode.
+                # The matching VAPID_PRIVATE_KEY/VAPID_SUBJECT are runtime secrets in SSM
+                # (set via terraform.prod.tfvars). Separate keypair from dev.
+                echo "NEXT_PUBLIC_VAPID_PUBLIC_KEY=BGD8QCzRv9Fbr3VYr88njaxGYArwYwOpGM0h8WXxBrAY8Y0jhdDnjkVYMGdVuvfzluhWAXTjGPA9wwNgz2EPeDU"
               } >> "$GITHUB_ENV"
               ;;
             dev)
