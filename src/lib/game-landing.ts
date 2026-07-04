@@ -1129,6 +1129,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Yes. No login and room for up to 40 make it easy for a class, a remote team, or a pub-quiz crowd to jump in, and speed-based scoring keeps it competitive. Play it right in the browser over a call or on a big screen.',
       },
+      {
+        question: 'Can I run a trivia tournament online?',
+        answer:
+          'Yes. Fate Round can run a trivia tournament as a round-robin league or a knockout — great for a class, club, or team competition. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
+      },
     ],
   }),
 
@@ -1507,6 +1512,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Is Whot like Uno?',
         answer:
           'They’re cousins. Both are shape/number-matching shedding games where you race to empty your hand, and Whot’s Pick 2, Pick 3, and WHOT card rhyme with Uno’s Draw 2, Draw 4, and Wild. Whot came first — invented in England in 1935 and popularized in Britain through the 1950s — uses shapes instead of colors, and adds Hold On and General Market. If you like Uno, Whot feels instantly familiar — and Fate Round has both.',
+      },
+      {
+        question: 'Can I run a Whot tournament online?',
+        answer:
+          'Yes. Fate Round can run a Whot tournament as a head-to-head bracket, and there’s a class-based championship format for schools. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
       },
     ],
   }),
@@ -2033,6 +2043,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Yes. Turn on the chess clock and pick 3, 5, or 10 minutes each for a blitz or rapid game — your clock only ticks on your turn, and running out of time loses. Leave it off for a relaxed, untimed match.',
       },
+      {
+        question: 'Can I run a chess tournament online?',
+        answer:
+          'Yes. Fate Round can run a chess tournament as a head-to-head knockout bracket — create one from the Tournaments page, share the join code, and players battle through the rounds until there’s a champion. Free, no app, no sign-up.',
+      },
     ],
   }),
 
@@ -2245,6 +2260,11 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'How does scoring work?',
         answer:
           'Each letter has a point value, and premium squares multiply a letter or the whole word. Playing all seven tiles in one turn earns a 50-point “bingo” bonus. Fate Round tallies every play automatically, so there’s no maths or arguing over the pad.',
+      },
+      {
+        question: 'Can I run a Scrabble tournament online?',
+        answer:
+          'Yes. Fate Round can run a Scrabble tournament as a head-to-head bracket, with your chosen dictionary and clock. Create one from the Tournaments page and share the join code — free, no app, no sign-up.',
       },
     ],
   }),

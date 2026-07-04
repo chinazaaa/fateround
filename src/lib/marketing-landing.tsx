@@ -42,6 +42,9 @@ export type MarketingPageContent = {
   faqs: MarketingFaq[]
   ctaHeading: string
   ctaSubtext: string
+  /** Optional override for the primary CTA button (defaults to "Create a free room" → /create).
+   *  Used e.g. by the tournaments page to funnel to /tournament/create. */
+  primaryCta?: { href: string; label: string }
   /** Accent hex used for the hero glow and CTA gradient. */
   accent: string
 }
@@ -1815,9 +1818,255 @@ const CHRISTMAS: MarketingPageContent = {
   accent: '#dc2626',
 }
 
+const TOURNAMENTS: MarketingPageContent = {
+  slug: 'online-tournaments',
+  breadcrumbName: 'Online tournaments',
+  seoTitle: 'Free Online Tournaments — Chess, Scrabble, Whot & Trivia',
+  seoDescription:
+    'Run a free online tournament for your group — Chess, Scrabble, Whot, or Trivia. Head-to-head brackets, knockout, round-robin, and school championships. Share one link, no app, no sign-up.',
+  keywords: [
+    'online tournament',
+    'chess tournament online',
+    'scrabble tournament online',
+    'whot tournament',
+    'trivia tournament online',
+    'free tournament bracket maker',
+    'run a tournament online free',
+    'online tournament bracket generator',
+    'host a chess tournament online',
+    'knockout tournament online',
+    'school games tournament online',
+    'free online tournament maker',
+  ],
+  heroTitle: 'Run a free online tournament — Chess, Scrabble, Whot & Trivia',
+  heroSubtitle:
+    'Turn game night into a competition. Set up a bracket, share one link, and your group battles it out across multiple rounds — free, no app, no sign-up. Great for friends, teams, and schools.',
+  highlights: [
+    'Chess, Scrabble, Whot, Trivia',
+    'Brackets, knockout & round-robin',
+    'Share one link to join',
+    'Free, no app, no sign-up',
+  ],
+  featureCards: [
+    {
+      emoji: '🏆',
+      title: 'Multiple formats',
+      description: 'Head-to-head brackets, knockout, round-robin leagues, and a school-championship mode.',
+    },
+    {
+      emoji: '♟️',
+      title: 'Real competitive games',
+      description: 'Chess, Scrabble, and Whot head-to-head, or Trivia for the whole group — with proper scoring.',
+    },
+    {
+      emoji: '🔗',
+      title: 'One link to join',
+      description: 'Share a code and everyone joins from their phone. No accounts, no bracket software.',
+    },
+    {
+      emoji: '🏫',
+      title: 'Built for schools too',
+      description: 'A class-based Whot championship format makes it easy to run a school-wide competition.',
+    },
+  ],
+  stepsHeading: 'How it works',
+  steps: [
+    {
+      title: 'Pick a game and format',
+      description: 'Chess, Scrabble, Whot, or Trivia — bracket, knockout, round-robin, or school.',
+    },
+    { title: 'Share the join code', description: 'Players join from any browser with a nickname. No app, no sign-up.' },
+    {
+      title: 'Play it out',
+      description: 'Rounds and brackets run automatically; winners advance until you have a champion.',
+    },
+  ],
+  body: (
+    <>
+      <p>
+        A tournament makes any game night feel like an event. On Fate Round you can run one free, in the browser, with
+        no app and no accounts — just share a link and your group competes across multiple rounds. Choose a format that
+        fits the game: head-to-head brackets for <GameLink type="chess" />, <GameLink type="scrabble" />, and{' '}
+        <GameLink type="whot" />; or round-robin and knockout rounds for <GameLink type="trivia" />.
+      </p>
+      <p>
+        It’s built for friends and teams, but also for schools — the class-based{' '}
+        <GameLink type="whot">School Whot championship</GameLink> makes it easy to run a school-wide competition, and
+        you can run <GameLink type="trivia" /> as a league or knockout too. Scores, brackets, and who advances are all
+        handled for you, so you host the event and Fate Round runs it. Part of the same platform as{' '}
+        <HubLink>20+ games</HubLink>.
+      </p>
+    </>
+  ),
+  gameList: {
+    heading: 'Games you can run a tournament for',
+    items: [
+      {
+        game: <GameLink type="chess" />,
+        description: 'head-to-head knockout brackets — outlast every challenger to win.',
+      },
+      { game: <GameLink type="scrabble" />, description: '1v1 word battles with your chosen dictionary and clock.' },
+      {
+        game: <GameLink type="whot" />,
+        description: 'Naija card brackets, plus a class-based school championship format.',
+      },
+      { game: <GameLink type="trivia" />, description: 'round-robin leagues or knockout rounds for the whole group.' },
+    ],
+  },
+  faqs: [
+    {
+      question: 'What games can I run a tournament for?',
+      answer:
+        'Chess, Scrabble, and Whot as head-to-head brackets, and Trivia as a round-robin or knockout. There’s also a school-championship format for class-based competitions.',
+    },
+    {
+      question: 'What tournament formats are there?',
+      answer:
+        'Round-robin (everyone plays everyone), head-to-head brackets, single-elimination knockout, and a class-based school championship. Fate Round pairs players, runs the rounds, and advances winners automatically.',
+    },
+    {
+      question: 'How do players join a tournament?',
+      answer:
+        'The host creates the tournament and shares one code or link. Players join from any browser with a nickname — no app to download and no account to make.',
+    },
+    {
+      question: 'Is it free to run an online tournament?',
+      answer:
+        'Yes — free forever, no sign-up and no download. Set up a bracket, share the link, and play it out in the browser.',
+    },
+    {
+      question: 'Can schools use it for a competition?',
+      answer:
+        'Yes. The class-based championship format is designed for schools — run a Whot or Trivia competition across classes, with everyone joining from their own device.',
+    },
+  ],
+  ctaHeading: 'Set up your tournament',
+  ctaSubtext: 'Free forever. Pick a game, share the link, crown a champion.',
+  primaryCta: { href: '/tournament/create', label: 'Create a tournament →' },
+  accent: '#d97706',
+}
+
+const SCHOOL: MarketingPageContent = {
+  slug: 'school-whot-championship',
+  breadcrumbName: 'School Whot championship',
+  seoTitle: 'School Whot Championship — Free Online Games for Schools',
+  seoDescription:
+    'Run a School Whot championship online — students climb the class ladder from Primary 1 to Graduate. Free, no app, no sign-up. Plus Trivia, Chess & Scrabble tournaments for schools.',
+  keywords: [
+    'school whot championship',
+    'school whot tournament',
+    'whot competition for schools',
+    'school games competition online',
+    'inter-house games online',
+    'nigerian school games online',
+    'class whot tournament',
+    'school tournament online free',
+    'online games for schools',
+    'end of term games for students',
+  ],
+  heroTitle: 'School Whot Championship — climb from Primary 1 to Graduate 🎓',
+  heroSubtitle:
+    'The most Naija tournament there is. Students play timed Whot matches and climb the class ladder — Primary 1, JSS, SS, all the way to University 400L and Graduate. Free, no app, no sign-up. Perfect for schools, clubs, and end-of-term.',
+  highlights: [
+    'Climb Primary 1 → Graduate',
+    'Timed Whot matches',
+    'Whole class joins by link',
+    'Free, no app, no sign-up',
+  ],
+  featureCards: [
+    {
+      emoji: '🎓',
+      title: 'The class ladder',
+      description: 'Win a match, climb a class — Primary 1 through SS3 and University 100–400L, then Graduate to win.',
+    },
+    {
+      emoji: '⏱️',
+      title: 'Quick timed matches',
+      description:
+        'Each round is a short Whot match (2–4 minutes) — empty your hand or hold the lowest total at time-up.',
+    },
+    {
+      emoji: '🏫',
+      title: 'Made for schools',
+      description:
+        'Great for inter-house competitions, ICT clubs, socials, and end-of-term — students join from any device.',
+    },
+    {
+      emoji: '📏',
+      title: 'Pick the ladder length',
+      description:
+        'Primary only, Primary + Secondary, or the full ladder to University 400L — set it to fit your time.',
+    },
+  ],
+  stepsHeading: 'How it works',
+  steps: [
+    {
+      title: 'Create a School Whot championship',
+      description: 'Choose the ladder length and match time from the Tournaments page.',
+    },
+    {
+      title: 'Share the join code',
+      description: 'Students join from any phone or laptop browser with a nickname — no app, no accounts.',
+    },
+    {
+      title: 'Climb to Graduate',
+      description: 'Win a match to move up a class. The first to graduate past the top class is champion.',
+    },
+  ],
+  body: (
+    <>
+      <p>
+        School Whot turns the classic Naija card game into a championship every student wants to win. Everyone starts in
+        Primary 1 and plays quick timed <GameLink type="whot" /> matches — win, and you climb a class; keep winning and
+        you rise through JSS, SS, and University levels until you Graduate 🎓 and take the crown. Set the ladder to
+        Primary only, Primary plus Secondary, or the full run to University 400L.
+      </p>
+      <p>
+        It’s a perfect fit for schools, ICT clubs, and end-of-term socials — no app to install, no accounts, and every
+        student joins from their own device with one shared code. Want more than Whot? The same Tournaments feature runs{' '}
+        <GameLink type="trivia" /> leagues and knockouts, plus <GameLink type="chess" /> and{' '}
+        <GameLink type="scrabble" /> brackets — see all <HubLink>the games</HubLink> and the{' '}
+        <GameLink type="whot">Naija classics</GameLink>.
+      </p>
+    </>
+  ),
+  faqs: [
+    {
+      question: 'What is a School Whot championship?',
+      answer:
+        'It’s a Whot tournament built around the Nigerian school ladder. Students start in Primary 1 and climb a class each time they win a timed Whot match — through JSS, SS, and University 100–400L — until someone Graduates and wins the championship.',
+    },
+    {
+      question: 'How does the class ladder work?',
+      answer:
+        'Each round is one short Whot match. The winner moves up one class; graduating past the top class wins the tournament. The host picks the ladder length: Primary only (Primary 1–6), Primary + Secondary (to SS3), or the full ladder to University 400L.',
+    },
+    {
+      question: 'How do students join?',
+      answer:
+        'The host creates the championship and shares one code or link. Students join from any phone or laptop browser with a nickname — no app to download and no account to make.',
+    },
+    {
+      question: 'Can schools run other games as tournaments too?',
+      answer:
+        'Yes. Beyond School Whot, the Tournaments feature runs Trivia as a round-robin league or knockout, and Chess and Scrabble as head-to-head brackets — all free and in the browser.',
+    },
+    {
+      question: 'Is it free?',
+      answer: 'Yes — free forever, no sign-up and no download. Set up the championship, share the link, and play.',
+    },
+  ],
+  ctaHeading: 'Start a School Whot championship',
+  ctaSubtext: 'Free forever. Pick the ladder, share the link, crown a Graduate.',
+  primaryCta: { href: '/tournament/create', label: 'Create a championship →' },
+  accent: '#15803d',
+}
+
 export const MARKETING_PAGES: Record<string, MarketingPageContent> = {
   [JACKBOX.slug]: JACKBOX,
   [NAIJA.slug]: NAIJA,
+  [TOURNAMENTS.slug]: TOURNAMENTS,
+  [SCHOOL.slug]: SCHOOL,
   [LUDO_KING.slug]: LUDO_KING,
   [WHOT_UNO.slug]: WHOT_UNO,
   [CHRISTMAS.slug]: CHRISTMAS,
