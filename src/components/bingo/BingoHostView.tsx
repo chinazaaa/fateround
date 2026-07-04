@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { BingoCardGrid, CalledNumbersBoard } from '@/components/bingo/BingoCardGrid'
 import { BingoFinalResultsShareBlock } from '@/components/bingo/BingoFinalResultsShareBlock'
@@ -654,35 +653,21 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   const finished =
     game.status === 'finished' ? (
-      winnerPlayer ? (
-        <>
-          <BingoFinalResultsShareBlock
-            game={game}
-            players={players}
-            winnerName={winnerPlayer.name}
-            playAgainButton={
-              <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-secondary w-full">
-                {playingAgain ? 'Resetting…' : 'Play again'}
-              </button>
-            }
-          />
-          {hostPlayerId && winner?.player_id === hostPlayerId && (
-            <PostWinToCommunity
-              gameType="bingo"
-              gameCode={gameCode}
-              winnerName={hostPlayerName}
-              roundKey={winner?.id}
-            />
-          )}
-        </>
-      ) : (
-        <div className="space-y-4">
-          <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-secondary w-full">
-            {playingAgain ? 'Resetting…' : 'Play again'}
-          </button>
-          <CreateNewGameButton />
-        </div>
-      )
+      <>
+        <BingoFinalResultsShareBlock
+          game={game}
+          players={players}
+          winnerName={winnerPlayer?.name ?? null}
+          playAgainButton={
+            <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-secondary w-full">
+              {playingAgain ? 'Resetting…' : 'Play again'}
+            </button>
+          }
+        />
+        {winnerPlayer && hostPlayerId && winner?.player_id === hostPlayerId && (
+          <PostWinToCommunity gameType="bingo" gameCode={gameCode} winnerName={hostPlayerName} roundKey={winner?.id} />
+        )}
+      </>
     ) : null
 
   return (
