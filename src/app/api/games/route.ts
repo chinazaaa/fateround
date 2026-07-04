@@ -106,7 +106,12 @@ import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
 import { clampCheckersTimer } from '@/lib/checkers'
-import { clampScrabbleTimer, clampScrabbleGameDuration } from '@/lib/scrabble'
+import {
+  clampScrabbleTimer,
+  clampScrabbleGameDuration,
+  clampScrabbleClockSeconds,
+  parseScrabbleClockMode,
+} from '@/lib/scrabble'
 import { parseScrabbleDictionaryId } from '@/lib/scrabble-dictionary-meta'
 import {
   clampDescribeItMode,
@@ -264,6 +269,8 @@ export async function POST(req: NextRequest) {
     crazy8_pick2_stacking: rawCrazy8Pick2Stacking,
     ludo_variant: rawLudoVariant,
     scrabble_dictionary_id: rawScrabbleDictionaryId,
+    scrabble_clock_mode: rawScrabbleClockMode,
+    scrabble_clock_seconds: rawScrabbleClockSeconds,
     chess_board_theme: rawChessBoardTheme,
     chess_piece_set: rawChessPieceSet,
   } = parsed.data
@@ -661,10 +668,15 @@ export async function POST(req: NextRequest) {
         }
       : {}),
     ...(isScrabbleGame(game_type)
-      ? {
-          game_duration_seconds: clampScrabbleGameDuration(rawGameDurationSeconds),
-          scrabble_dictionary_id: parseScrabbleDictionaryId(rawScrabbleDictionaryId),
-        }
+      ? (() => {
+          const clockMode = parseScrabbleClockMode(rawScrabbleClockMode)
+          return {
+            game_duration_seconds: clampScrabbleGameDuration(rawGameDurationSeconds),
+            scrabble_dictionary_id: parseScrabbleDictionaryId(rawScrabbleDictionaryId),
+            scrabble_clock_mode: clockMode,
+            scrabble_clock_seconds: clockMode === 'chess' ? clampScrabbleClockSeconds(rawScrabbleClockSeconds) : 0,
+          }
+        })()
       : {}),
     ...(isChessGame(game_type)
       ? {

@@ -27,6 +27,35 @@ export function clampScrabbleTimer(value: unknown): number {
   return (SCRABBLE_TIMER_OPTIONS as readonly number[]).includes(n) ? n : 0
 }
 
+// ── Chess-clock mode (per-player time bank) ───────────────────────────────────
+// An alternative to the per-turn timer: each player gets a fixed budget that only
+// counts down while it's their turn. A player whose bank hits zero "flags out" —
+// they can spectate but their seat is skipped. The game ends when every remaining
+// player has flagged out (highest final score wins, standard rack penalty applied).
+
+export type ScrabbleClockMode = 'standard' | 'chess'
+
+/** Per-player time-bank options for chess-clock mode, in seconds (3–30 minutes). */
+export const SCRABBLE_CLOCK_OPTIONS = [180, 300, 600, 900, 1200, 1800] as const
+export const SCRABBLE_DEFAULT_CLOCK_SECONDS = 600
+
+export function parseScrabbleClockMode(value: unknown): ScrabbleClockMode {
+  return value === 'chess' ? 'chess' : 'standard'
+}
+
+/** Clamp a requested per-player bank to an allowed value; defaults to 10 minutes. */
+export function clampScrabbleClockSeconds(value: unknown): number {
+  const n = Number(value)
+  return (SCRABBLE_CLOCK_OPTIONS as readonly number[]).includes(n) ? n : SCRABBLE_DEFAULT_CLOCK_SECONDS
+}
+
+/** mm:ss for a remaining time bank (rounds up, never negative). */
+export function formatScrabbleClock(totalSeconds: number): string {
+  const s = Math.max(0, Math.ceil(totalSeconds))
+  const m = Math.floor(s / 60)
+  return `${m}:${(s % 60).toString().padStart(2, '0')}`
+}
+
 // ── Whole-game session timer (so a game can't run for hours) ──────────────────
 
 /** Whole-game length options in seconds. 0 = no limit. */
@@ -223,6 +252,62 @@ async function loadDictionaryId(supabase: SupabaseClient, gameId: string): Promi
   return data?.scrabble_dictionary_id ?? SCRABBLE_DEFAULT_DICTIONARY
 }
 
+async function loadClockConfig(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ mode: ScrabbleClockMode; clockSeconds: number }> {
+  const { data } = await supabase
+    .from('games')
+    .select('scrabble_clock_mode, scrabble_clock_seconds')
+    .eq('id', gameId)
+    .maybeSingle()
+  const mode = parseScrabbleClockMode(data?.scrabble_clock_mode)
+  const clockSeconds = mode === 'chess' ? clampScrabbleClockSeconds(data?.scrabble_clock_seconds) : 0
+  return { mode, clockSeconds }
+}
+
+/** Players still on the clock (not flagged out). Everyone in standard mode. */
+function activePlayerCount(session: ScrabbleSession, states: ScrabblePlayerState[]): number {
+  if (session.clock_mode !== 'chess') return session.turn_order.length
+  const out = new Set(states.filter((s) => s.timed_out).map((s) => s.player_id))
+  return session.turn_order.filter((id) => !out.has(id)).length
+}
+
+/**
+ * The seat that plays next. Standard mode: the next seat, wrapping. Chess mode: the
+ * next seat that hasn't flagged out (walking forward, and — for solo play — allowed
+ * to land back on the current seat), or -1 when every seat has flagged out.
+ * Callers pass `states` already reflecting any flag-out applied to the current mover.
+ */
+function nextTurnIndex(session: ScrabbleSession, states: ScrabblePlayerState[]): number {
+  const len = session.turn_order.length
+  if (len === 0) return -1
+  if (session.clock_mode !== 'chess') return (session.current_turn_index + 1) % len
+  const out = new Set(states.filter((s) => s.timed_out).map((s) => s.player_id))
+  for (let step = 1; step <= len; step += 1) {
+    const idx = (session.current_turn_index + step) % len
+    if (!out.has(session.turn_order[idx])) return idx
+  }
+  return -1
+}
+
+/**
+ * Deduct the time the current mover spent on this turn from their bank. Returns the
+ * `scrabble_player_state` patch to fold into the mover's write (and marks them flagged
+ * out if the bank hit zero), or null in standard mode.
+ */
+function chessClockPatch(
+  session: ScrabbleSession,
+  moverState: ScrabblePlayerState,
+  now: number
+): { clock_ms_remaining: number; timed_out: boolean } | null {
+  if (session.clock_mode !== 'chess') return null
+  const started = session.turn_started_at ? new Date(session.turn_started_at).getTime() : now
+  const elapsed = Math.max(0, now - started)
+  const remaining = Math.max(0, (moverState.clock_ms_remaining ?? 0) - elapsed)
+  return { clock_ms_remaining: remaining, timed_out: moverState.timed_out || remaining <= 0 }
+}
+
 async function loadPlayerNames(supabase: SupabaseClient, gameId: string): Promise<Map<string, string>> {
   const { data: playerRows } = await supabase.from('players').select('id, name').eq('game_id', gameId)
   const names = new Map<string, string>()
@@ -367,6 +452,7 @@ export async function initializeScrabbleGame(
   }
 
   const timerSeconds = await loadTimerSeconds(supabase, gameId)
+  const { mode: clockMode, clockSeconds } = await loadClockConfig(supabase, gameId)
   const tileSet = tileSetForDictionary(await loadDictionaryId(supabase, gameId))
   const names = await loadPlayerNames(supabase, gameId)
 
@@ -378,6 +464,7 @@ export async function initializeScrabbleGame(
   for (const pid of turnOrder) racks.set(pid, bag.splice(0, SCRABBLE_RACK_SIZE))
 
   const now = Date.now()
+  const isChess = clockMode === 'chess'
   const sessionRow = {
     turn_order: turnOrder,
     current_turn_index: 0,
@@ -389,7 +476,11 @@ export async function initializeScrabbleGame(
     winner_player_id: null,
     is_tie: false,
     status_message: turnMessage(names, turnOrder[0]),
-    turn_deadline_at: computeDeadline(timerSeconds, now),
+    // Chess-clock mode drives timing off each player's bank + turn_started_at, so it
+    // leaves the per-turn deadline off; standard mode uses the per-turn deadline.
+    turn_deadline_at: isChess ? null : computeDeadline(timerSeconds, now),
+    clock_mode: clockMode,
+    turn_started_at: isChess ? new Date(now).toISOString() : null,
     updated_at: new Date().toISOString(),
   }
 
@@ -406,6 +497,8 @@ export async function initializeScrabbleGame(
     rack: racks.get(pid) ?? [],
     score: 0,
     player_order: idx,
+    clock_ms_remaining: isChess ? clockSeconds * 1000 : null,
+    timed_out: false,
   }))
   const { error: stateError } = await supabase.from('scrabble_player_state').insert(stateRows)
   if (stateError) return { error: internalErrorMessage('scrabble', stateError) }
@@ -485,7 +578,7 @@ export async function processScrabblePlay(
     tiles: tiles.map((t) => ({ row: t.row, col: t.col })),
   }
 
-  const nextIndex = (session.current_turn_index + 1) % session.turn_order.length
+  const wrapIndex = (session.current_turn_index + 1) % session.turn_order.length
   const wentOut = bag.length === 0 && newRack.length === 0
 
   // Mirror the move into the in-memory state so finalizeScores sees the mover's
@@ -494,6 +587,14 @@ export async function processScrabblePlay(
   // mutates a rack, a score, or the shared bag (which would corrupt the 100-tile set).
   state.rack = newRack
   state.score = newScore
+
+  // Chess-clock: deduct the time this turn took; the mover may flag out on this move.
+  const clockPatch = chessClockPatch(session, state, now)
+  if (clockPatch) {
+    state.clock_ms_remaining = clockPatch.clock_ms_remaining
+    state.timed_out = clockPatch.timed_out
+  }
+  const moverStateWrite = { rack: newRack, score: newScore, ...(clockPatch ?? {}) }
 
   if (wentOut) {
     const result = finalizeScores(states, names, playerId, tileSet.values)
@@ -505,7 +606,7 @@ export async function processScrabblePlay(
       {
         board,
         bag,
-        current_turn_index: nextIndex,
+        current_turn_index: wrapIndex,
         consecutive_passes: 0,
         last_move: lastMove,
         phase: 'finished',
@@ -513,6 +614,7 @@ export async function processScrabblePlay(
         is_tie: result.isTie,
         status_message: result.statusMessage,
         turn_deadline_at: null,
+        turn_started_at: null,
       },
       session.updated_at
     )
@@ -520,7 +622,43 @@ export async function processScrabblePlay(
 
     const { error: stateError } = await supabase
       .from('scrabble_player_state')
-      .update({ rack: newRack, score: newScore })
+      .update(moverStateWrite)
+      .eq('id', state.id)
+    if (stateError) return { error: internalErrorMessage('scrabble', stateError) }
+
+    await persistFinalScores(supabase, states, result.finalScores)
+    await markGameFinished(supabase, gameId)
+    return {}
+  }
+
+  // Next seat that can still play (chess mode skips flagged-out players).
+  const nextIndex = nextTurnIndex(session, states)
+
+  // Chess mode: the mover just used the last live clock — end the game now.
+  if (session.clock_mode === 'chess' && nextIndex === -1) {
+    const result = finalizeScores(states, names, null, tileSet.values)
+    const won = await persistSession(
+      supabase,
+      gameId,
+      {
+        board,
+        bag,
+        consecutive_passes: 0,
+        last_move: lastMove,
+        phase: 'finished',
+        winner_player_id: result.winnerPlayerId,
+        is_tie: result.isTie,
+        status_message: result.statusMessage,
+        turn_deadline_at: null,
+        turn_started_at: null,
+      },
+      session.updated_at
+    )
+    if (!won) return {}
+
+    const { error: stateError } = await supabase
+      .from('scrabble_player_state')
+      .update(moverStateWrite)
       .eq('id', state.id)
     if (stateError) return { error: internalErrorMessage('scrabble', stateError) }
 
@@ -530,6 +668,10 @@ export async function processScrabblePlay(
   }
 
   const nextPlayerId = session.turn_order[nextIndex]
+  const advance =
+    session.clock_mode === 'chess'
+      ? { turn_started_at: new Date(now).toISOString(), turn_deadline_at: null }
+      : { turn_deadline_at: computeDeadline(timerSeconds, now) }
   const won = await persistSession(
     supabase,
     gameId,
@@ -540,7 +682,7 @@ export async function processScrabblePlay(
       consecutive_passes: 0,
       last_move: lastMove,
       status_message: turnMessage(names, nextPlayerId),
-      turn_deadline_at: computeDeadline(timerSeconds, now),
+      ...advance,
     },
     session.updated_at
   )
@@ -548,7 +690,7 @@ export async function processScrabblePlay(
 
   const { error: stateError } = await supabase
     .from('scrabble_player_state')
-    .update({ rack: newRack, score: newScore })
+    .update(moverStateWrite)
     .eq('id', state.id)
   if (stateError) return { error: internalErrorMessage('scrabble', stateError) }
 
@@ -577,11 +719,31 @@ async function advanceScorelessTurn(
 ): Promise<{ error?: string; won: boolean }> {
   const timerSeconds = await loadTimerSeconds(supabase, gameId)
   const now = Date.now()
+  const isChess = session.clock_mode === 'chess'
 
-  const nextIndex = (session.current_turn_index + 1) % session.turn_order.length
+  // Chess-clock: deduct the mover's elapsed time; a pass/exchange can flag them out.
+  const moverState = states.find((s) => s.player_id === movingPlayerId)
+  const clockPatch = moverState ? chessClockPatch(session, moverState, now) : null
+  if (clockPatch && moverState) {
+    moverState.clock_ms_remaining = clockPatch.clock_ms_remaining
+    moverState.timed_out = clockPatch.timed_out
+  }
+  const writeMoverClock = async () => {
+    if (clockPatch && moverState) {
+      await supabase
+        .from('scrabble_player_state')
+        .update({ clock_ms_remaining: clockPatch.clock_ms_remaining, timed_out: clockPatch.timed_out })
+        .eq('id', moverState.id)
+    }
+  }
+
   const consecutivePasses = session.consecutive_passes + 1
   const lastMove = { player_id: movingPlayerId, kind, words: [], score: 0, tiles: [] }
-  const endGame = consecutivePasses >= session.turn_order.length * 2
+  const nextIndex = nextTurnIndex(session, states)
+  // Stalemate end: everyone passed/exchanged twice around. In chess mode the ring is
+  // just the players still on the clock. A -1 next seat means every seat has flagged.
+  const passLimit = activePlayerCount(session, states) * 2
+  const endGame = nextIndex === -1 || consecutivePasses >= passLimit
 
   if (endGame) {
     const tileSet = tileSetForDictionary(await loadDictionaryId(supabase, gameId))
@@ -593,7 +755,7 @@ async function advanceScorelessTurn(
       gameId,
       {
         bag,
-        current_turn_index: nextIndex,
+        current_turn_index: nextIndex === -1 ? session.current_turn_index : nextIndex,
         consecutive_passes: consecutivePasses,
         last_move: lastMove,
         phase: 'finished',
@@ -601,17 +763,22 @@ async function advanceScorelessTurn(
         is_tie: result.isTie,
         status_message: result.statusMessage,
         turn_deadline_at: null,
+        turn_started_at: null,
       },
       session.updated_at
     )
     if (!won) return { won: false }
 
+    await writeMoverClock()
     await persistFinalScores(supabase, states, result.finalScores)
     await markGameFinished(supabase, gameId)
     return { won: true }
   }
 
   const nextPlayerId = session.turn_order[nextIndex]
+  const advance = isChess
+    ? { turn_started_at: new Date(now).toISOString(), turn_deadline_at: null }
+    : { turn_deadline_at: computeDeadline(timerSeconds, now) }
   const won = await persistSession(
     supabase,
     gameId,
@@ -621,10 +788,11 @@ async function advanceScorelessTurn(
       consecutive_passes: consecutivePasses,
       last_move: lastMove,
       status_message: turnMessage(names, nextPlayerId),
-      turn_deadline_at: computeDeadline(timerSeconds, now),
+      ...advance,
     },
     session.updated_at
   )
+  if (won) await writeMoverClock()
   return { won }
 }
 
@@ -697,12 +865,20 @@ export async function processScrabblePass(
   return error ? { error } : {}
 }
 
-/** The player on the clock ran out of time — treat it as a pass. */
+/**
+ * The player on the clock ran out of time. Standard mode: treat it as a pass. Chess
+ * mode: the player "flags out" — they're marked timed_out (spectating from now on) and
+ * their seat is skipped; when nobody is left on the clock the game ends. Deadline-gated
+ * server-side, so it's safe for any client to fire.
+ */
 export async function processScrabbleExpireTurn(supabase: SupabaseClient, gameId: string): Promise<{ error?: string }> {
   const { session, error: loadError } = await loadSession(supabase, gameId)
   if (loadError) return { error: loadError }
   if (!session) return { error: 'Game not found' }
   if (session.phase === 'finished') return {}
+
+  if (session.clock_mode === 'chess') return processScrabbleChessTimeout(supabase, gameId, session)
+
   if (!session.turn_deadline_at || new Date(session.turn_deadline_at).getTime() > Date.now()) return {}
 
   const states = await loadPlayerStates(supabase, gameId)
@@ -712,6 +888,77 @@ export async function processScrabbleExpireTurn(supabase: SupabaseClient, gameId
     ...session.bag,
   ])
   return error ? { error } : {}
+}
+
+/** Chess-clock flag-out: the current player's bank hit zero. Mark them out and hand
+ *  the turn to the next player still on the clock — or end the game if none remain. */
+async function processScrabbleChessTimeout(
+  supabase: SupabaseClient,
+  gameId: string,
+  session: ScrabbleSession
+): Promise<{ error?: string }> {
+  const states = await loadPlayerStates(supabase, gameId)
+  const names = await loadPlayerNames(supabase, gameId)
+  const moverId = currentTurnPlayerId(session)
+  const moverState = states.find((s) => s.player_id === moverId)
+  if (!moverState) return {}
+
+  // Recompute the bank authoritatively — bail if the client fired early and there's
+  // actually time left (guards a premature /expire-turn against the real clock).
+  const patch = chessClockPatch(session, moverState, Date.now())
+  if (!patch || !patch.timed_out) return {}
+
+  moverState.timed_out = true
+  moverState.clock_ms_remaining = 0
+  const flaggedName = names.get(moverId) ?? 'A player'
+  const now = Date.now()
+  const nextIndex = nextTurnIndex(session, states)
+
+  if (nextIndex === -1) {
+    // Everyone has flagged out — end the game (standard rack penalty, winner by score).
+    const tileSet = tileSetForDictionary(await loadDictionaryId(supabase, gameId))
+    const result = finalizeScores(states, names, null, tileSet.values)
+    const won = await persistSession(
+      supabase,
+      gameId,
+      {
+        phase: 'finished',
+        winner_player_id: result.winnerPlayerId,
+        is_tie: result.isTie,
+        status_message: `${flaggedName} ran out of time. ${result.statusMessage}`,
+        turn_deadline_at: null,
+        turn_started_at: null,
+      },
+      session.updated_at
+    )
+    if (!won) return {}
+    await supabase
+      .from('scrabble_player_state')
+      .update({ clock_ms_remaining: 0, timed_out: true })
+      .eq('id', moverState.id)
+    await persistFinalScores(supabase, states, result.finalScores)
+    await markGameFinished(supabase, gameId)
+    return {}
+  }
+
+  const nextPlayerId = session.turn_order[nextIndex]
+  const won = await persistSession(
+    supabase,
+    gameId,
+    {
+      current_turn_index: nextIndex,
+      status_message: `${flaggedName} ran out of time. ${turnMessage(names, nextPlayerId)}`,
+      turn_started_at: new Date(now).toISOString(),
+      turn_deadline_at: null,
+    },
+    session.updated_at
+  )
+  if (!won) return {}
+  await supabase
+    .from('scrabble_player_state')
+    .update({ clock_ms_remaining: 0, timed_out: true })
+    .eq('id', moverState.id)
+  return {}
 }
 
 // ---------------------------------------------------------------------------
@@ -780,7 +1027,11 @@ export async function removeScrabblePlayer(
       updated_at: new Date().toISOString(),
     }
 
-    const finishing = turnOrder.length < 2
+    // Chess mode: a lone player still on the clock may keep playing solo, so only end
+    // when nobody is left on the clock (or the room drops below two players entirely).
+    const isChess = session.clock_mode === 'chess'
+    const activeRemaining = isChess ? states.filter((s) => !s.timed_out).length : turnOrder.length
+    const finishing = turnOrder.length < 2 || activeRemaining === 0
     if (finishing) {
       // Not enough players to keep going — the last player standing wins (by current score).
       let winnerPlayerId: string | null = null
@@ -798,6 +1049,22 @@ export async function removeScrabblePlayer(
       update.status_message = winnerName
         ? `${removedName} left — ${winnerName} wins!`
         : `${removedName} left — game over.`
+      update.turn_deadline_at = null
+      update.turn_started_at = null
+    } else if (isChess) {
+      // Hand the turn to the next seat still on the clock (may be the current seat).
+      const out = new Set(states.filter((s) => s.timed_out).map((s) => s.player_id))
+      for (let step = 0; step < turnOrder.length; step += 1) {
+        const cand = (currentTurnIndex + step) % turnOrder.length
+        if (!out.has(turnOrder[cand])) {
+          currentTurnIndex = cand
+          break
+        }
+      }
+      update.current_turn_index = currentTurnIndex
+      const nextPlayerId = turnOrder[currentTurnIndex]
+      update.status_message = `${removedName} left. ${turnMessage(names, nextPlayerId)}`
+      update.turn_started_at = new Date().toISOString()
       update.turn_deadline_at = null
     } else {
       const timerSeconds = await loadTimerSeconds(supabase, gameId)

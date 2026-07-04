@@ -8,6 +8,7 @@ import {
   MAX_SCHOOL_CLASSES,
 } from '@/lib/tournament-school'
 import { SCRABBLE_DICTIONARY_LABELS, SCRABBLE_DICTIONARY_OPTIONS } from '@/lib/scrabble-dictionary-meta'
+import { SCRABBLE_CLOCK_OPTIONS, type ScrabbleClockMode } from '@/lib/scrabble'
 
 // Per-turn timer choices for the group games (mirrors the lobby's options).
 const WHOT_TURN_OPTIONS = [0, 10, 15, 30, 60, 90, 120]
@@ -72,6 +73,8 @@ export interface TournamentGameConfigValue {
   whotNumberCalls: boolean
   whotPick2Stacking: boolean
   scrabbleDictionary: string
+  scrabbleClockMode: ScrabbleClockMode // scrabble: 'standard' per-turn timer vs 'chess' per-player bank
+  scrabbleClockSeconds: number // scrabble chess-clock: per-player bank
   schoolClassCount: number
   questionsPerRound: number // knockout
   triviaTimer: number // knockout: seconds per question
@@ -87,6 +90,8 @@ export function defaultGameConfigValue(): TournamentGameConfigValue {
     whotNumberCalls: true,
     whotPick2Stacking: true,
     scrabbleDictionary: 'enable',
+    scrabbleClockMode: 'standard',
+    scrabbleClockSeconds: 600,
     schoolClassCount: MAX_SCHOOL_CLASSES,
     questionsPerRound: 5,
     triviaTimer: 15,
@@ -120,6 +125,8 @@ export function gameConfigRequestBody(
         timerSeconds: v.turnTimer,
         gameDurationSeconds: v.gameDuration,
         scrabbleDictionary: v.scrabbleDictionary,
+        scrabbleClockMode: v.scrabbleClockMode,
+        scrabbleClockSeconds: v.scrabbleClockSeconds,
       }
     }
     return { questionSource: 'platform', roundsCount: v.questionsPerRound, timerSeconds: v.triviaTimer }
@@ -152,6 +159,8 @@ export function gameConfigRequestBody(
         timerSeconds: v.turnTimer,
         gameDurationSeconds: v.gameDuration,
         scrabbleDictionary: v.scrabbleDictionary,
+        scrabbleClockMode: v.scrabbleClockMode,
+        scrabbleClockSeconds: v.scrabbleClockSeconds,
       }
     }
   }
@@ -174,6 +183,8 @@ export function gameConfigValueFromStored(
     whotNumberCalls: boolean
     whotPick2Stacking: boolean
     scrabbleDictionary: string
+    scrabbleClockMode: ScrabbleClockMode
+    scrabbleClockSeconds: number
     schoolClassCount: number
   }>
   if (format === 'knockout') {
@@ -181,6 +192,8 @@ export function gameConfigValueFromStored(
       v.turnTimer = c.timerSeconds ?? 60
       v.gameDuration = c.gameDurationSeconds ?? 900
       v.scrabbleDictionary = c.scrabbleDictionary ?? 'enable'
+      v.scrabbleClockMode = c.scrabbleClockMode === 'chess' ? 'chess' : 'standard'
+      v.scrabbleClockSeconds = c.scrabbleClockSeconds ?? 600
       return v
     }
     v.questionsPerRound = c.roundsCount ?? 5
@@ -210,7 +223,11 @@ export function gameConfigValueFromStored(
       v.whotNumberCalls = c.whotNumberCalls ?? true
       v.whotPick2Stacking = c.whotPick2Stacking ?? true
     }
-    if (gameType === 'scrabble') v.scrabbleDictionary = c.scrabbleDictionary ?? 'enable'
+    if (gameType === 'scrabble') {
+      v.scrabbleDictionary = c.scrabbleDictionary ?? 'enable'
+      v.scrabbleClockMode = c.scrabbleClockMode === 'chess' ? 'chess' : 'standard'
+      v.scrabbleClockSeconds = c.scrabbleClockSeconds ?? 600
+    }
   }
   return v
 }
@@ -244,6 +261,9 @@ export function TournamentGameConfigFields({
   // head-to-head Scrabble bracket; trivia knockout keeps the questions/timer panel.
   const isKnockoutScrabble = isKnockout && gameType === 'scrabble'
   const isKnockoutTrivia = isKnockout && gameType !== 'scrabble'
+  // Scrabble's chess-clock mode replaces the per-turn timer + room-length cap with a
+  // per-player time bank, so those two controls are hidden when it's selected.
+  const isScrabbleChess = gameType === 'scrabble' && value.scrabbleClockMode === 'chess'
 
   return (
     <>
@@ -291,46 +311,87 @@ export function TournamentGameConfigFields({
 
       {((isH2H && (gameType === 'whot' || gameType === 'scrabble')) || isSchool || isKnockoutScrabble) && (
         <div className="surface-inset p-4 space-y-4">
-          <Field label="Time per turn" htmlFor="tgc-turn-timer">
-            <select
-              id="tgc-turn-timer"
-              value={value.turnTimer}
-              onChange={(e) => set({ turnTimer: Number(e.target.value) })}
-              className="input-field"
-            >
-              {(isSchool || gameType === 'whot' ? WHOT_TURN_OPTIONS : SCRABBLE_TURN_OPTIONS).map((s) => (
-                <option key={s} value={s}>
-                  {fmtTurn(s)}
-                </option>
-              ))}
-            </select>
-            <p className="text-faint text-xs mt-1.5">How long each player has on their turn in every room.</p>
-          </Field>
+          {gameType === 'scrabble' && (
+            <Field label="Game mode" htmlFor="tgc-scrabble-mode">
+              <select
+                id="tgc-scrabble-mode"
+                value={value.scrabbleClockMode}
+                onChange={(e) => set({ scrabbleClockMode: e.target.value as ScrabbleClockMode })}
+                className="input-field"
+              >
+                <option value="standard">Normal (per-turn timer)</option>
+                <option value="chess">Chess clock (per-player bank)</option>
+              </select>
+              <p className="text-faint text-xs mt-1.5">
+                {isScrabbleChess
+                  ? 'Each player gets a fixed time bank that only ticks on their turn. Flag out and you spectate; last clock standing ends the room, highest score wins.'
+                  : 'An optional per-turn countdown plus an overall room-length cap.'}
+              </p>
+            </Field>
+          )}
 
-          <Field label={isSchool ? 'Match length' : 'Game length'} htmlFor="tgc-game-duration">
-            <select
-              id="tgc-game-duration"
-              value={value.gameDuration}
-              onChange={(e) => set({ gameDuration: Number(e.target.value) })}
-              className="input-field"
-            >
-              {(isSchool
-                ? SCHOOL_MATCH_SECONDS_OPTIONS
-                : gameType === 'whot'
-                  ? WHOT_DURATION_OPTIONS
-                  : SCRABBLE_DURATION_OPTIONS
-              ).map((s) => (
-                <option key={s} value={s}>
-                  {fmtDuration(s)}
-                </option>
-              ))}
-            </select>
-            <p className="text-faint text-xs mt-1.5">
-              {isSchool
-                ? 'How long each match runs. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats.'
-                : 'Max length of each room — when time’s up the game ends and the leader wins, so rounds don’t drag on.'}
-            </p>
-          </Field>
+          {isScrabbleChess && (
+            <Field label="Time per player" htmlFor="tgc-scrabble-clock">
+              <select
+                id="tgc-scrabble-clock"
+                value={value.scrabbleClockSeconds}
+                onChange={(e) => set({ scrabbleClockSeconds: Number(e.target.value) })}
+                className="input-field"
+              >
+                {SCRABBLE_CLOCK_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s / 60} min
+                  </option>
+                ))}
+              </select>
+              <p className="text-faint text-xs mt-1.5">Each player&apos;s clock for every room in the bracket.</p>
+            </Field>
+          )}
+
+          {!isScrabbleChess && (
+            <Field label="Time per turn" htmlFor="tgc-turn-timer">
+              <select
+                id="tgc-turn-timer"
+                value={value.turnTimer}
+                onChange={(e) => set({ turnTimer: Number(e.target.value) })}
+                className="input-field"
+              >
+                {(isSchool || gameType === 'whot' ? WHOT_TURN_OPTIONS : SCRABBLE_TURN_OPTIONS).map((s) => (
+                  <option key={s} value={s}>
+                    {fmtTurn(s)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-faint text-xs mt-1.5">How long each player has on their turn in every room.</p>
+            </Field>
+          )}
+
+          {!isScrabbleChess && (
+            <Field label={isSchool ? 'Match length' : 'Game length'} htmlFor="tgc-game-duration">
+              <select
+                id="tgc-game-duration"
+                value={value.gameDuration}
+                onChange={(e) => set({ gameDuration: Number(e.target.value) })}
+                className="input-field"
+              >
+                {(isSchool
+                  ? SCHOOL_MATCH_SECONDS_OPTIONS
+                  : gameType === 'whot'
+                    ? WHOT_DURATION_OPTIONS
+                    : SCRABBLE_DURATION_OPTIONS
+                ).map((s) => (
+                  <option key={s} value={s}>
+                    {fmtDuration(s)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-faint text-xs mt-1.5">
+                {isSchool
+                  ? 'How long each match runs. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats.'
+                  : 'Max length of each room — when time’s up the game ends and the leader wins, so rounds don’t drag on.'}
+              </p>
+            </Field>
+          )}
 
           {gameType === 'whot' && (
             <div className="space-y-1.5">

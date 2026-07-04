@@ -3,7 +3,12 @@ import { clampSchoolClassCount, clampSchoolMatchSeconds } from './tournament-sch
 import { clampBoardGameTurnTimer } from './board-game-lobby-settings'
 import { clampChessTimer } from './chess'
 import { clampWhotGameDuration } from './whot'
-import { clampScrabbleTimer, clampScrabbleGameDuration } from './scrabble'
+import {
+  clampScrabbleTimer,
+  clampScrabbleGameDuration,
+  clampScrabbleClockSeconds,
+  parseScrabbleClockMode,
+} from './scrabble'
 import { parseScrabbleDictionaryId } from './scrabble-dictionary-meta'
 
 // The per-round game setup a tournament stores at creation (and, before it starts,
@@ -19,7 +24,18 @@ export interface TournamentGameConfigInput {
   whotNumberCalls?: boolean
   whotPick2Stacking?: boolean
   scrabbleDictionary?: string
+  scrabbleClockMode?: string
+  scrabbleClockSeconds?: number
   schoolClassCount?: number
+}
+
+/** Build the Scrabble room clock fields (shared by head-to-head and knockout). */
+function scrabbleClockConfig(gameConfig: TournamentGameConfigInput | undefined): Record<string, unknown> {
+  const clockMode = parseScrabbleClockMode(gameConfig?.scrabbleClockMode)
+  return {
+    scrabbleClockMode: clockMode,
+    scrabbleClockSeconds: clockMode === 'chess' ? clampScrabbleClockSeconds(gameConfig?.scrabbleClockSeconds) : 0,
+  }
 }
 
 /**
@@ -52,6 +68,7 @@ export function buildTournamentGameConfig(
         timerSeconds: clampScrabbleTimer(gameConfig?.timerSeconds ?? 60),
         gameDurationSeconds: clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 900),
         scrabbleDictionary: parseScrabbleDictionaryId(gameConfig?.scrabbleDictionary),
+        ...scrabbleClockConfig(gameConfig),
       }
     }
     // Chess: the per-player clock (0 = untimed) applied to every match.
@@ -69,6 +86,7 @@ export function buildTournamentGameConfig(
         timerSeconds: clampScrabbleTimer(gameConfig?.timerSeconds ?? 60),
         gameDurationSeconds: clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 900),
         scrabbleDictionary: parseScrabbleDictionaryId(gameConfig?.scrabbleDictionary),
+        ...scrabbleClockConfig(gameConfig),
       }
     }
     return {

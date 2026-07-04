@@ -151,7 +151,13 @@ import {
   formatMonopolyGameDuration,
 } from '@/lib/monopoly'
 import { MONOPOLY_DEFAULT_TURN_TIMER } from '@/lib/supabase-selects'
-import { SCRABBLE_GAME_DURATION_OPTIONS, formatScrabbleGameDuration } from '@/lib/scrabble'
+import {
+  SCRABBLE_GAME_DURATION_OPTIONS,
+  formatScrabbleGameDuration,
+  SCRABBLE_CLOCK_OPTIONS,
+  SCRABBLE_DEFAULT_CLOCK_SECONDS,
+  type ScrabbleClockMode,
+} from '@/lib/scrabble'
 import {
   SCRABBLE_DICTIONARY_OPTIONS,
   SCRABBLE_DICTIONARY_LABELS,
@@ -269,6 +275,8 @@ function CreateGameInner() {
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
   const [scrabbleGameDuration, setScrabbleGameDuration] = useState(0)
   const [scrabbleDictionary, setScrabbleDictionary] = useState<ScrabbleDictionaryId>(SCRABBLE_DEFAULT_DICTIONARY)
+  const [scrabbleClockMode, setScrabbleClockMode] = useState<ScrabbleClockMode>('standard')
+  const [scrabbleClockSeconds, setScrabbleClockSeconds] = useState(SCRABBLE_DEFAULT_CLOCK_SECONDS)
   const [chessBoardTheme, setChessBoardTheme] = useState('green')
   const [chessPieceSet, setChessPieceSet] = useState('neo')
   // On successful chess-game creation we mirror the host's chosen look into this
@@ -1266,6 +1274,8 @@ function CreateGameInner() {
           crazy8_pick2_stacking: isCrazy8 ? crazy8Pick2Stacking : undefined,
           ludo_variant: isLudo ? ludoVariant : undefined,
           scrabble_dictionary_id: isScrabble ? scrabbleDictionary : undefined,
+          scrabble_clock_mode: isScrabble ? scrabbleClockMode : undefined,
+          scrabble_clock_seconds: isScrabble && scrabbleClockMode === 'chess' ? scrabbleClockSeconds : undefined,
           chess_board_theme: isChess ? chessBoardTheme : undefined,
           chess_piece_set: isChess ? chessPieceSet : undefined,
           elimination_config:
@@ -1983,32 +1993,65 @@ function CreateGameInner() {
             ) : isScrabble ? (
               <SettingsGroup title="Scrabble room">
                 <p className="text-faint text-sm">2–4 players — the host can join as one of them.</p>
-                <Field label="Time per turn">
+                <Field label="Game mode">
                   <select
-                    value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    value={scrabbleClockMode}
+                    onChange={(e) => setScrabbleClockMode(e.target.value as ScrabbleClockMode)}
                     className="input-field w-full"
                   >
-                    <option value={0}>No timer</option>
-                    <option value={60}>1 minute</option>
-                    <option value={120}>2 minutes</option>
-                    <option value={180}>3 minutes</option>
-                    <option value={300}>5 minutes</option>
+                    <option value="standard">Normal (per-turn timer)</option>
+                    <option value="chess">Chess clock (per-player time bank)</option>
                   </select>
+                  <p className="text-faint mt-1 text-xs">
+                    {scrabbleClockMode === 'chess'
+                      ? 'Each player gets a fixed time bank that only counts down on their turn. Run out and you can watch but not play; last clock standing ends the game — highest score wins.'
+                      : 'An optional countdown each turn, plus an overall game-length cap.'}
+                  </p>
                 </Field>
-                <Field label="Game length">
-                  <select
-                    value={scrabbleGameDuration}
-                    onChange={(e) => setScrabbleGameDuration(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {SCRABBLE_GAME_DURATION_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {formatScrabbleGameDuration(s)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                {scrabbleClockMode === 'chess' ? (
+                  <Field label="Time per player">
+                    <select
+                      value={scrabbleClockSeconds}
+                      onChange={(e) => setScrabbleClockSeconds(Number(e.target.value))}
+                      className="input-field w-full"
+                    >
+                      {SCRABBLE_CLOCK_OPTIONS.map((s) => (
+                        <option key={s} value={s}>
+                          {s / 60} minutes
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                ) : (
+                  <>
+                    <Field label="Time per turn">
+                      <select
+                        value={settings.timer_seconds}
+                        onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                        className="input-field w-full"
+                      >
+                        <option value={0}>No timer</option>
+                        <option value={60}>1 minute</option>
+                        <option value={120}>2 minutes</option>
+                        <option value={180}>3 minutes</option>
+                        <option value={300}>5 minutes</option>
+                      </select>
+                    </Field>
+                    <Field label="Game length">
+                      <select
+                        value={scrabbleGameDuration}
+                        onChange={(e) => setScrabbleGameDuration(Number(e.target.value))}
+                        className="input-field w-full"
+                      >
+                        {SCRABBLE_GAME_DURATION_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {formatScrabbleGameDuration(s)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </>
+                )}
                 <Field label="Dictionary">
                   <select
                     value={scrabbleDictionary}

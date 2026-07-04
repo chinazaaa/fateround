@@ -344,10 +344,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       whotNumberCalls?: boolean
       whotPick2Stacking?: boolean
       scrabbleDictionary?: string
+      scrabbleClockMode?: string
+      scrabbleClockSeconds?: number
     }
     const roomTimer = typeof cfg.timerSeconds === 'number' ? cfg.timerSeconds : DEFAULT_GROUP_TURN_SECONDS
     // Overall room-length cap (0 = no limit); the games auto-finish past it.
     const roomDuration = typeof cfg.gameDurationSeconds === 'number' ? cfg.gameDurationSeconds : 0
+    const scrabbleClockMode = cfg.scrabbleClockMode === 'chess' ? 'chess' : 'standard'
     const gameSettings: Record<string, unknown> =
       gameType === 'whot'
         ? {
@@ -357,7 +360,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
             whot_pick2_stacking: cfg.whotPick2Stacking ?? true,
           }
         : gameType === 'scrabble'
-          ? { scrabble_dictionary_id: cfg.scrabbleDictionary ?? 'enable' }
+          ? {
+              scrabble_dictionary_id: cfg.scrabbleDictionary ?? 'enable',
+              scrabble_clock_mode: scrabbleClockMode,
+              scrabble_clock_seconds: scrabbleClockMode === 'chess' ? (cfg.scrabbleClockSeconds ?? 600) : 0,
+            }
           : {}
 
     for (const group of groups) {

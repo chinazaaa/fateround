@@ -17,14 +17,15 @@ export function ScrabbleHostTimeExtension({
   onExtended,
 }: {
   gameCode: string
-  game: Pick<Game, 'status' | 'session_started_at' | 'game_duration_seconds'>
+  game: Pick<Game, 'status' | 'session_started_at' | 'game_duration_seconds' | 'scrabble_clock_mode'>
   hostToken: string
   onExtended: () => void | Promise<void>
 }) {
   const { success, error: toastError } = useToast()
   const [extending, setExtending] = useState<number | null>(null)
   const duration = game.game_duration_seconds ?? 0
-  const hasTimer = game.status === 'active' && duration > 0
+  // Chess-clock mode has no whole-game cap to extend.
+  const hasTimer = game.status === 'active' && duration > 0 && game.scrabble_clock_mode !== 'chess'
 
   if (!hasTimer) return <ScrabbleGameTimerBar gameCode={gameCode} game={game} />
 
