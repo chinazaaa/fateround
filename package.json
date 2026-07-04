@@ -16,7 +16,6 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:mahjong": "vitest run src/lib/mahjong.test.ts",
     "vapid:generate": "web-push generate-vapid-keys"
   },
   "dependencies": {
