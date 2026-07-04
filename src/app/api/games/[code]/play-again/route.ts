@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
+import { withGameNotification } from '@/lib/push-route'
 import { playAgainSchema } from '@/lib/validation'
 import {
   parseGameType,
@@ -115,7 +116,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   word_hunt: clearWordHuntSessionData,
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
+async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const { data: body, error: bodyError } = await parseJsonBody(req, playAgainSchema)
   if (bodyError) return bodyError
@@ -374,3 +375,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   return NextResponse.json({ success: true, game: updated })
 }
+
+export const POST = withGameNotification('lobby_reopened', handlePost)
