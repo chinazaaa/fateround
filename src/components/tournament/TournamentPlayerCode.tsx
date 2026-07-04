@@ -121,8 +121,12 @@ export function TournamentResumeEntry({
 
   if (!expanded) {
     return (
-      <button onClick={() => setExpanded(true)} className="btn-ghost text-xs mx-auto block">
-        Already joined? Enter your player code
+      <button
+        onClick={() => setExpanded(true)}
+        className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5"
+      >
+        <span className="text-muted">Already joined?</span>
+        <span className="underline underline-offset-2">Enter your player code</span>
       </button>
     )
   }

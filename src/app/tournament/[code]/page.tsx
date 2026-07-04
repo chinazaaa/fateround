@@ -1478,8 +1478,13 @@ export default function TournamentLobbyPage() {
           </div>
           {joinError && <p className="text-red-400 text-xs">{joinError}</p>}
           <TournamentResumeEntry tournamentId={tournamentId} onResumed={handleResumedByCode} />
-          <button onClick={startSpectating} className="btn-ghost text-xs mx-auto block">
-            👁 Just here to watch — don&apos;t add me as a player
+          <button
+            onClick={startSpectating}
+            className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5"
+          >
+            <span aria-hidden>👁</span>
+            <span className="underline underline-offset-2">Watch instead</span>
+            <span className="text-muted">— don&apos;t add me as a player</span>
           </button>
         </div>
       )}
@@ -1492,8 +1497,12 @@ export default function TournamentLobbyPage() {
             You won&apos;t play — stay on this page and the game will open here for you to watch once the host starts
             it.
           </p>
-          <button onClick={stopSpectating} className="btn-ghost text-xs">
-            Actually, let me play
+          <button
+            onClick={stopSpectating}
+            className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5"
+          >
+            <span aria-hidden>🎮</span>
+            <span className="underline underline-offset-2">Actually, let me play</span>
           </button>
         </div>
       )}
