@@ -27,11 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const token = body.token.trim()
   const admin = getSupabaseAdmin()
 
-  const { data: tournament } = await admin
-    .from('tournaments')
-    .select('status')
-    .eq('id', tournamentId)
-    .maybeSingle()
+  const { data: tournament } = await admin.from('tournaments').select('status').eq('id', tournamentId).maybeSingle()
   if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
   if (tournament.status !== 'waiting') {
     return NextResponse.json(
