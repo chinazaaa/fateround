@@ -11,8 +11,8 @@ const dismissKey = (gameCode: string) => `push_ios_nudge_dismissed_${gameCode}`
  *
  * On iPhone/iPad, web push is delivered only from a home-screen-installed PWA
  * (iOS 16.4+), and there's no API to trigger "Add to Home Screen" — so this is a
- * one-time instructional card. It's the counterpart to PushNotificationPrompt: that
- * one hides on un-installed iOS (no push capability), this one fills the gap. They're
+ * one-time instructional card. It's the counterpart to NotificationToggle: the header
+ * bell hides on un-installed iOS (no push capability), this one fills the gap. They're
  * mutually exclusive, so only ever one shows.
  */
 export function IosInstallPushNudge({ gameCode }: { gameCode: string }) {
