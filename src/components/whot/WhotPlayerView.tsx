@@ -363,6 +363,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
             currentName={myName}
             onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
+            spectating={isWatching}
           />
         )}
         <WhotGameTimerBar gameCode={gameCode} game={game} />
@@ -387,6 +388,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
           currentName={myName}
           onRenamed={() => void load()}
           onLeft={handlePlayerLeft}
+          spectating={isWatching}
         />
       )}
 

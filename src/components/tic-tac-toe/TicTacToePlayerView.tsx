@@ -314,6 +314,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
             onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
             inLobby
+            spectating={isViewer}
           />
         )}
       </TicTacToeShell>
@@ -343,6 +344,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
           currentName={myName}
           onRenamed={() => void load()}
           onLeft={handlePlayerLeft}
+          spectating={isViewer}
         />
       )}
     </TicTacToeShell>

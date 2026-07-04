@@ -9,11 +9,14 @@ export function EditNameInline({
   playerId,
   currentName,
   onRenamed,
+  spectating = false,
 }: {
   gameCode: string
   playerId: string
   currentName: string
   onRenamed: (newName: string) => void
+  /** Show a "Watching as" label instead of "Playing as" for spectators/viewers. */
+  spectating?: boolean
 }) {
   const { success, error: toastError } = useToast()
   const [editing, setEditing] = useState(false)
@@ -56,7 +59,7 @@ export function EditNameInline({
   if (!editing) {
     return (
       <p className="text-muted text-sm">
-        Playing as <strong>{currentName}</strong>{' '}
+        {spectating ? 'Watching as' : 'Playing as'} <strong>{currentName}</strong>{' '}
         <button
           type="button"
           onClick={() => {

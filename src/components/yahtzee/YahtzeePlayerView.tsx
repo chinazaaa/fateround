@@ -364,6 +364,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
             currentName={myName}
             onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
+            spectating={isViewer}
           />
         )}
         <div className="space-y-2">
@@ -399,6 +400,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
           currentName={myName}
           onRenamed={() => void load()}
           onLeft={handlePlayerLeft}
+          spectating={isViewer}
         />
       )}
       <div className="space-y-2">

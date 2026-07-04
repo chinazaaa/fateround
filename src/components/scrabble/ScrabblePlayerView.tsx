@@ -354,6 +354,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
             onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
             inLobby
+            spectating={isViewer}
           />
         )}
       </ScrabbleShell>
@@ -386,6 +387,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
           currentName={myName}
           onRenamed={() => void load()}
           onLeft={handlePlayerLeft}
+          spectating={isViewer}
         />
       )}
     </ScrabbleShell>

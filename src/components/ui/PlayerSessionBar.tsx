@@ -57,6 +57,7 @@ export function PlayerSessionBar({
           onChangeName={onChangeName}
           changeNameLabel={changeNameLabel}
           inLobby={inLobby}
+          spectating={spectating}
         />
       ) : null}
     </div>

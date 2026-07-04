@@ -335,6 +335,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
             onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
             inLobby
+            spectating={isViewer}
           />
         )}
       </CheckersShell>
@@ -363,6 +364,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
           currentName={myName}
           onRenamed={() => void load()}
           onLeft={handlePlayerLeft}
+          spectating={isViewer}
         />
       )}
     </CheckersShell>
