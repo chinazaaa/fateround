@@ -11,7 +11,7 @@ import { SCRABBLE_DICTIONARY_LABELS, SCRABBLE_DICTIONARY_OPTIONS } from '@/lib/s
 
 // Per-turn timer choices for the group games (mirrors the lobby's options).
 const WHOT_TURN_OPTIONS = [0, 10, 15, 30, 60, 90, 120]
-const SCRABBLE_TURN_OPTIONS = [0, 60, 180, 300]
+const SCRABBLE_TURN_OPTIONS = [0, 60, 120, 180, 300]
 const fmtTurn = (s: number) => (s === 0 ? 'No limit' : s < 60 ? `${s}s` : `${s / 60} min`)
 
 // Overall room-length caps, so a Whot/Scrabble room can't run for hours.

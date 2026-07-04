@@ -19,7 +19,7 @@ export const SCRABBLE_MIN_PLAYERS = 2
 export const SCRABBLE_MAX_PLAYERS = 4
 
 /** Allowed per-turn timer values in seconds (0 = no timer). */
-export const SCRABBLE_TIMER_OPTIONS = [0, 60, 180, 300] as const
+export const SCRABBLE_TIMER_OPTIONS = [0, 60, 120, 180, 300] as const
 
 /** Clamp a requested per-turn timer to an allowed value; defaults to off. */
 export function clampScrabbleTimer(value: unknown): number {
