@@ -4,11 +4,11 @@ import { SiteFooter } from '@/components/SiteFooter'
 import { faqPageJsonLd, breadcrumbJsonLd } from '@/lib/seo'
 import type { MarketingPageContent } from '@/lib/marketing-landing'
 
-function PrimaryCtas() {
+function PrimaryCtas({ primary }: { primary?: { href: string; label: string } }) {
   return (
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 sm:gap-3 w-full sm:w-fit mx-auto">
-      <Link href="/create" className="btn-primary btn-fit">
-        Create a free room →
+      <Link href={primary?.href ?? '/create'} className="btn-primary btn-fit">
+        {primary?.label ?? 'Create a free room →'}
       </Link>
       <Link href="/games" className="btn-secondary btn-fit">
         Browse 20+ games
@@ -59,7 +59,7 @@ export function MarketingLanding({ content }: { content: MarketingPageContent })
             </h1>
             <p className="text-muted text-sm sm:text-base leading-relaxed max-w-md mx-auto">{content.heroSubtitle}</p>
             <div className="pt-0.5">
-              <PrimaryCtas />
+              <PrimaryCtas primary={content.primaryCta} />
             </div>
             <p className="text-faint text-xs tracking-wide">Free forever · No sign-up · No download · Real-time</p>
           </div>
@@ -213,7 +213,7 @@ export function MarketingLanding({ content }: { content: MarketingPageContent })
           >
             <p className="text-2xl font-black gradient-title-subtle">{content.ctaHeading}</p>
             <p className="text-muted text-sm">{content.ctaSubtext}</p>
-            <PrimaryCtas />
+            <PrimaryCtas primary={content.primaryCta} />
           </div>
         </section>
       </div>

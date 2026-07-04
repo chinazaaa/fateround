@@ -7,6 +7,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { computeRoundGroups, computeRoundPairings, resolveGroupSize } from '@/lib/tournament-bracket'
 import { computeSchoolRooms } from '@/lib/tournament-school'
+import { parseScrabbleClockMode, clampScrabbleClockSeconds } from '@/lib/scrabble'
 import { parseStoredTriviaQuestions } from '@/lib/custom-questions'
 import { triviaQuestionKey } from '@/lib/trivia-questions'
 
@@ -94,8 +95,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const roundNumber = (lastRow?.round_number ?? 0) + 1
   let nextOrder = (lastRow?.game_order ?? 0) + 1
 
-  // Knockout: one group game per round with all survivors in it (no pairing).
-  if (tournament.format === 'knockout') {
+  // Room size for the group-bracket formats (head-to-head Whot/Scrabble, and
+  // Scrabble knockout). > 2 means "play in rooms"; trivia knockout stays at 2.
+  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
+
+  // Trivia knockout: one group game per round with all survivors in it (no pairing).
+  // Scrabble knockout plays in rooms instead, so it falls through to the group
+  // staging below — it's ranked as one field at resolution, not per room.
+  if (tournament.format === 'knockout' && groupSize <= 2) {
     const config = (tournament.game_config ?? {}) as {
       questionSource?: string
       roundsCount?: number
@@ -318,11 +325,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ roundNumber, rooms: rooms.length, eliminated: eliminated.length })
   }
 
-  const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
-
-  // Group bracket (Whot/Scrabble): split survivors into rooms of up to `groupSize`
-  // and spawn one game room per group. Only the room's winner advances; the rest
-  // are eliminated when the game finishes (resolved in tournament-h2h).
+  // Group bracket (head-to-head Whot/Scrabble, or Scrabble knockout): split
+  // survivors into rooms of up to `groupSize` and spawn one game room per group.
+  // Head-to-head advances only each room's winner; knockout ranks the whole field
+  // by score and cuts the bottom half. Both are resolved when the games finish
+  // (head-to-head in tournament-h2h, knockout in tournament-scoring).
   if (groupSize > 2) {
     const gameType = tournament.game_type ?? DEFAULT_H2H_GAME_TYPE
     const { groups, byes } = computeRoundGroups(shuffle(survivorIds), groupSize)
@@ -338,10 +345,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       whotNumberCalls?: boolean
       whotPick2Stacking?: boolean
       scrabbleDictionary?: string
+      scrabbleClockMode?: string
+      scrabbleClockSeconds?: number
     }
     const roomTimer = typeof cfg.timerSeconds === 'number' ? cfg.timerSeconds : DEFAULT_GROUP_TURN_SECONDS
-    // Overall room-length cap (0 = no limit); the games auto-finish past it.
-    const roomDuration = typeof cfg.gameDurationSeconds === 'number' ? cfg.gameDurationSeconds : 0
+    // Reuse the canonical clock helpers so a stored value always lands on the same
+    // allowed option set as buildTournamentGameConfig / loadClockConfig.
+    const scrabbleClockMode = parseScrabbleClockMode(cfg.scrabbleClockMode)
+    // Overall room-length cap (0 = no limit); the games auto-finish past it. Chess
+    // clock has no whole-game cap, so its rooms always run uncapped.
+    const roomDuration =
+      scrabbleClockMode === 'chess' ? 0 : typeof cfg.gameDurationSeconds === 'number' ? cfg.gameDurationSeconds : 0
     const gameSettings: Record<string, unknown> =
       gameType === 'whot'
         ? {
@@ -351,7 +365,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
             whot_pick2_stacking: cfg.whotPick2Stacking ?? true,
           }
         : gameType === 'scrabble'
-          ? { scrabble_dictionary_id: cfg.scrabbleDictionary ?? 'enable' }
+          ? {
+              scrabble_dictionary_id: cfg.scrabbleDictionary ?? 'enable',
+              scrabble_clock_mode: scrabbleClockMode,
+              scrabble_clock_seconds:
+                scrabbleClockMode === 'chess' ? clampScrabbleClockSeconds(cfg.scrabbleClockSeconds) : 0,
+            }
           : {}
 
     for (const group of groups) {

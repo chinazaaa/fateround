@@ -67,7 +67,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
 
-  const [hostMode, setHostMode] = useState<MonopolyHostMode>('spectator')
+  const [hostMode, setHostMode] = useState<MonopolyHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)

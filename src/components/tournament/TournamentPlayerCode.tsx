@@ -34,15 +34,28 @@ export function TournamentContinueCard({ tournamentId, code }: { tournamentId: s
 
   if (!expanded) {
     return (
-      <button onClick={() => setExpanded(true)} className="btn-ghost text-xs mx-auto block">
-        📱 Continue on another device
+      <button
+        onClick={() => setExpanded(true)}
+        className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5"
+      >
+        <span aria-hidden>📱</span>
+        <span className="underline underline-offset-2">Continue on another device</span>
       </button>
     )
   }
 
   return (
     <div className="surface-inset p-4 space-y-3 text-center">
-      <p className="label-caps">Continue on another device</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="label-caps">Continue on another device</p>
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="shrink-0 text-faint text-xs hover:text-body transition-colors"
+        >
+          Hide
+        </button>
+      </div>
       <p className="text-muted text-xs">
         📌 Save your link or code. Paste the link on any device to drop straight back into your seat — or open the
         tournament and enter the code by hand. It&apos;s the only way back if you switch devices or lose this tab.
@@ -121,8 +134,12 @@ export function TournamentResumeEntry({
 
   if (!expanded) {
     return (
-      <button onClick={() => setExpanded(true)} className="btn-ghost text-xs mx-auto block">
-        Already joined? Enter your player code
+      <button
+        onClick={() => setExpanded(true)}
+        className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5"
+      >
+        <span className="text-muted">Already joined?</span>
+        <span className="underline underline-offset-2">Enter your player code</span>
       </button>
     )
   }

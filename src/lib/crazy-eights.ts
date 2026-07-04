@@ -1165,8 +1165,8 @@ export type CrazyEightsHostMode = 'spectator' | 'player'
 const CRAZY8_HOST_MODE_KEY = 'crazy_eights_host_mode'
 
 export function getCrazyEightsHostMode(gameCode: string): CrazyEightsHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(`${CRAZY8_HOST_MODE_KEY}_${gameCode}`) as CrazyEightsHostMode) ?? 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return (localStorage.getItem(`${CRAZY8_HOST_MODE_KEY}_${gameCode}`) as CrazyEightsHostMode) ?? 'player'
 }
 
 export function setCrazyEightsHostMode(gameCode: string, mode: CrazyEightsHostMode): void {

@@ -193,7 +193,9 @@ export default function TournamentCreatePage() {
             {isH2H
               ? 'Players are grouped into rooms each round and only the winner of each room advances, until one champion remains. Chess is 1-v-1; Whot plays in rooms of up to 5, Scrabble up to 4.'
               : isKnockout
-                ? 'Everyone plays together each round; the bottom half is knocked out until one champion remains. Round of 16 → Quarterfinal → Semifinal → Final.'
+                ? gameType === 'scrabble'
+                  ? 'Everyone plays in rooms of up to 4, but the whole field is ranked together by score and the bottom half is knocked out each round — it doesn’t matter which room you were in. Repeats until one champion remains.'
+                  : 'Everyone plays together each round; the bottom half is knocked out until one champion remains. Round of 16 → Quarterfinal → Semifinal → Final.'
                 : isSchool
                   ? 'School Whot: everyone starts in the lowest class and is grouped with classmates into a timed Whot room (up to 5) each round. Empty your hand to climb a class; when time’s up the player left holding the most cards repeats. Get stuck with no one left to play and you’re out. First to graduate past the top class wins.'
                   : 'Everyone plays each game together and earns placement points across multiple games.'}
@@ -219,7 +221,9 @@ export default function TournamentCreatePage() {
                 ? h2hGroupSize(gameType) > 2
                   ? `Played in rooms of up to ${h2hGroupSize(gameType)} — only each room's winner advances.`
                   : 'A 1-v-1 duel each round — the winner advances.'
-                : 'The game everyone plays together each round.'}
+                : gameType === 'scrabble'
+                  ? 'Played in rooms of up to 4, but ranked as one field — the bottom half by score is knocked out each round.'
+                  : 'The game everyone plays together each round.'}
             </p>
           </Field>
         )}

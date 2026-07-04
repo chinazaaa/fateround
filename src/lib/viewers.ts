@@ -59,6 +59,18 @@ export function clampLateJoinPolicyForGameType(policy: LateJoinPolicy, gameType:
   return policy
 }
 
+/**
+ * The late-join policy a freshly created game of this type should default to.
+ *
+ * Most games open watch-only to late joiners (the conservative default). Text
+ * Charades is a drop-in party word game, so late joiners should be able to jump
+ * in and play — the host can still restrict it afterwards.
+ */
+export function defaultLateJoinPolicyForGameType(gameType: GameType): LateJoinPolicy {
+  if (isDescribeItGame(gameType)) return 'viewers_and_players'
+  return 'viewers_only'
+}
+
 /** Host can toggle late join policy (excludes secret message). */
 export function gameSupportsViewerSetting(gameType: GameType): boolean {
   return !isSecretMessageGame(gameType)

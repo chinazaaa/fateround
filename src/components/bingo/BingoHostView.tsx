@@ -65,7 +65,7 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const [lobbyMaxPlayers, setLobbyMaxPlayers] = useState(BINGO_MIN_PLAYERS)
 
   // Host+play mode
-  const [hostMode, setHostMode] = useState<BingoHostMode>('spectator')
+  const [hostMode, setHostMode] = useState<BingoHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')

@@ -6,6 +6,7 @@ import {
   h2hGroupSize,
   roundLabel,
   splitKnockoutField,
+  rankKnockoutScores,
 } from './tournament-bracket'
 
 describe('h2hGroupSize', () => {
@@ -189,6 +190,56 @@ describe('splitKnockoutField', () => {
       sizes.push(field.length)
     }
     expect(sizes).toEqual([16, 8, 4, 2, 1])
+  })
+})
+
+describe('rankKnockoutScores', () => {
+  it('ranks the whole field by score, best first — regardless of room', () => {
+    // Two rooms: A = {a:30, b:12}, B = {c:22, d:5}. Ranked globally: a, c, b, d.
+    const scores = new Map([
+      ['a', 30],
+      ['b', 12],
+      ['c', 22],
+      ['d', 5],
+    ])
+    expect(rankKnockoutScores(['a', 'b', 'c', 'd'], scores)).toEqual(['a', 'c', 'b', 'd'])
+  })
+
+  it('cutting the bottom half uses the global ranking, not the room', () => {
+    // A weak room winner (b:12) is cut ahead of a strong room's runner-up (c:22).
+    const scores = new Map([
+      ['a', 30],
+      ['b', 12],
+      ['c', 22],
+      ['d', 5],
+    ])
+    const { advancing, eliminated } = splitKnockoutField(rankKnockoutScores(['a', 'b', 'c', 'd'], scores))
+    expect(advancing).toEqual(['a', 'c'])
+    expect(eliminated).toEqual(['b', 'd'])
+  })
+
+  it('a score-less player (bye/walkover) ranks top and is never cut', () => {
+    const scores = new Map([
+      ['a', 30],
+      ['b', 12],
+    ])
+    // 'bye' has no recorded score → sorts to the front, then the scored players.
+    const ranked = rankKnockoutScores(['a', 'bye', 'b'], scores)
+    expect(ranked[0]).toBe('bye')
+    expect(ranked).toEqual(['bye', 'a', 'b'])
+    expect(splitKnockoutField(ranked).advancing).toContain('bye')
+  })
+
+  it('is stable on ties (including multiple score-less players)', () => {
+    const scores = new Map([['a', 10]])
+    // Two score-less players tie at +Infinity; ties keep input order (NaN-safe).
+    expect(rankKnockoutScores(['x', 'y', 'a'], scores)).toEqual(['x', 'y', 'a'])
+    const tied = new Map([
+      ['p', 5],
+      ['q', 5],
+      ['r', 5],
+    ])
+    expect(rankKnockoutScores(['p', 'q', 'r'], tied)).toEqual(['p', 'q', 'r'])
   })
 })
 

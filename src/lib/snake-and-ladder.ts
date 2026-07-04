@@ -482,8 +482,8 @@ export type SnakeLadderHostMode = 'spectator' | 'player'
 const SNAKE_LADDER_HOST_MODE_KEY = 'snake_ladder_host_mode'
 
 export function getSnakeLadderHostMode(gameCode: string): SnakeLadderHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(`${SNAKE_LADDER_HOST_MODE_KEY}_${gameCode}`) as SnakeLadderHostMode) ?? 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return (localStorage.getItem(`${SNAKE_LADDER_HOST_MODE_KEY}_${gameCode}`) as SnakeLadderHostMode) ?? 'player'
 }
 
 export function setSnakeLadderHostMode(gameCode: string, mode: SnakeLadderHostMode): void {

@@ -34,8 +34,8 @@ type CheckersHostMode = 'spectator' | 'player'
 const HOST_MODE_KEY = 'checkers_host_mode'
 
 function getHostMode(gameCode: string): CheckersHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as CheckersHostMode) ?? 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as CheckersHostMode) ?? 'player'
 }
 
 function setHostMode(gameCode: string, mode: CheckersHostMode): void {
@@ -51,7 +51,7 @@ export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [session, setSession] = useState<CheckersSession | null>(null)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostModeState] = useState<CheckersHostMode>('spectator')
+  const [hostMode, setHostModeState] = useState<CheckersHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')

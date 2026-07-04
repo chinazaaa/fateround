@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { supabasePollOk } from '@/hooks/usePolling'
 import { getPlayerSession } from '@/lib/utils'
 import { rememberNominee, readNominee } from '@/lib/host-transfer'
+import { useHostToken } from '@/hooks/useHostToken'
 
 type PlayerRow = { id: string; name: string; spectator: boolean | null }
 
@@ -17,9 +18,10 @@ type PlayerRow = { id: string; name: string; spectator: boolean | null }
  */
 export function TransferHostControl() {
   const params = useParams()
-  const searchParams = useSearchParams()
   const code = typeof params?.code === 'string' ? params.code.toUpperCase() : null
-  const hostToken = searchParams.get('token') ?? ''
+  // Clean host URL (token in storage) → resolve via the hook (fallback read in an effect,
+  // no hydration mismatch); otherwise this control (and the Transfer Host button) would vanish.
+  const { hostToken } = useHostToken(code)
 
   const [open, setOpen] = useState(false)
   const [players, setPlayers] = useState<PlayerRow[]>([])

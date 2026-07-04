@@ -52,7 +52,7 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [states, setStates] = useState<LudoPlayerState[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostModeState] = useState<LudoHostMode>('spectator')
+  const [hostMode, setHostModeState] = useState<LudoHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')

@@ -13,6 +13,10 @@ vi.mock('@/lib/tournament-h2h', () => ({ resolveHeadToHeadMatch: resolveH2H }))
 const resolveSchool = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/tournament-school', () => ({ resolveSchoolMatch: resolveSchool }))
 
+// And the Scrabble-knockout room resolver, same reason.
+const resolveKnockout = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/tournament-scoring', () => ({ resolveKnockoutGroupRoom: resolveKnockout }))
+
 import { markGameFinished } from './game-finish'
 
 // Minimal Supabase stand-in: the games update builder is chainable and awaitable,
@@ -39,6 +43,7 @@ beforeEach(() => {
   award.mockReset()
   resolveH2H.mockReset()
   resolveSchool.mockReset()
+  resolveKnockout.mockReset()
 })
 
 describe('markGameFinished', () => {

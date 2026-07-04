@@ -68,8 +68,8 @@ type HostTab = 'play' | 'manage'
 const HOST_MODE_KEY = 'describe_it_host_mode'
 
 function getHostMode(gameCode: string): HostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as HostMode) ?? 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as HostMode) ?? 'player'
 }
 function storeHostMode(gameCode: string, mode: HostMode) {
   if (typeof window !== 'undefined') localStorage.setItem(`${HOST_MODE_KEY}_${gameCode}`, mode)
@@ -92,7 +92,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   const [picking, setPicking] = useState(false)
   const [moving, setMoving] = useState(false)
 
-  const [hostMode, setHostMode] = useState<HostMode>('spectator')
+  const [hostMode, setHostMode] = useState<HostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')

@@ -993,8 +993,8 @@ export type LudoHostMode = 'spectator' | 'player'
 const LUDO_HOST_MODE_KEY = 'ludo_host_mode'
 
 export function getLudoHostMode(gameCode: string): LudoHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(`${LUDO_HOST_MODE_KEY}_${gameCode}`) as LudoHostMode) ?? 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return (localStorage.getItem(`${LUDO_HOST_MODE_KEY}_${gameCode}`) as LudoHostMode) ?? 'player'
 }
 
 export function setLudoHostMode(gameCode: string, mode: LudoHostMode): void {

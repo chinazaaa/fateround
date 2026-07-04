@@ -243,8 +243,8 @@ export type BingoHostMode = 'spectator' | 'player'
 const bingoHostModeKey = (gameCode: string) => `bingo_host_mode_${gameCode}`
 
 export function getBingoHostMode(gameCode: string): BingoHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return localStorage.getItem(bingoHostModeKey(gameCode)) === 'player' ? 'player' : 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return localStorage.getItem(bingoHostModeKey(gameCode)) === 'spectator' ? 'spectator' : 'player'
 }
 
 export function setBingoHostMode(gameCode: string, mode: BingoHostMode): void {

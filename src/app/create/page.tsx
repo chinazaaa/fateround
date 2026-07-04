@@ -16,7 +16,7 @@ import { LIBRARY_GAME_TYPE_MAP } from './constants'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { GenderBadge } from './components/GenderBadge'
 import { Avatar } from './components/Avatar'
-import { CopyCard } from './components/CopyCard'
+import { rememberHostToken } from '@/lib/host-session'
 import { THEMES } from '@/lib/themes'
 import { ThemePreviewCard, ThemePreviewModal } from '@/components/ThemePreviewModal'
 import {
@@ -118,7 +118,12 @@ import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn } from '@/component
 import { StepIndicator, SettingsGroup, StickyActionBar, SegmentedControl, ChipGrid } from '@/components/ui/CreateWizard'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { LateJoinPolicyToggle } from '@/components/AllowViewersToggle'
-import { gameSupportsViewerSetting, clampLateJoinPolicyForGameType, type LateJoinPolicy } from '@/lib/viewers'
+import {
+  gameSupportsViewerSetting,
+  clampLateJoinPolicyForGameType,
+  defaultLateJoinPolicyForGameType,
+  type LateJoinPolicy,
+} from '@/lib/viewers'
 import { getParticipantCustomContentHint, getQuestionCustomContentHint } from '@/lib/custom-content-hints'
 import { CustomContentAiTip } from '@/components/ui/CustomContentAiTip'
 import { AiQuestionsGenerator } from '@/components/ui/AiQuestionsGenerator'
@@ -146,7 +151,13 @@ import {
   formatMonopolyGameDuration,
 } from '@/lib/monopoly'
 import { MONOPOLY_DEFAULT_TURN_TIMER } from '@/lib/supabase-selects'
-import { SCRABBLE_GAME_DURATION_OPTIONS, formatScrabbleGameDuration } from '@/lib/scrabble'
+import {
+  SCRABBLE_GAME_DURATION_OPTIONS,
+  formatScrabbleGameDuration,
+  SCRABBLE_CLOCK_OPTIONS,
+  SCRABBLE_DEFAULT_CLOCK_SECONDS,
+  type ScrabbleClockMode,
+} from '@/lib/scrabble'
 import {
   SCRABBLE_DICTIONARY_OPTIONS,
   SCRABBLE_DICTIONARY_LABELS,
@@ -188,8 +199,6 @@ import { parseDescribeItWords, parseExcelDescribeItWords } from '@/lib/describe-
 import { getCodeDefaultLimits, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
 import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
-import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
-import { scrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useToast } from '@/components/ui/Toast'
 import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
 
@@ -225,7 +234,6 @@ function CreateGameInner() {
   const [defaultGender, setDefaultGender] = useState<ParticipantGender>('female')
   const [loading, setLoading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [result, setResult] = useState<{ gameCode: string; hostToken: string } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const questionsFileRef = useRef<HTMLInputElement>(null)
@@ -264,6 +272,8 @@ function CreateGameInner() {
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
   const [scrabbleGameDuration, setScrabbleGameDuration] = useState(0)
   const [scrabbleDictionary, setScrabbleDictionary] = useState<ScrabbleDictionaryId>(SCRABBLE_DEFAULT_DICTIONARY)
+  const [scrabbleClockMode, setScrabbleClockMode] = useState<ScrabbleClockMode>('standard')
+  const [scrabbleClockSeconds, setScrabbleClockSeconds] = useState(SCRABBLE_DEFAULT_CLOCK_SECONDS)
   const [chessBoardTheme, setChessBoardTheme] = useState('green')
   const [chessPieceSet, setChessPieceSet] = useState('neo')
   // On successful chess-game creation we mirror the host's chosen look into this
@@ -365,7 +375,15 @@ function CreateGameInner() {
   }, [lobbyLimits])
 
   useEffect(() => {
-    setLateJoinPolicy((prev) => clampLateJoinPolicyForGameType(prev, settings.game_type))
+    setLateJoinPolicy((prev) =>
+      // Text Charades is a drop-in party word game — late joiners should be able to
+      // jump in and play, not just watch. Give it (and any future type with a
+      // friendlier default) that policy; other types keep their previous choice,
+      // clamped to what the type supports. The host can still restrict it after.
+      isDescribeItGame(settings.game_type)
+        ? defaultLateJoinPolicyForGameType(settings.game_type)
+        : clampLateJoinPolicyForGameType(prev, settings.game_type)
+    )
   }, [settings.game_type])
 
   useEffect(() => {
@@ -684,10 +702,6 @@ function CreateGameInner() {
     !isQuickLobby && !isTriviaQuickCreate && !isBinaryLobby && !(isMlt && isJoinersMode) && !isJoinersMode
   const wizardSteps = needsParticipantStep ? ['Setup', 'People'] : ['Setup']
   const stepIndex = step === 'participants' ? 2 : 1
-
-  useEffect(() => {
-    if (step === 'done') scrollHostViewToTop()
-  }, [step])
 
   useEffect(() => {
     if (isPan) return
@@ -1253,6 +1267,8 @@ function CreateGameInner() {
           crazy8_pick2_stacking: isCrazy8 ? crazy8Pick2Stacking : undefined,
           ludo_variant: isLudo ? ludoVariant : undefined,
           scrabble_dictionary_id: isScrabble ? scrabbleDictionary : undefined,
+          scrabble_clock_mode: isScrabble ? scrabbleClockMode : undefined,
+          scrabble_clock_seconds: isScrabble && scrabbleClockMode === 'chess' ? scrabbleClockSeconds : undefined,
           chess_board_theme: isChess ? chessBoardTheme : undefined,
           chess_piece_set: isChess ? chessPieceSet : undefined,
           elimination_config:
@@ -1286,8 +1302,10 @@ function CreateGameInner() {
           setDeviceBoardTheme(chessBoardTheme)
           setDevicePieceSet(chessPieceSet)
         }
-        setResult(data)
-        setStep('done')
+        // Remember the host token on this device so the host lands straight in their
+        // panel and can reopen it later without the saved link (same-device recovery).
+        // The token also lives in the panel's share menu for hosting on another device.
+        rememberHostToken(data.gameCode, data.hostToken)
         const roomParam = searchParams.get('room')
         const memberParam = searchParams.get('member')
         if (roomParam) {
@@ -1297,6 +1315,9 @@ function CreateGameInner() {
             body: JSON.stringify({ gameCode: data.gameCode, memberCode: memberParam ?? '' }),
           }).catch(() => {})
         }
+        // Skip the interstitial — go straight to the host panel with a clean URL. The token
+        // is in storage (saved above), which the host page reads on load — same as tournaments.
+        router.push(`/host/${data.gameCode}`)
       } else {
         toast.error(data.error || 'Failed to create game')
       }
@@ -1970,31 +1991,65 @@ function CreateGameInner() {
             ) : isScrabble ? (
               <SettingsGroup title="Scrabble room">
                 <p className="text-faint text-sm">2–4 players — the host can join as one of them.</p>
-                <Field label="Time per turn">
+                <Field label="Game mode">
                   <select
-                    value={settings.timer_seconds}
-                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    value={scrabbleClockMode}
+                    onChange={(e) => setScrabbleClockMode(e.target.value as ScrabbleClockMode)}
                     className="input-field w-full"
                   >
-                    <option value={0}>No timer</option>
-                    <option value={60}>1 minute</option>
-                    <option value={180}>3 minutes</option>
-                    <option value={300}>5 minutes</option>
+                    <option value="standard">Normal (per-turn timer)</option>
+                    <option value="chess">Chess clock (per-player time bank)</option>
                   </select>
+                  <p className="text-faint mt-1 text-xs">
+                    {scrabbleClockMode === 'chess'
+                      ? 'Each player gets a fixed time bank that only counts down on their turn. Run out and you can watch but not play; last clock standing ends the game — highest score wins.'
+                      : 'An optional countdown each turn, plus an overall game-length cap.'}
+                  </p>
                 </Field>
-                <Field label="Game length">
-                  <select
-                    value={scrabbleGameDuration}
-                    onChange={(e) => setScrabbleGameDuration(Number(e.target.value))}
-                    className="input-field w-full"
-                  >
-                    {SCRABBLE_GAME_DURATION_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {formatScrabbleGameDuration(s)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                {scrabbleClockMode === 'chess' ? (
+                  <Field label="Time per player">
+                    <select
+                      value={scrabbleClockSeconds}
+                      onChange={(e) => setScrabbleClockSeconds(Number(e.target.value))}
+                      className="input-field w-full"
+                    >
+                      {SCRABBLE_CLOCK_OPTIONS.map((s) => (
+                        <option key={s} value={s}>
+                          {s / 60} minutes
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                ) : (
+                  <>
+                    <Field label="Time per turn">
+                      <select
+                        value={settings.timer_seconds}
+                        onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                        className="input-field w-full"
+                      >
+                        <option value={0}>No timer</option>
+                        <option value={60}>1 minute</option>
+                        <option value={120}>2 minutes</option>
+                        <option value={180}>3 minutes</option>
+                        <option value={300}>5 minutes</option>
+                      </select>
+                    </Field>
+                    <Field label="Game length">
+                      <select
+                        value={scrabbleGameDuration}
+                        onChange={(e) => setScrabbleGameDuration(Number(e.target.value))}
+                        className="input-field w-full"
+                      >
+                        {SCRABBLE_GAME_DURATION_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {formatScrabbleGameDuration(s)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </>
+                )}
                 <Field label="Dictionary">
                   <select
                     value={scrabbleDictionary}
@@ -3629,47 +3684,9 @@ function CreateGameInner() {
     )
   }
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  const hostUrl = `${origin}/host/${result?.gameCode}?token=${result?.hostToken}`
-
-  return (
-    <GameJoinLobbyShell
-      gameCode={result?.gameCode ?? ''}
-      header={
-        <div className="text-center space-y-2">
-          <div
-            className="inline-flex h-16 w-16 items-center justify-center rounded-3xl text-3xl mx-auto"
-            style={{ background: 'var(--chip-active-bg)' }}
-          >
-            🎉
-          </div>
-          <h1 className="text-3xl font-black tracking-tight gradient-title-subtle">You&apos;re live!</h1>
-          <p className="text-muted text-sm">Share the invite to get players in — then open your host panel to start.</p>
-        </div>
-      }
-    >
-      <PrimaryBtn onClick={() => router.push(`/host/${result?.gameCode}?token=${result?.hostToken}`)}>
-        Open Host Panel →
-      </PrimaryBtn>
-
-      <CopyCard
-        label="Host link — save this"
-        value={hostUrl}
-        accent
-        hint="Keep this private. It won't be shown again once you leave."
-      />
-
-      {searchParams.get('room') && (
-        <button
-          type="button"
-          onClick={() => router.push(`/room/${searchParams.get('room')}`)}
-          className="btn-secondary w-full"
-        >
-          ← Back to Room
-        </button>
-      )}
-    </GameJoinLobbyShell>
-  )
+  // Every create step renders above. Once a game is created we navigate straight to
+  // /host/[code], so there is no post-create screen to render here.
+  return null
 }
 
 export default function CreateGame() {
