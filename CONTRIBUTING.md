@@ -109,7 +109,10 @@ Reserve serial work for genuinely dependent steps or edits to the same file.
     PR open — this is a two-project setup, not Supabase Branching). Per
     `supabase/config.toml`: **`main` → the prod project, `dev` → a separate dev
     Supabase project.** Merging your PR into `dev` (then promoting to `main`)
-    triggers the push to the matching project — no manual SQL pasting.
+    runs the push against the matching project — no manual SQL pasting. The job is
+    guarded on that environment's Supabase secrets (`SUPABASE_ACCESS_TOKEN` /
+    `SUPABASE_DB_PASSWORD`): if they aren't configured for the target environment,
+    it logs a skip rather than pushing.
 - **Secrets:** via environment variables. State-mutating endpoints
   **default-deny** — refuse to run if the required secret isn't configured,
   rather than failing open.
