@@ -1515,7 +1515,7 @@ export default function TournamentLobbyPage() {
             {school
               ? 'You were knocked out of the class ladder: there was no one left in your class to play — everyone still in had climbed to a higher class, so you couldn’t be matched. Thanks for playing! You can watch the rest below.'
               : h2h
-                ? 'Knocked out of the bracket — thanks for playing! You can still watch the remaining matches below.'
+                ? 'Knocked out of the bracket — thanks for playing! You can still watch the remaining matches when they start.'
                 : 'You’ve been eliminated, but you can stick around and watch the rest below.'}
           </p>
         </div>
