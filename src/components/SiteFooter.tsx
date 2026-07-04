@@ -45,7 +45,9 @@ const WAYS_TO_PLAY_SLUGS = [
   'virtual-game-night',
   'virtual-team-games',
   'long-distance-games',
+  'online-tournaments',
   'nigerian-games',
+  'school-whot-championship',
   'christmas-games-online',
 ]
 
