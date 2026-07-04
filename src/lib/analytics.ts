@@ -31,8 +31,9 @@ export function trackEvent(eventName: string, params?: GtagEventParams): void {
 export const GA_EVENTS = {
   /** Host created a new game (primary conversion). */
   createGame: 'create_game',
-  /** A player joined a room via code/link (viral conversion). */
-  joinRoom: 'join_room',
+  /** A player joined a game via code/link to play (viral conversion). Distinct
+   * from joining a persistent "room" (the anonymous-rooms feature). */
+  joinGame: 'join_game',
   /** Someone copied/shared an invite link. */
   shareLink: 'share_link',
 } as const
