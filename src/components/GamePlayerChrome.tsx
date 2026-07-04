@@ -8,6 +8,7 @@ import { GameShareMenu } from '@/components/GameShareMenu'
 import { BackToRoomLink } from '@/components/BackToRoomLink'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { SoundToggle } from '@/components/SoundToggle'
+import { NotificationToggle } from '@/components/NotificationToggle'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
 import { WhatsAppHeaderIcon } from '@/components/WhatsAppChannelLink'
 import { HostNominationBanner } from '@/components/HostNominationBanner'
@@ -33,6 +34,7 @@ export function GamePlayerChrome() {
           <WhatsAppHeaderIcon />
           {code ? <GameShareMenu gameCode={code} resumeToken={resumeToken} /> : null}
           <SoundToggle variant="inline" />
+          <NotificationToggle gameCode={code} resumeToken={resumeToken} />
           <ThemeToggle variant="inline" />
         </div>
       </header>

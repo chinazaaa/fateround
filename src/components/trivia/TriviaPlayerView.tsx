@@ -250,6 +250,7 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
             onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
             inLobby={game.status === 'waiting'}
+            spectating={isViewer}
           />
         )}
         {game.status === 'waiting' && (

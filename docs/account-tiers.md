@@ -66,7 +66,7 @@ account, why would anyone sign up?**
 
 **Who:** anyone who taps a room link, or a one-off host setting up a single game night.
 
-**What they get:** the entire core product. All 29 games, hosting, spectating, voice,
+**What they get:** the entire core product. All 32 games, hosting, spectating, voice,
 late-join, custom questions, the free themes, share cards. They are never blocked from
 the thing FateRound exists to do.
 

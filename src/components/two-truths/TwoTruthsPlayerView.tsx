@@ -301,6 +301,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
             currentName={myPlayerName}
             onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
+            spectating={isViewer}
           />
           <TwoTruthsActiveRound
             gameCode={gameCode}

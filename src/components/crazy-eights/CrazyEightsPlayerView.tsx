@@ -377,6 +377,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
             currentName={myName}
             onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
+            spectating={isWatching}
           />
         )}
         <CrazyEightsGameTimerBar gameCode={gameCode} game={game} />
@@ -401,6 +402,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
           currentName={myName}
           onRenamed={() => void load()}
           onLeft={handlePlayerLeft}
+          spectating={isWatching}
         />
       )}
 
