@@ -42,7 +42,16 @@ export function TournamentContinueCard({ tournamentId, code }: { tournamentId: s
 
   return (
     <div className="surface-inset p-4 space-y-3 text-center">
-      <p className="label-caps">Continue on another device</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="label-caps">Continue on another device</p>
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="shrink-0 text-faint text-xs hover:text-body transition-colors"
+        >
+          Hide
+        </button>
+      </div>
       <p className="text-muted text-xs">
         📌 Save your link or code. Paste the link on any device to drop straight back into your seat — or open the
         tournament and enter the code by hand. It&apos;s the only way back if you switch devices or lose this tab.
