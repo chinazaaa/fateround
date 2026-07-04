@@ -508,6 +508,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
               onRenamed={(name) => setMyPlayerName(name)}
               onLeft={leaveGame}
               inLobby={game?.status === 'waiting'}
+              spectating={isViewer}
             />
           )}
 

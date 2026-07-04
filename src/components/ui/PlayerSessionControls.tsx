@@ -19,6 +19,7 @@ export function PlayerSessionControls({
   leaveOnly = false,
   align = 'start',
   className = '',
+  spectating = false,
 }: {
   gameCode: string
   playerId: string
@@ -31,6 +32,8 @@ export function PlayerSessionControls({
   leaveOnly?: boolean
   align?: 'start' | 'center'
   className?: string
+  /** Show a "Watching as" label instead of "Playing as" for spectators/viewers. */
+  spectating?: boolean
 }) {
   const leaveButton = (
     <LeaveGameButton
@@ -65,7 +68,13 @@ export function PlayerSessionControls({
               {changeNameLabel}
             </button>
           ) : (
-            <EditNameInline gameCode={gameCode} playerId={playerId} currentName={currentName} onRenamed={onRenamed} />
+            <EditNameInline
+              gameCode={gameCode}
+              playerId={playerId}
+              currentName={currentName}
+              onRenamed={onRenamed}
+              spectating={spectating}
+            />
           )}
         </div>
         {leaveButton}

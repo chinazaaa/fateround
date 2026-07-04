@@ -14,6 +14,7 @@ export function PlayerSessionBar({
   changeNameLabel,
   inLobby = false,
   showControls = true,
+  spectating = false,
 }: {
   gameCode: string
   playerId: string
@@ -25,6 +26,8 @@ export function PlayerSessionBar({
   changeNameLabel?: string
   inLobby?: boolean
   showControls?: boolean
+  /** Show a "Watching as" label instead of "Playing as" for spectators/viewers. */
+  spectating?: boolean
 }) {
   if (!name && !viewerBanner) return null
 
@@ -36,7 +39,9 @@ export function PlayerSessionBar({
         <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl border border-[var(--primary)]/25 bg-[var(--primary)]/8">
           <Avatar name={name!} size="sm" />
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] uppercase tracking-wider text-faint leading-none">Playing as</p>
+            <p className="text-[10px] uppercase tracking-wider text-faint leading-none">
+              {spectating ? 'Watching as' : 'Playing as'}
+            </p>
             <p className="text-sm font-semibold truncate">{name}</p>
           </div>
         </div>
@@ -52,6 +57,7 @@ export function PlayerSessionBar({
           onChangeName={onChangeName}
           changeNameLabel={changeNameLabel}
           inLobby={inLobby}
+          spectating={spectating}
         />
       ) : null}
     </div>

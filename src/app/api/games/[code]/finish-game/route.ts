@@ -17,8 +17,9 @@ import {
 import { hostActionSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { withGameNotification } from '@/lib/push-route'
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
+async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const { data, error: bodyError } = await parseJsonBody(req, hostActionSchema)
   if (bodyError) return bodyError
@@ -120,3 +121,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   return NextResponse.json({ success: true })
 }
+
+export const POST = withGameNotification('game_ended', handlePost)

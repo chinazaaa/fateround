@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
     roomsRes,
     gamesTodayRes,
     gamesThisMonthRes,
+    tournamentsRes,
   ] = await Promise.all([
     supabase.from('games').select('id, game_type, status, created_at', { count: 'exact', head: false }),
     supabase.from('players').select('id', { count: 'exact', head: true }),
@@ -54,6 +55,7 @@ export async function GET(req: NextRequest) {
       .select('id', { count: 'exact', head: true })
       .gte('created_at', monthRange.gte)
       .lt('created_at', monthRange.lt),
+    supabase.from('tournaments').select('id, status', { count: 'exact', head: false }),
   ])
 
   let feedbackCount = 0
@@ -83,7 +85,8 @@ export async function GET(req: NextRequest) {
     playSessionsRes.error ??
     roomsRes.error ??
     gamesTodayRes.error ??
-    gamesThisMonthRes.error
+    gamesThisMonthRes.error ??
+    tournamentsRes.error
   if (queryError) {
     console.error('[admin/stats] query failed', queryError)
     return NextResponse.json({ error: 'Failed to load statistics' }, { status: 500 })
@@ -96,6 +99,12 @@ export async function GET(req: NextRequest) {
   for (const game of games) {
     gamesByStatus[game.status] = (gamesByStatus[game.status] ?? 0) + 1
     gamesByType[game.game_type] = (gamesByType[game.game_type] ?? 0) + 1
+  }
+
+  const tournaments = tournamentsRes.data ?? []
+  const tournamentsByStatus: Record<string, number> = {}
+  for (const tournament of tournaments) {
+    tournamentsByStatus[tournament.status] = (tournamentsByStatus[tournament.status] ?? 0) + 1
   }
 
   const playSessions = playSessionsRes.data ?? []
@@ -124,6 +133,9 @@ export async function GET(req: NextRequest) {
       games: gamesRes.count ?? games.length,
       gamesToday: gamesTodayRes.count ?? 0,
       gamesThisMonth: gamesThisMonthRes.count ?? 0,
+      tournaments: tournamentsRes.count ?? tournaments.length,
+      activeTournaments: tournamentsByStatus['active'] ?? 0,
+      finishedTournaments: tournamentsByStatus['finished'] ?? 0,
       rooms: roomsRes.count ?? 0,
       players: playersRes.count ?? 0,
       votes: votesRes.count ?? 0,
@@ -136,6 +148,7 @@ export async function GET(req: NextRequest) {
     },
     gamesByStatus,
     gamesByType: gamesByType as Partial<Record<GameType | string, number>>,
+    tournamentsByStatus,
     feedbackByCategory,
   })
 }

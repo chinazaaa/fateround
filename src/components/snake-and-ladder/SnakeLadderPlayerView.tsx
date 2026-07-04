@@ -370,6 +370,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
             onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
             inLobby
+            spectating={isViewer}
           />
         )}
       </SnakeLadderShell>
@@ -408,6 +409,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
           currentName={myName}
           onRenamed={() => void load()}
           onLeft={handlePlayerLeft}
+          spectating={isViewer}
         />
       )}
     </SnakeLadderShell>

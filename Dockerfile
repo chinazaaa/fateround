@@ -2,7 +2,7 @@
 
 # Build the Next.js standalone output with pnpm (the project's package manager;
 # matches CI: pnpm install --frozen-lockfile).
-FROM node:22-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 RUN npm install -g pnpm@10
 COPY package.json pnpm-lock.yaml ./
@@ -14,15 +14,19 @@ ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_APP_URL
 ARG NEXT_PUBLIC_LIVEKIT_URL
+# Web-push public (VAPID) key — public by design; empty when push isn't configured
+# for this environment, in which case the notifications UI stays hidden.
+ARG NEXT_PUBLIC_VAPID_PUBLIC_KEY
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_LIVEKIT_URL=$NEXT_PUBLIC_LIVEKIT_URL
+ENV NEXT_PUBLIC_VAPID_PUBLIC_KEY=$NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
 RUN pnpm build
 
 # Minimal runtime image (Next.js standalone output).
-FROM node:22-bookworm-slim AS run
+FROM node:24-bookworm-slim AS run
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000

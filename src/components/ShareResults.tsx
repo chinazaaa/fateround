@@ -51,6 +51,7 @@ function buildShareText({
   players,
   triviaAnswers,
   bingoWinnerName,
+  bingoEndedEarly,
   yahtzeeScores,
   yahtzeeWinnerName,
   monopolyStandings,
@@ -80,6 +81,7 @@ function buildShareText({
   players: Player[]
   triviaAnswers?: TriviaAnswer[]
   bingoWinnerName?: string
+  bingoEndedEarly?: boolean
   yahtzeeScores?: YahtzeePlayerScore[]
   yahtzeeWinnerName?: string
   monopolyStandings?: MonopolyStanding[]
@@ -208,8 +210,13 @@ function buildShareText({
     return lines.join('\n')
   }
 
-  if (isBingoGame(gameType) && bingoWinnerName) {
-    return [...gameHeader, '🏆', '', 'BINGO!', '', `${bingoWinnerName} wins!`, '', `Play at ${appDomain()}`].join('\n')
+  if (isBingoGame(gameType) && (bingoWinnerName || bingoEndedEarly)) {
+    if (bingoWinnerName) {
+      return [...gameHeader, '🏆', '', 'BINGO!', '', `${bingoWinnerName} wins!`, '', `Play at ${appDomain()}`].join(
+        '\n'
+      )
+    }
+    return [...gameHeader, '🏁', '', 'Game ended early', '', `Play at ${appDomain()}`].join('\n')
   }
 
   // Tic-Tac-Toe, Chess and Checkers share the same winner / draw / ended-early result signal.
@@ -367,6 +374,7 @@ export function ShareResults({
   players,
   triviaAnswers,
   bingoWinnerName,
+  bingoEndedEarly,
   yahtzeeScores,
   yahtzeeWinnerName,
   monopolyStandings,
@@ -397,6 +405,7 @@ export function ShareResults({
   players: Player[]
   triviaAnswers?: TriviaAnswer[]
   bingoWinnerName?: string
+  bingoEndedEarly?: boolean
   yahtzeeScores?: YahtzeePlayerScore[]
   yahtzeeWinnerName?: string
   monopolyStandings?: MonopolyStanding[]
@@ -434,6 +443,7 @@ export function ShareResults({
         players,
         triviaAnswers,
         bingoWinnerName,
+        bingoEndedEarly,
         yahtzeeScores,
         yahtzeeWinnerName,
         monopolyStandings,
@@ -464,6 +474,7 @@ export function ShareResults({
       players,
       triviaAnswers,
       bingoWinnerName,
+      bingoEndedEarly,
       yahtzeeScores,
       yahtzeeWinnerName,
       monopolyStandings,

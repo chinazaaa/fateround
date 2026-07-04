@@ -1,0 +1,7 @@
+# pnpm build-script approvals. `sharp` ships a native postinstall build script;
+# we deliberately do NOT run it (the app runs fine without a locally-compiled
+# sharp, and skipping unreviewed install scripts is the safer default). Setting
+# this explicitly to `false` acknowledges the choice so pnpm stops raising
+# ERR_PNPM_IGNORED_BUILDS on install / before every `pnpm <script>`.
+allowBuilds:
+  sharp: false

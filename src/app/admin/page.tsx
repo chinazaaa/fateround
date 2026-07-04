@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { AdminGamesTable } from '@/components/admin/AdminGamesTable'
+import { AdminTournamentsTable } from '@/components/admin/AdminTournamentsTable'
+import { AdminRoomsTable } from '@/components/admin/AdminRoomsTable'
 import { Chip } from '@/components/ui/PageShell'
 import { formatPlayDuration } from '@/lib/admin-play-time'
 import { addDays, addMonths, monthBounds, watToday, weekBounds } from '@/lib/community-dates'
@@ -12,6 +14,9 @@ type StatsResponse = {
     games: number
     gamesToday: number
     gamesThisMonth: number
+    tournaments: number
+    activeTournaments: number
+    finishedTournaments: number
     rooms: number
     players: number
     votes: number
@@ -24,6 +29,7 @@ type StatsResponse = {
   }
   gamesByStatus: Record<string, number>
   gamesByType: Record<string, number>
+  tournamentsByStatus: Record<string, number>
   feedbackByCategory: Record<string, number>
 }
 
@@ -68,6 +74,9 @@ export default function AdminDashboardPage() {
     { label: 'Total games', value: stats.totals.games },
     { label: 'Games played today', value: stats.totals.gamesToday },
     { label: 'Games played this month', value: stats.totals.gamesThisMonth },
+    { label: 'Tournaments created', value: stats.totals.tournaments },
+    { label: 'Active tournaments', value: stats.totals.activeTournaments },
+    { label: 'Finished tournaments', value: stats.totals.finishedTournaments },
     { label: 'Rooms created', value: stats.totals.rooms },
     { label: 'Players joined', value: stats.totals.players },
     { label: 'Votes cast', value: stats.totals.votes },
@@ -109,10 +118,15 @@ export default function AdminDashboardPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <BreakdownCard title="Games by status" items={stats.gamesByStatus} />
         <BreakdownCard title="Games by type" items={stats.gamesByType} formatLabel={formatGameType} />
+        <BreakdownCard title="Tournaments by status" items={stats.tournamentsByStatus} />
         <BreakdownCard title="Feedback by category" items={stats.feedbackByCategory} />
       </div>
 
       <AdminGamesTable onGamesChanged={() => setStatsVersion((version) => version + 1)} />
+
+      <AdminTournamentsTable onTournamentsChanged={() => setStatsVersion((version) => version + 1)} />
+
+      <AdminRoomsTable onRoomsChanged={() => setStatsVersion((version) => version + 1)} />
     </div>
   )
 }
