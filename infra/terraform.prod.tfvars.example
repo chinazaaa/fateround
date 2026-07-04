@@ -42,11 +42,11 @@ klipy_api_key             = "REPLACE_WITH_KLIPY_KEY"
 livekit_api_key           = "REPLACE_WITH_LIVEKIT_KEY"
 livekit_api_secret        = "REPLACE_WITH_LIVEKIT_SECRET"
 
-# Web push (optional). Generate a SEPARATE prod keypair with `pnpm vapid:generate`;
-# put its PUBLIC key in the CI build workflow (prod block) and the PRIVATE key here.
-# Leave both empty to keep push off on prod. vapid_subject is a mailto:/https: URL.
-vapid_private_key = ""
-vapid_subject     = ""
+# Web push. Reusing the same VAPID keypair as dev (its PUBLIC key is already in the
+# CI build workflow's prod block). Put the matching PRIVATE key here, plus a contact
+# subject (mailto:/https:). Leave empty to keep push off on prod.
+vapid_private_key = "REPLACE_WITH_VAPID_PRIVATE_KEY"
+vapid_subject     = "mailto:hello@fateround.com"
 
 # Origin TLS (Caddy + Cloudflare Origin Certificate) for Full (strict).
 # The cert + key are NOT placed here — export them as TF_VAR_origin_cert /
