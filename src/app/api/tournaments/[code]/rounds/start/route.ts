@@ -116,6 +116,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     for (const room of roundRooms) {
       const gameId = room.game_id as string
+
+      // Never re-deal a room whose game is already live or finished. A second
+      // "Start Rooms" tap (e.g. after waiting on stragglers) must not re-initialize
+      // a game in progress — that deletes every player's state and resets scores to
+      // zero. If the game is already active, just reconcile the bracket row (its
+      // active→pending write may have lagged the game's) so the round isn't stuck.
+      const { data: roomGame } = await admin.from('games').select('status').eq('id', gameId).maybeSingle()
+      if (roomGame && roomGame.status !== 'waiting') {
+        if (roomGame.status === 'active') {
+          await admin.from('tournament_games').update({ status: 'active' }).eq('id', room.id).eq('status', 'pending')
+          started++
+        }
+        continue
+      }
+
       // The members this room still expects to seat: everyone in member_ids who hasn't
       // been removed/eliminated. A removed no-show drops out of the set, so the host can
       // unblock a stuck room by removing someone who never shows (as in head-to-head).
@@ -209,6 +224,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   for (const match of roundMatches) {
     const gameId = match.game_id as string
+
+    // Never re-initialize a match whose game is already live or finished — a repeat
+    // "Start Matches" tap would otherwise reset the board mid-game. Reconcile the
+    // bracket row if the game is already active so the round isn't stuck pending.
+    const { data: matchGame } = await admin.from('games').select('status').eq('id', gameId).maybeSingle()
+    if (matchGame && matchGame.status !== 'waiting') {
+      if (matchGame.status === 'active') {
+        await admin.from('tournament_games').update({ status: 'active' }).eq('id', match.id).eq('status', 'pending')
+        started++
+      }
+      continue
+    }
+
     const expectedNames = new Set(
       [nameById.get(match.player_a_id ?? ''), nameById.get(match.player_b_id ?? '')].filter(Boolean)
     )
