@@ -34,8 +34,12 @@ export function TournamentContinueCard({ tournamentId, code }: { tournamentId: s
 
   if (!expanded) {
     return (
-      <button onClick={() => setExpanded(true)} className="btn-ghost text-xs mx-auto block">
-        📱 Continue on another device
+      <button
+        onClick={() => setExpanded(true)}
+        className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5"
+      >
+        <span aria-hidden>📱</span>
+        <span className="underline underline-offset-2">Continue on another device</span>
       </button>
     )
   }
