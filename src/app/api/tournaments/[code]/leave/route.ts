@@ -1,21 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
-import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { getSupabaseAnon } from '@/lib/supabase-anon'
+
+const supabase = getSupabaseAnon()
 
 const leaveSchema = z.object({ token: z.string().trim().min(4).max(100) })
+
+const LEAVE_ERRORS: Record<string, { message: string; status: number }> = {
+  not_found: { message: 'Tournament not found', status: 404 },
+  ended: { message: 'Tournament has ended', status: 409 },
+  started: { message: "The tournament has started — you can't leave now", status: 409 },
+  invalid_token: { message: 'Player code not found', status: 404 },
+}
 
 /**
  * A player leaves a tournament from the lobby before it starts — giving up their
  * seat so their name frees up and the capacity count drops. Authenticated by the
- * player's own secret code (the one minted at join time), so a player can only
- * remove themselves, never someone else.
+ * player's own secret code (minted at join), so a player can only remove
+ * themselves, never someone else.
  *
- * Only allowed while the tournament is still 'waiting': once it's under way,
- * leaving would tear a hole in the bracket/standings, so we refuse and the player
- * plays on (or the host removes them). Deleting the player row cascades to their
- * token row, and there are no game rows yet to reference the player at this stage.
+ * The check + delete run inside one atomic RPC that locks the tournament row, so a
+ * concurrent round start can't slip in and leave the bracket referencing a deleted
+ * player — once the tournament is no longer 'waiting', the leave is refused.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -24,43 +31,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: body, error: bodyError } = await parseJsonBody(req, leaveSchema)
   if (bodyError) return bodyError
 
-  const token = body.token.trim()
-  const admin = getSupabaseAdmin()
+  const { data, error } = await supabase.rpc('leave_tournament', {
+    p_tournament_id: tournamentId,
+    p_token: body.token.trim(),
+  })
 
-  const { data: tournament } = await admin.from('tournaments').select('status').eq('id', tournamentId).maybeSingle()
-  if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
-  if (tournament.status !== 'waiting') {
-    return NextResponse.json(
-      {
-        error:
-          tournament.status === 'finished'
-            ? 'Tournament has ended'
-            : "The tournament has started — you can't leave now",
-      },
-      { status: 409 }
-    )
+  // Fail closed — a DB error must not read as a successful leave.
+  if (error) {
+    return NextResponse.json({ error: 'Failed to leave' }, { status: 500 })
   }
 
-  // Resolve the seat from the private code. ilike is a case-fold exact match here
-  // (the token has no % / _), mirroring player-resume so legacy lowercase codes work.
-  const { data: tokenRow, error: tokenError } = await admin
-    .from('tournament_player_tokens')
-    .select('player_id')
-    .eq('tournament_id', tournamentId)
-    .ilike('token', token)
-    .maybeSingle()
-  if (tokenError) return NextResponse.json({ error: 'Failed to look up player code' }, { status: 500 })
-  if (!tokenRow) {
-    return NextResponse.json({ error: 'Player code not found' }, { status: 404 })
-  }
-
-  const { error: deleteError } = await admin
-    .from('tournament_players')
-    .delete()
-    .eq('id', tokenRow.player_id)
-    .eq('tournament_id', tournamentId)
-  if (deleteError) {
-    return NextResponse.json({ error: internalErrorMessage('tournaments/code/leave', deleteError) }, { status: 500 })
+  const result = (data ?? {}) as { error?: string; ok?: boolean }
+  if (result.error) {
+    const mapped = LEAVE_ERRORS[result.error] ?? { message: 'Failed to leave', status: 400 }
+    return NextResponse.json({ error: mapped.message }, { status: mapped.status })
   }
 
   return NextResponse.json({ ok: true })
