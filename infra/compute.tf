@@ -60,6 +60,15 @@ resource "aws_instance" "app" {
   tags = {
     Name = "${var.name_prefix}-app"
   }
+
+  # `data.aws_ami.al2023` uses most_recent, so a newer AL2023 publish would otherwise
+  # force a full instance rebuild on every `terraform apply` (a plan would show
+  # aws_instance.app "must be replaced" purely because AWS shipped a new AMI). Pin to
+  # the launched AMI and rebuild deliberately (taint / recreate) instead. New instances
+  # created for other reasons (e.g. user_data_replace_on_change) still get the current AMI.
+  lifecycle {
+    ignore_changes = [ami]
+  }
 }
 
 # Stable public address for the instance.
