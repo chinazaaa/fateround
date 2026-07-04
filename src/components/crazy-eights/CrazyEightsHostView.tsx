@@ -36,7 +36,12 @@ import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { ExitIcon } from '@/components/host/host-icons'
 import { useCrazyEightsTurnTimer } from '@/hooks/useCrazyEightsTurnTimer'
 import { useCrazyEightsNotifications, playCrazyEightsActionSound } from '@/hooks/useCrazyEightsNotifications'
-import { CrazyEightsChoosePanel, CrazyEightsHand, CrazyEightsTable } from '@/components/crazy-eights/CrazyEightsBoard'
+import {
+  CrazyEightsChoosePanel,
+  CrazyEightsHand,
+  CrazyEightsStandings,
+  CrazyEightsTable,
+} from '@/components/crazy-eights/CrazyEightsBoard'
 import { CrazyEightsGameTimerBar } from '@/components/crazy-eights/CrazyEightsGameTimerBar'
 import { CrazyEightsFinalResultsShareBlock } from '@/components/crazy-eights/CrazyEightsFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -288,6 +293,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
         players={players}
         myPlayerId={hostPlayerId}
         handCounts={handCounts}
+        showStandings={false}
         {...tableTimerProps}
       />
       {isHostTurn && session.phase === 'choose_suit' && (
@@ -321,6 +327,11 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
           )}
         </>
       )}
+      {/* Roster sits BELOW the host's hand — the hand is what you act on, so it stays
+          above the standings (mirrors the player view). */}
+      <CrazyEightsCard className="p-4">
+        <CrazyEightsStandings session={session} players={players} myPlayerId={hostPlayerId} handCounts={handCounts} />
+      </CrazyEightsCard>
     </div>
   )
 
