@@ -36,7 +36,7 @@ import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { ExitIcon } from '@/components/host/host-icons'
 import { useWhotTurnTimer } from '@/hooks/useWhotTurnTimer'
 import { useWhotNotifications, playWhotActionSound } from '@/hooks/useWhotNotifications'
-import { WhotChoosePanel, WhotHand, WhotTable } from '@/components/whot/WhotBoard'
+import { WhotChoosePanel, WhotHand, WhotStandings, WhotTable } from '@/components/whot/WhotBoard'
 import { WhotGameTimerBar } from '@/components/whot/WhotGameTimerBar'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -278,6 +278,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         players={players}
         myPlayerId={hostPlayerId}
         handCounts={handCounts}
+        showStandings={false}
         {...tableTimerProps}
       />
       {isHostTurn && session.phase === 'choose_whot' && (
@@ -310,6 +311,11 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           )}
         </>
       )}
+      {/* Roster sits BELOW the host's hand — the hand is what you act on, so it stays
+          above the standings (mirrors the player view). */}
+      <WhotCard className="p-4">
+        <WhotStandings session={session} players={players} myPlayerId={hostPlayerId} handCounts={handCounts} />
+      </WhotCard>
     </div>
   )
 
