@@ -16,7 +16,7 @@ import { LIBRARY_GAME_TYPE_MAP } from './constants'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { GenderBadge } from './components/GenderBadge'
 import { Avatar } from './components/Avatar'
-import { CopyCard } from './components/CopyCard'
+import { rememberHostToken } from '@/lib/host-session'
 import { THEMES } from '@/lib/themes'
 import { ThemePreviewCard, ThemePreviewModal } from '@/components/ThemePreviewModal'
 import {
@@ -199,8 +199,6 @@ import { parseDescribeItWords, parseExcelDescribeItWords } from '@/lib/describe-
 import { getCodeDefaultLimits, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
 import { TRIVIA_QUESTION_COUNT } from '@/lib/trivia-questions'
-import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
-import { scrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useToast } from '@/components/ui/Toast'
 import { ELIMINATION_COMPATIBLE_TYPES } from '@/types/elimination'
 
@@ -236,7 +234,6 @@ function CreateGameInner() {
   const [defaultGender, setDefaultGender] = useState<ParticipantGender>('female')
   const [loading, setLoading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [result, setResult] = useState<{ gameCode: string; hostToken: string } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const questionsFileRef = useRef<HTMLInputElement>(null)
@@ -705,10 +702,6 @@ function CreateGameInner() {
     !isQuickLobby && !isTriviaQuickCreate && !isBinaryLobby && !(isMlt && isJoinersMode) && !isJoinersMode
   const wizardSteps = needsParticipantStep ? ['Setup', 'People'] : ['Setup']
   const stepIndex = step === 'participants' ? 2 : 1
-
-  useEffect(() => {
-    if (step === 'done') scrollHostViewToTop()
-  }, [step])
 
   useEffect(() => {
     if (isPan) return
@@ -1309,8 +1302,10 @@ function CreateGameInner() {
           setDeviceBoardTheme(chessBoardTheme)
           setDevicePieceSet(chessPieceSet)
         }
-        setResult(data)
-        setStep('done')
+        // Remember the host token on this device so the host lands straight in their
+        // panel and can reopen it later without the saved link (same-device recovery).
+        // The token also lives in the panel's share menu for hosting on another device.
+        rememberHostToken(data.gameCode, data.hostToken)
         const roomParam = searchParams.get('room')
         const memberParam = searchParams.get('member')
         if (roomParam) {
@@ -1320,6 +1315,9 @@ function CreateGameInner() {
             body: JSON.stringify({ gameCode: data.gameCode, memberCode: memberParam ?? '' }),
           }).catch(() => {})
         }
+        // Skip the interstitial — go straight to the host panel with a clean URL. The token
+        // is in storage (saved above), which the host page reads on load — same as tournaments.
+        router.push(`/host/${data.gameCode}`)
       } else {
         toast.error(data.error || 'Failed to create game')
       }
@@ -3686,47 +3684,9 @@ function CreateGameInner() {
     )
   }
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  const hostUrl = `${origin}/host/${result?.gameCode}?token=${result?.hostToken}`
-
-  return (
-    <GameJoinLobbyShell
-      gameCode={result?.gameCode ?? ''}
-      header={
-        <div className="text-center space-y-2">
-          <div
-            className="inline-flex h-16 w-16 items-center justify-center rounded-3xl text-3xl mx-auto"
-            style={{ background: 'var(--chip-active-bg)' }}
-          >
-            🎉
-          </div>
-          <h1 className="text-3xl font-black tracking-tight gradient-title-subtle">You&apos;re live!</h1>
-          <p className="text-muted text-sm">Share the invite to get players in — then open your host panel to start.</p>
-        </div>
-      }
-    >
-      <PrimaryBtn onClick={() => router.push(`/host/${result?.gameCode}?token=${result?.hostToken}`)}>
-        Open Host Panel →
-      </PrimaryBtn>
-
-      <CopyCard
-        label="Host link — save this"
-        value={hostUrl}
-        accent
-        hint="Keep this private. It won't be shown again once you leave."
-      />
-
-      {searchParams.get('room') && (
-        <button
-          type="button"
-          onClick={() => router.push(`/room/${searchParams.get('room')}`)}
-          className="btn-secondary w-full"
-        >
-          ← Back to Room
-        </button>
-      )}
-    </GameJoinLobbyShell>
-  )
+  // Every create step renders above. Once a game is created we navigate straight to
+  // /host/[code], so there is no post-create screen to render here.
+  return null
 }
 
 export default function CreateGame() {

@@ -62,7 +62,7 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
   const [states, setStates] = useState<SnakeLadderPlayerState[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostModeState] = useState<SnakeLadderHostMode>('spectator')
+  const [hostMode, setHostModeState] = useState<SnakeLadderHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')

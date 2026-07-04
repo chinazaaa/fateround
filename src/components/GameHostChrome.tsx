@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import Link from 'next/link'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { GameShareMenu } from '@/components/GameShareMenu'
 import { BackToRoomLink } from '@/components/BackToRoomLink'
@@ -11,13 +11,15 @@ import { SoundToggle } from '@/components/SoundToggle'
 import { useHostPlayerSession } from '@/hooks/useHostPlayerSession'
 import { WhatsAppHeaderIcon } from '@/components/WhatsAppChannelLink'
 import { TransferHostControl } from '@/components/TransferHostControl'
+import { useHostToken } from '@/hooks/useHostToken'
 import { setupAudioUnlock } from '@/lib/sounds'
 
 export function GameHostChrome() {
   const params = useParams()
-  const searchParams = useSearchParams()
   const code = typeof params?.code === 'string' ? params.code.toUpperCase() : null
-  const hostToken = searchParams.get('token') ?? ''
+  // Clean host URL (token in storage) → resolve via the hook, which reads the fallback in
+  // an effect so there's no hydration mismatch. Keeps the share menu's host link working.
+  const { hostToken } = useHostToken(code)
   const { resumeToken } = useHostPlayerSession(code)
   const hasHostPlayer = !!(code && hostToken && resumeToken)
 

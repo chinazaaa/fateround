@@ -37,7 +37,7 @@ export function TriviaHostView({ gameCode, hostToken }: { gameCode: string; host
   const [playingAgain, setPlayingAgain] = useState(false)
   const [savingLobbySettings, setSavingLobbySettings] = useState(false)
   const [settingsModal, setSettingsModal] = useState<'lobby' | 'play-again' | null>(null)
-  const [hostMode, setHostMode] = useState<TriviaHostMode>('spectator')
+  const [hostMode, setHostMode] = useState<TriviaHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')

@@ -55,8 +55,8 @@ const SCRABBLE_MIN_PLAYERS = 2
 const HOST_MODE_KEY = 'scrabble_host_mode'
 
 function getHostMode(gameCode: string): ScrabbleHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as ScrabbleHostMode) ?? 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return (localStorage.getItem(`${HOST_MODE_KEY}_${gameCode}`) as ScrabbleHostMode) ?? 'player'
 }
 
 function setHostMode(gameCode: string, mode: ScrabbleHostMode): void {
@@ -72,7 +72,7 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [playerStates, setPlayerStates] = useState<ScrabblePlayerState[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
-  const [hostMode, setHostModeState] = useState<ScrabbleHostMode>('spectator')
+  const [hostMode, setHostModeState] = useState<ScrabbleHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostResumeToken, setHostResumeToken] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')

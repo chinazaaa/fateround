@@ -37,8 +37,8 @@ type HostTab = 'manage' | 'play'
 const HOST_MODE_KEY = (code: string) => `word_hunt_host_mode_${code.toUpperCase()}`
 
 function getWordHuntHostMode(gameCode: string): WordHuntHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(HOST_MODE_KEY(gameCode)) as WordHuntHostMode) ?? 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return (localStorage.getItem(HOST_MODE_KEY(gameCode)) as WordHuntHostMode) ?? 'player'
 }
 function setWordHuntHostMode(gameCode: string, mode: WordHuntHostMode) {
   localStorage.setItem(HOST_MODE_KEY(gameCode), mode)
@@ -66,7 +66,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [playingAgain, setPlayingAgain] = useState(false)
   const [starting, setStarting] = useState(false)
 
-  const [hostMode, setHostModeState] = useState<WordHuntHostMode>('spectator')
+  const [hostMode, setHostModeState] = useState<WordHuntHostMode>('player')
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null)
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')

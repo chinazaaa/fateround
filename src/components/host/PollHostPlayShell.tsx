@@ -21,7 +21,7 @@ export function PollHostPlayShell({
   onHostPlayerId?: (id: string | null) => void
   children: React.ReactNode
 }) {
-  const [hostMode, setHostModeState] = useState<PollHostMode>('spectator')
+  const [hostMode, setHostModeState] = useState<PollHostMode>('player')
   const [tab, setTab] = useState<'play' | 'manage'>('manage')
 
   useEffect(() => {

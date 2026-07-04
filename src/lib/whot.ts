@@ -1201,8 +1201,8 @@ export type WhotHostMode = 'spectator' | 'player'
 const WHOT_HOST_MODE_KEY = 'whot_host_mode'
 
 export function getWhotHostMode(gameCode: string): WhotHostMode {
-  if (typeof window === 'undefined') return 'spectator'
-  return (localStorage.getItem(`${WHOT_HOST_MODE_KEY}_${gameCode}`) as WhotHostMode) ?? 'spectator'
+  if (typeof window === 'undefined') return 'player'
+  return (localStorage.getItem(`${WHOT_HOST_MODE_KEY}_${gameCode}`) as WhotHostMode) ?? 'player'
 }
 
 export function setWhotHostMode(gameCode: string, mode: WhotHostMode): void {

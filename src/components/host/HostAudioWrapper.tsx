@@ -1,9 +1,10 @@
 'use client'
 
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { AudioChat } from '@/components/AudioChat'
 import { getPlayerSession } from '@/lib/utils'
+import { useHostToken } from '@/hooks/useHostToken'
 
 /** Stable per-tab identity so multiple host tabs in the same room don't
  * collide on the LiveKit identity (which must be unique per participant). */
@@ -45,11 +46,13 @@ function useHostDisplayName(gameCode: string): string {
 
 export function HostAudioWrapper() {
   const { code } = useParams<{ code: string }>()
-  const searchParams = useSearchParams()
   const gameCode = code ? (Array.isArray(code) ? code[0] : code).toUpperCase() : ''
   const hostIdentity = useHostIdentity(gameCode)
   const hostName = useHostDisplayName(gameCode)
-  const hostToken = searchParams.get('token') ?? ''
+  // Clean host URL (token in storage) → resolve via the hook. The fallback is read in an
+  // effect, so the server and first client render agree (AudioChat mounts post-hydration)
+  // — this is what fixes the hydration mismatch we saw here.
+  const { hostToken } = useHostToken(gameCode)
   if (!gameCode || !hostToken) return null
   return (
     <AudioChat

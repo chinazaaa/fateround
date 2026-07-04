@@ -42,6 +42,7 @@ export function AdminGamesTable({ onGamesChanged }: { onGamesChanged?: () => voi
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [endingId, setEndingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [closingStale, setClosingStale] = useState(false)
   const [staleHours, setStaleHours] = useState(STALE_GAME_HOURS)
   const [staleCount, setStaleCount] = useState<number | null>(null)
@@ -119,6 +120,30 @@ export function AdminGamesTable({ onGamesChanged }: { onGamesChanged?: () => voi
       error(err instanceof Error ? err.message : 'Failed to end game')
     } finally {
       setEndingId(null)
+    }
+  }
+
+  const deleteGame = async (gameId: string) => {
+    const ok = await confirm({
+      title: `Delete game ${gameId}?`,
+      message:
+        'This permanently removes the game and all of its data — rounds, players, and game state. This cannot be undone.',
+      confirmLabel: 'Delete game',
+      destructive: true,
+    })
+    if (!ok) return
+
+    setDeletingId(gameId)
+    try {
+      const res = await fetch(`/api/admin/games/${gameId}/delete`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to delete game')
+      success(`Game ${gameId} deleted`)
+      await refreshGames()
+    } catch (err) {
+      error(err instanceof Error ? err.message : 'Failed to delete game')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -244,18 +269,26 @@ export function AdminGamesTable({ onGamesChanged }: { onGamesChanged?: () => voi
                       <td className="px-5 py-3 capitalize">{game.status}</td>
                       <td className="px-5 py-3 text-muted whitespace-nowrap">{formatDate(game.created_at)}</td>
                       <td className="px-5 py-3">
-                        {game.status === 'active' || game.status === 'waiting' ? (
+                        <div className="flex items-center gap-2">
+                          {game.status === 'active' || game.status === 'waiting' ? (
+                            <button
+                              type="button"
+                              onClick={() => endGame(game.id)}
+                              disabled={endingId === game.id || deletingId === game.id}
+                              className="chip text-xs py-1.5 px-2.5 text-red-500 border-red-500/30 disabled:opacity-50"
+                            >
+                              {endingId === game.id ? 'Ending…' : 'End game'}
+                            </button>
+                          ) : null}
                           <button
                             type="button"
-                            onClick={() => endGame(game.id)}
-                            disabled={endingId === game.id}
+                            onClick={() => deleteGame(game.id)}
+                            disabled={endingId === game.id || deletingId === game.id}
                             className="chip text-xs py-1.5 px-2.5 text-red-500 border-red-500/30 disabled:opacity-50"
                           >
-                            {endingId === game.id ? 'Ending…' : 'End game'}
+                            {deletingId === game.id ? 'Deleting…' : 'Delete game'}
                           </button>
-                        ) : (
-                          <span className="text-faint text-xs">—</span>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   ))

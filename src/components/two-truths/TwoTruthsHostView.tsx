@@ -50,7 +50,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
   const [hostPlayerName, setHostPlayerName] = useState('')
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
-  const [hostMode, setHostMode] = useState<TtlHostMode>('spectator')
+  const [hostMode, setHostMode] = useState<TtlHostMode>('player')
   const [tab, setTab] = useState<HostTab>('manage')
   const [editingStatements, setEditingStatements] = useState(false)
 

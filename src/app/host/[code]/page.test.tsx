@@ -47,6 +47,9 @@ beforeEach(() => {
   h.gameRow = null
   h.verifyOk = true
   h.verifyResponseOk = true
+  // The host page resolves its token from storage (clean-URL flow, like tournaments) via
+  // useHostToken — seed it under the upper-cased code the page reads.
+  localStorage.setItem('game_host_ABCD', 'secret')
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => ({ ok: h.verifyResponseOk, json: async () => ({ ok: h.verifyOk }) }))
@@ -54,6 +57,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  localStorage.clear()
+  window.history.replaceState({}, '', '/') // reset the URL so a strip test can't leak into others
   vi.unstubAllGlobals() // restore the real global.fetch so it can't leak into other suites
 })
 
@@ -72,6 +77,23 @@ describe('HostPage dispatcher', () => {
     expect(screen.queryByTestId('poll-host-view')).not.toBeInTheDocument()
   })
 
+  it('reads a ?token= host link, saves it to storage, and strips it from the URL', async () => {
+    localStorage.removeItem('game_host_ABCD') // only the URL provides the token here
+    window.history.replaceState({}, '', '/host/abcd?token=fromurl')
+    h.gameRow = { game_type: 'chess' }
+    render(<HostPage />)
+    expect(await screen.findByTestId('board-host-view')).toHaveTextContent('board:ABCD:fromurl')
+    expect(window.location.search).toBe('')
+    expect(localStorage.getItem('game_host_ABCD')).toBe('fromurl')
+  })
+
+  it('shows Access Denied when no token is present anywhere', async () => {
+    localStorage.removeItem('game_host_ABCD')
+    h.gameRow = { game_type: 'chess' }
+    render(<HostPage />)
+    expect(await screen.findByText('Access Denied')).toBeInTheDocument()
+  })
+
   it('shows Access Denied when the host token fails verification', async () => {
     h.gameRow = { game_type: 'chess' }
     h.verifyOk = false
@@ -79,10 +101,14 @@ describe('HostPage dispatcher', () => {
     expect(await screen.findByText('Access Denied')).toBeInTheDocument()
   })
 
-  it('shows Access Denied when the game is not found', async () => {
+  it('shows the server-error state (not Access Denied) when the token verifies but the game row fails to load', async () => {
+    // The token already verified, so a null/errored game read is a load/schema problem —
+    // not an auth problem. It must NOT masquerade as "invalid or missing host token"
+    // (a missing column grant did exactly that and read as a bogus Access Denied).
     h.gameRow = null
     render(<HostPage />)
-    expect(await screen.findByText('Access Denied')).toBeInTheDocument()
+    expect(await screen.findByText("Can't reach the server")).toBeInTheDocument()
+    expect(screen.queryByText('Access Denied')).not.toBeInTheDocument()
   })
 
   it('shows the server-error state when verify-host is unreachable', async () => {
