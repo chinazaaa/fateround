@@ -78,10 +78,13 @@ expands to privacy (which would be the point to consider anonymous Supabase auth
   ⚠️ **Realtime must be verified on the live DB** — approach A relies on Supabase realtime
   excluding ungranted columns from anon `postgres_changes` payloads. If a test shows the tokens
   still arrive over realtime, escalate those two columns to separate secret tables.
-- [ ] **Core tables** still permissive: `games`, `players`, `participants`, `rounds`, `votes`,
+- [x] **Core tables** locked: `games`, `players`, `participants`, `rounds`, `votes`,
   `confessions`, `player_questions`, `wst_quote_pool`, `anime_quote_pool`,
   `hot_seat_submissions`, `game_snapshots`, and `rooms`/`room_*`. These back the original
-  voting games (SMK/WYR/MLT/who-said-this/hot-seat/etc.) and shared infra — not yet locked.
+  voting games (SMK/WYR/MLT/who-said-this/hot-seat/etc.) and shared infra. Locked by
+  `20260628132823_rls_lockdown_core_gameplay.sql` (core gameplay tables) and
+  `0126_rls_lockdown_rooms.sql` (rooms/`room_*`, plus hiding `creator_token`/`member_code`
+  from anon reads). See Phase 5 below (marked **IMPLEMENTED**).
 
 ### Games hardened (Phase 1+2+4 done): migrations 0106–0121
 snake-and-ladder, tic-tac-toe, yahtzee, whot, ludo, chess, monopoly, scrabble, trivia,
@@ -233,6 +236,11 @@ Game-logic libs (the real targets), highest write-count first:
 > `library/submit/page.tsx` use `Set`/`Map.delete`). Audit each file in its slice.
 
 ### Tables with permissive `FOR ALL USING(true)` (Phase 4 lockdown targets — ~50)
+
+> **Note:** this is a **pre-lockdown snapshot**. The core and rooms tables listed
+> immediately below are **now locked** — core gameplay by
+> `20260628132823_rls_lockdown_core_gameplay.sql` and rooms/`room_*` by
+> `0126_rls_lockdown_rooms.sql` (see the Phase 5 section, marked **IMPLEMENTED**).
 
 Core: games, participants, players, rounds, votes, confessions, player_questions,
 wst_quote_pool, anime_quote_pool, hot_seat_submissions, game_snapshots. Rooms: rooms,

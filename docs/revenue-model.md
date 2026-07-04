@@ -114,7 +114,7 @@ games:
 | Layer | What it themes | Which games | Already built? |
 |-------|----------------|-------------|----------------|
 | **1. Room themes** | The whole room UI — background, colours, accents, lobby look | **Every game**, no exceptions | ✅ Yes — [`src/lib/themes.ts`](../src/lib/themes.ts) ships 5 (Default, Neon, Retro, Elegant, Tropical) |
-| **2. Component skins** | The actual play surface — board, pieces, tiles, cards, dice | Only games that draw a surface (table below) | ✅ Partly — Chess already has it ([`src/lib/chess-appearance.ts`](../src/lib/chess-appearance.ts): 8 boards, 5 piece sets) |
+| **2. Component skins** | The actual play surface — board, pieces, tiles, cards, dice | Only games that draw a surface (table below) | ✅ Partly — Chess already has it ([`src/lib/chess-appearance.ts`](../src/lib/chess-appearance.ts): 8 boards, 6 piece sets) |
 
 So **"all games can be themed" is true** — via room themes (layer 1). On top of that, the
 games with a physical surface *also* get skins (layer 2). The infrastructure for both
@@ -260,6 +260,8 @@ room is created with today; "Pro ceiling" is the game's hard `max`.
 | Bingo | 20 | 30 | **+10** |
 | Trivia | 30 | 40 | **+10** |
 | Describe It | 12 | 20 | **+8** |
+| Snake & Ladder | 4 | 6 | **+2** |
+| Crazy Eights | 6 | 6 | — |
 | Anonymous Messages | 20 | 20 | — |
 | I Call On (NPAT) | 20 | 20 | — |
 | Word Hunt | 20 | 20 | — |
@@ -270,11 +272,12 @@ room is created with today; "Pro ceiling" is the game's hard `max`.
 | Ludo | 4 | 4 | — *(fixed)* |
 | Scrabble | 4 | 4 | — *(fixed)* |
 | Chess | 2 | 2 | — *(fixed)* |
+| Checkers | 2 | 2 | — *(fixed)* |
 | Tic-Tac-Toe | 2 | 2 | — *(fixed)* |
 
 ### ⚠️ Important design note
 
-**"Raise the player cap" only helps 5 games** with the current numbers (the ones with a
+**"Raise the player cap" only helps 6 games** with the current numbers (the ones with a
 gain above). Board games like Monopoly, Ludo, and Chess are capped by their own rules — Pro
 can't add a 7th Monopoly player. For those games the real Pro lever is **time, control, and
 content**, not headcount.
@@ -282,7 +285,7 @@ content**, not headcount.
 Two ways to do the capacity perk:
 
 - **Option A — reuse `max` (✅ DECIDED for launch):** Free uses `default`, Pro uses the
-  existing `max`. Helps 5 games, modest gains, but **zero new schema** — the `max` ceiling
+  existing `max`. Helps 6 games, modest gains, but **zero new schema** — the `max` ceiling
   already exists and is already enforced server-side in `game-limits.ts`. Ship this first.
 - **Option B — separate `proMax` (later upsell lever):** Introduce a higher Pro ceiling per
   game (e.g. Bingo 20→50, Trivia 30→60, Two Truths 20→60) above today's `max`. Stronger
