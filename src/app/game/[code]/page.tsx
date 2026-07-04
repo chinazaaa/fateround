@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PollGamePlayerExperience } from '@/components/poll-game/PollGamePlayerExperience'
 import { AudioChat } from '@/components/AudioChat'
+import { PushNotificationPrompt } from '@/components/PushNotificationPrompt'
+import { IosInstallPushNudge } from '@/components/IosInstallPushNudge'
 import { getPlayerSession } from '@/lib/utils'
 
 const TOURNAMENT_RETURN_SECONDS = 8
@@ -138,6 +140,8 @@ export default function GamePage() {
         <AudioChat roomCode={gameCode} playerName={playerName} identity={playerId} auth={{ kind: 'player' }} />
       )}
       <TournamentBanner gameCode={gameCode} tournamentId={tournamentId} />
+      {playerId && <PushNotificationPrompt gameCode={gameCode} />}
+      {playerId && <IosInstallPushNudge gameCode={gameCode} />}
     </>
   )
 }
