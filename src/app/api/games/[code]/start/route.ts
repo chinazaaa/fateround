@@ -1,5 +1,6 @@
 import type { EliminationConfig } from '@/types/elimination'
 import { internalErrorMessage } from '@/lib/api-errors'
+import { withGameNotification } from '@/lib/push-route'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { generateRoundsByGender, generateNRounds } from '@/lib/utils'
@@ -203,7 +204,7 @@ function mergeAiIntoPlatformPool<T>(
   return merged
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
+async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const raw = await req.json()
   const parsed = hostActionSchema.safeParse(raw)
@@ -1486,3 +1487,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   return NextResponse.json({ success: true })
 }
+
+export const POST = withGameNotification('game_started', handlePost)

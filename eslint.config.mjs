@@ -11,6 +11,15 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // The service worker runs in the ServiceWorkerGlobalScope, so `self` and friends
+    // are legitimate globals (not `no-undef`). Flat config can't use the old
+    // `/* eslint-env serviceworker */` comment, so declare them here.
+    files: ['public/sw.js'],
+    languageOptions: {
+      globals: { self: 'readonly', clients: 'readonly', caches: 'readonly', registration: 'readonly' },
+    },
+  },
+  {
     plugins: {
       'react-hooks': reactHooks,
       '@next/next': nextPlugin,
