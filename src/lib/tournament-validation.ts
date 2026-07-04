@@ -16,7 +16,7 @@ const eliminationConfigSchema = z.object({
 const gameConfigSchema = z.object({
   questionSource: z.enum(['platform', 'custom']).optional(),
   roundsCount: z.coerce.number().int().min(1).max(50).optional(),
-  timerSeconds: z.coerce.number().int().min(0).max(300).optional(),
+  timerSeconds: z.coerce.number().int().min(0).max(3600).optional(),
   // Whot/Scrabble max room length in seconds (0 = no limit); re-clamped per game.
   gameDurationSeconds: z.coerce.number().int().min(0).max(14400).optional(),
   // Whot house rules.
