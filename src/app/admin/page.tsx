@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AdminGamesTable } from '@/components/admin/AdminGamesTable'
 import { AdminTournamentsTable } from '@/components/admin/AdminTournamentsTable'
+import { AdminRoomsTable } from '@/components/admin/AdminRoomsTable'
 import { Chip } from '@/components/ui/PageShell'
 import { formatPlayDuration } from '@/lib/admin-play-time'
 import { addDays, addMonths, monthBounds, watToday, weekBounds } from '@/lib/community-dates'
@@ -124,6 +125,8 @@ export default function AdminDashboardPage() {
       <AdminGamesTable onGamesChanged={() => setStatsVersion((version) => version + 1)} />
 
       <AdminTournamentsTable onTournamentsChanged={() => setStatsVersion((version) => version + 1)} />
+
+      <AdminRoomsTable onRoomsChanged={() => setStatsVersion((version) => version + 1)} />
     </div>
   )
 }
