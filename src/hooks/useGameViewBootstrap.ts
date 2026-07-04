@@ -187,8 +187,8 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
         setMyPlayerId(data.playerId)
         setMyResumeToken(data.resumeToken ?? null)
-        // GA key event: a player joined a room via code/link (viral conversion).
-        trackEvent(GA_EVENTS.joinRoom)
+        // GA key event: a player joined a game via code/link (viral conversion).
+        trackEvent(GA_EVENTS.joinGame)
         try {
           onJoinSuccess?.(data as JoinResponse)
         } catch (err) {

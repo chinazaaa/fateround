@@ -1337,8 +1337,490 @@ const HOUSEPARTY: MarketingPageContent = {
   accent: '#a855f7',
 }
 
+const NAIJA: MarketingPageContent = {
+  slug: 'nigerian-games',
+  breadcrumbName: 'Nigerian games',
+  seoTitle: 'Play Nigerian Games Online Free — Whot, Ludo & More',
+  seoDescription:
+    'Naija game night, online. Play Whot, Ludo, Draughts, Snakes & Ladders and more with friends and family anywhere — share one link over WhatsApp. Free, no app, no sign-up.',
+  keywords: [
+    'nigerian games online',
+    'naija games',
+    'play whot online',
+    'whot online nigeria',
+    'ludo online nigeria',
+    'nigerian card games online',
+    'naija game night',
+    'play whot and ludo online',
+    'nigerian games for diaspora',
+    'play naija games online free',
+    'draughts online nigeria',
+    'stop game name place animal thing online',
+    'play nigerian games with family abroad',
+    'whot online with friends free',
+  ],
+  heroTitle: 'Naija game night, online — Whot, Ludo and the classics',
+  heroSubtitle:
+    'Nothing hits like a Naija game night. Now everyone plays from their phone — same city or scattered across the world. Share one link over WhatsApp and the whole crew is in. Free, no app, no sign-up.',
+  highlights: [
+    'Whot, Ludo, Draughts & more',
+    'Play with family abroad',
+    'Share once over WhatsApp',
+    'Free, no app, no sign-up',
+  ],
+  featureCards: [
+    {
+      emoji: '🃏',
+      title: 'Real Naija Whot',
+      description: 'Nigerian house rules — call WHOT, stack Pick 2 & Pick 3, Hold On, General Market. The proper game.',
+    },
+    {
+      emoji: '🎲',
+      title: 'Ludo & the classics',
+      description:
+        'Ludo, Draughts, Snakes & Ladders, and “Stop” (Name, Place, Animal, Thing) — the games you grew up on.',
+    },
+    {
+      emoji: '🌍',
+      title: 'For the diaspora',
+      description: 'Play with family in Naija from London, Houston, or Toronto — same board, real time, over any call.',
+    },
+    {
+      emoji: '💬',
+      title: 'One WhatsApp link',
+      description: 'Drop the link in the family group chat and everyone taps in. No app to download, no account.',
+    },
+  ],
+  stepsHeading: 'How it works',
+  steps: [
+    { title: 'Pick a game', description: 'Whot, Ludo, Draughts, Snakes & Ladders, or Stop — whatever the crew wants.' },
+    {
+      title: 'Share the link on WhatsApp',
+      description: 'One code in the group chat — everyone joins from their phone.',
+    },
+    { title: 'Play together, live', description: 'Same board in real time, wherever everyone is in the world.' },
+  ],
+  body: (
+    <>
+      <p>
+        Whot on a Friday night, Ludo that runs till someone’s vexed, Draughts on the veranda — Naija game night is a
+        whole vibe. Fate Round brings it online without losing the spirit: everyone plays from their own phone, over one
+        shared link, in real time. No app to download, no account to make — just drop the link in the WhatsApp group and
+        the crew is in.
+      </p>
+      <p>
+        Play proper Naija <GameLink type="whot" /> with the real house rules — call WHOT, stack Pick 2 and Pick 3, Hold
+        On, and General Market — then run it back with <GameLink type="ludo" />,{' '}
+        <GameLink type="checkers">Draughts</GameLink>, <GameLink type="snake_and_ladder">Snakes &amp; Ladders</GameLink>
+        , and <GameLink type="i_call_on">Stop (Name, Place, Animal, Thing)</GameLink>. Feeling competitive? Bankrupt the
+        family in <GameLink type="monopoly" />. It’s the whole game night behind one link — perfect for the diaspora
+        keeping game night alive across time zones.
+      </p>
+    </>
+  ),
+  gameList: {
+    heading: 'Naija games to play online',
+    items: [
+      {
+        game: <GameLink type="whot" />,
+        description: 'the Nigerian card classic — match, stack, and call WHOT on your crew.',
+      },
+      {
+        game: <GameLink type="ludo" />,
+        description: 'roll, race, capture, and block your way home. Game night staple.',
+      },
+      {
+        game: <GameLink type="checkers">Draughts</GameLink>,
+        description: 'the veranda classic — jump your opponent’s pieces and crown your kings.',
+      },
+      {
+        game: <GameLink type="snake_and_ladder">Snakes &amp; Ladders</GameLink>,
+        description: 'climb the ladders, dodge the snakes — the whole family, kids included.',
+      },
+      {
+        game: <GameLink type="i_call_on">Stop (Name, Place, Animal, Thing)</GameLink>,
+        description: 'call a letter and race to fill the categories — unique answers score big.',
+      },
+      {
+        game: <GameLink type="monopoly" />,
+        description: 'roll, buy, and bankrupt the family. Last one standing wins.',
+      },
+    ],
+  },
+  faqs: [
+    {
+      question: 'What Nigerian games can I play online?',
+      answer:
+        'Fate Round has Whot (with real Naija house rules), Ludo, Draughts (Checkers), Snakes & Ladders, and Stop / Name-Place-Animal-Thing, plus classics like Monopoly. All free, all in the browser — no app to download.',
+    },
+    {
+      question: 'Can I play Whot online with friends and family abroad?',
+      answer:
+        'Yes — that’s exactly what it’s built for. Share one link and 2 to 6 of you play the same game of Whot in real time, whether you’re in Lagos, London, or Houston. Perfect over a WhatsApp video call.',
+    },
+    {
+      question: 'How do we all join?',
+      answer:
+        'The host creates a game and shares one short link — drop it in the family or friends WhatsApp group, and everyone taps in from their own phone with a nickname. No app, no sign-up.',
+    },
+    {
+      question: 'How many people can play?',
+      answer:
+        'It depends on the game — Whot and Ludo take 2 to 6, Draughts is head-to-head, and party games like Stop scale to bigger groups. Everyone plays from their own phone in one room.',
+    },
+    {
+      question: 'Is it really free?',
+      answer: 'Yes — free forever, no sign-up and no download. Just share the link and play.',
+    },
+  ],
+  ctaHeading: 'Start the game night',
+  ctaSubtext: 'Free forever. Share one link on WhatsApp — the whole crew is in.',
+  accent: '#15803d',
+}
+
+const LUDO_KING: MarketingPageContent = {
+  slug: 'free-ludo-king-alternative',
+  breadcrumbName: 'Free Ludo King alternative',
+  seoTitle: 'Free Ludo King Alternative — Play Ludo Online, No Download',
+  seoDescription:
+    'Want Ludo King without the app, ads, or download? Play Ludo free in your browser — share one link and 2–4 players join from any phone. No install, no sign-up.',
+  keywords: [
+    'ludo king alternative',
+    'free ludo king alternative',
+    'ludo king online',
+    'play ludo online free no download',
+    'ludo online no app',
+    'ludo king for pc',
+    'ludo king browser',
+    'ludo online multiplayer free',
+    'ludo without download',
+    'play ludo with friends online free',
+  ],
+  heroTitle: 'The free Ludo King alternative — no app, no download',
+  heroSubtitle:
+    'Love Ludo, tired of the app, the ads, and the download? Play Ludo free in your browser — share one link and 2 to 4 of you roll, race, and capture in real time. No install, no sign-up.',
+  highlights: ['Free, no ads to dodge', 'No app or download', 'Share a link — everyone joins', 'Play on any device'],
+  featureCards: [
+    {
+      emoji: '🎲',
+      title: 'Classic Ludo rules',
+      description: 'Roll, bring pieces out on a 6, capture, blockade, and race all four home.',
+    },
+    {
+      emoji: '🔗',
+      title: 'No app — just a link',
+      description: 'Share one code; players join from any phone or laptop browser. Nothing to install.',
+    },
+    {
+      emoji: '🌍',
+      title: 'Play from anywhere',
+      description: 'Friends and family in different cities join the same board in real time.',
+    },
+    { emoji: '🆓', title: 'Free, no upsell', description: 'No ads gating your game, no coins to buy — just play.' },
+  ],
+  stepsHeading: 'How it works',
+  steps: [
+    { title: 'Create a Ludo game', description: 'Pick Ludo and set your options — no account needed.' },
+    { title: 'Share the link', description: 'Drop the code in your chat; 2–4 players tap in from their phones.' },
+    { title: 'Race home', description: 'Roll, capture, and get all four pieces home first — live on every device.' },
+  ],
+  body: (
+    <>
+      <p>
+        Ludo King made Ludo a phone staple — but it means an app to download, ads between games, and coins to buy. Fate
+        Round keeps the game and drops the friction: <GameLink type="ludo" /> plays right in the browser, free, with the
+        classic rules you know. Share one link and 2 to 4 players join from any phone — no install, no account, no ads
+        interrupting the fun.
+      </p>
+      <p>
+        It’s perfect for playing with friends and family in different cities, or for the diaspora keeping game night
+        alive across time zones. And once the Ludo’s done, the same room runs <GameLink type="whot" />,{' '}
+        <GameLink type="checkers">Draughts</GameLink>, and{' '}
+        <GameLink type="snake_and_ladder">Snakes &amp; Ladders</GameLink> — see the full{' '}
+        <HubLink>Naija game night</HubLink> lineup.
+      </p>
+    </>
+  ),
+  comparison: {
+    heading: 'How Fate Round compares to Ludo King',
+    columns: ['Fate Round', 'Ludo King'],
+    rows: [
+      { label: 'Price', a: 'Free forever', b: 'Free with ads + in-app purchases' },
+      { label: 'Download', a: 'None — runs in the browser', b: 'App install required' },
+      { label: 'Ads', a: 'None', b: 'Ads between games (on the free tier)' },
+      { label: 'How to join', a: 'Share a link, any browser', b: 'Add friends in the app' },
+      { label: 'Devices', a: 'Any phone, tablet, or laptop', b: 'Mobile app' },
+      { label: 'Other games', a: 'Whot, Draughts, Snakes & Ladders & 20+ more', b: 'Ludo (plus a few in-app)' },
+    ],
+    note: 'Comparison reflects Ludo King’s commonly available free tier as of July 2026 — check the app store for current details.',
+  },
+  faqs: [
+    {
+      question: 'Is there a free Ludo King alternative with no download?',
+      answer:
+        'Yes — Fate Round’s Ludo plays right in your browser, free, with no app to install and no sign-up. Share one link and 2 to 4 players join from any phone or laptop.',
+    },
+    {
+      question: 'Can I play Ludo online without the app?',
+      answer:
+        'Yes. Skip the app store entirely — create a game, share the code, and everyone plays in the browser in real time. Works on phones, tablets, and computers.',
+    },
+    {
+      question: 'How many players, and is it really free?',
+      answer:
+        'Ludo takes 2 to 4 players, and it’s free forever with no ads gating your game and no coins to buy. Just share the link and play.',
+    },
+    {
+      question: 'Can I play Ludo with friends and family abroad?',
+      answer:
+        'Yes — everyone joins from their own phone wherever they are, so it’s great for the diaspora. Share one link over WhatsApp and you’re on the same board in real time.',
+    },
+  ],
+  ctaHeading: 'Play Ludo — no app required',
+  ctaSubtext: 'Free forever. Share one link and 2–4 players are in.',
+  accent: '#15803d',
+}
+
+const WHOT_UNO: MarketingPageContent = {
+  slug: 'whot-vs-uno',
+  breadcrumbName: 'Whot vs Uno',
+  seoTitle: 'Whot vs Uno — Differences, and Where to Play Both Free',
+  seoDescription:
+    'Whot vs Uno: how the two card classics compare, and where to play both free online. Whot uses shapes and WHOT wilds; Uno-style Crazy Eights uses colours. No app, no sign-up.',
+  keywords: [
+    'whot vs uno',
+    'is whot like uno',
+    'difference between whot and uno',
+    'whot or uno',
+    'nigerian uno',
+    'whot and uno online',
+    'whot vs uno rules',
+    'uno alternative online free',
+    'card games like uno online',
+  ],
+  heroTitle: 'Whot vs Uno — cousins, not twins (and you can play both)',
+  heroSubtitle:
+    'Whot and Uno are close cousins: match, shed your hand, and use wild cards to bend the game. Here’s how they differ — and how to play both free in your browser, no app, no sign-up.',
+  highlights: [
+    'Whot: shapes + WHOT wilds',
+    'Uno-style: colours + wilds',
+    'Play both free online',
+    'No app, no sign-up',
+  ],
+  featureCards: [
+    {
+      emoji: '🃏',
+      title: 'Both are shedding games',
+      description: 'Match by rank or shape/colour and race to empty your hand first — same core loop.',
+    },
+    {
+      emoji: '🔀',
+      title: 'Whot came first',
+      description: 'Whot (1950s) uses five shapes and the WHOT wild; Uno (1971) uses four colours and Wild cards.',
+    },
+    {
+      emoji: '⚡',
+      title: 'Similar special cards',
+      description: 'Whot’s Pick 2, Pick 3 & WHOT mirror Uno’s Draw 2, Draw 4 & Wild — plus Hold On and General Market.',
+    },
+    {
+      emoji: '🎮',
+      title: 'Play both here',
+      description: 'Fate Round has Whot and Crazy Eights (the worldwide Uno-style classic) — free, in the browser.',
+    },
+  ],
+  stepsHeading: 'How they compare',
+  steps: [
+    { title: 'The goal is the same', description: 'Empty your hand first by matching the top card and playing wilds.' },
+    {
+      title: 'The look differs',
+      description: 'Whot uses shapes (circle, cross, triangle, square, star); Uno-style uses colours.',
+    },
+    {
+      title: 'Try each free',
+      description: 'Play Whot or Crazy Eights on Fate Round — share a link and your crew joins.',
+    },
+  ],
+  body: (
+    <>
+      <p>
+        If you grew up on one, you already know the other. <GameLink type="whot" /> and Uno are both shedding games:
+        match the top card, play action cards to mess with the next player, and race to empty your hand. Whot came first
+        (Nigeria and the UK, 1950s), uses five shapes instead of colours, and its WHOT card (number 20) is the wild —
+        rhyming exactly with Uno’s Wild. Whot’s Pick 2 and Pick 3 are Uno’s Draw 2 and Draw 4, and Whot adds Hold On and
+        General Market for extra chaos.
+      </p>
+      <p>
+        The best part: you don’t have to choose. Fate Round has proper Naija <GameLink type="whot" /> and{' '}
+        <GameLink type="crazy_eights">Crazy Eights</GameLink> — the worldwide Uno-style classic where 8s are wild — both
+        free, both in the browser, no app to download. Share a link and your crew joins from any phone. Part of the{' '}
+        <HubLink>Naija game night</HubLink> lineup.
+      </p>
+    </>
+  ),
+  comparison: {
+    heading: 'Whot vs Uno at a glance',
+    columns: ['Whot', 'Uno'],
+    rows: [
+      { label: 'Origin', a: 'Nigeria / UK, 1950s', b: 'USA, 1971' },
+      { label: 'Suits', a: 'Five shapes (circle, cross, triangle, square, star)', b: 'Four colours' },
+      { label: 'Wild card', a: 'WHOT (20) — call the next shape', b: 'Wild — call the next colour' },
+      { label: 'Draw cards', a: 'Pick 2, Pick 3', b: 'Draw 2, Draw 4' },
+      { label: 'Extra cards', a: 'Hold On, Suspension, General Market', b: 'Skip, Reverse' },
+      { label: 'Play free online', a: 'Yes — on Fate Round', b: 'Crazy Eights (Uno-style) on Fate Round' },
+    ],
+  },
+  faqs: [
+    {
+      question: 'Is Whot the same as Uno?',
+      answer:
+        'They’re close cousins, not identical. Both are match-and-shed card games where you race to empty your hand, and their special cards line up (Whot’s Pick 2/Pick 3/WHOT vs Uno’s Draw 2/Draw 4/Wild). Whot came first, uses shapes instead of colours, and adds Hold On and General Market.',
+    },
+    {
+      question: 'What’s the main difference between Whot and Uno?',
+      answer:
+        'Whot uses five shapes and the WHOT wild card; Uno uses four colours and Wild cards. Whot also has Hold On (extra turn) and General Market (everyone draws), which Uno doesn’t. Otherwise the goal and flow are very similar.',
+    },
+    {
+      question: 'Can I play Whot and Uno online free?',
+      answer:
+        'You can play Whot free on Fate Round, and Crazy Eights — the worldwide Uno-style game where 8s are wild — free as well. Both run in the browser with no app and no sign-up.',
+    },
+    {
+      question: 'Which should I play?',
+      answer:
+        'If you want the Naija classic with shapes and General Market, play Whot. If you want the colour-matching game most people call Uno, play Crazy Eights. On Fate Round you can jump between both in the same session.',
+    },
+  ],
+  ctaHeading: 'Play Whot or Crazy Eights',
+  ctaSubtext: 'Free forever. Share one link — your crew is in.',
+  accent: '#15803d',
+}
+
+const CHRISTMAS: MarketingPageContent = {
+  slug: 'christmas-games-online',
+  breadcrumbName: 'Christmas games online',
+  seoTitle: 'Christmas Games to Play Online with Family — Free, No App',
+  seoDescription:
+    'Holiday game night, wherever the family is. Play Whot, Ludo, Bingo, Trivia and more free in your browser — share one link over WhatsApp. No app, no sign-up. Perfect for Detty December and Christmas.',
+  keywords: [
+    'christmas games online',
+    'online christmas games for family',
+    'christmas party games online',
+    'games to play on christmas with family',
+    'detty december games',
+    'holiday games online',
+    'virtual christmas games',
+    'family christmas games online free',
+    'games to play with family far away at christmas',
+    'december games nigeria',
+  ],
+  heroTitle: 'Christmas game night — wherever the family is this year',
+  heroSubtitle:
+    'Everyone home, or scattered across the world? Either way, the game night happens. Share one Fate Round link over WhatsApp and the whole family plays from their phones — Whot, Ludo, Bingo, trivia and more. Free, no app, no sign-up.',
+  highlights: [
+    'Whot, Ludo, Bingo & more',
+    'Everyone plays from their phone',
+    'Share once on WhatsApp',
+    'Free, no app, no sign-up',
+  ],
+  featureCards: [
+    {
+      emoji: '🎄',
+      title: 'Made for the season',
+      description: 'Detty December energy or a quiet Christmas at home — one link keeps the whole family in the game.',
+    },
+    {
+      emoji: '🌍',
+      title: 'Home or abroad',
+      description: 'Family in Lagos, London, or Houston all join the same game in real time. No one misses out.',
+    },
+    {
+      emoji: '📱',
+      title: "Everyone's own phone",
+      description: 'No board to pass around, no app to install — each person plays from their own device.',
+    },
+    {
+      emoji: '👵',
+      title: 'Elders to kids',
+      description: 'From a Bingo call for the aunties to a Ludo grudge match for the cousins — a game for everyone.',
+    },
+  ],
+  stepsHeading: 'How it works',
+  steps: [
+    {
+      title: 'Pick a game',
+      description: 'Whot, Ludo, Bingo, trivia, or a party round — whatever the family’s in the mood for.',
+    },
+    {
+      title: 'Share the link on WhatsApp',
+      description: 'One code in the family group chat — everyone taps in from their phone.',
+    },
+    {
+      title: 'Play together, live',
+      description: 'Same game, real time, whether you’re all in one house or across the world.',
+    },
+  ],
+  body: (
+    <>
+      <p>
+        Christmas game night doesn’t need everyone in the same room — just the same link. Whether it’s full Detty
+        December in Lagos or a video call with family abroad, Fate Round gets the whole family playing from their own
+        phones in real time. No app to download, no accounts — drop one link in the family WhatsApp group and even the
+        aunties are in.
+      </p>
+      <p>
+        Deal a round of Naija <GameLink type="whot" />, run a <GameLink type="ludo" /> grudge match, call{' '}
+        <GameLink type="bingo" /> for the whole house, test everyone with a festive <GameLink type="trivia" />, or
+        settle in for <GameLink type="monopoly" />. Warm up the crowd with <GameLink type="would_you_rather" /> and{' '}
+        <GameLink type="most_likely_to" />. It’s the whole holiday game night behind one link — see the full{' '}
+        <HubLink>Naija game night</HubLink> lineup.
+      </p>
+    </>
+  ),
+  gameList: {
+    heading: 'Best games for a Christmas game night',
+    items: [
+      { game: <GameLink type="whot" />, description: 'the Naija card classic — the December staple.' },
+      { game: <GameLink type="ludo" />, description: 'the family grudge match that runs till someone’s vexed.' },
+      { game: <GameLink type="bingo" />, description: 'call the numbers for the whole house — aunties included.' },
+      { game: <GameLink type="trivia" />, description: 'run a festive quiz — upload your own family questions.' },
+      { game: <GameLink type="most_likely_to" />, description: 'roast the cousins with anonymous votes.' },
+      { game: <GameLink type="monopoly" />, description: 'bankrupt the family, Christmas-dinner style.' },
+    ],
+  },
+  faqs: [
+    {
+      question: 'What games can I play online with family at Christmas?',
+      answer:
+        'Fate Round has Whot, Ludo, Bingo, trivia, Monopoly, and party games like Most Likely To — all free in the browser. Share one link and the whole family joins from their phones, in one house or across the world.',
+    },
+    {
+      question: 'Can we play if family are in different countries?',
+      answer:
+        'Yes — that’s the point. Everyone joins the same game from their own phone in real time, so family in Nigeria and the diaspora all play together. Perfect over a WhatsApp video call.',
+    },
+    {
+      question: 'How does everyone join?',
+      answer:
+        'The host creates a game and shares one short link — drop it in the family WhatsApp group and everyone taps in with a nickname. No app, no sign-up.',
+    },
+    {
+      question: 'Is it free?',
+      answer: 'Yes — free forever, no account and no download. Just share the link and play.',
+    },
+  ],
+  ctaHeading: 'Start the Christmas game night',
+  ctaSubtext: 'Free forever. Share one link on WhatsApp — the whole family’s in.',
+  accent: '#dc2626',
+}
+
 export const MARKETING_PAGES: Record<string, MarketingPageContent> = {
   [JACKBOX.slug]: JACKBOX,
+  [NAIJA.slug]: NAIJA,
+  [LUDO_KING.slug]: LUDO_KING,
+  [WHOT_UNO.slug]: WHOT_UNO,
+  [CHRISTMAS.slug]: CHRISTMAS,
   [VIDEO_CALL.slug]: VIDEO_CALL,
   [LONG_DISTANCE.slug]: LONG_DISTANCE,
   [DISCORD.slug]: DISCORD,
