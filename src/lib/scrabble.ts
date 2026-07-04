@@ -19,7 +19,7 @@ export const SCRABBLE_MIN_PLAYERS = 2
 export const SCRABBLE_MAX_PLAYERS = 4
 
 /** Allowed per-turn timer values in seconds (0 = no timer). */
-export const SCRABBLE_TIMER_OPTIONS = [0, 60, 180, 300] as const
+export const SCRABBLE_TIMER_OPTIONS = [0, 60, 120, 180, 300] as const
 
 /** Clamp a requested per-turn timer to an allowed value; defaults to off. */
 export function clampScrabbleTimer(value: unknown): number {
@@ -350,7 +350,21 @@ export async function initializeScrabbleGame(
     return { error: `Need ${SCRABBLE_MIN_PLAYERS}-${SCRABBLE_MAX_PLAYERS} players to start` }
   }
 
-  const { data: existing } = await supabase.from('scrabble_sessions').select('id').eq('game_id', gameId).maybeSingle()
+  const { data: existing } = await supabase
+    .from('scrabble_sessions')
+    .select('id, phase')
+    .eq('game_id', gameId)
+    .maybeSingle()
+
+  // Never re-deal a game that's already in progress: initialization deletes every
+  // player_state row and re-inserts with score 0, so re-running it mid-game wipes
+  // everyone's score back to zero. A rematch legitimately re-deals a *finished*
+  // session; only a live ('playing') one must be protected. This guards the shared
+  // choke point so no caller — regular start or a tournament round re-start — can
+  // erase a live game's scores.
+  if (existing && (existing as { phase?: string }).phase === 'playing') {
+    return { error: 'Game already in progress' }
+  }
 
   const timerSeconds = await loadTimerSeconds(supabase, gameId)
   const tileSet = tileSetForDictionary(await loadDictionaryId(supabase, gameId))

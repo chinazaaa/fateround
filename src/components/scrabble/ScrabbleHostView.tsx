@@ -391,12 +391,13 @@ export function ScrabbleHostView({ gameCode, hostToken }: { gameCode: string; ho
                 <label className="block space-y-1.5">
                   <span className="text-sm font-semibold text-[var(--foreground)]">Time per turn</span>
                   <select
-                    value={[0, 60, 180, 300].includes(game.timer_seconds) ? game.timer_seconds : 0}
+                    value={[0, 60, 120, 180, 300].includes(game.timer_seconds) ? game.timer_seconds : 0}
                     onChange={(e) => void savePatch({ timer_seconds: Number(e.target.value) })}
                     className="input-field w-full"
                   >
                     <option value={0}>No timer</option>
                     <option value={60}>1 minute</option>
+                    <option value={120}>2 minutes</option>
                     <option value={180}>3 minutes</option>
                     <option value={300}>5 minutes</option>
                   </select>

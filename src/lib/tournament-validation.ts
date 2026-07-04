@@ -107,9 +107,11 @@ export const TOURNAMENT_ELIGIBLE_TYPES = ['trivia'] as const
 // here so the create route/page keep their existing import site.
 export { H2H_ELIGIBLE_TYPES, H2H_GROUP_SIZES, h2hGroupSize, resolveGroupSize } from './tournament-bracket'
 
-// Games eligible for the knockout (group elimination) format — group games where
-// everyone plays at once and the field is cut by score each round.
-export const KNOCKOUT_ELIGIBLE_TYPES = ['trivia'] as const
+// Games eligible for the knockout (group elimination) format — the field is cut
+// by score each round. Trivia seats the whole field in one game; Scrabble plays in
+// rooms of up to 4 but everyone is ranked together by score, so it doesn't matter
+// which room a player was in — the bottom half of the whole field is knocked out.
+export const KNOCKOUT_ELIGIBLE_TYPES = ['trivia', 'scrabble'] as const
 
 // Games eligible for the school (class-ladder) format. School Whot is the classic
 // — a 1-v-1 Whot match each round where the winner climbs a class. Other 1-v-1

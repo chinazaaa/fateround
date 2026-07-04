@@ -365,7 +365,15 @@ function CreateGameInner() {
   }, [lobbyLimits])
 
   useEffect(() => {
-    setLateJoinPolicy((prev) => clampLateJoinPolicyForGameType(prev, settings.game_type))
+    setLateJoinPolicy((prev) =>
+      // Text Charades is a drop-in party word game — late joiners should be able to
+      // jump in and play, not just watch. Default it to "viewers and players" rather
+      // than the conservative global default (the host can still restrict it). Other
+      // game types keep their previous policy, clamped to what the type supports.
+      isDescribeItGame(settings.game_type)
+        ? 'viewers_and_players'
+        : clampLateJoinPolicyForGameType(prev, settings.game_type)
+    )
   }, [settings.game_type])
 
   useEffect(() => {
@@ -1978,6 +1986,7 @@ function CreateGameInner() {
                   >
                     <option value={0}>No timer</option>
                     <option value={60}>1 minute</option>
+                    <option value={120}>2 minutes</option>
                     <option value={180}>3 minutes</option>
                     <option value={300}>5 minutes</option>
                   </select>

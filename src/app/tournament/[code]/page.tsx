@@ -248,9 +248,15 @@ export default function TournamentLobbyPage() {
   // bracket board rather than being pulled into a single game.)
   useEffect(() => {
     if (joined || isHost || !spectating || tournament?.status === 'finished') return
-    // Bracket-style formats run many simultaneous 1-v-1 rooms — spectators pick one
-    // from the board rather than being pulled into a single game.
-    if (tournament?.format === 'head-to-head' || tournament?.format === 'school') return
+    // Bracket-style formats run many simultaneous rooms — spectators pick one from
+    // the board rather than being pulled into a single game. Scrabble knockout plays
+    // in rooms too, so it's excluded here as well.
+    if (
+      tournament?.format === 'head-to-head' ||
+      tournament?.format === 'school' ||
+      (tournament?.format === 'knockout' && resolveGroupSize(tournament.game_config, tournament.game_type) > 2)
+    )
+      return
     const active = games.find((g) => g.status === 'active')
     if (!active || watchedGameRef.current === active.game_id) return
     watchedGameRef.current = active.game_id
@@ -273,10 +279,13 @@ export default function TournamentLobbyPage() {
     router.push(`/game/${active.game_id}${suffix}`)
   }, [joined, isHost, tournament?.status, tournament?.format, games, players, tournamentId, router])
 
-  // Knockout: forward every surviving player into the round's one group game once
-  // it's staged (pending), so they're in the room before the host starts it.
+  // Trivia knockout: forward every surviving player into the round's one group game
+  // once it's staged (pending), so they're in the room before the host starts it.
+  // Scrabble knockout runs in rooms — its players are forwarded to their own room by
+  // the group-room effect below, not into a single shared game.
   useEffect(() => {
     if (!joined || isHost || tournament?.format !== 'knockout' || tournament?.status === 'finished') return
+    if (resolveGroupSize(tournament.game_config, tournament.game_type) > 2) return
     const name = localStorage.getItem(`tournament_player_${tournamentId}`)
     const me = name ? players.find((p) => p.player_name.toLowerCase() === name.toLowerCase()) : null
     if (!me || me.is_eliminated) return
@@ -292,11 +301,14 @@ export default function TournamentLobbyPage() {
     router.push(`/game/${roundGame.game_id}${suffix}`)
   }, [joined, isHost, tournament?.format, tournament?.status, games, players, tournamentId, router])
 
-  // Head-to-head / school: forward each joined player to their own 1-v-1 match
-  // room for the current round (once it's staged or live). Bye / sit-out players
-  // and eliminated players stay on the lobby.
+  // Head-to-head / school / Scrabble knockout: forward each joined player to their
+  // own match/room for the current round (once it's staged or live). Bye / sit-out
+  // players and eliminated players stay on the lobby.
   useEffect(() => {
-    const duel = tournament?.format === 'head-to-head' || tournament?.format === 'school'
+    const duel =
+      tournament?.format === 'head-to-head' ||
+      tournament?.format === 'school' ||
+      (tournament?.format === 'knockout' && resolveGroupSize(tournament.game_config, tournament.game_type) > 2)
     if (!joined || isHost || !duel || tournament?.status === 'finished') return
     const name = localStorage.getItem(`tournament_player_${tournamentId}`)
     const me = name ? players.find((p) => p.player_name.toLowerCase() === name.toLowerCase()) : null
@@ -770,11 +782,20 @@ export default function TournamentLobbyPage() {
   // Bracket room size: chess is a 1v1 duel (2); Whot rooms hold up to 5, Scrabble up to 4.
   const groupSize = resolveGroupSize(tournament.game_config, tournament.game_type)
   const isGroupH2h = h2h && groupSize > 2
-  // Multi-player rooms (winner advances) vs a 1-v-1 duel — school always plays in rooms.
-  const groupRooms = isGroupH2h || school
+  // Scrabble knockout plays in rooms too (up to `groupSize`), but is ranked as one
+  // field and cut by score — so it uses the same room board/controls as the group
+  // bracket, while trivia knockout stays a single all-in-one game per round.
+  const knockoutGroup = knockout && groupSize > 2
+  const knockoutTrivia = knockout && !knockoutGroup
+  // Formats whose host controls / board are the group-room bracket (rooms of N).
+  const groupBracket = isGroupH2h || knockoutGroup
+  // Formats that render per-round room/match rows on the head-to-head board.
+  const boardRounds = duel || knockoutGroup
+  // Multi-player rooms vs a 1-v-1 duel — school always plays in rooms.
+  const groupRooms = isGroupH2h || school || knockoutGroup
   const labelForRound = (entrants: number) => (isGroupH2h ? groupRoundLabel(entrants, groupSize) : roundLabel(entrants))
   const playerNameById = (id: string | null) => (id ? (players.find((p) => p.id === id)?.player_name ?? '—') : '—')
-  const h2hMatches = duel ? games.filter((g) => g.round_number != null) : []
+  const h2hMatches = boardRounds ? games.filter((g) => g.round_number != null) : []
   const currentRoundNumber = h2hMatches.length ? Math.max(...h2hMatches.map((g) => g.round_number ?? 0)) : 0
   const currentRoundMatches = h2hMatches.filter((g) => g.round_number === currentRoundNumber)
   const currentRoundEntrants = currentRoundMatches.reduce((n, m) => n + (m.is_bye ? 1 : matchMemberIds(m).length), 0)
@@ -799,8 +820,9 @@ export default function TournamentLobbyPage() {
     schoolGraduates[0] ??
     (school && isFinished && survivingCount === 1 ? (players.find((p) => !p.is_eliminated) ?? null) : null)
 
-  // Knockout derived state — one group game per round.
-  const knockoutGames = knockout ? games.filter((g) => g.round_number != null) : []
+  // Trivia knockout derived state — one all-in-one game per round. (Scrabble
+  // knockout runs on the group-room board above, so it's excluded here.)
+  const knockoutGames = knockoutTrivia ? games.filter((g) => g.round_number != null) : []
   const knockoutRoundNumber = knockoutGames.length ? Math.max(...knockoutGames.map((g) => g.round_number ?? 0)) : 0
   const knockoutRoundGame = knockoutGames.find((g) => g.round_number === knockoutRoundNumber) ?? null
   const knockoutRoundStaged = knockoutRoundGame?.status === 'pending'
@@ -809,14 +831,13 @@ export default function TournamentLobbyPage() {
   // before each round (to ramp difficulty) or reuse the previous round's pack. Uses
   // the same upload state as the round-robin "Start Next Game" panel — the two panels
   // never render together, so sharing is safe.
-  const knockoutTrivia = knockout && (tournament.game_type ?? 'trivia') === 'trivia'
   const knockoutQuestionsPerRound = tournament.game_config?.roundsCount ?? 5
   const knockoutCustom = knockoutTrivia && questionSource === 'custom'
   const knockoutEffectiveCount = customTrivia.length > 0 ? customTrivia.length : (carriedCustomCount ?? 0)
   const canStartKnockoutRound = !knockoutCustom || knockoutEffectiveCount >= knockoutQuestionsPerRound
   // Finished knockout rounds, for the results list. Entrants come from the round's
   // stored placements; the top half advanced.
-  const knockoutResultRounds = knockout
+  const knockoutResultRounds = knockoutTrivia
     ? knockoutGames
         .filter((g) => g.status === 'finished')
         .map((g) => {
@@ -827,7 +848,7 @@ export default function TournamentLobbyPage() {
     : []
   // The current player's live/staged match this round (for a "return to match" CTA).
   const myCurrentMatch =
-    duel && me && !me.is_eliminated
+    boardRounds && me && !me.is_eliminated
       ? (currentRoundMatches.find(
           (g) => !g.is_bye && g.game_id && matchHasPlayer(g, me.id) && (g.status === 'pending' || g.status === 'active')
         ) ?? null)
@@ -835,7 +856,7 @@ export default function TournamentLobbyPage() {
 
   // Decided matches grouped by round, for the on-page results view (final result
   // plus every round). Includes byes; ordered round 1 → final.
-  const resultRounds = duel
+  const resultRounds = boardRounds
     ? Object.values(
         games
           .filter((g) => g.round_number != null && (g.status === 'finished' || g.is_bye))
@@ -875,7 +896,7 @@ export default function TournamentLobbyPage() {
             {h2h
               ? `${isGroupH2h ? '🎮' : '♟'} ${gameTypeLabel(tournament.game_type) ?? 'Chess'}`
               : knockout
-                ? `🧠 ${gameTypeLabel(tournament.game_type) ?? 'Trivia'}`
+                ? `${knockoutGroup ? '🎮' : '🧠'} ${gameTypeLabel(tournament.game_type) ?? 'Trivia'}`
                 : school
                   ? `🃏 ${gameTypeLabel(tournament.game_type) ?? 'Whot'}`
                   : '🎮 Trivia'}
@@ -1097,7 +1118,7 @@ export default function TournamentLobbyPage() {
 
       {/* Head-to-head bracket board — the spectator view of the current round.
           Watch a match, then use its "Back to Tournament" button to switch. */}
-      {duel && currentRoundMatches.length > 0 && (
+      {boardRounds && currentRoundMatches.length > 0 && (
         <TournamentBracketBoard
           matches={currentRoundMatches}
           roundNumber={currentRoundNumber}
@@ -1112,7 +1133,7 @@ export default function TournamentLobbyPage() {
 
       {/* Knockout live round — status + a watch button for anyone on the lobby
           (eliminated players, spectators). Players are auto-forwarded into it. */}
-      {knockout && knockoutRoundGame && knockoutRoundInProgress && (
+      {knockoutTrivia && knockoutRoundGame && knockoutRoundInProgress && (
         <div className="glass-card p-5 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <p className="label-caps">
@@ -1177,11 +1198,12 @@ export default function TournamentLobbyPage() {
         </div>
       )}
 
-      {/* Host Controls — head-to-head bracket. Kept high (right under the board)
-          so the host doesn't scroll past the rules/results to reach Start. */}
-      {isHost && !isFinished && tournament.format === 'head-to-head' && (
+      {/* Host Controls — head-to-head bracket and Scrabble knockout (both play in
+          rooms). Kept high (right under the board) so the host doesn't scroll past
+          the rules/results to reach Start. */}
+      {isHost && !isFinished && (tournament.format === 'head-to-head' || knockoutGroup) && (
         <div className="glass-card-strong p-5 space-y-4">
-          <p className="label-caps">Bracket controls</p>
+          <p className="label-caps">{knockoutGroup ? 'Knockout controls' : 'Bracket controls'}</p>
 
           {!roundInProgress && (
             <>
@@ -1191,7 +1213,7 @@ export default function TournamentLobbyPage() {
               <div className="space-y-1.5">
                 <PrimaryBtn onClick={handleStartRound} disabled={actionLoading || survivingCount < 2}>
                   {actionLoading
-                    ? isGroupH2h
+                    ? groupBracket
                       ? 'Grouping…'
                       : 'Pairing…'
                     : currentRoundNumber > 0
@@ -1201,9 +1223,11 @@ export default function TournamentLobbyPage() {
                 <p className="text-faint text-xs text-center">
                   {survivingCount < 2
                     ? 'Waiting for players to join before you can start.'
-                    : isGroupH2h
-                      ? `Splits everyone into rooms of up to ${groupSize} and sends them in.`
-                      : 'Pairs everyone up and sends them to their match rooms.'}
+                    : knockoutGroup
+                      ? `Splits everyone into rooms of up to ${groupSize}; the whole field is ranked by score and the bottom half is knocked out.`
+                      : isGroupH2h
+                        ? `Splits everyone into rooms of up to ${groupSize} and sends them in.`
+                        : 'Pairs everyone up and sends them to their match rooms.'}
                 </p>
               </div>
             </>
@@ -1214,12 +1238,12 @@ export default function TournamentLobbyPage() {
               <PrimaryBtn onClick={handleStartMatches} disabled={actionLoading}>
                 {actionLoading
                   ? 'Starting…'
-                  : isGroupH2h
+                  : groupBracket
                     ? `Start ${stagedMatches.length} Room${stagedMatches.length === 1 ? '' : 's'}`
                     : `Start ${stagedMatches.length} Match${stagedMatches.length === 1 ? '' : 'es'}`}
               </PrimaryBtn>
               <p className="text-faint text-xs text-center">
-                {isGroupH2h
+                {groupBracket
                   ? 'Starts every room at once. Players must be in their rooms first.'
                   : 'Starts every match at once. Players must be in their rooms first.'}
               </p>
@@ -1232,9 +1256,9 @@ export default function TournamentLobbyPage() {
         </div>
       )}
 
-      {/* Host Controls — knockout (group elimination). One game per round; Start
-          Round sends everyone in, Start Game begins it (no host dashboard). */}
-      {isHost && !isFinished && knockout && (
+      {/* Host Controls — trivia knockout (group elimination). One game per round;
+          Start Round sends everyone in, Start Game begins it (no host dashboard). */}
+      {isHost && !isFinished && knockoutTrivia && (
         <div className="glass-card-strong p-5 space-y-4">
           <p className="label-caps">Knockout controls</p>
 
@@ -1607,6 +1631,42 @@ export default function TournamentLobbyPage() {
                   <span>The last player standing wins — or tap End Tournament anytime.</span>
                 </li>
               </ul>
+            ) : knockoutGroup ? (
+              <ul className="space-y-2 text-sm text-muted">
+                <li className="flex gap-2.5">
+                  <span aria-hidden>📣</span>
+                  <span>
+                    Share the invite link so players join. The roster{' '}
+                    <span className="text-body font-semibold">locks</span> when you start the first round.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>▶️</span>
+                  <span>
+                    Tap <span className="text-body font-semibold">Start Round</span> — everyone is split into rooms of
+                    up to {groupSize} and sent in.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>🎮</span>
+                  <span>
+                    Once players are in their rooms, tap <span className="text-body font-semibold">Start Rooms</span> to
+                    begin every game at once. You host from here — you don&apos;t play.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>🔁</span>
+                  <span>
+                    When every room finishes, the whole field is ranked by score and the bottom half is knocked out — it
+                    doesn&apos;t matter which room they were in. Tap{' '}
+                    <span className="text-body font-semibold">Start Next Round</span> for the survivors.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span aria-hidden>🏆</span>
+                  <span>Last player standing wins — or tap End Tournament anytime.</span>
+                </li>
+              </ul>
             ) : knockout ? (
               <ul className="space-y-2 text-sm text-muted">
                 <li className="flex gap-2.5">
@@ -1750,6 +1810,31 @@ export default function TournamentLobbyPage() {
               <li className="flex gap-2.5">
                 <span aria-hidden>👑</span>
                 <span>Keep winning your matches to become champion.</span>
+              </li>
+            </ul>
+          ) : knockoutGroup ? (
+            <ul className="space-y-2 text-sm text-muted">
+              <li className="flex gap-2.5">
+                <span aria-hidden>⚔️</span>
+                <span>
+                  You play Scrabble in a room of up to {groupSize} — but you&apos;re ranked against the whole field, not
+                  just your room.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>🎯</span>
+                <span>
+                  <span className="text-body font-semibold">Score as high as you can.</span> The bottom half of everyone
+                  is knocked out each round — it doesn&apos;t matter which room you were in.
+                </span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>🚀</span>
+                <span>When the host starts a round, you&apos;re taken straight to your room.</span>
+              </li>
+              <li className="flex gap-2.5">
+                <span aria-hidden>👑</span>
+                <span>Survive every round to become champion.</span>
               </li>
             </ul>
           ) : knockout ? (
@@ -1987,7 +2072,7 @@ export default function TournamentLobbyPage() {
       />
 
       {/* Knockout round results — how the field narrowed each round. */}
-      {knockout && knockoutResultRounds.length > 0 && (
+      {knockoutTrivia && knockoutResultRounds.length > 0 && (
         <div className="glass-card p-5 space-y-3">
           <p className="label-caps">Rounds</p>
           <div className="space-y-2">
@@ -2025,9 +2110,9 @@ export default function TournamentLobbyPage() {
       {/* Bracket results — head-to-head: every decided round, newest info on page.
           The champion banner above is the final result; this is the per-round
           history, with a View button to open each match's final board. */}
-      {duel && resultRounds.length > 0 && (
+      {boardRounds && resultRounds.length > 0 && (
         <div className="glass-card p-5 space-y-4">
-          <p className="label-caps">{school ? 'Match results' : 'Bracket results'}</p>
+          <p className="label-caps">{school ? 'Match results' : knockoutGroup ? 'Round results' : 'Bracket results'}</p>
           {resultRounds.map((rd) => (
             <div key={rd.round} className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">

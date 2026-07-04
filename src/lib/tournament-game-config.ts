@@ -59,6 +59,18 @@ export function buildTournamentGameConfig(
   }
 
   if (format === 'knockout') {
+    // Scrabble knockout plays in rooms (like the head-to-head Scrabble bracket), so
+    // it carries the room settings — turn timer, room-length cap, dictionary — plus
+    // the group size that drives room splitting. Trivia knockout seats the whole
+    // field in one game and carries its per-round question pack + timer instead.
+    if (gameType === 'scrabble') {
+      return {
+        groupSize: h2hGroupSize('scrabble'),
+        timerSeconds: clampScrabbleTimer(gameConfig?.timerSeconds ?? 60),
+        gameDurationSeconds: clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 900),
+        scrabbleDictionary: parseScrabbleDictionaryId(gameConfig?.scrabbleDictionary),
+      }
+    }
     return {
       questionSource: gameConfig?.questionSource ?? 'platform',
       roundsCount: gameConfig?.roundsCount ?? 5,

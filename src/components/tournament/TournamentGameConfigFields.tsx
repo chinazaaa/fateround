@@ -11,7 +11,7 @@ import { SCRABBLE_DICTIONARY_LABELS, SCRABBLE_DICTIONARY_OPTIONS } from '@/lib/s
 
 // Per-turn timer choices for the group games (mirrors the lobby's options).
 const WHOT_TURN_OPTIONS = [0, 10, 15, 30, 60, 90, 120]
-const SCRABBLE_TURN_OPTIONS = [0, 60, 180, 300]
+const SCRABBLE_TURN_OPTIONS = [0, 60, 120, 180, 300]
 const fmtTurn = (s: number) => (s === 0 ? 'No limit' : s < 60 ? `${s}s` : `${s / 60} min`)
 
 // Overall room-length caps, so a Whot/Scrabble room can't run for hours.
@@ -100,6 +100,7 @@ export function gameConfigForGame(
   prev: TournamentGameConfigValue
 ): TournamentGameConfigValue {
   if (format === 'school') return { ...prev, turnTimer: 15, gameDuration: DEFAULT_SCHOOL_MATCH_SECONDS }
+  if (format === 'knockout' && gameType === 'scrabble') return { ...prev, turnTimer: 60, gameDuration: 900 }
   if (format === 'head-to-head') {
     if (gameType === 'scrabble') return { ...prev, turnTimer: 60, gameDuration: 900 }
     if (gameType === 'whot') return { ...prev, turnTimer: 15, gameDuration: 900 }
@@ -114,6 +115,13 @@ export function gameConfigRequestBody(
   v: TournamentGameConfigValue
 ): Record<string, unknown> | undefined {
   if (format === 'knockout') {
+    if (gameType === 'scrabble') {
+      return {
+        timerSeconds: v.turnTimer,
+        gameDurationSeconds: v.gameDuration,
+        scrabbleDictionary: v.scrabbleDictionary,
+      }
+    }
     return { questionSource: 'platform', roundsCount: v.questionsPerRound, timerSeconds: v.triviaTimer }
   }
   if (format === 'school') {
@@ -169,6 +177,12 @@ export function gameConfigValueFromStored(
     schoolClassCount: number
   }>
   if (format === 'knockout') {
+    if (gameType === 'scrabble') {
+      v.turnTimer = c.timerSeconds ?? 60
+      v.gameDuration = c.gameDurationSeconds ?? 900
+      v.scrabbleDictionary = c.scrabbleDictionary ?? 'enable'
+      return v
+    }
     v.questionsPerRound = c.roundsCount ?? 5
     v.triviaTimer = c.timerSeconds ?? 15
     return v
@@ -226,6 +240,10 @@ export function TournamentGameConfigFields({
   const isH2H = format === 'head-to-head'
   const isSchool = format === 'school'
   const isKnockout = format === 'knockout'
+  // Scrabble knockout plays in rooms and reuses the same room controls as the
+  // head-to-head Scrabble bracket; trivia knockout keeps the questions/timer panel.
+  const isKnockoutScrabble = isKnockout && gameType === 'scrabble'
+  const isKnockoutTrivia = isKnockout && gameType !== 'scrabble'
 
   return (
     <>
@@ -271,7 +289,7 @@ export function TournamentGameConfigFields({
         </div>
       )}
 
-      {((isH2H && (gameType === 'whot' || gameType === 'scrabble')) || isSchool) && (
+      {((isH2H && (gameType === 'whot' || gameType === 'scrabble')) || isSchool || isKnockoutScrabble) && (
         <div className="surface-inset p-4 space-y-4">
           <Field label="Time per turn" htmlFor="tgc-turn-timer">
             <select
@@ -366,7 +384,7 @@ export function TournamentGameConfigFields({
         </div>
       )}
 
-      {isKnockout && (
+      {isKnockoutTrivia && (
         <div className="surface-inset p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
