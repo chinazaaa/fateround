@@ -42,17 +42,51 @@ favour of one box with an Elastic IP, fronted by Cloudflare.
 > **Database:** none of this provisions a database. Supabase stays as the managed
 > backend; the app talks to it directly using the SSM-stored values.
 
+## Remote state (S3 backend)
+
+State lives in **`s3://fateround-tfstate`** (`us-east-1`) — shared, durable, and
+reusable across machines, so deleting a local checkout no longer loses state.
+Locking uses **S3 conditional writes** (`use_lockfile = true`), so there is **no
+DynamoDB lock table** (needs Terraform >= 1.11). The `dev` and `prod` workspaces
+sit side by side in the same bucket:
+
+```
+infra/terraform.tfstate            # default workspace (unused)
+env:/dev/infra/terraform.tfstate   # dev
+env:/prod/infra/terraform.tfstate  # prod
+```
+
+`terraform init` picks the backend up from `versions.tf` automatically.
+
+**Backend bootstrap (one-time, already done).** The state bucket is created
+*out of band* — not managed by this config — to avoid a chicken-and-egg between
+the state and the bucket that stores it. It is versioned (history + recovery),
+encrypted at rest (SSE-S3), public-access-blocked, and TLS-only:
+
+```bash
+BUCKET=fateround-tfstate
+aws s3api create-bucket --bucket "$BUCKET" --region us-east-1
+aws s3api put-bucket-versioning --bucket "$BUCKET" \
+  --versioning-configuration Status=Enabled
+aws s3api put-bucket-encryption --bucket "$BUCKET" \
+  --server-side-encryption-configuration \
+  '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":true}]}'
+aws s3api put-public-access-block --bucket "$BUCKET" \
+  --public-access-block-configuration \
+  BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+# + a bucket policy denying non-TLS (aws:SecureTransport=false) requests.
+```
+
 ## Prerequisites
 
-- **Terraform** >= 1.5 (`versions.tf` pins AWS `~> 5.40` and Cloudflare `~> 4.40`).
+- **Terraform** >= 1.11 (`versions.tf` pins AWS `~> 5.40` and Cloudflare `~> 4.40`;
+  the S3 backend uses `use_lockfile`, which needs >= 1.11).
 - **AWS credentials / profile** with permission to create the resources above,
   and a target region.
 - **Docker** (with `buildx`) — to build and push the app image to ECR.
 - **(Optional) Cloudflare** — an API token scoped **DNS:Edit** and your Zone ID,
   if you want Terraform to manage the DNS record.
-- **Strongly recommended:** configure the **S3 remote backend** (commented out in
-  `versions.tf`) with a DynamoDB lock table before any real/shared use. The
-  default is local state.
+- Remote state is already configured — see [Remote state](#remote-state-s3-backend).
 
 ## Deploy steps
 
