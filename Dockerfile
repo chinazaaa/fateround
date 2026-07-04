@@ -2,7 +2,7 @@
 
 # Build the Next.js standalone output with pnpm (the project's package manager;
 # matches CI: pnpm install --frozen-lockfile).
-FROM node:22-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 RUN npm install -g pnpm@10
 COPY package.json pnpm-lock.yaml ./
@@ -22,7 +22,7 @@ ENV NEXT_PUBLIC_LIVEKIT_URL=$NEXT_PUBLIC_LIVEKIT_URL
 RUN pnpm build
 
 # Minimal runtime image (Next.js standalone output).
-FROM node:22-bookworm-slim AS run
+FROM node:24-bookworm-slim AS run
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
