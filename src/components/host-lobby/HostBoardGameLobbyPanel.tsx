@@ -11,11 +11,13 @@ import { formatMonopolyGameDuration, MONOPOLY_GAME_DURATION_OPTIONS } from '@/li
 import { formatWhotGameDuration, WHOT_GAME_DURATION_OPTIONS } from '@/lib/whot'
 import { formatCrazyEightsGameDuration, CRAZY8_GAME_DURATION_OPTIONS } from '@/lib/crazy-eights'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
+import { MAHJONG_RULESET_CONFIG, parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { gameSupportsViewerSetting, lateJoinPolicyFromGame } from '@/lib/viewers'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
+import { HostMahjongLobbySettings } from '@/components/host-lobby/HostMahjongLobbySettings'
 import { Chip, Toggle } from '@/components/ui/PageShell'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, LudoVariant } from '@/types'
@@ -223,6 +225,13 @@ export function HostBoardGameLobbyPanel({
     if (boardGameType === 'ludo') {
       parts.push(ludoVariant === 'traditional' ? 'Traditional' : 'Modern')
     }
+    if (boardGameType === 'mahjong') {
+      const ruleset = parseMahjongRuleset(game.mahjong_ruleset)
+      const ruleOptions = parseMahjongRuleOptions(game.mahjong_rule_options)
+      const cfg = MAHJONG_RULESET_CONFIG[ruleset]
+      parts.push(cfg.shortLabel)
+      if (ruleset === 'riichi') parts.push(ruleOptions.matchLength === 'east' ? 'East only' : 'Hanchan')
+    }
     if (gameSupportsViewerSetting(game.game_type)) {
       const policy = lateJoinPolicyFromGame(game)
       parts.push(policy === 'lobby_only' ? 'Lobby only' : policy === 'viewers_only' ? 'Viewers OK' : 'Late play OK')
@@ -334,6 +343,8 @@ export function HostBoardGameLobbyPanel({
             </p>
           </HostLobbySettingBlock>
         )}
+
+        {boardGameType === 'mahjong' && <HostMahjongLobbySettings game={game} onPatchSettings={patchSettings} />}
 
         {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
           <HostLobbySettingBlock title="Late joiners" className="sm:col-span-2">
