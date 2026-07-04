@@ -1,5 +1,6 @@
 import { GAME_TYPE_DISPLAY_ORDER, gameTypeConfig } from '@/lib/game-types'
 import { GAME_LANDING_CONTENT, gameLandingSlug, getGameBodyParagraph } from '@/lib/game-landing'
+import { MARKETING_PAGES } from '@/lib/marketing-landing'
 import { appOrigin } from '@/lib/site'
 import { SITE_NAME } from '@/lib/seo'
 
@@ -29,6 +30,12 @@ export function GET(): Response {
     return `### ${cfg.label}\nURL: ${origin}/games/${slug}\nPlayers: ${cfg.card.players}\n${getGameBodyParagraph(content)}`
   }).join('\n\n')
 
+  // Guides, comparison, and use-case pages — the answers AI assistants pull for
+  // "free party games", "Jackbox/Kahoot/Ludo King alternative", "Nigerian games", etc.
+  const guideLines = Object.values(MARKETING_PAGES)
+    .map((p) => `- [${p.breadcrumbName}](${origin}/${p.slug}): ${p.seoDescription}`)
+    .join('\n')
+
   const body = `# ${SITE_NAME}
 
 > ${SITE_NAME} is a free, no-sign-up online party game platform. Create a game in seconds, share a short room code or link, and everyone joins from any phone or laptop browser to play together in real time — no app download and no account required.
@@ -47,6 +54,10 @@ Best for: friend groups, Discord and video calls, birthday parties, icebreakers,
 ## Games
 
 ${gameLines}
+
+## Guides & comparisons
+
+${guideLines}
 
 ## Game details
 
