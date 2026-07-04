@@ -118,7 +118,12 @@ import { PageShell, BackBtn, Field, Chip, Toggle, PrimaryBtn } from '@/component
 import { StepIndicator, SettingsGroup, StickyActionBar, SegmentedControl, ChipGrid } from '@/components/ui/CreateWizard'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { LateJoinPolicyToggle } from '@/components/AllowViewersToggle'
-import { gameSupportsViewerSetting, clampLateJoinPolicyForGameType, type LateJoinPolicy } from '@/lib/viewers'
+import {
+  gameSupportsViewerSetting,
+  clampLateJoinPolicyForGameType,
+  defaultLateJoinPolicyForGameType,
+  type LateJoinPolicy,
+} from '@/lib/viewers'
 import { getParticipantCustomContentHint, getQuestionCustomContentHint } from '@/lib/custom-content-hints'
 import { CustomContentAiTip } from '@/components/ui/CustomContentAiTip'
 import { AiQuestionsGenerator } from '@/components/ui/AiQuestionsGenerator'
@@ -367,11 +372,11 @@ function CreateGameInner() {
   useEffect(() => {
     setLateJoinPolicy((prev) =>
       // Text Charades is a drop-in party word game — late joiners should be able to
-      // jump in and play, not just watch. Default it to "viewers and players" rather
-      // than the conservative global default (the host can still restrict it). Other
-      // game types keep their previous policy, clamped to what the type supports.
+      // jump in and play, not just watch. Give it (and any future type with a
+      // friendlier default) that policy; other types keep their previous choice,
+      // clamped to what the type supports. The host can still restrict it after.
       isDescribeItGame(settings.game_type)
-        ? 'viewers_and_players'
+        ? defaultLateJoinPolicyForGameType(settings.game_type)
         : clampLateJoinPolicyForGameType(prev, settings.game_type)
     )
   }, [settings.game_type])

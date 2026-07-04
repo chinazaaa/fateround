@@ -8,7 +8,7 @@ import { initializeChessGame } from '@/lib/chess'
 import { initializeWhotGame } from '@/lib/whot'
 import { initializeScrabbleGame } from '@/lib/scrabble'
 import { startKnockoutRoundGame } from '@/lib/tournament-knockout'
-import { applyKnockoutGroupCut } from '@/lib/tournament-scoring'
+import { applyKnockoutGroupCut, resolveKnockoutGroupRoom } from '@/lib/tournament-scoring'
 import { resolveHeadToHeadMatch } from '@/lib/tournament-h2h'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -40,10 +40,14 @@ async function reconcileNonWaitingGame(
     await admin.from('tournament_games').update({ status: 'active' }).eq('id', tournamentGameId).eq('status', 'pending')
     return { proceed: false, started: true }
   }
-  // Finished: reconcile a bracket row that may be stuck `pending`. resolveHeadToHeadMatch
-  // is idempotent (no-ops if already finished or not head-to-head) and sets the winner +
-  // eliminations correctly, so the round can advance without corrupting the bracket.
+  // Finished: reconcile a bracket row that may be stuck `pending` (its finish
+  // finalizer lost its CAS or never fired). Both resolvers are idempotent and
+  // format-gated no-ops off their own format: resolveHeadToHeadMatch records the
+  // winner + eliminations for a head-to-head/group bracket, while
+  // resolveKnockoutGroupRoom scores a Scrabble knockout room and runs the field-wide
+  // cut once its round is complete — so the round can advance either way.
   await resolveHeadToHeadMatch(admin, gameId)
+  await resolveKnockoutGroupRoom(admin, gameId)
   return { proceed: false }
 }
 
