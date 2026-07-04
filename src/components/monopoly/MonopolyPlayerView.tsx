@@ -350,6 +350,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               onRenamed={() => void load()}
               onLeft={handlePlayerLeft}
               inLobby
+              spectating={isSpectator}
             />
           )}
         </div>
@@ -430,6 +431,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               onRenamed={() => void load()}
               onLeft={handlePlayerLeft}
               align="center"
+              spectating={isViewer}
             />
           ) : null}
         </MonopolyPageHeader>

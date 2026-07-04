@@ -389,6 +389,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             onRenamed={() => void load()}
             onLeft={handlePlayerLeft}
             inLobby
+            spectating={isViewer}
           />
         )}
       </DescribeItShell>
@@ -422,6 +423,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
           currentName={myName}
           onRenamed={() => void load()}
           onLeft={handlePlayerLeft}
+          spectating={isViewer}
         />
       )}
     </DescribeItShell>
