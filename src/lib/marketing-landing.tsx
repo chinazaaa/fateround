@@ -1841,31 +1841,58 @@ const TOURNAMENTS: MarketingPageContent = {
   heroTitle: 'Run a free online tournament — Chess, Scrabble, Whot & Trivia',
   heroSubtitle:
     'Turn game night into a competition. Set up a bracket, share one link, and your group battles it out across multiple rounds — free, no app, no sign-up. Great for friends, teams, and schools.',
-  highlights: ['Chess, Scrabble, Whot, Trivia', 'Brackets, knockout & round-robin', 'Share one link to join', 'Free, no app, no sign-up'],
+  highlights: [
+    'Chess, Scrabble, Whot, Trivia',
+    'Brackets, knockout & round-robin',
+    'Share one link to join',
+    'Free, no app, no sign-up',
+  ],
   featureCards: [
-    { emoji: '🏆', title: 'Multiple formats', description: 'Head-to-head brackets, knockout, round-robin leagues, and a school-championship mode.' },
-    { emoji: '♟️', title: 'Real competitive games', description: 'Chess, Scrabble, and Whot head-to-head, or Trivia for the whole group — with proper scoring.' },
-    { emoji: '🔗', title: 'One link to join', description: 'Share a code and everyone joins from their phone. No accounts, no bracket software.' },
-    { emoji: '🏫', title: 'Built for schools too', description: 'A class-based Whot championship format makes it easy to run a school-wide competition.' },
+    {
+      emoji: '🏆',
+      title: 'Multiple formats',
+      description: 'Head-to-head brackets, knockout, round-robin leagues, and a school-championship mode.',
+    },
+    {
+      emoji: '♟️',
+      title: 'Real competitive games',
+      description: 'Chess, Scrabble, and Whot head-to-head, or Trivia for the whole group — with proper scoring.',
+    },
+    {
+      emoji: '🔗',
+      title: 'One link to join',
+      description: 'Share a code and everyone joins from their phone. No accounts, no bracket software.',
+    },
+    {
+      emoji: '🏫',
+      title: 'Built for schools too',
+      description: 'A class-based Whot championship format makes it easy to run a school-wide competition.',
+    },
   ],
   stepsHeading: 'How it works',
   steps: [
-    { title: 'Pick a game and format', description: 'Chess, Scrabble, Whot, or Trivia — bracket, knockout, round-robin, or school.' },
+    {
+      title: 'Pick a game and format',
+      description: 'Chess, Scrabble, Whot, or Trivia — bracket, knockout, round-robin, or school.',
+    },
     { title: 'Share the join code', description: 'Players join from any browser with a nickname. No app, no sign-up.' },
-    { title: 'Play it out', description: 'Rounds and brackets run automatically; winners advance until you have a champion.' },
+    {
+      title: 'Play it out',
+      description: 'Rounds and brackets run automatically; winners advance until you have a champion.',
+    },
   ],
   body: (
     <>
       <p>
-        A tournament makes any game night feel like an event. On Fate Round you can run one free, in the browser, with no
-        app and no accounts — just share a link and your group competes across multiple rounds. Choose a format that fits
-        the game: head-to-head brackets for <GameLink type="chess" />, <GameLink type="scrabble" />, and{' '}
+        A tournament makes any game night feel like an event. On Fate Round you can run one free, in the browser, with
+        no app and no accounts — just share a link and your group competes across multiple rounds. Choose a format that
+        fits the game: head-to-head brackets for <GameLink type="chess" />, <GameLink type="scrabble" />, and{' '}
         <GameLink type="whot" />; or round-robin and knockout rounds for <GameLink type="trivia" />.
       </p>
       <p>
         It’s built for friends and teams, but also for schools — the class-based{' '}
-        <GameLink type="whot">School Whot championship</GameLink> makes it easy to run a school-wide competition, and you
-        can run <GameLink type="trivia" /> as a league or knockout too. Scores, brackets, and who advances are all
+        <GameLink type="whot">School Whot championship</GameLink> makes it easy to run a school-wide competition, and
+        you can run <GameLink type="trivia" /> as a league or knockout too. Scores, brackets, and who advances are all
         handled for you, so you host the event and Fate Round runs it. Part of the same platform as{' '}
         <HubLink>20+ games</HubLink>.
       </p>
@@ -1874,9 +1901,15 @@ const TOURNAMENTS: MarketingPageContent = {
   gameList: {
     heading: 'Games you can run a tournament for',
     items: [
-      { game: <GameLink type="chess" />, description: 'head-to-head knockout brackets — outlast every challenger to win.' },
+      {
+        game: <GameLink type="chess" />,
+        description: 'head-to-head knockout brackets — outlast every challenger to win.',
+      },
       { game: <GameLink type="scrabble" />, description: '1v1 word battles with your chosen dictionary and clock.' },
-      { game: <GameLink type="whot" />, description: 'Naija card brackets, plus a class-based school championship format.' },
+      {
+        game: <GameLink type="whot" />,
+        description: 'Naija card brackets, plus a class-based school championship format.',
+      },
       { game: <GameLink type="trivia" />, description: 'round-robin leagues or knockout rounds for the whole group.' },
     ],
   },
@@ -1934,18 +1967,51 @@ const SCHOOL: MarketingPageContent = {
   heroTitle: 'School Whot Championship — climb from Primary 1 to Graduate 🎓',
   heroSubtitle:
     'The most Naija tournament there is. Students play timed Whot matches and climb the class ladder — Primary 1, JSS, SS, all the way to University 400L and Graduate. Free, no app, no sign-up. Perfect for schools, clubs, and end-of-term.',
-  highlights: ['Climb Primary 1 → Graduate', 'Timed Whot matches', 'Whole class joins by link', 'Free, no app, no sign-up'],
+  highlights: [
+    'Climb Primary 1 → Graduate',
+    'Timed Whot matches',
+    'Whole class joins by link',
+    'Free, no app, no sign-up',
+  ],
   featureCards: [
-    { emoji: '🎓', title: 'The class ladder', description: 'Win a match, climb a class — Primary 1 through SS3 and University 100–400L, then Graduate to win.' },
-    { emoji: '⏱️', title: 'Quick timed matches', description: 'Each round is a short Whot match (2–4 minutes) — empty your hand or hold the lowest total at time-up.' },
-    { emoji: '🏫', title: 'Made for schools', description: 'Great for inter-house competitions, ICT clubs, socials, and end-of-term — students join from any device.' },
-    { emoji: '📏', title: 'Pick the ladder length', description: 'Primary only, Primary + Secondary, or the full ladder to University 400L — set it to fit your time.' },
+    {
+      emoji: '🎓',
+      title: 'The class ladder',
+      description: 'Win a match, climb a class — Primary 1 through SS3 and University 100–400L, then Graduate to win.',
+    },
+    {
+      emoji: '⏱️',
+      title: 'Quick timed matches',
+      description:
+        'Each round is a short Whot match (2–4 minutes) — empty your hand or hold the lowest total at time-up.',
+    },
+    {
+      emoji: '🏫',
+      title: 'Made for schools',
+      description:
+        'Great for inter-house competitions, ICT clubs, socials, and end-of-term — students join from any device.',
+    },
+    {
+      emoji: '📏',
+      title: 'Pick the ladder length',
+      description:
+        'Primary only, Primary + Secondary, or the full ladder to University 400L — set it to fit your time.',
+    },
   ],
   stepsHeading: 'How it works',
   steps: [
-    { title: 'Create a School Whot championship', description: 'Choose the ladder length and match time from the Tournaments page.' },
-    { title: 'Share the join code', description: 'Students join from any phone or laptop browser with a nickname — no app, no accounts.' },
-    { title: 'Climb to Graduate', description: 'Win a match to move up a class. The first to graduate past the top class is champion.' },
+    {
+      title: 'Create a School Whot championship',
+      description: 'Choose the ladder length and match time from the Tournaments page.',
+    },
+    {
+      title: 'Share the join code',
+      description: 'Students join from any phone or laptop browser with a nickname — no app, no accounts.',
+    },
+    {
+      title: 'Climb to Graduate',
+      description: 'Win a match to move up a class. The first to graduate past the top class is champion.',
+    },
   ],
   body: (
     <>
