@@ -175,6 +175,23 @@ variable "livekit_api_secret" {
   sensitive   = true
 }
 
+# Web push (game start / play-again / end). Optional: leave both empty to keep the
+# feature off (no SSM params created, notifications UI stays hidden). The public key
+# is a build arg in the CI workflow; the private key is the runtime secret here. The
+# two must be from the same keypair (`pnpm vapid:generate`).
+variable "vapid_private_key" {
+  description = "VAPID_PRIVATE_KEY — web-push private key. Empty disables push."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "vapid_subject" {
+  description = "VAPID_SUBJECT — contact URL push services can reach (mailto: or https:)."
+  type        = string
+  default     = ""
+}
+
 variable "enable_origin_tls" {
   description = "Run Caddy on the instance to terminate HTTPS with a Cloudflare Origin Certificate (Full-strict). When false, the app serves plain HTTP:80 (Flexible)."
   type        = bool

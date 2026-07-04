@@ -86,6 +86,25 @@ resource "aws_ssm_parameter" "livekit_api_secret" {
   tags  = { Name = "${var.name_prefix}-livekit-api-secret" }
 }
 
+# Web-push runtime secrets — only created when configured (SSM rejects empty values,
+# and the app treats a missing key as feature-off). The instance reads these
+# optionally, so absence never breaks a deploy.
+resource "aws_ssm_parameter" "vapid_private_key" {
+  count = var.vapid_private_key != "" ? 1 : 0
+  name  = "/${var.name_prefix}/VAPID_PRIVATE_KEY"
+  type  = "SecureString"
+  value = var.vapid_private_key
+  tags  = { Name = "${var.name_prefix}-vapid-private-key" }
+}
+
+resource "aws_ssm_parameter" "vapid_subject" {
+  count = var.vapid_subject != "" ? 1 : 0
+  name  = "/${var.name_prefix}/VAPID_SUBJECT"
+  type  = "String"
+  value = var.vapid_subject
+  tags  = { Name = "${var.name_prefix}-vapid-subject" }
+}
+
 # Cloudflare Origin Certificate for Caddy (only when origin TLS is enabled).
 # base64-encoded so multi-line PEM survives SSM/CLI round-trips intact.
 resource "aws_ssm_parameter" "origin_cert" {

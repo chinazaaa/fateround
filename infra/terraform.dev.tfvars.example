@@ -37,3 +37,9 @@ admin_session_secret      = "REPLACE_WITH_SESSION_SECRET"
 klipy_api_key             = "REPLACE_WITH_KLIPY_KEY"
 livekit_api_key           = "REPLACE_WITH_LIVEKIT_KEY"
 livekit_api_secret        = "REPLACE_WITH_LIVEKIT_SECRET"
+
+# Web push (optional). Generate a keypair with `pnpm vapid:generate`; put the PUBLIC
+# key in the CI build workflow (build-push-image.yml) and the PRIVATE key here. Leave
+# both empty to keep push off. vapid_subject is a mailto:/https: contact URL.
+vapid_private_key = "REPLACE_WITH_VAPID_PRIVATE_KEY"
+vapid_subject     = "mailto:hello@fateround.com"

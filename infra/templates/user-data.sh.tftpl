@@ -67,6 +67,26 @@ KLIPY_API_KEY=$(get_param --with-decryption --name "/$PREFIX/KLIPY_API_KEY")
 LIVEKIT_API_KEY=$(get_param --with-decryption --name "/$PREFIX/LIVEKIT_API_KEY")
 LIVEKIT_API_SECRET=$(get_param --with-decryption --name "/$PREFIX/LIVEKIT_API_SECRET")
 
+# Web push (optional). These params only exist when push is configured, so read
+# them without retry and default to empty — a missing key just means the feature is
+# off, and must never fail the deploy. A *missing* parameter (ParameterNotFound) is
+# expected and stays silent; any other failure (IAM/region/throttling) is a real
+# misconfiguration, so surface it in the deploy log while still returning empty.
+get_param_opt() {
+  local val err_file
+  err_file=$(mktemp)
+  if val=$(aws ssm get-parameter --region "$REGION" "$@" --query 'Parameter.Value' --output text 2>"$err_file"); then
+    rm -f "$err_file"
+    echo "$val"
+  else
+    grep -q "ParameterNotFound" "$err_file" || echo "WARN: get_param_opt: SSM lookup failed for '$*' -- $(tr -d '\n' < "$err_file")" >&2
+    rm -f "$err_file"
+    echo ""
+  fi
+}
+VAPID_PRIVATE_KEY=$(get_param_opt --with-decryption --name "/$PREFIX/VAPID_PRIVATE_KEY")
+VAPID_SUBJECT=$(get_param_opt --name "/$PREFIX/VAPID_SUBJECT")
+
 # With Caddy (origin TLS) the app is private behind Caddy on localhost:8080.
 # Without it, the app is published directly on :80.
 if [ "$ENABLE_CADDY" = "true" ]; then PORT_PUBLISH="127.0.0.1:8080:$APP_PORT"; else PORT_PUBLISH="80:$APP_PORT"; fi
@@ -89,6 +109,8 @@ docker run -d --name app --restart always \
   -e KLIPY_API_KEY="$KLIPY_API_KEY" \
   -e LIVEKIT_API_KEY="$LIVEKIT_API_KEY" \
   -e LIVEKIT_API_SECRET="$LIVEKIT_API_SECRET" \
+  -e VAPID_PRIVATE_KEY="$VAPID_PRIVATE_KEY" \
+  -e VAPID_SUBJECT="$VAPID_SUBJECT" \
   "$REPO:$TAG"
 
 # Reclaim disk from the now-untagged previous image.

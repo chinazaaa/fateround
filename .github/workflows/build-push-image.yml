@@ -55,6 +55,9 @@ jobs:
                 echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_daKXZ2-HKxB6k3rAy1tmGw_jQuACg0K"
                 echo "NEXT_PUBLIC_APP_URL=https://fateround.com"
                 echo "NEXT_PUBLIC_LIVEKIT_URL=wss://livekit.fateround.com"
+                # Web push: paste prod's VAPID public key here when enabling it on prod
+                # (generate a separate prod keypair; leave empty to keep push off).
+                echo "NEXT_PUBLIC_VAPID_PUBLIC_KEY="
               } >> "$GITHUB_ENV"
               ;;
             dev)
@@ -66,6 +69,9 @@ jobs:
                 echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_4U7akfEx_4sxtLrxeCU_Rw_VpSeFRAu"
                 echo "NEXT_PUBLIC_APP_URL=https://dev.fateround.com"
                 echo "NEXT_PUBLIC_LIVEKIT_URL=wss://livekit.fateround.com"
+                # Web push: public (VAPID) key — public by design, safe to hardcode.
+                # The matching VAPID_PRIVATE_KEY is a runtime secret in SSM (see infra).
+                echo "NEXT_PUBLIC_VAPID_PUBLIC_KEY=BAZctYb9L5IkQB-W6k9eewWMrgl65EXBwqKPW9Mq7NVJY5ED_ODVPUV7W9B9f_VhZbaO_l2gu90XLBLzUOO3EXg"
               } >> "$GITHUB_ENV"
               ;;
             *) echo "Unknown environment: $ENV" >&2; exit 1 ;;
@@ -100,6 +106,7 @@ jobs:
             NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
             NEXT_PUBLIC_APP_URL=${{ env.NEXT_PUBLIC_APP_URL }}
             NEXT_PUBLIC_LIVEKIT_URL=${{ env.NEXT_PUBLIC_LIVEKIT_URL }}
+            NEXT_PUBLIC_VAPID_PUBLIC_KEY=${{ env.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
 
       - name: Redeploy on the instance (SSM)
         # Auto-redeploy on every build: a push to dev deploys the dev box; a
