@@ -74,7 +74,45 @@ aws s3api put-bucket-encryption --bucket "$BUCKET" \
 aws s3api put-public-access-block --bucket "$BUCKET" \
   --public-access-block-configuration \
   BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
-# + a bucket policy denying non-TLS (aws:SecureTransport=false) requests.
+# Deny any non-TLS (aws:SecureTransport=false) request to the bucket + its objects.
+aws s3api put-bucket-policy --bucket "$BUCKET" --policy "$(cat <<JSON
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyInsecureTransport",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": ["arn:aws:s3:::$BUCKET", "arn:aws:s3:::$BUCKET/*"],
+      "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+    }
+  ]
+}
+JSON
+)"
+```
+
+### Secrets (`*.tfvars`) — durable backup
+
+`terraform.{dev,prod}.tfvars` are **gitignored** (they hold secrets) and are read
+from the local filesystem, so by default they live only in your checkout. Losing
+them is destructive: the empty variable defaults would make the next `apply` try
+to wipe the VAPID params and blank other secrets. The values also exist in SSM and
+in the state file, but the files themselves must be preserved.
+
+They are backed up to the **same bucket** (already private, SSE-S3 encrypted,
+TLS-only, versioned — and it already contains these secrets inside the state file,
+so this adds no new exposure) under `tfvars/`. Re-run after changing any secret:
+
+```bash
+# Back up (run from infra/ after editing a tfvars)
+aws s3 cp terraform.dev.tfvars  s3://fateround-tfstate/tfvars/terraform.dev.tfvars  --sse AES256
+aws s3 cp terraform.prod.tfvars s3://fateround-tfstate/tfvars/terraform.prod.tfvars --sse AES256
+
+# Restore into a fresh checkout
+aws s3 cp s3://fateround-tfstate/tfvars/terraform.dev.tfvars  terraform.dev.tfvars
+aws s3 cp s3://fateround-tfstate/tfvars/terraform.prod.tfvars terraform.prod.tfvars
 ```
 
 ## Prerequisites
