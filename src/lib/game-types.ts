@@ -1019,6 +1019,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  mahjong: {
+    id: 'mahjong',
+    label: 'Mahjong',
+    tagline: 'Four-player Mahjong with claims, kongs, riichi rules, Hong Kong and MCR scoring',
+    headerEmoji: '🀄',
+    card: {
+      accent: '#0f766e',
+      accentSoft: 'rgba(15, 118, 110, 0.13)',
+      emoji: '🀄',
+      players: '4 players',
+      vibe: 'Strategic tile play',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🀄',
+        label: 'Hand',
+        color: '#14b8a6',
+        leaderboardLabel: 'Winning hands',
+        activeClass: 'bg-teal-500/20 text-teal-100 border-teal-400',
+        borderClass: 'border-teal-500/50 bg-teal-500/10',
+        textColor: '#5eead4',
+      },
+      marry: {
+        emoji: '🎴',
+        label: 'Calls',
+        color: '#f59e0b',
+        leaderboardLabel: 'Calls',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
   snake_and_ladder: {
     id: 'snake_and_ladder',
     label: 'Snake & Ladder',
@@ -1434,6 +1477,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'yahtzee',
   'whot',
   'ludo',
+  'mahjong',
   'i_call_on',
   'sudoku',
   'tic_tac_toe',
@@ -1455,6 +1499,7 @@ const PINNED_GAME_TYPES: GameType[] = [
   'trivia',
   'whot',
   'ludo',
+  'mahjong',
   'snake_and_ladder',
   'tic_tac_toe',
   'sudoku',
@@ -1498,6 +1543,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'yahtzee') return 'yahtzee'
   if (raw === 'whot') return 'whot'
   if (raw === 'ludo') return 'ludo'
+  if (raw === 'mahjong') return 'mahjong'
   if (raw === 'i_call_on') return 'i_call_on'
   if (raw === 'sudoku') return 'sudoku'
   if (raw === 'tic_tac_toe') return 'tic_tac_toe'
@@ -1566,6 +1612,8 @@ export function gameHowItWorks(
       return 'Players join with their name. Match the top card by shape or number — WHOT lets you call the next match. Pick 2 and Pick 3 stacks are separate. First to empty their hand wins — or lowest hand total when the game clock runs out.'
     case 'ludo':
       return 'Players join with their name. Roll two dice each turn and use each die separately — a 6 brings pieces out; doubles earn another roll after both dice are played. Capture opponents, block with pairs — first to finish all four pieces wins!'
+    case 'mahjong':
+      return 'Four players join with their name. Draw and discard tiles, call Chow/Pung/Kong/Ron when available, and build a complete winning hand. Hosts can choose Simple Mahjong for learners, or Hong Kong, Riichi, and MCR rules for advanced tables.'
     case 'snake_and_ladder':
       return 'Players join with their name — 2 to 6 play. Take turns rolling one die and racing up the 1–100 board. Land on a ladder to climb, a snake to slide down. Roll a 6 to go again. You must land on 100 exactly to win!'
     case 'tic_tac_toe':
@@ -1812,6 +1860,7 @@ export function isNameOnlyPlayerJoin(gameType: GameType | string | undefined): b
     type === 'whot' ||
     type === 'crazy_eights' ||
     type === 'ludo' ||
+    type === 'mahjong' ||
     type === 'i_call_on' ||
     type === 'sudoku' ||
     type === 'tic_tac_toe' ||
@@ -1913,6 +1962,10 @@ export function isCrazyEightsGame(gameType: GameType | string | undefined): bool
 
 export function isLudoGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'ludo'
+}
+
+export function isMahjongGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'mahjong'
 }
 
 export function isTicTacToeGame(gameType: GameType | string | undefined): boolean {
