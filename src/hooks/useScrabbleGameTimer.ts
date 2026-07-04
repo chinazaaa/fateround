@@ -10,10 +10,13 @@ import { formatCountdown } from '@/lib/timer-format'
  *  until it actually finishes (idempotent server-side). */
 export function useScrabbleGameTimer(
   gameCode: string,
-  game: Pick<Game, 'status' | 'session_started_at' | 'game_duration_seconds'> | null
+  game: Pick<Game, 'status' | 'session_started_at' | 'game_duration_seconds' | 'scrabble_clock_mode'> | null
 ) {
   const duration = game?.game_duration_seconds ?? 0
-  const active = game?.status === 'active' && duration > 0
+  // Chess-clock mode has no whole-game cap — the per-player banks drive timing, so
+  // the whole-game expiry must never arm (a stale nonzero duration would otherwise
+  // end a chess game early via /expire-scrabble).
+  const active = game?.status === 'active' && duration > 0 && game?.scrabble_clock_mode !== 'chess'
   const secondsLeft = useDeadlineCountdown(game?.session_started_at, duration, active)
   const expired = active && secondsLeft <= 0
 

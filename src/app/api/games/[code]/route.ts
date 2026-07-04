@@ -146,9 +146,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       updatePayload.scrabble_clock_mode = clockMode
       // Leaving chess mode zeroes the (now unused) bank; entering it takes the bank
       // sent alongside (if any) — init falls back to the default when it's still 0.
-      if (clockMode === 'standard') updatePayload.scrabble_clock_seconds = 0
-      else if (rawScrabbleClockSeconds !== undefined)
-        updatePayload.scrabble_clock_seconds = clampScrabbleClockSeconds(rawScrabbleClockSeconds)
+      if (clockMode === 'standard') {
+        updatePayload.scrabble_clock_seconds = 0
+      } else {
+        // Chess mode has no whole-game cap; zero it so the whole-game expiry can't
+        // fire against a chess game switched over from a timed standard config.
+        updatePayload.game_duration_seconds = 0
+        if (rawScrabbleClockSeconds !== undefined)
+          updatePayload.scrabble_clock_seconds = clampScrabbleClockSeconds(rawScrabbleClockSeconds)
+      }
     } else if (rawScrabbleClockSeconds !== undefined) {
       updatePayload.scrabble_clock_seconds = clampScrabbleClockSeconds(rawScrabbleClockSeconds)
     }

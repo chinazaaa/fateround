@@ -9,6 +9,7 @@ import {
   formatScrabbleGameDuration,
   scrabbleGameSessionExpired,
   processScrabbleExpireTurn,
+  processScrabblePass,
   SCRABBLE_TIMER_OPTIONS,
   SCRABBLE_GAME_DURATION_OPTIONS,
   SCRABBLE_GAME_TIME_EXTENSION_OPTIONS,
@@ -338,5 +339,95 @@ describe('processScrabbleExpireTurn — chess-clock flag-out', () => {
     expect(a.timed_out).toBe(false)
     expect(session.phase).toBe('playing')
     expect(session.current_turn_index).toBe(0) // still Alice's turn
+  })
+})
+
+describe('chess-clock deduction on a scoreless turn (pass)', () => {
+  it('deducts the mover time spent, advances the seat, and resets turn_started_at', async () => {
+    const { supabase, session, states } = makeChessSupabase({
+      clockSeconds: 300,
+      players: [
+        { id: 'A', name: 'Alice' },
+        { id: 'B', name: 'Bob' },
+      ],
+      // Alice's turn started 60s ago and she has 200s banked — a pass costs her ~60s.
+      session: chessSession({ current_turn_index: 0 }),
+      states: [
+        {
+          id: 'sa',
+          game_id: 'G',
+          player_id: 'A',
+          rack: ['A'],
+          score: 10,
+          player_order: 0,
+          clock_ms_remaining: 200_000,
+          timed_out: false,
+        },
+        {
+          id: 'sb',
+          game_id: 'G',
+          player_id: 'B',
+          rack: ['B'],
+          score: 3,
+          player_order: 1,
+          clock_ms_remaining: 200_000,
+          timed_out: false,
+        },
+      ],
+    })
+
+    await processScrabblePass(supabase, 'G', 'A')
+
+    const a = states.find((s) => s.id === 'sa') as Row
+    // ~60s deducted from Alice's bank (allow slack for wall-clock in the test).
+    expect(a.clock_ms_remaining as number).toBeGreaterThan(138_000)
+    expect(a.clock_ms_remaining as number).toBeLessThanOrEqual(141_000)
+    expect(a.timed_out).toBe(false)
+    expect(session.current_turn_index).toBe(1) // handed to Bob
+    expect(session.phase).toBe('playing')
+    expect(session.turn_started_at).not.toBe(chessSession({}).turn_started_at) // Bob's clock (re)started
+    expect(session.turn_deadline_at).toBeNull()
+  })
+
+  it('flags the mover out when the pass drains their last time, skipping to the next seat', async () => {
+    const { supabase, session, states } = makeChessSupabase({
+      clockSeconds: 300,
+      players: [
+        { id: 'A', name: 'Alice' },
+        { id: 'B', name: 'Bob' },
+      ],
+      // Alice has only 5s banked but 60s elapsed — the pass flags her out.
+      session: chessSession({ current_turn_index: 0 }),
+      states: [
+        {
+          id: 'sa',
+          game_id: 'G',
+          player_id: 'A',
+          rack: ['A'],
+          score: 10,
+          player_order: 0,
+          clock_ms_remaining: 5_000,
+          timed_out: false,
+        },
+        {
+          id: 'sb',
+          game_id: 'G',
+          player_id: 'B',
+          rack: ['B'],
+          score: 3,
+          player_order: 1,
+          clock_ms_remaining: 200_000,
+          timed_out: false,
+        },
+      ],
+    })
+
+    await processScrabblePass(supabase, 'G', 'A')
+
+    const a = states.find((s) => s.id === 'sa') as Row
+    expect(a.timed_out).toBe(true)
+    expect(a.clock_ms_remaining).toBe(0)
+    expect(session.current_turn_index).toBe(1) // Bob still on the clock
+    expect(session.phase).toBe('playing')
   })
 })

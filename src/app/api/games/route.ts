@@ -671,7 +671,9 @@ export async function POST(req: NextRequest) {
       ? (() => {
           const clockMode = parseScrabbleClockMode(rawScrabbleClockMode)
           return {
-            game_duration_seconds: clampScrabbleGameDuration(rawGameDurationSeconds),
+            // Chess-clock mode has no whole-game cap; keep it zeroed so the
+            // whole-game expiry can never fire against a chess game.
+            game_duration_seconds: clockMode === 'chess' ? 0 : clampScrabbleGameDuration(rawGameDurationSeconds),
             scrabble_dictionary_id: parseScrabbleDictionaryId(rawScrabbleDictionaryId),
             scrabble_clock_mode: clockMode,
             scrabble_clock_seconds: clockMode === 'chess' ? clampScrabbleClockSeconds(rawScrabbleClockSeconds) : 0,

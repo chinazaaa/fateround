@@ -29,10 +29,13 @@ export interface TournamentGameConfigInput {
   schoolClassCount?: number
 }
 
-/** Build the Scrabble room clock fields (shared by head-to-head and knockout). */
-function scrabbleClockConfig(gameConfig: TournamentGameConfigInput | undefined): Record<string, unknown> {
+/** Build the Scrabble room timing fields (shared by head-to-head and knockout).
+ *  Chess-clock mode has no whole-game cap, so it forces `gameDurationSeconds` to 0 —
+ *  otherwise the room's whole-game expiry could end a chess game early. */
+function scrabbleRoomTiming(gameConfig: TournamentGameConfigInput | undefined): Record<string, unknown> {
   const clockMode = parseScrabbleClockMode(gameConfig?.scrabbleClockMode)
   return {
+    gameDurationSeconds: clockMode === 'chess' ? 0 : clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 900),
     scrabbleClockMode: clockMode,
     scrabbleClockSeconds: clockMode === 'chess' ? clampScrabbleClockSeconds(gameConfig?.scrabbleClockSeconds) : 0,
   }
@@ -66,9 +69,8 @@ export function buildTournamentGameConfig(
       return {
         groupSize,
         timerSeconds: clampScrabbleTimer(gameConfig?.timerSeconds ?? 60),
-        gameDurationSeconds: clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 900),
         scrabbleDictionary: parseScrabbleDictionaryId(gameConfig?.scrabbleDictionary),
-        ...scrabbleClockConfig(gameConfig),
+        ...scrabbleRoomTiming(gameConfig),
       }
     }
     // Chess: the per-player clock (0 = untimed) applied to every match.
@@ -84,9 +86,8 @@ export function buildTournamentGameConfig(
       return {
         groupSize: h2hGroupSize('scrabble'),
         timerSeconds: clampScrabbleTimer(gameConfig?.timerSeconds ?? 60),
-        gameDurationSeconds: clampScrabbleGameDuration(gameConfig?.gameDurationSeconds ?? 900),
         scrabbleDictionary: parseScrabbleDictionaryId(gameConfig?.scrabbleDictionary),
-        ...scrabbleClockConfig(gameConfig),
+        ...scrabbleRoomTiming(gameConfig),
       }
     }
     return {
