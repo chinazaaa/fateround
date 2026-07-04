@@ -1,8 +1,6 @@
-import { MarketingLanding } from '@/components/marketing/MarketingLanding'
-import { getMarketingPage, marketingMetadata } from '@/lib/marketing-landing'
+import { createMarketingPage } from '@/lib/marketing-landing-page'
 
-export const metadata = marketingMetadata('whot-vs-uno')
+const { metadata, Page } = createMarketingPage('whot-vs-uno')
 
-export default function WhotVsUnoPage() {
-  return <MarketingLanding content={getMarketingPage('whot-vs-uno')!} />
-}
+export { metadata }
+export default Page

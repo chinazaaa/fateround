@@ -1,8 +1,6 @@
-import { MarketingLanding } from '@/components/marketing/MarketingLanding'
-import { getMarketingPage, marketingMetadata } from '@/lib/marketing-landing'
+import { createMarketingPage } from '@/lib/marketing-landing-page'
 
-export const metadata = marketingMetadata('free-ludo-king-alternative')
+const { metadata, Page } = createMarketingPage('free-ludo-king-alternative')
 
-export default function FreeLudoKingAlternativePage() {
-  return <MarketingLanding content={getMarketingPage('free-ludo-king-alternative')!} />
-}
+export { metadata }
+export default Page

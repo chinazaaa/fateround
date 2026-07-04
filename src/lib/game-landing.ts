@@ -169,19 +169,14 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Each round drops three names — celebrities, friends from a list you upload, or names players add in the lobby. Everyone privately assigns one “smash,” one “marry,” and one “kill,” and the reveal shows how the group voted. It’s the classic Kiss Marry Kill, run so votes stay private until the big reveal.',
       },
       {
-        question: 'How many people can play?',
-        answer:
-          'Three or more — it’s a group game. Great for friend groups, parties, and Discord calls, with everyone voting from their own phone.',
-      },
-      {
         question: 'Can I use celebrities or my own list of names?',
         answer:
           'Yes. Upload a list of celebrities, fictional characters, or your own friends, or let players add names live in the lobby. You control who ends up in the hot seat.',
       },
       {
-        question: 'Is it free and are the votes anonymous?',
+        question: 'Are the votes anonymous?',
         answer:
-          'Free forever, no sign-up and no download — and everyone votes privately, so the reveal shows the group’s picks without pinning each vote on a name. That’s what keeps it fun rather than personal.',
+          'Everyone votes privately, so the reveal shows the group’s picks without pinning each vote on a name. That’s what keeps it fun rather than personal.',
       },
     ],
   }),
@@ -233,16 +228,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Each round shows two names, and everyone privately rates each one a green flag (into it) or a red flag (hard no). The reveal shows how the group scored each person. It’s a fun way to debate what counts as a dealbreaker.',
       },
-      {
-        question: 'How many people can play?',
-        answer:
-          'Four or more works best — enough of a group for the votes to get interesting. Everyone joins from their own phone and votes anonymously.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Create a game, share the code, and play in the browser over a call or in the same room.',
-      },
     ],
   }),
 
@@ -290,18 +275,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Two names show up each round and everyone privately picks “smash” or “pass” on each one. The reveal shows how the group voted. It’s fast, bold, and no overthinking — the quickest of the party voting games.',
       },
       {
-        question: 'How many people can play?',
-        answer:
-          'Four or more makes for the best reveals. Everyone joins from their own phone and votes anonymously — perfect for a party or a Discord call.',
-      },
-      {
         question: 'Can I use my own list of names or celebrities?',
         answer:
           'Yes. Upload a custom list, or let players add names live in the lobby. Celebrities, fictional characters, or your own friends — your call.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer: 'Yes — free forever, no account and no download. Share a code and play in the browser on any phone.',
       },
     ],
   }),
@@ -356,15 +332,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'How do you play Date My Kid?',
         answer:
           'One name steps into the spotlight each round, and everyone plays the overprotective parent — voting yes or no on whether you’d let your son or daughter date them. The reveal shows how the group ruled. It’s pure “meet the parents” comedy.',
-      },
-      {
-        question: 'How many people can play?',
-        answer: 'Three or more. Everyone votes anonymously from their own phone — perfect for a party or a group call.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Create a game, share the code, and play in any browser.',
       },
     ],
   }),
@@ -424,19 +391,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Each round puts two options on the screen — “would you rather A or B?” Everyone picks one privately on their phone, and the reveal shows how the group split. There’s no wrong answer; the fun is seeing where your friends land and arguing about it after.',
       },
       {
-        question: 'How many people can play?',
-        answer:
-          'From two friends up to a big group. It works great one-on-one for long distance, or with a whole party or Discord call — everyone just joins from their own phone with a nickname.',
-      },
-      {
         question: 'Are the votes anonymous?',
         answer:
           'Yes — everyone votes privately and the reveal shows the split without naming who picked what (unless you want to fess up). That’s what makes the spicier questions actually fun.',
-      },
-      {
-        question: 'Is it free, with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Create a game, share the code or link, and play in any browser. Perfect over FaceTime, Zoom, or Discord.',
       },
     ],
   }),
@@ -495,19 +452,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Each round shows a “Never have I ever…” statement. Everyone privately marks whether they have or haven’t, and the reveal shows how many in the group are guilty — without forcing anyone to drink or confess out loud unless they want to. It’s the classic game, just cleaner to run over a call.',
       },
       {
-        question: 'How many people can play?',
-        answer:
-          'Two and up. It’s great one-on-one for a long-distance couple getting to know each other, and just as good with a whole party or Discord group. Everyone joins from their own phone.',
-      },
-      {
         question: 'Are answers anonymous?',
         answer:
           'Yes — votes are private and the reveal shows the count, not the names. That’s what lets the spicier prompts stay fun instead of awkward.',
-      },
-      {
-        question: 'Is it free and no sign-up?',
-        answer:
-          'Yes — free forever, no account, no download. Share a code and play in the browser on any phone or laptop.',
       },
     ],
   }),
@@ -565,16 +512,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'How do you play Pick a Number?',
         answer:
           'Each round you pick a number before you know what it means — then the hidden question tied to that number is revealed, and you answer it. It’s the suspense of not knowing whether you just signed up for an easy one or a spicy one that makes it fun.',
-      },
-      {
-        question: 'How many people can play?',
-        answer:
-          'Two and up. It works for a small group or a big party, and everyone joins from their own phone with a nickname.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Create a game, share the code, and play in the browser over a call or in the same room.',
       },
     ],
   }),
@@ -635,14 +572,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Each round shows two options — “coffee or tea?”, “beach or mountains?” — and everyone privately picks A or B. The reveal shows how the group split. Simple, fast, and endlessly customisable with your own prompts.',
       },
       {
-        question: 'How many people can play?',
+        question: 'Are the votes anonymous?',
         answer:
-          'Two and up — great one-on-one or with a whole group. Everyone votes from their own phone, and the votes are anonymous.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Create a game, share the code, upload your own prompts if you like, and play in any browser.',
+          'Yes — everyone votes from their own phone privately, and the reveal shows the split without naming who picked what.',
       },
     ],
   }),
@@ -697,19 +629,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Each round shows a “Most likely to…” prompt, and everyone secretly votes for the friend who fits best. The reveal shows who got the most votes — with no mercy. It works on your actual friend group, so the call-outs land.',
       },
       {
-        question: 'How many players do you need?',
-        answer:
-          'Three or more — you need a group to vote on. It’s a party favourite for friend groups, Discord calls, team socials, and family game night.',
-      },
-      {
         question: 'Are the votes anonymous?',
         answer:
           'Yes — everyone votes privately and only the tally is revealed, so nobody knows exactly who threw them under the bus. That’s half the fun.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account, no download. Create a game, share the code, and everyone joins from their own phone in any browser.',
       },
     ],
   }),
@@ -768,16 +690,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Everyone secretly submits quotes to a shared pool in the lobby — real things they’ve said, hot takes, or made-up lines. Then each round shows one anonymous quote and the group guesses who wrote it. Half the fun is realising how well (or badly) you know your friends.',
       },
-      {
-        question: 'How many people can play?',
-        answer:
-          'Three or more — you need a group to guess between. Everyone joins from their own phone and adds quotes before the host starts.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Create a game, share the code, and play in the browser over a call or in the same room.',
-      },
     ],
   }),
 
@@ -827,16 +739,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'How do you play Hot Seat?',
         answer:
           'One person takes the hot seat, and everyone else anonymously submits one thing about them — a compliment, an observation, or a light roast. The submissions reveal one by one, then a new person takes the seat. It’s a warm, funny way to hype up (and gently tease) your friends.',
-      },
-      {
-        question: 'How many people can play?',
-        answer:
-          'Three or more — you need a group to fill the hot seat. Everyone joins from their own phone and submits anonymously.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Create a game, share the code, and play in the browser over a call or in the same room.',
       },
     ],
   }),
@@ -891,16 +793,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'How does the custom game work?',
         answer:
           'You invent the categories. Name your slots — Date, Friendzone, CEO, whatever fits your group — give each an emoji and colour, then run the poll. Each round your group assigns one person to each slot and the reveal shows where everyone landed. It’s Fate Round’s voting engine with your own rules.',
-      },
-      {
-        question: 'How many people can play?',
-        answer:
-          'Two and up. It scales from a small group to a big party, with everyone voting anonymously from their own phone.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Build your categories, share the code, and play in any browser.',
       },
     ],
   }),
@@ -958,18 +850,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'The host creates a room and shares one link. Everyone joins with one tap, gets a random lobby name, and can post to a live wall that the whole group sees — with no names attached. It’s a shared anonymous feed for your group, in real time.',
       },
       {
-        question: 'How many people can join?',
-        answer:
-          'Up to 20 people in a room. Everyone joins from their own phone with the shared link — no account needed.',
-      },
-      {
         question: 'Is it safe and can the host moderate?',
         answer:
           'Anonymous doesn’t mean consequence-free — keep it fun and kind. The host can remove messages and ban a lobby name if someone crosses the line, so the room stays a good time for everyone.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer: 'Yes — free forever, no account and no download. Share one link and your group is posting in seconds.',
       },
     ],
   }),
@@ -1032,9 +915,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Yes — that’s the point. Drop your link in your Instagram bio or story, or a WhatsApp group, and people tap through to send you anonymous messages. A free alternative to apps like NGL.',
       },
       {
-        question: 'Is it really anonymous, and is it free?',
+        question: 'Is it really anonymous?',
         answer:
-          'Senders aren’t shown to you, and they can’t see who else wrote in. It’s free forever with no sign-up. As with anything anonymous, encourage people to keep it kind.',
+          'Senders aren’t shown to you, and they can’t see who else wrote in. As with anything anonymous, encourage people to keep it kind.',
       },
     ],
   }),
@@ -1105,19 +988,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Yes. When the host starts the game, every player receives a unique 5×5 bingo card automatically. Numbers called by the host sync in real time across all devices.',
       },
       {
-        question: 'How many people can play Bingo?',
-        answer:
-          'Up to 30 players in one room — great for a party, a family gathering, or a classroom. Everyone gets their own card on their own phone, so there’s nothing to print or hand out.',
-      },
-      {
         question: 'Can I host virtual Bingo for a group over a call?',
         answer:
           'Yes — that’s the sweet spot. You call the numbers (or let them auto-call) while everyone marks their own card from wherever they are, over Zoom, FaceTime, or Discord. Perfect for remote game nights and family bingo.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Create a room, share the code, and players join from any browser and shout BINGO.',
       },
     ],
   }),
@@ -1179,19 +1052,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Two teams, Red and Blue, each with a spymaster who can see which words on the 5×5 grid belong to their team. Spymasters take turns giving a one-word clue plus a number, and their operatives guess which words it points to. Guess your own team’s words to win — but avoid the other team’s words and the single assassin word, which loses the game instantly.',
       },
       {
-        question: 'How many players do you need?',
-        answer:
-          'Four to twelve, split into two teams with a spymaster each. It’s ideal for game nights, Discord calls, and team socials. Everyone joins from their own phone with one room code.',
-      },
-      {
         question: 'What is the assassin word?',
         answer:
           'One hidden word on the grid is the assassin. If a team guesses it, they lose the game immediately — so spymasters have to give clues that steer their operatives well clear of it. It’s what makes every clue a gamble.',
-      },
-      {
-        question: 'Is it a free Codenames alternative with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Create a game, share the code, and play the word-association spy game right in the browser, perfect over a Discord or video call.',
       },
     ],
   }),
@@ -1252,16 +1115,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Yes. Pick Tech or General Knowledge from the built-in pool, or upload a CSV with your own multiple-choice questions when creating a room. Fastest correct answers earn speed bonus points.',
       },
       {
-        question: 'How many players can join a trivia game?',
-        answer:
-          'Up to 40 players in one room — plenty for a party, a whole class, or a work team. Everyone joins from their own phone with just a nickname; no accounts, no app.',
-      },
-      {
-        question: 'Is it free to host a trivia game online?',
-        answer:
-          'Yes — free forever, no sign-up and no download. Create a room, share the code, and players join from any browser. A great free alternative to paid quiz tools, with no player cap on the essentials.',
-      },
-      {
         question: 'How does scoring work?',
         answer:
           'Every correct answer earns base points plus a speed bonus, and the very first correct answer each round gets an extra boost — so fast, accurate players climb fastest. The leaderboard updates live after every question.',
@@ -1275,11 +1128,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Is it good for classrooms, teams, and pub quizzes?',
         answer:
           'Yes. No login and room for up to 40 make it easy for a class, a remote team, or a pub-quiz crowd to jump in, and speed-based scoring keeps it competitive. Play it right in the browser over a call or on a big screen.',
-      },
-      {
-        question: 'Can I play trivia on my phone?',
-        answer:
-          'Yes — everyone plays from their own phone or laptop browser. The host can put questions on a shared screen while players buzz in from their devices, or everyone just plays from where they are over a video call.',
       },
     ],
   }),
@@ -1337,19 +1185,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Everyone writes two true things and one lie about themselves. Each round, one person’s three statements are shown and the rest of the group guesses which one is the lie. It’s the classic icebreaker — great for getting to know a new group.',
       },
       {
-        question: 'How many people can play?',
-        answer:
-          'Three or more. It’s a favourite for parties, team socials, and virtual icebreakers, with everyone joining from their own phone.',
-      },
-      {
         question: 'Is it good as a virtual icebreaker for work?',
         answer:
           'Yes — it’s one of the best remote-team icebreakers, and it runs in the browser over a video call with no download and no accounts. Just share a code and go.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Create a game, share the code, and play in any browser.',
       },
     ],
   }),
@@ -1424,21 +1262,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'How do you get out of Jail in Monopoly?',
         answer:
           'Pay the £50 fine before your next roll, use a Get Out of Jail Free card, or roll doubles on any of your next three turns. After three turns without doubles, you pay £50 and move by your roll.',
-      },
-      {
-        question: 'How many people can play Monopoly online?',
-        answer:
-          'Monopoly on Fate Round supports 2–6 players in one room. Everyone joins with a display name, starts on GO with £1,500, and takes turns rolling dice until one player bankrupts the rest.',
-      },
-      {
-        question: 'Is it free to play Monopoly online?',
-        answer:
-          'Yes — free forever, no sign-up and no download. Create a game, share the code, and 2 to 6 of you play in the browser. No box, no lost money, no setup — just roll and play.',
-      },
-      {
-        question: 'Can we play Monopoly on our phones over a video call?',
-        answer:
-          'Yes — everyone plays from their own phone or laptop browser, so it’s perfect over FaceTime, Zoom, or Discord, or across the room. The board and everyone’s cash sync in real time.',
       },
       {
         question: 'Can I set how long a Monopoly game lasts?',
@@ -1646,11 +1469,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           '1 = Hold On (extra turn), 2 = Pick 2, 5 = Pick 3, 8 = Suspension (skip next player), 14 = General Market (others draw), 20 = WHOT (call shape or number). Pick 2 and Pick 3 stacks cannot be mixed.',
       },
       {
-        question: 'How many players can play Whot?',
-        answer:
-          'Whot on Fate Round is built for two to six players. Two-player games deal six cards each; three or more deal five. Share one room code and everyone joins from their own phone — no deck, no dealing by hand.',
-      },
-      {
         question: 'What does WHOT mean / what is the WHOT card?',
         answer:
           'WHOT is the wild card, numbered 20. Play it on almost any card, then call the shape everyone must match next — circle, cross, triangle, square, or star. It’s your reset button when your hand doesn’t fit the pile. It’s worth 20 points if you’re caught holding it at the end, so don’t sit on it too long.',
@@ -1689,11 +1507,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Is Whot like Uno?',
         answer:
           'They’re cousins. Both are shape/number-matching shedding games where you race to empty your hand, and Whot’s Pick 2, Pick 3, and WHOT card rhyme with Uno’s Draw 2, Draw 4, and Wild. Whot came first — invented in England in 1935 and popularized in Britain through the 1950s — uses shapes instead of colors, and adds Hold On and General Market. If you like Uno, Whot feels instantly familiar — and Fate Round has both.',
-      },
-      {
-        question: 'Can you play Whot online for free?',
-        answer:
-          'Yes — free forever on Fate Round, no sign-up and no download. Create a room, share the code, and two to six of you play from any browser. Perfect for Nigerian diaspora game nights over a video call.',
       },
     ],
   }),
@@ -1762,19 +1575,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           '8 = Wild (name the suit), 2 = Pick Two (next player draws two or stacks their own 2), Jack = Skip, Queen = Reverse, Ace = Skip. With Jokers enabled, a Joker is wild and makes the next player draw five. Action cards are an optional host setting.',
       },
       {
-        question: 'How many players can play Crazy Eights?',
-        answer:
-          'Two to six players. Share one room code and everyone joins from their own phone — no deck to shuffle and no cards to lose.',
-      },
-      {
         question: 'Is Crazy Eights like Uno?',
         answer:
           'Very much — Uno is a branded descendant of Crazy Eights. Both are match-by-rank-or-suit shedding games where you race to empty your hand, and Crazy Eights’ wild 8s and action cards mirror Uno’s Wilds and Draw/Skip/Reverse cards. If you like Uno, you already know how to play. Fate Round has both.',
-      },
-      {
-        question: 'Is it free to play online?',
-        answer:
-          'Yes — free forever, no sign-up and no download. Create a game, share the code, and two to six of you play in the browser in real time, over a call or across the room.',
       },
     ],
   }),
@@ -1854,24 +1657,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer: 'Yes. A piece can only enter the home triangle with an exact roll — overshooting is not allowed.',
       },
       {
-        question: 'How many players can play Ludo?',
-        answer:
-          'Ludo on Fate Round is for two to four players, each with their own colour and four pieces. Share one room code and everyone joins from their own phone — no board, no lost dice.',
-      },
-      {
-        question: 'Is it free to play Ludo online?',
-        answer:
-          'Yes — free forever, no sign-up and no download. The host creates a game, shares the code or link, and two to four of you play in the browser in real time. A great free Ludo King alternative for playing with friends and family anywhere.',
-      },
-      {
         question: 'What are safe squares in Ludo?',
         answer:
           'Safe squares — the starred cells and each colour’s start square — protect your piece from capture: an opponent landing there can’t send you home. Fate Round marks the safe squares on the board and enforces them automatically.',
-      },
-      {
-        question: 'Can I play Ludo on my phone with friends far away?',
-        answer:
-          'Yes. Everyone joins from any phone or laptop browser, so you can play Ludo with friends and family in different cities — perfect over a video or WhatsApp call. Share one link and you’re all on the same board in real time.',
       },
     ],
   }),
@@ -1949,11 +1737,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'A correct answer scores +10 points and claims the cell; a wrong guess costs −3, so speed and accuracy both matter. Highest score when the grid is finished wins.',
       },
-      {
-        question: 'How many players can play, and is it free?',
-        answer:
-          'Two to twenty players, free forever with no sign-up and no download. Share one code and everyone races on their own phone or laptop in the browser — great for a group who likes puzzles.',
-      },
     ],
   }),
   i_call_on: landing('i_call_on', {
@@ -2013,16 +1796,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'How do you play I Call On?',
         answer:
           'A letter is called, then everyone races to fill each category — Name, Animal, Place, Thing, Food — with a word starting with that letter before time runs out. It’s the classic Name-Place-Animal-Thing (Scattergories / “Stop the Bus”) game, scored so unique answers beat ones everyone else also wrote.',
-      },
-      {
-        question: 'How many people can play?',
-        answer:
-          'Three to twenty. Everyone plays from their own phone, filling in their answers before the round ends — great for parties, classrooms, and family game night.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Create a game, share the code, and play in the browser over a call or in the same room.',
       },
     ],
   }),
@@ -2087,16 +1860,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'How is it scored?',
         answer:
           'Longer words are worth more points, so it pays to find the big ones, not just the easy three-letter words. Only valid dictionary words count. Highest score when the clock hits zero wins.',
-      },
-      {
-        question: 'How many people can play?',
-        answer:
-          'From two players up to a big group — everyone races on their own phone on the same shared grid. Great for a party, a classroom, or family game night.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Create a room, share the code, and everyone joins from any browser to start hunting.',
       },
     ],
   }),
@@ -2174,11 +1937,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Regular tic-tac-toe is easily drawn once you know it. Ultimate adds a layer — because each move sends your opponent to a specific board, you have to think several moves ahead about where you’re sending them. Far deeper, and much harder to force a draw.',
       },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Share a link and play head-to-head in the browser on any phone or laptop, great over a video call.',
-      },
     ],
   }),
 
@@ -2251,11 +2009,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer: 'No — chess is strictly 2 players. The host can play as one of the two if they want in on the match.',
       },
       {
-        question: 'Is it free to play chess online here?',
-        answer:
-          'Yes — free forever, with no sign-up and no download. One player creates a game, shares the link, and the other joins from any browser. Nothing to install and no account needed.',
-      },
-      {
         question: 'How do you play chess?',
         answer:
           'Each player commands 16 pieces. Pawns move forward one square (two on their first move) and capture diagonally; rooks move in straight lines; bishops diagonally; the queen any direction; the king one square; and knights in an L-shape, jumping over pieces. White moves first, then players alternate. The goal is checkmate — trapping the opposing king so it can’t escape capture. Fate Round only allows legal moves, so you can’t make an illegal one by mistake.',
@@ -2279,11 +2032,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Can we play timed or blitz chess?',
         answer:
           'Yes. Turn on the chess clock and pick 3, 5, or 10 minutes each for a blitz or rapid game — your clock only ticks on your turn, and running out of time loses. Leave it off for a relaxed, untimed match.',
-      },
-      {
-        question: 'Can I play chess on my phone?',
-        answer:
-          'Yes — the board is fully responsive and works on any phone, tablet, or laptop browser. Tap a piece, then tap its destination. Great for a match over a video call or across the room.',
       },
     ],
   }),
@@ -2362,11 +2110,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         answer:
           'Move one of your pieces all the way to the opponent’s back row. It’s crowned a king and can then move and capture both forwards and backwards, which makes it much stronger. Fate Round crowns kings automatically.',
       },
-      {
-        question: 'Is it free to play checkers online?',
-        answer:
-          'Yes — free forever, no sign-up and no download. One player shares a link, the other joins from any browser, and you play head-to-head in real time. Great over a video call.',
-      },
     ],
   }),
 
@@ -2426,19 +2169,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Split into teams. Each round, one teammate gets a secret word and describes it — without saying the word itself — while the rest of their team races to guess. Guess as many as you can before the timer runs out, then it’s the next team’s turn. It’s the classic describe-and-guess party game (think Catchphrase or Password), online.',
       },
       {
-        question: 'How many players do you need?',
-        answer:
-          'Four to twenty, split into teams. It’s built for bigger groups — parties, team socials, and family game night — with everyone joining from their own phone.',
-      },
-      {
         question: 'Can I use my own words?',
         answer:
           'Yes. Use the built-in word pool or upload your own list when you create the game — handy for themed rounds, inside jokes, or a work-friendly set. Great for tailoring the game to your group.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Create a game, share the code, pick teams, and play in the browser over a call or in the same room.',
       },
     ],
   }),
@@ -2504,10 +2237,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'A blank can stand in for any letter — you choose which when you place it. It scores zero points but lets you complete words you otherwise could not.',
       },
       {
-        question: 'How many people can play?',
-        answer: 'Scrabble supports 2 to 4 players. The host can join as one of the players.',
-      },
-      {
         question: 'How do you play Scrabble?',
         answer:
           'Each player draws seven letter tiles. On your turn you build a word on the 15×15 board, connecting to tiles already down (the first word crosses the centre star). You score the letter values, boosted by any double/triple letter and word squares your tiles cover, then draw back up to seven. Play until the bag is empty and someone uses their last tile — highest score wins.',
@@ -2516,11 +2245,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'How does scoring work?',
         answer:
           'Each letter has a point value, and premium squares multiply a letter or the whole word. Playing all seven tiles in one turn earns a 50-point “bingo” bonus. Fate Round tallies every play automatically, so there’s no maths or arguing over the pad.',
-      },
-      {
-        question: 'Is it free with no sign-up?',
-        answer:
-          'Yes — free forever, no account and no download. Share a link and 2 to 4 of you play in the browser on any phone or laptop. A handy free Scrabble-style word game to play with friends anywhere.',
       },
     ],
   }),
@@ -2582,20 +2306,6 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Does rolling a 6 do anything special?',
         answer:
           'Yes — rolling a 6 earns you another roll. But roll three 6s in a row and your turn is forfeited, so press your luck carefully.',
-      },
-      {
-        question: 'How many people can play?',
-        answer: 'Snakes and Ladders supports 2 to 6 players. The host can join as one of the players.',
-      },
-      {
-        question: 'Is it free to play Snakes and Ladders online?',
-        answer:
-          'Yes — free forever, no sign-up and no download. Create a game, share the code, and 2 to 6 of you race up the board in the browser on any phone or laptop. Also known as Chutes and Ladders.',
-      },
-      {
-        question: 'Can I play with family in another city?',
-        answer:
-          'Yes — everyone joins from their own phone, so it’s a great, easy game for family far away, kids included. Share one link over a video or WhatsApp call and you’re all on the same board in real time.',
       },
     ],
   }),

@@ -39,8 +39,13 @@ export function ShareInviteButton({
         await navigator.share({ title: 'Fate Round', text, url })
         trackEvent(GA_EVENTS.shareLink)
         return
-      } catch {
-        // User dismissed the sheet, or the share was cancelled — fall through to copy.
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          // User intentionally dismissed the share sheet — don't count it as a
+          // share or fall back to copying; just stop here.
+          return
+        }
+        // Real failure (e.g. permission denied) — fall through to copy.
       }
     }
     // Desktop / unsupported: copy the link so the invite still gets out.

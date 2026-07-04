@@ -1,8 +1,6 @@
-import { MarketingLanding } from '@/components/marketing/MarketingLanding'
-import { getMarketingPage, marketingMetadata } from '@/lib/marketing-landing'
+import { createMarketingPage } from '@/lib/marketing-landing-page'
 
-export const metadata = marketingMetadata('nigerian-games')
+const { metadata, Page } = createMarketingPage('nigerian-games')
 
-export default function NigerianGamesPage() {
-  return <MarketingLanding content={getMarketingPage('nigerian-games')!} />
-}
+export { metadata }
+export default Page

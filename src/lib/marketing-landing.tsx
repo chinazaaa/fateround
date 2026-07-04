@@ -1594,7 +1594,7 @@ const WHOT_UNO: MarketingPageContent = {
     'whot or uno',
     'nigerian uno',
     'whot and uno online',
-    'play whot online free',
+    'whot vs uno rules',
     'uno alternative online free',
     'card games like uno online',
   ],
