@@ -1051,15 +1051,21 @@ export default function TournamentLobbyPage() {
         />
       )}
 
-      {/* Run it back — host resets a finished tournament with the same roster. */}
+      {/* Finished — host either runs it back with this roster or starts fresh. */}
       {isHost && isFinished && (
         <div className="glass-card-strong p-5 space-y-3 text-center">
-          <p className="label-caps">Run it back</p>
-          <PrimaryBtn onClick={handleRestartTournament} disabled={actionLoading} className="btn-fit mx-auto">
-            {actionLoading ? 'Restarting…' : '🔄 Restart tournament'}
-          </PrimaryBtn>
+          <p className="label-caps">What&apos;s next</p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <PrimaryBtn onClick={handleRestartTournament} disabled={actionLoading} className="btn-fit">
+              {actionLoading ? 'Restarting…' : '🔄 Restart tournament'}
+            </PrimaryBtn>
+            <button onClick={() => router.push('/tournament/create')} className="btn-secondary btn-fit text-sm">
+              ➕ Create new tournament
+            </button>
+          </div>
           <p className="text-muted text-xs">
-            Same players and settings — scores reset and everyone returns to the lobby to play again.
+            Restart keeps this roster — scores reset and everyone returns to the lobby. Create new starts a fresh
+            tournament from scratch.
           </p>
         </div>
       )}
