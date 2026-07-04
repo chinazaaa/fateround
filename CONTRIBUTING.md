@@ -49,16 +49,22 @@ consciously accept each finding before promoting to `main`.
 
 ## CI checks (required)
 
-`.github/workflows/ci.yml` runs on push + PR to **`main` and `dev`**:
+`.github/workflows/ci.yml` runs on push + PR to **`main` and `dev`**. It has
+**8 jobs**:
 
+- **Migrations Check** (`migrations-check`) — rejects duplicate migration version prefixes
 - **Lint**
 - **Format**
 - **Type Check**
+- **Test** (vitest — `pnpm test`)
 - **Build**
+- **DB Migrate** (`migrate`) — applies migrations on push to `dev`/`main` only (see Conventions)
+- **Security Scan** (`security`) — `pnpm audit` + hardcoded-secret grep
 
-Branch protection on `main` and `dev` should require a PR plus these four
-checks, and block direct/force pushes to `main`. _(Setting protection rules
-needs repo-admin access.)_
+Branch protection on `main` and `dev` should require a PR plus the CI gates
+(at least Lint, Format, Type Check, Test, Build, plus Migrations Check), and
+block direct/force pushes to `main`. _(Setting protection rules needs repo-admin
+access.)_
 
 ## Always parallelize with subagents
 
@@ -80,25 +86,30 @@ Reserve serial work for genuinely dependent steps or edits to the same file.
 
 - **Commits/PRs:** clear, imperative messages. **No AI / co-author signature
   lines.**
-- **Migrations — the rules that keep Supabase branching working** (a long drift
+- **Migrations — the rules that keep the CI migrate step working** (a long drift
   saga taught us these the hard way):
   - **Name new migrations with a UTC timestamp prefix** so the latest is obvious
     and the version is always unique: `YYYYMMDDHHMMSS_short_name.sql` (e.g.
     `20260628143000_add_foo.sql`). Running `supabase migration new <name>`
-    generates this for you. The historical `0001…0103` files predate this and
-    stay as-is; new timestamped files sort cleanly after them.
+    generates this for you. The historical `0001…0128` files (plus a stray
+    3-digit `093_chess_board_appearance.sql`) predate this and stay as-is; new
+    timestamped files sort cleanly after them.
   - **The migration files are the only source of schema truth — never change the
     schema directly in the Supabase SQL Editor.** Supabase records applied
     migrations in `supabase_migrations.schema_migrations`; manual SQL-Editor
-    edits aren't recorded there, silently drift prod out of sync, and break every
-    preview-branch deploy. (Treat the SQL Editor as read-only for schema.)
+    edits aren't recorded there, silently drift prod out of sync, and break the
+    next `db push`. (Treat the SQL Editor as read-only for schema.)
   - **Never reuse, duplicate, or renumber a prefix.** Two PRs must not land the
     same prefix — timestamps make collisions essentially impossible, which is the
     whole point. Renumbering an already-merged migration breaks the applied-history
     record.
-  - Supabase applies migrations automatically via the GitHub integration: new
-    files run on the **preview branch** when a PR opens, and on **prod** when you
-    merge to the production branch — no manual SQL pasting.
+  - **Migrations are applied by CI, not on PR open.** The **"DB Migrate"
+    (`migrate`) job** in `.github/workflows/ci.yml` runs `supabase link
+    --project-ref … && supabase db push` **on push to `dev` or `main`** (never on
+    PR open — this is a two-project setup, not Supabase Branching). Per
+    `supabase/config.toml`: **`main` → the prod project, `dev` → a separate dev
+    Supabase project.** Merging your PR into `dev` (then promoting to `main`)
+    triggers the push to the matching project — no manual SQL pasting.
 - **Secrets:** via environment variables. State-mutating endpoints
   **default-deny** — refuse to run if the required secret isn't configured,
   rather than failing open.
