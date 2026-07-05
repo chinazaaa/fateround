@@ -245,9 +245,14 @@ can be tuned in one place (`TROPHY_POINTS` constant).
 
 ### 3.5 Hidden / secret trophies
 
-- Support a `hidden` flag. Hidden trophies show as a locked "???" until earned (title +
-  description revealed on unlock). Classic PSN surprise-and-delight; good for a handful of
-  the Gold/quirky ones.
+- Support a `hidden` flag. Hidden trophies show as a locked "???" until earned — **title,
+  description, and criterion/details are all withheld** (only the tier/grade is shown,
+  PSN-style), with an optional "reveal" toggle. Classic PSN surprise-and-delight; good for
+  a handful of the Gold/quirky ones.
+- **Redaction is server-side.** The `GET /api/profile/game/:gameType` and
+  `GET /api/trophies/:trophyId` responses must **omit** `title`/`description`/`criteria`
+  for a hidden trophy the caller hasn't earned — never send them and hide in the client,
+  or the spoiler leaks in the payload. Once earned, the full fields are returned.
 
 ### 3.6 Trophy Level (the aggregate)
 
@@ -474,19 +479,23 @@ Four screens, matching the PSN app the user shared. All dark-theme, mobile-first
 
 One row per trophy in the game's finite catalog:
 
-- trophy **art thumbnail** (earned = full-colour art; **locked/unearned = padlock**, and
+- trophy **art thumbnail** (earned = full-colour art; **locked/unearned = padlock**;
   **hidden** trophies show a generic "???" until earned, §3.5),
-- **title** + **one-line description** (the "Details" text),
-- small **tier trophy icon** (bronze/silver/gold/platinum),
+- **title** + **one-line description** — **redacted while hidden-and-unearned** (show
+  "Hidden Trophy" / "This is a hidden trophy" placeholder, PSN-style, with an optional
+  "reveal" toggle); shown normally once earned,
+- small **tier trophy icon** (bronze/silver/gold/platinum) — the tier *is* shown even
+  while hidden (PSN reveals grade, not the objective),
 - **earned date + time** on the right if earned (blank if not),
 - a larger **trophy glyph** far-right, filled when earned.
 - The Platinum ("Earn every Trophy") sits at the top, locked until 100%.
 
 ### Screen 4 — Single trophy detail (modal)
 
-- Large **trophy art** (or the trophy-with-padlock lock icon if unearned).
-- Game icon + game title + **trophy name**.
-- **Grade:** tier icon + label (Bronze / Silver / Gold / Platinum).
+- Large **trophy art** (or the trophy-with-padlock lock icon if unearned; "???" if hidden).
+- Game icon + game title + **trophy name** — **redacted while hidden-and-unearned**
+  ("Hidden Trophy", optional reveal toggle).
+- **Grade:** tier icon + label (Bronze / Silver / Gold / Platinum) — shown even while hidden.
 - **Rarity:** the **pyramid icon** (fills from the base up — more filled = more common; an
   Ultra-Rare shows just the tip) + label + **%**, e.g. "Common 82.8%" or
   "Ultra rare 3.1%". Bands per §3.4.
@@ -495,7 +504,8 @@ One row per trophy in the game's finite catalog:
   - unearned measurable → **"Not earned"** + **"11%"** on the right, partial bar (§3.12);
   - unearned binary → **"Not earned"** + **"0%"**, empty bar.
 - **Details:** the criterion in plain English ("Complete a Mission in the Verdant Meadows.",
-  "Collect 36 Outfits.").
+  "Collect 36 Outfits.") — **redacted while hidden-and-unearned** (the whole point of a
+  hidden trophy is that the objective is a surprise); revealed on unlock.
 
 > **Two visual assets to design:** the **level medallion** (bands by level) and the
 > **rarity pyramid** (fill by rarity band). Both are small, reusable SVGs.
