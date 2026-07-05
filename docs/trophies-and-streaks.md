@@ -258,6 +258,10 @@ can be tuned in one place (`TROPHY_POINTS` constant).
   Reference formula: `level = floor( sqrt(points / 100) ) + 1`, i.e. L1 at 0 pts, L2 at
   100, L3 at 400, L4 at 900… Store both raw `trophy_points` and cached `trophy_level` on
   the profile; recompute on award.
+- **PSN presentation (Screen 1):** the level shows as a **medallion** whose plate colour
+  advances by band as the level climbs (bronze → silver → gold → platinum), wrapped in a
+  **progress ring = progress toward the next level**. Derive the medallion band and the
+  ring % from `trophy_points` (points into current level ÷ points needed for next).
 
 ### 3.7 Relationship to the existing `achievements.ts`
 
@@ -374,6 +378,110 @@ per-game code** beyond incrementing the shared counters.
 | Social Butterfly (play with 20 people) | 🥈 | `distinct opponents ≥ 20` |
 | Explorer (try 10 modes) | 🥉 | `distinct modes_played ≥ 10` |
 | Completionist (Platinum 3 games) | 🥇 | `counter platinums ≥ 3` |
+
+### 3.12 Trophy progress — measurable vs binary
+
+PlayStation shows a **progress bar + %** on every trophy, and it behaves differently by
+trophy type. We match this exactly, and it falls straight out of the criteria DSL (§3.10):
+
+| Criteria type | Progress behaviour | Example (unearned) |
+|---|---|---|
+| `counter`, `distinct`, `streak` | **Measurable** — show `min(100, current/target × 100)%` while unearned | "Collect 36 Outfits" → **Not earned · 11%** (you have 4/36) |
+| `event`, `platinum` | **Binary** — no partial progress; **0%** until the moment it's earned, then 100% | "Land on Mayfair" → **Not earned · 0%** |
+
+- This is the user's exact requirement: a *collection/threshold* trophy shows partial
+  progress (11%); a *do-it-or-you-don't* trophy shows 0% until earned.
+- Implementation: the award engine (or the `GET .../trophies` read) computes progress from
+  `player_stats` for measurable criteria; for `event`/`platinum` it returns `0` unearned /
+  `100` earned. Store nothing extra — progress is derived from the same counters.
+- When **earned**, the bar is full and the row shows **"Earned · DD/MM/YYYY · h:mm AM/PM"**
+  (date **and** time — PSN shows both; we already store `earned_at timestamptz`).
+
+### 3.13 Finite catalog & completion % (this is what makes the PSN screens work)
+
+PSN's per-game screen shows **"32 Earned / 59 Available"** and a completion ring. That only
+works because each game has a **fixed, finite trophy list with a known total**. So:
+
+- **Every game's trophy catalog is finite and versioned.** "Available" = count of active
+  trophies for that `game_type`. "Earned" = how many that player holds. Adding trophies
+  later raises "Available" for everyone (expected — PSN does this with DLC).
+- **The Platinum is literally "earn every other trophy"** (§3.3) — mirrors PSN's "For the
+  Brigade — Earn every Trophy" platinum. One per game.
+- **Completion % is POINTS-WEIGHTED, not a raw count.** In the screenshot Spell Brigade is
+  32/59 by count (≈54%) but the ring reads **48%**, because tiers are weighted. Use:
+
+  ```
+  completion% = round( earned_points / total_available_points × 100 )
+  ```
+
+  using the same tier points as Trophy Level (Bronze 15 / Silver 30 / Gold 90 / Plat 300).
+  Show the **raw "Earned / Available" count AND the weighted %** side by side, exactly like
+  PSN (the count and the ring are different numbers on purpose).
+- **"Rarest trophy earned"** (per game) = of the trophies the player holds for that game,
+  the one with the lowest `trophy_rarity.pct`. Featured on the per-game screen.
+
+---
+
+## 3A. Trophy UI — screen-by-screen (PlayStation-modeled)
+
+Four screens, matching the PSN app the user shared. All dark-theme, mobile-first.
+
+### Screen 1 — Profile / trophy overview (`/profile`)
+
+- **Header:** avatar, handle (`babymarshmallow2`-style) + display name.
+- **Level medallion + ring + total:** a circular **level medallion** whose look changes by
+  level band (bronze → silver → gold → platinum plate as levels climb), the label
+  **"Level N"**, a **progress ring** = progress to next level, and **"Total Trophies"**
+  (the grand count across all games).
+- **Tier totals row:** four icons with counts — 🏆 Platinum · 🥇 Gold · 🥈 Silver ·
+  🥉 Bronze — summed across every game (e.g. `4 / 28 / 42 / 118`).
+- **"Games played" list.** One row per game the player has any trophy in:
+  - game icon + title,
+  - the four tier counts underneath (small trophy + number each: `plat/gold/silver/bronze`),
+  - **completion %** on the right (points-weighted, §3.13),
+  - a thin **progress bar** under the tier counts.
+  - Sorted by most-recently-played (or a sort control).
+
+### Screen 2 — Per-game summary (`/profile/game/:gameType`)
+
+- Game icon + title (+ a small platform/tag chip if we want one).
+- Player avatar + name.
+- **Summary card:** big **"N Earned"** | **completion ring %** | **"M Available"**, with the
+  four tier counts row beneath. (Earned/Available is the raw count; the ring is weighted.)
+- **Sort control** (by grade / earned date / rarity / not-earned-first).
+- **"Rarest trophy earned"** featured card: trophy art, title, description, tier icon,
+  earned date+time (§3.13).
+- **"All trophies"** list begins (Screen 3).
+
+### Screen 3 — All-trophies list (within Screen 2, scrolls)
+
+One row per trophy in the game's finite catalog:
+
+- trophy **art thumbnail** (earned = full-colour art; **locked/unearned = padlock**, and
+  **hidden** trophies show a generic "???" until earned, §3.5),
+- **title** + **one-line description** (the "Details" text),
+- small **tier trophy icon** (bronze/silver/gold/platinum),
+- **earned date + time** on the right if earned (blank if not),
+- a larger **trophy glyph** far-right, filled when earned.
+- The Platinum ("Earn every Trophy") sits at the top, locked until 100%.
+
+### Screen 4 — Single trophy detail (modal)
+
+- Large **trophy art** (or the trophy-with-padlock lock icon if unearned).
+- Game icon + game title + **trophy name**.
+- **Grade:** tier icon + label (Bronze / Silver / Gold / Platinum).
+- **Rarity:** the **pyramid icon** (fills from the base up — more filled = more common; an
+  Ultra-Rare shows just the tip) + label + **%**, e.g. "Common 82.8%" or
+  "Ultra rare 3.1%". Bands per §3.4.
+- **Progress row:**
+  - earned → **"Earned · 9/5/2026 · 5:33 PM"** + checkmark, full bar;
+  - unearned measurable → **"Not earned"** + **"11%"** on the right, partial bar (§3.12);
+  - unearned binary → **"Not earned"** + **"0%"**, empty bar.
+- **Details:** the criterion in plain English ("Complete a Mission in the Verdant Meadows.",
+  "Collect 36 Outfits.").
+
+> **Two visual assets to design:** the **level medallion** (bands by level) and the
+> **rarity pyramid** (fill by rarity band). Both are small, reusable SVGs.
 
 ---
 
@@ -530,8 +638,9 @@ New routes under `src/app/api/` (mirroring existing conventions — Zod-validate
 | `POST /api/auth/request-code` | Send the 6-digit email code (wraps `signInWithOtp`). |
 | `POST /api/auth/verify-code` | Verify the code; log in or create; trigger Case-A upgrade or Case-B merge. |
 | `POST /api/profile/merge` | (Internal) run `mergeProfiles` (Case B). |
-| `GET  /api/profile/me` | Current profile: handle, level, points, streak, freezes. |
-| `GET  /api/profile/:handle/trophies` | Trophy showcase for the profile page (earned + locked, with rarity). |
+| `GET  /api/profile/me` | Screen 1: handle, level medallion band, next-level ring %, total trophies, tier totals, and the "games played" list (per-game tier counts + weighted completion %). |
+| `GET  /api/profile/game/:gameType` | Screen 2/3: Earned/Available counts, weighted completion %, tier counts, "rarest trophy earned", and the full trophy list with per-trophy earned state + date/time + rarity + progress %. |
+| `GET  /api/trophies/:trophyId` | Screen 4: single-trophy detail (grade, rarity band+%, progress state, details). |
 | `GET  /api/trophies/catalog` | Full catalog for the "all trophies" browse view. |
 | *(internal)* award engine call inside `finish-game` | Evaluate + award; returns newly-earned trophies (§3.8). |
 
@@ -547,8 +656,15 @@ New / changed components (folder conventions per existing `src/components/*`):
 - `src/components/profile/ProfileButton.tsx` — the corner "you" button (§2.5), Guest vs
   logged-in states, live streak + trophy counts.
 - `src/components/auth/EmailCodeDialog.tsx` — the one-door email → 6-digit code flow.
-- `src/components/profile/ProfilePage.tsx` (route `/profile`) — Trophy Level bar, streak
-  flame, per-game trophy cabinets, rarity %.
+- `src/components/profile/ProfileOverview.tsx` (route `/profile`) — **Screen 1**: level
+  medallion + next-level ring, total trophies, tier totals, "games played" list.
+- `src/components/profile/GameTrophies.tsx` (route `/profile/game/[gameType]`) —
+  **Screens 2 + 3**: Earned/Available card, weighted completion ring, "rarest trophy
+  earned", all-trophies list.
+- `src/components/trophies/TrophyDetail.tsx` — **Screen 4** modal: grade, rarity pyramid,
+  measurable-vs-binary progress row, details.
+- `src/components/trophies/LevelMedallion.tsx` + `RarityPyramid.tsx` — the two reusable
+  SVG assets (§3A).
 - `src/components/trophies/TrophyUnlockToast.tsx` — the unlock moment on the end screen
   (reuse the share-block styling, e.g. `AchievementsShareBlock`).
 - Hook the post-win prompt into the existing end-screen path alongside
@@ -585,7 +701,10 @@ The push infra already exists (VAPID keys + `push_subscriptions`), but it is cur
    most-played modes** + 3 platform trophies.
 3. Award engine wired into `finish-game`; unlock toast on the end screen.
 4. The general streak (any-game-or-Daily) + WAT day boundary + basic freeze.
-5. `/profile` page + the corner profile button (Guest + logged-in states).
+5. The four PSN-modeled screens (§3A): profile overview → per-game summary → all-trophies
+   list → trophy detail, plus the corner profile button (Guest + logged-in states) and the
+   two SVG assets (level medallion, rarity pyramid). Weighted completion % + measurable/
+   binary progress from day one.
 6. Email + code login (Supabase OTP + Resend SMTP), one-door flow, Case-A upgrade.
 
 **Phase 2:**
