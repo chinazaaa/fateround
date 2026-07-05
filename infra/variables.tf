@@ -186,6 +186,13 @@ variable "vapid_private_key" {
   default     = ""
 }
 
+variable "spotify_client_secret" {
+  description = "SPOTIFY_CLIENT_SECRET — in-game music OAuth secret. Empty disables music. The matching NEXT_PUBLIC_SPOTIFY_CLIENT_ID is public and set in the CI build workflow."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "vapid_subject" {
   description = "VAPID_SUBJECT — contact URL push services can reach (mailto: or https:)."
   type        = string
