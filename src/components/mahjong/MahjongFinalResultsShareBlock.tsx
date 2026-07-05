@@ -42,7 +42,7 @@ export function MahjongFinalResultsShareBlock({
       : []
   const winnerNames = winnerPlayerIds.map((id) => players.find((p) => p.id === id)?.name ?? 'Player')
   const displayWinner = winnerName ?? (winnerNames.length > 0 ? winnerNames.join(', ') : null) ?? null
-  const isDraw = session?.phase === 'finished' && !displayWinner
+  const isDraw = !displayWinner
   const winType = session?.win_type === 'self_draw' ? 'Self draw' : session?.win_type === 'discard' ? 'On discard' : ''
   const score = session?.score_summary ?? null
 
