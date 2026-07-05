@@ -24,8 +24,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'identity is required' }, { status: 400 })
     }
     // Only allow returning to an internal path, never an absolute URL (open-redirect guard).
+    // Reject `\` too: `new URL('/\\evil.com', origin)` resolves to an external host because
+    // browsers/WHATWG treat backslashes as slashes, so `/\evil.com` → `//evil.com`.
     const rawReturn = req.nextUrl.searchParams.get('returnTo') ?? '/'
-    const returnTo = rawReturn.startsWith('/') && !rawReturn.startsWith('//') ? rawReturn : '/'
+    const returnTo =
+      rawReturn.startsWith('/') && !rawReturn.startsWith('//') && !rawReturn.includes('\\') ? rawReturn : '/'
 
     const verifier = generateCodeVerifier()
     const challenge = await codeChallengeFor(verifier)

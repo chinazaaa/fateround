@@ -23,7 +23,9 @@ export function useMusicSession(gameCode: string) {
       supabase.from('music_sessions').select(MUSIC_SELECT).eq('game_id', gameCode).maybeSingle(),
     ])
     if (gameRes.data) setMusicEnabled(Boolean(gameRes.data.music_enabled))
-    setSession((musicRes.data as MusicSession | null) ?? null)
+    // Only overwrite on a clean read — a transient Supabase error must not blank out an
+    // actively-playing session (the realtime push / next poll reconciles).
+    if (!musicRes.error) setSession((musicRes.data as MusicSession | null) ?? null)
   }, [gameCode])
 
   useEffect(() => {

@@ -30,6 +30,16 @@ export function useSpotifySync(identity: string | null, enabled: boolean, sessio
 
   const canPlay = enabled && isReady && product === 'premium'
 
+  // When the device drops (SDK not_ready from a sleep / network blip), clear the
+  // "last applied" memory so that on reconnect we re-issue play for the still-current
+  // track instead of assuming it's already playing (it isn't — the device was gone).
+  useEffect(() => {
+    if (!canPlay) {
+      lastAppliedUriRef.current = null
+      lastPlayingRef.current = false
+    }
+  }, [canPlay])
+
   // Immediate reconcile whenever the host's state changes.
   useEffect(() => {
     if (!canPlay) return

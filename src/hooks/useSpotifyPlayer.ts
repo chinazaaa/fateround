@@ -171,11 +171,18 @@ export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
       const deviceId = deviceIdRef.current
       const token = tokenRef.current ?? (await fetchToken())
       if (!deviceId || !token) return
-      await fetch(`${API_BASE}/me/player/play?device_id=${deviceId}`, {
+      // playUri is the actual "start audio" action, so surface failures (expired token,
+      // no active device) instead of swallowing them — the bar can show the message.
+      const res = await fetch(`${API_BASE}/me/player/play?device_id=${deviceId}`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ uris: [uri], position_ms: Math.max(0, Math.round(positionMs)) }),
-      }).catch(() => {})
+      }).catch(() => null)
+      if (!res || !res.ok) {
+        setState((s) => ({ ...s, error: 'Could not start playback — reopen Spotify on this device.' }))
+      } else {
+        setState((s) => (s.error ? { ...s, error: null } : s))
+      }
     },
     [fetchToken]
   )

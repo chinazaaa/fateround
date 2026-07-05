@@ -46,8 +46,11 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
   const [, setTick] = useState(0)
 
   const isPremium = product === 'premium'
+  // Return to the plain host path — NOT with ?token=. The host token is remembered in
+  // localStorage (useHostToken) on this device, so it re-authorizes without carrying the
+  // secret through Spotify's redirect chain / browser history.
   const hostHref = `/api/spotify/login?identity=${encodeURIComponent(identity)}&returnTo=${encodeURIComponent(
-    `/host/${gameCode}${hostToken ? `?token=${hostToken}` : ''}`
+    `/host/${gameCode}`
   )}`
 
   // Live progress ticker while playing + panel open.
@@ -88,9 +91,14 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
       e?.preventDefault()
       const q = query.trim()
       if (!q) return
+      if (!hostToken) return
       setSearching(true)
       try {
-        const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(q)}`)
+        const res = await fetch('/api/spotify/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameCode, hostToken, q }),
+        })
         const data = (await res.json().catch(() => ({}))) as { tracks?: SpotifyTrackInfo[]; error?: string }
         if (data.error) toastError(data.error)
         setResults(data.tracks ?? [])
@@ -100,7 +108,7 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
         setSearching(false)
       }
     },
-    [query, toastError]
+    [query, gameCode, hostToken, toastError]
   )
 
   const playTrack = (t: SpotifyTrackInfo) =>
@@ -128,7 +136,7 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
   }
 
   const seekTo = (ratio: number) => {
-    if (!session?.track_uri || !session.duration_ms) return
+    if (busy || !session?.track_uri || !session.duration_ms) return
     control({
       session: {
         ...sessionFields(session),

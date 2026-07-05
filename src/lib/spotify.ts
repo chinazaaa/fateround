@@ -236,22 +236,36 @@ export async function getFreshAccessToken(identity: string): Promise<FreshToken 
     return { accessToken: row.access_token, expiresAt: row.expires_at, product: row.product }
   }
 
-  // Expired / near-expiry — refresh. Spotify may or may not return a new refresh token;
-  // keep the old one when it doesn't.
-  const refreshed = await refreshAccessToken(row.refresh_token)
-  const expiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString()
-  await supabase
-    .from('spotify_accounts')
-    .update({
-      access_token: refreshed.access_token,
-      refresh_token: refreshed.refresh_token ?? row.refresh_token,
-      expires_at: expiresAt,
-      scope: refreshed.scope ?? undefined,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('identity', identity)
-  return { accessToken: refreshed.access_token, expiresAt, product: row.product }
+  // Expired / near-expiry — refresh, but serialize concurrent refreshes per identity. The
+  // SDK's getOAuthToken and playUri can both hit /api/spotify/token at once; two parallel
+  // refreshes with the same refresh token race (and Spotify may rotate it, invalidating one).
+  // Coalesce them onto a single in-flight promise.
+  const existing = inflightRefresh.get(identity)
+  if (existing) return existing
+
+  const refreshPromise = (async (): Promise<FreshToken> => {
+    // Spotify may or may not return a new refresh token; keep the old one when it doesn't.
+    const refreshed = await refreshAccessToken(row.refresh_token)
+    const expiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString()
+    await supabase
+      .from('spotify_accounts')
+      .update({
+        access_token: refreshed.access_token,
+        refresh_token: refreshed.refresh_token ?? row.refresh_token,
+        expires_at: expiresAt,
+        scope: refreshed.scope ?? undefined,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('identity', identity)
+    return { accessToken: refreshed.access_token, expiresAt, product: row.product }
+  })().finally(() => inflightRefresh.delete(identity))
+
+  inflightRefresh.set(identity, refreshPromise)
+  return refreshPromise
 }
+
+/** In-flight token refreshes, keyed by identity, so concurrent callers share one refresh. */
+const inflightRefresh = new Map<string, Promise<FreshToken>>()
 
 // ---- Client Credentials (search) -------------------------------------------
 
