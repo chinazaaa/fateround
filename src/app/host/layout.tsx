@@ -6,7 +6,6 @@ import { HostPlayerSessionBootstrap } from '@/components/HostPlayerSessionBootst
 import { GameRulesLoader } from '@/components/GameRulesLoader'
 import { GameRulesProvider } from '@/contexts/GameRulesContext'
 import { noIndexMetadata } from '@/lib/seo'
-import { HostAudioWrapper } from '@/components/host/HostAudioWrapper'
 
 export const metadata: Metadata = noIndexMetadata('Host Panel')
 
@@ -20,7 +19,6 @@ export default function HostLayout({ children }: { children: React.ReactNode }) 
         <GameHostChrome />
       </Suspense>
       <main className="pt-[3.75rem]">{children}</main>
-      <HostAudioWrapper />
     </GameRulesProvider>
   )
 }
