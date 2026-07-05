@@ -15,6 +15,9 @@ export function HostPlayerManageList({
   players,
   removingPlayerId,
   onRemovePlayer,
+  onAdmitPlayer,
+  admittingPlayerId,
+  canAdmitPlayer,
   highlightPlayerId,
   emptyMessage = 'Waiting for players…',
   hint = 'Remove to kick someone out',
@@ -25,6 +28,11 @@ export function HostPlayerManageList({
   players: Player[]
   removingPlayerId?: string | null
   onRemovePlayer?: (playerId: string, playerName: string) => void
+  /** When set, renders a "Deal in" action per row (host admits a spectator mid-game). */
+  onAdmitPlayer?: (playerId: string, playerName: string) => void
+  admittingPlayerId?: string | null
+  /** Gate which rows show "Deal in" (e.g. exclude players who already went out). */
+  canAdmitPlayer?: (playerId: string) => boolean
   highlightPlayerId?: string | null
   emptyMessage?: string
   hint?: string
@@ -33,6 +41,7 @@ export function HostPlayerManageList({
   /** Keep the ✓/✗ ready column visible even when everyone is ready (no spectators). */
   alwaysShowReady?: boolean
 }) {
+  const showAdmit = (playerId: string) => !!onAdmitPlayer && (!canAdmitPlayer || canAdmitPlayer(playerId))
   if (players.length === 0) {
     return <p className="text-muted text-sm">{emptyMessage}</p>
   }
@@ -58,6 +67,16 @@ export function HostPlayerManageList({
                   )}
                   {highlightPlayerId === p.id && (
                     <span className="text-[10px] font-bold uppercase text-[var(--primary)]">You</span>
+                  )}
+                  {showAdmit(p.id) && (
+                    <button
+                      type="button"
+                      onClick={() => onAdmitPlayer!(p.id, p.name)}
+                      disabled={admittingPlayerId === p.id}
+                      className="text-[var(--primary)] hover:opacity-80 text-xs font-semibold disabled:opacity-50 transition-colors"
+                    >
+                      {admittingPlayerId === p.id ? '…' : 'Deal in'}
+                    </button>
                   )}
                   {onRemovePlayer && (
                     <button
@@ -109,6 +128,17 @@ export function HostPlayerManageList({
                 >
                   {ready ? 'Ready' : 'Not ready'}
                 </span>
+              )}
+
+              {showAdmit(p.id) && (
+                <button
+                  type="button"
+                  onClick={() => onAdmitPlayer!(p.id, p.name)}
+                  disabled={admittingPlayerId === p.id}
+                  className="shrink-0 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
+                >
+                  {admittingPlayerId === p.id ? 'Dealing…' : 'Deal in'}
+                </button>
               )}
 
               {onRemovePlayer && (
