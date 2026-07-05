@@ -1347,7 +1347,7 @@ export async function admitCrazyEightsPlayer(
     // rather than clobber that write (the dangling hand row, if any, is still removed).
     const rollbackClaim = async () => {
       await supabase.from('crazy_eights_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
-      await supabase
+      const { data: restored } = await supabase
         .from('crazy_eights_sessions')
         .update({
           turn_order: turnOrder,
@@ -1358,6 +1358,17 @@ export async function admitCrazyEightsPlayer(
         })
         .eq('game_id', gameId)
         .eq('updated_at', claimedAt)
+        .select('game_id')
+      if ((restored?.length ?? 0) === 0) {
+        // A concurrent play/draw moved the session past our claim, so the compensating restore
+        // matched no rows. The player may be left seated in turn_order with no hand — harmless
+        // in rotation (a 0-card player is skipped as "out"), but the dealt cards stay out of the
+        // deck. Rare (needs the hand/flip write to fail AND a concurrent write in the same
+        // window); log it so the orphaned seat is detectable rather than silent.
+        console.error(
+          `admitCrazyEightsPlayer: rollback CAS lost for game ${gameId}, player ${playerId} — possible orphaned seat`
+        )
+      }
     }
 
     // Won: the dealt cards are now out of draw_pile. Materialize the hand BEFORE flipping
