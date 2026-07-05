@@ -48,6 +48,12 @@ livekit_api_secret        = "REPLACE_WITH_LIVEKIT_SECRET"
 vapid_private_key = "REPLACE_WITH_VAPID_PRIVATE_KEY"
 vapid_subject     = "mailto:hello@fateround.com"
 
+# In-game Spotify music (optional). The client id is public and lives in the CI build
+# workflow (build-push-image.yml); put the matching client SECRET here. Leave empty to
+# keep music off. Register redirect URI ${next_public_app_url}/api/spotify/callback in
+# the Spotify dashboard.
+spotify_client_secret = "REPLACE_WITH_SPOTIFY_CLIENT_SECRET"
+
 # Origin TLS (Caddy + Cloudflare Origin Certificate) for Full (strict).
 # The cert + key are NOT placed here — export them as TF_VAR_origin_cert /
 # TF_VAR_origin_key (e.g. in ~/.config/shell/secrets.sh) so they never touch a file.
