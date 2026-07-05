@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
+import { SudokuGameTimerBar } from '@/components/sudoku/SudokuGameTimerBar'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import {
@@ -20,6 +21,7 @@ import {
   SUDOKU_MY_CELL_COLOR,
   SUDOKU_WRONG_PENALTY,
   getPlayerTimeSpent,
+  completedSudokuNumbersForPlayer,
   type SudokuSubmission,
   type SudokuUnitFlash,
 } from '@/lib/sudoku'
@@ -103,6 +105,8 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [flashUnits, setFlashUnits] = useState<SudokuUnitFlash[]>([])
+  const [correctPulse, setCorrectPulse] = useState<{ value: number; id: number } | null>(null)
+  const [highlightNumber, setHighlightNumber] = useState<number | null>(null)
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
 
@@ -364,6 +368,10 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const myRank = leaderboard.findIndex((r) => r.player_id === myPlayerId) + 1
   const myCompletion = puzzle && myPlayerId ? playerCompletionPercent(puzzle, submissions, myPlayerId) : 0
   const boardCompletion = puzzle ? boardCompletionPercent(puzzle, cellOwners) : 0
+  const completedNumbers = useMemo(
+    () => (puzzle && myPlayerId ? completedSudokuNumbersForPlayer(puzzle, submissions, myPlayerId) : []),
+    [puzzle, submissions, myPlayerId]
+  )
 
   // Viewers watch one player at a time — the same personal board that player sees:
   // their own solved cells filled and highlighted, everyone else's just claimed.
@@ -403,6 +411,22 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   function handleCellSelect(row: number, col: number) {
+    if (!puzzle) return
+    // If the cell has a filled value (given or submitted), highlight that number.
+    const givenVal = puzzle[row]?.[col]
+    if (givenVal && givenVal !== 0) {
+      setHighlightNumber(givenVal)
+      setSelectedCell(null)
+      return
+    }
+    const filledVal = displayGrid[row]?.[col]
+    if (filledVal && filledVal > 0 && !isCellEditable(row, col)) {
+      setHighlightNumber(filledVal)
+      setSelectedCell(null)
+      return
+    }
+    // Editable cell — clear highlight and select it.
+    setHighlightNumber(null)
     if (!isCellEditable(row, col)) return
     setSelectedCell([row, col])
   }
@@ -453,6 +477,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
 
       if (json.isCorrect) {
         showToast(`✓ Correct! +${json.pointsAwarded} pts`, true)
+        setCorrectPulse((prev) => ({ value, id: (prev?.id ?? 0) + 1 }))
         if (puzzle && myPlayerId) {
           triggerUnitFlash(getNewlyCompletedUnits(puzzle, submissions, myPlayerId, row, col))
         }
@@ -644,7 +669,14 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
             title="Final leaderboard"
             rows={leaderboard.map((row, i) => {
               const pct = puzzle ? playerCompletionPercent(puzzle, submissions, row.player_id) : 0
-              const timeSecs = getPlayerTimeSpent(game, submissions, row.player_id, pct, nowMs)
+              const timeSecs = getPlayerTimeSpent(
+                game,
+                submissions,
+                row.player_id,
+                pct,
+                nowMs,
+                players.find((p) => p.id === row.player_id)?.joined_at
+              )
               return {
                 id: row.player_id,
                 name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,
@@ -679,6 +711,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         </div>
       )}
       <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">
+        <SudokuGameTimerBar gameCode={gameCode} game={game} />
         {isViewer ? (
           <>
             <ViewerModeBanner
@@ -736,7 +769,10 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
             </div>
             {game?.session_started_at && (
               <div className="text-sm font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-md">
-                ⏱️ {formatMinutesSeconds(getPlayerTimeSpent(game, submissions, myPlayerId || '', myCompletion, nowMs))}
+                ⏱️{' '}
+                {formatMinutesSeconds(
+                  getPlayerTimeSpent(game, submissions, myPlayerId || '', myCompletion, nowMs, me?.joined_at)
+                )}
               </div>
             )}
           </div>
@@ -762,7 +798,14 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
                     <div className="text-sm font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-md">
                       ⏱️{' '}
                       {formatMinutesSeconds(
-                        getPlayerTimeSpent(game, submissions, effectiveWatchedId, watchedCompletion, nowMs)
+                        getPlayerTimeSpent(
+                          game,
+                          submissions,
+                          effectiveWatchedId,
+                          watchedCompletion,
+                          nowMs,
+                          watchedPlayer?.joined_at
+                        )
                       )}
                     </div>
                   )}
@@ -797,6 +840,10 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
               completionPercent={boardCompletion}
               canSelectCell={(r, c) => isCellEditable(r, c)}
               flashUnits={flashUnits}
+              correctPulseValue={correctPulse?.value ?? null}
+              correctPulseId={correctPulse?.id ?? 0}
+              completedNumbers={completedNumbers}
+              highlightNumber={highlightNumber}
             />
           ))}
 
@@ -806,7 +853,14 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
             const pct = puzzle ? playerCompletionPercent(puzzle, submissions, row.player_id) : 0
             const color = playerColors[row.player_id] ?? '#86efac'
             const playerSolved = buildPlayerSolvedGrid(submissions, row.player_id)
-            const timeSecs = getPlayerTimeSpent(game, submissions, row.player_id, pct, nowMs)
+            const timeSecs = getPlayerTimeSpent(
+              game,
+              submissions,
+              row.player_id,
+              pct,
+              nowMs,
+              players.find((p) => p.id === row.player_id)?.joined_at
+            )
             return (
               <div
                 key={row.player_id}

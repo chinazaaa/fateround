@@ -4,7 +4,8 @@ import { z } from 'zod'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import { parseJsonBody } from '@/lib/parse-body'
-import { finishSudokuIfAllPlayersDone } from '@/lib/sudoku-finish'
+import { finishExpiredSudokuGame, finishSudokuIfAllPlayersDone } from '@/lib/sudoku-finish'
+import { sudokuGameSessionExpired } from '@/lib/sudoku'
 
 const submitSchema = z.object({
   gameId: z.string().min(1).max(10).toUpperCase(),
@@ -33,9 +34,17 @@ export async function POST(req: NextRequest) {
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
-  const { data: game } = await supabase.from('games').select('status').eq('id', code).maybeSingle()
+  const { data: game } = await supabase
+    .from('games')
+    .select('id, status, session_started_at, game_duration_seconds')
+    .eq('id', code)
+    .maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.status !== 'active') return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
+  if (sudokuGameSessionExpired(game.session_started_at, game.game_duration_seconds)) {
+    await finishExpiredSudokuGame(supabase, game)
+    return NextResponse.json({ error: 'Time is up' }, { status: 400 })
+  }
 
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })

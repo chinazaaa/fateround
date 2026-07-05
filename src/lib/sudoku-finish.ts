@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { markGameFinished } from '@/lib/game-finish'
-import { countEmptyCells, parseSudokuMetadata } from '@/lib/sudoku'
+import { countEmptyCells, parseSudokuMetadata, sudokuGameSessionExpired } from '@/lib/sudoku'
+import type { Game } from '@/types'
 
 /**
  * End the game once every active (non-spectator) player has solved every empty
@@ -11,6 +12,16 @@ import { countEmptyCells, parseSudokuMetadata } from '@/lib/sudoku'
  * Safe to call from any event (no-ops unless the game is active); errors are
  * returned raw for the caller to sanitize.
  */
+export async function finishExpiredSudokuGame(
+  supabase: SupabaseClient,
+  game: Pick<Game, 'id' | 'status' | 'session_started_at' | 'game_duration_seconds'>
+): Promise<boolean> {
+  if (game.status !== 'active') return false
+  if (!sudokuGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return false
+  const { error } = await markGameFinished(supabase, game.id, undefined, { onlyIfActive: true })
+  return !error
+}
+
 export async function finishSudokuIfAllPlayersDone(
   supabase: SupabaseClient,
   gameId: string
