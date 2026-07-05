@@ -15,6 +15,25 @@ import type {
   Player,
 } from '@/types'
 
+const MAHJONG_CONFLICT_ERROR = 'Mahjong table changed; please retry'
+
+async function persistMahjongSession(
+  supabase: SupabaseClient,
+  gameId: string,
+  patch: Partial<MahjongSession>,
+  expectedUpdatedAt?: string
+): Promise<{ error?: string; updatedAt?: string }> {
+  let query = supabase
+    .from('mahjong_sessions')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('game_id', gameId)
+  if (expectedUpdatedAt) query = query.eq('updated_at', expectedUpdatedAt)
+  const { data, error } = await query.select('game_id, updated_at')
+  if (error) return { error: error.message }
+  if (expectedUpdatedAt && (data?.length ?? 0) === 0) return { error: MAHJONG_CONFLICT_ERROR }
+  return { updatedAt: data?.[0]?.updated_at as string | undefined }
+}
+
 function buildExhaustiveDrawSummary(session: MahjongSession, states: MahjongPlayerState[]): MahjongScoreSummary | null {
   const tenpai = states.filter((state) => isTenpai(state.hand, state.melds))
   if (tenpai.length === 0 || tenpai.length === states.length) return null
@@ -242,9 +261,10 @@ export async function finishWallDraw(
           payments: matchFinish.payments,
           payer_player_id: null,
         } satisfies MahjongScoreSummary)
-  const { error } = await supabase
-    .from('mahjong_sessions')
-    .update({
+  return persistMahjongSession(
+    supabase,
+    gameId,
+    {
       phase: 'finished',
       hand_result: nagashiSummary ? 'win' : 'exhaustive_draw',
       status_message: nagashiSummary
@@ -261,10 +281,9 @@ export async function finishWallDraw(
       winner_player_ids: winnerIds,
       riichi_sticks: nagashiSummary ? 0 : (session?.riichi_sticks ?? 0),
       turn_deadline_at: null,
-      updated_at: now,
-    })
-    .eq('game_id', gameId)
-  return { error: error?.message }
+    },
+    session?.updated_at
+  )
 }
 
 export async function finishAbortiveDraw(
@@ -299,9 +318,10 @@ export async function finishAbortiveDraw(
           payer_player_id: null,
         } satisfies MahjongScoreSummary)
       : null
-  const { error } = await supabase
-    .from('mahjong_sessions')
-    .update({
+  return persistMahjongSession(
+    supabase,
+    gameId,
+    {
       phase: 'finished',
       hand_result: 'abortive_draw',
       status_message: reason,
@@ -313,10 +333,9 @@ export async function finishAbortiveDraw(
       score_summary: scoreSummary,
       scores: matchFinish.scores,
       turn_deadline_at: null,
-      updated_at: now,
-    })
-    .eq('game_id', gameId)
-  return { error: error?.message }
+    },
+    session.updated_at
+  )
 }
 
 export function riichiAbortiveDrawReason(session: MahjongSession, states: MahjongPlayerState[]): string | null {
@@ -402,9 +421,10 @@ export async function finishMahjongWin(
           lines: [...scoreSummary.lines, { label: 'Final match settlement', fan: 0 }],
         }
       : scoreSummary
-  const { error } = await supabase
-    .from('mahjong_sessions')
-    .update({
+  return persistMahjongSession(
+    supabase,
+    opts.gameId,
+    {
       phase: 'finished',
       hand_result: 'win',
       status_message: `${playerName(opts.players, opts.winnerPlayerId)} wins by ${
@@ -414,14 +434,14 @@ export async function finishMahjongWin(
       winner_player_ids: [opts.winnerPlayerId],
       winning_tile: opts.winningTile,
       win_type: opts.winType,
+      discard_pile: opts.session.discard_pile,
       score_summary: finalScoreSummary,
       scores: matchFinish.scores,
       riichi_sticks: opts.ruleset === 'riichi' ? 0 : (opts.session.riichi_sticks ?? 0),
       turn_deadline_at: null,
-      updated_at: now,
-    })
-    .eq('game_id', opts.gameId)
-  return { error: error?.message }
+    },
+    opts.session.updated_at
+  )
 }
 
 export async function finishMahjongMultiRon(
@@ -553,9 +573,10 @@ export async function finishMahjongMultiRon(
           lines: [...scoreSummary.lines, { label: 'Final match settlement', fan: 0 }],
         }
       : scoreSummary
-  const { error } = await supabase
-    .from('mahjong_sessions')
-    .update({
+  return persistMahjongSession(
+    supabase,
+    opts.gameId,
+    {
       phase: 'finished',
       hand_result: 'win',
       status_message:
@@ -564,12 +585,12 @@ export async function finishMahjongMultiRon(
       winner_player_ids: winnerIds,
       winning_tile: opts.winningTile,
       win_type: 'discard',
+      discard_pile: opts.session.discard_pile,
       score_summary: finalScoreSummary,
       scores: matchFinish.scores,
       riichi_sticks: opts.ruleset === 'riichi' ? 0 : (opts.session.riichi_sticks ?? 0),
       turn_deadline_at: null,
-      updated_at: now,
-    })
-    .eq('game_id', opts.gameId)
-  return { error: error?.message }
+    },
+    opts.session.updated_at
+  )
 }

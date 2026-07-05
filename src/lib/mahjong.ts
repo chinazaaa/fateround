@@ -123,6 +123,25 @@ export function sanitizeMahjongPlayerStates(
   }))
 }
 
+const MAHJONG_CONFLICT_ERROR = 'Mahjong table changed; please retry'
+
+async function persistMahjongSession(
+  supabase: SupabaseClient,
+  gameId: string,
+  patch: Partial<MahjongSession>,
+  expectedUpdatedAt: string
+): Promise<{ error?: string; updatedAt?: string }> {
+  const { data, error } = await supabase
+    .from('mahjong_sessions')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('game_id', gameId)
+    .eq('updated_at', expectedUpdatedAt)
+    .select('game_id, updated_at')
+  if (error) return { error: error.message }
+  if ((data?.length ?? 0) === 0) return { error: MAHJONG_CONFLICT_ERROR }
+  return { updatedAt: data?.[0]?.updated_at as string | undefined }
+}
+
 async function loadMahjong(
   supabase: SupabaseClient,
   gameId: string
@@ -165,19 +184,19 @@ async function advanceAfterDiscardIfNoClaims(
 ): Promise<{ error?: string }> {
   const eligible = eligibleClaimPlayerIds(session, states)
   if (eligible.length > 0) {
-    const { error } = await supabase
-      .from('mahjong_sessions')
-      .update({
+    return persistMahjongSession(
+      supabase,
+      session.game_id,
+      {
         phase: 'claim',
         claim_passes: [],
         status_message: `${playerName(players, session.last_discard?.player_id)} discarded ${mahjongTileShortLabel(
           session.last_discard?.tile ?? ''
         )}`,
         turn_deadline_at: mahjongTurnDeadline(timerSeconds),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('game_id', session.game_id)
-    return { error: error?.message }
+      },
+      session.updated_at
+    )
   }
 
   const nextIndex = session.last_discard
@@ -226,9 +245,10 @@ async function autoDrawForPlayer(
     .eq('id', state.id)
   if (stateError) return { error: stateError.message }
 
-  const { error: sessionError } = await supabase
-    .from('mahjong_sessions')
-    .update({
+  return persistMahjongSession(
+    supabase,
+    session.game_id,
+    {
       current_turn_index: turnIndex,
       wall: nextWall,
       dead_wall: nextDeadWall,
@@ -245,10 +265,9 @@ async function autoDrawForPlayer(
           ? `${playerName(players, playerId)} revealed ${flowers.length} flower tile${flowers.length === 1 ? '' : 's'} and drew again`
           : `${playerName(players, playerId)} drew a tile and must discard`,
       turn_deadline_at: mahjongTurnDeadline(timerSeconds),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', session.game_id)
-  return { error: sessionError?.message }
+    },
+    session.updated_at
+  )
 }
 
 export async function initializeMahjongGame(
@@ -484,9 +503,10 @@ export async function processMahjongNextHand(supabase: SupabaseClient, gameId: s
   const stateError = stateResults.find((result) => result.error)?.error
   if (stateError) return { error: stateError.message }
 
-  const { error: sessionError } = await supabase
-    .from('mahjong_sessions')
-    .update({
+  const sessionWrite = await persistMahjongSession(
+    supabase,
+    gameId,
+    {
       dealer_index: nextPosition.dealerIndex,
       current_turn_index: nextPosition.dealerIndex,
       phase: 'discard',
@@ -515,10 +535,10 @@ export async function processMahjongNextHand(supabase: SupabaseClient, gameId: s
       win_type: null,
       score_summary: null,
       turn_deadline_at: mahjongTurnDeadline(timerSeconds),
-      updated_at: now,
-    })
-    .eq('game_id', gameId)
-  return { error: sessionError?.message }
+    },
+    session.updated_at
+  )
+  return { error: sessionWrite.error }
 }
 
 export async function processMahjongPenalty(
@@ -573,9 +593,10 @@ export async function processMahjongPenalty(
     riichi_sticks: session.riichi_sticks ?? 0,
   }
 
-  const { error: sessionError } = await supabase
-    .from('mahjong_sessions')
-    .update({
+  const sessionWrite = await persistMahjongSession(
+    supabase,
+    gameId,
+    {
       phase: 'finished',
       hand_result: 'chombo',
       status_message: `${playerName(players, offenderPlayerId)} receives a Chombo penalty`,
@@ -586,10 +607,10 @@ export async function processMahjongPenalty(
       score_summary: scoreSummary,
       scores: matchFinish.scores,
       turn_deadline_at: null,
-      updated_at: now,
-    })
-    .eq('game_id', gameId)
-  return { error: sessionError?.message }
+    },
+    session.updated_at
+  )
+  return { error: sessionWrite.error }
 }
 
 export async function processMahjongDraw(
@@ -624,17 +645,18 @@ export async function processMahjongDraw(
     .eq('id', state.id)
   if (stateError) return { error: stateError.message }
 
-  const { error: sessionError } = await supabase
-    .from('mahjong_sessions')
-    .update({
+  const sessionWrite = await persistMahjongSession(
+    supabase,
+    gameId,
+    {
       wall,
       phase: 'discard',
       status_message: `${playerName(players, playerId)} drew a tile`,
       turn_deadline_at: mahjongTurnDeadline(timerSeconds),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-  if (sessionError) return { error: sessionError.message }
+    },
+    session.updated_at
+  )
+  if (sessionWrite.error) return { error: sessionWrite.error }
 
   return { tile }
 }
@@ -694,9 +716,10 @@ export async function processMahjongDiscard(
       : row
   )
 
-  const { error: sessionError } = await supabase
-    .from('mahjong_sessions')
-    .update({
+  const sessionWrite = await persistMahjongSession(
+    supabase,
+    gameId,
+    {
       discard_pile: discardPile,
       last_discard: lastDiscard,
       phase: 'claim',
@@ -704,15 +727,19 @@ export async function processMahjongDiscard(
       last_action: 'discard',
       status_message: `${playerName(players, playerId)} discarded ${mahjongTileShortLabel(tile)}`,
       turn_deadline_at: mahjongTurnDeadline(timerSeconds),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-  if (sessionError) return { error: sessionError.message }
+    },
+    session.updated_at
+  )
+  if (sessionWrite.error) return { error: sessionWrite.error }
+  const persistedDraftSession: MahjongSession = {
+    ...draftSession,
+    updated_at: sessionWrite.updatedAt ?? draftSession.updated_at,
+  }
 
-  const abortReason = riichiAbortiveDrawReason(draftSession, draftStates)
-  if (abortReason) return finishAbortiveDraw(supabase, gameId, abortReason, draftSession, draftStates)
+  const abortReason = riichiAbortiveDrawReason(persistedDraftSession, draftStates)
+  if (abortReason) return finishAbortiveDraw(supabase, gameId, abortReason, persistedDraftSession, draftStates)
 
-  return advanceAfterDiscardIfNoClaims(supabase, draftSession, draftStates, players, timerSeconds)
+  return advanceAfterDiscardIfNoClaims(supabase, persistedDraftSession, draftStates, players, timerSeconds)
 }
 
 export async function processMahjongClaim(
@@ -872,7 +899,6 @@ export async function processMahjongClaim(
         claimed_by_player_id: winners[0]?.state.player_id ?? playerId,
         claimed_as: 'mahjong',
       }
-    await supabase.from('mahjong_sessions').update({ discard_pile: discardPile }).eq('game_id', gameId)
     return finishMahjongMultiRon(supabase, {
       gameId,
       winningTile: discardTile,
@@ -940,9 +966,10 @@ export async function processMahjongClaim(
     )
   }
 
-  const { error: sessionError } = await supabase
-    .from('mahjong_sessions')
-    .update({
+  const sessionWrite = await persistMahjongSession(
+    supabase,
+    gameId,
+    {
       current_turn_index: nextTurnIndex,
       phase: 'discard',
       discard_pile: discardPile,
@@ -950,10 +977,10 @@ export async function processMahjongClaim(
       ippatsu_eligible_player_ids: [],
       status_message: `${playerName(players, playerId)} called ${claimType.toUpperCase()}`,
       turn_deadline_at: mahjongTurnDeadline(timerSeconds),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-  return { error: sessionError?.message }
+    },
+    session.updated_at
+  )
+  return { error: sessionWrite.error }
 }
 
 export async function processMahjongPass(
@@ -995,11 +1022,7 @@ export async function processMahjongPass(
     )
   }
 
-  const { error: sessionError } = await supabase
-    .from('mahjong_sessions')
-    .update({ claim_passes: claimPasses, updated_at: new Date().toISOString() })
-    .eq('game_id', gameId)
-  return { error: sessionError?.message }
+  return persistMahjongSession(supabase, gameId, { claim_passes: claimPasses }, session.updated_at)
 }
 
 export async function processMahjongRiichi(
@@ -1035,19 +1058,20 @@ export async function processMahjongRiichi(
     session.scores && Object.keys(session.scores).length > 0
       ? { ...session.scores, [playerId]: (session.scores[playerId] ?? 0) - 1000 }
       : session.scores
-  const { error: sessionError } = await supabase
-    .from('mahjong_sessions')
-    .update({
+  const sessionWrite = await persistMahjongSession(
+    supabase,
+    gameId,
+    {
       riichi_sticks: (session.riichi_sticks ?? 0) + 1,
       scores: nextScores,
       ippatsu_eligible_player_ids: ippatsu,
       last_action: 'riichi',
       status_message: `${playerName(players, playerId)} declared Riichi and must discard`,
       turn_deadline_at: mahjongTurnDeadline(timerSeconds),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-  return { error: sessionError?.message }
+    },
+    session.updated_at
+  )
+  return { error: sessionWrite.error }
 }
 
 export async function processMahjongExpireTurn(supabase: SupabaseClient, gameId: string): Promise<{ error?: string }> {
@@ -1121,19 +1145,20 @@ export async function removeMahjongPlayer(
   if (session && session.phase !== 'finished' && session.turn_order.includes(playerId)) {
     const turnOrder = session.turn_order.filter((id) => id !== playerId)
     const removedName = playerName ?? 'A player'
-    const { error: sessionError } = await supabase
-      .from('mahjong_sessions')
-      .update({
+    const sessionWrite = await persistMahjongSession(
+      supabase,
+      gameId,
+      {
         turn_order: turnOrder,
         current_turn_index: 0,
         phase: 'finished',
         hand_result: 'abortive_draw',
         status_message: `${removedName} left. Mahjong table closed.`,
         turn_deadline_at: null,
-        updated_at: now,
-      })
-      .eq('game_id', gameId)
-    if (sessionError) return { error: sessionError.message }
+      },
+      session.updated_at
+    )
+    if (sessionWrite.error) return { error: sessionWrite.error }
 
     const finish = await markGameFinished(supabase, gameId, now)
     if (finish.error) return { error: finish.error.message }
