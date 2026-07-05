@@ -10,13 +10,7 @@ import { useSpotifySync } from '@/hooks/useSpotifySync'
  * Spotify locked to it (via `useSpotifySync`). Renders only when the host has enabled
  * music. Free / unconnected players see a prompt but the game is never blocked.
  */
-export function NowPlayingBar({
-  gameCode,
-  identity,
-}: {
-  gameCode: string
-  identity: string
-}) {
+export function NowPlayingBar({ gameCode, identity }: { gameCode: string; identity: string }) {
   const { session, musicEnabled } = useMusicSession(gameCode)
   const { connected, product, isReady, error, setVolume } = useSpotifySync(identity, musicEnabled, session)
   const [volume, setVolumeState] = useState(0.5)
@@ -79,7 +73,12 @@ export function NowPlayingBar({
           <span className="whitespace-nowrap text-xs text-muted">Premium required</span>
         ) : (
           <div className="flex items-center gap-2">
-            <button type="button" onClick={toggleMute} className="text-lg leading-none" aria-label={muted ? 'Unmute' : 'Mute'}>
+            <button
+              type="button"
+              onClick={toggleMute}
+              className="text-lg leading-none"
+              aria-label={muted ? 'Unmute' : 'Mute'}
+            >
               {muted || volume === 0 ? '🔇' : '🔊'}
             </button>
             <input
@@ -96,9 +95,7 @@ export function NowPlayingBar({
         )}
       </div>
 
-      {error && isReady === false && connected && isPremium ? (
-        <span className="sr-only">{error}</span>
-      ) : null}
+      {error && isReady === false && connected && isPremium ? <span className="sr-only">{error}</span> : null}
     </div>
   )
 }

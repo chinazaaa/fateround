@@ -58,7 +58,10 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
   }, [open, session?.is_playing])
 
   const control = useCallback(
-    async (payload: { musicEnabled?: boolean; session?: ReturnType<typeof sessionFields> & { is_playing: boolean; position_ms: number } | null }) => {
+    async (payload: {
+      musicEnabled?: boolean
+      session?: (ReturnType<typeof sessionFields> & { is_playing: boolean; position_ms: number }) | null
+    }) => {
       if (!hostToken) return
       setBusy(true)
       try {
@@ -153,7 +156,9 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
         >
           <span className="flex items-center gap-2 text-sm font-semibold text-body">
             <span aria-hidden>🎵</span> Music
-            {musicEnabled && session?.is_playing ? <span className="text-xs text-[var(--primary)]">• playing</span> : null}
+            {musicEnabled && session?.is_playing ? (
+              <span className="text-xs text-[var(--primary)]">• playing</span>
+            ) : null}
           </span>
           <span className="text-muted text-xs">{open ? '▾' : '▸'}</span>
         </button>
@@ -222,7 +227,12 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] text-muted tabular-nums">{fmt(livePos)}</span>
                       <div className="flex items-center gap-2">
-                        <button type="button" onClick={togglePlay} disabled={busy} className="btn-secondary btn-fit text-xs">
+                        <button
+                          type="button"
+                          onClick={togglePlay}
+                          disabled={busy}
+                          className="btn-secondary btn-fit text-xs"
+                        >
                           {session.is_playing ? '⏸ Pause' : '▶ Play'}
                         </button>
                         <button type="button" onClick={stop} disabled={busy} className="btn-secondary btn-fit text-xs">
@@ -261,9 +271,18 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
                           className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/10"
                         >
                           {t.albumArt ? (
-                            <Image src={t.albumArt} alt="" width={28} height={28} unoptimized className="h-7 w-7 rounded object-cover" />
+                            <Image
+                              src={t.albumArt}
+                              alt=""
+                              width={28}
+                              height={28}
+                              unoptimized
+                              className="h-7 w-7 rounded object-cover"
+                            />
                           ) : (
-                            <span className="text-sm" aria-hidden>🎵</span>
+                            <span className="text-sm" aria-hidden>
+                              🎵
+                            </span>
                           )}
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-xs font-medium text-body">{t.name}</span>
@@ -276,7 +295,9 @@ export function HostMusicControl({ gameCode, hostToken }: { gameCode: string; ho
                 ) : null}
               </>
             ) : (
-              <p className="text-xs text-muted">Turn on music to play a shared Spotify soundtrack for everyone in the room.</p>
+              <p className="text-xs text-muted">
+                Turn on music to play a shared Spotify soundtrack for everyone in the room.
+              </p>
             )}
           </div>
         ) : null}

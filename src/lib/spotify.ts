@@ -295,13 +295,15 @@ export async function searchTracks(query: string, limit = 10): Promise<SpotifyTr
     throw new Error(`Spotify search failed: ${res.status} ${body.slice(0, 300)}`)
   }
   const json = (await res.json()) as {
-    tracks?: { items?: Array<{
-      uri: string
-      name: string
-      duration_ms: number
-      artists?: Array<{ name: string }>
-      album?: { images?: Array<{ url: string }> }
-    }> }
+    tracks?: {
+      items?: Array<{
+        uri: string
+        name: string
+        duration_ms: number
+        artists?: Array<{ name: string }>
+        album?: { images?: Array<{ url: string }> }
+      }>
+    }
   }
   return (json.tracks?.items ?? []).map((t) => ({
     uri: t.uri,

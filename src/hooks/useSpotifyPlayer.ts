@@ -166,16 +166,19 @@ export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
 
   /** Start (or switch to) a track at a position on THIS device. Uses the Web API because
    *  the SDK can't load a track by URI on its own. */
-  const playUri = useCallback(async (uri: string, positionMs: number) => {
-    const deviceId = deviceIdRef.current
-    const token = tokenRef.current ?? (await fetchToken())
-    if (!deviceId || !token) return
-    await fetch(`${API_BASE}/me/player/play?device_id=${deviceId}`, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uris: [uri], position_ms: Math.max(0, Math.round(positionMs)) }),
-    }).catch(() => {})
-  }, [fetchToken])
+  const playUri = useCallback(
+    async (uri: string, positionMs: number) => {
+      const deviceId = deviceIdRef.current
+      const token = tokenRef.current ?? (await fetchToken())
+      if (!deviceId || !token) return
+      await fetch(`${API_BASE}/me/player/play?device_id=${deviceId}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uris: [uri], position_ms: Math.max(0, Math.round(positionMs)) }),
+      }).catch(() => {})
+    },
+    [fetchToken]
+  )
 
   const pause = useCallback(async () => {
     await playerRef.current?.pause().catch(() => {})

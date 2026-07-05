@@ -27,7 +27,9 @@ export type MusicSession = {
  * the time elapsed since `updated_at`; while paused, the stored position is authoritative.
  * Clamped to the track duration so we never seek past the end.
  */
-export function livePositionMs(session: Pick<MusicSession, 'is_playing' | 'position_ms' | 'updated_at' | 'duration_ms'>): number {
+export function livePositionMs(
+  session: Pick<MusicSession, 'is_playing' | 'position_ms' | 'updated_at' | 'duration_ms'>
+): number {
   if (!session.is_playing) return Math.max(0, session.position_ms)
   const elapsed = Date.now() - new Date(session.updated_at).getTime()
   const pos = session.position_ms + Math.max(0, elapsed)

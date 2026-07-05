@@ -35,7 +35,12 @@ describe('livePositionMs', () => {
 
   it('clamps to the track duration', () => {
     vi.setSystemTime(new Date('2026-07-05T00:10:00Z'))
-    const s = session({ is_playing: true, position_ms: 190_000, updated_at: '2026-07-05T00:00:00Z', duration_ms: 200_000 })
+    const s = session({
+      is_playing: true,
+      position_ms: 190_000,
+      updated_at: '2026-07-05T00:00:00Z',
+      duration_ms: 200_000,
+    })
     expect(livePositionMs(s)).toBe(200_000)
   })
 
