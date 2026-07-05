@@ -667,7 +667,7 @@ create table profile_merges (
 **RLS:**
 - `profiles`: **owner can read own row** (`auth.uid() = id` — `profiles` is keyed by `id`,
   not `profile_id`). Public leaderboards read a **narrow view** exposing only
-  handle + trophy_level + streak (not email/PII).
+  handle + trophy_level + current_streak (not email/PII).
 - `player_stats`, `player_trophies`, `player_distinct`, `awarded_sessions`:
   **owner can read own rows** (`auth.uid() = profile_id`).
 - **All writes go through the server-side award engine using the service-role/admin
