@@ -110,11 +110,17 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     if (!roundId) return
     const channel = supabase
       .channel(`mp_host_progress_${roundId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'memory_match_progress', filter: `round_id=eq.${roundId}` }, () => {
-        void load()
-      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'memory_match_progress', filter: `round_id=eq.${roundId}` },
+        () => {
+          void load()
+        }
+      )
       .subscribe()
-    return () => { void supabase.removeChannel(channel) }
+    return () => {
+      void supabase.removeChannel(channel)
+    }
   }, [roundId, load])
 
   useGameRosterPoll({
@@ -147,9 +153,16 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         body: JSON.stringify({ action: 'join', name: hostJoinName.trim(), hostToken }),
       })
       const data = await res.json()
-      if (!res.ok) { toastError(data.error ?? 'Failed to join'); return }
+      if (!res.ok) {
+        toastError(data.error ?? 'Failed to join')
+        return
+      }
       if (data.player) {
-        setPlayerSession(gameCode, { playerId: data.player.id, name: data.player.name, resumeToken: data.player.resume_token })
+        setPlayerSession(gameCode, {
+          playerId: data.player.id,
+          name: data.player.name,
+          resumeToken: data.player.resume_token,
+        })
         setHostPlayerId(data.player.id)
         setHostPlayerName(data.player.name)
         setHostModeState('player')
@@ -267,7 +280,14 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
                       value={hostJoinName}
                       onChange={(e) => setHostJoinName(e.target.value)}
                       placeholder="Your name to play…"
-                      style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1.5px solid var(--border-strong)', background: 'var(--surface)', color: 'var(--text)' }}
+                      style={{
+                        flex: 1,
+                        padding: '8px 12px',
+                        borderRadius: 8,
+                        border: '1.5px solid var(--border-strong)',
+                        background: 'var(--surface)',
+                        color: 'var(--text)',
+                      }}
                     />
                     <button
                       onClick={handleJoinAsPlayer}
@@ -279,17 +299,30 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-                    <span style={{ color: 'var(--text-faint)', fontSize: 13 }}>Playing as <strong>{hostPlayerName}</strong></span>
-                    <button onClick={handleLeaveAsPlayer} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, background: 'transparent', border: '1px solid var(--border-strong)', color: 'var(--text-faint)', cursor: 'pointer' }}>Leave</button>
+                    <span style={{ color: 'var(--text-faint)', fontSize: 13 }}>
+                      Playing as <strong>{hostPlayerName}</strong>
+                    </span>
+                    <button
+                      onClick={handleLeaveAsPlayer}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        background: 'transparent',
+                        border: '1px solid var(--border-strong)',
+                        color: 'var(--text-faint)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Leave
+                    </button>
                   </div>
                 )
               }
             />
           )}
 
-          {tab === 'play' && hostPlayerId && (
-            <MatchingPairsPlayerView gameCode={gameCode} />
-          )}
+          {tab === 'play' && hostPlayerId && <MatchingPairsPlayerView gameCode={gameCode} />}
 
           <HostLobbyWaitingFooter game={game} players={players} />
           <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
@@ -312,10 +345,36 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
                       const name = playerMap.get(prog.player_id) ?? 'Unknown'
                       const pct = Math.round((prog.pairs_matched / gridSizePairs) * 100)
                       return (
-                        <div key={prog.player_id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface)', borderRadius: 10, padding: '8px 12px' }}>
+                        <div
+                          key={prog.player_id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                            background: 'var(--surface)',
+                            borderRadius: 10,
+                            padding: '8px 12px',
+                          }}
+                        >
                           <span style={{ fontWeight: 600, fontSize: 14, minWidth: 120 }}>{name}</span>
-                          <div style={{ flex: 1, height: 6, background: 'var(--border-strong)', borderRadius: 99, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${pct}%`, background: prog.finished ? '#22c55e' : '#f59e0b', borderRadius: 99, transition: 'width 0.4s ease' }} />
+                          <div
+                            style={{
+                              flex: 1,
+                              height: 6,
+                              background: 'var(--border-strong)',
+                              borderRadius: 99,
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <div
+                              style={{
+                                height: '100%',
+                                width: `${pct}%`,
+                                background: prog.finished ? '#22c55e' : '#f59e0b',
+                                borderRadius: 99,
+                                transition: 'width 0.4s ease',
+                              }}
+                            />
                           </div>
                           <span style={{ fontSize: 12, color: 'var(--text-faint)', minWidth: 60, textAlign: 'right' }}>
                             {prog.finished ? '✓ Done' : `${prog.pairs_matched}/${gridSizePairs}`}
@@ -326,9 +385,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
                 </div>
               </section>
 
-              {hostModeState === 'player' && hostPlayerId && (
-                <MatchingPairsPlayerView gameCode={gameCode} />
-              )}
+              {hostModeState === 'player' && hostPlayerId && <MatchingPairsPlayerView gameCode={gameCode} />}
 
               <HostEndGameButton gameCode={gameCode} hostToken={hostToken} onFinished={load} icon={<ExitIcon />} />
             </>
