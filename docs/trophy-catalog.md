@@ -10,6 +10,12 @@ rarity, award engine, criteria DSL, measurable-vs-binary progress, hidden trophi
 defined in [`trophies-and-streaks.md`](./trophies-and-streaks.md) — read that first; this
 file is the *content*.
 
+> **Admin-managed after seeding.** This list is the **seed** for the `trophies` table (via
+> `src/lib/trophies/catalog.ts`). Once seeded, the database row is the source of truth: an
+> admin can **add, edit, reorder, and retire** trophies from `/admin/trophies` — no deploy
+> needed to tweak a title, fix a threshold, or add a new one. Full CRUD spec, guardrails,
+> and seeding rules live in [`trophies-and-streaks.md`](./trophies-and-streaks.md) §6A.
+
 ---
 
 ## How to read this

@@ -692,10 +692,66 @@ New routes under `src/app/api/` (mirroring existing conventions — Zod-validate
 | `GET  /api/profile/game/:gameType` | Screen 2/3: Earned/Available counts, weighted completion %, tier counts, "rarest trophy earned", and the full trophy list with per-trophy earned state + date/time + rarity + progress %. |
 | `GET  /api/trophies/:trophyId` | Screen 4: single-trophy detail (grade, rarity band+%, progress state, details). |
 | `GET  /api/trophies/catalog` | Full catalog for the "all trophies" browse view. |
+| `/api/admin/trophies` (admin-guarded) | Catalog CRUD — list / create / edit / soft-delete. See §6A. |
 | *(internal)* award engine call inside `finish-game` | Evaluate + award; returns newly-earned trophies (§3.8). |
 
 The award engine is a library function (`src/lib/trophies/award.ts`) called from the
 finish path, **not** a public endpoint the client can hit to grant itself trophies.
+
+---
+
+## 6A. Admin management (seed + CRUD)
+
+The trophy catalog is **admin-managed**. The `catalog.ts` seed only *bootstraps* the
+`trophies` table on first deploy; from then on the **source of truth is the database row**,
+which an admin can edit, add to, or retire from an admin screen — no code deploy required to
+change a title, fix a threshold, or add a new trophy.
+
+This reuses the existing admin pattern exactly — the app already has admin CRUD for the
+community leaderboard, product updates, library, and game limits
+(`src/app/admin/*`, `src/app/api/admin/*`, guarded by `src/lib/admin-session.ts` /
+`ADMIN_EMAIL` + `ADMIN_PASSWORD` + the `ADMIN_SESSION_SECRET` cookie). Trophies slot in the
+same way.
+
+**Seeding.** On first deploy, seed `trophies` from `src/lib/trophies/catalog.ts`
+(the list in [`trophy-catalog.md`](./trophy-catalog.md)) via an idempotent seed —
+either a migration or a one-shot `upsert` on `trophies.id`. Re-running the seed only inserts
+missing rows; it never clobbers admin edits (upsert on `id`, and don't overwrite columns the
+admin owns — see below).
+
+**Admin screen — `/admin/trophies`** (mirrors `/admin/community`, `/admin/product-updates`):
+- **List / browse** all trophies, filterable by `game_type`, tier, owner, hidden, active.
+- **Add** a new trophy: id, `game_type`, tier, title, description, `criteria` (the DSL),
+  points, hidden, sort_order.
+- **Edit** any field on an existing trophy.
+- **Retire** a trophy — a **soft delete via `is_active = false`**, not a hard `DELETE`
+  (players who already earned it keep it; `player_trophies` FKs stay valid). Inactive
+  trophies stop being awarded and drop out of "Available"/completion math.
+- **Reorder** within a game (`sort_order`).
+
+**Admin API — `/api/admin/trophies`** (admin-session-guarded, `getSupabaseAdmin()`):
+`GET` (list), `POST` (create), `PATCH /:id` (edit), `POST /:id/deactivate` (soft delete /
+reactivate). Same auth boundary and conventions as the other `/api/admin/*` routes.
+
+**Guardrails the admin UI must enforce:**
+- **Platinum is engine-managed.** Each game has exactly one Platinum (`criteria: platinum
+  <game_type>`) awarded automatically when all its other trophies are held (§3.3). The UI
+  may let an admin edit a Platinum's *title/description*, but not its criteria, and must
+  block deleting/deactivating it or adding a second Platinum to a game — that would break
+  the game's completion logic.
+- **Editing `criteria` is forward-only.** Changing a rule affects *future* evaluation; it
+  does not retroactively revoke trophies already earned. If a threshold is *lowered*, newly
+  qualifying players pick it up on their next award pass; already-earned rows are untouched.
+- **Changing `points`** must trigger a recompute of affected profiles' `trophy_points` /
+  `trophy_level` (a background job, since it can touch many rows) — flag this in the UI.
+- **Rarity/"Available" counts** shift when trophies are added or retired; the
+  `trophy_rarity` refresh (§3.4) and per-game "Available" totals pick this up on their next
+  run.
+- **`id` is immutable** once created (it's the FK target in `player_trophies`); the UI
+  shows it read-only after creation.
+
+**RLS:** `trophies` stays public-read (so the client can render the catalog); **all writes
+go through the admin-guarded API using the service-role client**, never the browser.
 
 ---
 
@@ -717,6 +773,8 @@ New / changed components (folder conventions per existing `src/components/*`):
   SVG assets (§3A).
 - `src/components/trophies/TrophyUnlockToast.tsx` — the unlock moment on the end screen
   (reuse the share-block styling, e.g. `AchievementsShareBlock`).
+- `src/app/admin/trophies/page.tsx` — the admin catalog manager (§6A), mirroring
+  `src/app/admin/community` / `src/app/admin/updates`.
 - Hook the post-win prompt into the existing end-screen path alongside
   `PostWinToCommunity`.
 - `src/lib/trophies/catalog.ts` — source of truth for the seed; `src/lib/trophies/award.ts`
@@ -747,8 +805,9 @@ The push infra already exists (VAPID keys + `push_subscriptions`), but it is cur
 
 **Phase 1 — foundation + first loop (ship this first):**
 1. Anonymous auth profile + `profiles` / `player_stats` tables.
-2. `player_trophies` + `trophies` catalog with ~4 trophies each for the **top 5
-   most-played modes** + 3 platform trophies.
+2. `player_trophies` + `trophies` catalog, **seeded from `src/lib/trophies/catalog.ts`**
+   (the [`trophy-catalog.md`](./trophy-catalog.md) list). Start with the **top 5 most-played
+   modes** + the platform set; the rest of the 606 seed straight from the file.
 3. Award engine wired into `finish-game`; unlock toast on the end screen.
 4. The general streak (any-game-or-Daily) + WAT day boundary + basic freeze.
 5. The four PSN-modeled screens (§3A): profile overview → per-game summary → all-trophies
@@ -761,9 +820,11 @@ The push infra already exists (VAPID keys + `push_subscriptions`), but it is cur
 7. Case-B merge, rarity computation + display, hidden trophies, Trophy Level curve polish.
 8. Cross-session re-engagement push (streak-break nudge).
 9. Expand catalogs to all 32 games; Completionist/Explorer platform trophies.
+10. **Admin catalog manager** (`/admin/trophies`, §6A) — CRUD so the catalog is editable
+    without a deploy.
 
 **Phase 3:**
-10. Community auto-posts for Ultra-Rare unlocks; seasonal leaderboard tie-in; extra
+11. Community auto-posts for Ultra-Rare unlocks; seasonal leaderboard tie-in; extra
     freezes as a cosmetic/Pro perk.
 
 ---
