@@ -224,6 +224,7 @@ function CreateGameInner() {
     theme: 'default',
     participant_filter: 'all' as 'all' | 'joined',
     gender_based: true,
+    isPublic: false,
     describe_it_num_teams: 2,
     describe_it_mode: 'team',
   })
@@ -1357,6 +1358,34 @@ function CreateGameInner() {
 
             <Field label="Game mode">
               <GameTypeCard type={settings.game_type} compact selected onClick={() => setShowGameTypes(true)} />
+            </Field>
+
+            <Field label="Visibility">
+              <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setSettings({ ...settings, isPublic: false })}
+                  className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                    !settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
+                  }`}
+                >
+                  🔒 Private
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettings({ ...settings, isPublic: true })}
+                  className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                    settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
+                  }`}
+                >
+                  🌐 Public
+                </button>
+              </div>
+              <p className="mt-1.5 text-xs text-faint">
+                {settings.isPublic
+                  ? 'Anyone can find and join this game from Browse.'
+                  : 'Only people with the code can join.'}
+              </p>
             </Field>
           </div>
 

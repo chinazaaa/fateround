@@ -241,6 +241,8 @@ export interface Game {
   game_type: GameType
   theme?: ThemeId
   status: GameStatus
+  /** When true, the game is listed in /browse (discoverable). Default false = code-only. */
+  is_public?: boolean
   current_round_number: number
   created_at: string
   /** When the game session ended (status set to finished). */
