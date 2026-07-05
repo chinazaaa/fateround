@@ -680,7 +680,10 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   if (isMatchingPairsGame(gameType)) {
     const playingPlayers = playersData.filter((p) => p.spectator !== true)
     if (playingPlayers.length < MATCHING_PAIRS_MIN_PLAYERS) {
-      return NextResponse.json({ error: `Need at least ${MATCHING_PAIRS_MIN_PLAYERS} player to start` }, { status: 400 })
+      return NextResponse.json(
+        { error: `Need at least ${MATCHING_PAIRS_MIN_PLAYERS} player to start` },
+        { status: 400 }
+      )
     }
 
     // Resolve grid size from game settings (stored in game_duration_seconds field

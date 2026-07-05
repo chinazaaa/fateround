@@ -43,11 +43,7 @@ export async function POST(req: NextRequest) {
   const supabase = getSupabaseAdmin()
 
   // Verify game is active.
-  const { data: game } = await supabase
-    .from('games')
-    .select('id, status')
-    .eq('id', code)
-    .maybeSingle()
+  const { data: game } = await supabase.from('games').select('id, status').eq('id', code).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.status !== 'active') return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
 
@@ -169,11 +165,7 @@ export async function POST(req: NextRequest) {
     progressUpdate.finished_at = new Date().toISOString()
   }
 
-  await supabase
-    .from('memory_match_progress')
-    .update(progressUpdate)
-    .eq('round_id', round.id)
-    .eq('player_id', playerId)
+  await supabase.from('memory_match_progress').update(progressUpdate).eq('round_id', round.id).eq('player_id', playerId)
 
   // If everyone is done, end the game.
   if (justFinished) {

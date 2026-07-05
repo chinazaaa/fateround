@@ -34,17 +34,89 @@ export const MATCHING_PAIRS_PERFECT_GAME_BONUS = 2000
 
 export const MEMORY_MATCH_ICON_POOL: readonly string[] = [
   // Fruits & food (20)
-  '🍎', '🍊', '🍋', '🍇', '🍓', '🍒', '🍑', '🥝', '🍍', '🥭',
-  '🫐', '🍉', '🍌', '🍈', '🍐', '🥥', '🍅', '🥑', '🍆', '🌽',
+  '🍎',
+  '🍊',
+  '🍋',
+  '🍇',
+  '🍓',
+  '🍒',
+  '🍑',
+  '🥝',
+  '🍍',
+  '🥭',
+  '🫐',
+  '🍉',
+  '🍌',
+  '🍈',
+  '🍐',
+  '🥥',
+  '🍅',
+  '🥑',
+  '🍆',
+  '🌽',
   // Animals (20)
-  '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯',
-  '🦁', '🐸', '🐧', '🐦', '🦜', '🐠', '🐬', '🦋', '🐝', '🦔',
+  '🐶',
+  '🐱',
+  '🐭',
+  '🐹',
+  '🐰',
+  '🦊',
+  '🐻',
+  '🐼',
+  '🐨',
+  '🐯',
+  '🦁',
+  '🐸',
+  '🐧',
+  '🐦',
+  '🦜',
+  '🐠',
+  '🐬',
+  '🦋',
+  '🐝',
+  '🦔',
   // Objects & tools (20)
-  '⚽', '🏀', '🎸', '🎺', '🎻', '🎹', '🎯', '🎲', '🎮', '🧲',
-  '🔭', '🧪', '💡', '🔑', '⏰', '☂️', '🎈', '🪁', '🎀', '📚',
+  '⚽',
+  '🏀',
+  '🎸',
+  '🎺',
+  '🎻',
+  '🎹',
+  '🎯',
+  '🎲',
+  '🎮',
+  '🧲',
+  '🔭',
+  '🧪',
+  '💡',
+  '🔑',
+  '⏰',
+  '☂️',
+  '🎈',
+  '🪁',
+  '🎀',
+  '📚',
   // Shapes & symbols (20)
-  '⭐', '🌙', '☀️', '🌈', '❄️', '🔥', '💧', '🌊', '⚡', '🌸',
-  '🍀', '🌴', '🌵', '🍄', '🌺', '🏔️', '🌋', '🏝️', '🌍', '🪐',
+  '⭐',
+  '🌙',
+  '☀️',
+  '🌈',
+  '❄️',
+  '🔥',
+  '💧',
+  '🌊',
+  '⚡',
+  '🌸',
+  '🍀',
+  '🌴',
+  '🌵',
+  '🍄',
+  '🌺',
+  '🏔️',
+  '🌋',
+  '🏝️',
+  '🌍',
+  '🪐',
 ] as const
 
 /** 16 visually distinct colors for pair highlighting (one per pair). */
@@ -183,7 +255,8 @@ export function tallyMatchingPairsScore(
   const placementBonus = matchingPairsPlacementBonus(placement)
 
   const baseScore = pairsMatched * MATCHING_PAIRS_POINTS_PER_PAIR
-  const finalScore = baseScore + streakBonusTotal + placementBonus + (perfectGame ? MATCHING_PAIRS_PERFECT_GAME_BONUS : 0)
+  const finalScore =
+    baseScore + streakBonusTotal + placementBonus + (perfectGame ? MATCHING_PAIRS_PERFECT_GAME_BONUS : 0)
 
   const timeTakenMs =
     progress.finished_at && progress.created_at
@@ -286,10 +359,7 @@ function simpleHash(s: string): number {
 /**
  * Build the round row for insertion into `rounds`.
  */
-export function buildMatchingPairsRoundRow(
-  gameCode: string,
-  metadata: MatchingPairsMetadata
-): Record<string, unknown> {
+export function buildMatchingPairsRoundRow(gameCode: string, metadata: MatchingPairsMetadata): Record<string, unknown> {
   return {
     game_id: gameCode,
     round_number: 1,
@@ -306,11 +376,7 @@ export function buildMatchingPairsRoundRow(
 export function parseMatchingPairsMetadata(raw: unknown): MatchingPairsMetadata | null {
   if (!raw || typeof raw !== 'object') return null
   const m = raw as Record<string, unknown>
-  if (
-    typeof m.gridSizePairs !== 'number' ||
-    !Array.isArray(m.pairs) ||
-    !Array.isArray(m.playerBoards)
-  ) {
+  if (typeof m.gridSizePairs !== 'number' || !Array.isArray(m.pairs) || !Array.isArray(m.playerBoards)) {
     return null
   }
   return m as unknown as MatchingPairsMetadata

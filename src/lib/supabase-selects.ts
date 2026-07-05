@@ -123,6 +123,8 @@ export const WST_QUOTE_POOL_SELECT = 'id,game_id,player_id,quote_text,author_par
 
 export const PLAYER_QUESTION_SELECT = 'id,player_id,question_type,option_a,option_b,question_text'
 
-export const MEMORY_MATCH_SUBMISSION_SELECT = 'id,game_id,round_id,player_id,pair_index,is_match,streak_at_time,streak_bonus,points_after,submitted_at'
+export const MEMORY_MATCH_SUBMISSION_SELECT =
+  'id,game_id,round_id,player_id,pair_index,is_match,streak_at_time,streak_bonus,points_after,submitted_at'
 
-export const MEMORY_MATCH_PROGRESS_SELECT = 'id,game_id,round_id,player_id,pairs_matched,wrong_attempts,finished,finish_rank,finished_at,created_at,updated_at'
+export const MEMORY_MATCH_PROGRESS_SELECT =
+  'id,game_id,round_id,player_id,pairs_matched,wrong_attempts,finished,finish_rank,finished_at,created_at,updated_at'
