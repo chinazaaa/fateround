@@ -96,4 +96,22 @@ describe('useTurnTimer', () => {
     })
     expect(above.result.current.urgent).toBe(false)
   })
+
+  it('swallows a fetch rejection and re-fires after the cooldown (no unhandled rejection)', async () => {
+    // vitest fails the test on any unhandled rejection, so a rejecting fetch staying
+    // green proves tick()'s catch handles it; the re-fire proves the cooldown re-arms.
+    fetchMock.mockRejectedValue(new Error('network'))
+    renderTimer({ deadlineAt: inSeconds(1), cooldownMs: 3000 })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    const afterFirst = fetchMock.mock.calls.length
+    expect(afterFirst).toBeGreaterThanOrEqual(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000)
+    })
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(afterFirst)
+  })
 })

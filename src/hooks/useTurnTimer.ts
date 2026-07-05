@@ -61,6 +61,10 @@ export function useTurnTimer({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ gameId: gameCode }),
           })
+        } catch {
+          // Swallow — `tick` is fire-and-forget (`void tick()`), so a rejected fetch
+          // (network blip, 5xx) must not surface as an unhandled promise rejection.
+          // The cooldown below still re-arms so a later tick retries the expire.
         } finally {
           setTimeout(() => {
             firingRef.current = false
