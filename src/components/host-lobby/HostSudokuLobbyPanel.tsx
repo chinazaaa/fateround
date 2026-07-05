@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
+import { formatSudokuGameDuration, SUDOKU_GAME_DURATION_OPTIONS } from '@/lib/sudoku'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
@@ -24,6 +25,7 @@ export function HostSudokuLobbyPanel({ gameCode, hostToken, game, playerCount, o
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
   const [maxPlayers, setMaxPlayers] = useState(20)
+  const [gameDuration, setGameDuration] = useState(0)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -39,6 +41,7 @@ export function HostSudokuLobbyPanel({ gameCode, hostToken, game, playerCount, o
   useEffect(() => {
     if (!limits) return
     setMaxPlayers(lobbyMaxPlayersFromGame('sudoku', game, limits))
+    setGameDuration(game.game_duration_seconds ?? 0)
   }, [game, limits])
 
   useEffect(() => {
@@ -97,6 +100,15 @@ export function HostSudokuLobbyPanel({ gameCode, hostToken, game, playerCount, o
     })
   }
 
+  const onGameDurationChange = (next: number) => {
+    if (saveState === 'saving') return
+    const previous = gameDuration
+    setGameDuration(next)
+    void patchSettings({ game_duration_seconds: next }).then((ok) => {
+      if (!ok) setGameDuration(previous)
+    })
+  }
+
   const maxPlayerOptions = useMemo(
     () =>
       playerCountOptions(minPlayers, maxCap).map((n) => ({
@@ -106,12 +118,28 @@ export function HostSudokuLobbyPanel({ gameCode, hostToken, game, playerCount, o
     [maxCap, minPlayers]
   )
 
+  const durationOptions = useMemo(
+    () =>
+      SUDOKU_GAME_DURATION_OPTIONS.map((s) => ({
+        value: s,
+        label: s === 0 ? 'Off' : `${s / 60}m`,
+      })),
+    []
+  )
+
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
-    <HostLobbySettingsSection status={statusLabel} summary={`${maxPlayers} max`}>
+    <HostLobbySettingsSection
+      status={statusLabel}
+      summary={`${maxPlayers} max · ${formatSudokuGameDuration(gameDuration)}`}
+    >
       <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
         <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
+      </HostLobbySettingBlock>
+
+      <HostLobbySettingBlock title="Max time limit">
+        <HostLobbyOptionChips value={gameDuration} options={durationOptions} onChange={onGameDurationChange} />
       </HostLobbySettingBlock>
 
       {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
