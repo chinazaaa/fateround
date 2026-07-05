@@ -17,10 +17,7 @@ export type BrowseGameRow = {
 export type PublicGame = BrowseGameRow & { playerCount: number }
 
 /** Tally players per game in one query (there is no denormalized count column). */
-export async function countPlayersByGame(
-  supabase: SupabaseClient,
-  gameIds: string[]
-): Promise<Record<string, number>> {
+export async function countPlayersByGame(supabase: SupabaseClient, gameIds: string[]): Promise<Record<string, number>> {
   if (gameIds.length === 0) return {}
 
   const { data: players } = await supabase.from('players').select('game_id').in('game_id', gameIds)
