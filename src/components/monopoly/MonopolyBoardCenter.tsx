@@ -1,18 +1,23 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { MonopolyDiceRoll, MonopolyYourTokenChip } from '@/components/monopoly/MonopolyBoard'
 import { MonopolyJailCardInventory } from '@/components/monopoly/MonopolyChrome'
 import { useMonopolyDeadlineTimer } from '@/hooks/useMonopolyModalTimer'
 import { computeRent, parseBuildings, parseMortgaged } from '@/lib/monopoly-rent'
 import {
   currentPlayerId,
-  formatMonopolyMoney,
   MONOPOLY_JAIL_FINE,
   parsePropertyOwners,
   spaceAt,
   type MonopolyColorGroup,
 } from '@/lib/monopoly'
+import {
+  formatThemedMoney,
+  formatThemedText,
+  getBoardPalette,
+  themedSpaceName,
+} from '@/components/monopoly/monopoly-themes'
 import type { MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
 
 type PostAction = (url: string, body?: Record<string, unknown>) => Promise<void>
@@ -85,6 +90,7 @@ export function MonopolyBoardCenter({
   postAction,
   colorBarClass,
   layout = 'board',
+  themeId,
 }: {
   board: MonopolyBoard
   myPlayerId: string | null
@@ -94,7 +100,9 @@ export function MonopolyBoardCenter({
   postAction: PostAction
   colorBarClass: (color?: MonopolyColorGroup) => string
   layout?: 'board' | 'dock'
+  themeId?: string | null
 }) {
+  const palette = getBoardPalette(themeId)
   const turnPlayerId = currentPlayerId(board)
   const isMyTurn = turnPlayerId === myPlayerId && !myState?.bankrupt
 
@@ -140,7 +148,9 @@ export function MonopolyBoardCenter({
   const showRoll = !!(isMyTurn && board.phase === 'roll' && !myState?.in_jail)
 
   const actingRef = useRef(acting)
-  actingRef.current = acting
+  useEffect(() => {
+    actingRef.current = acting
+  }, [acting])
 
   const autoBuyAuction = useCallback(() => {
     if (!actingRef.current) void postAction('/api/monopoly/buy', { decision: 'auction' })
@@ -202,49 +212,56 @@ export function MonopolyBoardCenter({
   const rollPanelClass = isDock ? 'w-full space-y-1.5' : 'mt-2 w-full max-w-[9rem] sm:max-w-[10rem] space-y-1'
   const labelClass = isDock
     ? 'text-[10px] uppercase tracking-wider text-muted'
-    : 'text-[10px] uppercase tracking-wider text-emerald-200/80'
+    : `text-[10px] uppercase tracking-wider ${palette.centerSubtleText}`
   const titleClass = isDock
     ? 'text-sm font-bold text-[var(--foreground)] leading-tight truncate'
-    : 'text-xs sm:text-sm font-bold text-white leading-tight truncate'
-  const subtleClass = isDock ? 'text-xs text-muted leading-snug' : 'text-[10px] text-emerald-200/70 leading-snug'
+    : `text-xs sm:text-sm font-bold ${palette.centerText} leading-tight truncate`
+  const subtleClass = isDock
+    ? 'text-xs text-muted leading-snug'
+    : `text-[10px] ${palette.centerSubtleText} leading-snug`
   const priceClass = isDock
     ? 'text-lg font-black text-[var(--primary)] tabular-nums'
-    : 'text-lg sm:text-xl font-black text-amber-300 tabular-nums'
+    : `text-lg sm:text-xl font-black ${palette.centerPriceText} tabular-nums`
   const debtPriceClass = isDock
     ? 'text-lg font-black text-red-500 tabular-nums'
-    : 'text-lg sm:text-xl font-black text-red-300 tabular-nums'
+    : `text-lg sm:text-xl font-black ${palette.centerDebtPriceText} tabular-nums`
 
   return (
     <div className={shellClass}>
       {isDock && myState && (myState.get_out_of_jail_free ?? 0) > 0 && (
-        <MonopolyJailCardInventory count={myState.get_out_of_jail_free} />
+        <MonopolyJailCardInventory count={myState.get_out_of_jail_free} themeId={themeId} />
       )}
 
       {myPlayerId && myState && !myState.bankrupt && !isDock && (
         <div className="mb-1 sm:mb-2 shrink-0 space-y-1 max-w-full">
           <MonopolyYourTokenChip players={players} playerId={myPlayerId} playerOrder={myState.player_order} compact />
-          <p className="hidden sm:block text-[10px] text-emerald-200/80 leading-snug">
-            Currently on <span className="font-bold text-white">{spaceAt(Number(myState.position)).name}</span>
+          <p className={`hidden sm:block text-[10px] ${palette.centerSubtleText} leading-snug`}>
+            Currently on{' '}
+            <span className={`font-bold ${palette.centerText}`}>
+              {themedSpaceName(spaceAt(Number(myState.position)).name, Number(myState.position), themeId)}
+            </span>
           </p>
         </div>
       )}
 
       {myState && !isDock && (
         <div className="mb-1 sm:mb-1.5 shrink-0 max-w-full">
-          <p className="text-[8px] sm:text-[10px] font-semibold uppercase tracking-widest text-emerald-200/70 leading-none">
+          <p
+            className={`text-[8px] sm:text-[10px] font-semibold uppercase tracking-widest ${palette.centerSubtleText} leading-none`}
+          >
             {myState.bankrupt ? 'Bankrupt' : 'Your cash'}
           </p>
           <p
             className={[
               'text-sm sm:text-xl font-black tabular-nums leading-tight mt-0.5',
-              myState.bankrupt ? 'text-red-300' : 'text-amber-300',
+              myState.bankrupt ? palette.centerDebtPriceText : palette.centerPriceText,
             ].join(' ')}
           >
-            {formatMonopolyMoney(myState.cash)}
+            {formatThemedMoney(myState.cash, themeId)}
           </p>
           {(myState.get_out_of_jail_free ?? 0) > 0 && (
             <div className="mt-1 flex justify-center">
-              <MonopolyJailCardInventory count={myState.get_out_of_jail_free} compact />
+              <MonopolyJailCardInventory count={myState.get_out_of_jail_free} compact themeId={themeId} />
             </div>
           )}
         </div>
@@ -270,11 +287,14 @@ export function MonopolyBoardCenter({
           {myState && !(myState.passed_go_once ?? false) && (
             <p
               className={[
-                'text-emerald-200/65 leading-snug text-center',
+                `${palette.centerSubtleText} leading-snug text-center`,
                 isDock ? 'text-xs text-muted' : 'text-[9px]',
               ].join(' ')}
             >
-              Pass GO once before buying, paying tax, drawing cards, or collecting GO salary
+              {formatThemedText(
+                'Pass GO once before buying, paying tax, drawing cards, or collecting GO salary',
+                themeId
+              )}
             </p>
           )}
         </div>
@@ -283,9 +303,11 @@ export function MonopolyBoardCenter({
       {showBuy && pendingSpace && (
         <div className={panelClass}>
           <p className={labelClass}>For sale</p>
-          <p className={titleClass}>{pendingSpace.name}</p>
-          <p className={priceClass}>{formatMonopolyMoney(pendingSpace.price ?? 0)}</p>
-          {pendingSpace.rent != null && <p className={subtleClass}>Rent {formatMonopolyMoney(pendingSpace.rent)}</p>}
+          <p className={titleClass}>{themedSpaceName(pendingSpace.name, pendingSpace.index, themeId)}</p>
+          <p className={priceClass}>{formatThemedMoney(pendingSpace.price ?? 0, themeId)}</p>
+          {pendingSpace.rent != null && (
+            <p className={subtleClass}>Rent {formatThemedMoney(pendingSpace.rent, themeId)}</p>
+          )}
           <div className="space-y-1.5 pt-0.5">
             <BoardPrimaryButton
               onClick={() => postAction('/api/monopoly/buy', { decision: 'buy' })}
@@ -318,14 +340,14 @@ export function MonopolyBoardCenter({
             className={
               isDock
                 ? 'text-[10px] uppercase tracking-wider text-red-500'
-                : 'text-[10px] uppercase tracking-wider text-red-200/90'
+                : `text-[10px] uppercase tracking-wider ${palette.centerDebtPriceText}`
             }
           >
             Need to pay
           </p>
           <p className={titleClass}>{debt.reason}</p>
           {debtCreditor && <p className={`${subtleClass} truncate`}>To {debtCreditor.name}</p>}
-          <p className={debtPriceClass}>{formatMonopolyMoney(debtAmount)}</p>
+          <p className={debtPriceClass}>{formatThemedMoney(debtAmount, themeId)}</p>
           <p className={subtleClass}>Mortgage or sell houses in Build &amp; trade, then pay — or forfeit.</p>
           <BoardPrimaryButton
             onClick={() => postAction('/api/monopoly/settle-debt')}
@@ -343,9 +365,9 @@ export function MonopolyBoardCenter({
       {showRent && pendingSpace && (
         <div className={panelClass}>
           <p className={labelClass}>Rent due</p>
-          <p className={titleClass}>{pendingSpace.name}</p>
+          <p className={titleClass}>{themedSpaceName(pendingSpace.name, pendingSpace.index, themeId)}</p>
           <p className={`${subtleClass} truncate`}>To {rentOwner?.name ?? 'owner'}</p>
-          <p className={debtPriceClass}>{formatMonopolyMoney(rentAmount)}</p>
+          <p className={debtPriceClass}>{formatThemedMoney(rentAmount, themeId)}</p>
           <BoardPrimaryButton
             onClick={() => postAction('/api/monopoly/rent')}
             loading={acting}
@@ -359,11 +381,16 @@ export function MonopolyBoardCenter({
       {showJail && (
         <div className={panelClass}>
           <p className="text-lg leading-none">🔒</p>
-          <p className={isDock ? 'text-sm font-bold text-[var(--foreground)]' : 'text-xs font-bold text-white'}>
+          <p
+            className={
+              isDock ? 'text-sm font-bold text-[var(--foreground)]' : `text-xs font-bold ${palette.centerText}`
+            }
+          >
             In jail
           </p>
           <p className={subtleClass}>
-            Attempt {(myState?.jail_turns ?? 0) + 1}/3 — roll once for doubles, or pay £50 before rolling.
+            Attempt {(myState?.jail_turns ?? 0) + 1}/3 — roll once for doubles, or pay {formatThemedMoney(50, themeId)}{' '}
+            before rolling.
           </p>
           <div className="space-y-1">
             <BoardPrimaryButton onClick={() => postAction('/api/monopoly/roll')} loading={acting}>
@@ -373,7 +400,7 @@ export function MonopolyBoardCenter({
               onClick={() => postAction('/api/monopoly/jail', { method: 'pay' })}
               disabled={acting || (myState?.cash ?? 0) < MONOPOLY_JAIL_FINE}
             >
-              Pay {formatMonopolyMoney(MONOPOLY_JAIL_FINE)}
+              Pay {formatThemedMoney(MONOPOLY_JAIL_FINE, themeId)}
             </BoardSecondaryButton>
             {(myState?.get_out_of_jail_free ?? 0) > 0 && (
               <BoardSecondaryButton
@@ -390,8 +417,10 @@ export function MonopolyBoardCenter({
       {showAuction && auction && auctionSpace && (
         <div className={panelClass}>
           <p className={labelClass}>Auction</p>
-          <p className={titleClass}>{auctionSpace.name}</p>
-          <p className={subtleClass}>High: {auction.high_bid > 0 ? formatMonopolyMoney(auction.high_bid) : 'None'}</p>
+          <p className={titleClass}>{themedSpaceName(auctionSpace.name, auctionSpace.index, themeId)}</p>
+          <p className={subtleClass}>
+            High: {auction.high_bid > 0 ? formatThemedMoney(auction.high_bid, themeId) : 'None'}
+          </p>
           <input
             type="number"
             min={auction.high_bid + 1}
@@ -423,8 +452,12 @@ export function MonopolyBoardCenter({
       {board.phase === 'auction' && auction && !isMyAuctionTurn && (
         <div className={isDock ? 'space-y-1' : 'mt-1.5 space-y-0.5'}>
           <p className={labelClass}>Auction</p>
-          <p className={isDock ? 'text-xs text-muted leading-snug' : 'text-[11px] text-emerald-100/90 leading-snug'}>
-            {auctionSpace?.name}
+          <p
+            className={
+              isDock ? 'text-xs text-muted leading-snug' : `text-[11px] ${palette.centerSubtleText} leading-snug`
+            }
+          >
+            {auctionSpace ? themedSpaceName(auctionSpace.name, auctionSpace.index, themeId) : ''}
             <br />
             {players.find((p) => p.id === auction.current_bidder_id)?.name ?? 'Someone'}&apos;s bid
           </p>

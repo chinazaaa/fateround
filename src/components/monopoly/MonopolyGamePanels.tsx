@@ -22,15 +22,13 @@ import {
   COLOR_GROUP_LABELS,
 } from '@/lib/monopoly-color-portfolio'
 import {
-  currentPlayerId,
-  formatMonopolyMoney,
   mortgageValue,
   parsePropertyOwners,
   playerProperties,
-  spaceAt,
   unmortgageCost,
   type MonopolyColorGroup,
 } from '@/lib/monopoly'
+import { formatThemedMoney, formatThemedText, themedSpaceName } from '@/components/monopoly/monopoly-themes'
 import {
   buildTradeSideItems,
   normalizePendingTrade,
@@ -46,11 +44,13 @@ function TradeSideItems({
   propertyIndexes,
   jailCards = 0,
   compact = false,
+  themeId,
 }: {
   cash: number
   propertyIndexes: unknown
   jailCards?: number
   compact?: boolean
+  themeId?: string | null
 }) {
   const items = buildTradeSideItems(cash, propertyIndexes, jailCards)
   if (items.length === 0) {
@@ -66,16 +66,16 @@ function TradeSideItems({
           return (
             <li key="cash">
               <span className="text-muted font-normal">Cash </span>
-              {formatMonopolyMoney(item.amount)}
+              {formatThemedMoney(item.amount, themeId)}
             </li>
           )
         }
-        if (item.kind === 'property') {
-          return <li key={`prop-${item.index}`}>{item.name}</li>
+        if (item.kind === 'property' && 'name' in item && 'index' in item) {
+          return <li key={`prop-${item.index}`}>{themedSpaceName(item.name, item.index, themeId)}</li>
         }
         return (
           <li key="jail">
-            {item.count} Get Out of Jail card{item.count === 1 ? '' : 's'}
+            {formatThemedText(`${item.count} Get Out of Jail card${item.count === 1 ? '' : 's'}`, themeId)}
           </li>
         )
       })}
@@ -83,12 +83,17 @@ function TradeSideItems({
   )
 }
 
-function tradeSideCountLabel(cash: number, propertyIndexes: unknown, jailCards = 0): string | null {
+function tradeSideCountLabel(
+  cash: number,
+  propertyIndexes: unknown,
+  jailCards = 0,
+  themeId?: string | null
+): string | null {
   const propertyCount = normalizeTradePropertyList(propertyIndexes).length
   const parts: string[] = []
   if (propertyCount > 0) parts.push(`${propertyCount} propert${propertyCount === 1 ? 'y' : 'ies'}`)
   if (cash > 0) parts.push('cash')
-  if (jailCards > 0) parts.push(`${jailCards} jail card${jailCards === 1 ? '' : 's'}`)
+  if (jailCards > 0) parts.push(formatThemedText(`${jailCards} jail card${jailCards === 1 ? '' : 's'}`, themeId))
   if (parts.length === 0) return null
   return parts.join(' · ')
 }
@@ -103,6 +108,7 @@ function TradeExchangeReview({
   giveJailCards = 0,
   getJailCards = 0,
   compact = false,
+  themeId,
 }: {
   giveLabel: string
   getLabel: string
@@ -113,13 +119,14 @@ function TradeExchangeReview({
   giveJailCards?: number
   getJailCards?: number
   compact?: boolean
+  themeId?: string | null
 }) {
   const oneSidedGift =
     tradeSideHasValue(giveCash, giveProps, giveJailCards) && !tradeSideHasValue(getCash, getProps, getJailCards)
   const oneSidedReceive =
     tradeSideHasValue(getCash, getProps, getJailCards) && !tradeSideHasValue(giveCash, giveProps, giveJailCards)
-  const giveCountLabel = tradeSideCountLabel(giveCash, giveProps, giveJailCards)
-  const getCountLabel = tradeSideCountLabel(getCash, getProps, getJailCards)
+  const giveCountLabel = tradeSideCountLabel(giveCash, giveProps, giveJailCards, themeId)
+  const getCountLabel = tradeSideCountLabel(getCash, getProps, getJailCards, themeId)
 
   return (
     <div className={compact ? 'space-y-2' : 'space-y-3'}>
@@ -130,7 +137,13 @@ function TradeExchangeReview({
             {giveCountLabel && <p className="text-[10px] font-semibold text-red-300/90 shrink-0">{giveCountLabel}</p>}
           </div>
           <div className="mt-1">
-            <TradeSideItems cash={giveCash} propertyIndexes={giveProps} jailCards={giveJailCards} compact={compact} />
+            <TradeSideItems
+              cash={giveCash}
+              propertyIndexes={giveProps}
+              jailCards={giveJailCards}
+              compact={compact}
+              themeId={themeId}
+            />
           </div>
         </div>
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-2.5 sm:p-3">
@@ -145,7 +158,13 @@ function TradeExchangeReview({
             )}
           </div>
           <div className="mt-1">
-            <TradeSideItems cash={getCash} propertyIndexes={getProps} jailCards={getJailCards} compact={compact} />
+            <TradeSideItems
+              cash={getCash}
+              propertyIndexes={getProps}
+              jailCards={getJailCards}
+              compact={compact}
+              themeId={themeId}
+            />
           </div>
         </div>
       </div>
@@ -169,6 +188,7 @@ export function MonopolyTurnModals({
   players,
   acting,
   postAction,
+  themeId,
 }: {
   board: MonopolyBoard | null
   myPlayerId: string | null
@@ -177,6 +197,7 @@ export function MonopolyTurnModals({
   acting: boolean
   postAction: PostAction
   colorBarClass?: (color?: MonopolyColorGroup) => string
+  themeId?: string | null
 }) {
   const trade = board?.pending_trade ? normalizePendingTrade(board.pending_trade) : null
   const tradeFrom = trade ? players.find((p) => p.id === trade.from_player_id) : null
@@ -220,6 +241,7 @@ export function MonopolyTurnModals({
               getCash={trade.offer_cash}
               getProps={trade.offer_properties}
               getJailCards={trade.offer_get_out_cards}
+              themeId={themeId}
             />
           </div>
           <div className="grid grid-cols-2 gap-2 pt-3">
@@ -247,6 +269,7 @@ export function MonopolyManagePanel({
   players,
   acting,
   postAction,
+  themeId,
 }: {
   board: MonopolyBoard | null
   myPlayerId: string | null
@@ -255,6 +278,7 @@ export function MonopolyManagePanel({
   players: Player[]
   acting: boolean
   postAction: PostAction
+  themeId?: string | null
 }) {
   const [tradeTarget, setTradeTarget] = useState('')
   const [offerCash, setOfferCash] = useState('')
@@ -373,6 +397,7 @@ export function MonopolyManagePanel({
             getCash={activePendingTrade.request_cash}
             getProps={activePendingTrade.request_properties}
             getJailCards={activePendingTrade.request_get_out_cards ?? 0}
+            themeId={themeId}
           />
           <MonopolySecondaryButton
             onClick={() => postAction('/api/monopoly/trade', { cancel: true })}
@@ -402,6 +427,7 @@ export function MonopolyManagePanel({
             getCash={activePendingTrade.offer_cash}
             getProps={activePendingTrade.offer_properties}
             getJailCards={activePendingTrade.offer_get_out_cards}
+            themeId={themeId}
           />
         </div>
       )}
@@ -425,9 +451,10 @@ export function MonopolyManagePanel({
           <div className="space-y-1">
             <p className="text-xs font-semibold text-[var(--foreground)]">Propose a trade</p>
             <p className="text-xs text-muted leading-relaxed">
-              Pick what <strong className="text-body">you give</strong> and what{' '}
-              <strong className="text-body">you get back</strong> — cash, properties, or Get Out of Jail cards. Both
-              sides must be filled in for a normal swap.
+              {formatThemedText(
+                'Pick what you give and what you get back — cash, properties, or Get Out of Jail cards. Both sides must be filled in for a normal swap.',
+                themeId
+              )}
             </p>
           </div>
           <select
@@ -477,7 +504,7 @@ export function MonopolyManagePanel({
                             checked={offerProps.includes(s.index)}
                             onChange={() => toggleProp(offerProps, setOfferProps, s.index)}
                           />
-                          {s.name}
+                          {themedSpaceName(s.name, s.index, themeId)}
                         </label>
                       ))}
                     </div>
@@ -495,7 +522,7 @@ export function MonopolyManagePanel({
                           setConfirmOneWayGift(false)
                         }}
                       />
-                      Include 1 Get Out of Jail card
+                      {formatThemedText('Include 1 Get Out of Jail card', themeId)}
                     </label>
                   )}
                 </div>
@@ -525,7 +552,7 @@ export function MonopolyManagePanel({
                             checked={requestProps.includes(s.index)}
                             onChange={() => toggleProp(requestProps, setRequestProps, s.index)}
                           />
-                          {s.name}
+                          {themedSpaceName(s.name, s.index, themeId)}
                         </label>
                       ))}
                     </div>
@@ -543,7 +570,7 @@ export function MonopolyManagePanel({
                           setConfirmOneWayGift(false)
                         }}
                       />
-                      Ask for 1 Get Out of Jail card
+                      {formatThemedText('Ask for 1 Get Out of Jail card', themeId)}
                     </label>
                   )}
                 </div>
@@ -559,6 +586,7 @@ export function MonopolyManagePanel({
                 getCash={parsedRequestCash}
                 getProps={requestProps}
                 getJailCards={requestJailCards}
+                themeId={themeId}
               />
 
               {(isOneWayGift || isOneWayReceive) && (
@@ -602,6 +630,7 @@ export function MonopolyManagePanel({
                     getCash={parsedRequestCash}
                     getProps={requestProps}
                     getJailCards={requestJailCards}
+                    themeId={themeId}
                   />
                   <div className="grid grid-cols-2 gap-2">
                     <button
@@ -654,14 +683,16 @@ export function MonopolyManagePanel({
         {space.color && <MonopolyColorBar color={space.color} />}
         <div className="p-3 space-y-2">
           <div className="flex justify-between gap-2">
-            <span className="font-semibold text-sm text-[var(--foreground)]">{space.name}</span>
+            <span className="font-semibold text-sm text-[var(--foreground)]">
+              {themedSpaceName(space.name, space.index, themeId)}
+            </span>
             <span className="text-xs text-muted shrink-0">{isMortgaged ? 'Mortgaged' : levelLabel}</span>
           </div>
           <p className="text-[11px] text-faint leading-relaxed">
             {isMortgaged ? (
-              <>No rent while mortgaged · unmortgage for {formatMonopolyMoney(unmortgageCost(space))}</>
+              <>No rent while mortgaged · unmortgage for {formatThemedMoney(unmortgageCost(space), themeId)}</>
             ) : currentRent != null ? (
-              <>Current rent {formatMonopolyMoney(currentRent)}</>
+              <>Current rent {formatThemedMoney(currentRent, themeId)}</>
             ) : null}
           </p>
           <div className="flex flex-wrap gap-1.5">
@@ -672,7 +703,7 @@ export function MonopolyManagePanel({
                 onClick={() => postAction('/api/monopoly/build', { spaceIndex: space.index, action: 'buy_house' })}
                 className="btn-primary btn-fit px-3 py-1.5 text-xs"
               >
-                + House {formatMonopolyMoney(space.houseCost ?? 0)}
+                + House {formatThemedMoney(space.houseCost ?? 0, themeId)}
               </button>
             )}
             {canHotel && (
@@ -711,7 +742,7 @@ export function MonopolyManagePanel({
                 disabled={acting}
                 onClick={() => postAction('/api/monopoly/mortgage', { spaceIndex: space.index, action: 'mortgage' })}
                 className="btn-secondary btn-fit px-2.5 py-1 text-[10px]"
-                title={`Get ${formatMonopolyMoney(mortgageValue(space))} cash. No rent while mortgaged. Sell all buildings in the colour group first.`}
+                title={`Get ${formatThemedMoney(mortgageValue(space), themeId)} cash. No rent while mortgaged. Sell all buildings in the colour group first.`}
               >
                 Mortgage
               </button>
@@ -736,10 +767,10 @@ export function MonopolyManagePanel({
     <div className="glass-card p-4 space-y-4">
       <div className="space-y-2">
         <p className="label-caps">Inventory</p>
-        <MonopolyJailCardInventory count={myJailCards} showEmpty />
+        <MonopolyJailCardInventory count={myJailCards} showEmpty themeId={themeId} />
       </div>
 
-      <MonopolyColorPortfolio propertyOwners={owners} myPlayerId={myPlayerId} players={players} />
+      <MonopolyColorPortfolio propertyOwners={owners} myPlayerId={myPlayerId} players={players} themeId={themeId} />
 
       <div className="space-y-3 pt-2 border-t border-[var(--border-strong)]">
         {mine.length === 0 ? (

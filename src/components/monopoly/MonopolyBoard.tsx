@@ -1,21 +1,23 @@
 'use client'
 
 import {
-  MONOPOLY_BOARD,
   MONOPOLY_COLOR_CLASSES,
-  formatMonopolyMoney,
-  mortgageValue,
   parsePropertyOwners,
   playerProperties,
   effectivePropertyOwners,
   spaceAt,
-  unmortgageCost,
   type MonopolyColorGroup,
   type MonopolySpace,
 } from '@/lib/monopoly'
 import { computeRent, parseBuildings, parseMortgaged, buildingLevel } from '@/lib/monopoly-rent'
 import { MONOPOLY_HOTEL_LEVEL } from '@/lib/monopoly-board'
 import { monopolyTokenById, monopolyTokenEmoji } from '@/lib/monopoly-tokens'
+import {
+  formatThemedMoney,
+  themedSpaceName,
+  getMonopolyEdition,
+  getBoardPalette,
+} from '@/components/monopoly/monopoly-themes'
 import type { MonopolyPlayerState, Player } from '@/types'
 import {
   DICE_PIPS,
@@ -226,18 +228,19 @@ function boardTileRentLabel(
   owners: Record<string, string>,
   buildings: Record<string, number>,
   mortgaged: Record<string, boolean>,
-  diceTotal: number
+  diceTotal: number,
+  themeId?: string | null
 ): string | null {
   if (space.type !== 'property' && space.type !== 'station' && space.type !== 'utility') {
     return null
   }
   if (ownerId) {
     if (mortgaged[String(space.index)]) return 'Mortgaged'
-    return formatMonopolyMoney(computeRent(space, owners, ownerId, diceTotal, buildings, mortgaged))
+    return formatThemedMoney(computeRent(space, owners, ownerId, diceTotal, buildings, mortgaged), themeId)
   }
   if (space.type === 'utility') return '4×/10×'
-  if (space.type === 'station') return formatMonopolyMoney(space.rent ?? 25)
-  if (space.rent != null) return formatMonopolyMoney(space.rent)
+  if (space.type === 'station') return formatThemedMoney(space.rent ?? 25, themeId)
+  if (space.rent != null) return formatThemedMoney(space.rent, themeId)
   return null
 }
 
@@ -252,6 +255,7 @@ function BoardSpaceCell({
   highlightIndex,
   edge,
   myPlayerId,
+  themeId,
 }: {
   spaceIndex: number
   states: MonopolyPlayerState[]
@@ -263,6 +267,7 @@ function BoardSpaceCell({
   highlightIndex?: number | null
   edge: ReturnType<typeof boardEdgeForSpace>
   myPlayerId?: string | null
+  themeId?: string | null
 }) {
   const space = spaceAt(spaceIndex)
   const ownerId = owners[String(spaceIndex)]
@@ -271,24 +276,24 @@ function BoardSpaceCell({
   const tokens = playersOnSpace(states, spaceIndex)
   const highlighted = highlightIndex === spaceIndex
   const isCorner = edge === 'corner'
-  const icon = spaceIcon(space.type)
-  const lines = boardSpaceLines(space.name, space.type)
-  const rentLabel = boardTileRentLabel(space, ownerId, owners, buildings, mortgaged, diceTotal)
-  const sideEdge = edge === 'left' || edge === 'right'
+  const icon = spaceIcon(space.type, themeId)
+  const lines = boardSpaceLines(space.name, space.type, spaceIndex, themeId)
+  const rentLabel = boardTileRentLabel(space, ownerId, owners, buildings, mortgaged, diceTotal, themeId)
+  const palette = getBoardPalette(themeId)
   const lineClass = [
-    'font-bold text-neutral-800 leading-[1.05]',
-    isCorner ? 'text-[6px] sm:text-[10px]' : 'text-[5.5px] sm:text-[8px]',
+    `font-extrabold ${palette.tileText} ${palette.tileFont ?? ''} leading-[1.05]`,
+    isCorner ? 'text-[7.2px] sm:text-[9px]' : 'text-[6.4px] sm:text-[8px] md:text-[8.5px]',
   ].join(' ')
 
   return (
     <div
-      title={space.name}
+      title={themedSpaceName(space.name, spaceIndex, themeId)}
       className={[
-        'relative flex overflow-hidden rounded-[2px] sm:rounded-[3px] border bg-[#faf8f2] text-neutral-900 shadow-sm',
+        `relative flex overflow-hidden rounded-[2px] sm:rounded-[3px] border ${palette.tileBg} text-neutral-900 shadow-sm`,
         'transition-all duration-200 h-full w-full',
         highlighted
-          ? 'ring-1 sm:ring-2 ring-amber-400 ring-offset-0 ring-offset-emerald-900 z-10'
-          : 'border-neutral-300/80',
+          ? `ring-1 sm:ring-2 ${palette.highlightRing} ring-offset-0 ${palette.highlightOffset} z-10`
+          : palette.tileBorder,
         isCorner ? 'flex-col' : edge === 'bottom' || edge === 'top' ? 'flex-col' : 'flex-row',
       ].join(' ')}
     >
@@ -304,20 +309,25 @@ function BoardSpaceCell({
       {edge === 'right' && space.color && (
         <div className={['order-last w-1 sm:w-2 h-full shrink-0', colorBar(space.color)].join(' ')} />
       )}
-      {isCorner && !space.color && <div className="h-0.5 sm:h-1 shrink-0 bg-neutral-200" />}
+      {isCorner && !space.color && <div className={`h-0.5 sm:h-1 shrink-0 ${palette.cornerDivider}`} />}
 
       <div className="flex flex-1 min-w-0 min-h-0 flex-col items-center justify-center gap-px p-px sm:p-0.5">
-        {isCorner && icon && <span className="text-[10px] sm:text-lg leading-none">{icon}</span>}
+        {isCorner && icon && <span className="text-[7px] sm:text-[10.5px] leading-none shrink-0">{icon}</span>}
         {!isCorner && (space.price != null || rentLabel) && (
           <div className="hidden sm:flex flex-col items-center gap-px leading-none">
             {space.price != null && !ownerId && (
-              <span className="text-[7px] sm:text-[8px] font-bold text-neutral-500">£{space.price}</span>
+              <span
+                className={`text-[6.8px] sm:text-[8.5px] md:text-[9.5px] font-black ${palette.priceText} ${palette.tileFont ?? ''}`}
+              >
+                {formatThemedMoney(space.price!, themeId)}
+              </span>
             )}
             {rentLabel && (
               <span
                 className={[
-                  'text-[6px] sm:text-[7px] font-bold tabular-nums',
-                  rentLabel === 'Mortgaged' ? 'text-red-600' : 'text-emerald-800',
+                  'text-[5.5px] sm:text-[6.8px] md:text-[7.5px] font-bold tabular-nums',
+                  rentLabel === 'Mortgaged' ? 'text-red-600' : palette.rentText,
+                  palette.tileFont ?? '',
                 ].join(' ')}
               >
                 {rentLabel === 'Mortgaged' ? 'Mtg' : rentLabel}
@@ -325,37 +335,20 @@ function BoardSpaceCell({
             )}
           </div>
         )}
-        {sideEdge ? (
-          <div className="flex h-full flex-row items-center justify-center gap-px px-px sm:gap-0.5 sm:flex-col sm:px-0">
-            {lines.map((line, i) => (
-              <span
-                key={i}
-                className={[
-                  lineClass,
-                  'max-h-full text-center sm:max-h-none',
-                  'max-sm:[writing-mode:vertical-rl] max-sm:rotate-180',
-                ].join(' ')}
-              >
-                {line}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center gap-px min-w-0 max-w-full px-px text-center">
-            {lines.map((line, i) => (
-              <span key={i} className={[lineClass, 'max-w-full'].join(' ')}>
-                {line}
-              </span>
-            ))}
-          </div>
-        )}
+        <div className="flex flex-col items-center justify-center gap-px min-w-0 max-w-full px-px text-center overflow-hidden">
+          {lines.map((line, i) => (
+            <span key={i} className={[lineClass, 'max-w-full break-all sm:break-words sm:tracking-tight'].join(' ')}>
+              {line}
+            </span>
+          ))}
+        </div>
       </div>
 
       {ownerId && ownerLabel && (
         <div
           title={`Owned by ${ownerLabel}`}
           className={[
-            'absolute z-[1] rounded-sm px-px py-px text-[5px] sm:text-[6px] font-bold text-white leading-none max-w-[90%] truncate',
+            'absolute z-[1] rounded-sm px-px py-px text-[5px] sm:text-[6px] font-extrabold text-white leading-none max-w-[90%] truncate',
             tokenColorForOrder(orderMap.get(ownerId) ?? 0).bg,
             edge === 'bottom' ? 'bottom-px left-px right-px sm:bottom-0.5 sm:left-0.5 sm:right-0.5' : '',
             edge === 'top' ? 'top-px left-px right-px sm:top-0.5 sm:left-0.5 sm:right-0.5' : '',
@@ -391,7 +384,7 @@ function BoardSpaceCell({
                 className={[
                   'flex items-center justify-center rounded-full shadow-md',
                   isMe
-                    ? 'h-4 w-4 sm:h-6 sm:w-6 text-[9px] sm:text-sm ring-1 sm:ring-2 ring-amber-300 ring-offset-0 sm:ring-offset-1 ring-offset-emerald-900 z-10 scale-110'
+                    ? `h-4 w-4 sm:h-6 sm:w-6 text-[9px] sm:text-sm ring-1 sm:ring-2 ${palette.myTokenRing} ring-offset-0 sm:ring-offset-1 ${palette.myTokenOffset} z-10 scale-110`
                     : 'h-3.5 w-3.5 sm:h-5 sm:w-5 text-[8px] sm:text-xs ring-1',
                   c.bg,
                   c.ring,
@@ -418,6 +411,7 @@ function BoardCellWrapper({
   diceTotal,
   highlightIndex,
   myPlayerId,
+  themeId,
 }: {
   spaceIndex: number
   states: MonopolyPlayerState[]
@@ -428,6 +422,7 @@ function BoardCellWrapper({
   diceTotal: number
   highlightIndex?: number | null
   myPlayerId?: string | null
+  themeId?: string | null
 }) {
   return (
     <BoardSpaceCell
@@ -440,6 +435,7 @@ function BoardCellWrapper({
       diceTotal={diceTotal}
       highlightIndex={highlightIndex}
       myPlayerId={myPlayerId}
+      themeId={themeId}
       edge={boardEdgeForSpace(spaceIndex)}
     />
   )
@@ -458,6 +454,7 @@ export function MonopolyClassicBoard({
   myPlayerId,
   center,
   mobileCenter,
+  themeId,
 }: {
   states: MonopolyPlayerState[]
   players: Player[]
@@ -469,6 +466,7 @@ export function MonopolyClassicBoard({
   myPlayerId?: string | null
   center?: React.ReactNode
   mobileCenter?: React.ReactNode
+  themeId?: string | null
 }) {
   const owners = effectivePropertyOwners(parsePropertyOwners(propertyOwners), states)
   const buildings = parseBuildings(propertyBuildings)
@@ -482,52 +480,121 @@ export function MonopolyClassicBoard({
     diceTotal: lastDiceTotal,
     highlightIndex,
     myPlayerId,
+    themeId,
   }
 
+  const edition = getMonopolyEdition(themeId)
+  const { boardPalette: p } = edition
+
   const defaultMobileCenter = (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center">
-      <p className="text-[11px] font-black tracking-[0.18em] text-amber-300/90">MONOPOLY</p>
-      <p className="text-[8px] uppercase tracking-widest text-emerald-200/60">UK Edition</p>
+    <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center relative z-10">
+      <p className={`text-xs font-black tracking-[0.18em] ${p.titleColor}/90 ${p.titleFont ?? ''}`}>
+        {edition.boardTitle}
+      </p>
+      <p className={`text-[9px] uppercase tracking-widest ${p.subtitleColor} ${p.subtitleFont ?? ''}`}>
+        {edition.editionSubtitle}
+      </p>
     </div>
   )
 
   const defaultDesktopCenter = center ?? (
-    <>
-      <p className="text-xl sm:text-2xl font-black tracking-tight text-amber-300 drop-shadow-sm">MONOPOLY</p>
-      <p className="text-[9px] sm:text-[10px] text-emerald-200/70 mt-0.5 uppercase tracking-[0.15em]">
-        Property Trading Game
+    <div className="flex h-full w-full flex-col items-center justify-center relative z-10">
+      <p
+        className={`text-xl sm:text-2xl font-black tracking-tight ${p.titleColor} drop-shadow-sm ${p.titleFont ?? ''}`}
+      >
+        {edition.boardTitle}
       </p>
-    </>
+      <p
+        className={`text-[9px] sm:text-[10px] ${p.subtitleColor} mt-0.5 uppercase tracking-[0.15em] ${p.subtitleFont ?? ''}`}
+      >
+        {edition.editionSubtitle}
+      </p>
+    </div>
   )
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-[580px]">
+    <div className="mx-auto w-full min-w-0 max-w-[740px] lg:max-w-[880px] xl:max-w-[940px]">
       <div
         className={[
           'relative w-full aspect-square overflow-hidden rounded-xl sm:rounded-2xl',
-          'bg-gradient-to-br from-emerald-800 via-emerald-900 to-teal-950',
-          'border-2 sm:border-[3px] border-amber-700/90 shadow-[0_20px_60px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.12)]',
+          p.boardBg,
+          `border-2 sm:border-[3px] ${p.boardBorder} ${p.boardShadow}`,
         ].join(' ')}
       >
+        {p.customDecoration === 'pirate' && (
+          <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+            {/* Aged paper grain & vignette */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,rgba(43,27,14,0.2)_100%)] dark:bg-[radial-gradient(circle_at_center,transparent_20%,rgba(5,15,30,0.7)_100%)] mix-blend-multiply dark:mix-blend-normal" />
+            {/* Outer Nautical Chart Braided Rope Border */}
+            <div className="absolute inset-0.5 sm:inset-1 rounded-lg sm:rounded-xl border-2 sm:border-[3px] border-dashed border-[#B8860B]/70 dark:border-[#B8860B]/50" />
+            <div className="absolute inset-1.5 sm:inset-2 rounded sm:rounded-lg border border-[#B8860B]/40 dark:border-[#B8860B]/30" />
+          </div>
+        )}
         <div
-          className="absolute inset-1 sm:inset-2.5 grid gap-px sm:gap-1"
+          className="absolute inset-[3px] sm:inset-2.5 grid gap-[0.5px] sm:gap-1 z-10"
           style={{
-            gridTemplateColumns: 'repeat(11, minmax(0, 1fr))',
-            gridTemplateRows: 'repeat(11, minmax(0, 1fr))',
+            gridTemplateColumns: 'minmax(0, 1.55fr) repeat(9, minmax(0, 1fr)) minmax(0, 1.55fr)',
+            gridTemplateRows: 'minmax(0, 1.55fr) repeat(9, minmax(0, 1fr)) minmax(0, 1.55fr)',
           }}
         >
           <div
             className={[
-              'z-0 flex min-h-0 min-w-0 flex-col items-center justify-center overflow-hidden rounded-md sm:rounded-xl',
-              'bg-gradient-to-br from-emerald-700/90 to-emerald-950/95',
-              'border border-emerald-600/40 shadow-inner p-1 sm:p-4 text-center',
+              'z-0 relative flex min-h-0 min-w-0 flex-col items-center justify-center overflow-hidden rounded-md sm:rounded-xl',
+              p.centerBg,
+              `border ${p.centerBorder} shadow-inner p-1 sm:p-4 text-center`,
             ].join(' ')}
             style={{ gridColumn: '2 / 11', gridRow: '2 / 11' }}
           >
-            <div className="flex sm:hidden h-full w-full min-h-0 min-w-0 flex-col items-center justify-center overflow-hidden">
+            {p.customDecoration === 'pirate' && (
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-0">
+                {/* Faint Compass Rose in center background */}
+                <svg
+                  className="w-48 h-48 sm:w-72 sm:h-72 text-[#2B1B0E]/10 dark:text-[#B8860B]/15 animate-[spin_240s_linear_infinite]"
+                  viewBox="0 0 100 100"
+                  fill="currentColor"
+                >
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="45"
+                    stroke="currentColor"
+                    strokeWidth="0.5"
+                    fill="none"
+                    strokeDasharray="2 2"
+                  />
+                  <circle cx="50" cy="50" r="35" stroke="currentColor" strokeWidth="0.5" fill="none" />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="25"
+                    stroke="currentColor"
+                    strokeWidth="0.3"
+                    fill="none"
+                    strokeDasharray="1 1"
+                  />
+                  <polygon points="50,5 45,45 5,50 45,55 50,95 55,55 95,50 55,45" opacity="0.8" />
+                  <polygon points="50,18 43,43 18,50 43,57 50,82 57,57 82,50 57,43" opacity="0.4" />
+                  <circle cx="50" cy="50" r="4" fill="currentColor" />
+                </svg>
+                {/* Corner wave lines / rhumb lines */}
+                <svg
+                  className="absolute inset-0 w-full h-full text-[#2B1B0E]/10 dark:text-[#B8860B]/10"
+                  viewBox="0 0 200 200"
+                  stroke="currentColor"
+                  strokeWidth="0.3"
+                  fill="none"
+                >
+                  <line x1="0" y1="0" x2="200" y2="200" />
+                  <line x1="200" y1="0" x2="0" y2="200" />
+                  <line x1="100" y1="0" x2="100" y2="200" />
+                  <line x1="0" y1="100" x2="200" y2="100" />
+                </svg>
+              </div>
+            )}
+            <div className="flex sm:hidden relative z-10 h-full w-full min-h-0 min-w-0 flex-col items-center justify-center overflow-hidden">
               {mobileCenter ?? center ?? defaultMobileCenter}
             </div>
-            <div className="hidden sm:flex h-full w-full min-h-0 min-w-0 flex-col items-center justify-center">
+            <div className="hidden sm:flex relative z-10 h-full w-full min-h-0 min-w-0 flex-col items-center justify-center">
               {defaultDesktopCenter}
             </div>
           </div>
@@ -558,6 +625,7 @@ export function MonopolyCurrentSpace({
   mortgagedProperties,
   lastDiceTotal = 2,
   compact = false,
+  themeId,
 }: {
   index: number
   ownerName?: string | null
@@ -566,14 +634,15 @@ export function MonopolyCurrentSpace({
   mortgagedProperties?: unknown
   lastDiceTotal?: number
   compact?: boolean
+  themeId?: string | null
 }) {
   const space = spaceAt(index)
-  const icon = spaceIcon(space.type)
+  const icon = spaceIcon(space.type, themeId)
   const owners = parsePropertyOwners(propertyOwners)
   const buildings = parseBuildings(propertyBuildings)
   const mortgaged = parseMortgaged(mortgagedProperties)
   const ownerId = owners[String(index)]
-  const rentLabel = boardTileRentLabel(space, ownerId, owners, buildings, mortgaged, lastDiceTotal)
+  const rentLabel = boardTileRentLabel(space, ownerId, owners, buildings, mortgaged, lastDiceTotal, themeId)
 
   const detailLine = (() => {
     if (space.price != null) {
@@ -582,8 +651,8 @@ export function MonopolyCurrentSpace({
         if (rentLabel) return `${ownerName} · Rent ${rentLabel}`
         return `Owned by ${ownerName}`
       }
-      if (rentLabel) return `For sale · £${space.price} · Rent ${rentLabel}`
-      return `For sale · £${space.price}`
+      if (rentLabel) return `For sale · ${formatThemedMoney(space.price!, themeId)} · Rent ${rentLabel}`
+      return `For sale · ${formatThemedMoney(space.price!, themeId)}`
     }
     if (ownerName && rentLabel && rentLabel !== 'Mortgaged') return `${ownerName} · Rent ${rentLabel}`
     if (ownerName) return `Owned by ${ownerName}`
@@ -607,7 +676,11 @@ export function MonopolyCurrentSpace({
           )}
           <div className="min-w-0 flex-1">
             <p className="text-[9px] font-semibold uppercase tracking-widest text-muted leading-none">You landed on</p>
-            <p className="text-sm font-black text-[var(--foreground)] truncate leading-tight mt-0.5">{space.name}</p>
+            <p
+              className={`text-sm font-black text-[var(--foreground)] truncate leading-tight mt-0.5 ${getBoardPalette(themeId).tileFont ?? ''}`}
+            >
+              {themedSpaceName(space.name, index, themeId)}
+            </p>
             {detailLine && <p className="text-[11px] text-muted truncate leading-snug mt-0.5">{detailLine}</p>}
           </div>
         </div>
@@ -631,7 +704,11 @@ export function MonopolyCurrentSpace({
           )}
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">You landed on</p>
-            <p className="mt-0.5 text-xl sm:text-2xl font-black text-[var(--foreground)] leading-tight">{space.name}</p>
+            <p
+              className={`mt-0.5 text-xl sm:text-2xl font-black text-[var(--foreground)] leading-tight ${getBoardPalette(themeId).tileFont ?? ''}`}
+            >
+              {themedSpaceName(space.name, index, themeId)}
+            </p>
             {space.price != null && (
               <p className="mt-2 text-sm text-muted">
                 {ownerName ? (
@@ -652,7 +729,8 @@ export function MonopolyCurrentSpace({
                   </>
                 ) : (
                   <>
-                    For sale · <span className="font-bold text-[var(--marry)]">£{space.price}</span>
+                    For sale ·{' '}
+                    <span className="font-bold text-[var(--marry)]">{formatThemedMoney(space.price!, themeId)}</span>
                     {rentLabel ? (
                       <>
                         {' '}
@@ -697,11 +775,13 @@ export function MonopolyCurrentSpace({
 export function MonopolyMyProperties({
   playerId,
   propertyOwners,
-  players,
+  players: _players,
+  themeId,
 }: {
   playerId: string
   propertyOwners: Record<string, string> | unknown
   players: Player[]
+  themeId?: string | null
 }) {
   const owners = parsePropertyOwners(propertyOwners)
   const props = playerProperties(owners, playerId)
@@ -722,10 +802,14 @@ export function MonopolyMyProperties({
             >
               {space.color && <span className={['h-8 w-1.5 shrink-0 rounded-full', colorBar(space.color)].join(' ')} />}
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-[var(--foreground)] truncate">{space.name}</p>
+                <p
+                  className={`text-sm font-bold text-[var(--foreground)] truncate ${getBoardPalette(themeId).tileFont ?? ''}`}
+                >
+                  {themedSpaceName(space.name, space.index, themeId)}
+                </p>
                 <p className="text-[10px] text-faint">
-                  £{space.price}
-                  {space.rent != null ? ` · Rent ${formatMonopolyMoney(space.rent)}` : ''}
+                  {formatThemedMoney(space.price!, themeId)}
+                  {space.rent != null ? ` · Rent ${formatThemedMoney(space.rent, themeId)}` : ''}
                 </p>
               </div>
             </div>
@@ -742,12 +826,14 @@ export function MonopolyPlayerList({
   currentPlayerId,
   propertyOwners,
   myPlayerId,
+  themeId,
 }: {
   states: MonopolyPlayerState[]
   players: Player[]
   currentPlayerId?: string | null
   propertyOwners: Record<string, string> | unknown
   myPlayerId?: string | null
+  themeId?: string | null
 }) {
   const owners = parsePropertyOwners(propertyOwners)
 
@@ -815,7 +901,7 @@ export function MonopolyPlayerList({
               <div className="text-right shrink-0">
                 <p className="text-[10px] uppercase tracking-wide text-faint">Cash</p>
                 <p className="text-lg font-black tabular-nums text-[var(--primary)]">
-                  £{state.cash.toLocaleString('en-GB')}
+                  {formatThemedMoney(state.cash, themeId)}
                 </p>
               </div>
             </div>
