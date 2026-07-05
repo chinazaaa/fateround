@@ -407,7 +407,7 @@ export function MonopolyBoardCenter({
                 onClick={() => postAction('/api/monopoly/jail', { method: 'card' })}
                 disabled={acting}
               >
-                Use jail card
+                {formatThemedText('Use Jail card', themeId)}
               </BoardSecondaryButton>
             )}
           </div>

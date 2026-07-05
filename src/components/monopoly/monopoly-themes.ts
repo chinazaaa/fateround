@@ -329,6 +329,10 @@ export function getBoardPalette(themeId?: string | null): MonopolyBoardPalette {
   return getMonopolyEdition(themeId).boardPalette
 }
 
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /** Translate canonical UK space names and £ currency in any text string to the active theme. */
 export function formatThemedText(text: string | null | undefined, themeId?: string | null): string {
   if (!text) return ''
@@ -340,7 +344,8 @@ export function formatThemedText(text: string | null | undefined, themeId?: stri
   for (const space of spacesSorted) {
     const themed = edition.spaceNames[space.index]
     if (themed && themed !== space.name) {
-      formatted = formatted.split(space.name).join(themed)
+      const pattern = new RegExp(`\\b${escapeRegExp(space.name)}\\b`, 'g')
+      formatted = formatted.replace(pattern, themed)
     }
   }
 

@@ -488,7 +488,7 @@ export function MonopolyClassicBoard({
 
   const defaultMobileCenter = (
     <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center relative z-10">
-      <p className={`text-xs font-black tracking-[0.18em] ${p.titleColor}/90 ${p.titleFont ?? ''}`}>
+      <p className={`text-xs font-black tracking-[0.18em] ${p.titleColor} ${p.titleFont ?? ''}`}>
         {edition.boardTitle}
       </p>
       <p className={`text-[9px] uppercase tracking-widest ${p.subtitleColor} ${p.subtitleFont ?? ''}`}>

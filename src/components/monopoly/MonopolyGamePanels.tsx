@@ -93,7 +93,7 @@ function tradeSideCountLabel(
   const parts: string[] = []
   if (propertyCount > 0) parts.push(`${propertyCount} propert${propertyCount === 1 ? 'y' : 'ies'}`)
   if (cash > 0) parts.push('cash')
-  if (jailCards > 0) parts.push(formatThemedText(`${jailCards} jail card${jailCards === 1 ? '' : 's'}`, themeId))
+  if (jailCards > 0) parts.push(formatThemedText(`${jailCards} Jail card${jailCards === 1 ? '' : 's'}`, themeId))
   if (parts.length === 0) return null
   return parts.join(' · ')
 }
