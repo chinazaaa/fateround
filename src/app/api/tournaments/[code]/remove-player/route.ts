@@ -4,6 +4,37 @@ import { parseJsonBody } from '@/lib/parse-body'
 import { removeTournamentPlayerSchema } from '@/lib/tournament-validation'
 import { resolveGroupSize } from '@/lib/tournament-bracket'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { removeWhotPlayer } from '@/lib/whot'
+import { removeScrabblePlayer } from '@/lib/scrabble'
+
+/**
+ * Boot a removed player out of the live game room they're seated in, so a Whot/
+ * Scrabble room keeps going without waiting on an eliminated (often idle) seat.
+ * Maps the tournament player to their game player row by name and reuses the same
+ * per-game removal the in-game host kick uses — it reindexes the turn order and
+ * finishes the room if it can no longer field two players. Best-effort: a failure
+ * here must not undo the elimination the caller already committed.
+ */
+async function ejectFromLiveRoom(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  gameId: string,
+  playerName: string,
+  gameType: string | null
+): Promise<void> {
+  if (gameType !== 'whot' && gameType !== 'scrabble') return
+  try {
+    // Match the seat case-insensitively in code: players.name isn't unique-constrained
+    // so an exact eq() can miss on case, and ilike() would treat % / _ in a name as
+    // wildcards — either would silently no-op and leave the room stuck.
+    const { data: rows } = await admin.from('players').select('id, name').eq('game_id', gameId)
+    const target = (rows ?? []).find((p) => p.name?.toLowerCase() === playerName.toLowerCase())
+    if (!target) return
+    const remove = gameType === 'whot' ? removeWhotPlayer : removeScrabblePlayer
+    await remove(admin, gameId, target.id, playerName)
+  } catch (err) {
+    console.error(`ejectFromLiveRoom failed for game ${gameId}`, err)
+  }
+}
 
 /**
  * Host removes a player from a tournament — e.g. a no-show who never joined their
@@ -35,7 +66,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { data: player } = await admin
     .from('tournament_players')
-    .select('id')
+    .select('id, player_name')
     .eq('id', playerId)
     .eq('tournament_id', tournamentId)
     .maybeSingle()
@@ -79,7 +110,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         .select('id, is_eliminated')
         .in('id', memberIds.length ? memberIds : ['__none__'])
       const remaining = (memRows ?? []).filter((m) => !m.is_eliminated).map((m) => m.id)
-      // >= 2 live members → the game continues untouched. <= 1 → resolve now.
+      // <= 1 live member → resolve the room now (walkover / void). >= 2 → the room
+      // plays on, but eject the removed player from the live session so it continues
+      // without them (turn order skips them) rather than stalling on an idle seat.
       if (remaining.length <= 1) {
         const winner = remaining.length === 1 ? remaining[0] : null
         await admin
@@ -87,6 +120,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
           .update({ status: 'finished', winner_player_id: winner, win_reason: winner ? 'walkover' : null })
           .eq('id', room.id)
         if (room.game_id) await admin.from('games').update({ status: 'finished' }).eq('id', room.game_id)
+      } else if (room.status === 'active' && room.game_id) {
+        await ejectFromLiveRoom(admin, room.game_id, player.player_name, tournament.game_type)
       }
     }
   } else if (tournament.format === 'head-to-head') {
