@@ -23,6 +23,14 @@ interface SudokuBoardProps {
   canSelectCell?: (row: number, col: number) => boolean
   /** Brief highlight on rows/cols/boxes the player just completed. */
   flashUnits?: SudokuUnitFlash[]
+  /** Correctly placed number to pulse across matching visible cells. */
+  correctPulseValue?: number | null
+  /** Incrementing id that restarts the correct placement pulse. */
+  correctPulseId?: number
+  /** Numbers whose nine instances are solved for this board/player. */
+  completedNumbers?: number[]
+  /** When set, all cells containing this number get a light-blue same-number highlight. */
+  highlightNumber?: number | null
 }
 
 const BLOCK_BORDER = 'border-slate-400/70'
@@ -46,7 +54,12 @@ export function SudokuBoard({
   readOnly = false,
   canSelectCell,
   flashUnits = [],
+  correctPulseValue = null,
+  correctPulseId = 0,
+  completedNumbers = [],
+  highlightNumber = null,
 }: SudokuBoardProps) {
+  const completedSet = new Set(completedNumbers)
   return (
     <div className="w-full max-w-[min(400px,100%)] mx-auto space-y-4">
       {/* Grid */}
@@ -87,6 +100,13 @@ export function SudokuBoard({
 
             const isWrongDraft = draftWrongCells?.[row]?.[col]
             const isFlashing = isCellInFlashingUnits(row, col, flashUnits)
+            const isCorrectPulsing =
+              correctPulseValue != null && typeof displayValue === 'number' && displayValue === correctPulseValue
+            const isNumberHighlighted =
+              highlightNumber != null &&
+              typeof displayValue === 'number' &&
+              displayValue === highlightNumber &&
+              displayValue > 0
 
             const baseBg = displayColor ? { backgroundColor: `${displayColor}${iSolved ? '55' : '35'}` } : undefined
 
@@ -94,11 +114,16 @@ export function SudokuBoard({
               ? { backgroundColor: 'rgba(99, 102, 241, 0.35)', transition: 'background-color 0.15s ease-out' }
               : isFlashing
                 ? { backgroundColor: 'rgba(251, 191, 36, 0.55)', transition: 'background-color 0.5s ease-out' }
-                : baseBg
-                  ? { ...baseBg, transition: 'background-color 0.5s ease-out' }
-                  : undefined
+                : isNumberHighlighted
+                  ? { backgroundColor: 'rgba(56, 189, 248, 0.30)', transition: 'background-color 0.15s ease-out' }
+                  : baseBg
+                    ? { ...baseBg, transition: 'background-color 0.5s ease-out' }
+                    : undefined
 
-            const cellDisabled = readOnly || given || (canSelectCell ? !canSelectCell(row, col) : false)
+            // readOnly = board is entirely non-interactive (viewer/host read-only board)
+            const cellFullyDisabled = readOnly
+            // cellUneditable = can't type into it, but can still click to trigger number highlight
+            const cellUneditable = given || (canSelectCell ? !canSelectCell(row, col) : false)
 
             const cellLabel = [
               `Row ${row + 1}, column ${col + 1}`,
@@ -115,7 +140,7 @@ export function SudokuBoard({
               <button
                 key={`${row}-${col}`}
                 type="button"
-                disabled={cellDisabled}
+                disabled={cellFullyDisabled}
                 aria-label={cellLabel}
                 aria-pressed={isSelected || undefined}
                 onClick={() => onCellSelect?.(row, col)}
@@ -123,21 +148,33 @@ export function SudokuBoard({
                   'relative flex items-center justify-center select-none transition-colors',
                   borderRight,
                   borderBottom,
-                  cellDisabled ? 'cursor-default' : 'cursor-pointer hover:bg-slate-100/80 dark:hover:bg-slate-800/60',
+                  cellFullyDisabled || cellUneditable
+                    ? 'cursor-default'
+                    : 'cursor-pointer hover:bg-slate-100/80 dark:hover:bg-slate-800/60',
                   given ? 'bg-white dark:bg-slate-900' : '',
                   isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : '',
                 ].join(' ')}
                 style={{ aspectRatio: '1', ...bgStyle }}
               >
                 <span
+                  key={isCorrectPulsing ? `${row}-${col}-${correctPulseId}` : `${row}-${col}`}
                   className={[
-                    'text-lg sm:text-xl font-semibold tabular-nums',
+                    'inline-block text-lg sm:text-xl font-semibold tabular-nums',
+                    isCorrectPulsing ? 'font-extrabold' : '',
                     given ? 'text-slate-800 dark:text-slate-100' : '',
                     isWrongDraft ? 'text-red-500 dark:text-red-400' : '',
                     !isWrongDraft && hasValue ? 'text-slate-800 dark:text-slate-100' : '',
                     !isWrongDraft && !hasValue ? 'text-slate-700 dark:text-slate-200' : '',
                     solution && !given ? 'text-violet-600 dark:text-violet-400' : '',
                   ].join(' ')}
+                  style={
+                    isCorrectPulsing
+                      ? {
+                          animation: 'sudoku-correct-number-pulse 420ms ease-out both',
+                          animationDelay: `${(row * 9 + col) * 18}ms`,
+                        }
+                      : undefined
+                  }
                 >
                   {displayValue}
                 </span>
@@ -146,6 +183,14 @@ export function SudokuBoard({
           })
         )}
       </div>
+
+      <style>{`
+        @keyframes sudoku-correct-number-pulse {
+          0% { transform: scale(1); }
+          38% { transform: scale(1.2); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
 
       {/* Toolbar: progress, undo, erase */}
       {!readOnly && (
@@ -171,14 +216,22 @@ export function SudokuBoard({
         <div className="flex items-center justify-between gap-1 px-0.5">
           {Array.from({ length: 9 }, (_, i) => {
             const num = i + 1
+            const complete = completedSet.has(num)
             return (
               <button
                 key={num}
                 type="button"
                 onClick={() => onNumberPress(num)}
-                className="flex-1 py-3 text-xl font-semibold text-slate-700 dark:text-slate-200 bg-slate-100/80 dark:bg-slate-800/50 hover:bg-slate-200/90 dark:hover:bg-slate-700/60 rounded-md transition-colors active:scale-95 cursor-pointer"
+                className={[
+                  'flex-1 py-3 text-xl font-semibold rounded-md transition-colors active:scale-95 cursor-pointer',
+                  complete
+                    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-900/35 hover:bg-emerald-100 dark:hover:bg-emerald-900/45'
+                    : 'text-slate-700 dark:text-slate-200 bg-slate-100/80 dark:bg-slate-800/50 hover:bg-slate-200/90 dark:hover:bg-slate-700/60',
+                ].join(' ')}
+                aria-label={complete ? `${num} complete` : `${num}`}
+                title={complete ? `${num} complete` : undefined}
               >
-                {num}
+                {complete ? '✓' : num}
               </button>
             )
           })}
@@ -227,8 +280,8 @@ function ToolbarButton({
 function UndoIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="w-5 h-5">
-      <path d="M9 7H5v4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M5 11a7 7 0 107 7" strokeLinecap="round" />
+      <path d="M3 9h13a5 5 0 0 1 0 10H7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7 5l-4 4 4 4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

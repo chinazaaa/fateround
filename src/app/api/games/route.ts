@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
+import { GAME_BROWSE_FIELDS, countPlayersByGame, type BrowseGameRow } from '@/lib/game-browse'
 import { generateGameCode, generateToken } from '@/lib/utils'
 import {
   normalizeGender,
@@ -104,6 +105,7 @@ import { clampWhotGameDuration } from '@/lib/whot'
 import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampBoardGameTurnTimer } from '@/lib/board-game-lobby-settings'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
+import { clampSudokuGameDuration } from '@/lib/sudoku'
 import { clampChessTimer, clampChessBoardTheme, clampChessPieceSet } from '@/lib/chess'
 import { clampCheckersTimer } from '@/lib/checkers'
 import {
@@ -218,6 +220,56 @@ function parseCustomQuestionsBody(
     return parsed.length > 0 ? parsed : null
   }
   return null
+}
+
+const BROWSE_PAGE_SIZE = 20
+
+// Public browse list: games the host marked public that are still going (waiting/active),
+// newest first, cursor-paginated. Mirrors GET /api/rooms. Uses the anon client (RLS-open
+// SELECT) and an explicit safe-column list — host_token is revoked from anon.
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const limit = Math.min(
+    Math.max(parseInt(searchParams.get('limit') ?? String(BROWSE_PAGE_SIZE), 10) || BROWSE_PAGE_SIZE, 1),
+    50
+  )
+  const cursor = searchParams.get('cursor')
+
+  let query = supabase
+    .from('games')
+    .select(GAME_BROWSE_FIELDS)
+    .eq('is_public', true)
+    .neq('status', 'finished')
+    .order('created_at', { ascending: false })
+    .limit(limit + 1)
+
+  if (cursor) {
+    query = query.lt('created_at', cursor)
+  }
+
+  const { data: games, error } = await query
+
+  if (error) return NextResponse.json({ error: internalErrorMessage('games', error) }, { status: 500 })
+
+  const page = ((games ?? []) as BrowseGameRow[]).slice(0, limit)
+  const hasMore = (games ?? []).length > limit
+  // Player counts are best-effort: if the count query fails, still return the list
+  // (with 0s) rather than failing the whole browse page — but log it, don't hide it.
+  let counts: Record<string, number> = {}
+  try {
+    counts = await countPlayersByGame(
+      supabase,
+      page.map((game) => game.id)
+    )
+  } catch (countError) {
+    console.error('GET /api/games: player count query failed', countError)
+  }
+
+  return NextResponse.json({
+    games: page.map((game) => ({ ...game, playerCount: counts[game.id] ?? 0 })),
+    hasMore,
+    nextCursor: hasMore ? (page[page.length - 1]?.created_at ?? null) : null,
+  })
 }
 
 export async function POST(req: NextRequest) {
@@ -636,6 +688,7 @@ export async function POST(req: NextRequest) {
     game_type,
     theme,
     status: isSecret ? 'active' : 'waiting',
+    is_public: parsed.data.isPublic ?? false,
     current_round_number: 0,
     ...(isSecret ? { session_started_at: new Date().toISOString() } : {}),
     wst_quote_source: parsed.data.wst_quote_source ?? 'player',
@@ -705,7 +758,9 @@ export async function POST(req: NextRequest) {
             }
           : isLudoGame(game_type)
             ? { ludo_variant: parseLudoVariant(rawLudoVariant) }
-            : {}),
+            : isSudokuGame(game_type)
+              ? { game_duration_seconds: clampSudokuGameDuration(rawGameDurationSeconds ?? 0) }
+              : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {

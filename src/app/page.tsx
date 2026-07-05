@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { HomePage } from '@/components/HomePage'
+import { MarketingHeader } from '@/components/MarketingHeader'
 import { SiteFooter } from '@/components/SiteFooter'
 import { homeMetadata, organizationJsonLd, webApplicationJsonLd, websiteJsonLd } from '@/lib/seo'
 
@@ -7,10 +8,10 @@ export const metadata: Metadata = homeMetadata()
 
 function HomeSeoContent() {
   return (
-    <section className="relative z-10 px-4 pb-16 pt-6 border-t border-theme">
-      <div className="mx-auto max-w-2xl space-y-8 text-muted text-sm sm:text-base leading-relaxed">
-        <div className="space-y-3">
-          <h2 className="text-lg font-bold text-body">What is Fate Round?</h2>
+    <section className="mk-seo">
+      <div className="mk-wrap space-y-0">
+        <div className="blk">
+          <h2>What is Fate Round?</h2>
           <p>
             Fate Round is a free online party game platform where friend groups vote, laugh, and reveal together — no
             sign-up, no download, and no app store required. Create a game in seconds, share a short code or link, and
@@ -18,8 +19,8 @@ function HomeSeoContent() {
           </p>
         </div>
 
-        <div className="space-y-3">
-          <h2 className="text-lg font-bold text-body">Who is it for?</h2>
+        <div className="blk">
+          <h2>Who is it for?</h2>
           <p>
             Fate Round is built for friend groups, Discord calls, birthday parties, icebreakers, and late-night group
             chats. Whether you want a Yahtzee dice night, a Whot or Monopoly showdown, Smash Marry Kill chaos, or
@@ -27,8 +28,8 @@ function HomeSeoContent() {
           </p>
         </div>
 
-        <div className="space-y-3">
-          <h2 className="text-lg font-bold text-body">How does it work?</h2>
+        <div className="blk">
+          <h2>How does it work?</h2>
           <p>
             Pick a game mode, create your game, and share the code with your group. Players join with a display name,
             vote or play each round, and the host reveals results live. Classics like Yahtzee, Whot, Monopoly, and
@@ -47,9 +48,14 @@ export default function Page() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: websiteJsonLd() }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: webApplicationJsonLd() }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: organizationJsonLd() }} />
-      <HomePage />
-      <HomeSeoContent />
-      <SiteFooter />
+      <div className="fr-site flex min-h-dvh flex-col">
+        <MarketingHeader />
+        <main className="flex-1">
+          <HomePage />
+          <HomeSeoContent />
+        </main>
+        <SiteFooter />
+      </div>
     </>
   )
 }

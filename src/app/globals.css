@@ -1,6 +1,15 @@
 @import "tailwindcss";
+@import "./fate-round-ds.css";
+@import "./fate-round-rooms.css";
 
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+/* On the public/marketing pages (which render a `.fr-site` wrapper), the global
+   floating theme toggle is replaced by a design-system toggle inside the
+   marketing header — hide the floating one so it doesn't clash. */
+body:has(.fr-site) .app-fixed-theme-toggle {
+  display: none !important;
+}
 
 /* ── Light theme (default) ─────────────────────────────────────── */
 :root {

@@ -18,7 +18,9 @@ export function ThemeToggle({ variant = 'fixed', className = '' }: ThemeTogglePr
   const onRoomPage = isRoomLobbyPath(pathname)
   if (variant === 'fixed' && (onGamePlayerPage || onRoomPage)) return null
 
-  const positionClass = variant === 'fixed' ? 'fixed top-4 right-4 z-50' : 'shrink-0'
+  // The fixed toggle is hidden on public/marketing pages (which carry their own
+  // design-system toggle in the header) via a `:has(.fr-site)` rule in globals.css.
+  const positionClass = variant === 'fixed' ? 'app-fixed-theme-toggle fixed top-4 right-4 z-50' : 'shrink-0'
 
   return (
     <button

@@ -87,7 +87,7 @@ export default function TournamentLobbyPage() {
   const router = useRouter()
   const tournamentId = (Array.isArray(code) ? code[0] : code).toUpperCase()
   const { confirm } = useConfirm()
-  const { success } = useToast()
+  const { success, error: toastError } = useToast()
 
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [players, setPlayers] = useState<TournamentPlayer[]>([])
@@ -355,6 +355,50 @@ export default function TournamentLobbyPage() {
     }
   }
 
+  // Leave the tournament from the lobby (before it starts) — gives up this seat so
+  // the name frees up and the slot reopens. Authenticated by the player's private
+  // code, so this only ever removes the player who's actually on this device.
+  async function handleLeave() {
+    const ok = await confirm({
+      title: 'Leave this tournament?',
+      message: "You'll give up your spot and be taken off the player list. You can rejoin later if there's still room.",
+      confirmLabel: 'Leave',
+      destructive: true,
+    })
+    if (!ok) return
+
+    const token = localStorage.getItem(`tournament_ptoken_${tournamentId}`) ?? myCode
+    if (!token) {
+      toastError('Could not verify your spot — try refreshing')
+      return
+    }
+
+    setActionLoading(true)
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/leave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toastError(data.error ?? 'Failed to leave')
+        return
+      }
+      localStorage.removeItem(`tournament_player_${tournamentId}`)
+      localStorage.removeItem(`tournament_ptoken_${tournamentId}`)
+      setJoined(false)
+      setMyCode('')
+      setPlayerName('')
+      fetchState()
+      success('You left the tournament')
+    } catch {
+      toastError('Something went wrong')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   // Restore this player on this device from their code (entered on the join screen).
   function handleResumedByCode(name: string, code: string) {
     localStorage.setItem(`tournament_player_${tournamentId}`, name)
@@ -607,6 +651,39 @@ export default function TournamentLobbyPage() {
       if (!res.ok) {
         const data = await res.json()
         setError(data.error ?? 'Failed to end tournament')
+      }
+      fetchState()
+    } catch {
+      setError('Something went wrong')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // Host "run it back": reset a finished tournament to a fresh waiting lobby with the
+  // same players — scores/eliminations/lives cleared and round history wiped.
+  async function handleRestartTournament() {
+    if (!hostToken) return
+    const ok = await confirm({
+      title: 'Restart the tournament?',
+      message: 'Same players and settings — scores reset and everyone goes back to the waiting lobby to play again.',
+      confirmLabel: 'Restart',
+    })
+    if (!ok) return
+    setActionLoading(true)
+    setError('')
+
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/restart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error ?? 'Failed to restart tournament')
+      } else {
+        success('Tournament restarted — players are back in the lobby')
       }
       fetchState()
     } catch {
@@ -972,6 +1049,25 @@ export default function TournamentLobbyPage() {
           copyLabel="Copy host link"
           copySuccessMessage="Host link copied"
         />
+      )}
+
+      {/* Finished — host either runs it back with this roster or starts fresh. */}
+      {isHost && isFinished && (
+        <div className="glass-card-strong p-5 space-y-3 text-center">
+          <p className="label-caps">What&apos;s next</p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <PrimaryBtn onClick={handleRestartTournament} disabled={actionLoading} className="btn-fit">
+              {actionLoading ? 'Restarting…' : '🔄 Restart tournament'}
+            </PrimaryBtn>
+            <button onClick={() => router.push('/tournament/create')} className="btn-secondary btn-fit text-sm">
+              ➕ Create new tournament
+            </button>
+          </div>
+          <p className="text-muted text-xs">
+            Restart keeps this roster — scores reset and everyone returns to the lobby. Create new starts a fresh
+            tournament from scratch.
+          </p>
+        </div>
       )}
 
       {/* Edit settings (host) */}
@@ -1572,6 +1668,17 @@ export default function TournamentLobbyPage() {
             <div className="pt-1">
               <TournamentContinueCard tournamentId={tournamentId} code={myCode} />
             </div>
+          )}
+          {/* Bow out before it kicks off — no leaving mid-tournament (it'd break the bracket). */}
+          {!hasStarted && (
+            <button
+              onClick={handleLeave}
+              disabled={actionLoading}
+              className="btn-secondary btn-fit text-xs mx-auto flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <span aria-hidden>🚪</span>
+              <span className="underline underline-offset-2">Leave tournament</span>
+            </button>
           )}
         </div>
       )}
