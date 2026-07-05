@@ -64,31 +64,36 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
 
   const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, playersRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-    ])
-    if (!supabasePollOk(gameRes, playersRes)) return false
+    try {
+      const [gameRes, playersRes] = await Promise.all([
+        supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
+        supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+      ])
+      if (!supabasePollOk(gameRes, playersRes)) return false
 
-    const stored = getPlayerSession(gameCode)
-    const params = new URLSearchParams({ gameId: gameCode })
-    if (stored?.playerId && stored.resumeToken) {
-      params.set('playerId', stored.playerId)
-      params.set('resumeToken', stored.resumeToken)
-    }
-    const snapshotRes = await fetch(`/api/mahjong/state?${params.toString()}`)
-    if (!snapshotRes.ok) return false
-    const snapshot = (await snapshotRes.json()) as {
-      session: MahjongSession | null
-      states: MahjongPlayerState[]
-    }
+      const stored = getPlayerSession(gameCode)
+      const params = new URLSearchParams({ gameId: gameCode })
+      if (stored?.playerId && stored.resumeToken) {
+        params.set('playerId', stored.playerId)
+        params.set('resumeToken', stored.resumeToken)
+      }
+      const snapshotRes = await fetch(`/api/mahjong/state?${params.toString()}`)
+      if (!snapshotRes.ok) return false
+      const snapshot = (await snapshotRes.json()) as {
+        session: MahjongSession | null
+        states: MahjongPlayerState[]
+      }
 
-    setGame(gameRes.data)
-    setPlayers(playersRes.data ?? [])
-    setSession(snapshot.session)
-    setStates(snapshot.states ?? [])
-    return true
-  }, [gameCode])
+      setGame(gameRes.data)
+      setPlayers(playersRes.data ?? [])
+      setSession(snapshot.session)
+      setStates(snapshot.states ?? [])
+      return true
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to load Mahjong table')
+      return false
+    }
+  }, [gameCode, toastError])
 
   useEffect(() => {
     const loadId = window.setTimeout(() => void load(), 0)
