@@ -14,9 +14,11 @@
 
 /* ── Tokens (light) ──────────────────────────────────────────────── */
 /* `.fr-portal` carries the tokens for content that renders in a React
-   portal (modals) outside the `.fr-site` subtree. */
+   portal (modals) outside the `.fr-site` subtree. `.fr-room` carries them
+   for the in-game room screens (see fate-round-rooms.css). */
 .fr-site,
-.fr-portal {
+.fr-portal,
+.fr-room {
   /* Brand: Rose (from the logo gradient #f43f5e → #e11d48) */
   --rose-50:  #fff1f3;
   --rose-100: #ffe0e6;
@@ -136,10 +138,12 @@
   line-height: var(--leading-normal);
 }
 .fr-portal { color: var(--text); font-family: var(--font-sans); }
+.fr-room { color: var(--text); font-family: var(--font-sans); }
 
 /* ── Tokens (dark) — data-theme is on <html> ─────────────────────── */
 [data-theme='dark'] .fr-site,
-[data-theme='dark'] .fr-portal {
+[data-theme='dark'] .fr-portal,
+[data-theme='dark'] .fr-room {
   --bg:            #100e17;
   --bg-subtle:     #16131f;
   --surface:       #1b1826;
