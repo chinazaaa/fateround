@@ -73,8 +73,8 @@ export default function GamesIndexPage() {
               <p>
                 {SITE_NAME} brings {games.length}+ multiplayer games into a single browser tab — no sign-up, no
                 download, and free forever. Pick a mode, create a game, and share the room code so friends can join from
-                any phone or laptop. Everything syncs in real time, so it works over a video call, a Discord server, or a
-                group chat.
+                any phone or laptop. Everything syncs in real time, so it works over a video call, a Discord server, or
+                a group chat.
               </p>
             </div>
             <div className="blk">

@@ -119,12 +119,18 @@ export default async function GameLandingRoute({ params }: Props) {
                 {content.heroTitle}
               </h1>
 
-              <p className="mx-auto mb-[18px] max-w-[28rem] text-base leading-[1.55]" style={{ color: 'var(--text-muted)' }}>
+              <p
+                className="mx-auto mb-[18px] max-w-[28rem] text-base leading-[1.55]"
+                style={{ color: 'var(--text-muted)' }}
+              >
                 {content.heroSubtitle}
               </p>
 
               <div className="mb-3.5 flex flex-wrap justify-center gap-2.5">
-                <Link href={`/create?type=${gameTypeCreateParam(content.gameType)}`} className="fr-btn fr-btn--primary fr-btn--lg">
+                <Link
+                  href={`/create?type=${gameTypeCreateParam(content.gameType)}`}
+                  className="fr-btn fr-btn--primary fr-btn--lg"
+                >
                   Play free
                 </Link>
                 <Link href="/" className="fr-btn fr-btn--secondary fr-btn--lg">
@@ -175,7 +181,11 @@ export default async function GameLandingRoute({ params }: Props) {
               <h2 className="sec-title-fr">How it works</h2>
               <div
                 className="rounded-[var(--radius-lg)] p-6"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}
+                style={{
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  boxShadow: 'var(--shadow-sm)',
+                }}
               >
                 {content.steps.map((step, i) => (
                   <div key={step.title} className="flex gap-4 py-[11px]">
@@ -218,7 +228,11 @@ export default async function GameLandingRoute({ params }: Props) {
                   </h3>
                   <ul className="flex flex-col gap-[9px]">
                     {section.points.map((point) => (
-                      <li key={point} className="flex gap-[11px] text-sm leading-[1.5]" style={{ color: 'var(--text-muted)' }}>
+                      <li
+                        key={point}
+                        className="flex gap-[11px] text-sm leading-[1.5]"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
                         <span
                           className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full"
                           style={{ background: 'var(--accent)' }}
@@ -299,13 +313,19 @@ export default async function GameLandingRoute({ params }: Props) {
                 background: 'var(--accent-soft)',
               }}
             >
-              <h2 className="mb-1.5 text-[26px]" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--text)' }}>
+              <h2
+                className="mb-1.5 text-[26px]"
+                style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--text)' }}
+              >
                 Ready to play?
               </h2>
               <p className="mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>
                 Free forever. No download. Start a room in under a minute.
               </p>
-              <Link href={`/create?type=${gameTypeCreateParam(content.gameType)}`} className="fr-btn fr-btn--primary fr-btn--lg">
+              <Link
+                href={`/create?type=${gameTypeCreateParam(content.gameType)}`}
+                className="fr-btn fr-btn--primary fr-btn--lg"
+              >
                 Create {cfg.label} game
               </Link>
             </div>
@@ -330,7 +350,10 @@ export default async function GameLandingRoute({ params }: Props) {
                       >
                         {otherCfg.card.emoji}
                       </span>
-                      <span className="block text-[11.5px] font-semibold leading-tight" style={{ color: 'var(--text)' }}>
+                      <span
+                        className="block text-[11.5px] font-semibold leading-tight"
+                        style={{ color: 'var(--text)' }}
+                      >
                         {otherCfg.label}
                       </span>
                     </Link>

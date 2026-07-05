@@ -54,7 +54,10 @@ export function MarketingLanding({ content }: { content: MarketingPageContent })
               >
                 {content.heroTitle}
               </h1>
-              <p className="mx-auto mb-[18px] max-w-[28rem] text-base leading-[1.55]" style={{ color: 'var(--text-muted)' }}>
+              <p
+                className="mx-auto mb-[18px] max-w-[28rem] text-base leading-[1.55]"
+                style={{ color: 'var(--text-muted)' }}
+              >
                 {content.heroSubtitle}
               </p>
               <div className="mb-3.5">
@@ -110,7 +113,11 @@ export function MarketingLanding({ content }: { content: MarketingPageContent })
               <h2 className="sec-title-fr">{content.stepsHeading}</h2>
               <div
                 className="rounded-[var(--radius-lg)] p-6"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}
+                style={{
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  boxShadow: 'var(--shadow-sm)',
+                }}
               >
                 {content.steps.map((step, i) => (
                   <div key={step.title} className="flex gap-4 py-[11px]">
@@ -194,7 +201,11 @@ export function MarketingLanding({ content }: { content: MarketingPageContent })
                 <h2 className="sec-title-fr">{content.gameList.heading}</h2>
                 <ul className="flex flex-col gap-2.5">
                   {content.gameList.items.map((item, i) => (
-                    <li key={i} className="flex gap-2.5 text-[15px] leading-[1.6]" style={{ color: 'var(--text-muted)' }}>
+                    <li
+                      key={i}
+                      className="flex gap-2.5 text-[15px] leading-[1.6]"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
                       <span
                         className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full"
                         style={{ background: 'var(--accent)' }}
@@ -244,7 +255,10 @@ export function MarketingLanding({ content }: { content: MarketingPageContent })
                 background: 'var(--accent-soft)',
               }}
             >
-              <h2 className="mb-1.5 text-[26px]" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--text)' }}>
+              <h2
+                className="mb-1.5 text-[26px]"
+                style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--text)' }}
+              >
                 {content.ctaHeading}
               </h2>
               <p className="mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>
