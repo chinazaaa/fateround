@@ -149,6 +149,24 @@ export function HomePage() {
                 </div>
               </Link>
             </div>
+
+            <Link
+              href="/browse"
+              className="fr-card fr-card--interactive mt-3 flex items-center gap-3 !p-3.5 no-underline"
+            >
+              <span className="text-[26px] leading-none">🌐</span>
+              <div className="min-w-0 flex-1">
+                <b className="block text-sm" style={{ color: 'var(--text)' }}>
+                  Browse public games
+                </b>
+                <span className="text-xs" style={{ color: 'var(--text-faint)' }}>
+                  Jump into games happening now
+                </span>
+              </div>
+              <span className="text-lg" style={{ color: 'var(--text-faint)' }}>
+                →
+              </span>
+            </Link>
           </div>
         </section>
 

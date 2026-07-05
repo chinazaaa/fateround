@@ -13,6 +13,8 @@ export interface Settings {
   theme: ThemeId
   participant_filter: 'all' | 'joined'
   gender_based: boolean
+  /** Public games are listed in /browse for anyone to find and join; private = code-only. */
+  isPublic: boolean
   describe_it_num_teams: number
   describe_it_mode: DescribeItMode
 }

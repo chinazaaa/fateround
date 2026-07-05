@@ -7,6 +7,7 @@ import { clearSessionTables } from './session-clear'
 export const SUDOKU_MIN_PLAYERS = 1
 export const SUDOKU_MAX_PLAYERS = 20
 export const SUDOKU_DEFAULT_DURATION = 900 // 15 minutes
+export const SUDOKU_GAME_DURATION_OPTIONS = [0, 300, 600, 900, 1200, 1800] as const
 
 /** Points by order of correct submission per cell: 1st=10, 2nd=6, 3rd=4, 4th+=2 */
 export const SUDOKU_CELL_SCORING = [10, 6, 4, 2] as const
@@ -483,6 +484,45 @@ export async function clearSudokuSessionData(
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────
 
+export function completedSudokuNumbersForPlayer(
+  puzzle: number[][],
+  submissions: Pick<SudokuSubmission, 'player_id' | 'submitted_value' | 'is_correct'>[],
+  playerId: string
+): number[] {
+  const counts = new Map<number, number>()
+  for (const value of puzzle.flat()) {
+    if (value >= 1 && value <= 9) counts.set(value, (counts.get(value) ?? 0) + 1)
+  }
+  for (const s of submissions) {
+    if (s.player_id !== playerId || !s.is_correct || s.submitted_value == null) continue
+    const value = s.submitted_value
+    if (value >= 1 && value <= 9) counts.set(value, (counts.get(value) ?? 0) + 1)
+  }
+  return Array.from({ length: 9 }, (_, i) => i + 1).filter((value) => (counts.get(value) ?? 0) >= 9)
+}
+
+export function clampSudokuGameDuration(seconds: number): number {
+  const n = Number.isFinite(seconds) ? Math.round(seconds) : SUDOKU_DEFAULT_DURATION
+  return SUDOKU_GAME_DURATION_OPTIONS.reduce((best, option) =>
+    Math.abs(option - n) < Math.abs(best - n) ? option : best
+  )
+}
+
+export function formatSudokuGameDuration(seconds: number): string {
+  if (!seconds) return 'No limit'
+  const minutes = Math.round(seconds / 60)
+  return `${minutes} minute${minutes === 1 ? '' : 's'}`
+}
+
+export function sudokuGameSessionExpired(
+  sessionStartedAt: string | null | undefined,
+  durationSeconds: number | null | undefined
+): boolean {
+  if (!durationSeconds || durationSeconds <= 0) return false
+  if (!sessionStartedAt) return false
+  return Date.now() - new Date(sessionStartedAt).getTime() >= durationSeconds * 1000
+}
+
 export function tallySudokuScores(
   submissions: Pick<SudokuSubmission, 'player_id' | 'points_awarded'>[],
   players: { id: string; name: string; spectator?: boolean | null }[]
@@ -509,10 +549,13 @@ export function getPlayerTimeSpent(
   submissions: Pick<SudokuSubmission, 'player_id' | 'is_correct' | 'cell_row' | 'cell_col' | 'submitted_at'>[],
   playerId: string,
   completionPercent: number,
-  nowMs: number
+  nowMs: number,
+  playerJoinedAt?: string | null
 ): number {
   if (!game?.session_started_at) return 0
-  const startMs = new Date(game.session_started_at).getTime()
+  const sessionStartMs = new Date(game.session_started_at).getTime()
+  const joinedMs = playerJoinedAt ? new Date(playerJoinedAt).getTime() : sessionStartMs
+  const startMs = Number.isFinite(joinedMs) ? Math.max(sessionStartMs, joinedMs) : sessionStartMs
   if (completionPercent >= 100) {
     const myCorrect = submissions
       .filter((s) => s.player_id === playerId && s.is_correct && s.cell_row != null && s.cell_col != null)
