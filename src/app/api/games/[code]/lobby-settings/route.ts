@@ -20,6 +20,7 @@ import { clampWhotGameDuration } from '@/lib/whot'
 import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
+import { clampSudokuGameDuration } from '@/lib/sudoku'
 import { clampLobbyMaxPlayers, fetchGamePlayerLimits, type LobbyLimitGameType } from '@/lib/game-limits'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
@@ -143,10 +144,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   if (game_duration_seconds !== undefined) {
-    if (!boardLobbyType) {
+    if (limitOnlyType === 'sudoku') {
+      gameUpdate.game_duration_seconds = clampSudokuGameDuration(game_duration_seconds)
+    } else if (!boardLobbyType) {
       return NextResponse.json({ error: 'This game type does not support game length settings' }, { status: 400 })
-    }
-    if (boardLobbyType === 'monopoly') {
+    } else if (boardLobbyType === 'monopoly') {
       gameUpdate.game_duration_seconds = clampMonopolyGameDuration(game_duration_seconds)
     } else if (boardLobbyType === 'whot') {
       gameUpdate.game_duration_seconds = clampWhotGameDuration(game_duration_seconds)

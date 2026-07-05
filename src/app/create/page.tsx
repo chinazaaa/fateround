@@ -186,6 +186,7 @@ import {
   NPAT_TIMER_OPTIONS,
 } from '@/lib/npat'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_DEFAULT_TIMER, WORD_HUNT_TIMER_OPTIONS } from '@/lib/word-hunt'
+import { formatSudokuGameDuration, SUDOKU_GAME_DURATION_OPTIONS } from '@/lib/sudoku'
 import {
   DESCRIBE_IT_DEFAULT_ROUNDS,
   DESCRIBE_IT_DEFAULT_TURN_SECONDS,
@@ -223,6 +224,7 @@ function CreateGameInner() {
     theme: 'default',
     participant_filter: 'all' as 'all' | 'joined',
     gender_based: true,
+    isPublic: false,
     describe_it_num_teams: 2,
     describe_it_mode: 'team',
   })
@@ -297,6 +299,7 @@ function CreateGameInner() {
   const [snakeLadderMaxPlayers, setSnakeLadderMaxPlayers] = useState(SNAKE_LADDER_DEFAULT_MAX_PLAYERS)
   const [npatMaxPlayers, setNpatMaxPlayers] = useState(NPAT_DEFAULT_MAX_PLAYERS)
   const [sudokuMaxPlayers, setSudokuMaxPlayers] = useState(20)
+  const [sudokuGameDuration, setSudokuGameDuration] = useState(0)
   const [wordHuntMaxPlayers, setWordHuntMaxPlayers] = useState(WORD_HUNT_DEFAULT_MAX_PLAYERS)
   const [wordHuntTimer, setWordHuntTimer] = useState(WORD_HUNT_DEFAULT_TIMER)
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
@@ -1257,7 +1260,9 @@ function CreateGameInner() {
                   ? npatGameDuration
                   : isScrabble
                     ? scrabbleGameDuration
-                    : undefined,
+                    : isSudoku
+                      ? sudokuGameDuration
+                      : undefined,
           whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
           whot_pick2_stacking: isWhot ? whotPick2Stacking : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
@@ -1353,6 +1358,34 @@ function CreateGameInner() {
 
             <Field label="Game mode">
               <GameTypeCard type={settings.game_type} compact selected onClick={() => setShowGameTypes(true)} />
+            </Field>
+
+            <Field label="Visibility">
+              <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setSettings({ ...settings, isPublic: false })}
+                  className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                    !settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
+                  }`}
+                >
+                  🔒 Private
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettings({ ...settings, isPublic: true })}
+                  className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                    settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
+                  }`}
+                >
+                  🌐 Public
+                </button>
+              </div>
+              <p className="mt-1.5 text-xs text-faint">
+                {settings.isPublic
+                  ? 'Anyone can find and join this game from Browse.'
+                  : 'Only people with the code can join.'}
+              </p>
             </Field>
           </div>
 
@@ -2647,6 +2680,19 @@ function CreateGameInner() {
                     {playerCountOptions(effectiveLimits.sudoku.min, effectiveLimits.sudoku.max).map((n) => (
                       <option key={n} value={n}>
                         {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Max time limit">
+                  <select
+                    value={sudokuGameDuration}
+                    onChange={(e) => setSudokuGameDuration(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {SUDOKU_GAME_DURATION_OPTIONS.map((seconds) => (
+                      <option key={seconds} value={seconds}>
+                        {seconds === 0 ? 'No timer' : formatSudokuGameDuration(seconds)}
                       </option>
                     ))}
                   </select>

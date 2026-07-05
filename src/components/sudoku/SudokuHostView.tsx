@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
+import { SudokuGameTimerBar } from '@/components/sudoku/SudokuGameTimerBar'
 import { SudokuPlayerView } from '@/components/sudoku/SudokuPlayerView'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -327,6 +328,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
 
   const watchBoard = (
     <div className="space-y-6">
+      <SudokuGameTimerBar gameCode={gameCode} game={game} />
       <div>
         <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Puzzle progress</p>
         <p className="text-2xl font-black">{boardCompletion}%</p>
@@ -348,7 +350,14 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
           <p className="label-caps text-xs">Live scores</p>
           {leaderboard.map((row, i) => {
             const pct = puzzle ? playerCompletionPercent(puzzle, submissions, row.player_id) : 0
-            const timeSecs = getPlayerTimeSpent(game, submissions, row.player_id, pct, nowMs)
+            const timeSecs = getPlayerTimeSpent(
+              game,
+              submissions,
+              row.player_id,
+              pct,
+              nowMs,
+              players.find((p) => p.id === row.player_id)?.joined_at
+            )
             return (
               <div key={row.player_id} className="glass-card px-3 py-2.5 flex items-center justify-between gap-4">
                 <div className="flex-1 min-w-0">
@@ -459,7 +468,14 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
             title="Final leaderboard"
             rows={leaderboard.map((row, i) => {
               const pct = puzzle ? playerCompletionPercent(puzzle, submissions, row.player_id) : 0
-              const timeSecs = getPlayerTimeSpent(game, submissions, row.player_id, pct, nowMs)
+              const timeSecs = getPlayerTimeSpent(
+                game,
+                submissions,
+                row.player_id,
+                pct,
+                nowMs,
+                players.find((p) => p.id === row.player_id)?.joined_at
+              )
               return {
                 id: row.player_id,
                 name: `${row.name} (⏱️ ${formatMinutesSeconds(timeSecs)})`,

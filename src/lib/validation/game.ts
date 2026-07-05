@@ -81,6 +81,7 @@ export const createGameSchema = z.object({
   wst_quote_source: wstQuoteSourceEnum.optional(),
   participant_filter: participantFilterEnum.optional(),
   gender_based: z.boolean().optional(),
+  isPublic: z.boolean().optional(),
   max_players: z.coerce.number().int().min(1).max(100).optional(),
   codewords_player_picks: z.boolean().optional(),
   codewords_late_join: z.boolean().optional(),
@@ -248,6 +249,14 @@ export const boardGameLobbySettingsSchema = z.object({
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>
+
+// Host admits a spectator into an active Whot game (POST /api/games/[code]/whot-admit).
+export const whotAdmitSchema = z.object({
+  hostToken: hostTokenString(),
+  playerId: uuidString('playerId'),
+})
+
+export type WhotAdmitInput = z.infer<typeof whotAdmitSchema>
 
 // ---------------------------------------------------------------------------
 // Admin game player limits
