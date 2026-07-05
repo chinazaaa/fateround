@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
+import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
+
+// Permissive shape: catch a malformed/non-object body (400) without tightening the
+// handler's own field coercion.
+const roomGamesSchema = z.object({ gameCode: z.string().optional(), memberCode: z.string().optional() }).passthrough()
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -27,7 +33,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { code } = await params
   const roomCode = code.toUpperCase()
 
-  const body = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, roomGamesSchema)
+  if (bodyError) return bodyError
   const gameCode = String(body.gameCode ?? '')
     .trim()
     .toUpperCase()
