@@ -25,15 +25,20 @@ export function BrowseGamesPage() {
       const params = new URLSearchParams({ limit: '20' })
       if (nextCursor) params.set('cursor', nextCursor)
       const res = await fetch(`/api/games?${params}`)
+      if (!res.ok) throw new Error('Failed to load games')
       const d = await res.json()
       const rows: PublicGame[] = d.games ?? []
       setGames((prev) => (loadingMore ? [...prev, ...rows] : rows))
       setHasMore(!!d.hasMore)
       setCursor(d.nextCursor ?? null)
     } catch {
-      if (!loadingMore) setGames([])
-      setHasMore(false)
-      setCursor(null)
+      // On an initial-load failure show the empty state; on a "load more" failure keep
+      // the current list + cursor so the user can retry rather than losing the button.
+      if (!loadingMore) {
+        setGames([])
+        setHasMore(false)
+        setCursor(null)
+      }
     } finally {
       if (loadingMore) setLoadingMore(false)
       else setLoading(false)

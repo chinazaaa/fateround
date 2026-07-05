@@ -20,7 +20,10 @@ export type PublicGame = BrowseGameRow & { playerCount: number }
 export async function countPlayersByGame(supabase: SupabaseClient, gameIds: string[]): Promise<Record<string, number>> {
   if (gameIds.length === 0) return {}
 
-  const { data: players } = await supabase.from('players').select('game_id').in('game_id', gameIds)
+  const { data: players, error } = await supabase.from('players').select('game_id').in('game_id', gameIds)
+  // Don't silently report every game as "0 players" on a query error — surface it so
+  // the caller can log/decide, rather than shipping misleading counts.
+  if (error) throw error
 
   const counts: Record<string, number> = {}
   for (const id of gameIds) counts[id] = 0

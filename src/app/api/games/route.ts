@@ -253,10 +253,17 @@ export async function GET(req: NextRequest) {
 
   const page = ((games ?? []) as BrowseGameRow[]).slice(0, limit)
   const hasMore = (games ?? []).length > limit
-  const counts = await countPlayersByGame(
-    supabase,
-    page.map((game) => game.id)
-  )
+  // Player counts are best-effort: if the count query fails, still return the list
+  // (with 0s) rather than failing the whole browse page — but log it, don't hide it.
+  let counts: Record<string, number> = {}
+  try {
+    counts = await countPlayersByGame(
+      supabase,
+      page.map((game) => game.id)
+    )
+  } catch (countError) {
+    console.error('GET /api/games: player count query failed', countError)
+  }
 
   return NextResponse.json({
     games: page.map((game) => ({ ...game, playerCount: counts[game.id] ?? 0 })),
