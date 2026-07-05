@@ -70,6 +70,7 @@ export const gameTypeEnum = z.enum([
   'sudoku',
   'tic_tac_toe',
   'word_hunt',
+  'matching_pairs',
   'chess',
   'checkers',
   'describe_it',

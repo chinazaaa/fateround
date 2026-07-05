@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   Game,
   GameType,
   VoteAssignment,
@@ -1191,6 +1191,50 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  matching_pairs: {
+    id: 'matching_pairs',
+    label: 'Matching Pairs',
+    tagline: 'Flip and match icons — streaks and speed score big',
+    headerEmoji: '🃏✨',
+    card: {
+      accent: '#f59e0b',
+      accentSoft: 'rgba(245, 158, 11, 0.15)',
+      emoji: '🃏',
+      players: '1–20 players',
+      vibe: 'Memory race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '✅',
+        label: 'Pairs',
+        color: '#22c55e',
+        leaderboardLabel: 'Pairs matched',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      marry: {
+        emoji: '⭐',
+        label: 'Points',
+        color: '#f59e0b',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      kill: {
+        emoji: '✗',
+        label: 'Misses',
+        color: '#ef4444',
+        leaderboardLabel: 'Wrong attempts',
+        activeClass: 'bg-red-500/20 text-red-100 border-red-400',
+        borderClass: 'border-red-500/50 bg-red-500/10',
+        textColor: '#fca5a5',
+      },
+    },
+  },
+
   word_hunt: {
     id: 'word_hunt',
     label: 'Word Hunt',
@@ -1453,6 +1497,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'snake_and_ladder',
   'crazy_eights',
   'checkers',
+  'matching_pairs',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -1477,6 +1522,7 @@ const PINNED_GAME_TYPES: GameType[] = [
   'bingo',
   'this_or_that',
   'two_truths',
+  'matching_pairs',
 ]
 
 // Display order: pinned games first, then the remaining games in their default order.
@@ -1517,6 +1563,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'snake_and_ladder' || raw === 'snakes-and-ladders') return 'snake_and_ladder'
   if (raw === 'crazy_eights' || raw === 'crazy-eights') return 'crazy_eights'
   if (raw === 'checkers' || raw === 'draughts') return 'checkers'
+  if (raw === 'matching_pairs') return 'matching_pairs'
   return 'smash_marry_kill'
 }
 
@@ -1581,6 +1628,8 @@ export function gameHowItWorks(
       return 'Two players join with their name. The host can play too. Ultimate Tic-Tac-Toe is nine small 3x3 boards in one big grid — the cell you play sends your opponent to the matching board. Win a small board with three in a row, and win the game by taking three boards in a row.'
     case 'word_hunt':
       return 'Players join with their name. Everyone gets the same 4×4 letter grid — connect adjacent letters to spell valid words (3+ letters) before the timer runs out. Longer words score more points.'
+    case 'matching_pairs':
+      return 'Players join with their name. Everyone gets their own board with the same set of icons — flip two cards per turn; a match keeps them face-up and scores +1000 pts. Hit 3 in a row with no miss for a +500 streak bonus. Match every pair with zero misses for a +2000 perfect-game bonus. Fastest to finish scores a placement bonus. Most points when everyone is done wins.'
     case 'chess':
       return 'Two players join with their name. The host can play too. One player is White, the other Black — White moves first. Move pieces by the standard rules; checkmate your opponent to win. Optional chess clock — each player gets their own time bank that only ticks on their turn, and the first to run out loses.'
     case 'checkers':
@@ -1827,7 +1876,8 @@ export function isNameOnlyPlayerJoin(gameType: GameType | string | undefined): b
     type === 'word_hunt' ||
     type === 'chess' ||
     type === 'checkers' ||
-    type === 'describe_it'
+    type === 'describe_it' ||
+    type === 'matching_pairs'
   )
 }
 
@@ -1958,6 +2008,10 @@ export function isSudokuGame(gameType: GameType | string | undefined): boolean {
 
 export function isWordHuntGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'word_hunt'
+}
+
+export function isMatchingPairsGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'matching_pairs'
 }
 
 /** Anonymous room or host-only secret message inbox — shared message storage. */
