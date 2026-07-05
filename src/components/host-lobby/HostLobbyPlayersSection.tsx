@@ -8,6 +8,9 @@ type Props = {
   players: Player[]
   removingPlayerId?: string | null
   onRemovePlayer?: (playerId: string, playerName: string) => void
+  onAdmitPlayer?: (playerId: string, playerName: string) => void
+  admittingPlayerId?: string | null
+  canAdmitPlayer?: (playerId: string) => boolean
   highlightPlayerId?: string | null
   label?: string
   emptyMessage?: string
@@ -23,6 +26,9 @@ export function HostLobbyPlayersSection({
   players,
   removingPlayerId,
   onRemovePlayer,
+  onAdmitPlayer,
+  admittingPlayerId,
+  canAdmitPlayer,
   highlightPlayerId,
   label = 'Players',
   emptyMessage,
@@ -55,6 +61,9 @@ export function HostLobbyPlayersSection({
         players={players}
         removingPlayerId={removingPlayerId}
         onRemovePlayer={onRemovePlayer}
+        onAdmitPlayer={onAdmitPlayer}
+        admittingPlayerId={admittingPlayerId}
+        canAdmitPlayer={canAdmitPlayer}
         highlightPlayerId={highlightPlayerId}
         emptyMessage={emptyMessage}
         hint={hint}
