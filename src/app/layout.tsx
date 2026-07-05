@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Script from 'next/script'
 import { cookies } from 'next/headers'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Geist, Geist_Mono, Bricolage_Grotesque, Instrument_Sans, JetBrains_Mono } from 'next/font/google'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { ThemeToggle } from '@/components/ThemeToggle'
 // Hidden for now — "Buy us a coffee" (support) and Feedback buttons.
@@ -18,6 +18,13 @@ import './globals.css'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] })
+
+// Fate Round design-system fonts — scoped to the public/marketing pages via
+// the `.fr-site` wrapper (see fate-round-ds.css). Declared here only as CSS
+// variables so the rest of the app keeps its Geist body font.
+const brandDisplay = Bricolage_Grotesque({ variable: '--font-fr-display', subsets: ['latin'] })
+const brandBody = Instrument_Sans({ variable: '--font-fr-body', subsets: ['latin'] })
+const brandMono = JetBrains_Mono({ variable: '--font-fr-mono', subsets: ['latin'] })
 
 export const metadata: Metadata = rootMetadata()
 
@@ -39,7 +46,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${brandDisplay.variable} ${brandBody.variable} ${brandMono.variable} h-full antialiased`}
       data-theme={theme}
       suppressHydrationWarning
     >
