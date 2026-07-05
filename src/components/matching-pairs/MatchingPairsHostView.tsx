@@ -103,7 +103,18 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
 
   useEffect(() => {
     void load()
-  }, [load])
+    setHostModeState(getHostMode(gameCode))
+    const stored = getPlayerSession(gameCode)
+    if (stored) {
+      setHostPlayerId(stored.playerId)
+      setHostPlayerName(stored.playerName)
+    }
+  }, [gameCode, load])
+
+  useEffect(() => {
+    if (game?.status === 'active') setTab('play')
+    else if (game?.status === 'finished') setTab('manage')
+  }, [game?.status])
 
   // Realtime: subscribe to progress changes for live opponent view.
   useEffect(() => {
@@ -123,25 +134,35 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     }
   }, [roundId, load])
 
-  useGameRosterPoll({
-    gameCode,
-    onRosterChange: (newPlayers) => setPlayers(newPlayers as Player[]),
-  })
+  useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
+  useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
-  useHostAutoReady({ gameCode, hostToken, game })
-  useHostPlayerReconciliation({ gameCode, hostToken, game, players })
-  const { removePlayer } = useHostRemovePlayer({ gameCode, hostToken })
-
-  // Host-as-player join/leave.
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    setHostModeState(getHostMode(gameCode))
-    const session = getPlayerSession(gameCode)
-    if (session) {
-      setHostPlayerId(session.playerId)
-      setHostPlayerName(session.name ?? '')
-    }
+  const handleSelfRemoved = useCallback(() => {
+    clearPlayerSession(gameCode)
+    setHostPlayerId(null)
+    setHostPlayerName('')
   }, [gameCode])
+
+  const handlePlayerRemoved = useCallback(
+    (playerId: string) => {
+      if (playerId === hostPlayerId) {
+        clearPlayerSession(gameCode)
+        setHostPlayerId(null)
+        setHostPlayerName('')
+      }
+      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
+    },
+    [gameCode, hostPlayerId]
+  )
+  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+  useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
+
+  const changeHostMode = (mode: HostMode) => {
+    if (game?.status !== 'waiting') return
+    setHostModeState(mode)
+    setHostMode(gameCode, mode)
+    if (mode === 'spectator') setTab('manage')
+  }
 
   const handleJoinAsPlayer = useCallback(async () => {
     if (!hostJoinName.trim()) return
@@ -158,30 +179,15 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         return
       }
       if (data.player) {
-        setPlayerSession(gameCode, {
-          playerId: data.player.id,
-          name: data.player.name,
-          resumeToken: data.player.resume_token,
-        })
+        setPlayerSession(gameCode, data.player.id, data.player.name, 'both', data.player.resume_token)
         setHostPlayerId(data.player.id)
         setHostPlayerName(data.player.name)
-        setHostModeState('player')
-        setHostMode(gameCode, 'player')
-        setTab('play')
+        await load()
       }
     } finally {
       setHostJoining(false)
     }
-  }, [gameCode, hostJoinName, hostToken, toastError])
-
-  const handleLeaveAsPlayer = useCallback(() => {
-    clearPlayerSession(gameCode)
-    setHostPlayerId(null)
-    setHostPlayerName('')
-    setHostModeState('spectator')
-    setHostMode(gameCode, 'spectator')
-    setTab('manage')
-  }, [gameCode])
+  }, [gameCode, hostJoinName, hostToken, toastError, load])
 
   const handleStartGame = useCallback(async () => {
     setStarting(true)
@@ -196,11 +202,28 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         toastError(d.error ?? 'Failed to start game')
       } else {
         await load()
+        if (hostModeState === 'player' && hostPlayerId) setTab('play')
       }
     } finally {
       setStarting(false)
     }
-  }, [gameCode, hostToken, load, toastError])
+  }, [gameCode, hostToken, load, toastError, hostModeState, hostPlayerId])
+
+  async function handlePlayAgain() {
+    if (playingAgain) return
+    setPlayingAgain(true)
+    await fetch(`/api/games/${gameCode}/play-again`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined }),
+    })
+    clearPlayerSession(gameCode)
+    setHostPlayerId(null)
+    setHostPlayerName('')
+    setHostJoinName('')
+    setTab('manage')
+    setPlayingAgain(false)
+  }
 
   // Compute per-player leaderboard from submissions + progress.
   const leaderboard = useMemo<MatchingPairsPlayerScore[]>(() => {
@@ -223,194 +246,159 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     return m
   }, [players])
 
-  if (!game) return null
+  if (!game) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted">Loading…</p>
+      </div>
+    )
+  }
 
-  const isWaiting = game.status === 'waiting'
-  const isActive = game.status === 'active'
-  const isFinished = game.status === 'finished'
+  const activePlayers = players.filter((p) => !p.spectator)
+  const hostPlays = hostModeState === 'player' && !!hostPlayerId
+  const showTabs = game.status !== 'finished'
+  const gameStarted = game.status === 'active'
+  const primaryKind: 'play' | 'watch' = hostPlays ? 'play' : 'watch'
+
+  const interactivePlay = <MatchingPairsPlayerView gameCode={gameCode} />
+
+  const watchBoard = (
+    <section style={{ padding: '0 0 16px' }}>
+      <p style={{ color: 'var(--text-faint)', fontSize: 13, marginBottom: 8 }}>
+        Live progress — {formatMatchingPairsGridSize(gridSizePairs)}
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {progressRows
+          .sort((a, b) => b.pairs_matched - a.pairs_matched)
+          .map((prog) => {
+            const name = playerMap.get(prog.player_id) ?? 'Unknown'
+            const pct = Math.round((prog.pairs_matched / gridSizePairs) * 100)
+            return (
+              <div
+                key={prog.player_id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  background: 'var(--surface)',
+                  borderRadius: 10,
+                  padding: '8px 12px',
+                }}
+              >
+                <span style={{ fontWeight: 600, fontSize: 14, minWidth: 120 }}>{name}</span>
+                <div
+                  style={{
+                    flex: 1,
+                    height: 6,
+                    background: 'var(--border-strong)',
+                    borderRadius: 99,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${pct}%`,
+                      background: prog.finished ? '#22c55e' : '#f59e0b',
+                      borderRadius: 99,
+                      transition: 'width 0.4s ease',
+                    }}
+                  />
+                </div>
+                <span style={{ fontSize: 12, color: 'var(--text-faint)', minWidth: 60, textAlign: 'right' }}>
+                  {prog.finished ? '✓ Done' : `${prog.pairs_matched}/${gridSizePairs}`}
+                </span>
+              </div>
+            )
+          })}
+      </div>
+    </section>
+  )
+
+  const manage = (
+    <HostManageSection
+      game={game}
+      players={players}
+      highlightPlayerId={hostPlayerId}
+      removingPlayerId={removingPlayerId}
+      onRemovePlayer={removePlayer}
+      gameType="matching_pairs"
+      top={
+        game.status === 'waiting' ? (
+          <HostModeSelector
+            mode={hostModeState}
+            onChange={changeHostMode}
+            joinedPlayerId={hostPlayerId}
+            joinedPlayerName={hostPlayerName}
+            joinName={hostJoinName}
+            onJoinNameChange={setHostJoinName}
+            onJoin={() => void handleJoinAsPlayer()}
+            joining={hostJoining}
+          />
+        ) : undefined
+      }
+      settings={
+        game.status === 'waiting' ? (
+          <HostMatchingPairsLobbyPanel
+            gameCode={gameCode}
+            hostToken={hostToken}
+            game={game}
+            playerCount={activePlayers.length}
+            onGameUpdate={setGame}
+          />
+        ) : (
+          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        )
+      }
+      footer={
+        game.status === 'waiting' ? (
+          <HostLobbyWaitingFooter
+            gameCode={gameCode}
+            hostToken={hostToken}
+            onStart={() => void handleStartGame()}
+            onEnded={load}
+            canStart={activePlayers.length >= 1}
+            starting={starting}
+            startLabel="Start game"
+            startDisabledHint={activePlayers.length >= 1 ? null : 'Need at least 1 player to start'}
+          />
+        ) : game.status === 'active' ? (
+          <HostEndGameButton
+            gameCode={gameCode}
+            hostToken={hostToken}
+            onEnded={load}
+            label="End game"
+            icon={<ExitIcon size={16} />}
+          />
+        ) : null
+      }
+    />
+  )
 
   return (
     <HostGameLayout
-      header={
-        <HostGameHeader
-          gameCode={gameCode}
-          hostToken={hostToken}
-          game={game}
-          players={players}
-          onGameUpdate={setGame}
+      gameCode={gameCode}
+      status={game.status}
+      tab={tab}
+      onTabChange={setTab}
+      primaryKind={primaryKind}
+      showTabs={showTabs}
+      gameStarted={gameStarted}
+      header={<HostGameHeader game={game} />}
+      primary={hostPlays ? interactivePlay : watchBoard}
+      manage={manage}
+      finished={
+        <PaginatedLeaderboard
+          title="Final leaderboard"
+          rows={leaderboard.map((s, i) => ({
+            id: s.playerId,
+            rank: i + 1,
+            name: playerMap.get(s.playerId) ?? 'Unknown',
+            score: s.finalScore,
+          }))}
+          scoreLabel={(n) => `${n} pts`}
         />
       }
-    >
-      {isWaiting && (
-        <>
-          <HostModeSelector
-            modes={[
-              { value: 'manage', label: 'Manage' },
-              ...(hostPlayerId ? [{ value: 'play' as HostTab, label: 'Play' }] : []),
-            ]}
-            active={tab}
-            onChange={(v) => setTab(v as HostTab)}
-          />
-
-          {tab === 'manage' && (
-            <HostManageSection
-              gameCode={gameCode}
-              hostToken={hostToken}
-              game={game}
-              players={players}
-              onGameUpdate={setGame}
-              onRemovePlayer={removePlayer}
-              onStartGame={handleStartGame}
-              starting={starting}
-              minPlayers={1}
-              settingsPanel={
-                <HostMatchingPairsLobbyPanel
-                  gameCode={gameCode}
-                  hostToken={hostToken}
-                  game={game}
-                  playerCount={players.filter((p) => !p.spectator).length}
-                  onGameUpdate={setGame}
-                />
-              }
-              joinAsPlayerSection={
-                !hostPlayerId ? (
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12 }}>
-                    <input
-                      type="text"
-                      value={hostJoinName}
-                      onChange={(e) => setHostJoinName(e.target.value)}
-                      placeholder="Your name to play…"
-                      style={{
-                        flex: 1,
-                        padding: '8px 12px',
-                        borderRadius: 8,
-                        border: '1.5px solid var(--border-strong)',
-                        background: 'var(--surface)',
-                        color: 'var(--text)',
-                      }}
-                    />
-                    <button
-                      onClick={handleJoinAsPlayer}
-                      disabled={hostJoining || !hostJoinName.trim()}
-                      className="fr-btn fr-btn--sm"
-                    >
-                      {hostJoining ? 'Joining…' : 'Join & play'}
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-                    <span style={{ color: 'var(--text-faint)', fontSize: 13 }}>
-                      Playing as <strong>{hostPlayerName}</strong>
-                    </span>
-                    <button
-                      onClick={handleLeaveAsPlayer}
-                      style={{
-                        padding: '4px 10px',
-                        borderRadius: 6,
-                        fontSize: 12,
-                        background: 'transparent',
-                        border: '1px solid var(--border-strong)',
-                        color: 'var(--text-faint)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Leave
-                    </button>
-                  </div>
-                )
-              }
-            />
-          )}
-
-          {tab === 'play' && hostPlayerId && <MatchingPairsPlayerView gameCode={gameCode} />}
-
-          <HostLobbyWaitingFooter game={game} players={players} />
-          <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
-        </>
-      )}
-
-      {(isActive || isFinished) && (
-        <>
-          {isActive && (
-            <>
-              {/* Live progress table */}
-              <section style={{ padding: '0 0 16px' }}>
-                <p style={{ color: 'var(--text-faint)', fontSize: 13, marginBottom: 8 }}>
-                  Live progress — {formatMatchingPairsGridSize(gridSizePairs)}
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {progressRows
-                    .sort((a, b) => b.pairs_matched - a.pairs_matched)
-                    .map((prog) => {
-                      const name = playerMap.get(prog.player_id) ?? 'Unknown'
-                      const pct = Math.round((prog.pairs_matched / gridSizePairs) * 100)
-                      return (
-                        <div
-                          key={prog.player_id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 10,
-                            background: 'var(--surface)',
-                            borderRadius: 10,
-                            padding: '8px 12px',
-                          }}
-                        >
-                          <span style={{ fontWeight: 600, fontSize: 14, minWidth: 120 }}>{name}</span>
-                          <div
-                            style={{
-                              flex: 1,
-                              height: 6,
-                              background: 'var(--border-strong)',
-                              borderRadius: 99,
-                              overflow: 'hidden',
-                            }}
-                          >
-                            <div
-                              style={{
-                                height: '100%',
-                                width: `${pct}%`,
-                                background: prog.finished ? '#22c55e' : '#f59e0b',
-                                borderRadius: 99,
-                                transition: 'width 0.4s ease',
-                              }}
-                            />
-                          </div>
-                          <span style={{ fontSize: 12, color: 'var(--text-faint)', minWidth: 60, textAlign: 'right' }}>
-                            {prog.finished ? '✓ Done' : `${prog.pairs_matched}/${gridSizePairs}`}
-                          </span>
-                        </div>
-                      )
-                    })}
-                </div>
-              </section>
-
-              {hostModeState === 'player' && hostPlayerId && <MatchingPairsPlayerView gameCode={gameCode} />}
-
-              <HostEndGameButton gameCode={gameCode} hostToken={hostToken} onFinished={load} icon={<ExitIcon />} />
-            </>
-          )}
-
-          {isFinished && (
-            <PaginatedLeaderboard
-              rows={leaderboard.map((s, i) => ({
-                rank: i + 1,
-                name: playerMap.get(s.playerId) ?? 'Unknown',
-                score: s.finalScore,
-                detail: [
-                  `${s.pairsMatched} pairs`,
-                  `+${s.streakBonusTotal} streak`,
-                  s.perfectGame ? '⭐ Perfect' : `${s.wrongAttempts} miss${s.wrongAttempts === 1 ? '' : 'es'}`,
-                ].join(' · '),
-              }))}
-              playAgain={playingAgain}
-              onPlayAgain={() => setPlayingAgain(true)}
-              gameCode={gameCode}
-              hostToken={hostToken}
-            />
-          )}
-        </>
-      )}
-    </HostGameLayout>
+    />
   )
 }
