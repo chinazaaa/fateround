@@ -706,9 +706,9 @@ export async function POST(req: NextRequest) {
             }
           : isLudoGame(game_type)
             ? { ludo_variant: parseLudoVariant(rawLudoVariant) }
-          : isSudokuGame(game_type)
-            ? { game_duration_seconds: clampSudokuGameDuration(rawGameDurationSeconds ?? 0) }
-            : {}),
+            : isSudokuGame(game_type)
+              ? { game_duration_seconds: clampSudokuGameDuration(rawGameDurationSeconds ?? 0) }
+              : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {
