@@ -1106,7 +1106,7 @@ export async function processMahjongExpireTurn(supabase: SupabaseClient, gameId:
   }
 
   const state = stateFor(states, currentPlayer)
-  const fallbackTile = state?.hand[0]
+  const fallbackTile = state?.riichi_declared ? state.last_drawn_tile : state?.hand[0]
   if (!fallbackTile) return {}
   return processMahjongDiscard(supabase, gameId, currentPlayer, fallbackTile)
 }
