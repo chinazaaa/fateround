@@ -301,10 +301,24 @@ both a leaderboard entry and any trophies.
 5. Recompute `trophy_points` + `trophy_level` on the profile.
 6. Return the list of **newly-earned** trophies so the client can show the unlock moment.
 
-**Idempotency:** the whole thing is safe to re-run. `player_trophies` has a
-`unique(profile_id, trophy_id)`; counter increments should be keyed to the game session so
-a retried finish doesn't double-count (dedupe on `game_id`/session id, same pattern
-`PostWinToCommunity` already uses per round).
+**Atomicity (required).** Steps 2–5 span three tables (`player_stats`,
+`player_trophies`, `profiles`) and MUST commit or roll back as **one unit** — a partial
+failure (e.g. counters incremented but the Platinum/`trophy_level` write fails) would
+leave the three tables out of sync. Wrap the whole award pass in a **single database
+transaction**, implemented as a Postgres `security definer` function / RPC
+(`award_for_session(profile_id, session_facts)`) called from the finish path, so the
+counter increments, trophy inserts, Platinum recompute, and cached
+`trophy_points`/`trophy_level` writes all land together. The service-role client invokes
+it; nothing partial is ever observable.
+
+**Idempotency (on top of atomicity).** The transaction must also be **safe to re-run**
+(finish can fire twice on retries/races). Guards: `player_trophies` has
+`unique(profile_id, trophy_id)` (`ON CONFLICT DO NOTHING`); and counter increments are
+**keyed to the game session** so a retried finish doesn't double-count — record a
+processed-session marker (`awarded_sessions(profile_id, session_id)` unique, or the same
+per-round dedupe key `PostWinToCommunity` already uses) and no-op inside the transaction if
+it's already present. Atomic + idempotent together = a retry either does the full award
+once or nothing.
 
 ### 3.9 Anti-spoof
 
@@ -336,9 +350,12 @@ change. `criteria` is a small JSON DSL the engine understands:
 { "type": "event",   "event": "whot.win_no_draw" }
 { "type": "event",   "event": "trivia.perfect_round" }
 
-// Distinct-set size (cross-game breadth)
-{ "type": "distinct", "key": "modes_played",     "gte": 10 }
-{ "type": "distinct", "key": "opponents",        "gte": 20 }
+// Distinct-set size (cross-game breadth). Backed by the `player_distinct` table
+// (§5): the engine INSERTs (profile_id, key, member) ON CONFLICT DO NOTHING as
+// members are seen, and evaluates via `count(*) where profile_id=? and key=?`.
+// Never a jsonb array — see the schema note for why.
+{ "type": "distinct", "key": "modes_played",     "gte": 10 }   // member = game_type slug
+{ "type": "distinct", "key": "opponents",        "gte": 20 }   // member = opponent profile_id
 
 // Streak milestone (reads profile streak)
 { "type": "streak",  "gte": 7 }
@@ -569,10 +586,30 @@ create table player_stats (
   game_type   text not null,                    -- '__global__' for cross-game counters
   games_played integer not null default 0,
   games_won    integer not null default 0,
-  counters     jsonb not null default '{}',     -- e.g. {"whot.win_no_draw_ct":2}
-  -- distinct sets stored as jsonb arrays or a side table (opponents, modes_played)
+  counters     jsonb not null default '{}',     -- scalar counters only, e.g. {"whot.win_no_draw_ct":2}
   updated_at   timestamptz not null default now(),
   primary key (profile_id, game_type)
+);
+
+-- Canonical storage for `distinct` criteria (modes_played, opponents, …).
+-- One row per (profile, set, member). The PK gives free dedupe; count(*) is the value.
+-- NOT stored as a jsonb array in player_stats — arrays can't be deduped/indexed/counted
+-- cheaply and grow unbounded.
+create table player_distinct (
+  profile_id    uuid not null references profiles(id) on delete cascade,
+  key           text not null,                  -- 'modes_played' | 'opponents'
+  member        text not null,                  -- e.g. game_type slug, or opponent profile_id
+  first_seen_at timestamptz not null default now(),
+  primary key (profile_id, key, member)
+);
+create index idx_player_distinct_lookup on player_distinct(profile_id, key);
+
+-- Processed-session markers so the award transaction is idempotent (§3.8).
+create table awarded_sessions (
+  profile_id uuid not null references profiles(id) on delete cascade,
+  session_id text not null,                      -- game_id / per-round session key
+  awarded_at timestamptz not null default now(),
+  primary key (profile_id, session_id)
 );
 
 -- Trophy catalog (seeded from src/lib/trophies/catalog.ts).
@@ -617,9 +654,9 @@ create table profile_merges (
 ```
 
 **RLS:**
-- `profiles`, `player_stats`, `player_trophies`: **owner can read own rows**
-  (`auth.uid() = profile_id`). Public leaderboards read a **narrow view** exposing only
-  handle + trophy_level + streak (not email/PII).
+- `profiles`, `player_stats`, `player_trophies`, `player_distinct`, `awarded_sessions`:
+  **owner can read own rows** (`auth.uid() = profile_id`). Public leaderboards read a
+  **narrow view** exposing only handle + trophy_level + streak (not email/PII).
 - **All writes go through the server-side award engine using the service-role/admin
   client** (`getSupabaseAdmin()`), never directly from the client — so counters and
   trophies can't be forged. Follow the patterns in `docs/rls-hardening.md`.
