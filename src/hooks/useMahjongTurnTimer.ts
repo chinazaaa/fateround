@@ -28,6 +28,9 @@ export function useMahjongTurnTimer(gameCode: string, session: MahjongSession | 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ gameId: gameCode }),
           })
+        } catch {
+          // `tick` is fire-and-forget, so rejected expire requests must not
+          // become unhandled promise rejections. The cooldown still allows retry.
         } finally {
           setTimeout(() => {
             expiringRef.current = false
