@@ -36,6 +36,10 @@ export type RoomVoiceBarProps = {
   inVoice?: boolean
   /** People already in the voice call — shown as a join nudge. */
   presenceCount?: number
+  /** Controlled mute state (e.g. LiveKit-driven). Falls back to internal state. */
+  muted?: boolean
+  /** Open the popovers upward — for a bottom-anchored rail. */
+  popUp?: boolean
   /** Show the 👑 Host pill next to the code. */
   hostBadge?: boolean
   /** Render just the right-hand controls (for a desktop logo bar). */
@@ -59,20 +63,23 @@ const CODE = 'F8K2QP'
  */
 export function RoomVoiceBar(props: RoomVoiceBarProps) {
   const [open, setOpen] = useState(false)
-  const [muted, setMuted] = useState(false)
+  const [internalMuted, setInternalMuted] = useState(false)
   const [share, setShare] = useState(false)
   const [menu, setMenu] = useState(false)
   const [editing, setEditing] = useState(false)
   const [leaving, setLeaving] = useState(false)
-  const [joined, setJoined] = useState(!!props.inVoice)
+  const [internalJoined, setInternalJoined] = useState(!!props.inVoice)
   const [yourName, setYourName] = useState(props.name || 'You')
 
   const people = props.participants || []
   const you = props.you || (yourName ? yourName[0] : 'Y')
   // Voice is never auto-joined — everyone (player or spectator) taps "Join
-  // voice" first, matching the app's AudioChat flow.
-  const inVoice = joined
+  // voice" first, matching the app's AudioChat flow. `inVoice`/`muted` can be
+  // controlled from outside (LiveKit) or fall back to internal state.
+  const inVoice = props.inVoice !== undefined ? props.inVoice : internalJoined
+  const muted = props.muted ?? internalMuted
   const presence = props.presenceCount || 0
+  const popStyle = props.popUp ? { ...peoplePop, top: 'auto' as const, bottom: 40 } : peoplePop
 
   const right = (
     <div
@@ -137,12 +144,12 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
         }
         onClick={() => {
           if (!inVoice) {
-            setJoined(true)
-            setMuted(false)
+            setInternalJoined(true)
+            setInternalMuted(false)
             props.onJoinVoice?.()
           } else {
             const next = !muted
-            setMuted(next)
+            setInternalMuted(next)
             props.onToggleMute?.(next)
           }
         }}
@@ -167,7 +174,7 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
       </button>
 
       {open && (
-        <div style={peoplePop} onMouseLeave={() => setOpen(false)}>
+        <div style={popStyle} onMouseLeave={() => setOpen(false)}>
           <p style={popTitle}>In the room · voice</p>
           {people.map((p) => {
             const st = p.muted ? '🔇' : p.talking ? '🗣️' : '🎙️'
@@ -191,7 +198,7 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
         </div>
       )}
       {menu && (
-        <div style={{ ...peoplePop, width: 190, padding: 6 }} onMouseLeave={() => setMenu(false)}>
+        <div style={{ ...popStyle, width: 190, padding: 6 }} onMouseLeave={() => setMenu(false)}>
           <button
             style={menuItem}
             onClick={() => {
