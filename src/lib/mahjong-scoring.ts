@@ -273,7 +273,7 @@ function isAllEvenPungs(context: ScoreContext): boolean {
 }
 
 function isPinfu(context: ScoreContext, winnerState: MahjongPlayerState, session?: MahjongSession): boolean {
-  return isAllChows(context) && !!context.pairTile && !isValuePair(context.pairTile, winnerState, session)
+  return context.closed && isAllChows(context) && !!context.pairTile && !isValuePair(context.pairTile, winnerState, session)
 }
 
 function hasOutsideHand(context: ScoreContext, honorsAllowed: boolean): boolean {
@@ -573,7 +573,7 @@ function calculateRiichiFu(opts: {
 
   const pinfu = isPinfu(opts.context, opts.winnerState, opts.session)
   if (pinfu && opts.winType === 'self_draw' && opts.context.closed) return 20
-  if (pinfu && opts.winType === 'discard' && !opts.context.closed) return 30
+  if (pinfu && opts.winType === 'discard' && opts.context.closed) return 30
 
   let fu = 20
   if (opts.winType === 'discard' && opts.context.closed) fu += 10

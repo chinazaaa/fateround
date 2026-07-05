@@ -211,6 +211,19 @@ describe('Mahjong scoring fixtures', () => {
     expect(paymentDelta(summary, 'south-player')).toBe(3900)
   })
 
+  it('Riichi open all-chows hand does not score pinfu', () => {
+    const summary = score({
+      ruleset: 'riichi',
+      winType: 'discard',
+      winningTile: 'p5',
+      hand: ['m6', 'm7', 'm8', 'p3', 'p4', 'p5', 'p6', 'p6', 's3', 's4', 's5'],
+      melds: [meld('chow', ['m2', 'm3', 'm4'])],
+    })
+
+    expectNoLine(summary, 'Pinfu')
+    expectLine(summary, 'Tanyao', 1)
+  })
+
   it('Riichi thirteen-sided kokushi scores double yakuman when enabled', () => {
     const summary = score({
       ruleset: 'riichi',
