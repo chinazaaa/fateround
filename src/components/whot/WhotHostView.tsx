@@ -17,6 +17,7 @@ import {
   parseWhotRules,
   setWhotHostMode,
   WHOT_MIN_PLAYERS,
+  WHOT_DEFAULT_MAX_PLAYERS,
   type WhotHostMode,
 } from '@/lib/whot'
 import { supabase } from '@/lib/supabase'
@@ -25,6 +26,7 @@ import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostAdmitPlayer } from '@/hooks/useHostAdmitPlayer'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player, WhotPlayerHand, WhotSession, WhotShape } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -115,6 +117,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+  const { admitPlayer, admittingPlayerId } = useHostAdmitPlayer(gameCode, hostToken, load)
 
   // Clear stale host-as-player state if the host's own row is removed elsewhere.
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
@@ -342,6 +345,18 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       highlightPlayerId={hostPlayerId}
       removingPlayerId={removingPlayerId}
       onRemovePlayer={removePlayer}
+      onAdmitPlayer={
+        game.status === 'active' && (session?.turn_order?.length ?? 0) < (game.max_players ?? WHOT_DEFAULT_MAX_PLAYERS)
+          ? admitPlayer
+          : undefined
+      }
+      admittingPlayerId={admittingPlayerId}
+      canAdmitPlayer={(id) => !(session?.turn_order ?? []).includes(id)}
+      playersLabel={
+        game.status === 'active'
+          ? `Players · ${session?.turn_order?.length ?? 0}/${game.max_players ?? WHOT_DEFAULT_MAX_PLAYERS}`
+          : undefined
+      }
       gameType="whot"
       top={
         game.status === 'waiting' ? (

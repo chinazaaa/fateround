@@ -397,7 +397,7 @@ function pickAutoPlayCard(playable: WhotCard[]): WhotCard {
   return [...pool].sort((a, b) => a.number - b.number)[0]!
 }
 
-function dealCount(playerCount: number): number {
+export function dealCount(playerCount: number): number {
   return playerCount === 2 ? 6 : 5
 }
 
@@ -1292,4 +1292,109 @@ export async function removeWhotPlayer(
   await supabase.from('whot_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
   const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
   return { error: error?.message ?? null }
+}
+
+/**
+ * Admit a spectator into an ACTIVE Whot game — the inverse of removeWhotPlayer.
+ *
+ * Seats them at the END of turn_order (append is index-safe: current_turn_index is a
+ * normalized modulo index, so appending never disturbs the current player's turn) and
+ * deals a fresh hand drawn from the deck.
+ *
+ * Ordering mirrors processWhotPlay: draw purely, then CAS-claim the session so the dealt
+ * cards leave draw_pile atomically with the turn_order growth (never racing a concurrent
+ * play/draw into duplicate physical cards), then — only AFTER winning the claim — insert
+ * the hand row and flip players.spectator. A bespoke CAS update (NOT persistSession) is
+ * used so the current player's turn_deadline_at / clock is preserved.
+ *
+ * `maxPlayers` is the caller-resolved seat cap (the host's configured lobby max, <= 6) —
+ * passed in rather than read here to avoid a whot ⇄ game-limits import cycle.
+ */
+export async function admitWhotPlayer(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  maxPlayers: number
+): Promise<{ error: string | null; status: number }> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const [{ data: sessionRaw }, { data: playerRow }] = await Promise.all([
+      supabase.from('whot_sessions').select('*').eq('game_id', gameId).maybeSingle(),
+      supabase
+        .from('players')
+        .select('id, name, spectator, is_eliminated')
+        .eq('id', playerId)
+        .eq('game_id', gameId)
+        .maybeSingle(),
+    ])
+
+    const session = sessionRaw as WhotSession | null
+    if (!session) return { error: 'Session not found', status: 404 }
+    if (session.phase !== 'playing') {
+      return { error: 'Wait for the current player to finish their turn', status: 409 }
+    }
+    if (!playerRow) return { error: 'Player not found', status: 404 }
+    if (playerRow.is_eliminated) return { error: 'That player was eliminated and can’t be dealt in', status: 400 }
+    if (playerRow.spectator !== true) return { error: 'That player is already in the game', status: 400 }
+
+    const turnOrder = [...(session.turn_order ?? [])]
+    // A player who went out is ALSO spectator=true but sits in turn_order + finish_order —
+    // these two guards stop the host from "re-dealing in" someone who already lost.
+    if (turnOrder.includes(playerId)) return { error: 'That player is already seated', status: 400 }
+    if ((session.finish_order ?? []).includes(playerId)) {
+      return { error: 'That player already finished this game', status: 400 }
+    }
+    if (turnOrder.length >= maxPlayers) {
+      return { error: `The game is full (${turnOrder.length}/${maxPlayers})`, status: 409 }
+    }
+
+    const need = dealCount(turnOrder.length + 1)
+    const { drawn, drawPile, discardPile, reshuffled } = drawCardsWithRefill(
+      (session.draw_pile as WhotCard[]) ?? [],
+      (session.discard_pile as WhotCard[]) ?? [],
+      need
+    )
+    if (drawn.length < need) {
+      return { error: 'Not enough cards left in the deck to deal a new hand right now.', status: 409 }
+    }
+
+    const newIndex = turnOrder.length
+    const admittedName = playerRow.name ?? 'A player'
+    // Bespoke CAS update — omits turn_deadline_at / current_turn_index so the current
+    // player's turn and countdown are untouched (persistSession would reset the deadline).
+    const { data: claimed } = await supabase
+      .from('whot_sessions')
+      .update({
+        turn_order: [...turnOrder, playerId],
+        draw_pile: drawPile,
+        discard_pile: discardPile,
+        status_message: `${admittedName} was dealt in${reshuffled ? ' · deck reshuffled' : ''}`,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('game_id', gameId)
+      .eq('updated_at', session.updated_at)
+      .select('game_id')
+
+    if ((claimed?.length ?? 0) === 0) continue // lost the race — reload and retry
+
+    // Won: the dealt cards are now out of draw_pile. Materialize the hand BEFORE flipping
+    // spectator so the client sees a hand the moment it observes spectator=false.
+    const { error: handError } = await supabase.from('whot_player_hands').insert({
+      game_id: gameId,
+      player_id: playerId,
+      cards: drawn,
+      player_order: newIndex,
+    })
+    if (handError) return { error: internalErrorMessage('whot', handError), status: 500 }
+
+    const { error: flipError } = await supabase
+      .from('players')
+      .update({ spectator: false })
+      .eq('id', playerId)
+      .eq('game_id', gameId)
+    if (flipError) return { error: internalErrorMessage('whot', flipError), status: 500 }
+
+    return { error: null, status: 200 }
+  }
+
+  return { error: 'The game changed while dealing in — try again.', status: 409 }
 }
