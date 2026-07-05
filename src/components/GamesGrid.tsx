@@ -28,8 +28,9 @@ export function GamesGrid({ games }: { games: GamesGridItem[] }) {
   }, [query, games])
 
   return (
-    <div className="space-y-5">
-      <div className="relative">
+    <div className="mx-auto w-full max-w-[760px] space-y-5">
+      {/* Search */}
+      <div className="relative mx-auto max-w-[440px]">
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -37,7 +38,8 @@ export function GamesGrid({ games }: { games: GamesGridItem[] }) {
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-faint pointer-events-none"
+          className="pointer-events-none absolute left-4 top-1/2 h-[17px] w-[17px] -translate-y-1/2"
+          style={{ color: 'var(--text-faint)' }}
           aria-hidden
         >
           <circle cx="11" cy="11" r="8" />
@@ -51,43 +53,54 @@ export function GamesGrid({ games }: { games: GamesGridItem[] }) {
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
-          className="input-field w-full !pl-10 py-2.5 text-sm"
+          aria-label="Search games"
+          className="h-[46px] w-full rounded-full pl-[42px] pr-4 text-[15px] outline-none"
+          style={{
+            background: 'var(--surface)',
+            border: '1.5px solid var(--border-strong)',
+            color: 'var(--text)',
+          }}
         />
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-center text-faint text-sm py-8">No games match &ldquo;{query}&rdquo;</p>
+        <p className="py-8 text-center text-sm" style={{ color: 'var(--text-faint)' }}>
+          No games match &ldquo;{query.trim()}&rdquo;
+        </p>
       ) : (
-        <div className="grid sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {filtered.map(({ slug, content, cfg }) => (
             <Link
               key={slug}
               href={`/games/${slug}`}
-              className="glass-card glass-card-interactive p-5 space-y-3 group"
+              className="fr-gamecard group !gap-2.5"
               style={{ '--accent': cfg.card.accent } as React.CSSProperties}
             >
               <div className="flex items-start gap-3">
                 <span
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-2xl"
-                  style={{ background: cfg.card.accentSoft }}
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] text-2xl"
+                  style={{ background: `color-mix(in srgb, ${cfg.card.accent} 14%, transparent)` }}
                 >
                   {cfg.card.emoji}
                 </span>
-                <div className="min-w-0 space-y-1">
-                  <h2 className="font-bold text-body leading-tight group-hover:text-[var(--primary)] transition-colors">
-                    {content.heroTitle}
-                  </h2>
-                  <p className="text-faint text-xs">
+                <div className="min-w-0">
+                  <h2 className="fr-gamecard__title !text-[15.5px]">{content.heroTitle}</h2>
+                  <p className="mt-0.5 text-xs" style={{ color: 'var(--text-faint)' }}>
                     {cfg.card.players} · {cfg.card.vibe}
                   </p>
                 </div>
               </div>
-              <p className="text-muted text-sm leading-relaxed line-clamp-2">{content.heroSubtitle}</p>
-              <span className="text-xs font-semibold text-[var(--primary)]">Learn more →</span>
+              <span className="text-xs font-semibold" style={{ color: 'var(--accent)' }}>
+                Learn more →
+              </span>
             </Link>
           ))}
         </div>
       )}
+
+      <p className="text-center text-[12.5px]" style={{ color: 'var(--text-faint)' }}>
+        {games.length} modes · free forever · no sign-up
+      </p>
     </div>
   )
 }
