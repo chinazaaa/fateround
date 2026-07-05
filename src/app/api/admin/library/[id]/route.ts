@@ -9,17 +9,15 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 // typeof/Array.isArray guards remain live (identical messages); game_type/status are
 // typed string only because they go straight to `.includes()`. The schema's real job is
 // to turn a malformed/non-object body into a clean 400 instead of the previous 500.
-const libraryPatchSchema = z
-  .object({
-    action: z.unknown().optional(),
-    title: z.unknown().optional(),
-    game_type: z.string().optional(),
-    author_name: z.unknown().optional(),
-    description: z.unknown().optional(),
-    tags: z.unknown().optional(),
-    status: z.string().optional(),
-  })
-  .passthrough()
+const libraryPatchSchema = z.object({
+  action: z.unknown().optional(),
+  title: z.unknown().optional(),
+  game_type: z.string().optional(),
+  author_name: z.unknown().optional(),
+  description: z.unknown().optional(),
+  tags: z.unknown().optional(),
+  status: z.string().optional(),
+})
 
 const VALID_GAME_TYPES = [
   'trivia',

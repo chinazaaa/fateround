@@ -8,10 +8,11 @@ import {
   verifyAdminCredentials,
 } from '@/lib/admin-session'
 
-// Permissive shape: email/password optional so the handler's own credential check still
-// owns the 401; the schema only turns a malformed/non-object body into a clean 400
+// Permissive shape: email/password left `unknown` so the handler's own
+// `typeof … === 'string'` coercion + credential check still own the 401 (no field-level
+// tightening); the schema only turns a malformed/non-object body into a clean 400
 // instead of the previous 500.
-const loginSchema = z.object({ email: z.string().optional(), password: z.string().optional() }).passthrough()
+const loginSchema = z.object({ email: z.unknown().optional(), password: z.unknown().optional() })
 
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, loginSchema)
