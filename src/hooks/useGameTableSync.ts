@@ -37,12 +37,16 @@ type ChangePayload = { eventType?: string; new?: Record<string, unknown> | null 
  *                  `{ table: 'games', column: 'id' }` (→ `id=eq.`)
  * @param reload    re-fetch callback; the latest one is always used (no resubscribe)
  * @param opts.enabled  gate the subscription (default true)
+ * @param opts.channelKey  namespace suffix for the Realtime channel. A Supabase client keys
+ *   channels by topic, so two `useGameTableSync` calls for the same game on one page would
+ *   otherwise share `sync-<code>` and the second's `.on()` throws "cannot add postgres_changes
+ *   callbacks after subscribe()". Pass a distinct key (e.g. 'music') for a secondary subscriber.
  */
 export function useGameTableSync(
   gameCode: string,
   tables: readonly WatchedTable[],
   reload: () => void | Promise<unknown>,
-  opts?: { enabled?: boolean }
+  opts?: { enabled?: boolean; channelKey?: string }
 ) {
   const reloadRef = useRef(reload)
   reloadRef.current = reload
@@ -77,7 +81,7 @@ export function useGameTableSync(
       }, 90)
     }
 
-    let channel = supabase.channel(`sync-${gameCode}`)
+    let channel = supabase.channel(`sync-${gameCode}${opts?.channelKey ? `-${opts.channelKey}` : ''}`)
     for (const { table, column } of norm) {
       channel = channel.on(
         'postgres_changes',
