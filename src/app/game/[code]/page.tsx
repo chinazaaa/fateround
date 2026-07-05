@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PollGamePlayerExperience } from '@/components/poll-game/PollGamePlayerExperience'
 import { RoomVoiceRail } from '@/components/rooms/RoomVoiceRail'
+import { NowPlayingBar } from '@/components/music/NowPlayingBar'
 import { IosInstallPushNudge } from '@/components/IosInstallPushNudge'
 import { getPlayerSession } from '@/lib/utils'
 
@@ -139,6 +140,7 @@ export default function GamePage() {
         <RoomVoiceRail roomCode={gameCode} playerName={playerName} identity={playerId} auth={{ kind: 'player' }} />
       )}
       <TournamentBanner gameCode={gameCode} tournamentId={tournamentId} />
+      {playerId && <NowPlayingBar gameCode={gameCode} identity={playerId} />}
       {playerId && <IosInstallPushNudge gameCode={gameCode} />}
     </>
   )
