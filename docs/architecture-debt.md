@@ -58,6 +58,20 @@ Legend: `[ ]` todo · `[x]` done · `[~]` in progress
 - [ ] **`supabase-selects.ts` is effectively dead** (0 route importers; ~74 `select('*')` in routes) — adopt broadly or delete; consider `supabase gen types`. **Sev Low · Eff S–M**
 - [ ] **Merge `game-landing.ts` + `game-landing-rules.ts`** (must be edited in lockstep; rules vs FAQ prose duplicate facts). Note: these `Record<GameType,…>` maps are the _one_ exhaustive (good) pattern — model the registry on them. **Sev Low · Eff S**
 
+## Phase 5 — Observability & operations
+
+Prod runs on a single EC2 box with **no external uptime monitoring and no tracing/metrics** — we
+learn about outages and slow routes from users. Full plan (approach, backend choices, decisions):
+[observability-plan.md](./observability-plan.md).
+
+- [ ] **UptimeRobot — external uptime + alerting.** Add `GET /api/health` (liveness + a `?deep=1`
+  Supabase readiness check), then HTTPS keyword monitors on prod + dev with an alert channel we
+  watch (email/Slack). Do this first — small, high value on a single-instance stack. **Sev Med · Eff S**
+- [ ] **OpenTelemetry — traces + metrics.** `src/instrumentation.ts` via `@vercel/otel` → OTLP →
+  an on-box OTel Collector (systemd, like Caddy/tick) → managed backend (Grafana Cloud / Honeycomb).
+  Then custom spans around Supabase + external calls (LiveKit/Klipy/Anthropic) and a few business
+  metrics (games created, active games, join failures, tick duration). **Sev Med · Eff M**
+
 ---
 
 _Audit basis: `origin/dev` as of 2026-06. Update this file as items land (link the PR next to each)._
