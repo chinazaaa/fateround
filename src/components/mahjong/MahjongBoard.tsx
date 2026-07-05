@@ -10,6 +10,7 @@ import {
   MAHJONG_SEAT_LABELS,
   sortMahjongTiles,
 } from '@/lib/mahjong'
+import { isTenpai } from '@/lib/mahjong-hand'
 import type { MahjongClaimType, MahjongPlayerState, MahjongSession, Player } from '@/types'
 import { MahjongCard, MahjongTurnBar } from '@/components/mahjong/MahjongChrome'
 import { MahjongTileFace } from '@/components/mahjong/MahjongTileFace'
@@ -350,7 +351,8 @@ export function MahjongGamePanel({
     session.phase === 'discard' &&
     isMyTurn &&
     !myState.riichi_declared &&
-    myState.melds.every((meld) => !meld.from_player_id || meld.concealed)
+    myState.melds.every((meld) => !meld.from_player_id || meld.concealed) &&
+    isTenpai(myState.hand, myState.melds)
   const canSelfWin =
     !!myState &&
     session.phase === 'discard' &&
