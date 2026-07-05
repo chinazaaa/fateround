@@ -222,6 +222,14 @@ export const whotAdmitSchema = z.object({
 
 export type WhotAdmitInput = z.infer<typeof whotAdmitSchema>
 
+// Host admits a spectator into an active Crazy Eights game (POST /api/games/[code]/crazy-eights-admit).
+export const crazyEightsAdmitSchema = z.object({
+  hostToken: hostTokenString(),
+  playerId: uuidString('playerId'),
+})
+
+export type CrazyEightsAdmitInput = z.infer<typeof crazyEightsAdmitSchema>
+
 // ---------------------------------------------------------------------------
 // Admin game player limits
 // ---------------------------------------------------------------------------

@@ -5,13 +5,15 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 
 /**
- * Host action: deal a spectator into an ACTIVE Whot game. Mirror of useHostRemovePlayer,
- * but non-destructive (seats + deals a hand) and targets /api/games/[code]/whot-admit.
+ * Host action: deal a spectator into an ACTIVE card game. Mirror of useHostRemovePlayer,
+ * but non-destructive (seats + deals a hand). `admitPath` selects the per-game admit route
+ * (`whot-admit` for Whot, `crazy-eights-admit` for Crazy Eights).
  */
 export function useHostAdmitPlayer(
   gameCode: string,
   hostToken: string,
-  onAdmitted?: (playerId: string) => void | Promise<unknown>
+  onAdmitted?: (playerId: string) => void | Promise<unknown>,
+  admitPath: 'whot-admit' | 'crazy-eights-admit' = 'whot-admit'
 ) {
   const { confirm } = useConfirm()
   const { success, error: toastError } = useToast()
@@ -29,7 +31,7 @@ export function useHostAdmitPlayer(
 
       setAdmittingPlayerId(playerId)
       try {
-        const res = await fetch(`/api/games/${gameCode}/whot-admit`, {
+        const res = await fetch(`/api/games/${gameCode}/${admitPath}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ hostToken, playerId }),
@@ -46,7 +48,7 @@ export function useHostAdmitPlayer(
         setAdmittingPlayerId(null)
       }
     },
-    [gameCode, hostToken, confirm, onAdmitted, admittingPlayerId, success, toastError]
+    [gameCode, hostToken, admitPath, confirm, onAdmitted, admittingPlayerId, success, toastError]
   )
 
   return { admitPlayer, admittingPlayerId }
