@@ -1942,7 +1942,7 @@ const TOURNAMENTS: MarketingPageContent = {
   ],
   ctaHeading: 'Set up your tournament',
   ctaSubtext: 'Free forever. Pick a game, share the link, crown a champion.',
-  primaryCta: { href: '/tournament/create', label: 'Create a tournament →' },
+  primaryCta: { href: '/tournament/create', label: 'Create a tournament' },
   accent: '#d97706',
 }
 
@@ -2058,7 +2058,7 @@ const SCHOOL: MarketingPageContent = {
   ],
   ctaHeading: 'Start a School Whot championship',
   ctaSubtext: 'Free forever. Pick the ladder, share the link, crown a Graduate.',
-  primaryCta: { href: '/tournament/create', label: 'Create a championship →' },
+  primaryCta: { href: '/tournament/create', label: 'Create a championship' },
   accent: '#15803d',
 }
 
