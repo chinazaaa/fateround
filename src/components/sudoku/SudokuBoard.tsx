@@ -29,6 +29,8 @@ interface SudokuBoardProps {
   correctPulseId?: number
   /** Numbers whose nine instances are solved for this board/player. */
   completedNumbers?: number[]
+  /** When set, all cells containing this number get a light-blue same-number highlight. */
+  highlightNumber?: number | null
 }
 
 const BLOCK_BORDER = 'border-slate-400/70'
@@ -55,6 +57,7 @@ export function SudokuBoard({
   correctPulseValue = null,
   correctPulseId = 0,
   completedNumbers = [],
+  highlightNumber = null,
 }: SudokuBoardProps) {
   const completedSet = new Set(completedNumbers)
   return (
@@ -99,6 +102,11 @@ export function SudokuBoard({
             const isFlashing = isCellInFlashingUnits(row, col, flashUnits)
             const isCorrectPulsing =
               correctPulseValue != null && typeof displayValue === 'number' && displayValue === correctPulseValue
+            const isNumberHighlighted =
+              highlightNumber != null &&
+              typeof displayValue === 'number' &&
+              displayValue === highlightNumber &&
+              displayValue > 0
 
             const baseBg = displayColor ? { backgroundColor: `${displayColor}${iSolved ? '55' : '35'}` } : undefined
 
@@ -106,11 +114,16 @@ export function SudokuBoard({
               ? { backgroundColor: 'rgba(99, 102, 241, 0.35)', transition: 'background-color 0.15s ease-out' }
               : isFlashing
                 ? { backgroundColor: 'rgba(251, 191, 36, 0.55)', transition: 'background-color 0.5s ease-out' }
-                : baseBg
-                  ? { ...baseBg, transition: 'background-color 0.5s ease-out' }
-                  : undefined
+                : isNumberHighlighted
+                  ? { backgroundColor: 'rgba(56, 189, 248, 0.30)', transition: 'background-color 0.15s ease-out' }
+                  : baseBg
+                    ? { ...baseBg, transition: 'background-color 0.5s ease-out' }
+                    : undefined
 
-            const cellDisabled = readOnly || given || (canSelectCell ? !canSelectCell(row, col) : false)
+            // readOnly = board is entirely non-interactive (viewer/host read-only board)
+            const cellFullyDisabled = readOnly
+            // cellUneditable = can't type into it, but can still click to trigger number highlight
+            const cellUneditable = given || (canSelectCell ? !canSelectCell(row, col) : false)
 
             const cellLabel = [
               `Row ${row + 1}, column ${col + 1}`,
@@ -127,7 +140,7 @@ export function SudokuBoard({
               <button
                 key={`${row}-${col}`}
                 type="button"
-                disabled={cellDisabled}
+                disabled={cellFullyDisabled}
                 aria-label={cellLabel}
                 aria-pressed={isSelected || undefined}
                 onClick={() => onCellSelect?.(row, col)}
@@ -135,7 +148,9 @@ export function SudokuBoard({
                   'relative flex items-center justify-center select-none transition-colors',
                   borderRight,
                   borderBottom,
-                  cellDisabled ? 'cursor-default' : 'cursor-pointer hover:bg-slate-100/80 dark:hover:bg-slate-800/60',
+                  cellFullyDisabled || cellUneditable
+                    ? 'cursor-default'
+                    : 'cursor-pointer hover:bg-slate-100/80 dark:hover:bg-slate-800/60',
                   given ? 'bg-white dark:bg-slate-900' : '',
                   isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : '',
                 ].join(' ')}
@@ -265,8 +280,8 @@ function ToolbarButton({
 function UndoIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="w-5 h-5">
-      <path d="M9 7H5v4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M5 11a7 7 0 107 7" strokeLinecap="round" />
+      <path d="M3 9h13a5 5 0 0 1 0 10H7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7 5l-4 4 4 4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

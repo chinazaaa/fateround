@@ -106,6 +106,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [flashUnits, setFlashUnits] = useState<SudokuUnitFlash[]>([])
   const [correctPulse, setCorrectPulse] = useState<{ value: number; id: number } | null>(null)
+  const [highlightNumber, setHighlightNumber] = useState<number | null>(null)
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
 
@@ -410,6 +411,22 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   function handleCellSelect(row: number, col: number) {
+    if (!puzzle) return
+    // If the cell has a filled value (given or submitted), highlight that number.
+    const givenVal = puzzle[row]?.[col]
+    if (givenVal && givenVal !== 0) {
+      setHighlightNumber(givenVal)
+      setSelectedCell(null)
+      return
+    }
+    const filledVal = displayGrid[row]?.[col]
+    if (filledVal && filledVal > 0 && !isCellEditable(row, col)) {
+      setHighlightNumber(filledVal)
+      setSelectedCell(null)
+      return
+    }
+    // Editable cell — clear highlight and select it.
+    setHighlightNumber(null)
     if (!isCellEditable(row, col)) return
     setSelectedCell([row, col])
   }
@@ -826,6 +843,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
               correctPulseValue={correctPulse?.value ?? null}
               correctPulseId={correctPulse?.id ?? 0}
               completedNumbers={completedNumbers}
+              highlightNumber={highlightNumber}
             />
           ))}
 
