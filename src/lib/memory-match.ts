@@ -1,0 +1,409 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { markGameFinished } from '@/lib/game-finish'
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+export const MATCHING_PAIRS_MIN_PLAYERS = 1
+export const MATCHING_PAIRS_MAX_PLAYERS = 20
+export const MATCHING_PAIRS_DEFAULT_MAX_PLAYERS = 20
+
+/** Grid size options: number of *pairs* (not total cards). */
+export const MATCHING_PAIRS_GRID_SIZES = [8, 16] as const
+export type MatchingPairsGridSize = (typeof MATCHING_PAIRS_GRID_SIZES)[number]
+export const MATCHING_PAIRS_DEFAULT_GRID_SIZE: MatchingPairsGridSize = 8
+
+/** Delay (ms) before a non-matching pair flips back face-down. */
+export const MATCHING_PAIRS_FLIP_BACK_MS = 800
+
+/** Points awarded per correctly matched pair. */
+export const MATCHING_PAIRS_POINTS_PER_PAIR = 1000
+
+/** Flat bonus awarded every time a player's consecutive-match streak hits a multiple of 3. */
+export const MATCHING_PAIRS_STREAK_BONUS = 500
+
+/** Placement bonuses by finish rank (1-indexed). Index 0 is unused. */
+export const MATCHING_PAIRS_PLACEMENT_BONUS = [0, 1500, 1000, 500] as const // [unused, 1st, 2nd, 3rd]
+
+/** Flat bonus for zero wrong attempts on a completed board. */
+export const MATCHING_PAIRS_PERFECT_GAME_BONUS = 2000
+
+// ── Icon pool (80 distinct emoji/symbol strings) ─────────────────────────────
+// Spec: "80 curated icons spanning varied categories — fruits, shapes, everyday
+// objects. No icon library installed; use Unicode emoji/symbols."
+// All items are visually distinct at a glance.
+
+export const MEMORY_MATCH_ICON_POOL: readonly string[] = [
+  // Fruits & food (20)
+  '🍎', '🍊', '🍋', '🍇', '🍓', '🍒', '🍑', '🥝', '🍍', '🥭',
+  '🫐', '🍉', '🍌', '🍈', '🍐', '🥥', '🍅', '🥑', '🍆', '🌽',
+  // Animals (20)
+  '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯',
+  '🦁', '🐸', '🐧', '🐦', '🦜', '🐠', '🐬', '🦋', '🐝', '🦔',
+  // Objects & tools (20)
+  '⚽', '🏀', '🎸', '🎺', '🎻', '🎹', '🎯', '🎲', '🎮', '🧲',
+  '🔭', '🧪', '💡', '🔑', '⏰', '☂️', '🎈', '🪁', '🎀', '📚',
+  // Shapes & symbols (20)
+  '⭐', '🌙', '☀️', '🌈', '❄️', '🔥', '💧', '🌊', '⚡', '🌸',
+  '🍀', '🌴', '🌵', '🍄', '🌺', '🏔️', '🌋', '🏝️', '🌍', '🪐',
+] as const
+
+/** 16 visually distinct colors for pair highlighting (one per pair). */
+export const MEMORY_MATCH_PAIR_COLORS: readonly string[] = [
+  '#ef4444', // red
+  '#f97316', // orange
+  '#eab308', // yellow
+  '#22c55e', // green
+  '#14b8a6', // teal
+  '#3b82f6', // blue
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#f43f5e', // rose
+  '#84cc16', // lime
+  '#06b6d4', // cyan
+  '#a855f7', // purple
+  '#f59e0b', // amber
+  '#10b981', // emerald
+  '#6366f1', // indigo
+  '#e11d48', // crimson
+] as const
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+/** A single card pair entry as stored in round metadata. */
+export interface MatchingPairEntry {
+  /** Icon string (emoji). Both cards in the pair share this. */
+  icon: string
+  /** CSS color string. Both cards in the pair share this. */
+  color: string
+  /** Zero-based pair index within the round's pair set (0..N-1). */
+  pairIndex: number
+}
+
+/**
+ * Per-player shuffled card layout.
+ * `cards[i]` is the pair index of the card at position i.
+ * Length = gridSizePairs * 2 (total cards).
+ */
+export interface MatchingPairsPlayerBoard {
+  playerId: string
+  /** Card order: each value is a pairIndex (0-based). Appears twice per value. */
+  cardOrder: number[]
+}
+
+/** Stored in rounds.memory_match_metadata. */
+export interface MatchingPairsMetadata {
+  gridSizePairs: MatchingPairsGridSize
+  /** The selected pair set for this round. Index = pairIndex. */
+  pairs: MatchingPairEntry[]
+  /** Per-player shuffled board layouts (generated at game start). */
+  playerBoards: MatchingPairsPlayerBoard[]
+  /** Seed used for randomization (for auditability). */
+  seed: number
+}
+
+/** Row from memory_match_submissions. */
+export interface MatchingPairsSubmission {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  pair_index: number
+  is_match: boolean
+  streak_at_time: number
+  streak_bonus: number
+  points_after: number
+  submitted_at: string
+}
+
+/** Row from memory_match_progress. */
+export interface MatchingPairsProgress {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  pairs_matched: number
+  wrong_attempts: number
+  finished: boolean
+  finish_rank: number | null
+  finished_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+// ── Score computation ─────────────────────────────────────────────────────────
+
+export interface MatchingPairsPlayerScore {
+  playerId: string
+  pairsMatched: number
+  wrongAttempts: number
+  streakBonusTotal: number
+  longestStreak: number
+  perfectGame: boolean
+  placement: number
+  placementBonus: number
+  finalScore: number
+  timeTakenMs: number | null
+}
+
+/**
+ * Compute placement bonus by finish rank (1-indexed).
+ * Ranks 4+ get 0.
+ */
+export function matchingPairsPlacementBonus(rank: number): number {
+  return MATCHING_PAIRS_PLACEMENT_BONUS[rank] ?? 0
+}
+
+/**
+ * Compute the full final score for a player from their submission history.
+ * `gridSizePairs` is needed to determine perfect-game eligibility.
+ */
+export function tallyMatchingPairsScore(
+  submissions: MatchingPairsSubmission[],
+  progress: MatchingPairsProgress,
+  gridSizePairs: MatchingPairsGridSize
+): MatchingPairsPlayerScore {
+  const pairsMatched = submissions.filter((s) => s.is_match).length
+  const wrongAttempts = submissions.filter((s) => !s.is_match).length
+  const streakBonusTotal = submissions.reduce((acc, s) => acc + s.streak_bonus, 0)
+
+  // Longest streak: walk through submissions in order tracking running streak.
+  let maxStreak = 0
+  let streak = 0
+  for (const s of submissions) {
+    if (s.is_match) {
+      streak++
+      if (streak > maxStreak) maxStreak = streak
+    } else {
+      streak = 0
+    }
+  }
+
+  const perfectGame = progress.finished && wrongAttempts === 0 && pairsMatched === gridSizePairs
+  const placement = progress.finish_rank ?? 999
+  const placementBonus = matchingPairsPlacementBonus(placement)
+
+  const baseScore = pairsMatched * MATCHING_PAIRS_POINTS_PER_PAIR
+  const finalScore = baseScore + streakBonusTotal + placementBonus + (perfectGame ? MATCHING_PAIRS_PERFECT_GAME_BONUS : 0)
+
+  const timeTakenMs =
+    progress.finished_at && progress.created_at
+      ? new Date(progress.finished_at).getTime() - new Date(progress.created_at).getTime()
+      : null
+
+  return {
+    playerId: progress.player_id,
+    pairsMatched,
+    wrongAttempts,
+    streakBonusTotal,
+    longestStreak: maxStreak,
+    perfectGame,
+    placement,
+    placementBonus,
+    finalScore,
+    timeTakenMs,
+  }
+}
+
+// ── Randomization ─────────────────────────────────────────────────────────────
+
+/** Simple xorshift32 RNG (same as Sudoku/WordHunt for consistency). */
+function xorshift(seed: number) {
+  let s = (seed ^ 0xdeadbeef) >>> 0 || 1
+  return () => {
+    s ^= s << 13
+    s ^= s >>> 17
+    s ^= s << 5
+    return (s >>> 0) / 0x100000000
+  }
+}
+
+function shuffleArray<T>(arr: T[], rng: () => number): T[] {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
+function sampleWithoutReplacement<T>(pool: readonly T[], n: number, rng: () => number): T[] {
+  const shuffled = shuffleArray([...pool], rng)
+  return shuffled.slice(0, n)
+}
+
+/**
+ * Build the round metadata for a Matching Pairs game.
+ * Called server-side at game start.
+ *
+ * @param gameCode - Game ID (for embedding in metadata)
+ * @param seed     - Entropy seed (Date.now() ^ random, like Sudoku)
+ * @param gridSizePairs - Number of pairs (8 or 16)
+ * @param playerIds - IDs of all playing (non-spectator) players
+ */
+export function buildMatchingPairsRoundMetadata(
+  _gameCode: string,
+  seed: number,
+  gridSizePairs: MatchingPairsGridSize,
+  playerIds: string[]
+): MatchingPairsMetadata {
+  const rng = xorshift(seed)
+
+  // Sample icons and colors.
+  const selectedIcons = sampleWithoutReplacement(MEMORY_MATCH_ICON_POOL, gridSizePairs, rng)
+  const selectedColors = sampleWithoutReplacement(MEMORY_MATCH_PAIR_COLORS, gridSizePairs, rng)
+
+  const pairs: MatchingPairEntry[] = selectedIcons.map((icon, i) => ({
+    icon,
+    color: selectedColors[i],
+    pairIndex: i,
+  }))
+
+  // For each player, build a shuffled card order (each pairIndex appears twice).
+  const cardOrder = pairs.flatMap((p) => [p.pairIndex, p.pairIndex])
+  const playerBoards: MatchingPairsPlayerBoard[] = playerIds.map((playerId) => ({
+    playerId,
+    cardOrder: shuffleArray([...cardOrder], xorshift(seed ^ simpleHash(playerId))),
+  }))
+
+  return {
+    gridSizePairs,
+    pairs,
+    playerBoards,
+    seed,
+  }
+}
+
+/** Simple string hash for per-player board seed derivation. */
+function simpleHash(s: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = (h * 0x01000193) >>> 0
+  }
+  return h
+}
+
+/**
+ * Build the round row for insertion into `rounds`.
+ */
+export function buildMatchingPairsRoundRow(
+  gameCode: string,
+  metadata: MatchingPairsMetadata
+): Record<string, unknown> {
+  return {
+    game_id: gameCode,
+    round_number: 1,
+    status: 'active',
+    started_at: new Date().toISOString(),
+    memory_match_metadata: metadata,
+    // fields not used by this game type:
+    participant_ids: [],
+  }
+}
+
+// ── Metadata parsing ──────────────────────────────────────────────────────────
+
+export function parseMatchingPairsMetadata(raw: unknown): MatchingPairsMetadata | null {
+  if (!raw || typeof raw !== 'object') return null
+  const m = raw as Record<string, unknown>
+  if (
+    typeof m.gridSizePairs !== 'number' ||
+    !Array.isArray(m.pairs) ||
+    !Array.isArray(m.playerBoards)
+  ) {
+    return null
+  }
+  return m as unknown as MatchingPairsMetadata
+}
+
+/** Get this player's shuffled card order from the round metadata. */
+export function getPlayerBoard(meta: MatchingPairsMetadata, playerId: string): number[] | null {
+  const board = meta.playerBoards.find((b) => b.playerId === playerId)
+  return board?.cardOrder ?? null
+}
+
+// ── Scoring helpers for client-side computation ───────────────────────────────
+
+/**
+ * Compute the streak bonus that would be awarded for a correct match,
+ * given the current streak counter value BEFORE this match.
+ * The streak counter increments first, then we check % 3 == 0.
+ */
+export function computeStreakBonus(streakBeforeMatch: number): number {
+  const newStreak = streakBeforeMatch + 1
+  return newStreak % 3 === 0 ? MATCHING_PAIRS_STREAK_BONUS : 0
+}
+
+/** Format grid size as a readable label. */
+export function formatMatchingPairsGridSize(gridSizePairs: MatchingPairsGridSize): string {
+  return gridSizePairs === 8 ? 'Standard (4×4)' : 'Large (8×4)'
+}
+
+/** Layout dimensions for a given grid size. */
+export function matchingPairsGridLayout(gridSizePairs: MatchingPairsGridSize): { cols: number; rows: number } {
+  return gridSizePairs === 8 ? { cols: 4, rows: 4 } : { cols: 8, rows: 4 }
+}
+
+// ── Game finish helpers ───────────────────────────────────────────────────────
+
+/**
+ * Check if all playing players have finished their boards.
+ * Returns true if the game should be ended.
+ */
+export async function checkAllMatchingPairsPlayersDone(
+  supabase: SupabaseClient,
+  gameId: string,
+  roundId: string,
+  totalPairs: number
+): Promise<{ allDone: boolean; error: string | null }> {
+  const { data: activePlayers, error: playersError } = await supabase
+    .from('players')
+    .select('id')
+    .eq('game_id', gameId)
+    .eq('spectator', false)
+
+  if (playersError) return { allDone: false, error: playersError.message }
+
+  const playerIds = ((activePlayers ?? []) as { id: string }[]).map((p) => p.id)
+  if (playerIds.length === 0) return { allDone: false, error: null }
+
+  const { data: progressRows, error: progressError } = await supabase
+    .from('memory_match_progress')
+    .select('player_id, pairs_matched, finished')
+    .eq('round_id', roundId)
+
+  if (progressError) return { allDone: false, error: progressError.message }
+
+  const progressMap = new Map<string, { pairs_matched: number; finished: boolean }>()
+  for (const row of (progressRows ?? []) as { player_id: string; pairs_matched: number; finished: boolean }[]) {
+    progressMap.set(row.player_id, row)
+  }
+
+  const allDone = playerIds.every((id) => {
+    const p = progressMap.get(id)
+    return p?.finished === true || (p?.pairs_matched ?? 0) >= totalPairs
+  })
+
+  return { allDone, error: null }
+}
+
+/**
+ * End the game if all players have completed their boards.
+ * Safe to call multiple times — no-ops if already finished.
+ */
+export async function finishMatchingPairsIfAllDone(
+  supabase: SupabaseClient,
+  gameId: string,
+  roundId: string,
+  totalPairs: number
+): Promise<{ finished: boolean; error: string | null }> {
+  const { data: game } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
+  if (game?.status !== 'active') return { finished: false, error: null }
+
+  const { allDone, error } = await checkAllMatchingPairsPlayersDone(supabase, gameId, roundId, totalPairs)
+  if (error) return { finished: false, error }
+  if (!allDone) return { finished: false, error: null }
+
+  const { error: finishError } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+  return { finished: !finishError, error: finishError?.message ?? null }
+}
