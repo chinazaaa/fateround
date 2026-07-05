@@ -18,10 +18,17 @@ type Ops = {
   sessionUpdates: Record<string, unknown>[]
   handInserts: Record<string, unknown>[]
   playerUpdates: Record<string, unknown>[]
+  handDeletes: number
 }
 
-function makeMock(opts: { session: unknown; player: unknown; casWins: boolean[] }) {
-  const ops: Ops = { sessionUpdates: [], handInserts: [], playerUpdates: [] }
+function makeMock(opts: {
+  session: unknown
+  player: unknown
+  casWins: boolean[]
+  handError?: unknown
+  flipError?: unknown
+}) {
+  const ops: Ops = { sessionUpdates: [], handInserts: [], playerUpdates: [], handDeletes: 0 }
   let casCall = 0
 
   function chain(result: Row): Promise<Row> & Record<string, unknown> {
@@ -43,16 +50,25 @@ function makeMock(opts: { session: unknown; player: unknown; casWins: boolean[] 
         },
         update(vals: Record<string, unknown>) {
           if (table === 'whot_sessions') {
+            // Forward CAS claims are gated by casWins; the compensating rollback is a later
+            // whot_sessions.update with no casWins entry left, so it just resolves.
             ops.sessionUpdates.push(vals)
             const won = opts.casWins[casCall] ?? false
             casCall += 1
             return chain({ data: won ? [{ game_id: 'G1' }] : [], error: null })
           }
-          if (table === 'players') ops.playerUpdates.push(vals)
+          if (table === 'players') {
+            ops.playerUpdates.push(vals)
+            return chain({ data: null, error: opts.flipError ?? null })
+          }
           return chain({ data: null, error: null })
         },
         insert(vals: Record<string, unknown>) {
           if (table === 'whot_player_hands') ops.handInserts.push(vals)
+          return chain({ data: null, error: table === 'whot_player_hands' ? (opts.handError ?? null) : null })
+        },
+        delete() {
+          if (table === 'whot_player_hands') ops.handDeletes += 1
           return chain({ data: null, error: null })
         },
       }
@@ -198,5 +214,44 @@ describe('admitWhotPlayer', () => {
     expect(res.error).toMatch(/try again/i)
     expect(m.ops.handInserts).toHaveLength(0)
     expect(m.ops.playerUpdates).toHaveLength(0)
+  })
+
+  it('returns 404 when the session is missing — no writes', async () => {
+    const m = makeMock({ session: null, player: latecomer, casWins: [true] })
+    const res = await admitWhotPlayer(m.supabase, 'G1', 'D', 6)
+    expect(res).toEqual({ error: 'Session not found', status: 404 })
+    expect(m.ops.sessionUpdates).toHaveLength(0)
+    expect(m.ops.handInserts).toHaveLength(0)
+  })
+
+  it('returns 404 when the player row is missing — no writes', async () => {
+    const m = makeMock({ session: baseSession(), player: null, casWins: [true] })
+    const res = await admitWhotPlayer(m.supabase, 'G1', 'D', 6)
+    expect(res).toEqual({ error: 'Player not found', status: 404 })
+    expect(m.ops.sessionUpdates).toHaveLength(0)
+    expect(m.ops.handInserts).toHaveLength(0)
+  })
+
+  it('rolls back the seat when the hand insert fails (500) — turn_order + deck restored', async () => {
+    const m = makeMock({ session: baseSession(), player: latecomer, casWins: [true], handError: { message: 'boom' } })
+    const res = await admitWhotPlayer(m.supabase, 'G1', 'D', 6)
+
+    expect(res.status).toBe(500)
+    // Forward claim + compensating rollback.
+    expect(m.ops.sessionUpdates).toHaveLength(2)
+    expect(m.ops.sessionUpdates[1].turn_order).toEqual(['A', 'B', 'C']) // seat undone
+    expect((m.ops.sessionUpdates[1].draw_pile as WhotCard[]).length).toBe(10) // full deck restored
+    expect(m.ops.playerUpdates).toHaveLength(0) // never got to the spectator flip
+  })
+
+  it('rolls back the seat AND removes the hand when the spectator flip fails (500)', async () => {
+    const m = makeMock({ session: baseSession(), player: latecomer, casWins: [true], flipError: { message: 'boom' } })
+    const res = await admitWhotPlayer(m.supabase, 'G1', 'D', 6)
+
+    expect(res.status).toBe(500)
+    expect(m.ops.handInserts).toHaveLength(1) // hand was inserted before the flip
+    expect(m.ops.handDeletes).toBeGreaterThanOrEqual(1) // ...then removed by the rollback
+    expect(m.ops.sessionUpdates).toHaveLength(2)
+    expect(m.ops.sessionUpdates[1].turn_order).toEqual(['A', 'B', 'C'])
   })
 })

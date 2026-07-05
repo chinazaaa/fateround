@@ -1361,6 +1361,7 @@ export async function admitWhotPlayer(
     const admittedName = playerRow.name ?? 'A player'
     // Bespoke CAS update — omits turn_deadline_at / current_turn_index so the current
     // player's turn and countdown are untouched (persistSession would reset the deadline).
+    const claimedAt = new Date().toISOString()
     const { data: claimed } = await supabase
       .from('whot_sessions')
       .update({
@@ -1368,13 +1369,34 @@ export async function admitWhotPlayer(
         draw_pile: drawPile,
         discard_pile: discardPile,
         status_message: `${admittedName} was dealt in${reshuffled ? ' · deck reshuffled' : ''}`,
-        updated_at: new Date().toISOString(),
+        updated_at: claimedAt,
       })
       .eq('game_id', gameId)
       .eq('updated_at', session.updated_at)
       .select('game_id')
 
     if ((claimed?.length ?? 0) === 0) continue // lost the race — reload and retry
+
+    // supabase-js can't span these three writes in one transaction, so if a follow-up write
+    // fails we compensate: undo the seat + returned cards so the game isn't stranded (seated
+    // in turn_order, cards gone from the deck, but no hand / still a spectator — a state a
+    // retry can't recover from because it'd hit the "already seated" guard). The rollback
+    // CAS-guards on claimedAt: if a concurrent turn already moved the session on, we leave it
+    // rather than clobber that write (the dangling hand row, if any, is still removed).
+    const rollbackClaim = async () => {
+      await supabase.from('whot_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
+      await supabase
+        .from('whot_sessions')
+        .update({
+          turn_order: turnOrder,
+          draw_pile: (session.draw_pile as WhotCard[]) ?? [],
+          discard_pile: (session.discard_pile as WhotCard[]) ?? [],
+          status_message: session.status_message ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('game_id', gameId)
+        .eq('updated_at', claimedAt)
+    }
 
     // Won: the dealt cards are now out of draw_pile. Materialize the hand BEFORE flipping
     // spectator so the client sees a hand the moment it observes spectator=false.
@@ -1384,14 +1406,20 @@ export async function admitWhotPlayer(
       cards: drawn,
       player_order: newIndex,
     })
-    if (handError) return { error: internalErrorMessage('whot', handError), status: 500 }
+    if (handError) {
+      await rollbackClaim()
+      return { error: internalErrorMessage('whot', handError), status: 500 }
+    }
 
     const { error: flipError } = await supabase
       .from('players')
       .update({ spectator: false })
       .eq('id', playerId)
       .eq('game_id', gameId)
-    if (flipError) return { error: internalErrorMessage('whot', flipError), status: 500 }
+    if (flipError) {
+      await rollbackClaim()
+      return { error: internalErrorMessage('whot', flipError), status: 500 }
+    }
 
     return { error: null, status: 200 }
   }
