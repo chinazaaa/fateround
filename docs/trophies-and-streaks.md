@@ -306,13 +306,14 @@ both a leaderboard entry and any trophies.
 5. Recompute `trophy_points` + `trophy_level` on the profile.
 6. Return the list of **newly-earned** trophies so the client can show the unlock moment.
 
-**Atomicity (required).** Steps 2–5 span three tables (`player_stats`,
+**Atomicity (required).** Steps 2–5 span four tables (`player_stats`, `player_distinct`,
 `player_trophies`, `profiles`) and MUST commit or roll back as **one unit** — a partial
-failure (e.g. counters incremented but the Platinum/`trophy_level` write fails) would
-leave the three tables out of sync. Wrap the whole award pass in a **single database
+failure (e.g. counters/breadth incremented but the Platinum/`trophy_level` write fails)
+would leave the tables out of sync. Wrap the whole award pass in a **single database
 transaction**, implemented as a Postgres `security definer` function / RPC
 (`award_for_session(profile_id, session_facts)`) called from the finish path, so the
-counter increments, trophy inserts, Platinum recompute, and cached
+counter increments, the `player_distinct` breadth inserts (for distinct criteria), trophy
+inserts, Platinum recompute, and cached
 `trophy_points`/`trophy_level` writes all land together. The service-role client invokes
 it; nothing partial is ever observable.
 
@@ -664,9 +665,11 @@ create table profile_merges (
 ```
 
 **RLS:**
-- `profiles`, `player_stats`, `player_trophies`, `player_distinct`, `awarded_sessions`:
-  **owner can read own rows** (`auth.uid() = profile_id`). Public leaderboards read a
-  **narrow view** exposing only handle + trophy_level + streak (not email/PII).
+- `profiles`: **owner can read own row** (`auth.uid() = id` — `profiles` is keyed by `id`,
+  not `profile_id`). Public leaderboards read a **narrow view** exposing only
+  handle + trophy_level + streak (not email/PII).
+- `player_stats`, `player_trophies`, `player_distinct`, `awarded_sessions`:
+  **owner can read own rows** (`auth.uid() = profile_id`).
 - **All writes go through the server-side award engine using the service-role/admin
   client** (`getSupabaseAdmin()`), never directly from the client — so counters and
   trophies can't be forged. Follow the patterns in `docs/rls-hardening.md`.
