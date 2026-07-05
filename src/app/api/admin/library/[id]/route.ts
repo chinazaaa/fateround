@@ -1,7 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
+import { parseJsonBody } from '@/lib/parse-body'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+
+// Permissive shape: fields the handler runtime-checks stay `unknown` so its
+// typeof/Array.isArray guards remain live (identical messages); game_type/status are
+// typed string only because they go straight to `.includes()`. The schema's real job is
+// to turn a malformed/non-object body into a clean 400 instead of the previous 500.
+const libraryPatchSchema = z
+  .object({
+    action: z.unknown().optional(),
+    title: z.unknown().optional(),
+    game_type: z.string().optional(),
+    author_name: z.unknown().optional(),
+    description: z.unknown().optional(),
+    tags: z.unknown().optional(),
+    status: z.string().optional(),
+  })
+  .passthrough()
 
 const VALID_GAME_TYPES = [
   'trivia',
@@ -21,7 +39,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id } = await params
-  const body = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, libraryPatchSchema)
+  if (bodyError) return bodyError
   const { action, title, game_type, author_name, description, tags, status } = body
 
   const supabase = getSupabaseAdmin()
