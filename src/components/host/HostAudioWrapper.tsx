@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { AudioChat } from '@/components/AudioChat'
+import { RoomVoiceRail } from '@/components/rooms/RoomVoiceRail'
 import { getPlayerSession } from '@/lib/utils'
 import { useHostToken } from '@/hooks/useHostToken'
 
@@ -55,11 +55,13 @@ export function HostAudioWrapper() {
   const { hostToken } = useHostToken(gameCode)
   if (!gameCode || !hostToken) return null
   return (
-    <AudioChat
+    <RoomVoiceRail
       roomCode={gameCode}
       playerName={hostName}
       identity={hostIdentity}
       auth={{ kind: 'host', token: hostToken }}
+      host
+      hostBadge
     />
   )
 }
