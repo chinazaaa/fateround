@@ -71,4 +71,23 @@ describe('useAdvancePolling', () => {
     expect(fetchMock).toHaveBeenCalled()
     expect(onAdvanced).not.toHaveBeenCalled()
   })
+
+  it('treats a fetch rejection as a failed attempt and keeps polling (inFlight cleared)', async () => {
+    // First attempt throws — the catch branch must return false (no onAdvanced) and,
+    // critically, the finally must clear inFlight so a later attempt can still run.
+    fetchMock.mockRejectedValueOnce(new Error('network'))
+    const { onAdvanced } = renderAdvance({ status: 'active' })
+    await vi.advanceTimersByTimeAsync(10)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(onAdvanced).not.toHaveBeenCalled()
+
+    // A failure triggers usePolling's backoff; once creds/network recover a later poll
+    // succeeds — proving inFlight didn't get stuck true after the throw.
+    fetchMock.mockResolvedValue({ ok: true } as Response)
+    await vi.advanceTimersByTimeAsync(POLL_INTERVALS.advanceSync * 4)
+
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1)
+    expect(onAdvanced).toHaveBeenCalled()
+  })
 })
