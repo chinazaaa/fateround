@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
+import { GAME_BROWSE_FIELDS, countPlayersByGame, type BrowseGameRow } from '@/lib/game-browse'
 import { generateGameCode, generateToken } from '@/lib/utils'
 import {
   normalizeGender,
@@ -219,6 +220,49 @@ function parseCustomQuestionsBody(
     return parsed.length > 0 ? parsed : null
   }
   return null
+}
+
+const BROWSE_PAGE_SIZE = 20
+
+// Public browse list: games the host marked public that are still going (waiting/active),
+// newest first, cursor-paginated. Mirrors GET /api/rooms. Uses the anon client (RLS-open
+// SELECT) and an explicit safe-column list — host_token is revoked from anon.
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const limit = Math.min(
+    Math.max(parseInt(searchParams.get('limit') ?? String(BROWSE_PAGE_SIZE), 10) || BROWSE_PAGE_SIZE, 1),
+    50
+  )
+  const cursor = searchParams.get('cursor')
+
+  let query = supabase
+    .from('games')
+    .select(GAME_BROWSE_FIELDS)
+    .eq('is_public', true)
+    .neq('status', 'finished')
+    .order('created_at', { ascending: false })
+    .limit(limit + 1)
+
+  if (cursor) {
+    query = query.lt('created_at', cursor)
+  }
+
+  const { data: games, error } = await query
+
+  if (error) return NextResponse.json({ error: internalErrorMessage('games', error) }, { status: 500 })
+
+  const page = ((games ?? []) as BrowseGameRow[]).slice(0, limit)
+  const hasMore = (games ?? []).length > limit
+  const counts = await countPlayersByGame(
+    supabase,
+    page.map((game) => game.id)
+  )
+
+  return NextResponse.json({
+    games: page.map((game) => ({ ...game, playerCount: counts[game.id] ?? 0 })),
+    hasMore,
+    nextCursor: hasMore ? (page[page.length - 1]?.created_at ?? null) : null,
+  })
 }
 
 export async function POST(req: NextRequest) {
@@ -637,6 +681,7 @@ export async function POST(req: NextRequest) {
     game_type,
     theme,
     status: isSecret ? 'active' : 'waiting',
+    is_public: parsed.data.isPublic ?? false,
     current_round_number: 0,
     ...(isSecret ? { session_started_at: new Date().toISOString() } : {}),
     wst_quote_source: parsed.data.wst_quote_source ?? 'player',
