@@ -1,33 +1,32 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { consumeHostPlayIntent } from '@/lib/host-play-intent'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   currentPlayerId,
   getWhotHostMode,
+  hasActiveWhotCall,
   hasPlayableCard,
   getActivePickPenalty,
   isDrawPileDepleted,
   parseWhotRules,
   setWhotHostMode,
   WHOT_MIN_PLAYERS,
-  WHOT_DEFAULT_MAX_PLAYERS,
   type WhotHostMode,
 } from '@/lib/whot'
 import { supabase } from '@/lib/supabase'
-import { lobbyMaxPlayersFromGame, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { GAME_SELECT, PLAYER_SELECT, WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
-import { useHostAdmitPlayer } from '@/hooks/useHostAdmitPlayer'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player, WhotPlayerHand, WhotSession, WhotShape } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -41,6 +40,11 @@ import { useWhotTurnTimer } from '@/hooks/useWhotTurnTimer'
 import { useWhotNotifications, playWhotActionSound } from '@/hooks/useWhotNotifications'
 import { WhotChoosePanel, WhotHand, WhotStandings, WhotTable } from '@/components/whot/WhotBoard'
 import { WhotGameTimerBar } from '@/components/whot/WhotGameTimerBar'
+import { useWhotGameTimer } from '@/hooks/useWhotGameTimer'
+import { WhotPlaySurface } from '@/components/whot/WhotPlaySurface'
+import { HostRoomShell } from '@/components/host/HostRoomShell'
+import { CardTableHostControls } from '@/components/rooms/card-table/CardTableHostControls'
+import { CardTableHostDeskSide, type HostSeat } from '@/components/rooms/card-table/CardTableHostDeskSide'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { WhotCard, WhotPrimaryButton } from '@/components/whot/WhotChrome'
@@ -64,31 +68,14 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [hostJoining, setHostJoining] = useState(false)
   const [hostActing, setHostActing] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
-  const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
 
   useApplyGameTheme(game?.theme)
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
 
-  // Effective seat cap, clamped against game_player_limits — mirrors the server's
-  // lobbyMaxPlayersFromGame so the "Deal in" gate agrees with what admitWhotPlayer accepts.
-  useEffect(() => {
-    void fetch('/api/game-limits')
-      .then((res) => res.json())
-      .then((data: { limits?: GamePlayerLimitsMap }) => {
-        if (data.limits) setLimits(data.limits)
-      })
-      .catch(() => {})
-  }, [])
-  const maxPlayers = limits
-    ? lobbyMaxPlayersFromGame('whot', game ?? {}, limits)
-    : (game?.max_players ?? WHOT_DEFAULT_MAX_PLAYERS)
-
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes, sessionRes, handsRes] = await Promise.all([
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      // is_eliminated rides along so the "Deal in" gate can hide the action for eliminated
-      // players (the server rejects them too — keeps client and server agreeing).
-      supabase.from('players').select(`${PLAYER_SELECT},is_eliminated`).eq('game_id', gameCode).order('joined_at'),
+      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
       supabase.from('whot_sessions').select(WHOT_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
       supabase.from('whot_player_hands').select(WHOT_PLAYER_HANDS_SELECT).eq('game_id', gameCode).order('player_order'),
     ])
@@ -102,7 +89,15 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
 
   useEffect(() => {
     load()
-    setHostMode(getWhotHostMode(gameCode))
+    const intent = consumeHostPlayIntent(gameCode)
+    if (intent) {
+      const mode: WhotHostMode = intent.role === 'host' ? 'spectator' : 'player'
+      setWhotHostMode(gameCode, mode)
+      setHostMode(mode)
+      if (intent.name) setHostJoinName(intent.name)
+    } else {
+      setHostMode(getWhotHostMode(gameCode))
+    }
     const stored = getPlayerSession(gameCode)
     if (stored) {
       setHostPlayerId(stored.playerId)
@@ -135,7 +130,6 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
-  const { admitPlayer, admittingPlayerId } = useHostAdmitPlayer(gameCode, hostToken, load)
 
   // Clear stale host-as-player state if the host's own row is removed elsewhere.
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
@@ -167,6 +161,23 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       setHostJoining(false)
     }
   }
+
+  // No manual join: when the host chose "Play as yourself" (mode 'player'), seat
+  // them automatically in the lobby using the name carried from the create
+  // screen. Fires once; falls back to "Host" if no name was provided.
+  const hostAutoJoinedRef = useRef(false)
+  useEffect(() => {
+    if (hostAutoJoinedRef.current) return
+    if (game?.status !== 'waiting') return
+    if (hostMode !== 'player') return
+    if (hostPlayerId || hostJoining) return
+    if (!hostJoinName.trim()) {
+      setHostJoinName('Host')
+      return
+    }
+    hostAutoJoinedRef.current = true
+    void hostJoinGame()
+  }, [game?.status, hostMode, hostPlayerId, hostJoining, hostJoinName]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const postHostAction = async (path: string, body: Record<string, unknown> = {}) => {
     if (!hostPlayerId) return
@@ -241,6 +252,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const isHostTurn = turnPlayerId === hostPlayerId
 
   const { secondsLeft, hasTimer, urgent } = useWhotTurnTimer(gameCode, session, game?.status === 'active')
+  const gameTimer = useWhotGameTimer(gameCode, game)
 
   const myHand = useMemo(() => {
     const row = hands.find((h) => h.player_id === hostPlayerId)
@@ -363,16 +375,6 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       highlightPlayerId={hostPlayerId}
       removingPlayerId={removingPlayerId}
       onRemovePlayer={removePlayer}
-      onAdmitPlayer={
-        game.status === 'active' && (session?.turn_order?.length ?? 0) < maxPlayers ? admitPlayer : undefined
-      }
-      admittingPlayerId={admittingPlayerId}
-      canAdmitPlayer={(id) =>
-        !(session?.turn_order ?? []).includes(id) && !players.find((p) => p.id === id)?.is_eliminated
-      }
-      playersLabel={
-        game.status === 'active' ? `Players · ${session?.turn_order?.length ?? 0}/${maxPlayers}` : undefined
-      }
       gameType="whot"
       top={
         game.status === 'waiting' ? (
@@ -437,6 +439,83 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       }
     />
   )
+
+  // Active game → design-system room shell + the same play surface players see
+  // (host+play mobile / desktop). The marketing header + floating voice are
+  // gated out for card-table games while active (see `useHostRoomChromeMode`),
+  // so this DS voice rail is the only chrome. Host controls live in the desktop
+  // side rail + an inline bar (mobile) so ending/managing stays reachable.
+  if (game.status === 'active') {
+    const controls = (
+      <CardTableHostControls
+        gameCode={gameCode}
+        hostToken={hostToken}
+        hostPlays={hostPlays}
+        onModeChange={changeHostMode}
+        onEnded={load}
+        modeLocked={!hostPlayerId}
+        settingsBody={manage}
+      />
+    )
+    const hostSeats: HostSeat[] = session
+      ? session.turn_order
+          .map((id) => players.find((p) => p.id === id))
+          .filter((p): p is Player => !!p)
+          .map((p) => ({
+            id: p.id,
+            name: p.name,
+            cards: handCounts[p.id] ?? 0,
+            turn: p.id === turnPlayerId,
+            isMe: p.id === hostPlayerId,
+          }))
+      : []
+    const sideRail = (
+      <CardTableHostDeskSide
+        seats={hostSeats}
+        hostPlays={hostPlays}
+        blurb="Whot · first to empty their hand wins. You can end the game at any time."
+        onRemove={removePlayer}
+        controls={controls}
+      />
+    )
+    return (
+      <HostRoomShell gameCode={gameCode} hostToken={hostToken} gameName={cfg.label} sideContent={sideRail}>
+        {session ? (
+          <>
+            {/* Mobile host controls (desktop uses the side rail). */}
+            <div className="ct-host-panel">{controls}</div>
+            <WhotPlaySurface
+              session={session}
+              players={players}
+              myPlayerId={hostPlayerId}
+              myHand={myHand}
+              handCounts={handCounts}
+              rules={whotRules}
+              turnPlayerId={turnPlayerId}
+              isMyTurn={hostPlays && isHostTurn}
+              watching={!hostPlays}
+              acting={hostActing}
+              drawCount={session.draw_pile?.length ?? 0}
+              drawDepleted={drawDepleted}
+              myCanPlay={hostCanPlay}
+              whotCallActive={hasActiveWhotCall(session)}
+              pickPenalty={pickPenalty}
+              turnTimer={{ secondsLeft, hasTimer, urgent }}
+              gameTimer={gameTimer}
+              onPlay={(cardId) => void postHostAction('/api/whot/play', { cardId })}
+              onDraw={() => void postHostAction('/api/whot/draw')}
+              onChooseShape={(shape) => void postHostAction('/api/whot/choose', { shape })}
+              onChooseNumber={(number) => void postHostAction('/api/whot/choose', { number })}
+            />
+          </>
+        ) : (
+          <p className="turn-status g" style={{ textAlign: 'center', padding: 24 }}>
+            Waiting for the round to begin…
+          </p>
+        )}
+      </HostRoomShell>
+    )
+  }
 
   return (
     <HostGameLayout

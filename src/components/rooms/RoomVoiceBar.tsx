@@ -48,6 +48,8 @@ export type RoomVoiceBarProps = {
   onShareHost?: boolean
   /** Fired when the user taps to join the voice call. */
   onJoinVoice?: () => void
+  /** Fired when the user leaves the voice call (but stays in the game). */
+  onLeaveVoice?: () => void
   /** Fired when the user mutes/unmutes (true = now muted). */
   onToggleMute?: (muted: boolean) => void
   onLeave?: () => void
@@ -208,7 +210,34 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
           >
             ✏️&nbsp;&nbsp;Edit your name
           </button>
-          {!props.resignOnly && (
+          {/* Voice is join-first; the call can be joined or left from here too
+              (the mic pill only toggles mute once you're in). */}
+          {inVoice ? (
+            <button
+              style={menuItem}
+              onClick={() => {
+                setMenu(false)
+                setInternalJoined(false)
+                props.onLeaveVoice?.()
+              }}
+            >
+              🔇&nbsp;&nbsp;Leave voice chat
+            </button>
+          ) : (
+            <button
+              style={menuItem}
+              onClick={() => {
+                setMenu(false)
+                setInternalJoined(true)
+                setInternalMuted(false)
+                props.onJoinVoice?.()
+              }}
+            >
+              🎙️&nbsp;&nbsp;Join voice chat
+            </button>
+          )}
+          {/* The host runs the game — they End / Transfer it, never "leave". */}
+          {!props.resignOnly && !props.host && (
             <button
               style={{ ...menuItem, color: 'var(--danger)' }}
               onClick={() => {
@@ -226,7 +255,11 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
 
   const sheets = (
     <>
-      <ShareSheet open={share} onClose={() => setShare(false)} host={props.onShareHost !== false} code={props.code} />
+      {/* Host share panel (Host + play tabs) only for actual hosts. `onShareHost`
+          overrides when set (e.g. the design desktop bar passes false); otherwise
+          fall back to whether this bar is mounted in host mode — so plain players
+          never see the host panel. */}
+      <ShareSheet open={share} onClose={() => setShare(false)} host={props.onShareHost ?? !!props.host} code={props.code} />
       <EditNameSheet
         open={editing}
         name={yourName}

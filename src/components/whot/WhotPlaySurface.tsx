@@ -1,0 +1,260 @@
+'use client'
+
+/**
+ * Whot — design-system play surface (player, mobile-faithful).
+ *
+ * The presentational shell for the active / watching states of
+ * WhotPlayerView, ported from the "Card Table" design (`Player · Mobile`).
+ * It renders the turn rail, the felt (draw + discard piles, status/toasts),
+ * and the fanned hand + draw action using the shared card-table primitives.
+ *
+ * This component is PRESENTATION ONLY — every game action is delegated to
+ * the callbacks passed in from WhotPlayerView; no state or logic lives here
+ * beyond the local wild-call picker tab. It is designed to mount inside the
+ * `.fr-room fr-room-phone` shell (set up by `game/[code]/page.tsx`), directly
+ * under the top voice rail — exactly like the poll room player view.
+ */
+
+import { useState } from 'react'
+import {
+  ActionToast,
+  CardTableSurface,
+  DrawPile,
+  GameTimerBar,
+  Hand,
+  PickerGrid,
+  PickerOverlay,
+  PickerTabs,
+  Piles,
+  SpecSeats,
+  Table,
+  TurnRail,
+  TurnStatus,
+  WhotCardFace,
+  type SpecSeat,
+  type TurnSeat,
+} from '@/components/rooms/card-table/primitives'
+import { WhotShapeIcon } from '@/components/whot/WhotShapeIcon'
+import { canPlayCard, WHOT_SHAPE_LABELS, type WhotRules } from '@/lib/whot'
+import { formatCountdown } from '@/lib/timer-format'
+import type { WhotCard, WhotSession, WhotShape } from '@/types'
+
+/** Deck accent for the Whot card backs (emerald, matching the design). */
+const WHOT_ACCENT = '#059669'
+
+/** Shapes callable from a WHOT wild (the design's picker set — no `whot`). */
+const WHOT_CALL_SHAPES: WhotShape[] = ['circle', 'triangle', 'cross', 'square', 'star']
+/** Numbers callable from a WHOT wild (the design's picker set). */
+const WHOT_CALL_NUMBERS = [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14]
+
+type Player = { id: string; name: string; spectator?: boolean | null }
+
+export type WhotPlaySurfaceProps = {
+  session: WhotSession
+  players: Player[]
+  /** the viewer's own player id — marks their seat "(you)" in the turn rail */
+  myPlayerId?: string | null
+  myHand: WhotCard[]
+  handCounts: Record<string, number>
+  rules: WhotRules
+  /** the id of the seat whose turn it is */
+  turnPlayerId: string | null
+  isMyTurn: boolean
+  /** read-only spectator / out-of-cards viewer */
+  watching?: boolean
+  acting: boolean
+  drawCount: number
+  drawDepleted: boolean
+  myCanPlay: boolean
+  whotCallActive: boolean
+  pickPenalty: { type: 'pick2' | 'pick3' | null; count: number }
+  /** per-turn countdown for the active seat (from useWhotTurnTimer) */
+  turnTimer?: { secondsLeft: number; hasTimer: boolean; urgent: boolean }
+  /** overall game-duration timer (from useWhotGameTimer) */
+  gameTimer?: { active: boolean; label: string; secondsLeft: number; durationSeconds: number }
+  onPlay: (cardId: string) => void
+  onDraw: () => void
+  onChooseShape: (shape: WhotShape) => void
+  onChooseNumber: (n: number) => void
+}
+
+export function WhotPlaySurface({
+  session,
+  players,
+  myPlayerId,
+  myHand,
+  handCounts,
+  rules,
+  turnPlayerId,
+  isMyTurn,
+  watching,
+  acting,
+  drawCount,
+  drawDepleted,
+  myCanPlay,
+  whotCallActive,
+  pickPenalty,
+  turnTimer,
+  gameTimer,
+  onPlay,
+  onDraw,
+  onChooseShape,
+  onChooseNumber,
+}: WhotPlaySurfaceProps) {
+  const [pickTab, setPickTab] = useState<'shape' | 'number'>('shape')
+
+  // Per-turn countdown chip shown on the active seat (mono, red when urgent).
+  const turnTimeLabel =
+    turnTimer?.hasTimer && turnTimer.secondsLeft > 0 ? formatCountdown(turnTimer.secondsLeft) : undefined
+
+  // Turn rail: order players by turn_order so seats read left→right in play order.
+  const byId = new Map(players.map((p) => [p.id, p]))
+  const seats: TurnSeat[] = session.turn_order
+    .map((id) => byId.get(id))
+    .filter((p): p is Player => !!p)
+    .map((p) => {
+      const isTurn = p.id === turnPlayerId
+      return {
+        name: p.name,
+        cards: handCounts[p.id] ?? 0,
+        turn: isTurn,
+        you: p.id === myPlayerId,
+        timeLabel: isTurn ? turnTimeLabel : undefined,
+        timeLow: isTurn ? turnTimer?.urgent : undefined,
+      }
+    })
+
+  const top = session.top_card
+  const choosing = isMyTurn && !watching && session.phase === 'choose_whot'
+  const canAct = isMyTurn && !watching && session.phase === 'playing'
+  const turnName = players.find((p) => p.id === turnPlayerId)?.name ?? 'next player'
+
+  // Required-match hint (shape/number the current player must follow).
+  let requirement: string | null = null
+  if (session.required_shape) requirement = `match ${WHOT_SHAPE_LABELS[session.required_shape]}`
+  else if (session.required_number != null) requirement = `match number ${session.required_number}`
+
+  const many = myHand.length > 8
+
+  const drawLabel = drawDepleted
+    ? 'Pass turn'
+    : pickPenalty.type === 'pick2'
+      ? `Draw ${pickPenalty.count} (Pick 2)`
+      : pickPenalty.type === 'pick3'
+        ? `Draw ${pickPenalty.count} (Pick 3)`
+        : 'Draw a card'
+
+  const specSeats: SpecSeat[] = seats.map((s) => ({ name: s.name, cards: s.cards, turn: s.turn, host: s.host }))
+
+  const gamePct =
+    gameTimer && gameTimer.durationSeconds > 0
+      ? Math.max(0, Math.min(100, (gameTimer.secondsLeft / gameTimer.durationSeconds) * 100))
+      : 0
+
+  return (
+    <CardTableSurface>
+      {gameTimer?.active && <GameTimerBar label={gameTimer.label} pct={gamePct} low={gameTimer.secondsLeft <= 60} />}
+      <TurnRail seats={seats} />
+
+      <Table>
+        <Piles
+          draw={<DrawPile count={drawCount} accent={WHOT_ACCENT} />}
+          discard={top ? <WhotCardFace card={top} big /> : <span className="turn-status g">No card</span>}
+        />
+
+        {watching ? (
+          <TurnStatus muted>
+            Spectating — {turnName}&apos;s turn · <span className="g">you can chat</span>
+          </TurnStatus>
+        ) : session.status_message ? (
+          <ActionToast tone="ok">{session.status_message}</ActionToast>
+        ) : session.phase === 'choose_whot' ? (
+          <TurnStatus>
+            {isMyTurn ? 'You played WHOT — choose a shape or number' : `${turnName} is calling the next play…`}
+          </TurnStatus>
+        ) : pickPenalty.type === 'pick2' ? (
+          <ActionToast tone="hot">🔥 Pick 2 — play a 2 or draw {pickPenalty.count}</ActionToast>
+        ) : pickPenalty.type === 'pick3' ? (
+          <ActionToast tone="hot">🔥 Pick 3 — play a 5 or draw {pickPenalty.count}</ActionToast>
+        ) : isMyTurn ? (
+          <TurnStatus>
+            Your turn{requirement ? ' — ' : ''}
+            {requirement && <span className="g">{requirement}</span>}
+          </TurnStatus>
+        ) : (
+          <TurnStatus muted>Waiting for {turnName}…</TurnStatus>
+        )}
+      </Table>
+
+      {watching ? (
+        <div className="hand-wrap">
+          <div className="hand-head">
+            <span className="hl">Players · {specSeats.length}</span>
+            <span className="cnt">watch-only</span>
+          </div>
+          <SpecSeats seats={specSeats} />
+        </div>
+      ) : (
+        <Hand
+          count={myHand.length}
+          many={many}
+          hint={
+            canAct ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}` : undefined
+          }
+          actions={
+            canAct && !(drawDepleted && myCanPlay) ? (
+              <button type="button" className="fr-btn fr-btn--secondary fr-btn--block" disabled={acting} onClick={onDraw}>
+                {drawLabel}
+              </button>
+            ) : undefined
+          }
+        >
+          {myHand.map((card) => {
+            const playable = canAct && canPlayCard(card, session, rules)
+            return (
+              <WhotCardFace
+                key={card.id}
+                card={card}
+                playable={playable}
+                dim={canAct && !playable}
+                onClick={playable && !acting ? () => onPlay(card.id) : undefined}
+              />
+            )
+          })}
+        </Hand>
+      )}
+
+      {choosing && (
+        <PickerOverlay title="Call the next play" desc="The next player must match what you pick.">
+          {rules.numberCallsEnabled && (
+            <PickerTabs
+              tabs={[
+                { k: 'shape', label: 'Shape' },
+                { k: 'number', label: 'Number' },
+              ]}
+              value={pickTab}
+              onPick={(k) => setPickTab(k as 'shape' | 'number')}
+            />
+          )}
+          {pickTab === 'shape' || !rules.numberCallsEnabled ? (
+            <PickerGrid>
+              {WHOT_CALL_SHAPES.map((sh) => (
+                <button key={sh} type="button" disabled={acting} onClick={() => onChooseShape(sh)}>
+                  <WhotShapeIcon shape={sh} size="lg" />
+                </button>
+              ))}
+            </PickerGrid>
+          ) : (
+            <PickerGrid nums>
+              {WHOT_CALL_NUMBERS.map((n) => (
+                <button key={n} type="button" disabled={acting} onClick={() => onChooseNumber(n)}>
+                  {n}
+                </button>
+              ))}
+            </PickerGrid>
+          )}
+        </PickerOverlay>
+      )}
+    </CardTableSurface>
+  )
+}

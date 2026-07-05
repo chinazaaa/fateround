@@ -1,0 +1,213 @@
+/* ══════════════════════════════════════════════════════════════════
+   Fate Round · Card Table Room (Whot + Crazy Eights) — design-system layer
+
+   Ported from the Claude Design "Card Table" kit (Player · Mobile.html and
+   the Pick-out deck sheets). Whot + Crazy Eights share the same table; only
+   the `.pc` card faces differ (driven by the card data + the game's own
+   shape/suit icon components).
+
+   SCOPED under `.fr-room` (tokens declared on `.fr-room` in
+   fate-round-ds.css) so the look applies only to rooms that opt in. Every
+   value reads the design tokens → light + dark automatically. This file
+   only carries the card-table-specific classes; the voice rail, buttons
+   (`.fr-btn`) and page shell (`.fr-room` / `.fr-room-phone`) are reused
+   from fate-round-rooms.css / fate-round-ds.css.
+   ══════════════════════════════════════════════════════════════════ */
+
+@keyframes fr-ring { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(2.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .fr-room [style*="fr-ring"] { animation: none !important; } }
+
+/* ── playing card face (the only per-game difference) ─────────────── */
+.fr-room .pc { width: 54px; height: 78px; border-radius: 9px; background: #fff; border: 1px solid #d8d2d8; box-shadow: 0 1px 3px rgba(20, 18, 26, 0.16); position: relative; color: #1a1720; flex-shrink: 0; overflow: hidden; }
+.fr-room .pc .c { position: absolute; font: 800 12px var(--font-display); line-height: 1; display: flex; flex-direction: column; align-items: center; }
+.fr-room .pc .c small { font-size: 11px; }
+.fr-room .pc .c svg { width: 11px; height: 11px; }
+.fr-room .pc.lg .c svg { width: 13px; height: 13px; }
+.fr-room .pc .c.tl { top: 5px; left: 6px; }
+.fr-room .pc .c.br { bottom: 5px; right: 6px; transform: rotate(180deg); }
+.fr-room .pc .mid { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 26px; }
+/* Whot shape glyphs are the app's canonical SVG (WhotShapeIcon). Scale them
+   up to fill the card face the way the design's emoji did (26px mid / 34px on
+   the large discard + picker cards). */
+.fr-room .pc .mid svg { width: 26px; height: 26px; }
+.fr-room .pc.lg .mid svg { width: 34px; height: 34px; }
+.fr-room .pc.red { color: #dc2626; }
+.fr-room .pc.whot { background: var(--rose-50); border-color: var(--rose-300); color: var(--rose-700); }
+.fr-room .pc.whot .mid { font-size: 15px; font-weight: 800; letter-spacing: 0.04em; }
+.fr-room .pc.whot.lg .mid { font-size: 19px; letter-spacing: 0; }
+.fr-room .pc.wild { box-shadow: 0 0 0 2px var(--primary), 0 1px 3px rgba(20, 18, 26, 0.16); }
+.fr-room .pc.lg { width: 70px; height: 100px; border-radius: 11px; }
+.fr-room .pc.lg .mid { font-size: 34px; }
+.fr-room .pc.lg .c { font-size: 14px; }
+.fr-room .pc.back { background: var(--accent, #059669); border-color: transparent; color: #fff; }
+.fr-room .pc.back::after { content: "✺"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; opacity: 0.9; }
+.fr-room .pc.back.thin::after { font-size: 20px; }
+
+/* ── play surface column ──────────────────────────────────────────
+   The card-table play surface mounts inside the room shell's `.pr-stage`
+   (a bounded flex column, min-height:0, no scroll on mobile). Make the
+   surface fill that column and lay out as: pinned turn rail (top) · felt
+   that scrolls (middle) · pinned hand (bottom) — so the player's hand is
+   always visible instead of being pushed off-screen by the `flex:1` felt.
+
+   The pinned-hand layout only holds if the room is height-bounded to the
+   viewport. On desktop that's guaranteed (`.fr-room-poll` is height:100dvh
+   + overflow:hidden). On mobile the shell is only `min-height:100dvh`, so it
+   can GROW past the viewport — and the "pinned" hand then sits below the fold
+   / under the mobile browser toolbar (reported as the hand being cut off).
+   Bound the room to the dynamic viewport for card-table games too, scoped via
+   `:has(.ct-surface)` so scrollable poll screens (join/lobby/finish) keep
+   their natural min-height growth. The felt (`.table`) absorbs any overflow. */
+.fr-room-poll:has(.ct-surface) { height: 100dvh; overflow: hidden; }
+.fr-room .ct-surface { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.fr-room .ct-surface > .pr-prog { flex: 0 0 auto; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.fr-room .ct-surface > .turnrail { flex: 0 0 auto; }
+.fr-room .ct-surface > .table { min-height: 0; overflow-y: auto; }
+.fr-room .ct-surface > .hand-wrap { flex: 0 0 auto; }
+
+/* ── turn rail (seats along the top) ──────────────────────────────── */
+.fr-room .turnrail { display: flex; gap: 10px; padding: 12px 14px 2px; overflow-x: auto; }
+.fr-room .seat { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 52px; }
+.fr-room .seat .sav { position: relative; width: 40px; height: 40px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-strong); display: flex; align-items: center; justify-content: center; font: 800 15px var(--font-display); border: 2px solid transparent; }
+.fr-room .seat.turn .sav { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
+.fr-room .seat .cc { position: absolute; bottom: -4px; right: -6px; background: var(--text); color: var(--bg); font: 800 9px var(--font-mono); border-radius: 9999px; padding: 2px 5px; border: 2px solid var(--surface); }
+.fr-room .seat .nm { font-size: 11px; font-weight: 600; color: var(--text); max-width: 74px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fr-room .seat.turn .nm { color: var(--primary-strong); }
+/* Per-turn countdown chip on the active seat (mono digits, red when low). */
+.fr-room .seat-timer { font: 800 10.5px var(--font-mono); color: var(--primary-strong); background: var(--primary-soft); border-radius: 9999px; padding: 1px 7px; line-height: 1.5; }
+.fr-room .seat-timer.low { color: var(--danger); background: var(--danger-soft); }
+
+/* ── table (the felt: piles + status) ─────────────────────────────── */
+.fr-room .table { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 14px 16px; }
+.fr-room .piles { display: flex; align-items: center; gap: 26px; }
+.fr-room .pile { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+.fr-room .pile .lab { font: 700 9px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); }
+.fr-room .drawpile { position: relative; }
+.fr-room .drawpile .b2 { position: absolute; top: -3px; left: 3px; z-index: -1; opacity: 0.7; }
+.fr-room .drawpile .cnt { position: absolute; top: -7px; right: -7px; background: var(--text); color: var(--bg); font: 800 10px var(--font-mono); border-radius: 9999px; padding: 2px 6px; }
+.fr-room .turn-status { text-align: center; font-size: 14.5px; font-weight: 600; color: var(--text); }
+.fr-room .turn-status .g { color: var(--text-faint); font-weight: 500; }
+
+/* ── action toast (pick 2 stack, last card, wild call, etc.) ──────── */
+.fr-room .act-toast { display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 9999px; font-size: 13px; font-weight: 700; }
+.fr-room .act-toast.warn { background: var(--warning-soft); color: var(--warning); }
+.fr-room .act-toast.hot { background: var(--danger-soft); color: var(--danger); }
+.fr-room .act-toast.ok { background: var(--success-soft); color: var(--success); }
+
+/* ── your fanned hand ─────────────────────────────────────────────── */
+.fr-room .hand-wrap { border-top: 1px solid var(--border); background: var(--surface); padding: 14px 12px calc(26px + env(safe-area-inset-bottom, 0px)); }
+.fr-room .hand-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 0 4px; }
+.fr-room .hand-head .hl { font: 700 10px var(--font-sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
+.fr-room .hand-head .cnt { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.fr-room .hand { display: flex; justify-content: center; padding-top: 14px; min-height: 92px; }
+/* many-cards: let a big hand scroll horizontally instead of overflowing */
+.fr-room .hand.scroll { justify-content: flex-start; overflow-x: auto; overflow-y: hidden; padding: 14px 6px 6px; scroll-snap-type: x proximity; }
+.fr-room .hand.scroll::-webkit-scrollbar { height: 6px; }
+.fr-room .hand.scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 9999px; }
+.fr-room .hand.scroll .pc { scroll-snap-align: center; }
+.fr-room .hand.tight .pc { margin-left: -26px; }
+.fr-room .hand .pc { margin-left: -15px; cursor: pointer; transition: transform var(--dur-fast) var(--ease-out); }
+.fr-room .hand .pc:first-child { margin-left: 0; }
+.fr-room .hand .pc.sel { transform: translateY(-14px); }
+/* Lift on hover only for real pointers — on touch, :hover sticks to the
+   last-tapped card and leaves one card raised out of the fan after a draw. */
+@media (hover: hover) and (pointer: fine) {
+  .fr-room .hand .pc:hover { transform: translateY(-14px); }
+}
+.fr-room .hand .pc.dim { opacity: 0.45; cursor: not-allowed; }
+.fr-room .hand .pc.playable { box-shadow: 0 0 0 2px var(--success), 0 1px 3px rgba(20, 18, 26, 0.16); }
+.fr-room .hand-hint { text-align: center; font-size: 12px; color: var(--text-faint); margin: 10px 0 0; }
+.fr-room .hand-actions { display: flex; gap: 9px; margin-top: 12px; }
+.fr-room .hand-actions > * { flex: 1; }
+
+/* ── shape / suit / number picker overlay ─────────────────────────── */
+/* Fixed to the viewport (escapes the shell's scroll container) and z-indexed
+   above the top voice rail. The sheet caps its height and scrolls internally
+   so the full picker is always reachable even on short viewports. */
+.fr-room .picker-back { position: fixed; inset: 0; background: rgba(20, 18, 26, 0.5); display: flex; align-items: flex-end; justify-content: center; z-index: 70; }
+.fr-room .picker { width: 100%; max-width: 440px; max-height: 85dvh; overflow-y: auto; background: var(--surface); border-radius: 20px 20px 0 0; padding: 20px 20px calc(26px + env(safe-area-inset-bottom, 0px)); }
+.fr-room .picker h3 { font-family: var(--font-display); font-weight: 800; font-size: 18px; text-align: center; margin: 0 0 4px; color: var(--text); }
+.fr-room .picker p { text-align: center; font-size: 13px; color: var(--text-muted); margin: 0 0 16px; }
+.fr-room .picker-tabs { display: flex; gap: 5px; padding: 4px; border-radius: 9999px; background: var(--surface-sunken); margin: 0 auto 16px; max-width: 220px; }
+.fr-room .picker-tabs button { flex: 1; border: none; background: transparent; padding: 8px; border-radius: 9999px; font: 700 12.5px var(--font-sans); color: var(--text-muted); cursor: pointer; }
+.fr-room .picker-tabs button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+.fr-room .picker-grid { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.fr-room .picker-grid button { width: 64px; height: 64px; border-radius: var(--radius-lg); border: 1.5px solid var(--border-strong); background: var(--surface); font-size: 30px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text); }
+.fr-room .picker-grid button:hover { border-color: var(--primary); transform: translateY(-2px); }
+.fr-room .picker-grid button.red { color: #dc2626; }
+.fr-room .picker-grid.nums button { width: 52px; height: 52px; font: 800 20px var(--font-display); color: var(--text); }
+
+/* ── desktop overrides (≥1024px) ──────────────────────────────────────
+   The card table mounts inside `.fr-room-poll`, whose desktop stage-head
+   treatment (a) hides `.pr-prog`'s countdown value + bar in favour of a
+   separate `.timerbig` pill and (b) leaves the picker as a window-bottom
+   sheet. Neither fits the card table: it has no `.timerbig`, so the game
+   timer would show only its label, and a bottom sheet reads as clipped on
+   desktop. Re-assert the card-table treatment here. */
+@media (min-width: 1024px) {
+  /* Game-time bar: keep the label · countdown row and the progress bar
+     (the poll stage-head hides both at this width). */
+  .fr-room .ct-surface > .pr-prog { text-align: left; }
+  .fr-room .ct-surface > .pr-prog .pr-prow { justify-content: space-between; }
+  .fr-room .ct-surface > .pr-prog .pr-prow .tm { display: inline; }
+  .fr-room .ct-surface > .pr-prog .pr-bar { display: block; }
+
+  /* Picker: a centred modal (rounded all round) instead of a sheet pinned
+     to the very bottom of the window. */
+  .fr-room .picker-back { align-items: center; }
+  .fr-room .picker { border-radius: 20px; padding-bottom: 26px; }
+}
+
+/* ── mobile host controls panel (WhotHostView active, host+play) ──────
+   The host's control cluster (Settings · Transfer · Share · End game) for
+   narrow screens — the desktop side rail owns it ≥1024px. Sits above the
+   play surface in the stage. */
+.fr-room .ct-host-panel { flex: 0 0 auto; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+@media (min-width: 1024px) {
+  .fr-room .ct-host-panel { display: none; }
+}
+
+/* ── desktop "Turn order" seat rows (CardTableDeskSide) ───────────────
+   Ported from the design's `.seatitem` (Card Table · Player · Desktop):
+   34px avatar (ringed on the active seat) · name · card-count + 🂠 glyph. */
+.fr-room .pr-side .seatitem { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+.fr-room .pr-side .seatitem .av { position: relative; width: 34px; height: 34px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-strong); display: flex; align-items: center; justify-content: center; font: 800 14px var(--font-display); border: 2px solid transparent; flex-shrink: 0; }
+.fr-room .pr-side .seatitem.turn .av { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
+.fr-room .pr-side .seatitem .nm { font-weight: 600; font-size: 13.5px; color: var(--text); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fr-room .pr-side .seatitem.turn .nm { color: var(--primary-strong); font-weight: 700; }
+.fr-room .pr-side .seatitem .cc { margin-left: auto; flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; font: 700 12px var(--font-mono); color: var(--text-muted); }
+/* Remove-player button on a host turn-order row. */
+.fr-room .pr-side .seatitem .ct-spy-remove { flex-shrink: 0; margin-left: 8px; border: none; background: transparent; color: var(--text-faint); cursor: pointer; padding: 3px; display: inline-flex; border-radius: var(--radius-sm); }
+.fr-room .pr-side .seatitem .ct-spy-remove:hover { color: var(--danger); background: var(--danger-soft); }
+
+/* ── "All hands · host view" spy panel (CardTableHostDeskSide, host only) ── */
+.fr-room .pr-side .spy-row { display: flex; align-items: center; gap: 10px; padding: 8px 11px; border-radius: var(--radius-md); background: var(--surface); border: 1px solid var(--border); margin-bottom: 7px; }
+.fr-room .pr-side .spy-row .av { width: 30px; height: 30px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-strong); display: flex; align-items: center; justify-content: center; font: 800 13px var(--font-display); flex-shrink: 0; }
+.fr-room .pr-side .spy-row .nm { font-weight: 600; font-size: 13px; color: var(--text); }
+.fr-room .pr-side .mini-hand { display: flex; margin-left: auto; }
+.fr-room .pr-side .mini-hand .mc { width: 16px; height: 24px; border-radius: 3px; background: var(--surface-2); border: 1px solid var(--border-strong); margin-left: -6px; }
+.fr-room .pr-side .mini-hand .mc:first-child { margin-left: 0; }
+.fr-room .pr-side .spy-row .spy-count { flex-shrink: 0; font: 700 12px var(--font-mono); color: var(--text-muted); min-width: 14px; text-align: right; }
+
+/* ── win / session summary ────────────────────────────────────────── */
+.fr-room .cards-finish { text-align: center; padding: 10px 0; }
+.fr-room .cards-finish .cup { font-size: 48px; line-height: 1; }
+.fr-room .cards-finish .hl { font-family: var(--font-display); font-weight: 800; font-size: 27px; letter-spacing: -0.02em; color: var(--text); margin: 6px 0 2px; }
+.fr-room .cards-finish .hl .win { color: var(--primary-strong); }
+.fr-room .cards-finish .gl { font: 700 10.5px var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 16px; }
+.fr-room .standings { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.fr-room .st-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: var(--radius-md); background: var(--surface); border: 1px solid var(--border); }
+.fr-room .st-row.first { border-color: var(--primary); background: var(--primary-soft); }
+.fr-room .st-row .rk { width: 22px; font: 800 15px var(--font-display); color: var(--text-faint); text-align: center; }
+.fr-room .st-row.first .rk { color: var(--primary-strong); }
+.fr-room .st-row .nm { font-weight: 700; font-size: 14.5px; color: var(--text); }
+.fr-room .st-row .cards { margin-left: auto; font: 700 12.5px var(--font-mono); color: var(--text-muted); }
+
+/* ── spectator seat list (watch-only) ─────────────────────────────── */
+.fr-room .spec-seats { display: flex; flex-direction: column; gap: 7px; }
+.fr-room .spec-row { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); }
+.fr-room .spec-row.turn { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-ring); }
+.fr-room .spec-row .sav { width: 34px; height: 34px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-strong); display: flex; align-items: center; justify-content: center; font: 800 14px var(--font-sans); flex-shrink: 0; }
+.fr-room .spec-row .nm { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.fr-room .spec-row .tag { font: 700 10px var(--font-sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--primary-strong); background: var(--primary-soft); border-radius: 9999px; padding: 3px 8px; }
+.fr-room .spec-row .cc { margin-left: auto; font: 700 12px var(--font-mono); color: var(--text-muted); }
