@@ -28,14 +28,24 @@ export type RoomVoiceBarProps = {
   host?: boolean
   /** Hide "Leave game" (e.g. chess/checkers use Resign instead). */
   resignOnly?: boolean
-  /** You're a spectator — start outside voice, tap the pill to join. */
+  /** You're a spectator (watch-only game controls). Voice join works the
+   *  same for everyone — this does NOT put you in the call. */
   spectator?: boolean
+  /** Start already connected to voice (e.g. restored session). Default: not
+   *  joined — everyone taps "Join voice" first, like the app's AudioChat. */
+  inVoice?: boolean
+  /** People already in the voice call — shown as a join nudge. */
+  presenceCount?: number
   /** Show the 👑 Host pill next to the code. */
   hostBadge?: boolean
   /** Render just the right-hand controls (for a desktop logo bar). */
   bare?: boolean
   /** false → share popup shows the invite tab only (player share). */
   onShareHost?: boolean
+  /** Fired when the user taps to join the voice call. */
+  onJoinVoice?: () => void
+  /** Fired when the user mutes/unmutes (true = now muted). */
+  onToggleMute?: (muted: boolean) => void
   onLeave?: () => void
   onEditName?: (name: string) => void
 }
@@ -54,13 +64,15 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
   const [menu, setMenu] = useState(false)
   const [editing, setEditing] = useState(false)
   const [leaving, setLeaving] = useState(false)
-  const [joined, setJoined] = useState(false)
+  const [joined, setJoined] = useState(!!props.inVoice)
   const [yourName, setYourName] = useState(props.name || 'You')
 
   const people = props.participants || []
   const you = props.you || (yourName ? yourName[0] : 'Y')
-  const spectator = !!props.spectator
-  const inVoice = !spectator || joined
+  // Voice is never auto-joined — everyone (player or spectator) taps "Join
+  // voice" first, matching the app's AudioChat flow.
+  const inVoice = joined
+  const presence = props.presenceCount || 0
 
   const right = (
     <div
@@ -114,13 +126,24 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
       </button>
       <button
         style={{ ...mePill, ...(!inVoice ? mePillSpec : muted ? mePillMuted : mePillLive) }}
-        title={!inVoice ? 'Join voice chat as a spectator' : muted ? 'Tap to unmute' : 'Tap to mute'}
+        title={
+          !inVoice
+            ? presence > 0
+              ? `Join voice chat — ${presence} already in the call`
+              : 'Join voice chat'
+            : muted
+              ? 'Tap to unmute'
+              : 'Tap to mute'
+        }
         onClick={() => {
           if (!inVoice) {
             setJoined(true)
             setMuted(false)
+            props.onJoinVoice?.()
           } else {
-            setMuted((m) => !m)
+            const next = !muted
+            setMuted(next)
+            props.onToggleMute?.(next)
           }
         }}
       >
@@ -128,6 +151,7 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
         {!inVoice ? (
           <span style={{ font: '700 11px var(--font-sans)', color: 'var(--text)', whiteSpace: 'nowrap' }}>
             🎙️ Join voice
+            {presence > 0 && <span style={{ color: 'var(--success)' }}> · {presence}</span>}
           </span>
         ) : (
           <span

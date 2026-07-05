@@ -77,7 +77,14 @@ function VoteBody() {
 function PlayerScreen({ state }: { state: PlayerState }) {
   return (
     <div className="fr-room fr-room-phone">
-      <RoomVoiceBar code="F8K2QP" label="Smash Marry Kill" watching={2} participants={VOICES} name="Naza" />
+      <RoomVoiceBar
+        code="F8K2QP"
+        label="Smash Marry Kill"
+        watching={2}
+        participants={VOICES}
+        name="Naza"
+        presenceCount={3}
+      />
       {state !== 'waiting' && state !== 'finished' && (
         <RoundProgress round={3} totalRounds={10} timeLabel="0:24" pct={40} />
       )}
@@ -132,6 +139,7 @@ function HostScreen({ hostplay }: { hostplay?: boolean }) {
         name="Ada"
         host
         hostBadge
+        inVoice
       />
       <RoundProgress round={3} totalRounds={10} timeLabel="0:24" pct={40} />
       <div className="pr-body">
