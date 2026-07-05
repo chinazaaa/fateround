@@ -21,7 +21,14 @@ export async function POST(req: NextRequest) {
     }
     if (!q) return NextResponse.json({ tracks: [] })
 
-    const { data: game } = await getSupabaseAdmin().from('games').select('host_token').eq('id', gameCode).maybeSingle()
+    const { data: game, error: gameErr } = await getSupabaseAdmin()
+      .from('games')
+      .select('host_token')
+      .eq('id', gameCode)
+      .maybeSingle()
+    // Distinguish a real DB failure (500) from a genuinely missing game (404) — otherwise a
+    // transient error masquerades as "Game not found".
+    if (gameErr) return NextResponse.json({ error: internalErrorMessage('spotify/search', gameErr) }, { status: 500 })
     if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
     if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
 

@@ -40,7 +40,13 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin()
-    const { data: game } = await supabase.from('games').select('id,host_token').eq('id', gameCode).maybeSingle()
+    const { data: game, error: gameErr } = await supabase
+      .from('games')
+      .select('id,host_token')
+      .eq('id', gameCode)
+      .maybeSingle()
+    // A real DB failure is a 500, not a misleading "Game not found" 404.
+    if (gameErr) return NextResponse.json({ error: internalErrorMessage('music/control', gameErr) }, { status: 500 })
     if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
     if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
 
