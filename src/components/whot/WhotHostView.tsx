@@ -17,14 +17,17 @@ import {
   parseWhotRules,
   setWhotHostMode,
   WHOT_MIN_PLAYERS,
+  WHOT_DEFAULT_MAX_PLAYERS,
   type WhotHostMode,
 } from '@/lib/whot'
 import { supabase } from '@/lib/supabase'
+import { lobbyMaxPlayersFromGame, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { GAME_SELECT, PLAYER_SELECT, WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostAdmitPlayer } from '@/hooks/useHostAdmitPlayer'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player, WhotPlayerHand, WhotSession, WhotShape } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -61,14 +64,31 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [hostJoining, setHostJoining] = useState(false)
   const [hostActing, setHostActing] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
+  const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
 
   useApplyGameTheme(game?.theme)
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
 
+  // Effective seat cap, clamped against game_player_limits — mirrors the server's
+  // lobbyMaxPlayersFromGame so the "Deal in" gate agrees with what admitWhotPlayer accepts.
+  useEffect(() => {
+    void fetch('/api/game-limits')
+      .then((res) => res.json())
+      .then((data: { limits?: GamePlayerLimitsMap }) => {
+        if (data.limits) setLimits(data.limits)
+      })
+      .catch(() => {})
+  }, [])
+  const maxPlayers = limits
+    ? lobbyMaxPlayersFromGame('whot', game ?? {}, limits)
+    : (game?.max_players ?? WHOT_DEFAULT_MAX_PLAYERS)
+
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes, sessionRes, handsRes] = await Promise.all([
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+      // is_eliminated rides along so the "Deal in" gate can hide the action for eliminated
+      // players (the server rejects them too — keeps client and server agreeing).
+      supabase.from('players').select(`${PLAYER_SELECT},is_eliminated`).eq('game_id', gameCode).order('joined_at'),
       supabase.from('whot_sessions').select(WHOT_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
       supabase.from('whot_player_hands').select(WHOT_PLAYER_HANDS_SELECT).eq('game_id', gameCode).order('player_order'),
     ])
@@ -115,6 +135,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+  const { admitPlayer, admittingPlayerId } = useHostAdmitPlayer(gameCode, hostToken, load)
 
   // Clear stale host-as-player state if the host's own row is removed elsewhere.
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
@@ -342,6 +363,16 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       highlightPlayerId={hostPlayerId}
       removingPlayerId={removingPlayerId}
       onRemovePlayer={removePlayer}
+      onAdmitPlayer={
+        game.status === 'active' && (session?.turn_order?.length ?? 0) < maxPlayers ? admitPlayer : undefined
+      }
+      admittingPlayerId={admittingPlayerId}
+      canAdmitPlayer={(id) =>
+        !(session?.turn_order ?? []).includes(id) && !players.find((p) => p.id === id)?.is_eliminated
+      }
+      playersLabel={
+        game.status === 'active' ? `Players · ${session?.turn_order?.length ?? 0}/${maxPlayers}` : undefined
+      }
       gameType="whot"
       top={
         game.status === 'waiting' ? (

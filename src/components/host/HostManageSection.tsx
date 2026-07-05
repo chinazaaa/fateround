@@ -19,6 +19,9 @@ export function HostManageSection({
   highlightPlayerId,
   removingPlayerId,
   onRemovePlayer,
+  onAdmitPlayer,
+  admittingPlayerId,
+  canAdmitPlayer,
   playersLabel = 'Players',
   gameType,
   top,
@@ -30,6 +33,10 @@ export function HostManageSection({
   highlightPlayerId?: string | null
   removingPlayerId?: string | null
   onRemovePlayer?: (playerId: string, playerName: string) => void
+  /** When set, viewers get a "Deal in" action (host admits a spectator mid-game). */
+  onAdmitPlayer?: (playerId: string, playerName: string) => void
+  admittingPlayerId?: string | null
+  canAdmitPlayer?: (playerId: string) => boolean
   playersLabel?: string
   /** When set, renders a "How to play" row linking to the game's rules. */
   gameType?: GameType | string | null
@@ -60,10 +67,13 @@ export function HostManageSection({
           players={viewers}
           removingPlayerId={removingPlayerId}
           onRemovePlayer={onRemovePlayer}
+          onAdmitPlayer={onAdmitPlayer}
+          admittingPlayerId={admittingPlayerId}
+          canAdmitPlayer={canAdmitPlayer}
           highlightPlayerId={highlightPlayerId}
           label="Viewers"
           tone="viewers"
-          hint="Watching only"
+          hint={onAdmitPlayer ? 'Tap “Deal in” to seat a viewer into the game' : 'Watching only'}
         />
       )}
 

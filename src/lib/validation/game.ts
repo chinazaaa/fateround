@@ -214,6 +214,14 @@ export const boardGameLobbySettingsSchema = z.object({
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>
 
+// Host admits a spectator into an active Whot game (POST /api/games/[code]/whot-admit).
+export const whotAdmitSchema = z.object({
+  hostToken: hostTokenString(),
+  playerId: uuidString('playerId'),
+})
+
+export type WhotAdmitInput = z.infer<typeof whotAdmitSchema>
+
 // ---------------------------------------------------------------------------
 // Admin game player limits
 // ---------------------------------------------------------------------------
