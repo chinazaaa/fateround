@@ -52,7 +52,10 @@ describe('useGameExpiryTimer', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10)
     })
-    expect(fetchMock).toHaveBeenCalledWith('/api/games/ABCD/expire-crazy-eights', { method: 'POST' })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/games/ABCD/expire-crazy-eights',
+      expect.objectContaining({ method: 'POST' })
+    )
     const first = fetchMock.mock.calls.length
 
     await act(async () => {
@@ -83,13 +86,27 @@ describe('useGameExpiryTimer', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('keeps only one request in flight when the expire call is slow (no setInterval overlap)', async () => {
-    fetchMock.mockReturnValue(new Promise(() => {})) // never resolves
-    renderExpiry()
+  it('aborts a hung expire request at the retry ceiling and keeps retrying (no stall, no overlap)', async () => {
+    // A request that only settles when its abort signal fires — mimics a hang bounded
+    // by the AbortController timeout. Never stacks: the next fire is scheduled only
+    // after the current one aborts + settles.
+    fetchMock.mockImplementation(
+      (_url: string, opts?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          opts?.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+        })
+    )
+    renderExpiry() // already expired
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(20000)
+      await vi.advanceTimersByTimeAsync(10)
     })
-    // self-scheduling setTimeout waits for the await, so no stacked requests
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1) // one hung request in flight
+
+    // Without the abort ceiling the loop would stall forever at 1 call; with it the
+    // request aborts at retryMs and a retry fires.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11000)
+    })
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1)
   })
 })

@@ -42,11 +42,19 @@ export function useGameExpiryTimer({
     let cancelled = false
     let retryId: ReturnType<typeof setTimeout> | undefined
     const fire = async () => {
+      // Bound each attempt with an abort ceiling: because the next retry is only
+      // scheduled from `finally`, a request that *hangs* (never settles) would
+      // otherwise stall the whole retry loop and the game would never expire. The
+      // AbortController makes a hung request reject at `retryMs`, so `finally` runs
+      // and re-schedules.
+      const controller = new AbortController()
+      const abortId = setTimeout(() => controller.abort(), retryMs)
       try {
-        await fetch(endpoint, { method: 'POST' })
+        await fetch(endpoint, { method: 'POST', signal: controller.signal })
       } catch {
-        // swallow — retry below
+        // swallow (including the AbortError when a request exceeds retryMs) — retry below
       } finally {
+        clearTimeout(abortId)
         if (!cancelled) retryId = setTimeout(() => void fire(), retryMs)
       }
     }
