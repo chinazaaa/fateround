@@ -10,6 +10,14 @@ const COMMIT = process.env.GIT_SHA ?? 'unknown'
 const DB_TIMEOUT_MS = 2500
 const noStore = { 'Cache-Control': 'no-store' }
 
+// Short-lived memo of the deep DB probe. `?deep=1` is unauthenticated (a readiness probe
+// conventionally is — the DB up/down bit isn't sensitive, and UptimeRobot's free tier can't
+// send a custom auth header). The memo removes the only real concern with that — turning a
+// flood of cheap HTTP requests into per-request DB load: the probe runs at most once per
+// window. 10s is negligibly stale for a monitor that polls every few minutes.
+const DEEP_TTL_MS = 10_000
+let deepMemo: { at: number; db: 'ok' | 'unreachable' } | null = null
+
 /**
  * Health check for external uptime monitoring (UptimeRobot etc.).
  *
@@ -32,16 +40,26 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(body, { status: ok ? 200 : 503, headers: noStore })
 }
 
-/** Cheap, timeout-guarded Supabase reachability probe (anon HEAD on a public table). */
+/** Cheap, timeout-guarded Supabase reachability probe (anon HEAD on a public table), memoized. */
 async function checkDb(): Promise<'ok' | 'unreachable'> {
+  const now = Date.now()
+  if (deepMemo && now - deepMemo.at < DEEP_TTL_MS) return deepMemo.db
+
+  let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const probe = getSupabaseAnon().from('games').select('id', { head: true }).limit(1)
-    const timeout = new Promise<{ error: unknown }>((resolve) =>
-      setTimeout(() => resolve({ error: new Error('health db check timed out') }), DB_TIMEOUT_MS)
-    )
+    const timeout = new Promise<{ error: unknown }>((resolve) => {
+      timer = setTimeout(() => resolve({ error: new Error('health db check timed out') }), DB_TIMEOUT_MS)
+    })
     const { error } = await Promise.race<{ error: unknown }>([probe, timeout])
-    return error ? 'unreachable' : 'ok'
+    const db = error ? 'unreachable' : 'ok'
+    deepMemo = { at: now, db }
+    return db
   } catch {
+    deepMemo = { at: now, db: 'unreachable' }
     return 'unreachable'
+  } finally {
+    // Clear the timeout so a fast probe doesn't leave a dangling timer holding the event loop.
+    if (timer) clearTimeout(timer)
   }
 }
