@@ -7,6 +7,7 @@ import { InviteLinkActions } from '@/components/InviteLinkActions'
 import { useAnonymousMessageTrim } from '@/hooks/useAnonymousMessageTrim'
 import { useAnonymousMessages } from '@/hooks/useAnonymousMessages'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
+import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
 import { gameTypeConfig } from '@/lib/game-types'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT } from '@/lib/supabase-selects'
@@ -167,6 +168,9 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
         </div>
         <InviteLinkActions url={shareUrl} copyLabel="Copy link" successMessage="Link copied" />
         <p className="text-faint text-xs font-mono break-all">{shareUrl}</p>
+        <div className="border-t border-[var(--border)] pt-3">
+          <HostVisibilityToggle gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        </div>
       </div>
 
       {game.status === 'active' ? (

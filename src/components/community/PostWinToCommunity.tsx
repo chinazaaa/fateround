@@ -135,8 +135,16 @@ export function PostWinToCommunity({
 
   if (status === 'posted') {
     return (
-      <div className="glass-card p-4 text-center text-sm text-[var(--marry)] font-semibold">
-        ✓ Added to the community leaderboard 🏆
+      <div className="glass-card p-4 text-center space-y-2">
+        <p className="text-sm text-[var(--marry)] font-semibold">✓ Added to the community leaderboard 🏆</p>
+        <a
+          href="/leaderboard"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block text-sm font-semibold text-emerald-600 hover:underline"
+        >
+          See where you rank ↗
+        </a>
       </div>
     )
   }

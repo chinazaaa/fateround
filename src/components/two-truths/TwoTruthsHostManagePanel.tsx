@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { TwoTruthsSubmitterBadge } from '@/components/two-truths/TwoTruthsSubmitterBadge'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
+import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
@@ -185,6 +186,10 @@ export function TwoTruthsHostManagePanel({
             game={game}
             onGameUpdate={onGameUpdate}
           />
+
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3">
+            <HostVisibilityToggle gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
+          </div>
 
           <HostLobbyStartButton
             onClick={onStartGame}

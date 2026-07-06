@@ -1,10 +1,5 @@
-import { SiteLogoHeader } from '@/components/SiteLogoHeader'
+import { SiteChrome } from '@/components/SiteChrome'
 
 export default function LeaderboardLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <SiteLogoHeader />
-      {children}
-    </>
-  )
+  return <SiteChrome>{children}</SiteChrome>
 }

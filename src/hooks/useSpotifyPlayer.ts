@@ -15,6 +15,9 @@ type SpotifyPlayerInstance = {
   seek: (ms: number) => Promise<void>
   setVolume: (v: number) => Promise<void>
   getCurrentState: () => Promise<SpotifyWebPlaybackState>
+  /** Unlock the SDK's <audio> element. MUST be called from a user gesture or mobile
+   *  browsers keep playback silent even though the device is the active one. */
+  activateElement?: () => Promise<void>
   addListener: (event: string, cb: (payload: { device_id?: string; message?: string }) => void) => void
   removeListener: (event: string) => void
 }
@@ -115,6 +118,8 @@ export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
   useEffect(() => {
     if (!enabled || !identity) return
     let cancelled = false
+    // Removes the first-gesture audio-unlock listeners; set once the player exists.
+    let removeGestureUnlock: (() => void) | null = null
 
     // Probe connection + product up front so the UI can show "Connect" vs "Premium required"
     // without waiting for the (heavier) SDK to boot.
@@ -150,6 +155,22 @@ export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
           player.addListener('account_error', onErr)
           player.addListener('playback_error', onErr)
           void player.connect()
+
+          // Playback is started reactively by useSpotifySync, never from a click — so the
+          // SDK's <audio> element is never unlocked by a user gesture, and browsers (mobile
+          // especially) keep it silent even though this is the active device. Unlock it on
+          // the first tap/keypress anywhere; once is enough for the page's lifetime.
+          const unlock = () => {
+            void player.activateElement?.().catch(() => {})
+            removeGestureUnlock?.()
+          }
+          removeGestureUnlock = () => {
+            window.removeEventListener('pointerdown', unlock)
+            window.removeEventListener('keydown', unlock)
+            removeGestureUnlock = null
+          }
+          window.addEventListener('pointerdown', unlock)
+          window.addEventListener('keydown', unlock)
         })
         .catch(() => {
           if (!cancelled) setState((s) => ({ ...s, error: 'Failed to load Spotify' }))
@@ -158,6 +179,7 @@ export function useSpotifyPlayer(identity: string | null, enabled: boolean) {
 
     return () => {
       cancelled = true
+      removeGestureUnlock?.()
       playerRef.current?.disconnect()
       playerRef.current = null
       deviceIdRef.current = null

@@ -122,6 +122,7 @@ export function ChessFinalResultsShareBlock({
       </div>
       {session && session.pgn ? <ChessPgnActions game={game} players={players} session={session} /> : null}
       <HostGameFinishedActions
+        gameCode={game.id}
         playAgainButton={playAgainButton}
         shareButton={
           <ShareResults

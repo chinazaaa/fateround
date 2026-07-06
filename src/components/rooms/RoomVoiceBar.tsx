@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, type CSSProperties } from 'react'
-import { PeopleIcon, ShareIcon, KebabIcon, EyeIcon, LinkIcon } from '@/components/rooms/icons'
-import { ShareSheet, EditNameSheet, LeaveSheet } from '@/components/rooms/sheets'
+import { useState, type CSSProperties, type ReactNode } from 'react'
+import { PeopleIcon, ShareIcon, KebabIcon, EyeIcon, LinkIcon, GearIcon } from '@/components/rooms/icons'
+import { ShareSheet, EditNameSheet, LeaveSheet, EndGameSheet } from '@/components/rooms/sheets'
 
 export type VoiceParticipant = {
   n: string
@@ -46,8 +46,20 @@ export type RoomVoiceBarProps = {
   bare?: boolean
   /** false → share popup shows the invite tab only (player share). */
   onShareHost?: boolean
+  /** Host token — enables correct host / host+play links in the share popup. */
+  hostToken?: string
+  /** Host's player resume token — enables the host+play share link. */
+  resumeToken?: string
+  /** Host: end the game (shown in the ⋯ menu, below Join/Leave voice chat). */
+  onEndGame?: () => void
+  /** Host: open the game settings sheet (⚙ icon shown beside Share). */
+  onSettings?: () => void
+  /** Host: extra items appended to the ⋯ menu (e.g. Transfer host). */
+  hostMenuExtra?: ReactNode
   /** Fired when the user taps to join the voice call. */
   onJoinVoice?: () => void
+  /** Fired when the user leaves the voice call (but stays in the game). */
+  onLeaveVoice?: () => void
   /** Fired when the user mutes/unmutes (true = now muted). */
   onToggleMute?: (muted: boolean) => void
   onLeave?: () => void
@@ -68,6 +80,7 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
   const [menu, setMenu] = useState(false)
   const [editing, setEditing] = useState(false)
   const [leaving, setLeaving] = useState(false)
+  const [ending, setEnding] = useState(false)
   const [internalJoined, setInternalJoined] = useState(!!props.inVoice)
   const [yourName, setYourName] = useState(props.name || 'You')
 
@@ -117,6 +130,11 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
       >
         <PeopleIcon />
       </button>
+      {props.onSettings && (
+        <button style={vIconBtn} title="Game settings" aria-label="Game settings" onClick={props.onSettings}>
+          <GearIcon />
+        </button>
+      )}
       <button style={vIconBtn} title="Share / QR" aria-label="Share" onClick={() => setShare(true)}>
         <ShareIcon />
       </button>
@@ -197,36 +215,100 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
           <div style={popFoot}>🎙️ live · 🗣️ talking · 🔇 muted</div>
         </div>
       )}
-      {menu && (
-        <div style={{ ...popStyle, width: 190, padding: 6 }} onMouseLeave={() => setMenu(false)}>
+      {/* Always mounted (visibility toggled via `display`) rather than
+          conditionally rendered, so a host extra like TransferHostControl — which
+          owns a portal modal — isn't unmounted (killing its open modal) when the
+          menu closes on click. */}
+      <div
+        style={{ ...popStyle, width: 190, padding: 6, display: menu ? undefined : 'none' }}
+        onMouseLeave={() => setMenu(false)}
+      >
+        <button
+          style={menuItem}
+          onClick={() => {
+            setMenu(false)
+            setEditing(true)
+          }}
+        >
+          ✏️&nbsp;&nbsp;Edit your name
+        </button>
+        {/* Host extras (e.g. Transfer host) — sit alongside Edit your name.
+              The provided node styles its own trigger + owns its modal. */}
+        {props.hostMenuExtra != null && <div onClick={() => setMenu(false)}>{props.hostMenuExtra}</div>}
+        {/* Voice is join-first; the call can be joined or left from here too
+              (the mic pill only toggles mute once you're in). */}
+        {inVoice ? (
           <button
             style={menuItem}
             onClick={() => {
               setMenu(false)
-              setEditing(true)
+              setInternalJoined(false)
+              props.onLeaveVoice?.()
             }}
           >
-            ✏️&nbsp;&nbsp;Edit your name
+            🔇&nbsp;&nbsp;Leave voice chat
           </button>
-          {!props.resignOnly && (
-            <button
-              style={{ ...menuItem, color: 'var(--danger)' }}
-              onClick={() => {
-                setMenu(false)
-                setLeaving(true)
-              }}
-            >
-              🚪&nbsp;&nbsp;Leave game
-            </button>
-          )}
-        </div>
-      )}
+        ) : (
+          <button
+            style={menuItem}
+            onClick={() => {
+              setMenu(false)
+              setInternalJoined(true)
+              setInternalMuted(false)
+              props.onJoinVoice?.()
+            }}
+          >
+            🎙️&nbsp;&nbsp;Join voice chat
+          </button>
+        )}
+        {/* The host runs the game — they End it (never "leave"); players leave. */}
+        {props.host && props.onEndGame ? (
+          <button
+            style={{ ...menuItem, color: 'var(--danger)' }}
+            onClick={() => {
+              setMenu(false)
+              setEnding(true)
+            }}
+          >
+            🛑&nbsp;&nbsp;End game
+          </button>
+        ) : !props.resignOnly && !props.host ? (
+          <button
+            style={{ ...menuItem, color: 'var(--danger)' }}
+            onClick={() => {
+              setMenu(false)
+              setLeaving(true)
+            }}
+          >
+            🚪&nbsp;&nbsp;Leave game
+          </button>
+        ) : null}
+      </div>
     </div>
   )
 
   const sheets = (
     <>
-      <ShareSheet open={share} onClose={() => setShare(false)} host={props.onShareHost !== false} code={props.code} />
+      {/* Host share panel (Host + play tabs) only for actual hosts. `onShareHost`
+          overrides when set (e.g. the design desktop bar passes false); otherwise
+          fall back to whether this bar is mounted in host mode — so plain players
+          never see the host panel. */}
+      <ShareSheet
+        open={share}
+        onClose={() => setShare(false)}
+        host={props.onShareHost ?? !!props.host}
+        code={props.code}
+        hostToken={props.hostToken}
+        resumeToken={props.resumeToken}
+      />
+      <EndGameSheet
+        open={ending}
+        onClose={() => setEnding(false)}
+        onConfirm={() => {
+          setEnding(false)
+          props.onEndGame?.()
+        }}
+      />
       <EditNameSheet
         open={editing}
         name={yourName}

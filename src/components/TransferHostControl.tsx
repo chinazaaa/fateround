@@ -16,7 +16,7 @@ type PlayerRow = { id: string; name: string; spectator: boolean | null }
  * over; the nominee then accepts on their own device (HostNominationBanner). Mounted in the
  * host chrome so it's available on every host view. Renders nothing without a host token.
  */
-export function TransferHostControl() {
+export function TransferHostControl({ triggerClassName }: { triggerClassName?: string } = {}) {
   const params = useParams()
   const code = typeof params?.code === 'string' ? params.code.toUpperCase() : null
   // Clean host URL (token in storage) → resolve via the hook (fallback read in an effect,
@@ -142,11 +142,17 @@ export function TransferHostControl() {
         onClick={openPicker}
         aria-label="Transfer host"
         title={pendingId ? 'Host invite pending' : 'Transfer host to a player'}
-        className="relative flex items-center gap-1.5 rounded-full px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-medium transition-all duration-200 glass-card"
-        style={{ color: 'var(--muted)' }}
+        className={
+          triggerClassName
+            ? // Keep the trigger positioned so the pending badge anchors to the
+              // button (not the menu) even when a custom class replaces the default.
+              `relative ${triggerClassName}`
+            : 'relative flex items-center gap-1.5 rounded-full px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-medium transition-all duration-200 glass-card'
+        }
+        style={triggerClassName ? undefined : { color: 'var(--muted)' }}
       >
         <HandoffIcon />
-        <span className="hidden sm:inline">Transfer Host</span>
+        <span className={triggerClassName ? undefined : 'hidden sm:inline'}>Transfer</span>
         {pendingId ? (
           <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[var(--primary)] animate-pulse" />
         ) : null}

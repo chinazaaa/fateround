@@ -103,7 +103,7 @@ export function HomePage() {
               <input
                 ref={joinRef}
                 className="fr-input fr-input--code min-w-0 flex-1"
-                placeholder="CODE"
+                placeholder="ENTER CODE"
                 maxLength={6}
                 aria-label="Game room code"
                 value={code}
@@ -120,10 +120,12 @@ export function HomePage() {
               </button>
             </div>
 
-            {/* Rooms + Tournaments — stack on phones (2-up can't fit the "Tournaments"
-                label under ~460px), side-by-side once there's room. */}
-            <div className="mt-4 grid grid-cols-1 gap-3 min-[460px]:grid-cols-2">
-              <Link href="/rooms" className="fr-card fr-card--interactive flex items-center gap-3 !p-3.5 no-underline">
+            {/* Rooms + Tournaments */}
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <Link
+                href="/rooms"
+                className="fr-card fr-card--interactive flex min-w-0 items-center gap-3 !p-3.5 no-underline"
+              >
                 <span className="text-[26px] leading-none">🏠</span>
                 <div className="min-w-0">
                   <b className="block text-sm" style={{ color: 'var(--text)' }}>
@@ -136,15 +138,15 @@ export function HomePage() {
               </Link>
               <Link
                 href="/tournament"
-                className="relative flex items-center gap-3 overflow-hidden rounded-[var(--radius-lg)] p-3.5 no-underline"
+                className="relative flex min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-lg)] p-3.5 no-underline"
                 style={{ background: 'var(--rose-600)', color: '#fff', boxShadow: 'var(--shadow-md)' }}
               >
-                <span className="text-[26px] leading-none">🏆</span>
+                <span className="text-[22px] leading-none">🏆</span>
                 <div className="min-w-0">
-                  <b className="block text-[15px]" style={displayFont}>
+                  <b className="block text-[13px]" style={displayFont}>
                     Tournaments
                   </b>
-                  <span className="text-[13px]" style={{ color: 'rgba(255,255,255,0.9)' }}>
+                  <span className="text-xs" style={{ color: 'rgba(255,255,255,0.9)' }}>
                     Bracket night
                   </span>
                 </div>
@@ -164,9 +166,6 @@ export function HomePage() {
                   Jump into games happening now
                 </span>
               </div>
-              <span className="text-lg" style={{ color: 'var(--text-faint)' }}>
-                →
-              </span>
             </Link>
           </div>
         </section>

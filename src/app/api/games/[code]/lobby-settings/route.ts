@@ -61,6 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const {
     hostToken,
+    is_public,
     max_players,
     timer_seconds,
     game_duration_seconds,
@@ -78,6 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const gameCode = parsed.data.gameId.toUpperCase()
 
   if (
+    is_public === undefined &&
     max_players === undefined &&
     timer_seconds === undefined &&
     game_duration_seconds === undefined &&
@@ -115,6 +117,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const lobbyLimits = await fetchGamePlayerLimits(supabase)
   const limitKey = (timedLobbyType ?? limitOnlyType ?? boardLobbyType) as LobbyLimitGameType
   const gameUpdate: Record<string, unknown> = {}
+
+  // Public/private visibility — controls whether the game shows up in Browse. Not
+  // tied to a specific board type; any lobby-settings game can toggle it.
+  if (is_public !== undefined) {
+    gameUpdate.is_public = is_public
+  }
 
   if (max_players !== undefined) {
     const nextMax = clampLobbyMaxPlayers(limitKey, max_players, lobbyLimits)

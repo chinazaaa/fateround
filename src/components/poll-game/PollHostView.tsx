@@ -120,6 +120,7 @@ import {
   FinalOverallBreakdown,
 } from '@/components/FinalLeaderboard'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
+import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
 import { CopyLinkButton } from '@/components/ui/CopyLinkButton'
 import {
   PlayAgainSetup,
@@ -2699,6 +2700,15 @@ export function PollHostView({ gameCode, hostToken }: { gameCode: string; hostTo
               </div>
             </div>
           )}
+
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3">
+            <HostVisibilityToggle
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={game ?? undefined}
+              onGameUpdate={setGame}
+            />
+          </div>
 
           <HostLobbyStartButton
             onClick={handleStart}
