@@ -9,7 +9,7 @@ const supabase = getSupabaseAnon()
 
 // Permissive shape: catch a malformed/non-object body (400) without tightening the
 // handler's own field coercion.
-const roomGamesSchema = z.object({ gameCode: z.string().optional(), memberCode: z.string().optional() }).passthrough()
+const roomGamesSchema = z.object({ gameCode: z.unknown().optional(), memberCode: z.unknown().optional() })
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params

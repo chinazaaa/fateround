@@ -9,22 +9,20 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
 
-// Permissive shapes: every field optional + loosely typed to preserve the handlers'
-// existing coercion (String()/Number()/=== true). The schema's job here is only to turn a
-// malformed or non-object body into a clean 400 instead of a 500 — not to tighten
-// field-level validation.
-const roomDeleteSchema = z.object({ creatorToken: z.string().optional() }).passthrough()
-const roomPatchSchema = z
-  .object({
-    creatorToken: z.string().optional(),
-    isPublic: z.boolean().optional(),
-    isLocked: z.boolean().optional(),
-    name: z.string().optional(),
-    description: z.string().nullish(),
-    timezone: z.string().nullish(),
-    maxMembers: z.union([z.string(), z.number(), z.null()]).optional(),
-  })
-  .passthrough()
+// Permissive shapes: every field left `unknown` so the handlers' own coercion
+// (String()/Number()/=== true) still owns field-level behaviour — the schema only rejects
+// a malformed/non-object body with a 400 instead of a 500, and never tightens inputs the
+// handler would have coerced. Undeclared keys are stripped (handlers read only these).
+const roomDeleteSchema = z.object({ creatorToken: z.unknown().optional() })
+const roomPatchSchema = z.object({
+  creatorToken: z.unknown().optional(),
+  isPublic: z.unknown().optional(),
+  isLocked: z.unknown().optional(),
+  name: z.unknown().optional(),
+  description: z.unknown().optional(),
+  timezone: z.unknown().optional(),
+  maxMembers: z.unknown().optional(),
+})
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params

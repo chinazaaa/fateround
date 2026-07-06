@@ -6,7 +6,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 // Permissive shape: catch a malformed/non-object body (400) without tightening the
 // handler's own field coercion.
-const roomMemberDeleteSchema = z.object({ creatorToken: z.string().optional() }).passthrough()
+const roomMemberDeleteSchema = z.object({ creatorToken: z.unknown().optional() })
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ code: string; memberId: string }> }) {
   const { code, memberId } = await params
