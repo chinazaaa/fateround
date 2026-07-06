@@ -13,6 +13,7 @@ import { YAHTZEE_DEFAULT_MAX_PLAYERS, YAHTZEE_MAX_PLAYERS, YAHTZEE_MIN_PLAYERS }
 import { WHOT_DEFAULT_MAX_PLAYERS, WHOT_MAX_PLAYERS, WHOT_MIN_PLAYERS } from '@/lib/whot'
 import { CRAZY8_DEFAULT_MAX_PLAYERS, CRAZY8_MAX_PLAYERS, CRAZY8_MIN_PLAYERS } from '@/lib/crazy-eights'
 import { LUDO_DEFAULT_MAX_PLAYERS, LUDO_MAX_PLAYERS, LUDO_MIN_PLAYERS } from '@/lib/ludo'
+import { MAHJONG_DEFAULT_MAX_PLAYERS, MAHJONG_MAX_PLAYERS, MAHJONG_MIN_PLAYERS } from '@/lib/mahjong'
 import { NPAT_DEFAULT_MAX_PLAYERS, NPAT_MAX_PLAYERS, NPAT_MIN_PLAYERS } from '@/lib/npat'
 import { TIC_TAC_TOE_DEFAULT_MAX_PLAYERS, TIC_TAC_TOE_MAX_PLAYERS, TIC_TAC_TOE_MIN_PLAYERS } from '@/lib/tic-tac-toe'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_MAX_PLAYERS, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
@@ -38,6 +39,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'whot',
   'crazy_eights',
   'ludo',
+  'mahjong',
   'i_call_on',
   'sudoku',
   'tic_tac_toe',
@@ -113,6 +115,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: LUDO_MAX_PLAYERS,
     default: LUDO_DEFAULT_MAX_PLAYERS,
   },
+  mahjong: {
+    min: MAHJONG_MIN_PLAYERS,
+    max: MAHJONG_MAX_PLAYERS,
+    default: MAHJONG_DEFAULT_MAX_PLAYERS,
+  },
   i_call_on: {
     min: NPAT_MIN_PLAYERS,
     max: NPAT_MAX_PLAYERS,
@@ -176,6 +183,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     whot: { ...GAME_LIMIT_CODE_DEFAULTS.whot },
     crazy_eights: { ...GAME_LIMIT_CODE_DEFAULTS.crazy_eights },
     ludo: { ...GAME_LIMIT_CODE_DEFAULTS.ludo },
+    mahjong: { ...GAME_LIMIT_CODE_DEFAULTS.mahjong },
     i_call_on: { ...GAME_LIMIT_CODE_DEFAULTS.i_call_on },
     sudoku: { ...GAME_LIMIT_CODE_DEFAULTS.sudoku },
     tic_tac_toe: { ...GAME_LIMIT_CODE_DEFAULTS.tic_tac_toe },

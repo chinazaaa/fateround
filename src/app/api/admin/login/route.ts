@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { parseJsonBody } from '@/lib/parse-body'
 import {
   adminCookieName,
   adminSessionMaxAgeSeconds,
@@ -6,9 +8,16 @@ import {
   verifyAdminCredentials,
 } from '@/lib/admin-session'
 
+// Permissive shape: email/password left `unknown` so the handler's own
+// `typeof … === 'string'` coercion + credential check still own the 401 (no field-level
+// tightening); the schema only turns a malformed/non-object body into a clean 400
+// instead of the previous 500.
+const loginSchema = z.object({ email: z.unknown().optional(), password: z.unknown().optional() })
+
 export async function POST(req: NextRequest) {
+  const { data: body, error: bodyError } = await parseJsonBody(req, loginSchema)
+  if (bodyError) return bodyError
   try {
-    const body = await req.json()
     const email = typeof body.email === 'string' ? body.email : ''
     const password = typeof body.password === 'string' ? body.password : ''
 

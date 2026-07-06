@@ -1,7 +1,15 @@
 import type { Metadata } from 'next'
 import Script from 'next/script'
 import { cookies } from 'next/headers'
-import { Geist, Geist_Mono, Bricolage_Grotesque, Instrument_Sans, JetBrains_Mono } from 'next/font/google'
+import {
+  Geist,
+  Geist_Mono,
+  Bricolage_Grotesque,
+  Instrument_Sans,
+  JetBrains_Mono,
+  Pirata_One,
+  IM_Fell_English_SC,
+} from 'next/font/google'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { ThemeToggle } from '@/components/ThemeToggle'
 // Hidden for now — "Buy us a coffee" (support) and Feedback buttons.
@@ -18,6 +26,8 @@ import './globals.css'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] })
+const pirataOne = Pirata_One({ weight: '400', variable: '--font-pirata', subsets: ['latin'], display: 'swap' })
+const imFell = IM_Fell_English_SC({ weight: '400', variable: '--font-naval', subsets: ['latin'], display: 'swap' })
 
 // Fate Round design-system fonts — scoped to the public/marketing pages via
 // the `.fr-site` wrapper (see fate-round-ds.css). Declared here only as CSS
@@ -46,7 +56,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${brandDisplay.variable} ${brandBody.variable} ${brandMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${brandDisplay.variable} ${brandBody.variable} ${brandMono.variable} ${pirataOne.variable} ${imFell.variable} h-full antialiased`}
       data-theme={theme}
       suppressHydrationWarning
     >

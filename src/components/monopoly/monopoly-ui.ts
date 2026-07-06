@@ -1,4 +1,5 @@
 import type { MonopolySpaceType } from '@/lib/monopoly'
+import { themedSpaceIcon, themedSpaceLines, themedSpaceName } from '@/components/monopoly/monopoly-themes'
 
 export const PLAYER_TOKEN_COLORS = [
   { bg: 'bg-red-500', ring: 'ring-red-400', text: 'text-red-100', hex: '#ef4444' },
@@ -13,7 +14,11 @@ export function tokenColorForOrder(order: number) {
   return PLAYER_TOKEN_COLORS[order % PLAYER_TOKEN_COLORS.length]!
 }
 
-export function spaceIcon(type: MonopolySpaceType): string {
+export function spaceIcon(type: MonopolySpaceType, themeId?: string | null): string {
+  if (themeId) {
+    const themed = themedSpaceIcon(type, themeId)
+    if (themed) return themed
+  }
   switch (type) {
     case 'go':
       return '→'
@@ -38,11 +43,12 @@ export function spaceIcon(type: MonopolySpaceType): string {
   }
 }
 
-export function shortSpaceName(name: string, max = 12): string {
-  if (name.length <= max) return name
-  const parts = name.split(' ')
+export function shortSpaceName(name: string, max = 12, spaceIndex?: number, themeId?: string | null): string {
+  const displayName = spaceIndex != null ? themedSpaceName(name, spaceIndex, themeId) : name
+  if (displayName.length <= max) return displayName
+  const parts = displayName.split(' ')
   if (parts.length > 1 && parts[0]!.length <= max - 2) return `${parts[0]}…`
-  return `${name.slice(0, max - 1)}…`
+  return `${displayName.slice(0, max - 1)}…`
 }
 
 export type BoardEdge = 'bottom' | 'left' | 'top' | 'right' | 'corner'
@@ -68,8 +74,17 @@ export function boardGridCell(index: number): { col: number; row: number } {
   return { col: 1, row: 1 }
 }
 
-/** Multi-line labels for board tiles — full words, split across lines (UK edition). */
-export function boardSpaceLines(name: string, type: MonopolySpaceType): string[] {
+/** Multi-line labels for board tiles — full words, split across lines. Themed editions override via spaceIndex + themeId. */
+export function boardSpaceLines(
+  name: string,
+  type: MonopolySpaceType,
+  spaceIndex?: number,
+  themeId?: string | null
+): string[] {
+  if (spaceIndex != null && themeId) {
+    const themed = themedSpaceLines(name, type, spaceIndex, themeId)
+    if (themed) return themed
+  }
   const known: Record<string, string[]> = {
     GO: ['GO', '→'],
     Jail: ['Jail', '🔒'],

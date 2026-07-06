@@ -17,6 +17,7 @@ import {
   parseCrazyEightsRules,
   setCrazyEightsHostMode,
   CRAZY8_MIN_PLAYERS,
+  CRAZY8_DEFAULT_MAX_PLAYERS,
   type CrazyEightsHostMode,
 } from '@/lib/crazy-eights'
 import { supabase } from '@/lib/supabase'
@@ -25,6 +26,8 @@ import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostAdmitPlayer } from '@/hooks/useHostAdmitPlayer'
+import { lobbyMaxPlayersFromGame, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player, CrazyEightsPlayerHand, CrazyEightsSession, CrazyEightsCalledSuit } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -68,9 +71,24 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
   const [hostJoining, setHostJoining] = useState(false)
   const [hostActing, setHostActing] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
+  const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
 
   useApplyGameTheme(game?.theme)
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
+
+  // Effective seat cap, clamped against game_player_limits — mirrors the server's
+  // lobbyMaxPlayersFromGame so the "Deal in" gate agrees with what admitCrazyEightsPlayer accepts.
+  useEffect(() => {
+    void fetch('/api/game-limits')
+      .then((res) => res.json())
+      .then((data: { limits?: GamePlayerLimitsMap }) => {
+        if (data.limits) setLimits(data.limits)
+      })
+      .catch(() => {})
+  }, [])
+  const maxPlayers = limits
+    ? lobbyMaxPlayersFromGame('crazy_eights', game ?? {}, limits)
+    : (game?.max_players ?? CRAZY8_DEFAULT_MAX_PLAYERS)
 
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes, sessionRes, handsRes] = await Promise.all([
@@ -130,6 +148,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+  const { admitPlayer, admittingPlayerId } = useHostAdmitPlayer(gameCode, hostToken, load, 'crazy-eights-admit')
 
   // Clear stale host-as-player state if the host's own row is removed elsewhere.
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
@@ -358,6 +377,16 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
       highlightPlayerId={hostPlayerId}
       removingPlayerId={removingPlayerId}
       onRemovePlayer={removePlayer}
+      onAdmitPlayer={
+        game.status === 'active' && (session?.turn_order?.length ?? 0) < maxPlayers ? admitPlayer : undefined
+      }
+      admittingPlayerId={admittingPlayerId}
+      canAdmitPlayer={(id) =>
+        !(session?.turn_order ?? []).includes(id) && !players.find((p) => p.id === id)?.is_eliminated
+      }
+      playersLabel={
+        game.status === 'active' ? `Players · ${session?.turn_order?.length ?? 0}/${maxPlayers}` : undefined
+      }
       gameType="crazy_eights"
       top={
         game.status === 'waiting' ? (

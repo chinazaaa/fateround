@@ -31,6 +31,7 @@ export type GameType =
   | 'yahtzee'
   | 'whot'
   | 'ludo'
+  | 'mahjong'
   | 'i_call_on'
   | 'sudoku'
   | 'tic_tac_toe'
@@ -170,7 +171,7 @@ export interface CodewordsMessage {
   created_at: string
   player_name?: string
 }
-export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical'
+export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate'
 export type WyrChoice = 'a' | 'b'
 
 export type ParticipantGender = 'male' | 'female'
@@ -302,6 +303,10 @@ export interface Game {
   crazy8_pick2_stacking?: boolean
   /** Ludo — 'modern' (start + mid-arm safe stars) or 'traditional' (no track safe squares). */
   ludo_variant?: LudoVariant
+  /** Mahjong — ruleset selected before the table starts. */
+  mahjong_ruleset?: MahjongRuleset | null
+  /** Mahjong — house rules and match-settlement options. */
+  mahjong_rule_options?: MahjongRuleOptions | null
 }
 
 export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'auction' | 'raise_funds' | 'finished'
@@ -581,6 +586,153 @@ export interface LudoPlayerState {
   player_id: string
   color: LudoColor
   pieces: LudoPiece[]
+  player_order: number
+  created_at: string
+}
+
+export type MahjongSeat = 'east' | 'south' | 'west' | 'north'
+export type MahjongPhase = 'draw' | 'discard' | 'claim' | 'finished'
+export type MahjongMeldType = 'chow' | 'pung' | 'kong'
+export type MahjongClaimType = 'mahjong' | MahjongMeldType
+export type MahjongWinType = 'self_draw' | 'discard'
+export type MahjongRuleset = 'fate_round' | 'hong_kong' | 'riichi' | 'mcr'
+export type MahjongWinningPattern =
+  | 'standard'
+  | 'seven_pairs'
+  | 'thirteen_orphans'
+  | 'knitted_straight'
+  | 'greater_honors_knitted'
+  | 'lesser_honors_knitted'
+export type MahjongHandResult = 'win' | 'exhaustive_draw' | 'abortive_draw' | 'chombo'
+
+export interface MahjongRuleOptions {
+  matchLength?: 'east' | 'hanchan'
+  startingScore?: number
+  returnScore?: number
+  bankruptcyEndsMatch?: boolean
+  agariYame?: boolean
+  okaEnabled?: boolean
+  uma?: [number, number, number, number]
+  doubleYakuman?: boolean
+  kazoeYakuman?: boolean
+  kiriageMangan?: boolean
+  openTanyao?: boolean
+  redFives?: boolean
+  abortiveDraws?: boolean
+  nagashiMangan?: boolean
+  renhou?: 'off' | 'mangan' | 'yakuman'
+  chomboPenalty?: 'mangan' | 'none'
+  hongKongMinimumFan?: number
+  hongKongLimitFan?: number
+  mcrMinimumPoints?: number
+}
+
+export interface MahjongScoreLine {
+  label: string
+  fan: number
+  detail?: string
+}
+
+export interface MahjongScorePayment {
+  player_id: string
+  delta: number
+  reason: string
+}
+
+export interface MahjongScoreSummary {
+  ruleset: MahjongRuleset
+  pattern: MahjongWinningPattern
+  fan: number
+  yaku_fan?: number
+  yakuman?: number
+  limit?: string | null
+  fu?: number | null
+  base_points: number
+  total_points: number
+  lines: MahjongScoreLine[]
+  payments: MahjongScorePayment[]
+  payer_player_id?: string | null
+  winner_player_ids?: string[]
+  honba?: number
+  riichi_sticks?: number
+}
+
+export interface MahjongDiscard {
+  tile: string
+  player_id: string
+  claimed_by_player_id?: string | null
+  claimed_as?: MahjongClaimType | null
+  riichi_declared?: boolean
+}
+
+export interface MahjongMeld {
+  type: MahjongMeldType
+  tiles: string[]
+  claimed_tile?: string | null
+  from_player_id?: string | null
+  concealed?: boolean
+  added?: boolean
+}
+
+export interface MahjongLastDiscard {
+  tile: string
+  player_id: string
+  discard_index: number
+}
+
+export interface MahjongSession {
+  id: string
+  game_id: string
+  ruleset: MahjongRuleset
+  turn_order: string[]
+  dealer_index: number
+  current_turn_index: number
+  phase: MahjongPhase
+  wall: string[]
+  dead_wall?: string[]
+  dora_indicators?: string[]
+  ura_dora_indicators?: string[]
+  honba?: number
+  riichi_sticks?: number
+  round_wind?: MahjongSeat
+  hand_number?: number
+  last_action?: 'draw' | 'discard' | 'claim' | 'kong' | 'riichi' | null
+  hand_result?: MahjongHandResult | null
+  rule_options?: MahjongRuleOptions | null
+  rinshan_player_id?: string | null
+  chankan_player_id?: string | null
+  ippatsu_eligible_player_ids?: string[]
+  exhaustive_draw_tenpai_player_ids?: string[]
+  scores?: Record<string, number>
+  discard_pile: MahjongDiscard[]
+  last_discard: MahjongLastDiscard | null
+  claim_passes: string[]
+  status_message: string | null
+  winner_player_id: string | null
+  winner_player_ids?: string[]
+  winning_tile: string | null
+  win_type: MahjongWinType | null
+  score_summary?: MahjongScoreSummary | null
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MahjongPlayerState {
+  id: string
+  game_id: string
+  player_id: string
+  seat: MahjongSeat
+  hand: string[]
+  hand_count?: number
+  last_drawn_tile?: string | null
+  flowers?: string[]
+  riichi_declared?: boolean
+  riichi_discard_index?: number | null
+  temporary_furiten?: boolean
+  permanent_furiten?: boolean
+  melds: MahjongMeld[]
+  discarded: string[]
   player_order: number
   created_at: string
 }

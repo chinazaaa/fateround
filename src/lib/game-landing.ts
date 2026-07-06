@@ -50,6 +50,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   whot: 'whot',
   crazy_eights: 'crazy-eights',
   ludo: 'ludo',
+  mahjong: 'mahjong',
   i_call_on: 'i-call-on',
   sudoku: 'sudoku',
   tic_tac_toe: 'tic-tac-toe',
@@ -1670,6 +1671,52 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'What are safe squares in Ludo?',
         answer:
           'Safe squares — the starred cells and each colour’s start square — protect your piece from capture: an opponent landing there can’t send you home. Fate Round marks the safe squares on the board and enforces them automatically.',
+      },
+    ],
+  }),
+
+  mahjong: landing('mahjong', {
+    seoTitle: 'Mahjong Online — 4 Player Multiplayer Tile Game',
+    seoDescription:
+      'Play 4-player Mahjong online with friends. Draw from the wall, discard, call Chow, Pung, Kong, and Mahjong in a live multiplayer room.',
+    keywords: ['mahjong online', '4 player mahjong', 'multiplayer mahjong', 'play mahjong with friends'],
+    heroSubtitle:
+      'A live 4-player Mahjong table — draw, discard, call melds, and complete a winning hand before the wall runs out.',
+    bodyParagraph:
+      'Mahjong on Fate Round is built for four players in one shared room. New players can start with Simple Mahjong, then move into Hong Kong, Riichi, or MCR rules when the table is ready. Each player gets a concealed hand, takes turns drawing from the wall and discarding, and can call Chow, Pung, Kong, or Mahjong from eligible discards.',
+    highlights: ['Simple learner mode', 'Chow, Pung, Kong calls', 'Live turn timer'],
+    features: [
+      {
+        title: 'Four seats',
+        description: 'East, South, West, and North are assigned when the host starts the table.',
+        emoji: '🀄',
+      },
+      {
+        title: 'Live calls',
+        description: 'React to discards with Mahjong, Pung, Kong, or left-player Chow when your hand allows it.',
+        emoji: '📣',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Fill the table', description: 'Exactly four players join with names and ready up.' },
+      { title: 'Draw and discard', description: 'Take turns drawing from the wall, then discard one tile.' },
+      {
+        title: 'Call Mahjong',
+        description: 'Complete four melds and a pair, seven pairs, or thirteen orphans before the wall is empty.',
+      },
+    ],
+    perfectFor: ['Board game nights', 'Remote friend groups', 'Tile game fans'],
+    extraFaqs: [
+      {
+        question: 'Which Mahjong rules does this use?',
+        answer:
+          'The default is Simple Mahjong: 136 tiles, no flowers, draw/discard turns, Chow, Pung, Kong, concealed Kong, added Kong, Mahjong calls, standard hand validation, seven pairs, thirteen orphans, and a simple fan-based result summary. Hosts can also choose Hong Kong, Riichi, or MCR before starting.',
+      },
+      {
+        question: 'Can I play with fewer than four people?',
+        answer: 'No — this Mahjong table starts only when exactly four active players are ready.',
       },
     ],
   }),
