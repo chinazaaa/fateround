@@ -5,7 +5,7 @@ import { formatCardAlertForPlayer } from '@/lib/monopoly-card-messages'
 import { formatCashMessageForPlayer } from '@/lib/monopoly-cash-messages'
 import { formatRentMessageForPlayer } from '@/lib/monopoly-rent-messages'
 import { formatTradeMessageForPlayer, formatIncomingTradeAlert } from '@/lib/monopoly-trade-messages'
-import { playGameFinishedSound, playRoundEndSound, playRoundStartSound, playVoteSubmittedSound } from '@/lib/sounds'
+import { playMonopolyActionSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
 import { MONOPOLY_CARD_MODAL_SECONDS } from '@/lib/supabase-selects'
 import { currentPlayerId } from '@/lib/monopoly'
@@ -39,10 +39,12 @@ export function useMonopolyNotifications({
   const prevCashSeqRef = useRef<number | null>(null)
   const prevTradeEventSeqRef = useRef<number | null>(null)
   const prevBankruptRef = useRef<boolean | null>(null)
+  const prevDiceRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!enabled || !game) return
 
+    const themeId = game?.theme ?? null
     const turnIndex = board?.current_turn_index ?? null
     const phase = board?.phase ?? null
     const tradeKey =
@@ -55,6 +57,7 @@ export function useMonopolyNotifications({
     const cashSeq = board?.last_cash_event?.seq ?? null
     const tradeEventSeq = board?.last_trade_event?.seq ?? null
     const bankrupt = myState?.bankrupt ?? false
+    const diceKey = board?.last_dice ? `${board.last_dice.d1}:${board.last_dice.d2}:${board.current_turn_index}` : null
 
     if (!readyRef.current) {
       readyRef.current = true
@@ -68,6 +71,7 @@ export function useMonopolyNotifications({
       prevCashSeqRef.current = cashSeq
       prevTradeEventSeqRef.current = tradeEventSeq
       prevBankruptRef.current = bankrupt
+      prevDiceRef.current = diceKey
       return
     }
 
@@ -77,16 +81,20 @@ export function useMonopolyNotifications({
 
     if (prevStatus === 'waiting' && game.status === 'active') {
       info('Monopoly started! 🎲')
-      playRoundStartSound()
+      playMonopolyActionSound('turn', themeId)
     }
 
     if (prevStatus === 'active' && game.status === 'finished') {
-      playGameFinishedSound()
+      playMonopolyActionSound('win', themeId)
       if (board?.winner_player_id && board.winner_player_id === myPlayerId) {
         success('You win! 🏆')
       } else {
         info('Game over')
       }
+    }
+
+    if (diceKey && diceKey !== prevDiceRef.current && board?.last_dice && game.status === 'active') {
+      playMonopolyActionSound('roll', themeId)
     }
 
     if (
@@ -99,9 +107,7 @@ export function useMonopolyNotifications({
       const nowMyTurn = !!myPlayerId && currentPlayerId(board) === myPlayerId
       if (nowMyTurn) {
         info('Your turn — roll the dice 🎲')
-        playRoundStartSound()
-      } else {
-        playRoundEndSound()
+        playMonopolyActionSound('turn', themeId)
       }
     }
 
@@ -114,13 +120,13 @@ export function useMonopolyNotifications({
     ) {
       if (phase === 'buy') {
         info('Property available — buy or send to auction')
-        playVoteSubmittedSound()
+        playMonopolyActionSound('buy', themeId)
       } else if (phase === 'pay_rent') {
         info('Rent is due')
-        playVoteSubmittedSound()
+        playMonopolyActionSound('rent', themeId)
       } else if (phase === 'raise_funds' && board.pending_debt?.player_id === myPlayerId) {
         info('Raise cash to pay your debt — or forfeit')
-        playVoteSubmittedSound()
+        playMonopolyActionSound('rent', themeId)
       } else if (phase === 'jail' && myState?.in_jail) {
         info('In jail — roll, pay, or use a card')
       }
@@ -129,12 +135,10 @@ export function useMonopolyNotifications({
     const incomingTrade =
       board?.pending_trade && board.pending_trade.to_player_id === myPlayerId ? board.pending_trade : null
 
-    const themeId = game?.theme ?? null
-
     if (tradeKey && tradeKey !== prevTradeKeyRef.current && incomingTrade) {
       const fromName = players.find((p) => p.id === incomingTrade.from_player_id)?.name ?? 'A player'
       info(formatIncomingTradeAlert(incomingTrade, fromName, themeId))
-      playVoteSubmittedSound()
+      playMonopolyActionSound('buy', themeId)
     }
 
     if (
@@ -144,7 +148,7 @@ export function useMonopolyNotifications({
       board?.phase === 'auction'
     ) {
       info('Your turn to bid in the auction')
-      playVoteSubmittedSound()
+      playMonopolyActionSound('auction', themeId)
     }
 
     if (board?.last_card_event && cardSeq != null && cardSeq !== prevCardSeqRef.current) {
@@ -153,7 +157,7 @@ export function useMonopolyNotifications({
         formatThemedText(`${alert.emoji} ${alert.title} — ${alert.body}`, themeId),
         MONOPOLY_CARD_MODAL_SECONDS * 1000
       )
-      playVoteSubmittedSound()
+      playMonopolyActionSound('card', themeId)
     }
 
     if (
@@ -163,7 +167,7 @@ export function useMonopolyNotifications({
       myPlayerId === board.last_rent_event.payer_player_id
     ) {
       info(formatRentMessageForPlayer(board.last_rent_event, myPlayerId, players, themeId))
-      playVoteSubmittedSound()
+      playMonopolyActionSound('rent', themeId)
     }
 
     if (
@@ -173,7 +177,7 @@ export function useMonopolyNotifications({
       myPlayerId === board.last_rent_event.owner_player_id
     ) {
       info(formatRentMessageForPlayer(board.last_rent_event, myPlayerId, players, themeId))
-      playVoteSubmittedSound()
+      playMonopolyActionSound('buy', themeId)
     }
 
     if (
@@ -183,7 +187,7 @@ export function useMonopolyNotifications({
       myPlayerId === board.last_cash_event.player_id
     ) {
       info(formatCashMessageForPlayer(board.last_cash_event, themeId))
-      playVoteSubmittedSound()
+      playMonopolyActionSound('buy', themeId)
     }
 
     if (
@@ -204,12 +208,12 @@ export function useMonopolyNotifications({
       ) {
         info(msg)
       }
-      playVoteSubmittedSound()
+      playMonopolyActionSound('buy', themeId)
     }
 
     if (bankrupt && !prevBankruptRef.current && myPlayerId) {
       info('You went bankrupt and are out of the game')
-      playGameFinishedSound()
+      playMonopolyActionSound('bankrupt', themeId)
     }
 
     prevStatusRef.current = game.status
@@ -222,5 +226,6 @@ export function useMonopolyNotifications({
     prevCashSeqRef.current = cashSeq
     prevTradeEventSeqRef.current = tradeEventSeq
     prevBankruptRef.current = bankrupt
+    prevDiceRef.current = diceKey
   }, [board, enabled, game, info, myPlayerId, myState?.bankrupt, myState?.in_jail, players, success])
 }

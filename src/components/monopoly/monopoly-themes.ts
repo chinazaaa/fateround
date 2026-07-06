@@ -140,9 +140,9 @@ const PIRATE_PALETTE: MonopolyBoardPalette = {
   cornerDivider: 'bg-[#B8860B]/40 dark:bg-[#B8860B]/30',
   myTokenRing: 'ring-[#B8860B] dark:ring-[#D4AF37]',
   myTokenOffset: 'ring-offset-[#D9C7A3] dark:ring-offset-[#0B2545]',
-  titleFont: 'font-pirate font-normal tracking-wide',
+  titleFont: 'font-pirate-bold font-bold text-sm sm:text-3xl tracking-wide',
   subtitleFont: 'font-naval font-normal tracking-widest',
-  tileFont: 'font-chart',
+  tileFont: 'font-sans font-extrabold tracking-tight',
   customDecoration: 'pirate',
 }
 

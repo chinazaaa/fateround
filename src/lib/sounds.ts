@@ -60,7 +60,7 @@ export function subscribeSoundMuted(callback: (muted: boolean) => void): () => v
  * Call `setupAudioUnlock()` once on page load so the first tap
  * pre-warms the context for subsequent programmatic sounds.
  */
-async function ensureContext(): Promise<boolean> {
+export async function ensureContext(): Promise<boolean> {
   if (typeof window === 'undefined') return false
   // Recreate if missing or garbage-collected into closed state
   if (!audioCtx || audioCtx.state === 'closed') {
@@ -78,6 +78,11 @@ async function ensureContext(): Promise<boolean> {
     }
   }
   return audioCtx.state === 'running'
+}
+
+/** Get the running AudioContext instance if initialized. */
+export function getAudioContext(): AudioContext | null {
+  return audioCtx
 }
 
 /**
@@ -597,5 +602,69 @@ export function stopTimerMusic() {
     timerGains = []
     timerLfo = null
     timerLfoGain = null
+  }
+}
+
+import {
+  playPirateCannonBlastSound,
+  playPirateCoinsSound,
+  playPirateDiceRollSound,
+  playPirateFanfareSound,
+  playPirateSeaSplashSound,
+  playPirateShipBellSound,
+} from '@/lib/sounds-pirate'
+
+/**
+ * Unified action sound dispatcher for Monopoly editions.
+ * Routes audio events to sea/pirate sounds when themeId is 'pirate'.
+ */
+export function playMonopolyActionSound(
+  actionType: 'roll' | 'buy' | 'rent' | 'card' | 'auction' | 'turn' | 'win' | 'bankrupt',
+  themeId?: string | null
+) {
+  if (themeId === 'pirate') {
+    switch (actionType) {
+      case 'turn':
+        void playPirateShipBellSound()
+        break
+      case 'roll':
+        void playPirateDiceRollSound()
+        break
+      case 'buy':
+        void playPirateCoinsSound()
+        break
+      case 'rent':
+      case 'bankrupt':
+        void playPirateSeaSplashSound()
+        break
+      case 'card':
+      case 'auction':
+        void playPirateCannonBlastSound()
+        break
+      case 'win':
+        void playPirateFanfareSound()
+        break
+    }
+  } else {
+    switch (actionType) {
+      case 'turn':
+        void playRoundStartSound()
+        break
+      case 'roll':
+        void playDiceRollSound()
+        break
+      case 'buy':
+      case 'rent':
+      case 'card':
+      case 'auction':
+        void playVoteSubmittedSound()
+        break
+      case 'win':
+        void playGameFinishedSound()
+        break
+      case 'bankrupt':
+        void playRoundEndSound()
+        break
+    }
   }
 }
