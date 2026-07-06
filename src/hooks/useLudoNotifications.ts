@@ -100,7 +100,7 @@ export function useLudoNotifications({
       message &&
       message !== prevMessage &&
       game.status === 'active' &&
-      message.includes('sent an opponent home') &&
+      message.includes('captured an opponent') &&
       myPlayerId
     ) {
       const myName = players.find((p) => p.id === myPlayerId)?.name
