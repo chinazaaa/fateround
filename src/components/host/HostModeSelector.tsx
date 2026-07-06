@@ -1,6 +1,7 @@
 'use client'
 
-import { CheckIcon, EyeIcon, PlayIcon } from '@/components/host/host-icons'
+import { useState } from 'react'
+import { CheckIcon, EyeIcon, PencilIcon, PlayIcon } from '@/components/host/host-icons'
 
 /**
  * Lobby host-mode selector: "Host only" (watch) vs "Host + play" (join as a player).
@@ -17,6 +18,7 @@ export function HostModeSelector({
   onJoinNameChange,
   onJoin,
   joining = false,
+  onEditName,
   spectatorLabel = 'Host only',
   spectatorHint = 'Watch from the Watch tab',
   playerLabel = 'Host + play',
@@ -34,6 +36,8 @@ export function HostModeSelector({
   onJoinNameChange: (name: string) => void
   onJoin: () => void
   joining?: boolean
+  /** When set, the "Playing as …" note shows an Edit button to rename the host's seat. */
+  onEditName?: (name: string) => void | Promise<void>
   spectatorLabel?: string
   spectatorHint?: string
   playerLabel?: string
@@ -96,16 +100,104 @@ export function HostModeSelector({
       {mode === 'player' &&
         joinedPlayerId &&
         (playingNote ?? (
-          <div className="flex items-center gap-2 rounded-xl border border-[var(--chip-active-border)] bg-[var(--chip-active-bg)] px-3 py-2 text-sm">
-            <span className="text-[var(--primary)]">
-              <CheckIcon size={14} />
-            </span>
-            <span className="text-body">
-              Playing as <span className="font-semibold">{joinedPlayerName}</span>
-            </span>
-          </div>
+          <PlayingAsNote
+            name={joinedPlayerName ?? ''}
+            onEditName={onEditName}
+            disabled={disabled}
+          />
         ))}
     </Wrapper>
+  )
+}
+
+/** "Playing as X" pill with an optional inline rename (Edit → input + Save/Cancel). */
+function PlayingAsNote({
+  name,
+  onEditName,
+  disabled,
+}: {
+  name: string
+  onEditName?: (name: string) => void | Promise<void>
+  disabled?: boolean
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(name)
+  const [saving, setSaving] = useState(false)
+
+  const startEditing = () => {
+    setDraft(name)
+    setEditing(true)
+  }
+
+  const save = async () => {
+    const trimmed = draft.trim()
+    if (!trimmed || saving) return
+    setSaving(true)
+    try {
+      await onEditName?.(trimmed)
+      setEditing(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2 pt-1">
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void save()
+            if (e.key === 'Escape') setEditing(false)
+          }}
+          placeholder="Your name"
+          className="input-field flex-1"
+          maxLength={40}
+          disabled={saving}
+          autoFocus
+        />
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={saving || !draft.trim()}
+          className="btn-primary btn-fit shrink-0 px-4 py-2.5 text-sm whitespace-nowrap"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          disabled={saving}
+          className="btn-ghost btn-fit shrink-0 px-3 py-2.5 text-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-[var(--chip-active-border)] bg-[var(--chip-active-bg)] px-3 py-2 text-sm">
+      <span className="text-[var(--primary)]">
+        <CheckIcon size={14} />
+      </span>
+      <span className="text-body">
+        Playing as <span className="font-semibold">{name}</span>
+      </span>
+      {onEditName && (
+        <button
+          type="button"
+          onClick={startEditing}
+          disabled={disabled}
+          className="ml-auto flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-[var(--primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] disabled:opacity-60"
+        >
+          <PencilIcon size={13} />
+          Edit
+        </button>
+      )}
+    </div>
   )
 }
 

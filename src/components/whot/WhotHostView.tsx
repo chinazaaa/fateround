@@ -443,6 +443,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
             onJoinNameChange={setHostJoinName}
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
+            onEditName={renameHost}
             spectatorHint="Spectate from the Watch tab"
           />
         ) : undefined

@@ -199,6 +199,7 @@ export type BingoSettingsInput = z.infer<typeof bingoSettingsSchema>
 export const boardGameLobbySettingsSchema = z.object({
   gameId: gameCodeString(),
   hostToken: hostTokenString(),
+  is_public: z.boolean().optional(),
   max_players: z.coerce.number().int().min(1).max(100).optional(),
   timer_seconds: z.coerce.number().optional(),
   game_duration_seconds: z.coerce.number().optional(),

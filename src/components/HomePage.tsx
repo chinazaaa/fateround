@@ -135,15 +135,15 @@ export function HomePage() {
               </Link>
               <Link
                 href="/tournament"
-                className="relative flex min-w-0 items-center gap-3 overflow-hidden rounded-[var(--radius-lg)] px-4 py-3.5 no-underline"
+                className="relative flex min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-lg)] p-3.5 no-underline"
                 style={{ background: 'var(--rose-600)', color: '#fff', boxShadow: 'var(--shadow-md)' }}
               >
-                <span className="text-[26px] leading-none">🏆</span>
+                <span className="text-[22px] leading-none">🏆</span>
                 <div className="min-w-0">
-                  <b className="block text-[15px]" style={displayFont}>
+                  <b className="block text-[13px]" style={displayFont}>
                     Tournaments
                   </b>
-                  <span className="text-[13px]" style={{ color: 'rgba(255,255,255,0.9)' }}>
+                  <span className="text-xs" style={{ color: 'rgba(255,255,255,0.9)' }}>
                     Bracket night
                   </span>
                 </div>

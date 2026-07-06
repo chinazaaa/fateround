@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageShell, Field, PrimaryBtn } from '@/components/ui/PageShell'
+import { SiteChrome } from '@/components/SiteChrome'
 import { DEFAULT_WHATSAPP_INVITE_URL } from '@/lib/community-constants'
 
 export default function TournamentLandingPage() {
@@ -34,7 +35,8 @@ export default function TournamentLandingPage() {
   }
 
   return (
-    <PageShell centered narrow>
+    <SiteChrome>
+      <PageShell narrow>
       <div className="text-center space-y-2">
         <span className="premium-badge">Tournament</span>
         <h1 className="text-4xl font-black gradient-title leading-tight">Tournaments</h1>
@@ -93,6 +95,7 @@ export default function TournamentLandingPage() {
           💬 Join our community
         </a>
       </div>
-    </PageShell>
+      </PageShell>
+    </SiteChrome>
   )
 }

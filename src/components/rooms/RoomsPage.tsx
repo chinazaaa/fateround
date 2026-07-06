@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { FateRoundLogo } from '@/components/FateRoundLogo'
+import { SiteChrome } from '@/components/SiteChrome'
 import { supabase } from '@/lib/supabase'
 import { formatRoomTimezone, getRoomTimezoneOptions, getUserTimezone, ROOM_DESCRIPTION_MAX } from '@/lib/room-timezones'
 import type { RoomRow } from '@/lib/room-api'
@@ -171,14 +170,8 @@ export function RoomsPage() {
   }
 
   return (
-    <>
-      <header className="fixed top-0 inset-x-0 z-40 flex items-center px-4 py-3 pointer-events-none">
-        <Link href="/" className="pointer-events-auto">
-          <FateRoundLogo className="h-8 w-auto max-w-[9.5rem] sm:max-w-[11rem]" />
-        </Link>
-      </header>
-
-      <div className="page-wrap flex flex-col items-center justify-center px-4 pt-16 pb-8">
+    <SiteChrome>
+      <div className="flex min-h-full flex-col items-center justify-center px-4 py-10">
         <div className="w-full max-w-sm space-y-4">
           <div className="text-center space-y-1">
             <div className="text-4xl">🏠</div>
@@ -387,13 +380,8 @@ export function RoomsPage() {
             )}
           </div>
 
-          <p className="text-center text-faint text-xs">
-            <Link href="/" className="hover:text-body transition-colors">
-              ← Back to home
-            </Link>
-          </p>
         </div>
       </div>
-    </>
+    </SiteChrome>
   )
 }

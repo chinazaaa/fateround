@@ -54,6 +54,7 @@ export function HostBoardGameLobbyPanel({
 }: Props) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
+  const [isPublic, setIsPublic] = useState(false)
   const [maxPlayers, setMaxPlayers] = useState(6)
   const [turnTimer, setTurnTimer] = useState(0)
   const [gameDuration, setGameDuration] = useState(0)
@@ -76,6 +77,12 @@ export function HostBoardGameLobbyPanel({
       })
       .catch(() => {})
   }, [])
+
+  // Keep visibility synced with the game row — independent of the limits fetch so
+  // realtime updates (e.g. host changing it on another device) reflect immediately.
+  useEffect(() => {
+    setIsPublic(game.is_public === true)
+  }, [game.is_public])
 
   useEffect(() => {
     if (!limits) return
@@ -134,6 +141,11 @@ export function HostBoardGameLobbyPanel({
     },
     [gameCode, hostToken, markSaved, onGameUpdate, toastError]
   )
+
+  const onVisibilityChange = (next: boolean) => {
+    setIsPublic(next)
+    void patchSettings({ is_public: next })
+  }
 
   const onMaxPlayersChange = (next: number) => {
     if (next < playerCount) {
@@ -216,7 +228,7 @@ export function HostBoardGameLobbyPanel({
   )
 
   const summary = useMemo(() => {
-    const parts = [`${maxPlayers} max`, formatBoardGameTurnTimer(turnTimer)]
+    const parts = [isPublic ? 'Public' : 'Private', `${maxPlayers} max`, formatBoardGameTurnTimer(turnTimer)]
     if (boardGameType === 'monopoly' || boardGameType === 'whot' || boardGameType === 'crazy_eights') {
       parts.push(durationFormatter(gameDuration))
     }
@@ -228,13 +240,22 @@ export function HostBoardGameLobbyPanel({
       parts.push(policy === 'lobby_only' ? 'Lobby only' : policy === 'viewers_only' ? 'Viewers OK' : 'Late play OK')
     }
     return parts.join(' · ')
-  }, [boardGameType, durationFormatter, game, gameDuration, ludoVariant, maxPlayers, turnTimer])
+  }, [boardGameType, durationFormatter, game, gameDuration, isPublic, ludoVariant, maxPlayers, turnTimer])
 
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
     <HostLobbySettingsSection status={statusLabel} summary={summary}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
+        <HostLobbySettingBlock title="Visibility" className="sm:col-span-2">
+          <Toggle
+            label="Public game"
+            description="List in Browse so anyone can find and join. Off keeps it invite-only via the share link."
+            value={isPublic}
+            onChange={onVisibilityChange}
+          />
+        </HostLobbySettingBlock>
+
         <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
           <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
         </HostLobbySettingBlock>

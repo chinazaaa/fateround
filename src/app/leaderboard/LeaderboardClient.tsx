@@ -74,7 +74,7 @@ export function LeaderboardClient() {
   const canGoNext = !!data && data.rangeEnd < today
 
   return (
-    <div className="page-wrap flex flex-col items-center px-4 py-10">
+    <div className="flex flex-col items-center px-4 py-10">
       <div className="w-full max-w-2xl space-y-6">
         <header className="text-center space-y-2">
           <span
