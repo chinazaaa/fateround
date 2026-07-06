@@ -1129,12 +1129,12 @@ body {
 /* ── Monopoly Theme Typography ──────────────────────────────────── */
 @layer utilities {
   .font-pirate {
-    font-family: var(--font-pirata), 'IM Fell English SC', 'Palatino', 'Georgia', serif;
+    font-family: var(--font-pirata), 'IM Fell English SC', Palatino, Georgia, serif;
   }
   .font-naval {
-    font-family: var(--font-naval), 'Palatino', 'Georgia', 'Times New Roman', serif;
+    font-family: var(--font-naval), Palatino, Georgia, 'Times New Roman', serif;
   }
   .font-chart {
-    font-family: 'Palatino', 'Georgia', 'Times New Roman', serif;
+    font-family: Palatino, Georgia, 'Times New Roman', serif;
   }
 }
