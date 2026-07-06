@@ -30,6 +30,8 @@ interface RoomVoiceRailProps {
   onSettings?: () => void
   /** Host: extra ⋯-menu items (e.g. Transfer host). */
   hostMenuExtra?: React.ReactNode
+  /** Persist a new display name (⋯ menu → Edit your name). */
+  onEditName?: (name: string) => void
   /**
    * Auto-reconnect a recent voice session on mount (default true). Set false
    * for a join-first room where voice should never connect until the player
@@ -72,6 +74,7 @@ export function RoomVoiceRail({
   onEndGame,
   onSettings,
   hostMenuExtra,
+  onEditName,
   variant = 'floating',
   autoRejoin = true,
   onVoiceParticipants,
@@ -272,6 +275,7 @@ export function RoomVoiceRail({
         onEndGame={onEndGame}
         onSettings={onSettings}
         hostMenuExtra={hostMenuExtra}
+        onEditName={onEditName}
         presenceCount={isConnecting ? 0 : presenceCount}
         onJoinVoice={joinAudio}
         onLeave={onLeave}
@@ -305,6 +309,7 @@ export function RoomVoiceRail({
         onEndGame={onEndGame}
         onSettings={onSettings}
         hostMenuExtra={hostMenuExtra}
+        onEditName={onEditName}
         onVoiceParticipants={onVoiceParticipants}
         onLeaveVoice={() => leaveAudio(true)}
         onLeave={() => {
@@ -330,6 +335,7 @@ function ConnectedBar(props: {
   onEndGame?: () => void
   onSettings?: () => void
   hostMenuExtra?: React.ReactNode
+  onEditName?: (name: string) => void
   onLeaveVoice?: () => void
   onLeave?: () => void
   onVoiceParticipants?: (parts: { id: string; talking: boolean; muted: boolean }[]) => void
@@ -374,6 +380,7 @@ function ConnectedBar(props: {
       onEndGame={props.onEndGame}
       onSettings={props.onSettings}
       hostMenuExtra={props.hostMenuExtra}
+      onEditName={props.onEditName}
       participants={mapped}
       muted={!isMicrophoneEnabled}
       onToggleMute={() => void localParticipant?.setMicrophoneEnabled(!isMicrophoneEnabled)}

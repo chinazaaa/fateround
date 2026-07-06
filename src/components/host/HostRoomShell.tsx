@@ -24,6 +24,7 @@ export function HostRoomShell({
   onEndGame,
   onSettings,
   hostMenuExtra,
+  onEditName,
   children,
 }: {
   gameCode: string
@@ -38,6 +39,8 @@ export function HostRoomShell({
   onSettings?: () => void
   /** Host: extra ⋯-menu items (e.g. Transfer host). */
   hostMenuExtra?: React.ReactNode
+  /** Persist a new host display name (⋯ menu → Edit your name). */
+  onEditName?: (name: string) => void
   children: React.ReactNode
 }) {
   const hostIdentity = useHostIdentity(gameCode)
@@ -62,6 +65,7 @@ export function HostRoomShell({
         onEndGame={onEndGame}
         onSettings={onSettings}
         hostMenuExtra={hostMenuExtra}
+        onEditName={onEditName}
       />
       <div className="pr-main">
         <div className="pr-stage">{children}</div>

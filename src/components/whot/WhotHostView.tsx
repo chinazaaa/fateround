@@ -137,9 +137,35 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   // Clear stale host-as-player state if the host's own row is removed elsewhere.
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
-  const changeHostMode = (mode: WhotHostMode) => {
+  // Fires once to auto-seat the host in "Play as yourself" mode; declared here so
+  // changeHostMode can re-arm it when the host gives up their seat.
+  const hostAutoJoinedRef = useRef(false)
+
+  const changeHostMode = async (mode: WhotHostMode) => {
+    const prev = hostMode
     setHostMode(mode)
     setWhotHostMode(gameCode, mode)
+    // Switching to "Host only" while holding a seat → give up the seat so the
+    // host drops out of the players list. Re-arm auto-join so picking "Play as
+    // yourself" again re-seats them.
+    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
+      hostAutoJoinedRef.current = false
+      try {
+        const res = await fetch('/api/players', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error ?? 'Failed to leave seat')
+        }
+        handlePlayerRemoved(hostPlayerId)
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
+      }
+    }
   }
 
   const hostJoinGame = async () => {
@@ -165,10 +191,37 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     }
   }
 
+  // Persist a new host display name (⋯ menu → Edit your name). Only meaningful
+  // when the host holds a seat (host+play); it renames their player row so the
+  // turn rail + everyone else update, and refreshes the session so the voice
+  // rail name (useHostDisplayName) syncs.
+  const renameHost = async (name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    if (!hostPlayerId || !hostResumeToken) {
+      toastError('Take a seat (Play as yourself) before changing your name.')
+      return
+    }
+    try {
+      const res = await fetch('/api/players', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, resumeToken: hostResumeToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
+      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
+      setHostPlayerName(data.playerName)
+      await load()
+      success('Name updated!')
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to update name')
+    }
+  }
+
   // No manual join: when the host chose "Play as yourself" (mode 'player'), seat
   // them automatically in the lobby using the name carried from the create
   // screen. Fires once; falls back to "Host" if no name was provided.
-  const hostAutoJoinedRef = useRef(false)
   useEffect(() => {
     if (hostAutoJoinedRef.current) return
     if (game?.status !== 'waiting') return
@@ -477,6 +530,7 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         onEndGame={endGame}
         onSettings={() => setSettingsOpen(true)}
         hostMenuExtra={<TransferHostControl triggerClassName="ct-voice-menu-item" />}
+        onEditName={renameHost}
       >
         {session ? (
           <>
