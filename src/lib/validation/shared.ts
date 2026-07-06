@@ -66,6 +66,7 @@ export const gameTypeEnum = z.enum([
   'whot',
   'crazy_eights',
   'ludo',
+  'mahjong',
   'i_call_on',
   'sudoku',
   'tic_tac_toe',

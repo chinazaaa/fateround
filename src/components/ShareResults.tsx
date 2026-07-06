@@ -21,6 +21,7 @@ import {
   isTicTacToeGame,
   isChessGame,
   isCheckersGame,
+  isMahjongGame,
   isICallOnGame,
   isCodewordsGame,
   isWordHuntGame,
@@ -67,6 +68,8 @@ function buildShareText({
   ticTacToeWinnerName,
   ticTacToeIsDraw,
   ticTacToeEndedEarly,
+  mahjongWinnerName,
+  mahjongIsDraw,
   npatLeaderboard,
   npatWinnerLabel,
   codewordsOperativeStats,
@@ -97,6 +100,8 @@ function buildShareText({
   ticTacToeWinnerName?: string
   ticTacToeIsDraw?: boolean
   ticTacToeEndedEarly?: boolean
+  mahjongWinnerName?: string
+  mahjongIsDraw?: boolean
   npatLeaderboard?: { name: string; score: number }[]
   npatWinnerLabel?: string
   codewordsOperativeStats?: { name: string; score: number }[]
@@ -156,6 +161,16 @@ function buildShareText({
       '',
       'Final standings:',
       ...ludoStandings.slice(0, 8).map((row) => `  ${row.rank}. ${row.name} — ${row.finishedCount}/4 home`),
+      '',
+      `Play at ${appDomain()}`,
+    ]
+    return lines.join('\n')
+  }
+
+  if (isMahjongGame(gameType)) {
+    const lines = [
+      ...gameHeader,
+      mahjongWinnerName ? `🏆 ${mahjongWinnerName} calls Mahjong!` : mahjongIsDraw ? '🤝 Wall draw' : '🏁 Game over',
       '',
       `Play at ${appDomain()}`,
     ]
@@ -390,6 +405,8 @@ export function ShareResults({
   ticTacToeWinnerName,
   ticTacToeIsDraw,
   ticTacToeEndedEarly,
+  mahjongWinnerName,
+  mahjongIsDraw,
   npatLeaderboard,
   npatWinnerLabel,
   codewordsOperativeStats,
@@ -421,6 +438,8 @@ export function ShareResults({
   ticTacToeWinnerName?: string
   ticTacToeIsDraw?: boolean
   ticTacToeEndedEarly?: boolean
+  mahjongWinnerName?: string
+  mahjongIsDraw?: boolean
   npatLeaderboard?: { name: string; score: number }[]
   npatWinnerLabel?: string
   codewordsOperativeStats?: { name: string; score: number }[]
@@ -459,6 +478,8 @@ export function ShareResults({
         ticTacToeWinnerName,
         ticTacToeIsDraw,
         ticTacToeEndedEarly,
+        mahjongWinnerName,
+        mahjongIsDraw,
         npatLeaderboard,
         npatWinnerLabel,
         codewordsOperativeStats,
@@ -490,6 +511,8 @@ export function ShareResults({
       ticTacToeWinnerName,
       ticTacToeIsDraw,
       ticTacToeEndedEarly,
+      mahjongWinnerName,
+      mahjongIsDraw,
       npatLeaderboard,
       npatWinnerLabel,
       codewordsOperativeStats,
