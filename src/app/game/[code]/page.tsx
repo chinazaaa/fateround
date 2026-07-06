@@ -5,8 +5,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PollGamePlayerExperience } from '@/components/poll-game/PollGamePlayerExperience'
 // import { NowPlayingBar } from '@/components/music/NowPlayingBar'
+import { AudioChat } from '@/components/AudioChat'
 import { IosInstallPushNudge } from '@/components/IosInstallPushNudge'
 import { getPlayerSession } from '@/lib/utils'
+import { gameHasHeaderVoice } from '@/lib/game-types'
 
 const TOURNAMENT_RETURN_SECONDS = 8
 
@@ -110,14 +112,20 @@ export default function GamePage() {
     }
     return w
   }, [watch, searchParams, gameCode])
+  const [playerName, setPlayerName] = useState<string | null>(null)
   const [playerId, setPlayerId] = useState<string | null>(null)
+  // Game type gates the floating voice pill: games with the design-system header
+  // voice (Whot) render their own Join-voice control, so we skip the pill for them.
+  const [gameType, setGameType] = useState<string | null>(null)
 
   useEffect(() => {
     const checkSession = () => {
       const session = getPlayerSession(gameCode)
       if (session?.playerName) {
+        setPlayerName(session.playerName)
         setPlayerId(session.playerId)
       } else {
+        setPlayerName(null)
         setPlayerId(null)
       }
     }
@@ -126,9 +134,31 @@ export default function GamePage() {
     return () => clearInterval(timer)
   }, [gameCode])
 
+  useEffect(() => {
+    let active = true
+    supabase
+      .from('games')
+      .select('game_type')
+      .eq('id', gameCode)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active) setGameType(data?.game_type ?? null)
+      })
+    return () => {
+      active = false
+    }
+  }, [gameCode])
+
   return (
     <>
       <PollGamePlayerExperience gameCode={gameCode} initialName={initialName} autoJoinAsViewer={watch} />
+      {/* Floating "Join voice" pill. Skipped for games with the header voice rail
+          (Whot) so they don't get two voice controls. Voice chat is disabled for
+          tournament players (unstable across the lobby/match tabs) — but spectators
+          watching a tournament game can still hop in. */}
+      {playerName && playerId && (!tournamentId || watch) && !!gameType && !gameHasHeaderVoice(gameType) && (
+        <AudioChat roomCode={gameCode} playerName={playerName} identity={playerId} auth={{ kind: 'player' }} />
+      )}
       <TournamentBanner gameCode={gameCode} tournamentId={tournamentId} />
       {/* {playerId && <NowPlayingBar gameCode={gameCode} identity={playerId} />} */}
       {playerId && <IosInstallPushNudge gameCode={gameCode} />}
