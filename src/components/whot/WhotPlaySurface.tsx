@@ -152,7 +152,7 @@ export function WhotPlaySurface({
       : 0
 
   return (
-    <CardTableSurface>
+    <CardTableSurface variant="whot">
       {gameTimer?.active && <GameTimerBar label={gameTimer.label} pct={gamePct} low={gameTimer.secondsLeft <= 60} />}
       <TurnRail seats={seats} />
 
