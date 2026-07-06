@@ -261,6 +261,7 @@ export function RoomVoiceRail({
   if (!token) {
     return shell(
       <RoomVoiceBar
+        inVoice={false}
         bare={!topbar}
         popUp={!topbar}
         code={roomCode.toUpperCase()}

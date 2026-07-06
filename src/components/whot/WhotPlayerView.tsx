@@ -334,6 +334,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       gameName={game?.title ?? cfg.label}
       playerName={activePlayer?.name ?? roomDisplayName}
       playerId={myPlayerId}
+      onLeave={() => {
+        clearPlayerSession(gameCode)
+        router.push('/')
+      }}
     >
       {children}
     </PlayerRoomShell>

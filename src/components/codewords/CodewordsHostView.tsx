@@ -270,6 +270,8 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
         handlePlayerRemoved(hostPlayerId)
         await load()
       } catch (err) {
+        setHostMode(prev)
+        setCodewordsHostMode(gameCode, prev)
         toastError(err instanceof Error ? err.message : 'Failed to leave seat')
       }
     }
@@ -287,7 +289,8 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
       setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
+      const storedGender = getPlayerSession(gameCode)?.playerGender ?? 'both'
+      setPlayerSession(gameCode, hostPlayerId, data.playerName, storedGender, hostResumeToken)
       await load()
       success('Name updated!')
     } catch (err) {

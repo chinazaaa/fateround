@@ -143,8 +143,11 @@ export function TransferHostControl({ triggerClassName }: { triggerClassName?: s
         aria-label="Transfer host"
         title={pendingId ? 'Host invite pending' : 'Transfer host to a player'}
         className={
-          triggerClassName ??
-          'relative flex items-center gap-1.5 rounded-full px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-medium transition-all duration-200 glass-card'
+          triggerClassName
+            ? // Keep the trigger positioned so the pending badge anchors to the
+              // button (not the menu) even when a custom class replaces the default.
+              `relative ${triggerClassName}`
+            : 'relative flex items-center gap-1.5 rounded-full px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-medium transition-all duration-200 glass-card'
         }
         style={triggerClassName ? undefined : { color: 'var(--muted)' }}
       >

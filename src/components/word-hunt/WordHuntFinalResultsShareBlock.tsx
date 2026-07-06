@@ -87,6 +87,7 @@ export function WordHuntFinalResultsShareBlock({
         </div>
       </div>
       <HostGameFinishedActions
+        gameCode={game.id}
         playAgainButton={playAgainButton}
         showCreateNewGame={showCreateNewGame}
         shareButton={

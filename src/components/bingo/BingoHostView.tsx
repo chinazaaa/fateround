@@ -239,6 +239,8 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
         handlePlayerRemoved(hostPlayerId)
         await load()
       } catch (err) {
+        setHostMode(prev)
+        setBingoHostMode(gameCode, prev)
         toastError(err instanceof Error ? err.message : 'Failed to leave seat')
       }
     }

@@ -167,6 +167,8 @@ export function SnakeLadderHostView({ gameCode, hostToken }: { gameCode: string;
         handlePlayerRemoved(hostPlayerId)
         await load()
       } catch (err) {
+        setHostModeState(prev)
+        setSnakeLadderHostMode(gameCode, prev)
         toastError(err instanceof Error ? err.message : 'Failed to leave seat')
       }
     }

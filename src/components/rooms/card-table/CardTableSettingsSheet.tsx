@@ -33,9 +33,17 @@ export function CardTableSettingsSheet({
 
   return (
     <div style={styles.backdrop} onClick={onClose}>
-      <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="card-table-settings-title"
+        style={styles.sheet}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div style={styles.head}>
-          <h3 style={styles.title}>Game settings</h3>
+          <h3 id="card-table-settings-title" style={styles.title}>
+            Game settings
+          </h3>
           <button type="button" onClick={onClose} aria-label="Close" style={styles.x}>
             ✕
           </button>

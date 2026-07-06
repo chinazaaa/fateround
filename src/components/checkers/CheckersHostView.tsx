@@ -147,6 +147,8 @@ export function CheckersHostView({ gameCode, hostToken }: { gameCode: string; ho
         handlePlayerRemoved(hostPlayerId)
         await load()
       } catch (err) {
+        setHostModeState(prev)
+        setHostMode(gameCode, prev)
         toastError(err instanceof Error ? err.message : 'Failed to leave seat')
       }
     }

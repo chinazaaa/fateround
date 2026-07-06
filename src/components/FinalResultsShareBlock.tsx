@@ -37,6 +37,7 @@ export function FinalResultsShareBlock({
         {children}
       </div>
       <HostGameFinishedActions
+        gameCode={game.id}
         playAgainButton={playAgainButton}
         showCreateNewGame={showCreateNewGame}
         shareButton={

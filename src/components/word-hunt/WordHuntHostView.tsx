@@ -243,6 +243,8 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
         clearHostPlayer()
         await load()
       } catch (err) {
+        setHostModeState(prev)
+        setWordHuntHostMode(gameCode, prev)
         toastError(err instanceof Error ? err.message : 'Failed to leave seat')
       }
     }
@@ -260,6 +262,14 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
       setHostPlayerName(data.playerName)
+      const stored = getPlayerSession(gameCode)
+      setPlayerSession(
+        gameCode,
+        hostPlayerId,
+        data.playerName,
+        stored?.playerGender ?? 'both',
+        stored?.resumeToken ?? null
+      )
       await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to update name')
