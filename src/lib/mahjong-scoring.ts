@@ -273,7 +273,9 @@ function isAllEvenPungs(context: ScoreContext): boolean {
 }
 
 function isPinfu(context: ScoreContext, winnerState: MahjongPlayerState, session?: MahjongSession): boolean {
-  return context.closed && isAllChows(context) && !!context.pairTile && !isValuePair(context.pairTile, winnerState, session)
+  return (
+    context.closed && isAllChows(context) && !!context.pairTile && !isValuePair(context.pairTile, winnerState, session)
+  )
 }
 
 function hasOutsideHand(context: ScoreContext, honorsAllowed: boolean): boolean {
