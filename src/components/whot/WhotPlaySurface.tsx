@@ -195,10 +195,9 @@ export function WhotPlaySurface({
         ) : pickPenalty.type === 'pick3' ? (
           <ActionToast tone="hot">🔥 Pick 3 — play a 5 or draw {pickPenalty.count}</ActionToast>
         ) : isMyTurn ? (
-          <TurnStatus>
-            Your turn{requirement ? ' — ' : ''}
-            {requirement && <span className="g">{requirement}</span>}
-          </TurnStatus>
+          // The required shape/number is shown persistently by the demand badge
+          // above, so the turn prompt no longer repeats it inline.
+          <TurnStatus>Your turn</TurnStatus>
         ) : (
           <TurnStatus muted>Waiting for {turnName}…</TurnStatus>
         )}
