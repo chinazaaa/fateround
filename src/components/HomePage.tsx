@@ -103,7 +103,7 @@ export function HomePage() {
               <input
                 ref={joinRef}
                 className="fr-input fr-input--code min-w-0 flex-1"
-                placeholder="ENTER CODE"
+                placeholder="CODE"
                 maxLength={6}
                 aria-label="Game room code"
                 value={code}
@@ -120,8 +120,9 @@ export function HomePage() {
               </button>
             </div>
 
-            {/* Rooms + Tournaments */}
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            {/* Rooms + Tournaments — stack on phones (2-up can't fit the "Tournaments"
+                label under ~460px), side-by-side once there's room. */}
+            <div className="mt-4 grid grid-cols-1 gap-3 min-[460px]:grid-cols-2">
               <Link href="/rooms" className="fr-card fr-card--interactive flex items-center gap-3 !p-3.5 no-underline">
                 <span className="text-[26px] leading-none">🏠</span>
                 <div className="min-w-0">
@@ -135,7 +136,7 @@ export function HomePage() {
               </Link>
               <Link
                 href="/tournament"
-                className="relative flex items-center gap-3 overflow-hidden rounded-[var(--radius-lg)] px-4 py-3.5 no-underline"
+                className="relative flex items-center gap-3 overflow-hidden rounded-[var(--radius-lg)] p-3.5 no-underline"
                 style={{ background: 'var(--rose-600)', color: '#fff', boxShadow: 'var(--shadow-md)' }}
               >
                 <span className="text-[26px] leading-none">🏆</span>
