@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
+import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { ROOM_PUBLIC_FIELDS, verifyRoomCreator } from '@/lib/room-api'
 import { normalizeRoomDescription, normalizeRoomTimezone } from '@/lib/room-timezones'
@@ -7,10 +9,28 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
 
+// Permissive shapes: every field optional + loosely typed to preserve the handlers'
+// existing coercion (String()/Number()/=== true). The schema's job here is only to turn a
+// malformed or non-object body into a clean 400 instead of a 500 — not to tighten
+// field-level validation.
+const roomDeleteSchema = z.object({ creatorToken: z.string().optional() }).passthrough()
+const roomPatchSchema = z
+  .object({
+    creatorToken: z.string().optional(),
+    isPublic: z.boolean().optional(),
+    isLocked: z.boolean().optional(),
+    name: z.string().optional(),
+    description: z.string().nullish(),
+    timezone: z.string().nullish(),
+    maxMembers: z.union([z.string(), z.number(), z.null()]).optional(),
+  })
+  .passthrough()
+
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const roomCode = code.toUpperCase()
-  const body = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, roomDeleteSchema)
+  if (bodyError) return bodyError
   const creatorToken = String(body.creatorToken ?? '')
 
   const admin = getSupabaseAdmin()
@@ -26,7 +46,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ c
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const roomCode = code.toUpperCase()
-  const body = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, roomPatchSchema)
+  if (bodyError) return bodyError
   const creatorToken = String(body.creatorToken ?? '')
 
   const admin = getSupabaseAdmin()

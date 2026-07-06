@@ -40,6 +40,11 @@ vi.mock('@/components/game-host-views', () => ({
     ),
   },
 }))
+// The floating music panel (Toast + realtime) is a heavy child too — stub it so the
+// dispatcher test stays about the routing decision.
+vi.mock('@/components/music/HostMusicControl', () => ({
+  HostMusicControl: () => null,
+}))
 
 import HostPage from './page'
 
