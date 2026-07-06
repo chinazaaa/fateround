@@ -123,6 +123,11 @@
 .fr-room .hand-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 0 4px; }
 .fr-room .hand-head .hl { font: 700 10px var(--font-sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
 .fr-room .hand-head .cnt { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.fr-room .hand-head-right { display: flex; align-items: center; gap: 10px; }
+/* Stack / Separate layout toggle — a personal view preference for your hand. */
+.fr-room .hand-layout { display: inline-flex; background: var(--surface-sunken, var(--bg)); border: 1px solid var(--border); border-radius: 9999px; padding: 2px; }
+.fr-room .hand-layout .hlt { font: 700 10px var(--font-sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); background: none; border: 0; border-radius: 9999px; padding: 3px 10px; cursor: pointer; transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out); }
+.fr-room .hand-layout .hlt.on { color: var(--primary-strong); background: var(--primary-soft); }
 .fr-room .hand { display: flex; justify-content: center; padding-top: 14px; min-height: 92px; }
 /* many-cards: let a big hand scroll horizontally instead of overflowing */
 /* `touch-action: pan-x` is required for the swipe to scroll on TOUCH devices —
@@ -135,6 +140,13 @@
 .fr-room .hand.scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 9999px; }
 .fr-room .hand.scroll .pc { scroll-snap-align: center; }
 .fr-room .hand.tight .pc { margin-left: -26px; }
+/* Separate layout: real gaps so every card is fully visible; scrolls when the
+   hand is wide, but stays centred while it still fits (`safe center`). */
+.fr-room .hand.separate { justify-content: safe center; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; touch-action: pan-x; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.fr-room .hand.separate::-webkit-scrollbar { height: 6px; }
+.fr-room .hand.separate::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 9999px; }
+.fr-room .hand.separate .pc { margin-left: 6px; scroll-snap-align: center; }
+.fr-room .hand.separate .pc:first-child { margin-left: 0; }
 .fr-room .hand .pc { margin-left: -15px; cursor: pointer; transition: transform var(--dur-fast) var(--ease-out); }
 .fr-room .hand .pc:first-child { margin-left: 0; }
 .fr-room .hand .pc.sel { transform: translateY(-14px); }

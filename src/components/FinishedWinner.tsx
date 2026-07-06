@@ -23,6 +23,8 @@ export function FinishedWinnerHero({
   game,
   subtitle,
   stats,
+  emoji = '🏆',
+  headline,
 }: {
   /** Name of the first-place player. When absent, falls back to a neutral "Game over!". */
   winnerName?: string | null
@@ -31,6 +33,13 @@ export function FinishedWinnerHero({
   subtitle?: ReactNode
   /** Optional stat strip; omit for games that don't have generic stats to show. */
   stats?: WinnerStat[]
+  /** Hero emoji — override for draws (🤝) / ended-early (🏁) etc. Defaults to 🏆. */
+  emoji?: string
+  /**
+   * Full headline override (e.g. "It's a draw!"). When omitted, renders
+   * "{winnerName} wins!" (name in the accent) or "Game over!" if there's no winner.
+   */
+  headline?: ReactNode
 }) {
   const cfg = gameTypeConfig(parseGameType(game.game_type))
 
@@ -40,16 +49,17 @@ export function FinishedWinnerHero({
         className="text-5xl sm:text-6xl leading-none"
         style={{ filter: 'drop-shadow(0 6px 14px color-mix(in srgb, var(--primary) 25%, transparent))' }}
       >
-        🏆
+        {emoji}
       </div>
       <h2 className="text-3xl sm:text-4xl font-black tracking-tight leading-tight text-body">
-        {winnerName ? (
-          <>
-            <span className="gradient-title">{winnerName}</span> wins!
-          </>
-        ) : (
-          'Game over!'
-        )}
+        {headline ??
+          (winnerName ? (
+            <>
+              <span className="gradient-title">{winnerName}</span> wins!
+            </>
+          ) : (
+            'Game over!'
+          ))}
       </h2>
       <p className="text-faint text-[11px] font-bold uppercase tracking-[0.16em]">{subtitle ?? cfg.label}</p>
 

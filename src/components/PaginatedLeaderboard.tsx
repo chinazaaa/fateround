@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { MEDALS } from '@/lib/medals'
 import { ResultsPagination, usePagination, RESULTS_PAGE_SIZE } from '@/components/ui/ResultsPagination'
 
 export interface LeaderboardRow {
@@ -25,8 +26,6 @@ interface PaginatedLeaderboardProps {
    */
   emphasizeLeader?: boolean
 }
-
-const MEDALS = ['👑', '🥈', '🥉']
 
 export function PaginatedLeaderboard({
   title,
