@@ -19,6 +19,7 @@ import { Avatar } from './components/Avatar'
 import { rememberHostToken } from '@/lib/host-session'
 import { THEMES } from '@/lib/themes'
 import { ThemePreviewCard, ThemePreviewModal } from '@/components/ThemePreviewModal'
+import { MONOPOLY_EDITIONS } from '@/components/monopoly/monopoly-themes'
 import {
   type ParticipantInput,
   parseParticipantsForGame,
@@ -882,6 +883,7 @@ function CreateGameInner() {
         ? { participant_mode: 'import' as const, gender_based: defaultGenderBasedForType(type) }
         : {}),
       ...(supportsGenderToggle(type) && !isCustomGame(type) ? { gender_based: defaultGenderBasedForType(type) } : {}),
+      ...(type !== 'monopoly' && settings.theme === 'pirate' ? { theme: 'default' as const } : {}),
     })
   }
 
@@ -1391,17 +1393,29 @@ function CreateGameInner() {
 
           {/* Theme */}
           <div className="glass-card p-5 space-y-3">
-            <p className="label-caps">Theme</p>
-            <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-              {THEMES.map((t) => (
-                <ThemePreviewCard
-                  key={t.id}
-                  theme={t}
-                  selected={settings.theme === t.id}
-                  onClick={() => setSettings({ ...settings, theme: t.id })}
-                  onPreview={() => setPreviewTheme(t)}
-                />
-              ))}
+            <p className="label-caps">Theme{settings.game_type === 'monopoly' ? ' · Edition' : ''}</p>
+            <div
+              className={`grid ${settings.game_type === 'monopoly' ? 'grid-cols-2 max-w-sm sm:max-w-md' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5'} gap-1.5 sm:gap-2`}
+            >
+              {(settings.game_type === 'monopoly'
+                ? THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
+                : THEMES.filter((theme) => theme.id !== 'pirate')
+              ).map((theme) => {
+                const monopolyEdition =
+                  settings.game_type === 'monopoly' ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
+                const displayTheme = monopolyEdition
+                  ? { ...theme, label: monopolyEdition.editionName, emoji: monopolyEdition.editionEmoji }
+                  : theme
+                return (
+                  <ThemePreviewCard
+                    key={theme.id}
+                    theme={displayTheme}
+                    selected={settings.theme === theme.id}
+                    onClick={() => setSettings({ ...settings, theme: theme.id })}
+                    onPreview={() => setPreviewTheme(theme)}
+                  />
+                )
+              })}
             </div>
           </div>
 

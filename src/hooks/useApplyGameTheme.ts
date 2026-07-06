@@ -15,15 +15,32 @@ export function useApplyGameTheme(theme: string | null | undefined) {
     const vars = THEME_MAP[themeId]?.cssVars ?? {}
     const root = document.documentElement
 
-    if (themeId === 'default' || Object.keys(vars).length === 0) {
-      clearThemeVars(root)
-      return () => clearThemeVars(root)
+    clearThemeVars(root)
+
+    if (themeId === 'default') {
+      root.removeAttribute('data-game-theme')
+      return () => {
+        clearThemeVars(root)
+        root.removeAttribute('data-game-theme')
+      }
+    }
+
+    root.setAttribute('data-game-theme', themeId)
+
+    if (themeId === 'pirate') {
+      // For Pirate theme, styles are defined in globals.css under data-game-theme="pirate"
+      // to support both Light and Dark modes without inline style interference.
+      return () => {
+        root.removeAttribute('data-game-theme')
+        clearThemeVars(root)
+      }
     }
 
     const keys = Object.keys(vars)
     keys.forEach((k) => root.style.setProperty(k, vars[k]))
     root.style.setProperty('background', vars['--background'] ?? '')
     return () => {
+      root.removeAttribute('data-game-theme')
       keys.forEach((k) => root.style.removeProperty(k))
       root.style.removeProperty('background')
     }

@@ -11,11 +11,13 @@ import { formatMonopolyGameDuration, MONOPOLY_GAME_DURATION_OPTIONS } from '@/li
 import { formatWhotGameDuration, WHOT_GAME_DURATION_OPTIONS } from '@/lib/whot'
 import { formatCrazyEightsGameDuration, CRAZY8_GAME_DURATION_OPTIONS } from '@/lib/crazy-eights'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
+import { MAHJONG_RULESET_CONFIG, parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { gameSupportsViewerSetting, lateJoinPolicyFromGame } from '@/lib/viewers'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
+import { HostMahjongLobbySettings } from '@/components/host-lobby/HostMahjongLobbySettings'
 import { Chip, Toggle } from '@/components/ui/PageShell'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, LudoVariant } from '@/types'
@@ -228,24 +230,43 @@ export function HostBoardGameLobbyPanel({
   )
 
   const summary = useMemo(() => {
-    const parts = [isPublic ? 'Public' : 'Private', `${maxPlayers} max`, formatBoardGameTurnTimer(turnTimer)]
+    // Max players is shown always-visible above, so the collapsed summary describes the
+    // settings that ARE hidden (visibility / timer / length / rules) rather than the cap.
+    const parts = [isPublic ? 'Public' : 'Private', formatBoardGameTurnTimer(turnTimer)]
     if (boardGameType === 'monopoly' || boardGameType === 'whot' || boardGameType === 'crazy_eights') {
       parts.push(durationFormatter(gameDuration))
     }
     if (boardGameType === 'ludo') {
       parts.push(ludoVariant === 'traditional' ? 'Traditional' : 'Modern')
     }
+    if (boardGameType === 'mahjong') {
+      const ruleset = parseMahjongRuleset(game.mahjong_ruleset)
+      const ruleOptions = parseMahjongRuleOptions(game.mahjong_rule_options)
+      const cfg = MAHJONG_RULESET_CONFIG[ruleset]
+      parts.push(cfg.shortLabel)
+      if (ruleset === 'riichi') parts.push(ruleOptions.matchLength === 'east' ? 'East only' : 'Hanchan')
+    }
     if (gameSupportsViewerSetting(game.game_type)) {
       const policy = lateJoinPolicyFromGame(game)
       parts.push(policy === 'lobby_only' ? 'Lobby only' : policy === 'viewers_only' ? 'Viewers OK' : 'Late play OK')
     }
     return parts.join(' · ')
-  }, [boardGameType, durationFormatter, game, gameDuration, isPublic, ludoVariant, maxPlayers, turnTimer])
+  }, [boardGameType, durationFormatter, game, gameDuration, isPublic, ludoVariant, turnTimer])
 
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
-    <HostLobbySettingsSection status={statusLabel} summary={summary}>
+    <HostLobbySettingsSection
+      status={statusLabel}
+      summary={summary}
+      alwaysVisible={
+        // Surfaced above the collapse: the player cap is the setting hosts reach for most
+        // (let more people in / trim an empty lobby), so it must never hide behind "Edit".
+        <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
+          <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
+        </HostLobbySettingBlock>
+      }
+    >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
         <HostLobbySettingBlock title="Visibility" className="sm:col-span-2">
           <Toggle
@@ -255,11 +276,6 @@ export function HostBoardGameLobbyPanel({
             onChange={onVisibilityChange}
           />
         </HostLobbySettingBlock>
-
-        <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
-          <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
-        </HostLobbySettingBlock>
-
         <HostLobbySettingBlock title="Turn timer">
           <HostLobbyOptionChips value={turnTimer} options={turnTimerOptions} onChange={onTurnTimerChange} />
         </HostLobbySettingBlock>
@@ -355,6 +371,8 @@ export function HostBoardGameLobbyPanel({
             </p>
           </HostLobbySettingBlock>
         )}
+
+        {boardGameType === 'mahjong' && <HostMahjongLobbySettings game={game} onPatchSettings={patchSettings} />}
 
         {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
           <HostLobbySettingBlock title="Late joiners" className="sm:col-span-2">

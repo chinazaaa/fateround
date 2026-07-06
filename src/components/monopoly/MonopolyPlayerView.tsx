@@ -383,6 +383,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
               board={board}
               winnerName={finishedWinnerName}
               highlightPlayerId={myPlayerId}
+              themeId={game?.theme}
             />
           ) : (
             <div className="glass-card p-8 text-center space-y-3">
@@ -453,6 +454,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           postAction={postAction}
           colorBarClass={colorBarClass}
           spectator={isViewer}
+          themeId={game?.theme}
         />
       </div>
     </div>

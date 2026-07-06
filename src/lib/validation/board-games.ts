@@ -181,6 +181,55 @@ export const snakeLadderExpireSchema = z.object({
   gameId: gameCodeString(),
 })
 
+// Mahjong (POST /api/mahjong/*)
+
+export const mahjongDrawSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  resumeToken: z.string().min(4).optional(),
+})
+
+export const mahjongDiscardSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  resumeToken: z.string().min(4).optional(),
+  tile: z.string().min(2).max(8),
+})
+
+export const mahjongClaimSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  resumeToken: z.string().min(4).optional(),
+  claimType: z.enum(['mahjong', 'chow', 'pung', 'kong']),
+  tiles: z.array(z.string().min(2).max(8)).max(4).optional(),
+})
+
+export const mahjongPassSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  resumeToken: z.string().min(4).optional(),
+})
+
+export const mahjongRiichiSchema = z.object({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  resumeToken: z.string().min(4).optional(),
+})
+
+export const mahjongNextHandSchema = hostActionSchema.extend({
+  gameId: gameCodeString(),
+})
+
+export const mahjongPenaltySchema = hostActionSchema.extend({
+  gameId: gameCodeString(),
+  playerId: uuidString('playerId'),
+  penaltyType: z.enum(['chombo']),
+})
+
+export const mahjongExpireSchema = z.object({
+  gameId: gameCodeString(),
+})
+
 // Tic-Tac-Toe (POST /api/tic-tac-toe/*)
 
 export const ticTacToeMoveSchema = z.object({

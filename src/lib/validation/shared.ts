@@ -66,6 +66,7 @@ export const gameTypeEnum = z.enum([
   'whot',
   'crazy_eights',
   'ludo',
+  'mahjong',
   'i_call_on',
   'sudoku',
   'tic_tac_toe',
@@ -88,7 +89,7 @@ export const wyrChoiceEnum = z.enum(['a', 'b'])
 export const participantGenderEnum = z.enum(['male', 'female'])
 export const playerGenderEnum = z.enum(['male', 'female', 'both'])
 export const pairFlagEnum = z.enum(['kiss', 'kill'])
-export const themeEnum = z.enum(['default', 'neon', 'retro', 'elegant', 'tropical'])
+export const themeEnum = z.enum(['default', 'neon', 'retro', 'elegant', 'tropical', 'pirate'])
 export const participantFilterEnum = z.enum(['all', 'joined'])
 export const timerSecondsEnum = z.union([z.literal(10), z.literal(15), z.literal(30), z.literal(60)])
 

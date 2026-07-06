@@ -9,6 +9,7 @@ import {
   isWhotGame,
   isCrazyEightsGame,
   isYahtzeeGame,
+  isMahjongGame,
   isWordHuntGame,
   isSudokuGame,
   parseGameType,
@@ -18,6 +19,7 @@ import { clampMonopolyGameDuration } from '@/lib/monopoly'
 import { clampWhotGameDuration } from '@/lib/whot'
 import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
+import { parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
 import { clampLobbyMaxPlayers, fetchGamePlayerLimits, type LobbyLimitGameType } from '@/lib/game-limits'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -31,6 +33,7 @@ function boardGameLobbyType(gameType: string): BoardGameLobbyType | null {
   if (isWhotGame(parsed)) return 'whot'
   if (isCrazyEightsGame(parsed)) return 'crazy_eights'
   if (isLudoGame(parsed)) return 'ludo'
+  if (isMahjongGame(parsed)) return 'mahjong'
   if (isSnakeAndLadderGame(parsed)) return 'snake_and_ladder'
   return null
 }
@@ -70,6 +73,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     crazy8_jokers,
     crazy8_pick2_stacking,
     ludo_variant,
+    mahjong_ruleset,
+    mahjong_rule_options,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -85,7 +90,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     crazy8_action_cards === undefined &&
     crazy8_jokers === undefined &&
     crazy8_pick2_stacking === undefined &&
-    ludo_variant === undefined
+    ludo_variant === undefined &&
+    mahjong_ruleset === undefined &&
+    mahjong_rule_options === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -188,6 +195,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (ludo_variant !== undefined) gameUpdate.ludo_variant = ludo_variant
   } else if (ludo_variant !== undefined) {
     return NextResponse.json({ error: 'The Ludo variant only applies to Ludo games' }, { status: 400 })
+  }
+
+  if (boardLobbyType === 'mahjong') {
+    if (mahjong_ruleset !== undefined) gameUpdate.mahjong_ruleset = parseMahjongRuleset(mahjong_ruleset)
+    if (mahjong_rule_options !== undefined) {
+      gameUpdate.mahjong_rule_options = parseMahjongRuleOptions({
+        ...(game.mahjong_rule_options ?? {}),
+        ...mahjong_rule_options,
+      })
+    }
+  } else if (mahjong_ruleset !== undefined || mahjong_rule_options !== undefined) {
+    return NextResponse.json({ error: 'Mahjong rules only apply to Mahjong games' }, { status: 400 })
   }
 
   const { data: updated, error } = await getSupabaseAdmin()

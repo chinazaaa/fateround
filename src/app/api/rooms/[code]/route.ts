@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
+import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { ROOM_PUBLIC_FIELDS, verifyRoomCreator } from '@/lib/room-api'
 import { normalizeRoomDescription, normalizeRoomTimezone } from '@/lib/room-timezones'
@@ -7,10 +9,26 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
 
+// Permissive shapes: every field left `unknown` so the handlers' own coercion
+// (String()/Number()/=== true) still owns field-level behaviour — the schema only rejects
+// a malformed/non-object body with a 400 instead of a 500, and never tightens inputs the
+// handler would have coerced. Undeclared keys are stripped (handlers read only these).
+const roomDeleteSchema = z.object({ creatorToken: z.unknown().optional() })
+const roomPatchSchema = z.object({
+  creatorToken: z.unknown().optional(),
+  isPublic: z.unknown().optional(),
+  isLocked: z.unknown().optional(),
+  name: z.unknown().optional(),
+  description: z.unknown().optional(),
+  timezone: z.unknown().optional(),
+  maxMembers: z.unknown().optional(),
+})
+
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const roomCode = code.toUpperCase()
-  const body = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, roomDeleteSchema)
+  if (bodyError) return bodyError
   const creatorToken = String(body.creatorToken ?? '')
 
   const admin = getSupabaseAdmin()
@@ -26,7 +44,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ c
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const roomCode = code.toUpperCase()
-  const body = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, roomPatchSchema)
+  if (bodyError) return bodyError
   const creatorToken = String(body.creatorToken ?? '')
 
   const admin = getSupabaseAdmin()
