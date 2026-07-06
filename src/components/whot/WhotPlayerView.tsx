@@ -2,16 +2,9 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  WhotCard,
-  WhotLoadingScreen,
-  WhotPrimaryButton,
-  WhotSecondaryButton,
-  WhotShell,
-} from '@/components/whot/WhotChrome'
-import { WhotChoosePanel, WhotHand, WhotStandings, WhotTable } from '@/components/whot/WhotBoard'
-import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
-import { WhotGameTimerBar } from '@/components/whot/WhotGameTimerBar'
+import { WhotCard, WhotLoadingScreen, WhotSecondaryButton, WhotShell } from '@/components/whot/WhotChrome'
+import { WhotPlaySurface } from '@/components/whot/WhotPlaySurface'
+import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -26,7 +19,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
-import type { Game, WhotPlayerHand, WhotSession, WhotShape } from '@/types'
+import type { Game, WhotPlayerHand, WhotSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -38,13 +31,12 @@ import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
-import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
-import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useWhotTurnTimer } from '@/hooks/useWhotTurnTimer'
+import { useWhotGameTimer } from '@/hooks/useWhotGameTimer'
 import { useWhotNotifications, playWhotActionSound } from '@/hooks/useWhotNotifications'
 
 type Screen =
@@ -181,18 +173,17 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const cfg = gameTypeConfig('whot')
   const winner = players.find((p) => p.id === session?.winner_player_id)
   const turnPlayerId = session ? currentPlayerId(session) : null
-  const turnPlayer = players.find((p) => p.id === turnPlayerId)
   const isMyTurn = myPlayerId != null && turnPlayerId === myPlayerId
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
   const isOut = myHand.length === 0 && game?.status === 'active'
   const isWatching = isViewer || isOut
 
-  const { secondsLeft, hasTimer, urgent } = useWhotTurnTimer(
-    gameCode,
-    session,
-    game?.status === 'active' && screen === 'active'
-  )
+  // Turn timer (per-player countdown) + game timer (overall duration). Both hooks
+  // also drive side effects (deadline sync, auto-expire); their values render as
+  // the seat countdown chip + the top game-time bar in the play surface.
+  const turnTimer = useWhotTurnTimer(gameCode, session, game?.status === 'active' && screen === 'active')
+  const gameTimer = useWhotGameTimer(gameCode, game)
 
   useWhotNotifications({
     game,
@@ -201,14 +192,6 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     myHandCount: myHand.length,
     enabled: game?.status === 'active' && screen === 'active',
   })
-
-  const tableTimerProps = {
-    turnPlayerName: turnPlayer?.name,
-    isMyTurn: isMyTurn && !isWatching,
-    secondsLeft,
-    hasTimer,
-    urgent,
-  }
 
   const drawDepleted = session ? isDrawPileDepleted(session) : false
   const whotRules = useMemo(() => parseWhotRules(game), [game])
@@ -342,137 +325,70 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
   if (!session) return <WhotLoadingScreen />
 
-  const myPlayer = activePlayer
-  const myName = myPlayer?.name ?? ''
+  // The active play surface mounts inside the design-system room shell, which
+  // supplies the `.fr-room-poll` → `.pr-main` → `.pr-stage` frame the `.ct-surface`
+  // needs, with the top voice rail as the room chrome.
+  const roomShell = (children: React.ReactNode) => (
+    <PlayerRoomShell
+      gameCode={gameCode}
+      gameName={game?.title ?? cfg.label}
+      playerName={activePlayer?.name ?? roomDisplayName}
+      playerId={myPlayerId}
+    >
+      {children}
+    </PlayerRoomShell>
+  )
 
   if (isWatching) {
-    return (
-      <WhotShell title={game?.title} wide compact>
-        {isOut && !isViewer ? (
-          <div className="rounded-xl border border-[color-mix(in_srgb,var(--primary)_35%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] px-4 py-3 text-center text-sm text-body">
-            <p className="font-semibold">You&apos;re out</p>
-            <p className="text-muted text-xs mt-1">You played all your cards — watch until the game ends.</p>
-          </div>
-        ) : (
-          <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={myPlayer} />
-        )}
-        {myPlayerId && myName && (
-          <PlayerSessionControls
-            gameCode={gameCode}
-            playerId={myPlayerId}
-            currentName={myName}
-            onRenamed={() => void load()}
-            onLeft={handlePlayerLeft}
-            spectating={isWatching}
-          />
-        )}
-        <WhotGameTimerBar gameCode={gameCode} game={game} />
-        <WhotTable
-          session={session}
-          players={players}
-          myPlayerId={myPlayerId}
-          handCounts={handCounts}
-          {...tableTimerProps}
-          isMyTurn={false}
-        />
-      </WhotShell>
+    return roomShell(
+      <WhotPlaySurface
+        session={session}
+        players={players}
+        myPlayerId={myPlayerId}
+        myHand={myHand}
+        handCounts={handCounts}
+        rules={whotRules}
+        turnPlayerId={turnPlayerId}
+        isMyTurn={false}
+        watching
+        acting={acting}
+        drawCount={session.draw_pile?.length ?? 0}
+        drawDepleted={drawDepleted}
+        myCanPlay={myCanPlay}
+        whotCallActive={whotCallActive}
+        pickPenalty={pickPenalty}
+        turnTimer={turnTimer}
+        gameTimer={gameTimer}
+        onPlay={(cardId) => void postAction('/api/whot/play', { cardId })}
+        onDraw={() => void postAction('/api/whot/draw', {})}
+        onChooseShape={(shape) => void postAction('/api/whot/choose', { shape })}
+        onChooseNumber={(number) => void postAction('/api/whot/choose', { number })}
+      />
     )
   }
 
-  return (
-    <WhotShell title={game?.title} wide compact>
-      {myPlayerId && myName && (
-        <PlayerSessionControls
-          gameCode={gameCode}
-          playerId={myPlayerId}
-          currentName={myName}
-          onRenamed={() => void load()}
-          onLeft={handlePlayerLeft}
-          spectating={isWatching}
-        />
-      )}
-
-      <WhotGameTimerBar gameCode={gameCode} game={game} />
-
-      {/* Play area on the left; the roster sits on the right on desktop (sm+) and
-          stacks below the hand on mobile — matching the trivia leaderboard layout. */}
-      <LiveLeaderboardLayout
-        sidebar={
-          <WhotCard className="p-4">
-            <WhotStandings
-              session={session}
-              players={players}
-              myPlayerId={myPlayerId}
-              handCounts={handCounts}
-              gridClassName="grid-cols-2 sm:grid-cols-1"
-            />
-          </WhotCard>
-        }
-      >
-        <WhotTable
-          session={session}
-          players={players}
-          myPlayerId={myPlayerId}
-          handCounts={handCounts}
-          showStandings={false}
-          {...tableTimerProps}
-        />
-
-        {isMyTurn && session.phase === 'choose_whot' && (
-          <WhotChoosePanel
-            acting={acting}
-            allowNumberCalls={whotRules.numberCallsEnabled}
-            onChooseShape={(shape: WhotShape) => void postAction('/api/whot/choose', { shape })}
-            onChooseNumber={(number) => void postAction('/api/whot/choose', { number })}
-          />
-        )}
-
-        {session.phase === 'playing' && (
-          <>
-            {isMyTurn && (
-              <p className="text-center text-xs text-muted px-2">
-                {drawDepleted && myCanPlay
-                  ? 'Draw pile empty — play a highlighted card.'
-                  : drawDepleted && !myCanPlay
-                    ? 'Draw pile empty — pass your turn if you cannot play.'
-                    : pickPenalty.type === 'pick2'
-                      ? 'Pick 2 active — play a 2 or draw the penalty.'
-                      : pickPenalty.type === 'pick3'
-                        ? 'Pick 3 active — play a 5 or draw the penalty.'
-                        : whotCallActive
-                          ? whotRules.whotCardsEnabled
-                            ? 'Match the WHOT call, play WHOT to override it, or draw from the pile.'
-                            : 'Match the WHOT call or draw from the pile.'
-                          : 'Tap a highlighted card to play, or draw from the pile.'}
-              </p>
-            )}
-            <WhotHand
-              cards={myHand}
-              session={session}
-              acting={acting}
-              rules={whotRules}
-              onPlay={(cardId) => void postAction('/api/whot/play', { cardId })}
-            />
-            {isMyTurn && !(drawDepleted && myCanPlay) && (
-              <WhotPrimaryButton onClick={() => void postAction('/api/whot/draw', {})} loading={acting}>
-                {drawDepleted
-                  ? 'Pass turn'
-                  : pickPenalty.type === 'pick2'
-                    ? `Draw ${pickPenalty.count} (Pick 2)`
-                    : pickPenalty.type === 'pick3'
-                      ? `Draw ${pickPenalty.count} (Pick 3)`
-                      : 'Draw 1 card'}
-              </WhotPrimaryButton>
-            )}
-          </>
-        )}
-
-        {!isMyTurn && session.phase === 'playing' && (
-          <WhotCard className="p-3 text-center text-sm text-muted">
-            Waiting for {players.find((p) => p.id === turnPlayerId)?.name ?? 'next player'}…
-          </WhotCard>
-        )}
-      </LiveLeaderboardLayout>
-    </WhotShell>
+  return roomShell(
+    <WhotPlaySurface
+      session={session}
+      players={players}
+      myPlayerId={myPlayerId}
+      myHand={myHand}
+      handCounts={handCounts}
+      rules={whotRules}
+      turnPlayerId={turnPlayerId}
+      isMyTurn={isMyTurn}
+      acting={acting}
+      drawCount={session.draw_pile?.length ?? 0}
+      drawDepleted={drawDepleted}
+      myCanPlay={myCanPlay}
+      whotCallActive={whotCallActive}
+      pickPenalty={pickPenalty}
+      turnTimer={turnTimer}
+      gameTimer={gameTimer}
+      onPlay={(cardId) => void postAction('/api/whot/play', { cardId })}
+      onDraw={() => void postAction('/api/whot/draw', {})}
+      onChooseShape={(shape) => void postAction('/api/whot/choose', { shape })}
+      onChooseNumber={(number) => void postAction('/api/whot/choose', { number })}
+    />
   )
 }

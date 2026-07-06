@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
+import { appOrigin } from '@/lib/site'
 import { exchangeCode, fetchProfile, upsertAccount, verifyHandshake, SPOTIFY_OAUTH_COOKIE } from '@/lib/spotify'
 
 /**
@@ -8,7 +9,11 @@ import { exchangeCode, fetchProfile, upsertAccount, verifyHandshake, SPOTIFY_OAU
  * caller's identity, then bounces the user back into the game via `returnTo`.
  */
 export async function GET(req: NextRequest) {
-  const origin = req.nextUrl.origin
+  // Build the bounce-back URL from the configured public origin (NEXT_PUBLIC_APP_URL),
+  // not req.nextUrl.origin. Behind the reverse proxy the request origin resolves to the
+  // raw socket host (0.0.0.0:3000), which would send the browser to the wrong place. This
+  // mirrors how the authorize + token-exchange redirect_uri are derived (see lib/spotify).
+  const origin = appOrigin()
   const backTo = (path: string, params?: Record<string, string>) => {
     const url = new URL(path.startsWith('/') ? path : '/', origin)
     if (params) for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)

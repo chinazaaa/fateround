@@ -2,7 +2,9 @@
 
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
+import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
 import { ExitIcon } from '@/components/host/host-icons'
+import type { Game } from '@/types'
 
 type Props = {
   gameCode: string
@@ -16,6 +18,13 @@ type Props = {
   startLabel?: string
   endLabel?: string
   className?: string
+  /**
+   * When set, renders the public/private visibility toggle above the start
+   * button. Games with their own lobby settings panel (board games) surface the
+   * toggle there instead and should leave this unset to avoid a double control.
+   */
+  game?: Game
+  onGameUpdate?: (game: Game) => void
 }
 
 export function HostLobbyWaitingFooter({
@@ -30,11 +39,18 @@ export function HostLobbyWaitingFooter({
   startLabel = 'Start game',
   endLabel = 'End lobby',
   className = 'space-y-3',
+  game,
+  onGameUpdate,
 }: Props) {
   const disabled = startDisabled ?? !canStart
 
   return (
     <div className={className}>
+      {game && (
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3">
+          <HostVisibilityToggle gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
+        </div>
+      )}
       <HostLobbyStartButton
         onClick={onStart}
         disabled={disabled}

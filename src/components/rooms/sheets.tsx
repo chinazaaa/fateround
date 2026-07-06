@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import QRCode from 'react-qr-code'
+import { playerGameUrl, hostGameUrl, hostPlayerUrl, shareOrigin } from '@/lib/site'
 
 /* ══════════════════════════════════════════════════════════════════
    Fate Round · Rooms — shared host sheet UI
@@ -18,37 +19,75 @@ type LinkKey = 'invite' | 'host' | 'play'
 interface LinkDef {
   label: string
   desc: string
+  /** Full shareable URL (with protocol + tokens) — used for QR + clipboard. */
   url: string
   copy: string
 }
 
-function buildLinks(code: string): Record<LinkKey, LinkDef> {
+/** Strip the protocol for the displayed URL (QR + copy still use the full one). */
+function displayUrl(url: string): string {
+  return url.replace(/^https?:\/\//, '')
+}
+
+function buildLinks(
+  code: string,
+  opts: { hostToken?: string; resumeToken?: string; origin?: string }
+): Record<LinkKey, LinkDef> {
+  const origin = opts.origin ?? shareOrigin()
+  const invite = playerGameUrl(code, origin)
+  // Host / host+play links must carry the host token (and the host's resume
+  // token for host+play) — without them the target device can't reopen the
+  // host panel. Fall back to the plain host/invite link if a token is missing.
+  const host = opts.hostToken ? hostGameUrl(code, opts.hostToken, origin) : invite
+  const play =
+    opts.hostToken && opts.resumeToken
+      ? hostPlayerUrl(code, opts.hostToken, opts.resumeToken, origin)
+      : opts.hostToken
+        ? hostGameUrl(code, opts.hostToken, origin)
+        : invite
   return {
     invite: {
       label: 'Invite players',
       desc: 'Anyone with this joins as a player — no host access.',
-      url: 'fateround.com/game/' + code,
+      url: invite,
       copy: 'Copy invite link',
     },
     host: {
       label: 'Host panel',
       desc: 'Reopen your host controls on another device.',
-      url: 'fateround.com/host/' + code,
+      url: host,
       copy: 'Copy host link',
     },
     play: {
       label: 'Host + play',
       desc: 'Run the game and play as yourself on another device.',
-      url: 'fateround.com/game/' + code + '?h=1',
+      url: play,
       copy: 'Copy host + play link',
     },
   }
 }
 
 // ── Share popup: pick which link to share; each shows its own QR ──
-export function ShareSheet(props: { open: boolean; onClose: () => void; host?: boolean; code?: string }) {
-  const host = props.host !== false // host share shows all 3 tabs; player share = invite only
-  const links = buildLinks(props.code ?? DEFAULT_CODE)
+export function ShareSheet(props: {
+  open: boolean
+  onClose: () => void
+  host?: boolean
+  code?: string
+  /** Host token — required for correct host / host+play links. */
+  hostToken?: string
+  /** The host's player resume token — enables the host+play link. */
+  resumeToken?: string
+  /** Share origin (defaults to the live browser origin). */
+  origin?: string
+}) {
+  // Host tabs (host panel + host+play) only make sense with a host token; without
+  // one, fall back to the invite-only share so we never surface a tokenless link.
+  const host = props.host !== false && !!props.hostToken
+  const links = buildLinks(props.code ?? DEFAULT_CODE, {
+    hostToken: props.hostToken,
+    resumeToken: props.resumeToken,
+    origin: props.origin,
+  })
   const tabs: LinkKey[] = host ? ['invite', 'host', 'play'] : ['invite']
   const [tab, setTab] = useState<LinkKey>('invite')
   const [copied, setCopied] = useState(false)
@@ -62,6 +101,9 @@ export function ShareSheet(props: { open: boolean; onClose: () => void; host?: b
   const active = links[tab]
 
   function flash() {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      void navigator.clipboard.writeText(active.url)
+    }
     setCopied(true)
     setTimeout(() => {
       setCopied(false)
@@ -100,10 +142,10 @@ export function ShareSheet(props: { open: boolean; onClose: () => void; host?: b
         <p style={sheetStyles.sheetDesc}>{active.desc}</p>
         <div style={sheetStyles.qrHolder}>
           <div style={sheetStyles.qrFrame}>
-            <QRCode value={'https://' + active.url} size={168} />
+            <QRCode value={active.url} size={168} />
           </div>
         </div>
-        <p style={sheetStyles.qrUrl}>{active.url}</p>
+        <p style={sheetStyles.qrUrl}>{displayUrl(active.url)}</p>
         <button onClick={flash} style={sheetStyles.copyBtn}>
           {copied ? 'Copied ✓' : active.copy}
         </button>

@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./fate-round-ds.css";
 @import "./fate-round-rooms.css";
+@import "./fate-round-cardtable.css";
 
 @custom-variant dark (&:where([data-theme=dark]:not([data-theme=light] *), [data-theme=dark] *:not([data-theme=light] *):not([data-theme=light])));
 

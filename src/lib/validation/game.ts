@@ -148,6 +148,7 @@ export type CreateGameInput = z.infer<typeof createGameSchema>
 
 export const updateGameSchema = z.object({
   hostToken: hostTokenString(),
+  is_public: z.boolean().optional(),
   rounds_count: z.coerce.number().int().min(1, 'rounds_count is required').optional(),
   timer_seconds: z.coerce.number().optional(),
   operative_timer_seconds: z.coerce.number().optional(),
@@ -233,6 +234,7 @@ export type BingoSettingsInput = z.infer<typeof bingoSettingsSchema>
 export const boardGameLobbySettingsSchema = z.object({
   gameId: gameCodeString(),
   hostToken: hostTokenString(),
+  is_public: z.boolean().optional(),
   max_players: z.coerce.number().int().min(1).max(100).optional(),
   timer_seconds: z.coerce.number().optional(),
   game_duration_seconds: z.coerce.number().optional(),
