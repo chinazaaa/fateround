@@ -87,6 +87,9 @@ get_param_opt() {
 VAPID_PRIVATE_KEY=$(get_param_opt --with-decryption --name "/$PREFIX/VAPID_PRIVATE_KEY")
 VAPID_SUBJECT=$(get_param_opt --name "/$PREFIX/VAPID_SUBJECT")
 
+# In-game music (optional). Only present when configured; missing = feature off.
+SPOTIFY_CLIENT_SECRET=$(get_param_opt --with-decryption --name "/$PREFIX/SPOTIFY_CLIENT_SECRET")
+
 # With Caddy (origin TLS) the app is private behind Caddy on localhost:8080.
 # Without it, the app is published directly on :80.
 if [ "$ENABLE_CADDY" = "true" ]; then PORT_PUBLISH="127.0.0.1:8080:$APP_PORT"; else PORT_PUBLISH="80:$APP_PORT"; fi
@@ -111,6 +114,7 @@ docker run -d --name app --restart always \
   -e LIVEKIT_API_SECRET="$LIVEKIT_API_SECRET" \
   -e VAPID_PRIVATE_KEY="$VAPID_PRIVATE_KEY" \
   -e VAPID_SUBJECT="$VAPID_SUBJECT" \
+  -e SPOTIFY_CLIENT_SECRET="$SPOTIFY_CLIENT_SECRET" \
   "$REPO:$TAG"
 
 # Reclaim disk from the now-untagged previous image.

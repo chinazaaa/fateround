@@ -105,6 +105,17 @@ resource "aws_ssm_parameter" "vapid_subject" {
   tags  = { Name = "${var.name_prefix}-vapid-subject" }
 }
 
+# In-game music runtime secret — only created when configured (SSM rejects empty
+# values, and the app treats a missing key as feature-off). The instance reads it
+# optionally, so absence never breaks a deploy.
+resource "aws_ssm_parameter" "spotify_client_secret" {
+  count = var.spotify_client_secret != "" ? 1 : 0
+  name  = "/${var.name_prefix}/SPOTIFY_CLIENT_SECRET"
+  type  = "SecureString"
+  value = var.spotify_client_secret
+  tags  = { Name = "${var.name_prefix}-spotify-client-secret" }
+}
+
 # Cloudflare Origin Certificate for Caddy (only when origin TLS is enabled).
 # base64-encoded so multi-line PEM survives SSM/CLI round-trips intact.
 resource "aws_ssm_parameter" "origin_cert" {
