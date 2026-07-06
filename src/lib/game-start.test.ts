@@ -27,12 +27,13 @@ describe('startCountError', () => {
 })
 
 describe('GAME_START_SPECS', () => {
-  it('registers exactly the 11 uniform board games', () => {
+  it('registers exactly the 12 uniform games', () => {
     expect(Object.keys(GAME_START_SPECS).sort()).toEqual([
       'checkers',
       'chess',
       'crazy_eights',
       'ludo',
+      'mafia',
       'mahjong',
       'monopoly',
       'scrabble',

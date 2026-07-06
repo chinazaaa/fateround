@@ -15,6 +15,7 @@ import { initializeTicTacToeGame, TIC_TAC_TOE_MIN_PLAYERS } from '@/lib/tic-tac-
 import { initializeChessGame, CHESS_MIN_PLAYERS } from '@/lib/chess'
 import { initializeCheckersGame, CHECKERS_MIN_PLAYERS } from '@/lib/checkers'
 import { initializeScrabbleGame, SCRABBLE_MIN_PLAYERS, SCRABBLE_MAX_PLAYERS } from '@/lib/scrabble'
+import { initializeMafiaGame, MAFIA_MIN_PLAYERS, MAFIA_MAX_PLAYERS } from '@/lib/mafia'
 
 /** The slice of the game row a start initializer may need. */
 type StartGame = { timer_seconds?: number | null }
@@ -96,6 +97,11 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
     minPlayers: SCRABBLE_MIN_PLAYERS,
     maxPlayers: SCRABBLE_MAX_PLAYERS,
     initialize: (admin, code, ids) => initializeScrabbleGame(admin, code, ids),
+  },
+  mafia: {
+    minPlayers: MAFIA_MIN_PLAYERS,
+    maxPlayers: MAFIA_MAX_PLAYERS,
+    initialize: (admin, code, ids) => initializeMafiaGame(admin, code, ids),
   },
 }
 

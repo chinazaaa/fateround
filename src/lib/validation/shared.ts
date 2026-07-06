@@ -76,6 +76,7 @@ export const gameTypeEnum = z.enum([
   'describe_it',
   'scrabble',
   'snake_and_ladder',
+  'mafia',
 ])
 
 export const participantModeEnum = z.enum(['import', 'joiners', 'voters'])

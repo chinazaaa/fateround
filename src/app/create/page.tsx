@@ -70,6 +70,7 @@ import {
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
+  isMafiaGame,
 } from '@/lib/game-types'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
@@ -517,6 +518,17 @@ function CreateGameInner() {
               describe_it_mode: 'team' as const,
             }
           : {}),
+        ...(isMafiaGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              timer_seconds: 60,
+              mafia_doctor_enabled: true,
+              mafia_detective_enabled: true,
+              mafia_anonymous_votes: true,
+            }
+          : {}),
         ...(isWhoSaidThis(type)
           ? {
               participant_mode: 'import' as const,
@@ -591,6 +603,7 @@ function CreateGameInner() {
   const isCheckers = isCheckersGame(settings.game_type)
   const isScrabble = isScrabbleGame(settings.game_type)
   const isDescribeIt = isDescribeItGame(settings.game_type)
+  const isMafia = isMafiaGame(settings.game_type)
   const isNpat = isICallOnGame(settings.game_type)
   const isSudoku = isSudokuGame(settings.game_type)
   const isWordHunt = isWordHuntGame(settings.game_type)
@@ -2756,6 +2769,78 @@ function CreateGameInner() {
                 <p className="text-faint text-sm leading-relaxed">
                   Everyone races on the same 4×4 letter grid. Connect adjacent letters to spell valid words — 3 letters
                   = 100 pts, 4 = 400, 5 = 800, and longer words score even more.
+                </p>
+              </SettingsGroup>
+            ) : isMafia ? (
+              <SettingsGroup title="Mafia / Werewolf room">
+                <Field label={`Max players (${effectiveLimits.mafia.min}–${effectiveLimits.mafia.max})`}>
+                  <select
+                    value={settings.max_players ?? 10}
+                    onChange={(e) => setSettings({ ...settings, max_players: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(effectiveLimits.mafia.min, effectiveLimits.mafia.max).map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Phase time limit">
+                  <select
+                    value={settings.timer_seconds ?? 60}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={30}>30 seconds</option>
+                    <option value={45}>45 seconds</option>
+                    <option value={60}>1 minute</option>
+                    <option value={90}>1.5 minutes</option>
+                    <option value={120}>2 minutes</option>
+                    <option value={180}>3 minutes</option>
+                  </select>
+                </Field>
+                <Field label="Special Roles">
+                  <div className="flex flex-col space-y-2 mt-2">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settings.mafia_doctor_enabled !== false}
+                        onChange={(e) => setSettings({ ...settings, mafia_doctor_enabled: e.target.checked })}
+                        className="rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-slate-300">Include Doctor (protects one player each night)</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settings.mafia_detective_enabled !== false}
+                        onChange={(e) => setSettings({ ...settings, mafia_detective_enabled: e.target.checked })}
+                        className="rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-slate-300">Include Detective (investigates one player each night)</span>
+                    </label>
+                  </div>
+                </Field>
+                <Field label="Voting Rules">
+                  <label className="flex items-center space-x-2 cursor-pointer mt-2">
+                    <input
+                      type="checkbox"
+                      checked={settings.mafia_anonymous_votes !== false}
+                      onChange={(e) => setSettings({ ...settings, mafia_anonymous_votes: e.target.checked })}
+                      className="rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500"
+                    />
+                    <span className="text-sm text-slate-300">Anonymous Votes (do not show who voted for whom)</span>
+                  </label>
+                </Field>
+                {showViewerToggle && (
+                  <Field label="Late joiners">
+                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="mafia" />
+                  </Field>
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  Social deduction game. The Mafia tries to eliminate the Villagers without getting caught, while the
+                  Villagers use deduction and power roles (Doctor, Detective) to vote out the Mafia.
                 </p>
               </SettingsGroup>
             ) : (

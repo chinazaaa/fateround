@@ -1132,4 +1132,37 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
   ],
+  mafia: [
+    {
+      title: 'Objective',
+      points: [
+        'Villagers: Identify and eliminate all Mafia members to win.',
+        'Mafia: Eliminate Villagers until you match them in number to win.',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        '5 to 16 players join the lobby. Each player is secretly assigned a role (Villager, Mafia, Doctor, Detective).',
+        'Doctor and Detective are optional power roles that the host can toggle.',
+      ],
+    },
+    {
+      title: 'Night Phase',
+      points: [
+        'The Mafia secretly vote on a player to eliminate.',
+        'The Doctor chooses a player to save from elimination (cannot self-heal).',
+        'The Detective investigates one player to discover their alignment.',
+        'Villagers sleep during this phase.',
+      ],
+    },
+    {
+      title: 'Day Phase',
+      points: [
+        'A sunrise report announces who died last night (or if nobody died).',
+        'The town discusses and debates who they suspect is Mafia.',
+        'Players vote to eliminate one suspect. Plurality wins; ties result in no elimination.',
+      ],
+    },
+  ],
 }

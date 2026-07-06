@@ -60,6 +60,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   describe_it: 'text-charades',
   scrabble: 'scrabble',
   snake_and_ladder: 'snakes-and-ladders',
+  mafia: 'mafia',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -2373,6 +2374,65 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Does rolling a 6 do anything special?',
         answer:
           'Yes — rolling a 6 earns you another roll. But roll three 6s in a row and your turn is forfeited, so press your luck carefully.',
+      },
+    ],
+  }),
+  mafia: landing('mafia', {
+    seoTitle: 'Mafia Online — Play Werewolf Social Deduction Game',
+    seoDescription:
+      'Play Mafia (Werewolf) online with friends. Secret roles, day and night cycles, voting and strategy. Uncover the killers or eliminate the town. No sign-up.',
+    keywords: [
+      'mafia online',
+      'play mafia with friends',
+      'online werewolf game',
+      'social deduction games online',
+      'play werewolf online free',
+      'mafia party game online',
+      'mafia rules',
+      'how to play mafia',
+      'mafia online free no download',
+      'mafia online no sign up',
+    ],
+    heroSubtitle: 'Trust no one — discuss, vote, and uncover the secret killers in your group.',
+    bodyParagraph:
+      'Mafia on Fate Round is a real-time multiplayer social deduction game. Players are secretly assigned roles: Villagers, Mafia, Doctor, or Detective. During the Night, the Mafia votes to eliminate a player, the Doctor protects a player, and the Detective investigates players alignments. During the Day, the village discusses and votes on who they suspect is Mafia. The village wins if they eliminate all Mafia; the Mafia wins if they reach parity with the village.',
+    highlights: ['5–16 players', 'Secret roles', 'Voice chat supported'],
+    features: [
+      {
+        title: 'Secret roles',
+        description: 'Assigned automatically and privately. Only you know if you are a Villager, Mafia, Doctor, or Detective.',
+        emoji: '🔍',
+      },
+      {
+        title: 'Day & night phases',
+        description: 'Automated phase transitions keep the game moving seamlessly from night actions to daytime discussions.',
+        emoji: '🌒',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join the lobby', description: 'Enter the room code, get your secret role assigned when the host starts.' },
+      {
+        title: 'Perform night actions',
+        description: 'Mafia vote on a target, Doctor heals, Detective investigates, Villagers sleep.',
+      },
+      {
+        title: 'Discuss and vote',
+        description: 'Read the night report, debate in public chat or voice, and vote to eliminate a suspect.',
+      },
+    ],
+    perfectFor: ['Party nights', 'Large groups', 'Strategy fans'],
+    extraFaqs: [
+      {
+        question: 'What are the roles in the game?',
+        answer:
+          'The default roles are Villagers (find the Mafia), Mafia (eliminate the Villagers), Doctor (protects one player from being killed each night), and Detective (investigates one player each night to see if they are Mafia).',
+      },
+      {
+        question: 'Can the Doctor protect themselves?',
+        answer:
+          'No, to keep the game balanced, the Doctor cannot select themselves for protection. They must choose another player.',
       },
     ],
   }),
