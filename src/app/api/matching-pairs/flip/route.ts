@@ -71,6 +71,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid pair index' }, { status: 400 })
   }
 
+  // Reject if this pair was already matched (prevents duplicate scoring).
+  const { data: existingMatch } = await supabase
+    .from('memory_match_submissions')
+    .select('id')
+    .eq('round_id', round.id)
+    .eq('player_id', playerId)
+    .eq('pair_index', pairIndex)
+    .eq('is_match', true)
+    .maybeSingle()
+
+  if (existingMatch) {
+    return NextResponse.json({ error: 'This pair was already matched' }, { status: 409 })
+  }
+
   // Load the player's current progress to get their streak state.
   const { data: progressRow } = await supabase
     .from('memory_match_progress')
@@ -143,29 +157,42 @@ export async function POST(req: NextRequest) {
   const newWrongAttempts = (progressRow?.wrong_attempts ?? 0) + (isMatch ? 0 : 1)
   const justFinished = isMatch && newPairsMatched >= gridSizePairs
 
-  // Determine finish rank if this player just finished.
   let finishRank: number | null = null
   if (justFinished) {
-    const { count } = await supabase
+    // Use atomic RPC to prevent duplicate ranks under concurrent finishers.
+    const { data: finishData, error: finishError } = await supabase.rpc(
+      'matching_pairs_finish_player',
+      {
+        p_round_id: round.id,
+        p_player_id: playerId,
+        p_pairs_matched: newPairsMatched,
+        p_wrong_attempts: newWrongAttempts,
+      }
+    )
+    if (finishError) {
+      return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', finishError) }, { status: 500 })
+    }
+    const result = finishData as { error?: string; finish_rank?: number } | null
+    if (result?.error) {
+      return NextResponse.json({ error: result.error === 'ALREADY_FINISHED' ? 'Player already finished' : 'Failed to finish' }, { status: 409 })
+    }
+    finishRank = result?.finish_rank ?? null
+  } else {
+    // Non-finishing update: pairs_matched or wrong_attempts.
+    const { error: progressError } = await supabase
       .from('memory_match_progress')
-      .select('id', { count: 'exact', head: true })
+      .update({
+        pairs_matched: newPairsMatched,
+        wrong_attempts: newWrongAttempts,
+        updated_at: new Date().toISOString(),
+      })
       .eq('round_id', round.id)
-      .eq('finished', true)
-    finishRank = (count ?? 0) + 1
-  }
+      .eq('player_id', playerId)
 
-  const progressUpdate: Record<string, unknown> = {
-    pairs_matched: newPairsMatched,
-    wrong_attempts: newWrongAttempts,
-    updated_at: new Date().toISOString(),
+    if (progressError) {
+      return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', progressError) }, { status: 500 })
+    }
   }
-  if (justFinished) {
-    progressUpdate.finished = true
-    progressUpdate.finish_rank = finishRank
-    progressUpdate.finished_at = new Date().toISOString()
-  }
-
-  await supabase.from('memory_match_progress').update(progressUpdate).eq('round_id', round.id).eq('player_id', playerId)
 
   // If everyone is done, end the game.
   if (justFinished) {

@@ -686,11 +686,9 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       )
     }
 
-    // Resolve grid size from game settings (stored in game_duration_seconds field
-    // re-used for grid size: 8 = Standard, 16 = Large — a dedicated column would be
-    // cleaner but avoids a new migration just for this integer config).
-    const gridSizePairs: MatchingPairsGridSize =
-      (game as unknown as { matching_pairs_grid_size?: number }).matching_pairs_grid_size === 16 ? 16 : 8
+    // Resolve grid size from game settings (stored in game_duration_seconds:
+    // 0 = Standard/8 pairs, 16 = Large/16 pairs).
+    const gridSizePairs: MatchingPairsGridSize = game.game_duration_seconds === 16 ? 16 : 8
 
     const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
     const playerIds = playingPlayers.map((p: { id: string }) => p.id)

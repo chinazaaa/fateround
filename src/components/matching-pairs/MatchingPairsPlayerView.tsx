@@ -451,6 +451,21 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             pairIndex,
             isMatch: false,
           }),
+        }).then(async (res) => {
+          if (!res.ok) {
+            const d = await res.json()
+            toastError(d.error ?? 'Submit error')
+          } else {
+            // Refresh submissions to keep local state in sync
+            const { data } = await supabase
+              .from('memory_match_submissions')
+              .select(MEMORY_MATCH_SUBMISSION_SELECT)
+              .eq('round_id', roundId)
+              .order('submitted_at', { ascending: true })
+            const nextSubmissions = (data ?? []) as MatchingPairsSubmission[]
+            setAllSubmissions(nextSubmissions)
+            setMySubmissions(nextSubmissions.filter((s) => s.player_id === myPlayerId))
+          }
         })
       }
     },
