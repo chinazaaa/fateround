@@ -99,29 +99,38 @@ export function HomePage() {
               <span className="h-px flex-1" style={{ background: 'var(--border)' }} />
             </div>
 
-            <div className="flex gap-2.5">
+            {/* Unified code field: the code input with an inline submit tucked into the
+                right edge (ghost until a valid code, then fills primary). */}
+            <div className="fr-code-field">
               <input
                 ref={joinRef}
-                className="fr-input fr-input--code min-w-0 flex-1"
-                placeholder="ENTER CODE"
+                className="fr-input fr-input--code fr-code-field__input"
+                placeholder="CODE"
                 maxLength={6}
                 aria-label="Game room code"
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                 onKeyDown={(e) => e.key === 'Enter' && join()}
               />
-              <button
-                type="button"
-                className="fr-btn fr-btn--secondary fr-btn--lg shrink-0"
-                disabled={!canJoin}
-                onClick={join}
-              >
-                Join
+              <button type="button" className="fr-code-go" disabled={!canJoin} onClick={join} aria-label="Join game">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
               </button>
             </div>
 
-            {/* Rooms + Tournaments */}
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            {/* Rooms + Tournaments — stack on phones, side-by-side once there's room (≥460px). */}
+            <div className="mt-4 grid grid-cols-1 gap-3 min-[460px]:grid-cols-2">
               <Link
                 href="/rooms"
                 className="fr-card fr-card--interactive flex min-w-0 items-center gap-3 !p-3.5 no-underline"
@@ -138,12 +147,12 @@ export function HomePage() {
               </Link>
               <Link
                 href="/tournament"
-                className="relative flex min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-lg)] p-3.5 no-underline"
+                className="relative flex min-w-0 items-center gap-3 overflow-hidden rounded-[var(--radius-lg)] p-3.5 no-underline"
                 style={{ background: 'var(--rose-600)', color: '#fff', boxShadow: 'var(--shadow-md)' }}
               >
-                <span className="text-[22px] leading-none">🏆</span>
+                <span className="text-[26px] leading-none">🏆</span>
                 <div className="min-w-0">
-                  <b className="block text-[13px]" style={displayFont}>
+                  <b className="block text-[15px]" style={displayFont}>
                     Tournaments
                   </b>
                   <span className="text-xs" style={{ color: 'rgba(255,255,255,0.9)' }}>

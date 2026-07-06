@@ -88,7 +88,7 @@
   /* Fonts — mapped to the next/font variables declared in layout.tsx */
   --font-display: var(--font-fr-display), 'Instrument Sans', system-ui, sans-serif;
   --font-sans:    var(--font-fr-body), system-ui, -apple-system, sans-serif;
-  --font-mono:    var(--font-fr-mono), ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-mono:    var(--font-fr-mono), ui-monospace, 'SF Mono', 'Menlo', monospace;
 
   --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700; --fw-black: 800;
 
@@ -238,6 +238,22 @@
 }
 .fr-input--code::placeholder { letter-spacing: clamp(0.06em, 0.8vw, 0.18em); }
 
+/* Unified code field: the code input with an inline go submit tucked into the right edge.
+   The button is a muted ghost until a valid code is entered, then fills primary. */
+.fr-code-field { position: relative; }
+.fr-code-field__input { width: 100%; padding-right: 3.25rem; }
+.fr-code-go {
+  position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.5rem; height: 2.5rem; border: 0; border-radius: var(--radius-full);
+  background: var(--surface-sunken); color: var(--text-faint); cursor: not-allowed;
+  transition: background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.fr-code-go:not(:disabled) { background: var(--primary); color: var(--primary-contrast); cursor: pointer; box-shadow: var(--shadow-sm); }
+.fr-code-go:not(:disabled):hover { background: var(--primary-strong); transform: translateY(-50%) scale(1.06); }
+.fr-code-go:not(:disabled):active { transform: translateY(-50%) scale(0.95); }
+.fr-code-go:not(:disabled):focus-visible { outline: none; box-shadow: var(--focus-ring), var(--shadow-sm); }
+
 /* Card */
 .fr-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: var(--space-5); }
 .fr-card--xl { border-radius: var(--radius-xl); padding: var(--space-6); }
@@ -315,6 +331,7 @@
 /* Game-type card — signature tile; each game claims --accent */
 .fr-gamecard {
   --accent: var(--primary);
+
   position: relative; display: flex; flex-direction: column; gap: var(--space-3); text-align: left;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm); padding: var(--space-5); cursor: pointer; overflow: hidden;
