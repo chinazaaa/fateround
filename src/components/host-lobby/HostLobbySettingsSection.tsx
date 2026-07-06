@@ -8,6 +8,9 @@ type Props = {
   summary?: string
   status?: string | null
   defaultOpen?: boolean
+  /** Rendered inside the card but ALWAYS shown (not gated by the collapse) — for the
+   *  one setting the host reaches for most, so it never hides behind "Edit". */
+  alwaysVisible?: React.ReactNode
   children: React.ReactNode
   className?: string
 }
@@ -17,6 +20,7 @@ export function HostLobbySettingsSection({
   summary,
   status,
   defaultOpen = false,
+  alwaysVisible,
   children,
   className = '',
 }: Props) {
@@ -71,6 +75,12 @@ export function HostLobbySettingsSection({
           <ChevronRightIcon size={15} className={`transition-transform ${open ? '-rotate-90' : 'rotate-90'}`} />
         </span>
       </button>
+
+      {alwaysVisible ? (
+        <div className="px-4 pb-4 pt-1 border-t border-[color-mix(in_srgb,var(--primary)_10%,var(--border))]">
+          {alwaysVisible}
+        </div>
+      ) : null}
 
       {open ? (
         <div className="px-4 pb-4 pt-1 border-t border-[color-mix(in_srgb,var(--primary)_10%,var(--border))] space-y-4 divide-y divide-[color-mix(in_srgb,var(--primary)_8%,var(--border))] [&>section:not(:first-child)]:pt-4 [&>*:not(:first-child):not(section)]:pt-4">
