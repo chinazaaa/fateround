@@ -70,6 +70,13 @@
 .fr-room .ct-surface > .turnrail { flex: 0 0 auto; }
 .fr-room .ct-surface > .table { min-height: 0; overflow-y: auto; }
 .fr-room .ct-surface > .hand-wrap { flex: 0 0 auto; }
+/* Spectator (watch-only): invert the pinning. For a player the felt scrolls and
+   the hand is pinned; for a spectator there is no hand, and a long player roster
+   (flex:0 0 auto) squished the felt down to nothing — clipping the draw/discard
+   piles off the top of the felt. Give the felt its natural height and make the
+   roster the scroll region instead. */
+.fr-room .ct-surface:has(> .hand-wrap.spec) > .table { flex: 0 0 auto; overflow: visible; }
+.fr-room .ct-surface > .hand-wrap.spec { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-bottom: 0; }
 
 /* ── turn rail (seats along the top) ──────────────────────────────── */
 .fr-room .turnrail { display: flex; gap: 10px; padding: 12px 14px 2px; overflow-x: auto; }
