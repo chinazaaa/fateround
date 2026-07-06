@@ -1858,10 +1858,11 @@ type LobbyCounts = { participantMode?: string; participantCount: number }
 // classified here, so a new game can't be silently forgotten from a group. Kept
 // behaviour-identical to the previous OR-lists — verified per game in game-flags.test.ts.
 //
-// NOTE: scrabble / snake_and_ladder / bingo / codewords are `false` for
-// nameOnlyPlayerJoin — matching the previous OR-list, which omitted them. If that omission
-// was a bug (they're board games like monopoly/chess, which are `true`), flip them here in
-// a separate behaviour-changing PR; this refactor only preserves current behaviour.
+// NOTE: scrabble + snake_and_ladder are fixed here (flipped to true). They're board games
+// that were wrongly omitted from the original isNameOnlyPlayerJoin OR-list, which sent their
+// players down the gender-required participant join path instead of the clean self-join-by-
+// name every other board game uses (monopoly/chess/…). bingo + codewords stay `false` — they
+// aren't board games and have their own join flows.
 const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   smash_marry_kill: false,
   red_flag_green_flag: false,
@@ -1892,8 +1893,8 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   word_hunt: true,
   chess: true,
   describe_it: true,
-  scrabble: false,
-  snake_and_ladder: false,
+  scrabble: true,
+  snake_and_ladder: true,
   crazy_eights: true,
   checkers: true,
 }

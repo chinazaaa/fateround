@@ -5,8 +5,10 @@ import { GAME_TYPE_CONFIG, isNameOnlyPlayerJoin, isLobbyGame } from './game-type
 // Canonical game list (the coverage test derives from the same source).
 const ALL_GAME_TYPES = Object.keys(GAME_TYPE_CONFIG) as GameType[]
 
-// The exact membership of the *original* hand-written OR-lists, transcribed independently
-// of the new Record maps. If a map value drifts from the pre-refactor behaviour, these fail.
+// The intended name-only-join set: the original OR-list PLUS scrabble + snake_and_ladder,
+// which this PR fixes (board games wrongly omitted from the original list, which sent their
+// players down the gender-required participant join path). Transcribed independently of the
+// Record maps, so any drift from this intended behaviour fails here.
 const NAME_ONLY_PLAYER_JOIN_EXPECTED = new Set<GameType>([
   'would_you_rather',
   'never_have_i_ever',
@@ -28,6 +30,9 @@ const NAME_ONLY_PLAYER_JOIN_EXPECTED = new Set<GameType>([
   'chess',
   'checkers',
   'describe_it',
+  // Fixed in this PR — board games that now self-join by name like every other board game.
+  'scrabble',
+  'snake_and_ladder',
 ])
 
 const LOBBY_GAMES_EXPECTED = new Set<GameType>([
