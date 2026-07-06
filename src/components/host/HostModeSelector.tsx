@@ -109,9 +109,7 @@ export function HostModeSelector({
               </span>
             </div>
           )}
-          {onEditName && (
-            <HostEditNameRow name={joinedPlayerName ?? ''} onEditName={onEditName} disabled={disabled} />
-          )}
+          {onEditName && <HostEditNameRow name={joinedPlayerName ?? ''} onEditName={onEditName} disabled={disabled} />}
         </div>
       )}
     </Wrapper>

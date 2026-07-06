@@ -363,7 +363,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         onDraw={() => void postAction('/api/whot/draw', {})}
         onChooseShape={(shape) => void postAction('/api/whot/choose', { shape })}
         onChooseNumber={(number) => void postAction('/api/whot/choose', { number })}
-      />,
+      />
     )
   }
 
@@ -389,6 +389,6 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       onDraw={() => void postAction('/api/whot/draw', {})}
       onChooseShape={(shape) => void postAction('/api/whot/choose', { shape })}
       onChooseNumber={(number) => void postAction('/api/whot/choose', { number })}
-    />,
+    />
   )
 }

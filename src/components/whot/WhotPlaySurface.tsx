@@ -198,12 +198,15 @@ export function WhotPlaySurface({
         <Hand
           count={myHand.length}
           many={many}
-          hint={
-            canAct ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}` : undefined
-          }
+          hint={canAct ? `Tap a highlighted card to play it${many ? ' · swipe to see more' : ''}` : undefined}
           actions={
             canAct && !(drawDepleted && myCanPlay) ? (
-              <button type="button" className="fr-btn fr-btn--secondary fr-btn--block" disabled={acting} onClick={onDraw}>
+              <button
+                type="button"
+                className="fr-btn fr-btn--secondary fr-btn--block"
+                disabled={acting}
+                onClick={onDraw}
+              >
                 {drawLabel}
               </button>
             ) : undefined

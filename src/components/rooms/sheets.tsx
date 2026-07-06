@@ -31,7 +31,7 @@ function displayUrl(url: string): string {
 
 function buildLinks(
   code: string,
-  opts: { hostToken?: string; resumeToken?: string; origin?: string },
+  opts: { hostToken?: string; resumeToken?: string; origin?: string }
 ): Record<LinkKey, LinkDef> {
   const origin = opts.origin ?? shareOrigin()
   const invite = playerGameUrl(code, origin)

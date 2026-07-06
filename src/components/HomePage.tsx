@@ -122,7 +122,10 @@ export function HomePage() {
 
             {/* Rooms + Tournaments */}
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <Link href="/rooms" className="fr-card fr-card--interactive flex min-w-0 items-center gap-3 !p-3.5 no-underline">
+              <Link
+                href="/rooms"
+                className="fr-card fr-card--interactive flex min-w-0 items-center gap-3 !p-3.5 no-underline"
+              >
                 <span className="text-[26px] leading-none">🏠</span>
                 <div className="min-w-0">
                   <b className="block text-sm" style={{ color: 'var(--text)' }}>

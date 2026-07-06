@@ -379,7 +379,6 @@ export function RoomsPage() {
               </div>
             )}
           </div>
-
         </div>
       </div>
     </SiteChrome>

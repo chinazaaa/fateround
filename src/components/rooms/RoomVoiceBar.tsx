@@ -223,69 +223,67 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
         style={{ ...popStyle, width: 190, padding: 6, display: menu ? undefined : 'none' }}
         onMouseLeave={() => setMenu(false)}
       >
+        <button
+          style={menuItem}
+          onClick={() => {
+            setMenu(false)
+            setEditing(true)
+          }}
+        >
+          ✏️&nbsp;&nbsp;Edit your name
+        </button>
+        {/* Host extras (e.g. Transfer host) — sit alongside Edit your name.
+              The provided node styles its own trigger + owns its modal. */}
+        {props.hostMenuExtra != null && <div onClick={() => setMenu(false)}>{props.hostMenuExtra}</div>}
+        {/* Voice is join-first; the call can be joined or left from here too
+              (the mic pill only toggles mute once you're in). */}
+        {inVoice ? (
           <button
             style={menuItem}
             onClick={() => {
               setMenu(false)
-              setEditing(true)
+              setInternalJoined(false)
+              props.onLeaveVoice?.()
             }}
           >
-            ✏️&nbsp;&nbsp;Edit your name
+            🔇&nbsp;&nbsp;Leave voice chat
           </button>
-          {/* Host extras (e.g. Transfer host) — sit alongside Edit your name.
-              The provided node styles its own trigger + owns its modal. */}
-          {props.hostMenuExtra != null && (
-            <div onClick={() => setMenu(false)}>{props.hostMenuExtra}</div>
-          )}
-          {/* Voice is join-first; the call can be joined or left from here too
-              (the mic pill only toggles mute once you're in). */}
-          {inVoice ? (
-            <button
-              style={menuItem}
-              onClick={() => {
-                setMenu(false)
-                setInternalJoined(false)
-                props.onLeaveVoice?.()
-              }}
-            >
-              🔇&nbsp;&nbsp;Leave voice chat
-            </button>
-          ) : (
-            <button
-              style={menuItem}
-              onClick={() => {
-                setMenu(false)
-                setInternalJoined(true)
-                setInternalMuted(false)
-                props.onJoinVoice?.()
-              }}
-            >
-              🎙️&nbsp;&nbsp;Join voice chat
-            </button>
-          )}
-          {/* The host runs the game — they End it (never "leave"); players leave. */}
-          {props.host && props.onEndGame ? (
-            <button
-              style={{ ...menuItem, color: 'var(--danger)' }}
-              onClick={() => {
-                setMenu(false)
-                setEnding(true)
-              }}
-            >
-              🛑&nbsp;&nbsp;End game
-            </button>
-          ) : !props.resignOnly && !props.host ? (
-            <button
-              style={{ ...menuItem, color: 'var(--danger)' }}
-              onClick={() => {
-                setMenu(false)
-                setLeaving(true)
-              }}
-            >
-              🚪&nbsp;&nbsp;Leave game
-            </button>
-          ) : null}
-        </div>
+        ) : (
+          <button
+            style={menuItem}
+            onClick={() => {
+              setMenu(false)
+              setInternalJoined(true)
+              setInternalMuted(false)
+              props.onJoinVoice?.()
+            }}
+          >
+            🎙️&nbsp;&nbsp;Join voice chat
+          </button>
+        )}
+        {/* The host runs the game — they End it (never "leave"); players leave. */}
+        {props.host && props.onEndGame ? (
+          <button
+            style={{ ...menuItem, color: 'var(--danger)' }}
+            onClick={() => {
+              setMenu(false)
+              setEnding(true)
+            }}
+          >
+            🛑&nbsp;&nbsp;End game
+          </button>
+        ) : !props.resignOnly && !props.host ? (
+          <button
+            style={{ ...menuItem, color: 'var(--danger)' }}
+            onClick={() => {
+              setMenu(false)
+              setLeaving(true)
+            }}
+          >
+            🚪&nbsp;&nbsp;Leave game
+          </button>
+        ) : null}
+      </div>
     </div>
   )
 

@@ -357,9 +357,7 @@ function ConnectedBar(props: {
     .map((p) => `${p.identity}:${p.isSpeaking ? 1 : 0}:${p.isMicrophoneEnabled ? 1 : 0}`)
     .join(',')
   useEffect(() => {
-    report?.(
-      participants.map((p) => ({ id: p.identity, talking: p.isSpeaking, muted: !p.isMicrophoneEnabled }))
-    )
+    report?.(participants.map((p) => ({ id: p.identity, talking: p.isSpeaking, muted: !p.isMicrophoneEnabled })))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [report, rosterKey])
 

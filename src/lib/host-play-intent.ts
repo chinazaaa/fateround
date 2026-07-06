@@ -40,7 +40,7 @@ export function setHostPlayIntent(gameCode: string, intent: HostPlayIntent): voi
  */
 export function consumeHostPlayIntent(gameCode: string): HostPlayIntent | null {
   if (typeof window === 'undefined') return null
-  let raw: string | null = null
+  let raw: string | null
   try {
     raw = localStorage.getItem(intentKey(gameCode))
     if (raw != null) localStorage.removeItem(intentKey(gameCode))

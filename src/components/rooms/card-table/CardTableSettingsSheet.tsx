@@ -67,9 +67,7 @@ export function CardTableSettingsSheet({
             <span style={{ ...styles.knob, ...(hostPlays ? styles.knobOn : null) }} />
           </button>
         </div>
-        {modeLocked && (
-          <p style={styles.lockedNote}>You can only take a spot before the game starts.</p>
-        )}
+        {modeLocked && <p style={styles.lockedNote}>You can only take a spot before the game starts.</p>}
 
         {children != null && <div style={styles.rules}>{children}</div>}
 
@@ -103,7 +101,14 @@ const styles = {
   },
   head: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   title: { fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 20, margin: 0, color: 'var(--text)' },
-  x: { border: 'none', background: 'transparent', fontSize: 18, color: 'var(--text-faint)', cursor: 'pointer', lineHeight: 1 },
+  x: {
+    border: 'none',
+    background: 'transparent',
+    fontSize: 18,
+    color: 'var(--text-faint)',
+    cursor: 'pointer',
+    lineHeight: 1,
+  },
   toggleRow: {
     display: 'flex',
     alignItems: 'center',
