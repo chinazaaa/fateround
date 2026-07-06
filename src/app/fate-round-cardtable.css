@@ -104,6 +104,13 @@
 .fr-room .act-toast.hot { background: var(--danger-soft); color: var(--danger); }
 .fr-room .act-toast.ok { background: var(--success-soft); color: var(--success); }
 
+/* ── WHOT demand badge (persistent called shape/number) ───────────────
+   Stays visible for the whole WHOT call, independent of the transient
+   status toast — so it survives a player drawing from the market. */
+.fr-room .whot-demand { display: inline-flex; align-items: center; gap: 8px; padding: 6px 13px; border-radius: 9999px; background: var(--primary-soft); border: 1px solid var(--primary-ring); }
+.fr-room .whot-demand__lbl { font: 700 9px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--primary-strong); }
+.fr-room .whot-demand__val { display: inline-flex; align-items: center; gap: 5px; font-size: 13.5px; font-weight: 800; color: var(--text); text-transform: capitalize; }
+
 /* ── your fanned hand ─────────────────────────────────────────────── */
 .fr-room .hand-wrap { border-top: 1px solid var(--border); background: var(--surface); padding: 14px 12px calc(26px + env(safe-area-inset-bottom, 0px)); }
 .fr-room .hand-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 0 4px; }
@@ -129,7 +136,7 @@
 @media (hover: hover) and (pointer: fine) {
   .fr-room .hand .pc:hover { transform: translateY(-14px); }
 }
-.fr-room .hand .pc.dim { opacity: 0.45; cursor: not-allowed; }
+.fr-room .hand .pc.dim { opacity: 1; filter: grayscale(0.4) brightness(0.94); cursor: not-allowed; }
 .fr-room .hand .pc.playable { box-shadow: 0 0 0 2px var(--success), 0 1px 3px rgba(20, 18, 26, 0.16); }
 .fr-room .hand-hint { text-align: center; font-size: 12px; color: var(--text-faint); margin: 10px 0 0; }
 .fr-room .hand-actions { display: flex; gap: 9px; margin-top: 12px; }

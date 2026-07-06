@@ -8,6 +8,7 @@ export function ShareActionButtons({
   sharing,
   downloading,
   downloadLabel = 'Download',
+  primary = false,
 }: {
   shareLabel: string
   onShare: () => void
@@ -15,6 +16,8 @@ export function ShareActionButtons({
   sharing: boolean
   downloading: boolean
   downloadLabel?: string
+  /** Render the Share button as the primary action (results screens). */
+  primary?: boolean
 }) {
   const busy = sharing || downloading
 
@@ -24,7 +27,7 @@ export function ShareActionButtons({
         type="button"
         onClick={onShare}
         disabled={busy}
-        className="btn-secondary flex-1 min-w-0 py-3 text-sm sm:text-base flex items-center justify-center gap-2 disabled:opacity-50"
+        className={`${primary ? 'btn-primary' : 'btn-secondary'} flex-1 min-w-0 py-3 text-sm sm:text-base flex items-center justify-center gap-2 disabled:opacity-50`}
       >
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
           <path d="M13 4.5a2.5 2.5 0 1 1 .702 1.737L6.97 9.604a2.5 2.5 0 0 1 0 .792l6.733 3.367a2.5 2.5 0 1 1-.671 1.341l-6.733-3.367a2.5 2.5 0 1 1 0-3.474l6.733-3.367A2.5 2.5 0 0 1 13 4.5Z" />
