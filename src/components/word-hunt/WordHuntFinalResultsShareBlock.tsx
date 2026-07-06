@@ -1,9 +1,11 @@
 'use client'
 
 import { useRef, useState, type ReactNode } from 'react'
+import { MEDALS } from '@/lib/medals'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { WordHuntPersonalResults } from '@/components/word-hunt/WordHuntPersonalResults'
 import { WordHuntResultsReview } from '@/components/word-hunt/WordHuntResultsReview'
 import type { Game, Player } from '@/types'
@@ -35,7 +37,6 @@ export function WordHuntFinalResultsShareBlock({
     highlightPlayerId ?? leaderboard[0]?.player_id ?? null
   )
   const winner = leaderboard[0]
-  const winnerLabel = winner ? `${winner.name} wins!` : "Time's up!"
 
   return (
     <div className="space-y-4">
@@ -51,39 +52,53 @@ export function WordHuntFinalResultsShareBlock({
 
       {mySubmissions && <WordHuntPersonalResults submissions={mySubmissions} validWords={validWords} />}
 
-      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-4">
+      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-5">
         <ShareResultsCaptureHeader game={game} />
-        <p className="text-5xl sm:text-6xl leading-none text-center pt-1">🏆</p>
-        <p className="text-xl sm:text-2xl font-black text-center text-[var(--marry)]">{winnerLabel}</p>
-        {winner && (
-          <p className="text-center text-sm text-muted">
-            {winner.points} pts · {winner.word_count} word{winner.word_count === 1 ? '' : 's'}
-          </p>
-        )}
+        <FinishedWinnerHero
+          winnerName={winner?.name}
+          game={game}
+          headline={winner ? undefined : "Time's up!"}
+          subtitle={
+            winner ? `${winner.points} pts · ${winner.word_count} word${winner.word_count === 1 ? '' : 's'}` : undefined
+          }
+        />
         <div className="space-y-2 pt-2">
-          {leaderboard.map((row, i) => (
-            <div
-              key={row.player_id}
-              className={[
-                'flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5',
-                i === 0
-                  ? 'border-[color-mix(in_srgb,var(--marry)_45%,var(--border-strong))] bg-[color-mix(in_srgb,var(--marry)_10%,var(--surface-inset-bg))]'
-                  : 'border-[var(--border-strong)] bg-[var(--surface-inset-bg)]',
-                row.player_id === highlightPlayerId && i !== 0
-                  ? 'ring-1 ring-[color-mix(in_srgb,var(--primary)_25%,transparent)]'
-                  : '',
-              ].join(' ')}
-            >
-              <p className="font-bold text-sm truncate">
-                {i === 0 ? '🏆 ' : `${i + 1}. `}
-                {row.name}
-                {row.player_id === highlightPlayerId ? ' (you)' : ''}
-              </p>
-              <p className="text-sm text-muted shrink-0 tabular-nums">
-                {row.points} pts · {row.word_count}w
-              </p>
-            </div>
-          ))}
+          {leaderboard.map((row, i) => {
+            const rank = i + 1
+            const isWinner = rank === 1
+            const isMe = row.player_id === highlightPlayerId
+            return (
+              <div
+                key={row.player_id}
+                className={
+                  isWinner
+                    ? 'flex items-center gap-3 rounded-xl px-4 py-3 border border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_8%,var(--surface))]'
+                    : 'flex items-center gap-3 rounded-xl px-4 py-3 border border-[var(--border)] bg-[var(--surface-inset-bg)]'
+                }
+              >
+                <span
+                  className={`w-7 shrink-0 text-center font-black tabular-nums ${
+                    isWinner ? 'text-lg gradient-title' : 'text-base text-faint'
+                  }`}
+                >
+                  {MEDALS[rank - 1] ?? rank}
+                </span>
+                <div className="min-w-0">
+                  <p className={`font-bold truncate ${isWinner ? 'text-[17px]' : 'text-[15px]'}`}>
+                    {row.name}
+                    {isMe ? <span className="label-teal font-semibold"> (you)</span> : null}
+                  </p>
+                </div>
+                <p
+                  className={`ml-auto shrink-0 text-sm font-black tabular-nums ${
+                    isWinner ? 'gradient-title' : 'text-muted'
+                  }`}
+                >
+                  {row.points} pts · {row.word_count}w
+                </p>
+              </div>
+            )
+          })}
         </div>
       </div>
       <HostGameFinishedActions
