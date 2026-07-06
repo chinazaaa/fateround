@@ -38,6 +38,9 @@ import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useToast } from '@/components/ui/Toast'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 
 type SudokuHostMode = 'spectator' | 'player'
 type HostTab = 'manage' | 'play'
@@ -54,6 +57,7 @@ function setSudokuHostMode(gameCode: string, mode: SudokuHostMode) {
 
 export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError } = useToast()
+  const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [roundId, setRoundId] = useState<string | null>(null)
@@ -318,20 +322,53 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
     }
   }
 
-  async function handlePlayAgain() {
+  // "Play again · same settings" reopens the game into the ready-up ring; a plain
+  // "Return to lobby" reset also drops the host's seat so they can re-pick play/host-only.
+  async function resetGame(sameSettings: boolean) {
     if (playingAgain) return
     setPlayingAgain(true)
-    await fetch(`/api/games/${gameCode}/play-again`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined }),
+    try {
+      const res = await fetch(`/api/games/${gameCode}/play-again`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, same_settings: sameSettings }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toastError(d.error || 'Failed to reset')
+        return
+      }
+      if (!sameSettings) {
+        clearPlayerSession(gameCode)
+        setHostPlayerId(null)
+        setHostPlayerName('')
+        setHostJoinName('')
+      }
+      setTab('manage')
+      await load()
+    } finally {
+      setPlayingAgain(false)
+    }
+  }
+
+  const confirmPlayAgain = async () => {
+    const ok = await confirm({
+      title: 'Play again — same settings?',
+      message:
+        'Reopens the game with the same settings. Previous watchers and new people can join; everyone taps “ready” and you start the next game once enough players are in.',
+      confirmLabel: 'Play again',
     })
-    clearPlayerSession(gameCode)
-    setHostPlayerId(null)
-    setHostPlayerName('')
-    setHostJoinName('')
-    setTab('manage')
-    setPlayingAgain(false)
+    if (ok) void resetGame(true)
+  }
+
+  const confirmReturnToLobby = async () => {
+    const ok = await confirm({
+      title: 'Return to lobby?',
+      message:
+        'Sends everyone back to the game lobby where you can tweak settings or let new people join before starting again.',
+      confirmLabel: 'Return to lobby',
+    })
+    if (ok) void resetGame(false)
   }
 
   const activePlayers = useMemo(() => players.filter((p) => p.spectator !== true), [players])
@@ -494,6 +531,32 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
     />
   )
 
+  // "Play again · same settings" reopened the game as an open lobby flagged for the
+  // ready-up ring — the host sees the ring + a "Start game" button instead of the lobby.
+  if (game.status === 'waiting' && game.replay_pending) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--background)] px-3 py-8 text-[var(--foreground)]">
+        <ReplayReadyRing
+          players={players}
+          meId={hostPlayerId}
+          isHost
+          minPlayers={SUDOKU_MIN_PLAYERS}
+          onToggleReady={() => {}}
+          onStart={() => void handleStart()}
+          starting={starting}
+        />
+        <button
+          type="button"
+          onClick={() => void confirmReturnToLobby()}
+          disabled={playingAgain}
+          className="mt-1 py-2 text-sm font-medium text-muted transition-colors hover:text-body disabled:opacity-60"
+        >
+          Return to lobby instead
+        </button>
+      </div>
+    )
+  }
+
   return (
     <HostGameLayout
       gameCode={gameCode}
@@ -508,11 +571,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
       manage={manage}
       finished={
         <>
-          <div className="glass-card-strong p-8 text-center space-y-2">
-            <p className="text-4xl">🏆</p>
-            <p className="text-2xl font-black">{leaderboard[0]?.name ?? 'Someone'} wins!</p>
-            <p className="text-muted text-base">{leaderboard[0]?.points ?? 0} points total</p>
-          </div>
+          <FinishedWinnerHero winnerName={leaderboard[0]?.name} game={game} />
           <PaginatedLeaderboard
             title="Final leaderboard"
             rows={leaderboard.map((row, i) => {
@@ -533,15 +592,28 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
               }
             })}
             scoreLabel={(n) => `${n} pts`}
+            emphasizeLeader
           />
           <button
             type="button"
-            onClick={handlePlayAgain}
+            onClick={() => void confirmPlayAgain()}
             disabled={playingAgain}
-            className="btn-primary w-full py-3 font-bold"
+            className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
           >
-            {playingAgain ? 'Resetting…' : 'Play again'}
+            {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
           </button>
+          <button
+            type="button"
+            onClick={() => void confirmReturnToLobby()}
+            disabled={playingAgain}
+            className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
+          >
+            Return to lobby
+          </button>
+          <p className="text-center text-xs text-faint leading-relaxed px-2">
+            Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak
+            settings first.
+          </p>
           {hostWonSudoku && (
             <PostWinToCommunity
               gameType="sudoku"
