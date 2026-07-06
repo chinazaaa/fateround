@@ -282,7 +282,7 @@ function BoardSpaceCell({
   const palette = getBoardPalette(themeId)
   const lineClass = [
     `font-extrabold ${palette.tileText} ${palette.tileFont ?? ''} leading-[1.05]`,
-    isCorner ? 'text-[7.2px] sm:text-[9px]' : 'text-[6.4px] sm:text-[8px] md:text-[8.5px]',
+    isCorner ? 'text-[8px] sm:text-[10px]' : 'text-[7.2px] sm:text-[9px] md:text-[9.5px]',
   ].join(' ')
 
   return (
@@ -317,7 +317,7 @@ function BoardSpaceCell({
           <div className="hidden sm:flex flex-col items-center gap-px leading-none">
             {space.price != null && !ownerId && (
               <span
-                className={`text-[6.8px] sm:text-[8.5px] md:text-[9.5px] font-black ${palette.priceText} ${palette.tileFont ?? ''}`}
+                className={`text-[7.5px] sm:text-[9.5px] md:text-[10.5px] font-black ${palette.priceText} ${palette.tileFont ?? ''}`}
               >
                 {formatThemedMoney(space.price!, themeId)}
               </span>
@@ -325,7 +325,7 @@ function BoardSpaceCell({
             {rentLabel && (
               <span
                 className={[
-                  'text-[5.5px] sm:text-[6.8px] md:text-[7.5px] font-bold tabular-nums',
+                  'text-[6.2px] sm:text-[7.5px] md:text-[8.2px] font-bold tabular-nums',
                   rentLabel === 'Mortgaged' ? 'text-red-600' : palette.rentText,
                   palette.tileFont ?? '',
                 ].join(' ')}
@@ -488,10 +488,8 @@ export function MonopolyClassicBoard({
 
   const defaultMobileCenter = (
     <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center relative z-10">
-      <p className={`text-xs font-black tracking-[0.18em] ${p.titleColor} ${p.titleFont ?? ''}`}>
-        {edition.boardTitle}
-      </p>
-      <p className={`text-[9px] uppercase tracking-widest ${p.subtitleColor} ${p.subtitleFont ?? ''}`}>
+      <p className={`${p.titleColor} ${p.titleFont ?? 'text-xs font-black tracking-[0.18em]'}`}>{edition.boardTitle}</p>
+      <p className={`${p.subtitleColor} ${p.subtitleFont ?? 'text-[9px] uppercase tracking-widest'}`}>
         {edition.editionSubtitle}
       </p>
     </div>
@@ -499,13 +497,11 @@ export function MonopolyClassicBoard({
 
   const defaultDesktopCenter = center ?? (
     <div className="flex h-full w-full flex-col items-center justify-center relative z-10">
-      <p
-        className={`text-xl sm:text-2xl font-black tracking-tight ${p.titleColor} drop-shadow-sm ${p.titleFont ?? ''}`}
-      >
+      <p className={`${p.titleColor} drop-shadow-sm ${p.titleFont ?? 'text-xl sm:text-2xl font-black tracking-tight'}`}>
         {edition.boardTitle}
       </p>
       <p
-        className={`text-[9px] sm:text-[10px] ${p.subtitleColor} mt-0.5 uppercase tracking-[0.15em] ${p.subtitleFont ?? ''}`}
+        className={`${p.subtitleColor} mt-0.5 ${p.subtitleFont ?? 'text-[9px] sm:text-[10px] uppercase tracking-[0.15em]'}`}
       >
         {edition.editionSubtitle}
       </p>
