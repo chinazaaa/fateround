@@ -43,6 +43,7 @@ export type GameType =
   | 'crazy_eights'
   | 'checkers'
   | 'mafia'
+  | 'matching_pairs'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'

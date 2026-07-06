@@ -1,4 +1,4 @@
-/** Slim column lists for hot-path Supabase queries (avoids select('*') egress). */
+﻿/** Slim column lists for hot-path Supabase queries (avoids select('*') egress). */
 
 // NOTE: host_token / resume_token are deliberately excluded — they are secret auth
 // credentials anon must never read (migration 0122 revokes them at the DB). They are
@@ -22,7 +22,7 @@ export const PARTICIPANT_SELECT =
   'id,game_id,name,gender,photo_url,description,display_order,in_mlt_poll,submitted_by_player_id'
 
 export const ROUND_SELECT =
-  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,quote_submitted_at,status,started_at,ended_at,anime_metadata,trivia_metadata,ttl_metadata,npat_metadata,sudoku_metadata,word_hunt_metadata'
+  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,quote_submitted_at,status,started_at,ended_at,anime_metadata,trivia_metadata,ttl_metadata,npat_metadata,sudoku_metadata,word_hunt_metadata,memory_match_metadata'
 
 export const SUDOKU_SUBMISSION_SELECT =
   'id,game_id,round_id,player_id,block_index,cell_row,cell_col,submitted_value,is_correct,points_awarded,submitted_at'
@@ -128,3 +128,9 @@ export const NPAT_MARK_SELECT =
 export const WST_QUOTE_POOL_SELECT = 'id,game_id,player_id,quote_text,author_participant_id,created_at,updated_at'
 
 export const PLAYER_QUESTION_SELECT = 'id,player_id,question_type,option_a,option_b,question_text'
+
+export const MEMORY_MATCH_SUBMISSION_SELECT =
+  'id,game_id,round_id,player_id,pair_index,is_match,streak_at_time,streak_bonus,points_after,submitted_at'
+
+export const MEMORY_MATCH_PROGRESS_SELECT =
+  'id,game_id,round_id,player_id,pairs_matched,wrong_attempts,finished,finish_rank,finished_at,created_at,updated_at'

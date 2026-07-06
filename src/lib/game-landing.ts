@@ -61,6 +61,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   scrabble: 'scrabble',
   snake_and_ladder: 'snakes-and-ladders',
   mafia: 'mafia',
+  matching_pairs: 'matching-pairs',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -2438,6 +2439,83 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Can the Doctor protect themselves?',
         answer:
           'No, to keep the game balanced, the Doctor cannot select themselves for protection. They must choose another player.',
+      },
+    ],
+  }),
+  matching_pairs: landing('matching_pairs', {
+    seoTitle: 'Matching Pairs — Multiplayer Memory Game Online',
+    seoDescription:
+      'Play Matching Pairs online with friends for free. Flip cards, match icons, build streaks and race to finish your board. No sign-up.',
+    keywords: [
+      'matching pairs online',
+      'memory match game online',
+      'multiplayer memory game',
+      'flip and match game',
+      'matching game with friends',
+      'memory game online free',
+      'matching pairs game free',
+      'online memory game no sign up',
+      'memory card game online',
+      'concentration card game online',
+    ],
+    heroSubtitle:
+      'Everyone gets the same icons, different layouts. Flip two cards per turn and match the pair to keep them. Build streaks, finish first, and score big.',
+    highlights: ['Per-player private boards', 'Streak and placement bonuses', 'Perfect-game reward'],
+    features: [
+      {
+        title: 'Streak bonuses',
+        description: 'Match 3 in a row with no miss and earn +500 bonus points. Streaks stack!',
+        emoji: '🔥',
+      },
+      {
+        title: 'Placement reward',
+        description: 'First to match every pair earns +1500. Second gets +1000. Third gets +500.',
+        emoji: '🏆',
+      },
+      {
+        title: 'Perfect game',
+        description: 'Complete your board with zero wrong attempts for a +2000 accuracy bonus.',
+        emoji: '⭐',
+      },
+      {
+        title: 'No sign-up',
+        description: 'Join with a name, play instantly on any device.',
+        emoji: '🚀',
+      },
+    ],
+    steps: [
+      { title: 'Join the room', description: 'Enter your name and wait for the host to pick a grid size and start.' },
+      {
+        title: 'Flip your cards',
+        description: 'Tap two cards per turn. Icons match? They stay face-up. Miss? They flip back after 0.8 s.',
+      },
+      {
+        title: 'Score and finish',
+        description:
+          'Earn 1000 pts per pair, streak bonuses for consecutive matches, and a placement bonus for finishing early.',
+      },
+    ],
+    perfectFor: ['Family game night', 'Kids and all ages', 'Brain training', 'Party games'],
+    extraFaqs: [
+      {
+        question: 'How does scoring work in Matching Pairs?',
+        answer:
+          'You earn 1000 points per matched pair. Match 3 in a row without a miss and earn a +500 streak bonus — streaks stack so 6-in-a-row gives +1000 total streak bonus. The first player to finish gets +1500, second +1000, third +500. Completing the board with zero misses adds a +2000 perfect-game bonus.',
+      },
+      {
+        question: 'Does everyone play the same board?',
+        answer:
+          'Everyone sees the same set of icons, but each player gets their own independently shuffled layout — so two players can never simply copy each other. Same fairness, different challenge.',
+      },
+      {
+        question: 'What happens if I flip two cards that do not match?',
+        answer:
+          'Both cards flip back face-down after 0.8 seconds. Your streak resets to 0, but you can keep playing. There is no per-miss point penalty, only missed streak opportunities.',
+      },
+      {
+        question: 'Can I play Matching Pairs solo?',
+        answer:
+          'Yes — the game works with a single player. Placement bonuses apply when there are multiple players, but you can still chase the perfect-game and streak bonuses on your own.',
       },
     ],
   }),

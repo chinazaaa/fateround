@@ -1165,4 +1165,40 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
   ],
+
+  matching_pairs: [
+    {
+      title: 'Objective',
+      points: [
+        'Everyone plays their own private board — same icons, independently shuffled positions.',
+        'Flip two cards per turn. Match the pair to keep them face-up and score +1000 points.',
+        'The player with the highest total score when everyone has finished wins.',
+      ],
+    },
+    {
+      title: 'How it works',
+      points: [
+        'The host shares a game code — everyone joins with their name.',
+        'When the host starts, each player sees their own 4x4 (Standard) or 8x4 (Large) card grid.',
+        'Tap a card to flip it, then tap a second card. If they match, they stay up. If not, both flip back after 0.8 seconds.',
+      ],
+    },
+    {
+      title: 'Scoring',
+      points: [
+        '+1000 points per correctly matched pair.',
+        'Streak bonus: match 3 in a row with no miss in between to earn +500 bonus points. Streaks stack — 6 in a row = +1000 total streak bonus.',
+        'Placement bonus: first to finish earns +1500, second +1000, third +500.',
+        'Perfect game bonus: complete the board with zero wrong attempts for an extra +2000 points.',
+      ],
+    },
+    {
+      title: 'Game end',
+      points: [
+        'The game ends when the last remaining player finishes matching every pair on their board.',
+        'Players who finish early see a live progress screen showing how many pairs each opponent has matched.',
+        'Final scores include base points + streak bonus + placement bonus + perfect-game bonus (if earned).',
+      ],
+    },
+  ],
 }
