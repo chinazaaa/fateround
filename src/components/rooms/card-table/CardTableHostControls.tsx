@@ -72,7 +72,7 @@ export function CardTableHostControls({
       >
         {settingsBody}
       </CardTableSettingsSheet>
-      <ShareSheet open={shareOpen} onClose={() => setShareOpen(false)} host code={gameCode} />
+      <ShareSheet open={shareOpen} onClose={() => setShareOpen(false)} host code={gameCode} hostToken={hostToken} />
     </>
   )
 }

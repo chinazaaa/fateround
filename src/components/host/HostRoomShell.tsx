@@ -9,10 +9,8 @@ import { useHostIdentity, useHostDisplayName } from '@/hooks/useHostVoiceIdentit
  *
  * Owns the top chrome (`RoomVoiceRail variant="topbar"` in host mode — 👑 Host
  * badge + room code + mic) and the responsive two-pane layout: a centred
- * `.pr-stage` for the phase content and a desktop-only `.pr-side` that holds the
- * host's player-manage list + phase controls + host toolbar (mirroring the
- * `Host · Desktop.html` `.desk-side`). Below 1024px `.pr-side` is hidden and the
- * same controls render inline in the stage (the caller passes them there too).
+ * `.pr-stage` for the phase content. The host controls render inline in the
+ * stage (the caller passes them above the play surface).
  *
  * The marketing header + floating host voice are intentionally absent here
  * (scoped out in `HostChromeGate` for room games), so this rail is the
@@ -22,15 +20,15 @@ export function HostRoomShell({
   gameCode,
   hostToken,
   gameName,
-  sideContent,
+  onEndGame,
   children,
 }: {
   gameCode: string
   hostToken: string
   /** Game name shown beside the room code in the top rail. */
   gameName?: string | null
-  /** Desktop-only side rail body (manage list + controls). Hidden < 1024px. */
-  sideContent?: React.ReactNode
+  /** Host: end the game (surfaced in the voice rail's ⋯ menu). */
+  onEndGame?: () => void
   children: React.ReactNode
 }) {
   const hostIdentity = useHostIdentity(gameCode)
@@ -51,10 +49,10 @@ export function HostRoomShell({
         host
         hostBadge
         autoRejoin={false}
+        onEndGame={onEndGame}
       />
       <div className="pr-main">
         <div className="pr-stage">{children}</div>
-        {sideContent != null && <aside className="pr-side host-pr-side">{sideContent}</aside>}
       </div>
     </div>
   )

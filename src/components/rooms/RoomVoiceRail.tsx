@@ -22,6 +22,10 @@ interface RoomVoiceRailProps {
   /** Hide "Leave game" (chess/checkers use Resign). */
   resignOnly?: boolean
   onLeave?: () => void
+  /** Host's player resume token — enables the host+play share link. */
+  resumeToken?: string
+  /** Host: end the game (shown in the ⋯ menu, below Join/Leave voice chat). */
+  onEndGame?: () => void
   /**
    * Auto-reconnect a recent voice session on mount (default true). Set false
    * for a join-first room where voice should never connect until the player
@@ -60,12 +64,17 @@ export function RoomVoiceRail({
   watching,
   resignOnly,
   onLeave,
+  resumeToken,
+  onEndGame,
   variant = 'floating',
   autoRejoin = true,
   onVoiceParticipants,
 }: RoomVoiceRailProps) {
   const { error: toastError } = useToast()
   const topbar = variant === 'topbar'
+  // The host token travels in `auth` — surface it for the share popup's host /
+  // host+play links (and gate the host-only ⋯ menu items).
+  const hostToken = auth.kind === 'host' ? auth.token : undefined
   const [token, setToken] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
   const [resolvedRoomCode, setResolvedRoomCode] = useState(roomCode)
@@ -252,6 +261,9 @@ export function RoomVoiceRail({
         hostBadge={hostBadge}
         watching={watching}
         resignOnly={resignOnly}
+        hostToken={hostToken}
+        resumeToken={resumeToken}
+        onEndGame={onEndGame}
         presenceCount={isConnecting ? 0 : presenceCount}
         onJoinVoice={joinAudio}
         onLeave={onLeave}
@@ -280,6 +292,9 @@ export function RoomVoiceRail({
         hostBadge={hostBadge}
         watching={watching}
         resignOnly={resignOnly}
+        hostToken={hostToken}
+        resumeToken={resumeToken}
+        onEndGame={onEndGame}
         onVoiceParticipants={onVoiceParticipants}
         onLeaveVoice={() => leaveAudio(true)}
         onLeave={() => {
@@ -300,6 +315,9 @@ function ConnectedBar(props: {
   hostBadge?: boolean
   watching?: number
   resignOnly?: boolean
+  hostToken?: string
+  resumeToken?: string
+  onEndGame?: () => void
   onLeaveVoice?: () => void
   onLeave?: () => void
   onVoiceParticipants?: (parts: { id: string; talking: boolean; muted: boolean }[]) => void
@@ -339,6 +357,9 @@ function ConnectedBar(props: {
       hostBadge={props.hostBadge}
       watching={props.watching}
       resignOnly={props.resignOnly}
+      hostToken={props.hostToken}
+      resumeToken={props.resumeToken}
+      onEndGame={props.onEndGame}
       participants={mapped}
       muted={!isMicrophoneEnabled}
       onToggleMute={() => void localParticipant?.setMicrophoneEnabled(!isMicrophoneEnabled)}

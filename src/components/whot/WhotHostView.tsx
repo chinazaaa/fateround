@@ -44,7 +44,6 @@ import { useWhotGameTimer } from '@/hooks/useWhotGameTimer'
 import { WhotPlaySurface } from '@/components/whot/WhotPlaySurface'
 import { HostRoomShell } from '@/components/host/HostRoomShell'
 import { CardTableHostControls } from '@/components/rooms/card-table/CardTableHostControls'
-import { CardTableHostDeskSide, type HostSeat } from '@/components/rooms/card-table/CardTableHostDeskSide'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { WhotCard, WhotPrimaryButton } from '@/components/whot/WhotChrome'
@@ -457,32 +456,31 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         settingsBody={manage}
       />
     )
-    const hostSeats: HostSeat[] = session
-      ? session.turn_order
-          .map((id) => players.find((p) => p.id === id))
-          .filter((p): p is Player => !!p)
-          .map((p) => ({
-            id: p.id,
-            name: p.name,
-            cards: handCounts[p.id] ?? 0,
-            turn: p.id === turnPlayerId,
-            isMe: p.id === hostPlayerId,
-          }))
-      : []
-    const sideRail = (
-      <CardTableHostDeskSide
-        seats={hostSeats}
-        hostPlays={hostPlays}
-        blurb="Whot · first to empty their hand wins. You can end the game at any time."
-        onRemove={removePlayer}
-        controls={controls}
-      />
-    )
+    // End the game from the voice rail's ⋯ menu (RoomVoiceBar shows the confirm
+    // sheet). Same endpoint the inline "End game" button uses.
+    const endGame = async () => {
+      try {
+        const res = await fetch(`/api/games/${gameCode}/finish-game`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hostToken }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          toastError(data.error ?? 'Failed to end game')
+          return
+        }
+        await load()
+      } catch {
+        toastError('Failed to end game')
+      }
+    }
     return (
-      <HostRoomShell gameCode={gameCode} hostToken={hostToken} gameName={cfg.label} sideContent={sideRail}>
+      <HostRoomShell gameCode={gameCode} hostToken={hostToken} gameName={cfg.label} onEndGame={endGame}>
         {session ? (
           <>
-            {/* Mobile host controls (desktop uses the side rail). */}
+            {/* Host controls (Settings · Transfer · Share · End game) — inline
+                above the play surface at all widths now the side rail is gone. */}
             <div className="ct-host-panel">{controls}</div>
             <WhotPlaySurface
               session={session}

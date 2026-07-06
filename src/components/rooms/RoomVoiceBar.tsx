@@ -2,7 +2,7 @@
 
 import { useState, type CSSProperties } from 'react'
 import { PeopleIcon, ShareIcon, KebabIcon, EyeIcon, LinkIcon } from '@/components/rooms/icons'
-import { ShareSheet, EditNameSheet, LeaveSheet } from '@/components/rooms/sheets'
+import { ShareSheet, EditNameSheet, LeaveSheet, EndGameSheet } from '@/components/rooms/sheets'
 
 export type VoiceParticipant = {
   n: string
@@ -46,6 +46,12 @@ export type RoomVoiceBarProps = {
   bare?: boolean
   /** false → share popup shows the invite tab only (player share). */
   onShareHost?: boolean
+  /** Host token — enables correct host / host+play links in the share popup. */
+  hostToken?: string
+  /** Host's player resume token — enables the host+play share link. */
+  resumeToken?: string
+  /** Host: end the game (shown in the ⋯ menu, below Join/Leave voice chat). */
+  onEndGame?: () => void
   /** Fired when the user taps to join the voice call. */
   onJoinVoice?: () => void
   /** Fired when the user leaves the voice call (but stays in the game). */
@@ -70,6 +76,7 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
   const [menu, setMenu] = useState(false)
   const [editing, setEditing] = useState(false)
   const [leaving, setLeaving] = useState(false)
+  const [ending, setEnding] = useState(false)
   const [internalJoined, setInternalJoined] = useState(!!props.inVoice)
   const [yourName, setYourName] = useState(props.name || 'You')
 
@@ -236,8 +243,18 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
               🎙️&nbsp;&nbsp;Join voice chat
             </button>
           )}
-          {/* The host runs the game — they End / Transfer it, never "leave". */}
-          {!props.resignOnly && !props.host && (
+          {/* The host runs the game — they End it (never "leave"); players leave. */}
+          {props.host && props.onEndGame ? (
+            <button
+              style={{ ...menuItem, color: 'var(--danger)' }}
+              onClick={() => {
+                setMenu(false)
+                setEnding(true)
+              }}
+            >
+              🛑&nbsp;&nbsp;End game
+            </button>
+          ) : !props.resignOnly && !props.host ? (
             <button
               style={{ ...menuItem, color: 'var(--danger)' }}
               onClick={() => {
@@ -247,7 +264,7 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
             >
               🚪&nbsp;&nbsp;Leave game
             </button>
-          )}
+          ) : null}
         </div>
       )}
     </div>
@@ -259,7 +276,22 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
           overrides when set (e.g. the design desktop bar passes false); otherwise
           fall back to whether this bar is mounted in host mode — so plain players
           never see the host panel. */}
-      <ShareSheet open={share} onClose={() => setShare(false)} host={props.onShareHost ?? !!props.host} code={props.code} />
+      <ShareSheet
+        open={share}
+        onClose={() => setShare(false)}
+        host={props.onShareHost ?? !!props.host}
+        code={props.code}
+        hostToken={props.hostToken}
+        resumeToken={props.resumeToken}
+      />
+      <EndGameSheet
+        open={ending}
+        onClose={() => setEnding(false)}
+        onConfirm={() => {
+          setEnding(false)
+          props.onEndGame?.()
+        }}
+      />
       <EditNameSheet
         open={editing}
         name={yourName}

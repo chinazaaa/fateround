@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { WhotCard, WhotLoadingScreen, WhotSecondaryButton, WhotShell } from '@/components/whot/WhotChrome'
 import { WhotPlaySurface } from '@/components/whot/WhotPlaySurface'
+import { PlayerRoomShell } from '@/components/rooms/PlayerRoomShell'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
@@ -324,8 +325,22 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
   if (!session) return <WhotLoadingScreen />
 
+  // The active play surface mounts inside the design-system room shell, which
+  // supplies the `.fr-room-poll` → `.pr-main` → `.pr-stage` frame the `.ct-surface`
+  // needs, with the top voice rail as the room chrome.
+  const roomShell = (children: React.ReactNode) => (
+    <PlayerRoomShell
+      gameCode={gameCode}
+      gameName={game?.title ?? cfg.label}
+      playerName={activePlayer?.name ?? roomDisplayName}
+      playerId={myPlayerId}
+    >
+      {children}
+    </PlayerRoomShell>
+  )
+
   if (isWatching) {
-    return (
+    return roomShell(
       <WhotPlaySurface
         session={session}
         players={players}
@@ -348,11 +363,11 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         onDraw={() => void postAction('/api/whot/draw', {})}
         onChooseShape={(shape) => void postAction('/api/whot/choose', { shape })}
         onChooseNumber={(number) => void postAction('/api/whot/choose', { number })}
-      />
+      />,
     )
   }
 
-  return (
+  return roomShell(
     <WhotPlaySurface
       session={session}
       players={players}
@@ -374,6 +389,6 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       onDraw={() => void postAction('/api/whot/draw', {})}
       onChooseShape={(shape) => void postAction('/api/whot/choose', { shape })}
       onChooseNumber={(number) => void postAction('/api/whot/choose', { number })}
-    />
+    />,
   )
 }
