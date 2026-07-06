@@ -8,6 +8,7 @@ import { removeScrabblePlayer } from '@/lib/scrabble'
 import { removeWhotPlayer } from '@/lib/whot'
 import { removeCrazyEightsPlayer } from '@/lib/crazy-eights'
 import { removeLudoPlayer } from '@/lib/ludo'
+import { removeMahjongPlayer } from '@/lib/mahjong'
 import { removeSnakeAndLadderPlayer } from '@/lib/snake-and-ladder'
 import { removeYahtzeePlayer } from '@/lib/yahtzee'
 import { removeChessPlayer } from '@/lib/chess'
@@ -32,6 +33,7 @@ import {
   isWhotGame,
   isCrazyEightsGame,
   isLudoGame,
+  isMahjongGame,
   isSnakeAndLadderGame,
   isTicTacToeGame,
   isChessGame,
@@ -571,7 +573,7 @@ export async function POST(req: NextRequest) {
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game)
   }
 
-  if (isLudoGame(rowGameType) || isSnakeAndLadderGame(rowGameType)) {
+  if (isLudoGame(rowGameType) || isMahjongGame(rowGameType) || isSnakeAndLadderGame(rowGameType)) {
     const joinCheck = canJoinGame(gameRow as Game)
     if (!joinCheck.ok) {
       return NextResponse.json({ error: joinCheck.error }, { status: 400 })
@@ -581,7 +583,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'playerName is required' }, { status: 400 })
     }
 
-    const limitKey = isSnakeAndLadderGame(rowGameType) ? 'snake_and_ladder' : 'ludo'
+    const limitKey = isSnakeAndLadderGame(rowGameType)
+      ? 'snake_and_ladder'
+      : isMahjongGame(rowGameType)
+        ? 'mahjong'
+        : 'ludo'
     const maxPlayers = lobbyMaxPlayersFromGame(limitKey, gameRow, lobbyLimits)
     const { count: playerCount } = await supabase
       .from('players')
@@ -1522,6 +1528,12 @@ export async function DELETE(req: NextRequest) {
 
   if (isLudoGame(gameType)) {
     const { error } = await removeLudoPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isMahjongGame(gameType)) {
+    const { error } = await removeMahjongPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }
