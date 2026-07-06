@@ -215,8 +215,14 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
           <div style={popFoot}>🎙️ live · 🗣️ talking · 🔇 muted</div>
         </div>
       )}
-      {menu && (
-        <div style={{ ...popStyle, width: 190, padding: 6 }} onMouseLeave={() => setMenu(false)}>
+      {/* Always mounted (visibility toggled via `display`) rather than
+          conditionally rendered, so a host extra like TransferHostControl — which
+          owns a portal modal — isn't unmounted (killing its open modal) when the
+          menu closes on click. */}
+      <div
+        style={{ ...popStyle, width: 190, padding: 6, display: menu ? undefined : 'none' }}
+        onMouseLeave={() => setMenu(false)}
+      >
           <button
             style={menuItem}
             onClick={() => {
@@ -280,7 +286,6 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
             </button>
           ) : null}
         </div>
-      )}
     </div>
   )
 

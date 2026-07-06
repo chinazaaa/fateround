@@ -232,10 +232,11 @@
 .fr-input:disabled { opacity: 0.55; cursor: not-allowed; background: var(--surface-sunken); }
 .fr-input--code {
   text-align: center; font-family: var(--font-mono); font-weight: var(--fw-bold);
-  font-size: var(--text-2xl); letter-spacing: 0.28em; text-indent: 0.28em; text-transform: uppercase;
+  font-size: clamp(1.125rem, 5.5vw, var(--text-2xl)); letter-spacing: clamp(0.12em, 1.2vw, 0.28em);
+  text-indent: clamp(0.12em, 1.2vw, 0.28em); text-transform: uppercase;
   padding: 0.75rem 0.5rem;
 }
-.fr-input--code::placeholder { letter-spacing: 0.18em; }
+.fr-input--code::placeholder { letter-spacing: clamp(0.06em, 0.8vw, 0.18em); }
 
 /* Card */
 .fr-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: var(--space-5); }

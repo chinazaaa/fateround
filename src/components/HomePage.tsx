@@ -122,7 +122,7 @@ export function HomePage() {
 
             {/* Rooms + Tournaments */}
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <Link href="/rooms" className="fr-card fr-card--interactive flex items-center gap-3 !p-3.5 no-underline">
+              <Link href="/rooms" className="fr-card fr-card--interactive flex min-w-0 items-center gap-3 !p-3.5 no-underline">
                 <span className="text-[26px] leading-none">🏠</span>
                 <div className="min-w-0">
                   <b className="block text-sm" style={{ color: 'var(--text)' }}>
@@ -135,7 +135,7 @@ export function HomePage() {
               </Link>
               <Link
                 href="/tournament"
-                className="relative flex items-center gap-3 overflow-hidden rounded-[var(--radius-lg)] px-4 py-3.5 no-underline"
+                className="relative flex min-w-0 items-center gap-3 overflow-hidden rounded-[var(--radius-lg)] px-4 py-3.5 no-underline"
                 style={{ background: 'var(--rose-600)', color: '#fff', boxShadow: 'var(--shadow-md)' }}
               >
                 <span className="text-[26px] leading-none">🏆</span>
@@ -163,9 +163,6 @@ export function HomePage() {
                   Jump into games happening now
                 </span>
               </div>
-              <span className="text-lg" style={{ color: 'var(--text-faint)' }}>
-                →
-              </span>
             </Link>
           </div>
         </section>
