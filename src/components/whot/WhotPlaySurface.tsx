@@ -162,6 +162,22 @@ export function WhotPlaySurface({
           discard={top ? <WhotCardFace card={top} big /> : <span className="turn-status g">No card</span>}
         />
 
+        {/* Persistent demand badge — stays visible for the whole WHOT call, even
+            after a player draws (which overwrites status_message without the hint). */}
+        {requirement && (
+          <div className="whot-demand" role="status">
+            <span className="whot-demand__lbl">Must play</span>
+            {session.required_shape ? (
+              <span className="whot-demand__val">
+                <WhotShapeIcon shape={session.required_shape} size="sm" />
+                {WHOT_SHAPE_LABELS[session.required_shape]}
+              </span>
+            ) : (
+              <span className="whot-demand__val">number {session.required_number}</span>
+            )}
+          </div>
+        )}
+
         {watching ? (
           <TurnStatus muted>
             Spectating — {turnName}&apos;s turn · <span className="g">you can chat</span>
