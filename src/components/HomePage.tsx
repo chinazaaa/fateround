@@ -99,24 +99,33 @@ export function HomePage() {
               <span className="h-px flex-1" style={{ background: 'var(--border)' }} />
             </div>
 
-            <div className="flex gap-2.5">
+            {/* Unified code field: the code input with an inline submit tucked into the
+                right edge (ghost until a valid code, then fills primary). */}
+            <div className="fr-code-field">
               <input
                 ref={joinRef}
-                className="fr-input fr-input--code min-w-0 flex-1"
-                placeholder="ENTER CODE"
+                className="fr-input fr-input--code fr-code-field__input"
+                placeholder="CODE"
                 maxLength={6}
                 aria-label="Game room code"
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                 onKeyDown={(e) => e.key === 'Enter' && join()}
               />
-              <button
-                type="button"
-                className="fr-btn fr-btn--secondary fr-btn--lg shrink-0"
-                disabled={!canJoin}
-                onClick={join}
-              >
-                Join
+              <button type="button" className="fr-code-go" disabled={!canJoin} onClick={join} aria-label="Join game">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
               </button>
             </div>
 
