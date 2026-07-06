@@ -248,6 +248,8 @@ export interface Game {
   is_public?: boolean
   /** When true, the host has enabled in-game Spotify music for this room (default off). */
   music_enabled?: boolean
+  /** Play Again · same settings — true while the post-game ready-up ring is armed (Whot). */
+  replay_pending?: boolean
   current_round_number: number
   created_at: string
   /** When the game session ended (status set to finished). */

@@ -413,6 +413,7 @@ export function ShareResults({
   codewordsWinnerLabel,
   wordHuntLeaderboard,
   wordHuntWinnerName,
+  primary,
 }: {
   captureRef?: RefObject<HTMLElement | null>
   game: Game
@@ -446,6 +447,8 @@ export function ShareResults({
   codewordsWinnerLabel?: string
   wordHuntLeaderboard?: { name: string; score: number; wordCount: number }[]
   wordHuntWinnerName?: string
+  /** Render the Share button as the primary action (results screens). */
+  primary?: boolean
 }) {
   const { success, error } = useToast()
   const [sharing, setSharing] = useState(false)
@@ -622,6 +625,7 @@ export function ShareResults({
       onDownload={handleDownload}
       sharing={sharing}
       downloading={downloading}
+      primary={primary}
     />
   )
 }

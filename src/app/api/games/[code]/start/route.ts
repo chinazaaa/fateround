@@ -382,6 +382,8 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         session_started_at: sessionStartedAt,
         current_round_number: 1,
         rounds_count: 1,
+        // A "same settings" replay lands here — clear the ready-up flag now that we've dealt.
+        replay_pending: false,
       })
       .eq('id', code.toUpperCase())
 

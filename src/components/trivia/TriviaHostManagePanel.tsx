@@ -5,6 +5,7 @@ import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayer
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
@@ -317,16 +318,14 @@ export function TriviaHostManagePanel({
               </button>
             }
           >
-            <div className="glass-card-strong p-8 text-center space-y-2">
-              <p className="text-4xl">🏆</p>
-              <p className="text-2xl font-black">{leaderboard[0]?.name ?? 'Someone'} wins!</p>
-              <p className="text-muted text-base">{leaderboard[0]?.score ?? 0} points total</p>
-            </div>
+            <FinishedWinnerHero winnerName={leaderboard[0]?.name} game={game} />
             <PaginatedLeaderboard
               title="Final leaderboard"
               rows={leaderboard.map((row, i) => ({ ...row, rank: i + 1 }))}
+              highlightId={highlightPlayerId}
               scoreLabel={(n) => `${n} pts`}
               totalQuestions={game.rounds_count ?? undefined}
+              emphasizeLeader
             />
           </FinalResultsShareBlock>
           {hostWon && (
