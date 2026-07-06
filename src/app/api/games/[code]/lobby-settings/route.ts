@@ -12,6 +12,7 @@ import {
   isMahjongGame,
   isWordHuntGame,
   isSudokuGame,
+  isMatchingPairsGame,
   parseGameType,
 } from '@/lib/game-types'
 import { clampBoardGameTurnTimer, type BoardGameLobbyType } from '@/lib/board-game-lobby-settings'
@@ -48,6 +49,7 @@ function timedLobbyLimitType(gameType: string): LobbyLimitGameType | null {
 function limitOnlyLobbyType(gameType: string): LobbyLimitGameType | null {
   const parsed = parseGameType(gameType)
   if (isSudokuGame(parsed)) return 'sudoku'
+  if (isMatchingPairsGame(parsed)) return 'matching_pairs'
   return null
 }
 
@@ -154,6 +156,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (game_duration_seconds !== undefined) {
     if (limitOnlyType === 'sudoku') {
       gameUpdate.game_duration_seconds = clampSudokuGameDuration(game_duration_seconds)
+    } else if (limitOnlyType === 'matching_pairs') {
+      // Matching Pairs stores grid size as game_duration_seconds (0=8 pairs, 16=16 pairs)
+      gameUpdate.game_duration_seconds = game_duration_seconds === 16 ? 16 : 0
     } else if (!boardLobbyType) {
       return NextResponse.json({ error: 'This game type does not support game length settings' }, { status: 400 })
     } else if (boardLobbyType === 'monopoly') {
