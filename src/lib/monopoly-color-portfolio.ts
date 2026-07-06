@@ -28,6 +28,7 @@ export const COLOR_GROUP_LABELS: Record<MonopolyColorGroup, string> = {
 
 export type ColorGroupMissing = {
   name: string
+  index: number
   heldBy: 'bank' | 'other'
   ownerName?: string
 }
@@ -55,6 +56,7 @@ export function buildColorGroupStatuses(
         const ownerId = owners[String(s.index)]
         return {
           name: s.name,
+          index: s.index,
           heldBy: ownerId ? ('other' as const) : ('bank' as const),
           ownerName: ownerId ? playerNames.get(ownerId) : undefined,
         }

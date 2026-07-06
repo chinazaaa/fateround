@@ -1,10 +1,12 @@
 import { formatMonopolyMoney } from '@/lib/monopoly-board'
+import { formatThemedText } from '@/components/monopoly/monopoly-themes'
 import type { MonopolyLastCardEvent } from '@/types'
 
 export function formatCardAlertForPlayer(
   event: MonopolyLastCardEvent,
   myPlayerId: string | null | undefined,
-  players: { id: string; name: string }[]
+  players: { id: string; name: string }[],
+  themeId?: string | null
 ): { title: string; subtitle: string; body: string; emoji: string } {
   const drawer = players.find((p) => p.id === event.drawn_by_player_id)
   const drawerName = drawer?.name ?? 'A player'
@@ -21,31 +23,36 @@ export function formatCardAlertForPlayer(
     } else if (event.effect === 'pay_each' && event.amount != null && others > 0) {
       body = `${event.card_message} You paid ${formatMonopolyMoney(event.amount * others)} to ${others} other player${others === 1 ? '' : 's'}.`
     }
-    return { title: kindLabel, subtitle: 'You drew a card', body, emoji }
+    return {
+      title: formatThemedText(kindLabel, themeId),
+      subtitle: formatThemedText('You drew a card', themeId),
+      body: formatThemedText(body, themeId),
+      emoji,
+    }
   }
 
   if (event.effect === 'collect_from_each' && money) {
     return {
-      title: kindLabel,
-      subtitle: `${drawerName} drew a card`,
-      body: `${drawerName} drew ${kindLabel}. You paid them ${money}.`,
+      title: formatThemedText(kindLabel, themeId),
+      subtitle: formatThemedText(`${drawerName} drew a card`, themeId),
+      body: formatThemedText(`${drawerName} drew ${kindLabel}. You paid them ${money}.`, themeId),
       emoji,
     }
   }
 
   if (event.effect === 'pay_each' && money) {
     return {
-      title: kindLabel,
-      subtitle: `${drawerName} drew a card`,
-      body: `${drawerName} drew Chance. You received ${money} from them.`,
+      title: formatThemedText(kindLabel, themeId),
+      subtitle: formatThemedText(`${drawerName} drew a card`, themeId),
+      body: formatThemedText(`${drawerName} drew ${kindLabel}. You received ${money} from them.`, themeId),
       emoji,
     }
   }
 
   return {
-    title: kindLabel,
-    subtitle: `${drawerName} drew a card`,
-    body: `${drawerName}: ${event.card_message}`,
+    title: formatThemedText(kindLabel, themeId),
+    subtitle: formatThemedText(`${drawerName} drew a card`, themeId),
+    body: formatThemedText(`${drawerName}: ${event.card_message}`, themeId),
     emoji,
   }
 }

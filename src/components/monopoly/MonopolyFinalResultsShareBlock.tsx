@@ -5,7 +5,8 @@ import type { Game, MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
-import { buildMonopolyStandings, formatMonopolyMoney } from '@/lib/monopoly'
+import { buildMonopolyStandings } from '@/lib/monopoly'
+import { formatThemedMoney } from '@/components/monopoly/monopoly-themes'
 
 export function MonopolyFinalResultsShareBlock({
   game,
@@ -15,6 +16,7 @@ export function MonopolyFinalResultsShareBlock({
   winnerName,
   highlightPlayerId,
   playAgainButton,
+  themeId,
 }: {
   game: Game
   players: Player[]
@@ -23,6 +25,7 @@ export function MonopolyFinalResultsShareBlock({
   winnerName?: string | null
   highlightPlayerId?: string | null
   playAgainButton?: ReactNode
+  themeId?: string | null
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -77,11 +80,11 @@ export function MonopolyFinalResultsShareBlock({
                     </p>
                     <p className="text-[11px] text-muted">
                       {row.propertyCount} propert{row.propertyCount === 1 ? 'y' : 'ies'} · Cash{' '}
-                      {formatMonopolyMoney(row.cash)}
+                      {formatThemedMoney(row.cash, themeId)}
                     </p>
                   </div>
                   <p className="text-sm font-black tabular-nums text-[var(--primary)] shrink-0">
-                    {formatMonopolyMoney(row.netWorth)}
+                    {formatThemedMoney(row.netWorth, themeId)}
                   </p>
                 </div>
               )

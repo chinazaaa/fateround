@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
+import { formatThemedMoney, formatThemedText } from '@/components/monopoly/monopoly-themes'
 
 export function MonopolyPageHeader({ title, children }: { title?: string; children?: ReactNode }) {
   const cfg = gameTypeConfig('monopoly')
@@ -154,12 +155,14 @@ export function MonopolyCashBadge({
   compact = false,
   className = '',
   bankrupt = false,
+  themeId,
 }: {
   amount: number
   label?: string
   compact?: boolean
   className?: string
   bankrupt?: boolean
+  themeId?: string | null
 }) {
   const displayLabel = bankrupt ? 'Bankrupt' : label
   const amountClass = bankrupt ? 'text-red-500' : 'text-[var(--primary)]'
@@ -197,7 +200,7 @@ export function MonopolyCashBadge({
                 amountClass,
               ].join(' ')}
             >
-              £{amount.toLocaleString('en-GB')}
+              {formatThemedMoney(amount, themeId)}
             </p>
           </div>
         </div>
@@ -215,7 +218,9 @@ export function MonopolyCashBadge({
       ].join(' ')}
     >
       <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">{displayLabel}</p>
-      <p className={['text-2xl font-black tabular-nums', amountClass].join(' ')}>£{amount.toLocaleString('en-GB')}</p>
+      <p className={['text-2xl font-black tabular-nums', amountClass].join(' ')}>
+        {formatThemedMoney(amount, themeId)}
+      </p>
     </div>
   )
 }
@@ -225,18 +230,20 @@ export function MonopolyJailCardInventory({
   compact = false,
   showEmpty = false,
   className = '',
+  themeId,
 }: {
   count: number
   compact?: boolean
   showEmpty?: boolean
   className?: string
+  themeId?: string | null
 }) {
   if (count <= 0 && !showEmpty) return null
 
   if (count <= 0) {
     return (
       <p className={['text-xs text-muted leading-relaxed', className].join(' ')}>
-        No Get Out of Jail cards — draw one from Chance or Community Chest.
+        {formatThemedText('No Get Out of Jail cards — draw one from Chance or Community Chest.', themeId)}
       </p>
     )
   }
@@ -255,7 +262,7 @@ export function MonopolyJailCardInventory({
           compact ? 'text-[11px]' : 'text-xs',
         ].join(' ')}
       >
-        🎫 {count} Get Out of Jail card{count === 1 ? '' : 's'}
+        {formatThemedText(`🎫 ${count} Get Out of Jail card${count === 1 ? '' : 's'}`, themeId)}
       </p>
       {!compact && (
         <p className="text-[10px] text-muted mt-0.5 leading-snug">Use from the jail panel, or include in a trade.</p>

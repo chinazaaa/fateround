@@ -15,6 +15,7 @@ import {
   isCheckersGame,
   isDescribeItGame,
   isScrabbleGame,
+  isMahjongGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
@@ -27,6 +28,7 @@ import { clearYahtzeeSessionData } from '@/lib/yahtzee'
 import { clearWhotSessionData } from '@/lib/whot'
 import { clearCrazyEightsSessionData } from '@/lib/crazy-eights'
 import { clearLudoSessionData } from '@/lib/ludo'
+import { clearMahjongSessionData, canMahjongPlayAgain } from '@/lib/mahjong'
 import { clearSnakeAndLadderSessionData } from '@/lib/snake-and-ladder'
 import { clearTicTacToeSessionData, canTicTacToePlayAgain } from '@/lib/tic-tac-toe'
 import { clearChessSessionData, canChessPlayAgain } from '@/lib/chess'
@@ -78,6 +80,7 @@ type ClearableSessionGameType = Extract<
   | 'whot'
   | 'crazy_eights'
   | 'ludo'
+  | 'mahjong'
   | 'snake_and_ladder'
   | 'chess'
   | 'checkers'
@@ -105,6 +108,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   whot: clearWhotSessionData,
   crazy_eights: clearCrazyEightsSessionData,
   ludo: clearLudoSessionData,
+  mahjong: clearMahjongSessionData,
   snake_and_ladder: clearSnakeAndLadderSessionData,
   chess: clearChessSessionData,
   checkers: clearCheckersSessionData,
@@ -147,6 +151,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     ? await canDescribeItPlayAgain(supabase, gameId, game.status)
     : false
   const scrabbleCanReplay = isScrabbleGame(gameType) ? await canScrabblePlayAgain(supabase, gameId, game.status) : false
+  const mahjongCanReplay = isMahjongGame(gameType) ? await canMahjongPlayAgain(supabase, gameId, game.status) : false
   const canReturnToLobby =
     game.status === 'waiting' ||
     game.status === 'finished' ||
@@ -155,6 +160,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     checkersCanReplay ||
     describeItCanReplay ||
     scrabbleCanReplay ||
+    mahjongCanReplay ||
     (isCodewordsGame(gameType) && game.status === 'active') ||
     (isTwoTruthsGame(gameType) && game.status === 'active') ||
     (isICallOnGame(gameType) && game.status === 'active') ||

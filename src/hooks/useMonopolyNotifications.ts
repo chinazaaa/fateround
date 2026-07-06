@@ -9,6 +9,7 @@ import { playGameFinishedSound, playRoundEndSound, playRoundStartSound, playVote
 import { useToast } from '@/components/ui/Toast'
 import { MONOPOLY_CARD_MODAL_SECONDS } from '@/lib/supabase-selects'
 import { currentPlayerId } from '@/lib/monopoly'
+import { formatThemedText } from '@/components/monopoly/monopoly-themes'
 import type { Game, MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
 
 export function useMonopolyNotifications({
@@ -128,9 +129,11 @@ export function useMonopolyNotifications({
     const incomingTrade =
       board?.pending_trade && board.pending_trade.to_player_id === myPlayerId ? board.pending_trade : null
 
+    const themeId = game?.theme ?? null
+
     if (tradeKey && tradeKey !== prevTradeKeyRef.current && incomingTrade) {
       const fromName = players.find((p) => p.id === incomingTrade.from_player_id)?.name ?? 'A player'
-      info(formatIncomingTradeAlert(incomingTrade, fromName))
+      info(formatIncomingTradeAlert(incomingTrade, fromName, themeId))
       playVoteSubmittedSound()
     }
 
@@ -145,8 +148,11 @@ export function useMonopolyNotifications({
     }
 
     if (board?.last_card_event && cardSeq != null && cardSeq !== prevCardSeqRef.current) {
-      const alert = formatCardAlertForPlayer(board.last_card_event, myPlayerId, players)
-      info(`${alert.emoji} ${alert.title} — ${alert.body}`, MONOPOLY_CARD_MODAL_SECONDS * 1000)
+      const alert = formatCardAlertForPlayer(board.last_card_event, myPlayerId, players, themeId)
+      info(
+        formatThemedText(`${alert.emoji} ${alert.title} — ${alert.body}`, themeId),
+        MONOPOLY_CARD_MODAL_SECONDS * 1000
+      )
       playVoteSubmittedSound()
     }
 
@@ -156,7 +162,7 @@ export function useMonopolyNotifications({
       rentSeq !== prevRentSeqRef.current &&
       myPlayerId === board.last_rent_event.payer_player_id
     ) {
-      info(formatRentMessageForPlayer(board.last_rent_event, myPlayerId, players))
+      info(formatRentMessageForPlayer(board.last_rent_event, myPlayerId, players, themeId))
       playVoteSubmittedSound()
     }
 
@@ -166,7 +172,7 @@ export function useMonopolyNotifications({
       rentSeq !== prevRentSeqRef.current &&
       myPlayerId === board.last_rent_event.owner_player_id
     ) {
-      info(formatRentMessageForPlayer(board.last_rent_event, myPlayerId, players))
+      info(formatRentMessageForPlayer(board.last_rent_event, myPlayerId, players, themeId))
       playVoteSubmittedSound()
     }
 
@@ -176,7 +182,7 @@ export function useMonopolyNotifications({
       cashSeq !== prevCashSeqRef.current &&
       myPlayerId === board.last_cash_event.player_id
     ) {
-      info(formatCashMessageForPlayer(board.last_cash_event))
+      info(formatCashMessageForPlayer(board.last_cash_event, themeId))
       playVoteSubmittedSound()
     }
 
@@ -187,7 +193,7 @@ export function useMonopolyNotifications({
       myPlayerId &&
       (board.last_trade_event.from_player_id === myPlayerId || board.last_trade_event.to_player_id === myPlayerId)
     ) {
-      const msg = formatTradeMessageForPlayer(board.last_trade_event, myPlayerId, players)
+      const msg = formatTradeMessageForPlayer(board.last_trade_event, myPlayerId, players, themeId)
       if (board.last_trade_event.outcome === 'declined') {
         info(msg)
       } else if (board.last_trade_event.outcome === 'accepted') {

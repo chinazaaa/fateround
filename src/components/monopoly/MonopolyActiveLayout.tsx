@@ -15,6 +15,7 @@ import { MonopolyCashBadge, MonopolyStatusBanner, MonopolyTurnStrip } from '@/co
 import { formatRentMessageForPlayer } from '@/lib/monopoly-rent-messages'
 import { formatCashMessageForPlayer } from '@/lib/monopoly-cash-messages'
 import { formatTradeMessageForPlayer } from '@/lib/monopoly-trade-messages'
+import { formatThemedText } from '@/components/monopoly/monopoly-themes'
 import { currentPlayerId, parsePropertyOwners, effectivePropertyOwners, type MonopolyColorGroup } from '@/lib/monopoly'
 import { useMonopolyTurnTimer } from '@/hooks/useMonopolyTurnTimer'
 import type { Game, MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
@@ -31,11 +32,12 @@ export function MonopolyActiveLayout({
   players,
   myPlayerId,
   myState,
-  myName,
+  myName: _myName,
   acting,
   postAction,
   colorBarClass,
   spectator = false,
+  themeId,
 }: {
   gameCode: string
   game: Pick<Game, 'status' | 'session_started_at' | 'game_duration_seconds'> | null
@@ -49,6 +51,7 @@ export function MonopolyActiveLayout({
   postAction: PostAction
   colorBarClass: (color?: MonopolyColorGroup) => string
   spectator?: boolean
+  themeId?: string | null
 }) {
   const [panel, setPanel] = useState<SidePanel>(spectator ? 'players' : 'build')
 
@@ -90,13 +93,15 @@ export function MonopolyActiveLayout({
       ? formatTradeMessageForPlayer(board.last_trade_event, myPlayerId, players)
       : null
 
-  const bannerMessage = personalCashMessage
+  const rawBannerMessage = personalCashMessage
     ? personalCashMessage
     : personalTradeMessage
       ? personalTradeMessage
       : board.last_rent_event
         ? formatRentMessageForPlayer(board.last_rent_event, myPlayerId, players)
         : board.status_message
+
+  const bannerMessage = formatThemedText(rawBannerMessage, themeId)
 
   const showStatusBanner =
     bannerMessage &&
@@ -175,12 +180,19 @@ export function MonopolyActiveLayout({
               propertyBuildings={board.property_buildings}
               mortgagedProperties={board.mortgaged_properties}
               lastDiceTotal={board.last_dice?.total ?? 2}
+              themeId={themeId}
             />
           ) : !spectator ? (
             <div className="rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--surface-inset-bg)]/50 min-h-[3.25rem]" />
           ) : null}
           {!spectator && myState ? (
-            <MonopolyCashBadge compact amount={myState.cash} label="Cash" bankrupt={myState.bankrupt} />
+            <MonopolyCashBadge
+              compact
+              amount={myState.cash}
+              label="Cash"
+              bankrupt={myState.bankrupt}
+              themeId={themeId}
+            />
           ) : !spectator ? (
             <div className="rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--surface-inset-bg)]/50 min-h-[3.25rem]" />
           ) : null}
@@ -222,7 +234,7 @@ export function MonopolyActiveLayout({
         {showStatusBanner && <MonopolyStatusBanner message={bannerMessage!} isMyTurn={isMyTurn} />}
 
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(280px,22rem)] lg:gap-5 lg:items-start">
-          <div className="min-w-0 space-y-3 lg:space-y-4 lg:sticky lg:top-4">
+          <div className="min-w-0 space-y-3 lg:space-y-4 lg:sticky lg:top-4 overflow-x-auto pb-2 lg:pb-0">
             <MonopolyClassicBoard
               key={ownershipKey}
               states={states}
@@ -233,13 +245,16 @@ export function MonopolyActiveLayout({
               lastDiceTotal={board.last_dice?.total ?? 2}
               highlightIndex={myState != null ? Number(myState.position) : null}
               myPlayerId={myPlayerId}
+              themeId={themeId}
               center={
                 spectator ? (
                   <div className="flex flex-col items-center justify-center h-full gap-2 px-2 text-center">
                     <MonopolyDiceRoll dice={board.last_dice} />
                     <p className="text-[10px] uppercase tracking-widest text-faint">Watching live</p>
                     {board.status_message ? (
-                      <p className="text-[11px] text-muted leading-snug line-clamp-4">{board.status_message}</p>
+                      <p className="text-[11px] text-muted leading-snug line-clamp-4">
+                        {formatThemedText(board.status_message, themeId)}
+                      </p>
                     ) : null}
                   </div>
                 ) : (
@@ -252,6 +267,7 @@ export function MonopolyActiveLayout({
                     postAction={postAction}
                     colorBarClass={colorBarClass}
                     layout="board"
+                    themeId={themeId}
                   />
                 )
               }
@@ -272,6 +288,7 @@ export function MonopolyActiveLayout({
                   players={players}
                   acting={acting}
                   postAction={postAction}
+                  themeId={themeId}
                 />
               ) : (
                 <div className="glass-card p-4">
@@ -282,6 +299,7 @@ export function MonopolyActiveLayout({
                     currentPlayerId={turnPlayerId}
                     propertyOwners={owners}
                     myPlayerId={myPlayerId}
+                    themeId={themeId}
                   />
                 </div>
               )}
@@ -299,6 +317,7 @@ export function MonopolyActiveLayout({
           acting={acting}
           postAction={postAction}
           colorBarClass={colorBarClass}
+          themeId={themeId}
         />
       )}
     </>

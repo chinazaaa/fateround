@@ -1255,3 +1255,147 @@ export async function removeCrazyEightsPlayer(
   const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
   return { error: error?.message ?? null }
 }
+
+/**
+ * Admit a spectator into an ACTIVE Crazy Eights game — the inverse of removeCrazyEightsPlayer,
+ * and the direct counterpart of admitWhotPlayer.
+ *
+ * Seats them at the END of turn_order (append is index-safe: current_turn_index is a
+ * normalized, sign-safe modulo index — so appending never disturbs the current player's turn,
+ * and `direction` is left untouched) and deals a fresh hand drawn from the deck.
+ *
+ * Ordering mirrors processCrazyEightsPlay: draw purely, then CAS-claim the session so the dealt
+ * cards leave draw_pile atomically with the turn_order growth (never racing a concurrent
+ * play/draw into duplicate physical cards), then — only AFTER winning the claim — insert the
+ * hand row and flip players.spectator. A bespoke CAS update (NOT persistSession) is used so the
+ * current player's turn_deadline_at / clock is preserved.
+ *
+ * `maxPlayers` is the caller-resolved seat cap (the host's configured lobby max, <= 6).
+ */
+export async function admitCrazyEightsPlayer(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  maxPlayers: number
+): Promise<{ error: string | null; status: number }> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const [{ data: sessionRaw }, { data: playerRow }] = await Promise.all([
+      supabase.from('crazy_eights_sessions').select('*').eq('game_id', gameId).maybeSingle(),
+      supabase
+        .from('players')
+        .select('id, name, spectator, is_eliminated')
+        .eq('id', playerId)
+        .eq('game_id', gameId)
+        .maybeSingle(),
+    ])
+
+    const session = sessionRaw as CrazyEightsSession | null
+    if (!session) return { error: 'Session not found', status: 404 }
+    if (session.phase !== 'playing') {
+      return { error: 'Wait for the current player to finish their turn', status: 409 }
+    }
+    if (!playerRow) return { error: 'Player not found', status: 404 }
+    if (playerRow.is_eliminated) return { error: 'That player was eliminated and can’t be dealt in', status: 400 }
+    if (playerRow.spectator !== true) return { error: 'That player is already in the game', status: 400 }
+
+    const turnOrder = [...(session.turn_order ?? [])]
+    // A player who went out is ALSO spectator=true but sits in turn_order + finish_order —
+    // these two guards stop the host from "re-dealing in" someone who already lost.
+    if (turnOrder.includes(playerId)) return { error: 'That player is already seated', status: 400 }
+    if ((session.finish_order ?? []).includes(playerId)) {
+      return { error: 'That player already finished this game', status: 400 }
+    }
+    if (turnOrder.length >= maxPlayers) {
+      return { error: `The game is full (${turnOrder.length}/${maxPlayers})`, status: 409 }
+    }
+
+    const need = dealCount(turnOrder.length + 1)
+    const { drawn, drawPile, discardPile, reshuffled } = drawCardsWithRefill(
+      (session.draw_pile as CrazyEightsCard[]) ?? [],
+      (session.discard_pile as CrazyEightsCard[]) ?? [],
+      need
+    )
+    if (drawn.length < need) {
+      return { error: 'Not enough cards left in the deck to deal a new hand right now.', status: 409 }
+    }
+
+    const newIndex = turnOrder.length
+    const admittedName = playerRow.name ?? 'A player'
+    // Bespoke CAS update — omits turn_deadline_at / current_turn_index / direction so the
+    // current player's turn, countdown, and play direction are untouched (persistSession
+    // would reset the deadline).
+    const claimedAt = new Date().toISOString()
+    const { data: claimed } = await supabase
+      .from('crazy_eights_sessions')
+      .update({
+        turn_order: [...turnOrder, playerId],
+        draw_pile: drawPile,
+        discard_pile: discardPile,
+        status_message: `${admittedName} was dealt in${reshuffled ? ' · deck reshuffled' : ''}`,
+        updated_at: claimedAt,
+      })
+      .eq('game_id', gameId)
+      .eq('updated_at', session.updated_at)
+      .select('game_id')
+
+    if ((claimed?.length ?? 0) === 0) continue // lost the race — reload and retry
+
+    // supabase-js can't span these three writes in one transaction, so if a follow-up write
+    // fails we compensate: undo the seat + returned cards so the game isn't stranded (seated
+    // in turn_order, cards gone from the deck, but no hand / still a spectator). The rollback
+    // CAS-guards on claimedAt: if a concurrent turn already moved the session on, we leave it
+    // rather than clobber that write (the dangling hand row, if any, is still removed).
+    const rollbackClaim = async () => {
+      await supabase.from('crazy_eights_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
+      const { data: restored } = await supabase
+        .from('crazy_eights_sessions')
+        .update({
+          turn_order: turnOrder,
+          draw_pile: (session.draw_pile as CrazyEightsCard[]) ?? [],
+          discard_pile: (session.discard_pile as CrazyEightsCard[]) ?? [],
+          status_message: session.status_message ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('game_id', gameId)
+        .eq('updated_at', claimedAt)
+        .select('game_id')
+      if ((restored?.length ?? 0) === 0) {
+        // A concurrent play/draw moved the session past our claim, so the compensating restore
+        // matched no rows. The player may be left seated in turn_order with no hand — harmless
+        // in rotation (a 0-card player is skipped as "out"), but the dealt cards stay out of the
+        // deck. Rare (needs the hand/flip write to fail AND a concurrent write in the same
+        // window); log it so the orphaned seat is detectable rather than silent.
+        console.error(
+          `admitCrazyEightsPlayer: rollback CAS lost for game ${gameId}, player ${playerId} — possible orphaned seat`
+        )
+      }
+    }
+
+    // Won: the dealt cards are now out of draw_pile. Materialize the hand BEFORE flipping
+    // spectator so the client sees a hand the moment it observes spectator=false.
+    const { error: handError } = await supabase.from('crazy_eights_player_hands').insert({
+      game_id: gameId,
+      player_id: playerId,
+      cards: drawn,
+      player_order: newIndex,
+    })
+    if (handError) {
+      await rollbackClaim()
+      return { error: internalErrorMessage('crazy-eights', handError), status: 500 }
+    }
+
+    const { error: flipError } = await supabase
+      .from('players')
+      .update({ spectator: false })
+      .eq('id', playerId)
+      .eq('game_id', gameId)
+    if (flipError) {
+      await rollbackClaim()
+      return { error: internalErrorMessage('crazy-eights', flipError), status: 500 }
+    }
+
+    return { error: null, status: 200 }
+  }
+
+  return { error: 'The game changed while dealing in — try again.', status: 409 }
+}

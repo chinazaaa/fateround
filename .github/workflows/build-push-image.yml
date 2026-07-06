@@ -116,6 +116,7 @@ jobs:
             NEXT_PUBLIC_LIVEKIT_URL=${{ env.NEXT_PUBLIC_LIVEKIT_URL }}
             NEXT_PUBLIC_VAPID_PUBLIC_KEY=${{ env.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
             NEXT_PUBLIC_SPOTIFY_CLIENT_ID=${{ env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID }}
+            GIT_SHA=${{ github.sha }}
 
       - name: Redeploy on the instance (SSM)
         # Auto-redeploy on every build: a push to dev deploys the dev box; a
