@@ -17,10 +17,15 @@ export function BrowseGamesPage() {
   const [hasMore, setHasMore] = useState(false)
   const [cursor, setCursor] = useState<string | null>(null)
 
-  const loadGames = useCallback(async (nextCursor?: string | null) => {
+  const loadGames = useCallback(async (nextCursor?: string | null, silent = false) => {
     const loadingMore = !!nextCursor
+    // Background refreshes (realtime / poll / tab-focus) run SILENTLY — they must not flip
+    // the full-page loading state. The games subscription is table-wide, so a game changing
+    // anywhere on the platform fires a refresh; if each one showed "Loading public games…",
+    // the page would blank constantly and the empty state would never get to render. Only
+    // the first load and "Load more" show a spinner.
     if (loadingMore) setLoadingMore(true)
-    else setLoading(true)
+    else if (!silent) setLoading(true)
     try {
       const params = new URLSearchParams({ limit: '20' })
       if (nextCursor) params.set('cursor', nextCursor)
@@ -32,16 +37,16 @@ export function BrowseGamesPage() {
       setHasMore(!!d.hasMore)
       setCursor(d.nextCursor ?? null)
     } catch {
-      // On an initial-load failure show the empty state; on a "load more" failure keep
-      // the current list + cursor so the user can retry rather than losing the button.
-      if (!loadingMore) {
+      // Only reset to the empty state on an initial (non-silent, non-paged) failure. A "load
+      // more" or silent-refresh failure keeps what's on screen rather than blanking it.
+      if (!loadingMore && !silent) {
         setGames([])
         setHasMore(false)
         setCursor(null)
       }
     } finally {
       if (loadingMore) setLoadingMore(false)
-      else setLoading(false)
+      else if (!silent) setLoading(false)
     }
   }, [])
 
@@ -55,16 +60,16 @@ export function BrowseGamesPage() {
     const channel = supabase
       .channel('public_games_browse')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, () => {
-        void loadGames()
+        void loadGames(null, true)
       })
       .subscribe()
 
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void loadGames()
+      if (document.visibilityState === 'visible') void loadGames(null, true)
     }
     document.addEventListener('visibilitychange', onVisible)
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') void loadGames()
+      if (document.visibilityState === 'visible') void loadGames(null, true)
     }, POLL_FALLBACK_MS)
 
     return () => {
@@ -96,9 +101,18 @@ export function BrowseGamesPage() {
           {loading ? (
             <p className="text-sm text-muted text-center py-12">Loading public games…</p>
           ) : games.length === 0 ? (
-            <div className="glass-card mx-auto max-w-md p-8 text-center space-y-1">
-              <p className="text-sm text-body font-semibold">No public games right now</p>
-              <p className="text-sm text-muted">Create a game and set it to Public to see it here.</p>
+            <div className="glass-card mx-auto max-w-md p-8 text-center space-y-3">
+              <div className="text-3xl">🎲</div>
+              <div className="space-y-1">
+                <p className="text-base text-body font-semibold">No public games right now</p>
+                <p className="text-sm text-muted">
+                  Nothing’s being played publicly yet. Start a game and set it to Public — it’ll show up here for anyone
+                  to find and join.
+                </p>
+              </div>
+              <Link href="/" className="btn-primary btn-fit mx-auto px-5 text-sm py-2">
+                Create a game
+              </Link>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
