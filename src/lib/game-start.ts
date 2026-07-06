@@ -5,6 +5,7 @@ import { initializeYahtzeeGame, YAHTZEE_MIN_PLAYERS } from '@/lib/yahtzee'
 import { initializeWhotGame, WHOT_MIN_PLAYERS } from '@/lib/whot'
 import { initializeCrazyEightsGame, CRAZY8_MIN_PLAYERS } from '@/lib/crazy-eights'
 import { initializeLudoGame, LUDO_MIN_PLAYERS, LUDO_MAX_PLAYERS } from '@/lib/ludo'
+import { initializeMahjongGame, MAHJONG_MIN_PLAYERS, MAHJONG_MAX_PLAYERS } from '@/lib/mahjong'
 import {
   initializeSnakeAndLadderGame,
   SNAKE_LADDER_MIN_PLAYERS,
@@ -65,6 +66,11 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
     minPlayers: LUDO_MIN_PLAYERS,
     maxPlayers: LUDO_MAX_PLAYERS,
     initialize: (admin, code, ids) => initializeLudoGame(admin, code, ids),
+  },
+  mahjong: {
+    minPlayers: MAHJONG_MIN_PLAYERS,
+    maxPlayers: MAHJONG_MAX_PLAYERS,
+    initialize: (admin, code, ids) => initializeMahjongGame(admin, code, ids),
   },
   snake_and_ladder: {
     minPlayers: SNAKE_LADDER_MIN_PLAYERS,

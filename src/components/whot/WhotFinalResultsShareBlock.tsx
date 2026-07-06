@@ -94,6 +94,7 @@ export function WhotFinalResultsShareBlock({
         )}
       </div>
       <HostGameFinishedActions
+        gameCode={game.id}
         playAgainButton={playAgainButton}
         shareButton={
           <ShareResults

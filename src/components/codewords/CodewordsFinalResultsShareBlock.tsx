@@ -105,6 +105,7 @@ export function CodewordsFinalResultsShareBlock({
       </div>
 
       <HostGameFinishedActions
+        gameCode={game.id}
         playAgainButton={playAgainButton}
         showCreateNewGame={showCreateNewGame}
         showBackHome={showBackHome}

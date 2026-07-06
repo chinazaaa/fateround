@@ -1,5 +1,4 @@
-import Link from 'next/link'
-import { FateRoundLogo } from '@/components/FateRoundLogo'
+import { SiteChrome } from '@/components/SiteChrome'
 import {
   UPDATE_CATEGORY_META,
   updatesByCategory,
@@ -36,14 +35,8 @@ function UpdateCard({
 
 export function UpdatesPage({ updates }: { updates: ProductUpdate[] }) {
   return (
-    <>
-      <header className="fixed top-0 inset-x-0 z-40 flex items-center px-4 py-3 pointer-events-none">
-        <Link href="/" className="pointer-events-auto">
-          <FateRoundLogo className="h-8 w-auto max-w-[9.5rem] sm:max-w-[11rem]" />
-        </Link>
-      </header>
-
-      <div className="page-wrap min-h-dvh px-4 pt-20 pb-16">
+    <SiteChrome>
+      <div className="px-4 pt-10 pb-16">
         <div className="relative mx-auto max-w-lg space-y-10">
           <div
             className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-[120%] h-64 opacity-30"
@@ -102,14 +95,8 @@ export function UpdatesPage({ updates }: { updates: ProductUpdate[] }) {
               })
             )}
           </div>
-
-          <p className="text-center">
-            <Link href="/" className="text-faint text-sm hover:text-[var(--foreground)] transition-colors">
-              ← Back home
-            </Link>
-          </p>
         </div>
       </div>
-    </>
+    </SiteChrome>
   )
 }

@@ -77,6 +77,7 @@ export function SnakeLadderFinalResultsShareBlock({
         )}
       </div>
       <HostGameFinishedActions
+        gameCode={game.id}
         playAgainButton={playAgainButton}
         shareButton={
           <ShareResults

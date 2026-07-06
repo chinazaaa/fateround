@@ -3,13 +3,14 @@
 import { MONOPOLY_COLOR_CLASSES } from '@/lib/monopoly'
 import type { MonopolyColorGroup } from '@/lib/monopoly-board'
 import { buildColorGroupStatuses, COLOR_SET_ORDER, type ColorGroupStatus } from '@/lib/monopoly-color-portfolio'
+import { themedSpaceName } from '@/components/monopoly/monopoly-themes'
 import type { Player } from '@/types'
 
 function colorBarClass(color: MonopolyColorGroup): string {
   return MONOPOLY_COLOR_CLASSES[color] ?? 'bg-neutral-500'
 }
 
-function ColorSetRow({ status }: { status: ColorGroupStatus }) {
+function ColorSetRow({ status, themeId }: { status: ColorGroupStatus; themeId?: string | null }) {
   const { group, label, owned, total, complete, missing } = status
   const inactive = owned === 0
 
@@ -43,7 +44,7 @@ function ColorSetRow({ status }: { status: ColorGroupStatus }) {
             {missing.map((m, i) => (
               <span key={m.name}>
                 {i > 0 ? ', ' : ''}
-                <span className="text-body">{m.name}</span>
+                <span className="text-body">{themedSpaceName(m.name, m.index, themeId)}</span>
                 {m.heldBy === 'other' && m.ownerName ? (
                   <span className="text-faint"> ({m.ownerName})</span>
                 ) : (
@@ -63,10 +64,12 @@ export function MonopolyColorPortfolio({
   propertyOwners,
   myPlayerId,
   players,
+  themeId,
 }: {
   propertyOwners: Record<string, string>
   myPlayerId: string
   players: Player[]
+  themeId?: string | null
 }) {
   const playerNames = new Map(players.map((p) => [p.id, p.name]))
   const statuses = buildColorGroupStatuses(propertyOwners, myPlayerId, playerNames)
@@ -86,12 +89,12 @@ export function MonopolyColorPortfolio({
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {streetSets.map((status) => (
-          <ColorSetRow key={status.group} status={status} />
+          <ColorSetRow key={status.group} status={status} themeId={themeId} />
         ))}
       </div>
       <div className="grid grid-cols-2 gap-2 pt-1">
         {specialSets.map((status) => (
-          <ColorSetRow key={status.group} status={status} />
+          <ColorSetRow key={status.group} status={status} themeId={themeId} />
         ))}
       </div>
     </div>

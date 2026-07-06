@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
+import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { generateGameCode } from '@/lib/utils'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
+
+// Permissive shape: catch a malformed/non-object body (400) without tightening the
+// handler's own field coercion.
+const roomJoinSchema = z.object({ memberCode: z.unknown().optional(), displayName: z.unknown().optional() })
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -17,7 +23,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     .maybeSingle()
   if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 })
 
-  const body = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, roomJoinSchema)
+  if (bodyError) return bodyError
   const admin = getSupabaseAdmin()
 
   // Returning member — verify by member code (secret credential; read via service role)

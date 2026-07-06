@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
+import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+
+// Permissive shape: catch a malformed/non-object body (400) without tightening the
+// handler's own field coercion.
+const roomMemberDeleteSchema = z.object({ creatorToken: z.unknown().optional() })
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ code: string; memberId: string }> }) {
   const { code, memberId } = await params
   const roomCode = code.toUpperCase()
-  const body = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, roomMemberDeleteSchema)
+  if (bodyError) return bodyError
   const creatorToken = String(body.creatorToken ?? '')
 
   if (!creatorToken) return NextResponse.json({ error: 'Creator token required' }, { status: 401 })

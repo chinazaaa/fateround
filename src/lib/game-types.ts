@@ -45,7 +45,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   smash_marry_kill: {
     id: 'smash_marry_kill',
     label: 'Smash Marry Kill',
-    tagline: 'Pick one to smash, one to marry, one to kill',
+    tagline: 'Smash, marry, or kill — one each',
     headerEmoji: '🔥💍💀',
     card: {
       accent: '#f43f5e',
@@ -89,7 +89,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   red_flag_green_flag: {
     id: 'red_flag_green_flag',
     label: 'Red Flag / Green Flag',
-    tagline: 'Two names — rate each person green or red on their own',
+    tagline: 'Rate each person green or red',
     headerEmoji: '💚🚩',
     card: {
       accent: '#22c55e',
@@ -131,7 +131,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   smash_or_pass: {
     id: 'smash_or_pass',
     label: 'Smash or Pass',
-    tagline: 'Two names — smash or pass on each person separately',
+    tagline: 'Smash or pass on each person',
     headerEmoji: '🔥👎',
     card: {
       accent: '#fb923c',
@@ -173,7 +173,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   parent_approval: {
     id: 'parent_approval',
     label: 'Date My Kid',
-    tagline: 'Would you let your son or daughter date or marry this person?',
+    tagline: 'Would you let your kid date them?',
     headerEmoji: '👨‍👩‍👧💍',
     card: {
       accent: '#ec4899',
@@ -215,7 +215,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   never_have_i_ever: {
     id: 'never_have_i_ever',
     label: 'Never Have I Ever',
-    tagline: 'Confess if you have — see who else has too',
+    tagline: 'Confess — see who else has too',
     headerEmoji: '🙈🍷',
     card: {
       accent: '#e879f9',
@@ -257,7 +257,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   pick_a_number: {
     id: 'pick_a_number',
     label: 'Pick a Number',
-    tagline: 'Pick a number — answer the hidden question it reveals',
+    tagline: 'Pick a number, answer its hidden question',
     headerEmoji: '🔢❓',
     card: {
       accent: '#8b5cf6',
@@ -299,7 +299,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   would_you_rather: {
     id: 'would_you_rather',
     label: 'Would You Rather',
-    tagline: 'Pick between two options — votes stay anonymous',
+    tagline: 'Pick between two — votes stay anonymous',
     headerEmoji: '🤔⚖️',
     card: {
       accent: '#a78bfa',
@@ -341,7 +341,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   this_or_that: {
     id: 'this_or_that',
     label: 'This or That',
-    tagline: 'Pick between two options — upload your own prompts',
+    tagline: 'Two options — bring your own prompts',
     headerEmoji: '↔️🎯',
     card: {
       accent: '#f472b6',
@@ -384,7 +384,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   most_likely_to: {
     id: 'most_likely_to',
     label: 'Most Likely To',
-    tagline: 'Vote for the friend who fits each prompt — anonymous',
+    tagline: 'Vote the friend who fits — anonymous',
     headerEmoji: '🎯👥',
     card: {
       accent: '#fbbf24',
@@ -426,7 +426,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   who_said_this: {
     id: 'who_said_this',
     label: 'Who Said This',
-    tagline: 'Submit multiple quotes in the lobby — everyone guesses who said each one',
+    tagline: 'Guess who said each quote',
     headerEmoji: '💬🕵️',
     card: {
       accent: '#14b8a6',
@@ -468,7 +468,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   hot_seat: {
     id: 'hot_seat',
     label: 'Hot Seat',
-    tagline: 'Take turns in the spotlight — everyone says one thing about you',
+    tagline: 'One in the spotlight, everyone weighs in',
     headerEmoji: '🪑🔥',
     card: {
       accent: '#f59e0b',
@@ -510,7 +510,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   custom: {
     id: 'custom',
     label: 'Custom Game',
-    tagline: 'Create your own voting categories',
+    tagline: 'Make your own voting categories',
     headerEmoji: '✏️',
     card: {
       accent: '#a855f7',
@@ -552,7 +552,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   anonymous_messages: {
     id: 'anonymous_messages',
     label: 'Anonymous Room',
-    tagline: 'Drop anonymous messages — no names, just vibes',
+    tagline: 'Drop anonymous messages — just vibes',
     headerEmoji: '🎭💬',
     card: {
       accent: '#8b5cf6',
@@ -594,7 +594,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   secret_message: {
     id: 'secret_message',
     label: 'Secret Message',
-    tagline: 'Share a link — only you see what people send',
+    tagline: 'Share a link — only you see replies',
     headerEmoji: '💌✨',
     card: {
       accent: '#ec4899',
@@ -636,7 +636,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   bingo: {
     id: 'bingo',
     label: 'Bingo',
-    tagline: 'Classic number bingo — host calls, players mark their cards',
+    tagline: 'Host calls, players mark their cards',
     headerEmoji: '🎱🔢',
     card: {
       accent: '#3b82f6',
@@ -679,7 +679,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   codewords: {
     id: 'codewords',
     label: 'Codewords',
-    tagline: 'Two teams — spymasters give clues, operatives guess the words',
+    tagline: 'Spymasters give clues, teams guess words',
     headerEmoji: '🕵️🔤',
     card: {
       accent: '#dc2626',
@@ -722,7 +722,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   trivia: {
     id: 'trivia',
     label: 'Trivia',
-    tagline: 'Fast-finger quiz — tech or general knowledge, speed wins',
+    tagline: 'Fast-finger trivia quiz — speed wins',
     headerEmoji: '🧠⚡',
     card: {
       accent: '#f43f5e',
@@ -765,7 +765,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   two_truths: {
     id: 'two_truths',
     label: 'Two Truths & a Lie',
-    tagline: 'Submit two truths and a lie — can everyone spot the fib?',
+    tagline: 'Two truths and a lie — spot the fib',
     headerEmoji: '🎭🤥',
     card: {
       accent: '#8b5cf6',
@@ -807,12 +807,12 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   monopoly: {
     id: 'monopoly',
     label: 'Monopoly',
-    tagline: 'Classic board game — roll, buy properties, and bankrupt your friends',
+    tagline: 'Buy, build, bankrupt your friends',
     headerEmoji: '🎲🏠',
     card: {
       accent: '#16a34a',
       accentSoft: 'rgba(22, 163, 74, 0.15)',
-      emoji: '🎲',
+      emoji: '🎩',
       players: '2–6 players',
       vibe: 'Board game night',
       featured: true,
@@ -850,7 +850,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   yahtzee: {
     id: 'yahtzee',
     label: 'Yahtzee',
-    tagline: 'Roll, hold, and score your way to a full board of combos',
+    tagline: 'Roll, hold, and score the combos',
     headerEmoji: '🎲🧠',
     card: {
       accent: '#f59e0b',
@@ -893,7 +893,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   whot: {
     id: 'whot',
     label: 'Whot',
-    tagline: 'Nigerian card classic — match shape or number, stack Pick 2 & Pick 3',
+    tagline: 'Match shape or number to win',
     headerEmoji: '🃏🇳🇬',
     card: {
       accent: '#059669',
@@ -936,7 +936,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   crazy_eights: {
     id: 'crazy_eights',
     label: 'Crazy Eights',
-    tagline: 'The worldwide card classic — match rank or suit, 8s are wild',
+    tagline: 'Match rank or suit — 8s are wild',
     headerEmoji: '🎴8️⃣',
     card: {
       accent: '#7c3aed',
@@ -979,12 +979,12 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   ludo: {
     id: 'ludo',
     label: 'Ludo',
-    tagline: 'Roll two dice, race your pieces home — captures, blockades & bonus rolls',
+    tagline: 'Roll, race home, capture rivals',
     headerEmoji: '🎲🔴',
     card: {
       accent: '#dc2626',
       accentSoft: 'rgba(220, 38, 38, 0.12)',
-      emoji: '🎲',
+      emoji: '🔴',
       players: '2–4 players',
       vibe: 'Board game classic',
       featured: true,
@@ -1019,10 +1019,53 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  mahjong: {
+    id: 'mahjong',
+    label: 'Mahjong',
+    tagline: 'Four-player Mahjong — claims, kongs, riichi',
+    headerEmoji: '🀄',
+    card: {
+      accent: '#0f766e',
+      accentSoft: 'rgba(15, 118, 110, 0.13)',
+      emoji: '🀄',
+      players: '4 players',
+      vibe: 'Strategic tile play',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🀄',
+        label: 'Hand',
+        color: '#14b8a6',
+        leaderboardLabel: 'Winning hands',
+        activeClass: 'bg-teal-500/20 text-teal-100 border-teal-400',
+        borderClass: 'border-teal-500/50 bg-teal-500/10',
+        textColor: '#5eead4',
+      },
+      marry: {
+        emoji: '🎴',
+        label: 'Calls',
+        color: '#f59e0b',
+        leaderboardLabel: 'Calls',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
   snake_and_ladder: {
     id: 'snake_and_ladder',
     label: 'Snake & Ladder',
-    tagline: 'Roll the die, climb the ladders, dodge the snakes — first to 100 wins',
+    tagline: 'Climb ladders, dodge snakes, reach 100',
     headerEmoji: '🐍🪜',
     card: {
       accent: '#16a34a',
@@ -1065,7 +1108,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   tic_tac_toe: {
     id: 'tic_tac_toe',
     label: 'Tic-Tac-Toe',
-    tagline: 'Ultimate Tic-Tac-Toe — nine boards in one, win three in a row to win it all',
+    tagline: 'Nine boards in one — win three to win',
     headerEmoji: '⭕❌',
     card: {
       accent: '#0ea5e9',
@@ -1108,7 +1151,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   i_call_on: {
     id: 'i_call_on',
     label: 'I Call On',
-    tagline: 'Call a letter — fill the categories — score unique answers',
+    tagline: 'Call a letter, fill the categories',
     headerEmoji: '🔤🌍',
     card: {
       accent: '#0ea5e9',
@@ -1151,7 +1194,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   sudoku: {
     id: 'sudoku',
     label: 'Sudoku',
-    tagline: 'Race to claim cells — first to solve correctly scores big',
+    tagline: 'Race to claim cells — first to solve wins',
     headerEmoji: '🔢🧩',
     card: {
       accent: '#8b5cf6',
@@ -1194,7 +1237,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   word_hunt: {
     id: 'word_hunt',
     label: 'Word Hunt',
-    tagline: 'Find words on the letter grid before time runs out',
+    tagline: 'Find words in the grid before time runs out',
     headerEmoji: '🔤⏱️',
     card: {
       accent: '#22c55e',
@@ -1237,7 +1280,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   chess: {
     id: 'chess',
     label: 'Chess',
-    tagline: 'Classic chess, head-to-head — checkmate your friend to win',
+    tagline: 'Classic chess — checkmate to win',
     headerEmoji: '♚♛',
     card: {
       accent: '#6366f1',
@@ -1280,7 +1323,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   checkers: {
     id: 'checkers',
     label: 'Checkers',
-    tagline: 'Classic draughts, head-to-head — capture all your friend’s pieces to win',
+    tagline: 'Classic draughts — capture all pieces to win',
     headerEmoji: '⛀⛂',
     card: {
       accent: '#dc2626',
@@ -1323,7 +1366,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   describe_it: {
     id: 'describe_it',
     label: 'Text Charades',
-    tagline: 'Teams race the clock — describe the word, teammates guess it',
+    tagline: 'Describe the word, teammates guess',
     headerEmoji: '🗣️💬',
     card: {
       accent: '#14b8a6',
@@ -1366,7 +1409,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   scrabble: {
     id: 'scrabble',
     label: 'Scrabble',
-    tagline: 'Spell words on the board, rack up points, outscore your friends',
+    tagline: 'Spell words, rack up points, outscore all',
     headerEmoji: '🔠',
     card: {
       accent: '#10b981',
@@ -1443,6 +1486,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'yahtzee',
   'whot',
   'ludo',
+  'mahjong',
   'i_call_on',
   'sudoku',
   'tic_tac_toe',
@@ -1464,6 +1508,7 @@ const PINNED_GAME_TYPES: GameType[] = [
   'trivia',
   'whot',
   'ludo',
+  'mahjong',
   'snake_and_ladder',
   'tic_tac_toe',
   'sudoku',
@@ -1507,6 +1552,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'yahtzee') return 'yahtzee'
   if (raw === 'whot') return 'whot'
   if (raw === 'ludo') return 'ludo'
+  if (raw === 'mahjong') return 'mahjong'
   if (raw === 'i_call_on') return 'i_call_on'
   if (raw === 'sudoku') return 'sudoku'
   if (raw === 'tic_tac_toe') return 'tic_tac_toe'
@@ -1575,6 +1621,8 @@ export function gameHowItWorks(
       return 'Players join with their name. Match the top card by shape or number — WHOT lets you call the next match. Pick 2 and Pick 3 stacks are separate. First to empty their hand wins — or lowest hand total when the game clock runs out.'
     case 'ludo':
       return 'Players join with their name. Roll two dice each turn and use each die separately — a 6 brings pieces out; doubles earn another roll after both dice are played. Capture opponents, block with pairs — first to finish all four pieces wins!'
+    case 'mahjong':
+      return 'Four players join with their name. Draw and discard tiles, call Chow/Pung/Kong/Ron when available, and build a complete winning hand. Hosts can choose Simple Mahjong for learners, or Hong Kong, Riichi, and MCR rules for advanced tables.'
     case 'snake_and_ladder':
       return 'Players join with their name — 2 to 6 play. Take turns rolling one die and racing up the 1–100 board. Land on a ladder to climb, a snake to slide down. Roll a 6 to go again. You must land on 100 exactly to win!'
     case 'tic_tac_toe':
@@ -1821,6 +1869,7 @@ export function isNameOnlyPlayerJoin(gameType: GameType | string | undefined): b
     type === 'whot' ||
     type === 'crazy_eights' ||
     type === 'ludo' ||
+    type === 'mahjong' ||
     type === 'i_call_on' ||
     type === 'sudoku' ||
     type === 'tic_tac_toe' ||
@@ -1922,6 +1971,10 @@ export function isCrazyEightsGame(gameType: GameType | string | undefined): bool
 
 export function isLudoGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'ludo'
+}
+
+export function isMahjongGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'mahjong'
 }
 
 export function isTicTacToeGame(gameType: GameType | string | undefined): boolean {

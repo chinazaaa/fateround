@@ -15,8 +15,8 @@ import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostBoardGameLobbyPanel } from '@/components/host-lobby/HostBoardGameLobbyPanel'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
-import { gameTypeConfig } from '@/lib/game-types'
 import { formatRentMessageForPlayer } from '@/lib/monopoly-rent-messages'
+import { formatThemedText } from '@/components/monopoly/monopoly-themes'
 import {
   buildMonopolyStandings,
   currentPlayerId,
@@ -30,7 +30,6 @@ import {
 } from '@/lib/monopoly'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
-import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -145,10 +144,50 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
   // Clear stale host-as-player state if the host's own row is removed elsewhere.
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
-  const changeHostMode = (mode: MonopolyHostMode) => {
+  const changeHostMode = async (mode: MonopolyHostMode) => {
     if (game?.status !== 'waiting') return
+    const prev = hostMode
     setHostMode(mode)
     setMonopolyHostMode(gameCode, mode)
+    // Switching to "Host only" while holding a seat → give up the seat so the host
+    // drops out of the players list.
+    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
+      try {
+        const res = await fetch('/api/players', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error ?? 'Failed to leave seat')
+        }
+        handlePlayerRemoved(hostPlayerId)
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
+      }
+    }
+  }
+
+  const renameHost = async (name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed || !hostPlayerId) return
+    try {
+      const res = await fetch('/api/players', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
+      setHostPlayerName(data.playerName)
+      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
+      await load()
+      success('Name updated!')
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to update name')
+    }
   }
 
   const hostJoinGame = async () => {
@@ -249,8 +288,6 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
     }
   }
 
-  const cfg = gameTypeConfig('monopoly')
-  const joinUrl = `${appOrigin()}/game/${gameCode}`
   const canStart = players.filter((p) => p.spectator !== true).length >= MONOPOLY_MIN_PLAYERS
   const turnPlayerId = board ? currentPlayerId(board) : null
   const turnPlayer = players.find((p) => p.id === turnPlayerId)
@@ -309,6 +346,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
           acting={hostActing}
           postAction={postHostAction}
           colorBarClass={colorBarClass}
+          themeId={game?.theme}
         />
       ) : (
         <div className="glass-card p-8 text-center text-sm text-muted">Loading board…</div>
@@ -333,7 +371,11 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
         const manageStatus = board.last_rent_event
           ? formatRentMessageForPlayer(board.last_rent_event, hostPlayerId, players)
           : board.status_message
-        return manageStatus ? <p className="text-sm text-muted text-center leading-relaxed">{manageStatus}</p> : null
+        return manageStatus ? (
+          <p className="text-sm text-muted text-center leading-relaxed">
+            {formatThemedText(manageStatus, game?.theme)}
+          </p>
+        ) : null
       })()}
       {(() => {
         const hostOwners = parsePropertyOwners(board.property_owners)
@@ -350,6 +392,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
             propertyBuildings={board.property_buildings}
             mortgagedProperties={board.mortgaged_properties}
             lastDiceTotal={board.last_dice?.total ?? 2}
+            themeId={game?.theme}
             center={
               <div className="flex flex-col items-center justify-center h-full gap-1">
                 <MonopolyDiceRoll dice={board.last_dice} />
@@ -383,6 +426,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
             onJoinNameChange={setHostJoinName}
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
+            onEditName={renameHost}
             spectatorHint="Spectate from the Watch tab"
             playingNote={
               <p className="text-sm text-muted">
@@ -431,6 +475,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
                   players={players}
                   currentPlayerId={turnPlayerId}
                   propertyOwners={board.property_owners}
+                  themeId={game?.theme}
                 />
               )}
             </>
@@ -490,6 +535,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
             board={board}
             winnerName={finishedWinnerName}
             highlightPlayerId={hostPlayerId}
+            themeId={game?.theme}
             playAgainButton={
               <button type="button" onClick={playAgain} disabled={playingAgain} className="btn-primary w-full py-3">
                 {playingAgain ? 'Resetting…' : 'Play again'}

@@ -36,6 +36,7 @@ export function YahtzeeFinalResultsShareBlock({
         <YahtzeeLeaderboard rows={scores} players={players} highlightPlayerId={highlightPlayerId} />
       </div>
       <HostGameFinishedActions
+        gameCode={game.id}
         playAgainButton={playAgainButton}
         shareButton={
           <ShareResults

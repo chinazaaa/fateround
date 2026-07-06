@@ -2,20 +2,20 @@
 
 import { Chip } from '@/components/ui/PageShell'
 
-export type HostLobbyOption = {
-  value: number
+export type HostLobbyOption<T extends number | string = number> = {
+  value: T
   label: string
 }
 
-export function HostLobbyOptionChips({
+export function HostLobbyOptionChips<T extends number | string = number>({
   value,
   options,
   onChange,
   disabled,
 }: {
-  value: number
-  options: HostLobbyOption[]
-  onChange: (value: number) => void
+  value: T
+  options: HostLobbyOption<T>[]
+  onChange: (value: T) => void
   disabled?: boolean
 }) {
   return (

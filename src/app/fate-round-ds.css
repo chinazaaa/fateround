@@ -88,7 +88,7 @@
   /* Fonts — mapped to the next/font variables declared in layout.tsx */
   --font-display: var(--font-fr-display), 'Instrument Sans', system-ui, sans-serif;
   --font-sans:    var(--font-fr-body), system-ui, -apple-system, sans-serif;
-  --font-mono:    var(--font-fr-mono), ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-mono:    var(--font-fr-mono), ui-monospace, 'SF Mono', 'Menlo', monospace;
 
   --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700; --fw-black: 800;
 
@@ -232,10 +232,27 @@
 .fr-input:disabled { opacity: 0.55; cursor: not-allowed; background: var(--surface-sunken); }
 .fr-input--code {
   text-align: center; font-family: var(--font-mono); font-weight: var(--fw-bold);
-  font-size: var(--text-2xl); letter-spacing: 0.28em; text-indent: 0.28em; text-transform: uppercase;
+  font-size: clamp(1.125rem, 5.5vw, var(--text-2xl)); letter-spacing: clamp(0.12em, 1.2vw, 0.28em);
+  text-indent: clamp(0.12em, 1.2vw, 0.28em); text-transform: uppercase;
   padding: 0.75rem 0.5rem;
 }
-.fr-input--code::placeholder { letter-spacing: 0.18em; }
+.fr-input--code::placeholder { letter-spacing: clamp(0.06em, 0.8vw, 0.18em); }
+
+/* Unified code field: the code input with an inline go submit tucked into the right edge.
+   The button is a muted ghost until a valid code is entered, then fills primary. */
+.fr-code-field { position: relative; }
+.fr-code-field__input { width: 100%; padding-right: 3.25rem; }
+.fr-code-go {
+  position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.5rem; height: 2.5rem; border: 0; border-radius: var(--radius-full);
+  background: var(--surface-sunken); color: var(--text-faint); cursor: not-allowed;
+  transition: background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.fr-code-go:not(:disabled) { background: var(--primary); color: var(--primary-contrast); cursor: pointer; box-shadow: var(--shadow-sm); }
+.fr-code-go:not(:disabled):hover { background: var(--primary-strong); transform: translateY(-50%) scale(1.06); }
+.fr-code-go:not(:disabled):active { transform: translateY(-50%) scale(0.95); }
+.fr-code-go:not(:disabled):focus-visible { outline: none; box-shadow: var(--focus-ring), var(--shadow-sm); }
 
 /* Card */
 .fr-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: var(--space-5); }
@@ -314,6 +331,7 @@
 /* Game-type card — signature tile; each game claims --accent */
 .fr-gamecard {
   --accent: var(--primary);
+
   position: relative; display: flex; flex-direction: column; gap: var(--space-3); text-align: left;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm); padding: var(--space-5); cursor: pointer; overflow: hidden;
@@ -335,13 +353,14 @@
 .fr-gamecard__title { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: var(--text-lg); letter-spacing: var(--tracking-tight); margin: 0; color: var(--text); }
 .fr-gamecard:hover .fr-gamecard__title { color: var(--accent); }
 .fr-gamecard__tagline { font-size: var(--text-sm); color: var(--text-muted); margin: 0; line-height: var(--leading-snug); }
-.fr-gamecard__meta { display: flex; align-items: center; gap: var(--space-2); margin-top: auto; }
+.fr-gamecard__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0.25rem var(--space-2); margin-top: auto; }
 .fr-gamecard__players {
+  flex-shrink: 0; white-space: nowrap; line-height: 1.4;
   font-size: var(--text-2xs); font-weight: var(--fw-semibold); border-radius: var(--radius-full);
   padding: 0.1875rem 0.5rem; background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: color-mix(in srgb, var(--accent) 70%, var(--text));
 }
-.fr-gamecard__vibe { font-size: var(--text-2xs); color: var(--text-faint); }
+.fr-gamecard__vibe { flex-shrink: 0; white-space: nowrap; font-size: var(--text-2xs); color: var(--text-faint); }
 
 /* ════════════════════════════════════════════════════════════════════
    Site chrome — header, footer, section scaffolding
@@ -350,6 +369,16 @@
 
 /* Header — spans full width: logo flush-left, nav flush-right */
 .site-header { display: flex; align-items: center; justify-content: space-between; padding: 16px clamp(18px, 4vw, 40px); }
+
+/* Back bar — sits below the header on every page except home */
+.fr-backbar { padding: 4px clamp(18px, 4vw, 40px) 0; }
+.fr-backbar__link {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 4px;
+  background: transparent; border: 0; cursor: pointer;
+  font-size: var(--text-sm); font-weight: var(--fw-semibold); color: var(--text-muted);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.fr-backbar__link:hover { color: var(--text); }
 .site-nav { display: flex; align-items: center; gap: 24px; }
 .site-nav a { color: var(--text-muted); text-decoration: none; font-size: 14px; font-weight: 500; }
 .site-nav a:hover { color: var(--text); }

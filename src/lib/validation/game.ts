@@ -18,6 +18,38 @@ import {
   triviaCategoryEnum,
 } from './shared'
 
+const mahjongRulesetEnum = z.enum(['fate_round', 'hong_kong', 'riichi', 'mcr'])
+const mahjongRuleOptionsSchema = z
+  .object({
+    matchLength: z.enum(['east', 'hanchan']).optional(),
+    startingScore: z.coerce.number().int().min(0).max(100000).optional(),
+    returnScore: z.coerce.number().int().min(0).max(100000).optional(),
+    bankruptcyEndsMatch: z.boolean().optional(),
+    agariYame: z.boolean().optional(),
+    okaEnabled: z.boolean().optional(),
+    uma: z
+      .tuple([
+        z.coerce.number().int().min(-100000).max(100000),
+        z.coerce.number().int().min(-100000).max(100000),
+        z.coerce.number().int().min(-100000).max(100000),
+        z.coerce.number().int().min(-100000).max(100000),
+      ])
+      .optional(),
+    doubleYakuman: z.boolean().optional(),
+    kazoeYakuman: z.boolean().optional(),
+    kiriageMangan: z.boolean().optional(),
+    openTanyao: z.boolean().optional(),
+    redFives: z.boolean().optional(),
+    abortiveDraws: z.boolean().optional(),
+    nagashiMangan: z.boolean().optional(),
+    renhou: z.enum(['off', 'mangan', 'yakuman']).optional(),
+    chomboPenalty: z.enum(['mangan', 'none']).optional(),
+    hongKongMinimumFan: z.coerce.number().int().min(0).max(13).optional(),
+    hongKongLimitFan: z.coerce.number().int().min(3).max(13).optional(),
+    mcrMinimumPoints: z.coerce.number().int().min(0).max(88).optional(),
+  })
+  .optional()
+
 // ---------------------------------------------------------------------------
 // Game creation (POST /api/games)
 // ---------------------------------------------------------------------------
@@ -80,6 +112,8 @@ export const createGameSchema = z.object({
   crazy8_jokers: z.boolean().optional(),
   crazy8_pick2_stacking: z.boolean().optional(),
   ludo_variant: z.enum(['modern', 'traditional']).optional(),
+  mahjong_ruleset: mahjongRulesetEnum.optional(),
+  mahjong_rule_options: mahjongRuleOptionsSchema,
   scrabble_dictionary_id: z.enum(SCRABBLE_DICTIONARY_OPTIONS).optional(),
   scrabble_clock_mode: z.enum(['standard', 'chess']).optional(),
   scrabble_clock_seconds: z.coerce.number().optional(),
@@ -114,6 +148,7 @@ export type CreateGameInput = z.infer<typeof createGameSchema>
 
 export const updateGameSchema = z.object({
   hostToken: hostTokenString(),
+  is_public: z.boolean().optional(),
   rounds_count: z.coerce.number().int().min(1, 'rounds_count is required').optional(),
   timer_seconds: z.coerce.number().optional(),
   operative_timer_seconds: z.coerce.number().optional(),
@@ -199,6 +234,7 @@ export type BingoSettingsInput = z.infer<typeof bingoSettingsSchema>
 export const boardGameLobbySettingsSchema = z.object({
   gameId: gameCodeString(),
   hostToken: hostTokenString(),
+  is_public: z.boolean().optional(),
   max_players: z.coerce.number().int().min(1).max(100).optional(),
   timer_seconds: z.coerce.number().optional(),
   game_duration_seconds: z.coerce.number().optional(),
@@ -210,6 +246,8 @@ export const boardGameLobbySettingsSchema = z.object({
   crazy8_jokers: z.boolean().optional(),
   crazy8_pick2_stacking: z.boolean().optional(),
   ludo_variant: z.enum(['modern', 'traditional']).optional(),
+  mahjong_ruleset: mahjongRulesetEnum.optional(),
+  mahjong_rule_options: mahjongRuleOptionsSchema,
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>
@@ -221,6 +259,14 @@ export const whotAdmitSchema = z.object({
 })
 
 export type WhotAdmitInput = z.infer<typeof whotAdmitSchema>
+
+// Host admits a spectator into an active Crazy Eights game (POST /api/games/[code]/crazy-eights-admit).
+export const crazyEightsAdmitSchema = z.object({
+  hostToken: hostTokenString(),
+  playerId: uuidString('playerId'),
+})
+
+export type CrazyEightsAdmitInput = z.infer<typeof crazyEightsAdmitSchema>
 
 // ---------------------------------------------------------------------------
 // Admin game player limits

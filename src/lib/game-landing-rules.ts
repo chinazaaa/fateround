@@ -767,6 +767,52 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  mahjong: [
+    {
+      title: 'Objective',
+      points: [
+        'Be the first player to complete a legal Mahjong hand before the wall runs out.',
+        'A standard winning hand is four melds plus one pair. Seven pairs and thirteen orphans also win.',
+        'If nobody wins before the wall is empty, the game ends in a wall draw.',
+      ],
+    },
+    {
+      title: 'Setup',
+      points: [
+        'Exactly 4 players join the room. Seats are East, South, West, and North.',
+        'Simple Mahjong uses 136 tiles: three suits numbered 1-9 plus wind and dragon honors. Flowers are not included.',
+        'Hosts can switch to Hong Kong, Riichi, or MCR rules before starting when the group wants a stricter ruleset.',
+        'East starts with 14 tiles and discards first. The other players start with 13 tiles.',
+        'Optional per-turn timers keep draws, discards, and calls moving.',
+      ],
+    },
+    {
+      title: 'Turn flow',
+      points: [
+        'On your turn, draw one tile from the wall, then discard one tile from your hand.',
+        'After a discard, eligible players may call Mahjong, Pung, Kong, or Chow.',
+        'If nobody claims the discard, play continues to the next player.',
+      ],
+    },
+    {
+      title: 'Calls',
+      points: [
+        'Mahjong: claim the winning tile from any player, or declare after your own draw if your hand is complete.',
+        'Pung: claim a discard when you have two matching tiles in hand.',
+        'Kong: claim a discard with three matching tiles, declare a concealed Kong with four matching tiles, or upgrade an exposed Pung when you draw the fourth tile.',
+        'Chow: claim a suited sequence only from the player immediately before you in turn order.',
+        'Kongs draw a replacement tile before the player discards.',
+      ],
+    },
+    {
+      title: 'Scoring',
+      points: [
+        'Winning hands show a fan summary with pattern, bonuses, total points, and point deltas.',
+        'The in-app scoring model rewards self draw, concealed hands, Pungs/Kongs, dragons, winds, flushes, all simples, seven pairs, and thirteen orphans.',
+      ],
+    },
+  ],
+
   i_call_on: [
     {
       title: 'Objective',

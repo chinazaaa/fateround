@@ -156,9 +156,49 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
-  const changeHostMode = (mode: ChessHostMode) => {
+  const changeHostMode = async (mode: ChessHostMode) => {
+    const prev = hostMode
     setHostModeState(mode)
     setHostMode(gameCode, mode)
+    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
+      try {
+        const res = await fetch('/api/players', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error ?? 'Failed to leave seat')
+        }
+        handlePlayerRemoved(hostPlayerId)
+        await load()
+      } catch (err) {
+        setHostModeState(prev)
+        setHostMode(gameCode, prev)
+        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
+      }
+    }
+  }
+
+  const renameHost = async (name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed || !hostPlayerId) return
+    try {
+      const res = await fetch('/api/players', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
+      setHostPlayerName(data.playerName)
+      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
+      await load()
+      success('Name updated!')
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to update name')
+    }
   }
 
   const hostJoinGame = async () => {
@@ -387,6 +427,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
             joinName={hostJoinName}
             onJoinNameChange={setHostJoinName}
             onJoin={() => void hostJoinGame()}
+            onEditName={renameHost}
             joining={hostJoining}
             spectatorHint="Spectate from the Watch tab"
           />
@@ -397,6 +438,8 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
           <HostLobbyWaitingFooter
             gameCode={gameCode}
             hostToken={hostToken}
+            game={game ?? undefined}
+            onGameUpdate={setGame}
             onStart={startGame}
             onEnded={load}
             canStart={canStart}

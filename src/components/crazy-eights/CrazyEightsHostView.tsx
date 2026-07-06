@@ -17,6 +17,7 @@ import {
   parseCrazyEightsRules,
   setCrazyEightsHostMode,
   CRAZY8_MIN_PLAYERS,
+  CRAZY8_DEFAULT_MAX_PLAYERS,
   type CrazyEightsHostMode,
 } from '@/lib/crazy-eights'
 import { supabase } from '@/lib/supabase'
@@ -25,6 +26,8 @@ import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { useHostAdmitPlayer } from '@/hooks/useHostAdmitPlayer'
+import { lobbyMaxPlayersFromGame, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player, CrazyEightsPlayerHand, CrazyEightsSession, CrazyEightsCalledSuit } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -68,9 +71,24 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
   const [hostJoining, setHostJoining] = useState(false)
   const [hostActing, setHostActing] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
+  const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
 
   useApplyGameTheme(game?.theme)
   useScrollHostViewToTop({ gameStatus: game?.status, tab })
+
+  // Effective seat cap, clamped against game_player_limits — mirrors the server's
+  // lobbyMaxPlayersFromGame so the "Deal in" gate agrees with what admitCrazyEightsPlayer accepts.
+  useEffect(() => {
+    void fetch('/api/game-limits')
+      .then((res) => res.json())
+      .then((data: { limits?: GamePlayerLimitsMap }) => {
+        if (data.limits) setLimits(data.limits)
+      })
+      .catch(() => {})
+  }, [])
+  const maxPlayers = limits
+    ? lobbyMaxPlayersFromGame('crazy_eights', game ?? {}, limits)
+    : (game?.max_players ?? CRAZY8_DEFAULT_MAX_PLAYERS)
 
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes, sessionRes, handsRes] = await Promise.all([
@@ -130,13 +148,56 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
   )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
+  const { admitPlayer, admittingPlayerId } = useHostAdmitPlayer(gameCode, hostToken, load, 'crazy-eights-admit')
 
   // Clear stale host-as-player state if the host's own row is removed elsewhere.
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
-  const changeHostMode = (mode: CrazyEightsHostMode) => {
+  const changeHostMode = async (mode: CrazyEightsHostMode) => {
+    const prev = hostMode
     setHostMode(mode)
     setCrazyEightsHostMode(gameCode, mode)
+    // Switching to "Host only" while holding a seat → give up the seat so the host
+    // drops out of the players list.
+    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
+      try {
+        const res = await fetch('/api/players', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error ?? 'Failed to leave seat')
+        }
+        handlePlayerRemoved(hostPlayerId)
+        await load()
+      } catch (err) {
+        setHostMode(prev)
+        setCrazyEightsHostMode(gameCode, prev)
+        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
+      }
+    }
+  }
+
+  const renameHost = async (name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed || !hostPlayerId) return
+    try {
+      const res = await fetch('/api/players', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
+      setHostPlayerName(data.playerName)
+      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
+      await load()
+      success('Name updated!')
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to update name')
+    }
   }
 
   const hostJoinGame = async () => {
@@ -358,6 +419,16 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
       highlightPlayerId={hostPlayerId}
       removingPlayerId={removingPlayerId}
       onRemovePlayer={removePlayer}
+      onAdmitPlayer={
+        game.status === 'active' && (session?.turn_order?.length ?? 0) < maxPlayers ? admitPlayer : undefined
+      }
+      admittingPlayerId={admittingPlayerId}
+      canAdmitPlayer={(id) =>
+        !(session?.turn_order ?? []).includes(id) && !players.find((p) => p.id === id)?.is_eliminated
+      }
+      playersLabel={
+        game.status === 'active' ? `Players · ${session?.turn_order?.length ?? 0}/${maxPlayers}` : undefined
+      }
       gameType="crazy_eights"
       top={
         game.status === 'waiting' ? (
@@ -370,6 +441,7 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
             onJoinNameChange={setHostJoinName}
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
+            onEditName={renameHost}
             spectatorHint="Spectate from the Watch tab"
           />
         ) : undefined

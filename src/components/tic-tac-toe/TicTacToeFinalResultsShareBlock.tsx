@@ -119,6 +119,7 @@ export function TicTacToeFinalResultsShareBlock({
         )}
       </div>
       <HostGameFinishedActions
+        gameCode={game.id}
         playAgainButton={playAgainButton}
         shareButton={
           <ShareResults

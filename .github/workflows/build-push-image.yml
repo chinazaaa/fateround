@@ -59,6 +59,9 @@ jobs:
                 # The matching VAPID_PRIVATE_KEY/VAPID_SUBJECT are runtime secrets in SSM
                 # (set via terraform.prod.tfvars). Separate keypair from dev.
                 echo "NEXT_PUBLIC_VAPID_PUBLIC_KEY=BGD8QCzRv9Fbr3VYr88njaxGYArwYwOpGM0h8WXxBrAY8Y0jhdDnjkVYMGdVuvfzluhWAXTjGPA9wwNgz2EPeDU"
+                # Spotify OAuth client id — public (PKCE); one Spotify app serves both envs.
+                # The matching SPOTIFY_CLIENT_SECRET is a runtime secret in SSM (terraform.prod.tfvars).
+                echo "NEXT_PUBLIC_SPOTIFY_CLIENT_ID=5bb672f70a7c4d6cba8b851104df2c76"
               } >> "$GITHUB_ENV"
               ;;
             dev)
@@ -74,6 +77,9 @@ jobs:
                 # The matching VAPID_PRIVATE_KEY/VAPID_SUBJECT are runtime secrets in SSM
                 # (set via terraform.dev.tfvars). Separate keypair from prod.
                 echo "NEXT_PUBLIC_VAPID_PUBLIC_KEY=BCLisMgtPkWVhlIvgZz7pp4SNoWhWiuWWlZopi7sNhql56La0LR5gH3I5wCaSEZC5cfUTQiQPHTD7Huzdo_4dXw"
+                # Spotify OAuth client id — public (PKCE); one Spotify app serves both envs.
+                # The matching SPOTIFY_CLIENT_SECRET is a runtime secret in SSM (terraform.dev.tfvars).
+                echo "NEXT_PUBLIC_SPOTIFY_CLIENT_ID=5bb672f70a7c4d6cba8b851104df2c76"
               } >> "$GITHUB_ENV"
               ;;
             *) echo "Unknown environment: $ENV" >&2; exit 1 ;;
@@ -109,6 +115,8 @@ jobs:
             NEXT_PUBLIC_APP_URL=${{ env.NEXT_PUBLIC_APP_URL }}
             NEXT_PUBLIC_LIVEKIT_URL=${{ env.NEXT_PUBLIC_LIVEKIT_URL }}
             NEXT_PUBLIC_VAPID_PUBLIC_KEY=${{ env.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
+            NEXT_PUBLIC_SPOTIFY_CLIENT_ID=${{ env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID }}
+            GIT_SHA=${{ github.sha }}
 
       - name: Redeploy on the instance (SSM)
         # Auto-redeploy on every build: a push to dev deploys the dev box; a
