@@ -83,12 +83,15 @@ export function ShareSheet(props: {
   // Host tabs (host panel + host+play) only make sense with a host token; without
   // one, fall back to the invite-only share so we never surface a tokenless link.
   const host = props.host !== false && !!props.hostToken
+  // "Host + play" needs a resume token; without one buildLinks falls back to the
+  // host-panel URL, so don't surface a misleading tokenless play link.
+  const hasHostPlay = host && !!props.resumeToken?.trim()
   const links = buildLinks(props.code ?? DEFAULT_CODE, {
     hostToken: props.hostToken,
-    resumeToken: props.resumeToken,
+    resumeToken: hasHostPlay ? props.resumeToken : undefined,
     origin: props.origin,
   })
-  const tabs: LinkKey[] = host ? ['invite', 'host', 'play'] : ['invite']
+  const tabs: LinkKey[] = host ? (hasHostPlay ? ['invite', 'host', 'play'] : ['invite', 'host']) : ['invite']
   const [tab, setTab] = useState<LinkKey>('invite')
   const [copied, setCopied] = useState(false)
 
@@ -101,13 +104,19 @@ export function ShareSheet(props: {
   const active = links[tab]
 
   function flash() {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      void navigator.clipboard.writeText(active.url)
-    }
-    setCopied(true)
-    setTimeout(() => {
-      setCopied(false)
-    }, 1500)
+    if (typeof navigator === 'undefined' || !navigator.clipboard) return
+    // Only flash "Copied" once the clipboard write actually succeeds.
+    navigator.clipboard
+      .writeText(active.url)
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => {
+          setCopied(false)
+        }, 1500)
+      })
+      .catch(() => {
+        setCopied(false)
+      })
   }
 
   return (

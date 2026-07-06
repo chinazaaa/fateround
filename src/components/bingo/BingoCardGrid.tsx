@@ -14,6 +14,11 @@ type BingoCardGridProps = {
 
 const LEGEND_SWATCH = 'inline-block h-3.5 w-3.5 shrink-0 rounded border-2 align-middle'
 
+// Card cells are stored column-major (indices 0-4 = column B, 5-9 = column I, …),
+// but the CSS grid fills row-major. Map each visual position back to its stored index
+// so every number renders under its own letter.
+const CARD_DISPLAY_ORDER = Array.from({ length: 25 }, (_, pos) => (pos % 5) * 5 + Math.floor(pos / 5))
+
 export function BingoCardLegend({ className = '' }: { className?: string }) {
   const items = [
     {
@@ -71,7 +76,8 @@ export function BingoCardGrid({
         ))}
       </div>
       <div className="grid grid-cols-5 gap-1">
-        {cells.map((cell, index) => {
+        {CARD_DISPLAY_ORDER.map((index) => {
+          const cell = cells[index]
           const isFree = index === BINGO_FREE_INDEX || cell === 0
           const isMarked = marked.has(index)
           const isCalled = !isFree && called.has(cell)

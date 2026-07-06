@@ -185,7 +185,8 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
       setHostPlayerName(data.playerName)
-      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
+      const storedGender = getPlayerSession(gameCode)?.playerGender ?? 'both'
+      setPlayerSession(gameCode, hostPlayerId, data.playerName, storedGender, hostResumeToken)
       await load()
       success('Name updated!')
     } catch (err) {

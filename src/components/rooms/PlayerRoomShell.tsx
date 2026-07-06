@@ -20,6 +20,7 @@ export function PlayerRoomShell({
   gameName,
   playerName,
   playerId,
+  onLeave,
   children,
 }: {
   gameCode: string
@@ -29,6 +30,8 @@ export function PlayerRoomShell({
   playerName?: string | null
   /** Player id — the voice identity + gate for mounting the rail. */
   playerId?: string | null
+  /** Handler for the rail's "Leave game" action — without it the button is a noop. */
+  onLeave?: () => void
   children: React.ReactNode
 }) {
   const joined = !!playerName && !!playerId
@@ -47,6 +50,7 @@ export function PlayerRoomShell({
           identity={playerId!}
           auth={{ kind: 'player' }}
           autoRejoin={false}
+          onLeave={onLeave}
         />
       )}
       <div className="pr-main">

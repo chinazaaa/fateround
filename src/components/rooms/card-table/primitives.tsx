@@ -16,10 +16,28 @@
  * app's canonical glyphs are the source of truth.
  */
 
-import type { ReactNode } from 'react'
+import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
 import { WhotShapeIcon } from '@/components/whot/WhotShapeIcon'
 import { CRAZY8_SUIT_SYMBOLS } from '@/lib/crazy-eights'
 import type { CrazyEightsCard, WhotCard as WhotCardType } from '@/types'
+
+/**
+ * Button semantics for a clickable card face so keyboard-only players can
+ * select/play a card. Returns nothing when the face isn't interactive.
+ */
+function cardInteractiveProps(onClick?: () => void) {
+  if (!onClick) return {}
+  return {
+    role: 'button' as const,
+    tabIndex: 0,
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        onClick()
+      }
+    },
+  }
+}
 
 /* ─── Whot card face ────────────────────────────────────────────── */
 
@@ -51,9 +69,10 @@ export function WhotCardFace({ card, sel, dim, big, playable, onClick }: WhotCar
     (playable ? ' playable' : '') +
     (isWhot ? ' whot' : '')
 
+  const interactiveProps = cardInteractiveProps(onClick)
   if (isWhot) {
     return (
-      <div className={cls} onClick={onClick}>
+      <div className={cls} onClick={onClick} {...interactiveProps}>
         <span className="c tl">20</span>
         <div className="mid">WHOT</div>
         <span className="c br">20</span>
@@ -62,7 +81,7 @@ export function WhotCardFace({ card, sel, dim, big, playable, onClick }: WhotCar
   }
   const glyphSize = big ? 'lg' : 'md'
   return (
-    <div className={cls} onClick={onClick}>
+    <div className={cls} onClick={onClick} {...interactiveProps}>
       <span className="c tl">
         {card.number}
         <WhotShapeIcon shape={card.shape} size="sm" />
@@ -114,9 +133,10 @@ export function CrazyCardFace({ card, sel, dim, big, playable, onClick }: CrazyC
     (dim ? ' dim' : '') +
     (playable ? ' playable' : '')
 
+  const interactiveProps = cardInteractiveProps(onClick)
   if (card.suit === 'joker') {
     return (
-      <div className={cls} onClick={onClick} style={{ color: '#7c3aed' }}>
+      <div className={cls} onClick={onClick} style={{ color: '#7c3aed' }} {...interactiveProps}>
         <span className="c tl">🃏</span>
         <div className="mid">🃏</div>
         <span className="c br">🃏</span>
@@ -124,7 +144,7 @@ export function CrazyCardFace({ card, sel, dim, big, playable, onClick }: CrazyC
     )
   }
   return (
-    <div className={cls} onClick={onClick}>
+    <div className={cls} onClick={onClick} {...interactiveProps}>
       <span className="c tl">
         {label}
         <small>{glyph}</small>
@@ -152,7 +172,7 @@ export function CardBack({ accent, big, thin }: CardBackProps) {
   return (
     <div
       className={'pc back' + (big ? ' lg' : '') + (thin ? ' thin' : '')}
-      style={accent ? ({ '--accent': accent } as React.CSSProperties) : undefined}
+      style={accent ? ({ '--accent': accent } as CSSProperties) : undefined}
     />
   )
 }
@@ -171,7 +191,7 @@ export function DrawPile({ count, accent, big }: DrawPileProps) {
       <CardBack accent={accent} big={big} />
       <div
         className={'pc back b2' + (big ? ' lg' : '')}
-        style={accent ? ({ '--accent': accent } as React.CSSProperties) : undefined}
+        style={accent ? ({ '--accent': accent } as CSSProperties) : undefined}
       />
       {count != null && <span className="cnt">{count}</span>}
     </div>

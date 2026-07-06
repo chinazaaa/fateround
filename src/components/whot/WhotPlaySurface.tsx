@@ -170,7 +170,9 @@ export function WhotPlaySurface({
           <ActionToast tone="ok">{session.status_message}</ActionToast>
         ) : session.phase === 'choose_whot' ? (
           <TurnStatus>
-            {isMyTurn ? 'You played WHOT — choose a shape or number' : `${turnName} is calling the next play…`}
+            {isMyTurn
+              ? `You played WHOT — choose ${rules.numberCallsEnabled ? 'a shape or number' : 'a shape'}`
+              : `${turnName} is calling the next play…`}
           </TurnStatus>
         ) : pickPenalty.type === 'pick2' ? (
           <ActionToast tone="hot">🔥 Pick 2 — play a 2 or draw {pickPenalty.count}</ActionToast>

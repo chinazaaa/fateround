@@ -174,6 +174,8 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
         handlePlayerRemoved(hostPlayerId)
         await load()
       } catch (err) {
+        setHostModeState(prev)
+        setHostMode(gameCode, prev)
         toastError(err instanceof Error ? err.message : 'Failed to leave seat')
       }
     }

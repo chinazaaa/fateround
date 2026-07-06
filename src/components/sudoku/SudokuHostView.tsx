@@ -261,6 +261,14 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
       setHostPlayerName(data.playerName)
+      const stored = getPlayerSession(gameCode)
+      setPlayerSession(
+        gameCode,
+        hostPlayerId,
+        data.playerName,
+        stored?.playerGender ?? 'both',
+        stored?.resumeToken ?? null
+      )
       await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to update name')

@@ -163,6 +163,9 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
         handlePlayerRemoved(hostPlayerId)
         await load()
       } catch (err) {
+        setHostMode(prev)
+        setWhotHostMode(gameCode, prev)
+        hostAutoJoinedRef.current = true
         toastError(err instanceof Error ? err.message : 'Failed to leave seat')
       }
     }

@@ -2,10 +2,39 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { useTheme } from '@/components/ThemeProvider'
 
 type NavItem = { href: string; label: string; icon?: string }
+
+function BackBar() {
+  const router = useRouter()
+  const goBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) router.back()
+    else router.push('/')
+  }
+  return (
+    <div className="fr-backbar">
+      <button type="button" onClick={goBack} className="fr-backbar__link" aria-label="Go back">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M19 12H5M12 19l-7-7 7-7" />
+        </svg>
+        Back
+      </button>
+    </div>
+  )
+}
 
 function SunIcon() {
   return (
@@ -73,6 +102,8 @@ const NAV: NavItem[] = [
  */
 export function MarketingHeader() {
   const [menu, setMenu] = useState(false)
+  const pathname = usePathname()
+  const isHome = pathname === '/'
 
   useEffect(() => {
     document.body.style.overflow = menu ? 'hidden' : ''
@@ -109,6 +140,8 @@ export function MarketingHeader() {
           </button>
         </div>
       </header>
+
+      {!isHome && <BackBar />}
 
       {/* Mobile drawer */}
       <div className={`fr-scrim${menu ? ' on' : ''}`} onClick={() => setMenu(false)} aria-hidden />

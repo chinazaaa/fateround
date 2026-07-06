@@ -336,13 +336,14 @@
 .fr-gamecard__title { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: var(--text-lg); letter-spacing: var(--tracking-tight); margin: 0; color: var(--text); }
 .fr-gamecard:hover .fr-gamecard__title { color: var(--accent); }
 .fr-gamecard__tagline { font-size: var(--text-sm); color: var(--text-muted); margin: 0; line-height: var(--leading-snug); }
-.fr-gamecard__meta { display: flex; align-items: center; gap: var(--space-2); margin-top: auto; }
+.fr-gamecard__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0.25rem var(--space-2); margin-top: auto; }
 .fr-gamecard__players {
+  flex-shrink: 0; white-space: nowrap; line-height: 1.4;
   font-size: var(--text-2xs); font-weight: var(--fw-semibold); border-radius: var(--radius-full);
   padding: 0.1875rem 0.5rem; background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: color-mix(in srgb, var(--accent) 70%, var(--text));
 }
-.fr-gamecard__vibe { font-size: var(--text-2xs); color: var(--text-faint); }
+.fr-gamecard__vibe { flex-shrink: 0; white-space: nowrap; font-size: var(--text-2xs); color: var(--text-faint); }
 
 /* ════════════════════════════════════════════════════════════════════
    Site chrome — header, footer, section scaffolding
@@ -351,6 +352,16 @@
 
 /* Header — spans full width: logo flush-left, nav flush-right */
 .site-header { display: flex; align-items: center; justify-content: space-between; padding: 16px clamp(18px, 4vw, 40px); }
+
+/* Back bar — sits below the header on every page except home */
+.fr-backbar { padding: 4px clamp(18px, 4vw, 40px) 0; }
+.fr-backbar__link {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 4px;
+  background: transparent; border: 0; cursor: pointer;
+  font-size: var(--text-sm); font-weight: var(--fw-semibold); color: var(--text-muted);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.fr-backbar__link:hover { color: var(--text); }
 .site-nav { display: flex; align-items: center; gap: 24px; }
 .site-nav a { color: var(--text-muted); text-decoration: none; font-size: 14px; font-weight: 500; }
 .site-nav a:hover { color: var(--text); }
