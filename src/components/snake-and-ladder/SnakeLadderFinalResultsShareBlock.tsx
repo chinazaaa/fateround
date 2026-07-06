@@ -1,14 +1,13 @@
 'use client'
 
 import { useMemo, useRef, type ReactNode } from 'react'
+import { MEDALS } from '@/lib/medals'
 import type { Game, Player, SnakeLadderPlayerState, SnakeLadderSession } from '@/types'
 import { buildSnakeLadderStandings, SNAKE_LADDER_COLOR_LABELS } from '@/lib/snake-and-ladder'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
-
-const MEDALS = ['👑', '🥈', '🥉']
 
 export function SnakeLadderFinalResultsShareBlock({
   game,

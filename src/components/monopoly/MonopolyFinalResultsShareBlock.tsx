@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useRef, type ReactNode } from 'react'
+import { MEDALS } from '@/lib/medals'
 import type { Game, MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
@@ -8,8 +9,6 @@ import { ShareResults } from '@/components/ShareResults'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { buildMonopolyStandings } from '@/lib/monopoly'
 import { formatThemedMoney } from '@/components/monopoly/monopoly-themes'
-
-const MEDALS = ['👑', '🥈', '🥉']
 
 export function MonopolyFinalResultsShareBlock({
   game,

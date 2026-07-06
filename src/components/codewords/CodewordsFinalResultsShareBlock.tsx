@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useRef, type ReactNode } from 'react'
+import { MEDALS } from '@/lib/medals'
 import { CodewordsTeamBadge } from '@/components/codewords/CodewordsBoardGrid'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
@@ -8,8 +9,6 @@ import { ShareResults } from '@/components/ShareResults'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { tallyCodewordsOperativeStats, tallyCodewordsSpymasterStats, pickBestCodewordsSpymaster } from '@/lib/codewords'
 import type { CodewordsGuess, CodewordsPlayerRole, CodewordsTeam, Game, Player } from '@/types'
-
-const MEDALS = ['👑', '🥈', '🥉']
 
 export function CodewordsFinalResultsShareBlock({
   game,

@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, type ReactNode } from 'react'
+import { MEDALS } from '@/lib/medals'
 import type { DescribeItMode, DescribeItWord, Game, Player } from '@/types'
 import {
   computeDescribeItScores,
@@ -13,8 +14,6 @@ import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActio
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
-
-const MEDALS = ['👑', '🥈', '🥉']
 
 export function DescribeItFinalResultsShareBlock({
   game,

@@ -1,14 +1,13 @@
 'use client'
 
 import { useMemo, useRef, type ReactNode } from 'react'
+import { MEDALS } from '@/lib/medals'
 import type { Game, LudoPlayerState, LudoSession, Player } from '@/types'
 import { buildLudoStandings, LUDO_COLOR_LABELS } from '@/lib/ludo'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
-
-const MEDALS = ['👑', '🥈', '🥉']
 
 export function LudoFinalResultsShareBlock({
   game,

@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState, type ReactNode } from 'react'
+import { MEDALS } from '@/lib/medals'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
@@ -9,8 +10,6 @@ import { WordHuntPersonalResults } from '@/components/word-hunt/WordHuntPersonal
 import { WordHuntResultsReview } from '@/components/word-hunt/WordHuntResultsReview'
 import type { Game, Player } from '@/types'
 import type { WordHuntPlayerScore, WordHuntSubmission } from '@/lib/word-hunt'
-
-const MEDALS = ['👑', '🥈', '🥉']
 
 export function WordHuntFinalResultsShareBlock({
   game,

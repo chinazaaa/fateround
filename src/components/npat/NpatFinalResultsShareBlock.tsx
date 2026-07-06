@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef } from 'react'
+import { MEDALS } from '@/lib/medals'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
@@ -8,8 +9,6 @@ import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { npatWinnerLabel } from '@/lib/npat'
 import type { Game, Player } from '@/types'
 import type { ReactNode } from 'react'
-
-const MEDALS = ['👑', '🥈', '🥉']
 
 export function NpatFinalResultsShareBlock({
   game,

@@ -45,6 +45,9 @@ export function MahjongFinalResultsShareBlock({
   const displayWinner = winnerName ?? (winnerNames.length > 0 ? winnerNames.join(', ') : null) ?? null
   const isDraw = !displayWinner
   const winType = session?.win_type === 'self_draw' ? 'Self draw' : session?.win_type === 'discard' ? 'On discard' : ''
+  const winTile = session?.winning_tile ? mahjongTileShortLabel(session.winning_tile) : null
+  // Guard the empty win_type case so we never render a leading " on <tile>".
+  const winSubtitle = winTile ? (winType ? `${winType} on ${winTile}` : `Won on ${winTile}`) : undefined
   const score = session?.score_summary ?? null
 
   return (
@@ -61,9 +64,7 @@ export function MahjongFinalResultsShareBlock({
                 <span className="gradient-title">{displayWinner}</span> calls Mahjong!
               </>
             }
-            subtitle={
-              session?.winning_tile ? `${winType} on ${mahjongTileShortLabel(session.winning_tile)}` : undefined
-            }
+            subtitle={winSubtitle}
           />
         )}
         {score && (
