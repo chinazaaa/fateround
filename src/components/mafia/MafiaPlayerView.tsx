@@ -220,24 +220,27 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     }
   }, [gameCode, load])
 
-  const sendMafiaMessage = useCallback(async (msg: string) => {
-    if (!myResumeToken) return
-    try {
-      const res = await fetch(`/api/mafia/${gameCode}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resumeToken: myResumeToken, message: msg }),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        toastError(data.error ?? 'Failed to send message')
-      } else {
-        await load()
+  const sendMafiaMessage = useCallback(
+    async (msg: string) => {
+      if (!myResumeToken) return
+      try {
+        const res = await fetch(`/api/mafia/${gameCode}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resumeToken: myResumeToken, message: msg }),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          toastError(data.error ?? 'Failed to send message')
+        } else {
+          await load()
+        }
+      } catch {
+        toastError('Failed to send message')
       }
-    } catch {
-      toastError('Failed to send message')
-    }
-  }, [gameCode, myResumeToken, load, toastError])
+    },
+    [gameCode, myResumeToken, load, toastError]
+  )
 
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
@@ -339,22 +342,31 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   // Active game view
   if (screen === 'active' && mafiaState) {
-    const { phase, dayNumber, phaseDeadline, players: publicPlayers, myState, lastNightKillPlayerId, lastNightMafiaHadTarget, lastVoteResultPlayerId } = mafiaState
+    const {
+      phase,
+      dayNumber,
+      phaseDeadline,
+      players: publicPlayers,
+      myState,
+      lastNightKillPlayerId,
+      lastNightMafiaHadTarget,
+      lastVoteResultPlayerId,
+    } = mafiaState
 
-    const me = publicPlayers.find(p => p.id === myPlayerId)
+    const me = publicPlayers.find((p) => p.id === myPlayerId)
     const amISpectator = !!myPlayerId && me == null
     const amIAlive = me != null && me.isAlive !== false
     const myRole = myState?.role
     const myTeam = myState?.team
 
     // Get killed player name
-    const killedPlayer = publicPlayers.find(p => p.id === lastNightKillPlayerId)
-    const votedPlayer = publicPlayers.find(p => p.id === lastVoteResultPlayerId)
+    const killedPlayer = publicPlayers.find((p) => p.id === lastNightKillPlayerId)
+    const votedPlayer = publicPlayers.find((p) => p.id === lastVoteResultPlayerId)
 
     return (
       <div className="min-h-screen bg-linear-to-b from-slate-950 via-slate-900 to-indigo-950 text-slate-100 flex flex-col font-sans">
         {isViewer && <ViewerModeBanner />}
-        
+
         {/* Header */}
         <header className="px-6 py-4 border-b border-indigo-950 bg-slate-950/80 backdrop-blur flex justify-between items-center shadow-lg">
           <div className="flex items-center space-x-3">
@@ -372,7 +384,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               gameCode={gameCode}
               playerId={myPlayerId!}
               currentName={myName}
-              onRenamed={() => { void load() }}
+              onRenamed={() => {
+                void load()
+              }}
               onLeft={handlePlayerLeft}
             />
           </div>
@@ -391,14 +405,17 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                 <div className="text-6xl animate-pulse">
                   {myRole === 'mafia' ? '🔪' : myRole === 'doctor' ? '🏥' : myRole === 'detective' ? '🔍' : '🏘️'}
                 </div>
-                <div className={`text-2xl font-extrabold tracking-wider ${myTeam === 'mafia' ? 'text-red-500' : 'text-emerald-400'}`}>
+                <div
+                  className={`text-2xl font-extrabold tracking-wider ${myTeam === 'mafia' ? 'text-red-500' : 'text-emerald-400'}`}
+                >
                   {myRole ? myRole.toUpperCase() : 'VILLAGER'}
                 </div>
                 <div className="text-xs text-slate-400 px-3 py-1 bg-indigo-950/40 rounded-full border border-indigo-900/30">
                   Team: {myTeam === 'mafia' ? 'Mafia 🔪' : 'Village 🏘️'}
                 </div>
                 <div className="mt-4 text-sm text-slate-300">
-                  {myRole === 'mafia' && 'Eliminate villagers during the night and avoid getting voted out during the day.'}
+                  {myRole === 'mafia' &&
+                    'Eliminate villagers during the night and avoid getting voted out during the day.'}
                   {myRole === 'doctor' && 'Protect one player each night from getting eliminated.'}
                   {myRole === 'detective' && 'Investigate one player each night to uncover their alignment.'}
                   {myRole === 'villager' && 'Discuss during the day to find the hidden Mafia members.'}
@@ -411,10 +428,14 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                 )}
                 {myState.detectiveResult && (
                   <div className="mt-6 w-full text-left bg-emerald-950/20 border border-emerald-900/30 rounded-lg p-3">
-                    <div className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-2">Investigation Result</div>
+                    <div className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-2">
+                      Investigation Result
+                    </div>
                     <div className="text-sm text-emerald-200">
                       <strong>{myState.detectiveResult.targetName}</strong> is{' '}
-                      <span className={myState.detectiveResult.alignment === 'mafia' ? 'text-red-400' : 'text-emerald-400'}>
+                      <span
+                        className={myState.detectiveResult.alignment === 'mafia' ? 'text-red-400' : 'text-emerald-400'}
+                      >
                         {myState.detectiveResult.alignment.toUpperCase()}
                       </span>
                     </div>
@@ -428,7 +449,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               </div>
             )}
             <div className="mt-6 pt-4 border-t border-indigo-950/80 w-full text-center">
-              <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${amIAlive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+              <span
+                className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${amIAlive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}
+              >
                 {amIAlive ? '💚 ALIVE' : '💀 DEAD'}
               </span>
             </div>
@@ -441,7 +464,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               {phase === 'role_reveal' && (
                 <div className="text-center py-6 space-y-4">
                   <h3 className="text-xl font-bold text-purple-300">Look at your role Card!</h3>
-                  <p className="text-sm text-slate-300">Secret roles have been assigned. Do not show your screen to anyone!</p>
+                  <p className="text-sm text-slate-300">
+                    Secret roles have been assigned. Do not show your screen to anyone!
+                  </p>
                   <div className="text-5xl animate-bounce">👁️🕵️🐺</div>
                 </div>
               )}
@@ -452,11 +477,15 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                   {amISpectator ? (
                     <p className="text-sm text-indigo-300">You are watching. Night actions are in progress...</p>
                   ) : !amIAlive ? (
-                    <p className="text-sm text-red-400">You are dead and sleeping eternally. Waiting for phase to end.</p>
+                    <p className="text-sm text-red-400">
+                      You are dead and sleeping eternally. Waiting for phase to end.
+                    </p>
                   ) : myRole === 'villager' ? (
                     <div className="text-center py-6 space-y-3">
                       <div className="text-5xl">💤</div>
-                      <p className="text-sm text-indigo-300">The village is sleeping. Close your eyes and wait for sunrise...</p>
+                      <p className="text-sm text-indigo-300">
+                        The village is sleeping. Close your eyes and wait for sunrise...
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -465,7 +494,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                         {myRole === 'doctor' && 'Select a player to save from the Mafia tonight.'}
                         {myRole === 'detective' && 'Select a player to investigate their alignment.'}
                       </p>
-                      
+
                       {myState?.nightActionSubmitted ? (
                         <div className="p-4 bg-emerald-950/20 border border-emerald-900/40 rounded-lg text-emerald-400 text-sm font-semibold flex items-center space-x-2">
                           <span>✓</span>
@@ -474,8 +503,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4">
                           {publicPlayers
-                            .filter(p => p.isAlive && (myRole !== 'doctor' || p.id !== myPlayerId)) // Doctor cannot self heal
-                            .map(p => (
+                            .filter((p) => p.isAlive && (myRole !== 'doctor' || p.id !== myPlayerId)) // Doctor cannot self heal
+                            .map((p) => (
                               <button
                                 key={p.id}
                                 disabled={acting}
@@ -483,12 +512,14 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                                 className="px-4 py-3 bg-indigo-950/40 border border-indigo-900/40 hover:bg-indigo-900/60 hover:border-purple-500/50 rounded-lg text-left text-sm font-medium transition flex justify-between items-center"
                               >
                                 <span>{p.name}</span>
-                                <span className="text-xs text-purple-400 uppercase tracking-widest font-bold">Select</span>
+                                <span className="text-xs text-purple-400 uppercase tracking-widest font-bold">
+                                  Select
+                                </span>
                               </button>
                             ))}
                         </div>
                       )}
-                      
+
                       {myRole === 'mafia' && myState?.mafiaChatMessages && (
                         <MafiaNightChat
                           messages={myState.mafiaChatMessages}
@@ -508,7 +539,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                     <div className="space-y-2">
                       <p className="text-lg text-slate-200">Last night, the Mafia eliminated:</p>
                       <div className="text-3xl font-extrabold text-red-400 underline">{killedPlayer.name}</div>
-                      <p className="text-sm text-slate-400">They were a <strong>{killedPlayer.role?.toUpperCase()}</strong></p>
+                      <p className="text-sm text-slate-400">
+                        They were a <strong>{killedPlayer.role?.toUpperCase()}</strong>
+                      </p>
                     </div>
                   ) : (
                     <p className="text-lg text-emerald-400 font-semibold">
@@ -527,7 +560,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                     Discuss with the room and figure out who the Mafia is. Voice chat is recommended!
                   </p>
                   <div className="h-32 bg-slate-950/50 border border-indigo-950/60 rounded-lg flex items-center justify-center">
-                    <span className="text-indigo-400 text-sm italic font-mono animate-pulse">🔊 Open Discussion Active</span>
+                    <span className="text-indigo-400 text-sm italic font-mono animate-pulse">
+                      🔊 Open Discussion Active
+                    </span>
                   </div>
                 </div>
               )}
@@ -541,8 +576,10 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                     <p className="text-sm text-red-400">You are dead and cannot vote.</p>
                   ) : (
                     <div className="space-y-4">
-                      <p className="text-sm text-slate-300">Vote for who you suspect is Mafia. You can change your vote or clear it.</p>
-                      
+                      <p className="text-sm text-slate-300">
+                        Vote for who you suspect is Mafia. You can change your vote or clear it.
+                      </p>
+
                       {myState?.dayVoteSubmitted ? (
                         <div className="space-y-3">
                           <div className="p-4 bg-emerald-950/20 border border-emerald-900/40 rounded-lg text-emerald-400 text-sm font-semibold flex items-center justify-between">
@@ -562,8 +599,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4">
                           {publicPlayers
-                            .filter(p => p.isAlive)
-                            .map(p => (
+                            .filter((p) => p.isAlive)
+                            .map((p) => (
                               <button
                                 key={p.id}
                                 disabled={acting}
@@ -571,7 +608,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                                 className="px-4 py-3 bg-indigo-950/40 border border-indigo-900/40 hover:bg-indigo-900/60 hover:border-purple-500/50 rounded-lg text-left text-sm font-medium transition flex justify-between items-center"
                               >
                                 <span>{p.name}</span>
-                                <span className="text-xs text-purple-400 uppercase tracking-widest font-bold">Vote</span>
+                                <span className="text-xs text-purple-400 uppercase tracking-widest font-bold">
+                                  Vote
+                                </span>
                               </button>
                             ))}
                         </div>
@@ -588,10 +627,14 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                     <div className="space-y-2">
                       <p className="text-lg text-slate-200">The village voted to eliminate:</p>
                       <div className="text-3xl font-extrabold text-red-400 underline">{votedPlayer.name}</div>
-                      <p className="text-sm text-slate-400">They were a <strong>{votedPlayer.role?.toUpperCase()}</strong></p>
+                      <p className="text-sm text-slate-400">
+                        They were a <strong>{votedPlayer.role?.toUpperCase()}</strong>
+                      </p>
                     </div>
                   ) : (
-                    <p className="text-lg text-slate-400 font-semibold">The vote ended in a tie or skip. No one was eliminated.</p>
+                    <p className="text-lg text-slate-400 font-semibold">
+                      The vote ended in a tie or skip. No one was eliminated.
+                    </p>
                   )}
                 </div>
               )}
@@ -599,25 +642,29 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
             {/* Players List Panel */}
             <div className="bg-slate-900/60 border border-indigo-950/80 rounded-xl p-6 shadow-xl backdrop-blur">
-              <h3 className="text-sm font-semibold tracking-widest uppercase text-indigo-400 mb-4">Players Directory</h3>
+              <h3 className="text-sm font-semibold tracking-widest uppercase text-indigo-400 mb-4">
+                Players Directory
+              </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {publicPlayers.map(p => (
+                {publicPlayers.map((p) => (
                   <div
                     key={p.id}
                     className={`flex items-center justify-between p-3 rounded-lg border transition ${p.isAlive ? 'bg-slate-950/40 border-indigo-950/40' : 'bg-slate-950/20 border-red-950/30 opacity-60'}`}
                   >
                     <div className="flex items-center space-x-3">
-                      <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold ${p.isAlive ? 'bg-indigo-650 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                      <div
+                        className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold ${p.isAlive ? 'bg-indigo-650 text-white' : 'bg-slate-800 text-slate-400'}`}
+                      >
                         {p.isAlive ? '👤' : '💀'}
                       </div>
                       <div>
-                        <span className={`font-semibold ${p.isAlive ? 'text-slate-100' : 'line-through text-slate-400'}`}>
+                        <span
+                          className={`font-semibold ${p.isAlive ? 'text-slate-100' : 'line-through text-slate-400'}`}
+                        >
                           {p.name}
                         </span>
                         {!p.isAlive && p.role && (
-                          <span className="block text-xs font-semibold text-red-400 uppercase">
-                            {p.role}
-                          </span>
+                          <span className="block text-xs font-semibold text-red-400 uppercase">{p.role}</span>
                         )}
                       </div>
                     </div>
@@ -647,11 +694,13 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-6 text-center">
       <div className="max-w-md w-full bg-slate-900 border border-indigo-950 rounded-xl p-8 shadow-2xl space-y-6">
         <h1 className="text-4xl font-extrabold text-purple-400 animate-pulse">GAME OVER</h1>
-        
+
         {mafiaState?.winningTeam ? (
           <div className="space-y-2">
             <p className="text-slate-400 text-sm uppercase tracking-widest font-bold">Winning Team</p>
-            <div className={`text-3xl font-black ${mafiaState.winningTeam === 'mafia' ? 'text-red-500' : 'text-emerald-400'}`}>
+            <div
+              className={`text-3xl font-black ${mafiaState.winningTeam === 'mafia' ? 'text-red-500' : 'text-emerald-400'}`}
+            >
               {mafiaState.winningTeam === 'mafia' ? 'MAFIA 🔪' : 'VILLAGE 🏘️'}
             </div>
           </div>
@@ -662,10 +711,12 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         <div className="border-t border-indigo-950/60 pt-6">
           <h3 className="text-sm font-semibold tracking-widest uppercase text-indigo-400 mb-4">Roles Reveal</h3>
           <div className="space-y-2">
-            {mafiaState?.players.map(p => (
+            {mafiaState?.players.map((p) => (
               <div key={p.id} className="flex justify-between items-center text-sm p-2 rounded bg-slate-950/40">
                 <span className="font-semibold text-slate-300">{p.name}</span>
-                <span className={`font-mono text-xs uppercase ${p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}>
+                <span
+                  className={`font-mono text-xs uppercase ${p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}
+                >
                   {p.role}
                 </span>
               </div>
@@ -747,11 +798,13 @@ function MafiaNightChat({ messages, onSendMessage, myPlayerId }: MafiaChatProps)
         {messages.length === 0 ? (
           <p className="text-xs text-slate-500 italic text-center py-4">No messages yet. Align on your target here!</p>
         ) : (
-          messages.map(m => {
+          messages.map((m) => {
             const isMe = m.sender_player_id === myPlayerId
             return (
               <div key={m.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                <div className={`px-3 py-1.5 rounded-lg text-sm max-w-[80%] ${isMe ? 'bg-red-600/70 text-white border border-red-500/20' : 'bg-slate-800 text-slate-200 border border-slate-700/30'}`}>
+                <div
+                  className={`px-3 py-1.5 rounded-lg text-sm max-w-[80%] ${isMe ? 'bg-red-600/70 text-white border border-red-500/20' : 'bg-slate-800 text-slate-200 border border-slate-700/30'}`}
+                >
                   {!isMe && <span className="block text-[10px] text-red-300 font-bold mb-0.5">{m.sender_name}</span>}
                   <span>{m.message}</span>
                 </div>

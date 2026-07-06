@@ -2818,7 +2818,9 @@ function CreateGameInner() {
                         onChange={(e) => setSettings({ ...settings, mafia_detective_enabled: e.target.checked })}
                         className="rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500"
                       />
-                      <span className="text-sm text-slate-300">Include Detective (investigates one player each night)</span>
+                      <span className="text-sm text-slate-300">
+                        Include Detective (investigates one player each night)
+                      </span>
                     </label>
                   </div>
                 </Field>

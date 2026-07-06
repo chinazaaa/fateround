@@ -29,9 +29,8 @@ export function assignMafiaRoles(
 ): Record<string, MafiaRole> {
   const playerCount = playerIds.length
   // Default: 1 mafia per 4 players (1 for 5-7, 2 for 8-11, 3 for 12+)
-  const mafiaCount = mafiaCountOverride && mafiaCountOverride > 0
-    ? mafiaCountOverride
-    : Math.max(1, Math.floor(playerCount / 4))
+  const mafiaCount =
+    mafiaCountOverride && mafiaCountOverride > 0 ? mafiaCountOverride : Math.max(1, Math.floor(playerCount / 4))
 
   const roles: MafiaRole[] = []
   // Add Mafia
@@ -64,8 +63,8 @@ export function assignMafiaRoles(
  * Check if the game has ended and return the winning team, or null
  */
 export function checkMafiaWinCondition(players: Pick<MafiaPlayerState, 'role' | 'is_alive'>[]): MafiaTeam | null {
-  const alivePlayers = players.filter(p => p.is_alive)
-  const aliveMafia = alivePlayers.filter(p => p.role === 'mafia').length
+  const alivePlayers = players.filter((p) => p.is_alive)
+  const aliveMafia = alivePlayers.filter((p) => p.role === 'mafia').length
   const aliveVillage = alivePlayers.length - aliveMafia
 
   if (aliveMafia === 0) return 'village'
@@ -84,7 +83,7 @@ function plurality(arr: string[]): string | null {
     counts[el] = (counts[el] || 0) + 1
     if (counts[el] > maxCount) maxCount = counts[el]
   }
-  const leaders = Object.keys(counts).filter(k => counts[k] === maxCount)
+  const leaders = Object.keys(counts).filter((k) => counts[k] === maxCount)
   // Tie → no winner
   if (leaders.length > 1) return null
   return leaders[0]
@@ -99,22 +98,19 @@ export function resolveMafiaNight(
 ) {
   // 1. Mafia kill target (plurality vote of alive mafia)
   const mafiaVotes = playerStates
-    .filter(p => p.role === 'mafia' && p.is_alive && p.night_action_target_player_id)
-    .map(p => p.night_action_target_player_id as string)
-  
+    .filter((p) => p.role === 'mafia' && p.is_alive && p.night_action_target_player_id)
+    .map((p) => p.night_action_target_player_id as string)
+
   const mafiaTarget = plurality(mafiaVotes)
 
   // 2. Doctor save target
-  const doctorPlayer = playerStates.find(p => p.role === 'doctor' && p.is_alive)
-  const doctorTarget = session.doctor_enabled && doctorPlayer
-    ? doctorPlayer.night_action_target_player_id
-    : null
+  const doctorPlayer = playerStates.find((p) => p.role === 'doctor' && p.is_alive)
+  const doctorTarget = session.doctor_enabled && doctorPlayer ? doctorPlayer.night_action_target_player_id : null
 
   // 3. Detective target
-  const detectivePlayer = playerStates.find(p => p.role === 'detective' && p.is_alive)
-  const detectiveTarget = session.detective_enabled && detectivePlayer
-    ? detectivePlayer.night_action_target_player_id
-    : null
+  const detectivePlayer = playerStates.find((p) => p.role === 'detective' && p.is_alive)
+  const detectiveTarget =
+    session.detective_enabled && detectivePlayer ? detectivePlayer.night_action_target_player_id : null
 
   // Resolve death
   const saved = mafiaTarget !== null && mafiaTarget === doctorTarget
@@ -133,8 +129,8 @@ export function resolveMafiaNight(
  */
 export function resolveMafiaDayVote(playerStates: MafiaPlayerState[]): string | null {
   const votes = playerStates
-    .filter(p => p.is_alive && p.day_vote_target_player_id)
-    .map(p => p.day_vote_target_player_id as string)
+    .filter((p) => p.is_alive && p.day_vote_target_player_id)
+    .map((p) => p.day_vote_target_player_id as string)
 
   return plurality(votes)
 }
@@ -168,24 +164,17 @@ export async function initializeMafiaGame(
       : Math.max(1, Math.floor(playerIds.length / 4))
 
   // 2. Assign roles
-  const roleAssignments = assignMafiaRoles(
-    playerIds,
-    doctorEnabled,
-    detectiveEnabled,
-    resolvedMafiaCount
-  )
+  const roleAssignments = assignMafiaRoles(playerIds, doctorEnabled, detectiveEnabled, resolvedMafiaCount)
 
   // 3. Create player states
-  const playerStateRows = playerIds.map(pid => ({
+  const playerStateRows = playerIds.map((pid) => ({
     game_id: gameId,
     player_id: pid,
     role: roleAssignments[pid],
     is_alive: true,
   }))
 
-  const { error: playerStateError } = await admin
-    .from('mafia_player_states')
-    .insert(playerStateRows)
+  const { error: playerStateError } = await admin.from('mafia_player_states').insert(playerStateRows)
 
   if (playerStateError) {
     console.error('Failed to initialize mafia player states:', playerStateError)
@@ -213,4 +202,3 @@ export async function initializeMafiaGame(
 
   return { error: null }
 }
-

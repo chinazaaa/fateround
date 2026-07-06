@@ -27,11 +27,7 @@ import {
   SNAKE_LADDER_MAX_PLAYERS,
   SNAKE_LADDER_MIN_PLAYERS,
 } from '@/lib/snake-and-ladder'
-import {
-  MAFIA_MIN_PLAYERS,
-  MAFIA_MAX_PLAYERS,
-  MAFIA_DEFAULT_MAX_PLAYERS,
-} from '@/lib/mafia'
+import { MAFIA_MIN_PLAYERS, MAFIA_MAX_PLAYERS, MAFIA_DEFAULT_MAX_PLAYERS } from '@/lib/mafia'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
   'anonymous_messages',

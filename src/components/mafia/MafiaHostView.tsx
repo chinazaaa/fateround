@@ -76,9 +76,13 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
   })
 
   // Polling fallback
-  usePolling(() => {
-    void load()
-  }, [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(
+    () => {
+      void load()
+    },
+    [gameCode, load],
+    { intervalMs: POLL_INTERVALS.realtimeFallback }
+  )
 
   // Advance phase helper
   const advancePhase = async (nextPhase?: MafiaPhase) => {
@@ -141,11 +145,11 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     lastVoteResultPlayerId,
   } = mafiaState
 
-  const activePlayers = players.filter(p => p.isAlive)
-  const deadPlayers = players.filter(p => !p.isAlive)
+  const activePlayers = players.filter((p) => p.isAlive)
+  const deadPlayers = players.filter((p) => !p.isAlive)
 
   // Find names helper
-  const playerName = (id: string | null) => players.find(p => p.id === id)?.name ?? 'None'
+  const playerName = (id: string | null) => players.find((p) => p.id === id)?.name ?? 'None'
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
@@ -155,9 +159,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
           <span className="text-2xl">👁️</span>
           <div>
             <h1 className="font-extrabold text-lg text-purple-300">Narrator Dashboard</h1>
-            <p className="text-xs text-indigo-400 uppercase tracking-widest font-semibold">
-              Game Code: {gameCode}
-            </p>
+            <p className="text-xs text-indigo-400 uppercase tracking-widest font-semibold">Game Code: {gameCode}</p>
           </div>
         </div>
         <div className="flex items-center space-x-4">
@@ -249,13 +251,18 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
               Active Players ({activePlayers.length})
             </h2>
             <div className="divide-y divide-indigo-950/40 space-y-2">
-              {activePlayers.map(p => (
-                <div key={p.id} className="flex flex-col sm:flex-row justify-between sm:items-center py-3 bg-slate-950/10 px-3 rounded-lg border border-indigo-950/30">
+              {activePlayers.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex flex-col sm:flex-row justify-between sm:items-center py-3 bg-slate-950/10 px-3 rounded-lg border border-indigo-950/30"
+                >
                   <div className="flex items-center space-x-3">
                     <span className="text-lg">👤</span>
                     <div>
                       <span className="font-bold text-slate-200">{p.name}</span>
-                      <span className={`block text-xs uppercase font-extrabold ${p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}>
+                      <span
+                        className={`block text-xs uppercase font-extrabold ${p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}
+                      >
                         {p.role}
                       </span>
                     </div>
@@ -292,15 +299,16 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
               <p className="text-xs text-slate-500 italic">No one has been eliminated yet.</p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {deadPlayers.map(p => (
-                  <div key={p.id} className="flex justify-between items-center p-3 bg-slate-950/20 rounded-lg border border-red-950/20 opacity-75">
+                {deadPlayers.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex justify-between items-center p-3 bg-slate-950/20 rounded-lg border border-red-950/20 opacity-75"
+                  >
                     <div className="flex items-center space-x-3">
                       <span className="text-lg">💀</span>
                       <div>
                         <span className="font-bold line-through text-slate-400">{p.name}</span>
-                        <span className="block text-xs font-semibold text-red-500/80 uppercase">
-                          {p.role}
-                        </span>
+                        <span className="block text-xs font-semibold text-red-500/80 uppercase">{p.role}</span>
                       </div>
                     </div>
                     <span className="text-xs text-red-400 px-2 py-0.5 bg-red-950/20 border border-red-900/30 rounded">

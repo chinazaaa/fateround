@@ -2400,19 +2400,24 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     features: [
       {
         title: 'Secret roles',
-        description: 'Assigned automatically and privately. Only you know if you are a Villager, Mafia, Doctor, or Detective.',
+        description:
+          'Assigned automatically and privately. Only you know if you are a Villager, Mafia, Doctor, or Detective.',
         emoji: '🔍',
       },
       {
         title: 'Day & night phases',
-        description: 'Automated phase transitions keep the game moving seamlessly from night actions to daytime discussions.',
+        description:
+          'Automated phase transitions keep the game moving seamlessly from night actions to daytime discussions.',
         emoji: '🌒',
       },
       SHARED_FEATURES.mobile,
       SHARED_FEATURES.noSignup,
     ],
     steps: [
-      { title: 'Join the lobby', description: 'Enter the room code, get your secret role assigned when the host starts.' },
+      {
+        title: 'Join the lobby',
+        description: 'Enter the room code, get your secret role assigned when the host starts.',
+      },
       {
         title: 'Perform night actions',
         description: 'Mafia vote on a target, Doctor heals, Detective investigates, Villagers sleep.',

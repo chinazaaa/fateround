@@ -44,7 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'Voting is not active' }, { status: 400 })
   }
 
-  const myState = playerStates.find(p => p.player_id === playerId)
+  const myState = playerStates.find((p) => p.player_id === playerId)
   if (!myState) {
     return NextResponse.json({ error: 'Player state not found' }, { status: 404 })
   }
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (targetPlayerId === playerId) {
       return NextResponse.json({ error: 'Cannot vote for yourself' }, { status: 400 })
     }
-    const targetState = playerStates.find(p => p.player_id === targetPlayerId)
+    const targetState = playerStates.find((p) => p.player_id === targetPlayerId)
     if (!targetState) {
       return NextResponse.json({ error: 'Target player not found' }, { status: 404 })
     }

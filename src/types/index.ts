@@ -1242,14 +1242,7 @@ export interface BingoClaim {
 // --- MAFIA TYPES ---
 export type MafiaRole = 'villager' | 'mafia' | 'doctor' | 'detective'
 export type MafiaTeam = 'village' | 'mafia'
-export type MafiaPhase =
-  | 'role_reveal'
-  | 'night'
-  | 'day_report'
-  | 'discussion'
-  | 'voting'
-  | 'elimination'
-  | 'game_over'
+export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'discussion' | 'voting' | 'elimination' | 'game_over'
 
 export interface MafiaSession {
   id: string
@@ -1312,4 +1305,3 @@ export interface MafiaMyState {
   mafiaTeammates: string[] // Only for mafia players
   mafiaChatMessages?: MafiaChatMessage[]
 }
-

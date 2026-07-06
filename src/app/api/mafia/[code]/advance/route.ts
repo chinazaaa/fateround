@@ -87,14 +87,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   } else if (targetPhase === 'elimination') {
     durationSeconds = 8
   }
-  
+
   updateFields.phase_deadline = new Date(Date.now() + durationSeconds * 1000).toISOString()
 
   // 3. Resolve current phase transitions
   if (currentPhase === 'night' && targetPhase === 'day_report') {
     // Resolve Night Actions
     const { killedPlayerId, doctorTarget, detectiveTarget, mafiaTarget } = resolveMafiaNight(session, playerStates)
-    
+
     updateFields.mafia_target_player_id = mafiaTarget
     updateFields.doctor_target_player_id = doctorTarget
     updateFields.detect_target_player_id = detectiveTarget
@@ -113,14 +113,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         .eq('player_id', killedPlayerId)
 
       // Set is_eliminated = true in players table
-      await admin
-        .from('players')
-        .update({ is_eliminated: true })
-        .eq('game_id', gameId)
-        .eq('id', killedPlayerId)
+      await admin.from('players').update({ is_eliminated: true }).eq('game_id', gameId).eq('id', killedPlayerId)
 
       // Update local state for win condition check
-      const pIndex = playerStates.findIndex(p => p.player_id === killedPlayerId)
+      const pIndex = playerStates.findIndex((p) => p.player_id === killedPlayerId)
       if (pIndex !== -1) {
         playerStates[pIndex].is_alive = false
       }
@@ -134,7 +130,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       updateFields.phase_deadline = null
       await markGameFinished(admin, gameId)
     }
-
   } else if (currentPhase === 'voting' && targetPhase === 'elimination') {
     // Resolve Voting
     const votedPlayerId = resolveMafiaDayVote(playerStates)
@@ -153,14 +148,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         .eq('player_id', votedPlayerId)
 
       // Set is_eliminated = true in players table
-      await admin
-        .from('players')
-        .update({ is_eliminated: true })
-        .eq('game_id', gameId)
-        .eq('id', votedPlayerId)
+      await admin.from('players').update({ is_eliminated: true }).eq('game_id', gameId).eq('id', votedPlayerId)
 
       // Update local state for win check
-      const pIndex = playerStates.findIndex(p => p.player_id === votedPlayerId)
+      const pIndex = playerStates.findIndex((p) => p.player_id === votedPlayerId)
       if (pIndex !== -1) {
         playerStates[pIndex].is_alive = false
       }
@@ -174,7 +165,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       updateFields.phase_deadline = null
       await markGameFinished(admin, gameId)
     }
-
   } else if (targetPhase === 'night' && currentPhase !== 'role_reveal') {
     // Moving to next day cycle night
     updateFields.day_number = session.day_number + 1

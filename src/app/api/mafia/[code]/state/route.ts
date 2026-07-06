@@ -19,12 +19,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const resumeToken = typeof body?.resumeToken === 'string' ? body.resumeToken : null
 
   // 1. Fetch game and players
-  const [{ data: game }, { data: playersData }, { data: mafiaSession }, { data: mafiaPlayerStates }] = await Promise.all([
-    admin.from('games').select('status, title').eq('id', gameId).maybeSingle(),
-    admin.from('players').select('id, name, spectator, is_eliminated').eq('game_id', gameId),
-    admin.from('mafia_sessions').select('*').eq('game_id', gameId).maybeSingle(),
-    admin.from('mafia_player_states').select('*').eq('game_id', gameId),
-  ])
+  const [{ data: game }, { data: playersData }, { data: mafiaSession }, { data: mafiaPlayerStates }] =
+    await Promise.all([
+      admin.from('games').select('status, title').eq('id', gameId).maybeSingle(),
+      admin.from('players').select('id, name, spectator, is_eliminated').eq('game_id', gameId),
+      admin.from('mafia_sessions').select('*').eq('game_id', gameId).maybeSingle(),
+      admin.from('mafia_player_states').select('*').eq('game_id', gameId),
+    ])
 
   if (!game || !mafiaSession || !mafiaPlayerStates) {
     return NextResponse.json({ error: 'Game not found' }, { status: 404 })
@@ -39,14 +40,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (resumeToken) {
     const auth = await assertPlayer(admin, gameId, resumeToken)
     if (auth.player) {
-      myPlayerState = playerStates.find(p => p.player_id === auth.player.id)
+      myPlayerState = playerStates.find((p) => p.player_id === auth.player.id)
       isAuthorizedPlayer = !!myPlayerState
     }
   }
 
   // 2. Map players to public information
-  const playersMap = new Map(playersData?.map(p => [p.id, p]) ?? [])
-  const publicPlayers: MafiaPublicPlayer[] = playerStates.map(ps => {
+  const playersMap = new Map(playersData?.map((p) => [p.id, p]) ?? [])
+  const publicPlayers: MafiaPublicPlayer[] = playerStates.map((ps) => {
     const p = playersMap.get(ps.player_id)
     const isGameOver = session.phase === 'game_over'
     const revealRole = !ps.is_alive || isGameOver
@@ -65,22 +66,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (myPlayerState) {
     const role = myPlayerState.role
     const team: MafiaTeam = role === 'mafia' ? 'mafia' : 'village'
-    
+
     // Mafia teammates names
     let mafiaTeammates: string[] = []
     if (role === 'mafia') {
-      const mafiaIds = playerStates.filter(p => p.role === 'mafia').map(p => p.player_id)
-      mafiaTeammates = playersData
-        ?.filter(p => mafiaIds.includes(p.id))
-        .map(p => p.name) ?? []
+      const mafiaIds = playerStates.filter((p) => p.role === 'mafia').map((p) => p.player_id)
+      mafiaTeammates = playersData?.filter((p) => mafiaIds.includes(p.id)).map((p) => p.name) ?? []
     }
 
     // Detective result — use the session-level resolved target (persists across day cycles)
     // rather than the player's live action target which is cleared at the start of each night
     let detectiveResult: MafiaMyState['detectiveResult'] = null
     if (role === 'detective' && session.detect_target_player_id && session.phase !== 'night') {
-      const targetState = playerStates.find(p => p.player_id === session.detect_target_player_id)
-      const targetPlayer = playersData?.find(p => p.id === session.detect_target_player_id)
+      const targetState = playerStates.find((p) => p.player_id === session.detect_target_player_id)
+      const targetPlayer = playersData?.find((p) => p.id === session.detect_target_player_id)
       if (targetState && targetPlayer) {
         detectiveResult = {
           targetName: targetPlayer.name,
@@ -99,7 +98,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         .order('created_at', { ascending: true })
         .limit(50)
       if (messages) {
-        mafiaChatMessages = messages.map(m => ({
+        mafiaChatMessages = messages.map((m) => ({
           id: m.id,
           game_id: m.game_id,
           sender_player_id: m.sender_player_id,
@@ -124,7 +123,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // Calculate vote tallies if public votes
   // Let's count day votes for display
   const voteTallies: Record<string, number> = {}
-  playerStates.forEach(ps => {
+  playerStates.forEach((ps) => {
     if (ps.day_vote_target_player_id) {
       voteTallies[ps.day_vote_target_player_id] = (voteTallies[ps.day_vote_target_player_id] || 0) + 1
     }
@@ -146,7 +145,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     lastNightMafiaHadTarget: session.mafia_target_player_id != null,
     lastVoteResultPlayerId: session.vote_result_player_id,
     voteTallies: session.anonymous_votes && session.phase === 'voting' ? {} : voteTallies,
-    
+
     // Private state
     myState,
   })

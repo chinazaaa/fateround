@@ -43,8 +43,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const playerStates = mafiaPlayerStates as MafiaPlayerState[]
 
   // Combine player info with their mafia states
-  const playersMap = new Map(playersData?.map(p => [p.id, p]) ?? [])
-  const hostPlayers = playerStates.map(ps => {
+  const playersMap = new Map(playersData?.map((p) => [p.id, p]) ?? [])
+  const hostPlayers = playerStates.map((ps) => {
     const p = playersMap.get(ps.player_id)
     return {
       id: ps.player_id,
