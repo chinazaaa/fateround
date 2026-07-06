@@ -119,6 +119,9 @@ export const createGameSchema = z.object({
   scrabble_clock_seconds: z.coerce.number().optional(),
   chess_board_theme: z.string().optional(),
   chess_piece_set: z.string().optional(),
+  mafia_doctor_enabled: z.boolean().optional(),
+  mafia_detective_enabled: z.boolean().optional(),
+  mafia_anonymous_votes: z.boolean().optional(),
   custom_slots: z
     .object({
       slots: z

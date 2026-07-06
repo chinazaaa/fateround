@@ -22,6 +22,7 @@ import { ScrabblePlayerView } from '@/components/scrabble/ScrabblePlayerView'
 import { DescribeItPlayerView } from '@/components/describe-it/DescribeItPlayerView'
 import { SudokuPlayerView } from '@/components/sudoku/SudokuPlayerView'
 import { WordHuntPlayerView } from '@/components/word-hunt/WordHuntPlayerView'
+import { MafiaPlayerView } from '@/components/mafia/MafiaPlayerView'
 
 export type GamePlayerView = ComponentType<{ gameCode: string }>
 
@@ -54,4 +55,5 @@ export const PLAYER_VIEW_REGISTRY: Partial<Record<GameType, GamePlayerView>> = {
   sudoku: SudokuPlayerView,
   word_hunt: WordHuntPlayerView,
   anonymous_messages: AnonymousMessagesPlayerView,
+  mafia: MafiaPlayerView,
 }

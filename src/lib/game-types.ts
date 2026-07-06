@@ -1449,6 +1449,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  mafia: {
+    id: 'mafia',
+    label: 'Mafia',
+    tagline: 'Uncover the secret killers before it is too late',
+    headerEmoji: '🐺🔪',
+    card: {
+      accent: '#7c3aed',
+      accentSoft: 'rgba(124, 58, 237, 0.15)',
+      emoji: '🐺',
+      players: '5–16 players',
+      vibe: 'Social deduction',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏘️',
+        label: 'Villager',
+        color: '#10b981',
+        leaderboardLabel: 'Village wins',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      marry: {
+        emoji: '🔪',
+        label: 'Mafia',
+        color: '#ef4444',
+        leaderboardLabel: 'Mafia wins',
+        activeClass: 'bg-red-500/20 text-red-100 border-red-400',
+        borderClass: 'border-red-500/50 bg-red-500/10',
+        textColor: '#fca5a5',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
 }
 
 /** Home page “Popular games” grid — order is display order. */
@@ -1497,6 +1540,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'snake_and_ladder',
   'crazy_eights',
   'checkers',
+  'mafia',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -1522,6 +1566,7 @@ const PINNED_GAME_TYPES: GameType[] = [
   'bingo',
   'this_or_that',
   'two_truths',
+  'mafia',
 ]
 
 // Display order: pinned games first, then the remaining games in their default order.
@@ -1563,6 +1608,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'snake_and_ladder' || raw === 'snakes-and-ladders') return 'snake_and_ladder'
   if (raw === 'crazy_eights' || raw === 'crazy-eights') return 'crazy_eights'
   if (raw === 'checkers' || raw === 'draughts') return 'checkers'
+  if (raw === 'mafia' || raw === 'werewolf') return 'mafia'
   return 'smash_marry_kill'
 }
 
@@ -1633,6 +1679,8 @@ export function gameHowItWorks(
       return 'Two players join with their name. The host can play too. One player is White, the other Black — White moves first. Move pieces by the standard rules; checkmate your opponent to win. Optional chess clock — each player gets their own time bank that only ticks on their turn, and the first to run out loses.'
     case 'checkers':
       return 'Two players join with their name. The host can play too. One player is Black (and moves first), the other Red. Move diagonally forward one square; jump an adjacent opponent piece to capture it — and if a jump is available you must take it, chaining multiple jumps in one turn. Reach the far row to crown a king that moves both ways. Capture all your opponent’s pieces, or leave them with no move, to win. Optional clock — each player has their own time bank that only ticks on their turn.'
+    case 'mafia':
+      return 'Players join with their name (5 to 16 players). Each player is secretly assigned a role: Villager, Mafia, Doctor, or Detective. The game alternates between Night (when the Mafia kills, the Doctor heals, and the Detective investigates) and Day (when the village discusses and votes to eliminate a suspect). Eliminate the Mafia to win, or parity wins for the Mafia.'
     case 'describe_it':
       return 'Players join with their name and split into teams (you pick how many). Each round, one team is on the clock — a describer sees a secret word and types clues without saying it, while teammates race to type the word. Every correct guess scores a point. Most words across all rounds wins.'
     case 'i_call_on':
@@ -1987,6 +2035,10 @@ export function isChessGame(gameType: GameType | string | undefined): boolean {
 
 export function isCheckersGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'checkers'
+}
+
+export function isMafiaGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'mafia'
 }
 
 export function isDescribeItGame(gameType: GameType | string | undefined): boolean {

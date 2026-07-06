@@ -40,6 +40,7 @@ import {
   isTicTacToeGame,
   isChessGame,
   isCheckersGame,
+  isMafiaGame,
   isScrabbleGame,
   isDescribeItGame,
   isICallOnGame,
@@ -384,6 +385,7 @@ export async function POST(req: NextRequest) {
     isTicTacToeGame(game_type) ||
     isChessGame(game_type) ||
     isCheckersGame(game_type) ||
+    isMafiaGame(game_type) ||
     isScrabbleGame(game_type) ||
     isDescribeItGame(game_type)
       ? 'joiners'
@@ -444,6 +446,7 @@ export async function POST(req: NextRequest) {
     isTicTacToeGame(game_type) ||
     isChessGame(game_type) ||
     isCheckersGame(game_type) ||
+    isMafiaGame(game_type) ||
     isScrabbleGame(game_type)
       ? 1
       : isDescribeItGame(game_type)
@@ -580,19 +583,25 @@ export async function POST(req: NextRequest) {
                                           rawMaxPlayers,
                                           lobbyDefaultMaxPlayers('checkers', lobbyLimits)
                                         )
-                                      : isScrabbleGame(game_type)
+                                      : isMafiaGame(game_type)
                                         ? resolveMaxPlayers(
-                                            'scrabble',
+                                            'mafia',
                                             rawMaxPlayers,
-                                            lobbyDefaultMaxPlayers('scrabble', lobbyLimits)
+                                            lobbyDefaultMaxPlayers('mafia', lobbyLimits)
                                           )
-                                        : isDescribeItGame(game_type)
+                                        : isScrabbleGame(game_type)
                                           ? resolveMaxPlayers(
-                                              'describe_it',
+                                              'scrabble',
                                               rawMaxPlayers,
-                                              lobbyDefaultMaxPlayers('describe_it', lobbyLimits)
+                                              lobbyDefaultMaxPlayers('scrabble', lobbyLimits)
                                             )
-                                          : null
+                                          : isDescribeItGame(game_type)
+                                            ? resolveMaxPlayers(
+                                                'describe_it',
+                                                rawMaxPlayers,
+                                                lobbyDefaultMaxPlayers('describe_it', lobbyLimits)
+                                              )
+                                            : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
@@ -628,19 +637,23 @@ export async function POST(req: NextRequest) {
                   ? clampChessTimer(timer_seconds)
                   : isCheckersGame(game_type)
                     ? clampCheckersTimer(timer_seconds)
-                    : isScrabbleGame(game_type)
-                      ? clampScrabbleTimer(timer_seconds)
-                      : isDescribeItGame(game_type)
-                        ? clampDescribeItTurnSeconds(timer_seconds)
-                        : isWhotGame(game_type)
-                          ? clampBoardGameTurnTimer(timer_seconds, 'whot')
-                          : isCrazyEightsGame(game_type)
-                            ? clampBoardGameTurnTimer(timer_seconds, 'crazy_eights')
-                            : isMahjongGame(game_type)
-                              ? clampBoardGameTurnTimer(timer_seconds, 'mahjong')
-                              : [15, 30, 60].includes(Number(timer_seconds))
-                                ? Number(timer_seconds)
-                                : 30,
+                    : isMafiaGame(game_type)
+                      ? Number(timer_seconds) > 0
+                        ? Number(timer_seconds)
+                        : 60
+                      : isScrabbleGame(game_type)
+                        ? clampScrabbleTimer(timer_seconds)
+                        : isDescribeItGame(game_type)
+                          ? clampDescribeItTurnSeconds(timer_seconds)
+                          : isWhotGame(game_type)
+                            ? clampBoardGameTurnTimer(timer_seconds, 'whot')
+                            : isCrazyEightsGame(game_type)
+                              ? clampBoardGameTurnTimer(timer_seconds, 'crazy_eights')
+                              : isMahjongGame(game_type)
+                                ? clampBoardGameTurnTimer(timer_seconds, 'mahjong')
+                                : [15, 30, 60].includes(Number(timer_seconds))
+                                  ? Number(timer_seconds)
+                                  : 30,
     ...(isCodewordsGame(game_type)
       ? {
           operative_timer_seconds: clampCodewordsTimer(
@@ -779,7 +792,13 @@ export async function POST(req: NextRequest) {
                 }
               : isSudokuGame(game_type)
                 ? { game_duration_seconds: clampSudokuGameDuration(rawGameDurationSeconds ?? 0) }
-                : {}),
+                : isMafiaGame(game_type)
+                  ? {
+                      mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
+                      mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
+                      mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
+                    }
+                  : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {
