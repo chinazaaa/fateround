@@ -111,6 +111,8 @@ ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (
   'scrabble',
   'snake_and_ladder',
   'checkers',
+  'mahjong',
+  'mafia',
   'matching_pairs'
 ));
 
@@ -150,6 +152,8 @@ ALTER TABLE app_feedback ADD CONSTRAINT app_feedback_game_type_check CHECK (game
   'scrabble',
   'snake_and_ladder',
   'checkers',
+  'mahjong',
+  'mafia',
   'matching_pairs'
 ));
 
@@ -160,7 +164,7 @@ ALTER TABLE game_player_limits ADD CONSTRAINT game_player_limits_game_type_check
     'anonymous_messages', 'bingo', 'codewords', 'trivia', 'two_truths',
     'monopoly', 'yahtzee', 'whot', 'crazy_eights', 'ludo', 'i_call_on',
     'sudoku', 'tic_tac_toe', 'word_hunt', 'chess', 'checkers', 'scrabble',
-    'describe_it', 'snake_and_ladder', 'matching_pairs'
+    'describe_it', 'snake_and_ladder', 'mahjong', 'mafia', 'matching_pairs'
   )
 );
 
