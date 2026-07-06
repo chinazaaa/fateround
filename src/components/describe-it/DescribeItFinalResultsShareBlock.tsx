@@ -103,6 +103,7 @@ export function DescribeItFinalResultsShareBlock({
       </div>
 
       <HostGameFinishedActions
+        gameCode={game.id}
         playAgainButton={playAgainButton}
         shareButton={
           <ShareResults
@@ -171,6 +172,7 @@ function DescribeItIndividualResults({
       </div>
 
       <HostGameFinishedActions
+        gameCode={game.id}
         playAgainButton={playAgainButton}
         shareButton={
           <ShareResults
