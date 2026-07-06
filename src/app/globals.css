@@ -1134,7 +1134,7 @@ body {
   }
   .font-pirate-bold {
     font-family: var(--font-pirata), 'IM Fell English SC', Palatino, Georgia, serif;
-    -webkit-text-stroke: 0.7px currentColor;
+    -webkit-text-stroke: 0.7px currentcolor;
   }
   .font-naval {
     font-family: var(--font-naval), Palatino, Georgia, 'Times New Roman', serif;
