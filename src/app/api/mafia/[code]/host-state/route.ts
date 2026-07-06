@@ -7,7 +7,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const gameId = code.toUpperCase()
   const admin = getSupabaseAdmin()
 
-  let body: { hostToken?: unknown } = {}
+  let body: { hostToken?: unknown }
   try {
     body = await req.json()
   } catch {

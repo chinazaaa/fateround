@@ -79,16 +79,15 @@ export function checkMafiaWinCondition(players: Pick<MafiaPlayerState, 'role' | 
 function plurality(arr: string[]): string | null {
   if (arr.length === 0) return null
   const counts: Record<string, number> = {}
-  let maxElement = arr[0]
   let maxCount = 0
   for (const el of arr) {
     counts[el] = (counts[el] || 0) + 1
-    if (counts[el] > maxCount) {
-      maxElement = el
-      maxCount = counts[el]
-    }
+    if (counts[el] > maxCount) maxCount = counts[el]
   }
-  return maxElement
+  const leaders = Object.keys(counts).filter(k => counts[k] === maxCount)
+  // Tie → no winner
+  if (leaders.length > 1) return null
+  return leaders[0]
 }
 
 /**
@@ -161,15 +160,19 @@ export async function initializeMafiaGame(
 
   const doctorEnabled = gameData.mafia_doctor_enabled !== false
   const detectiveEnabled = gameData.mafia_detective_enabled !== false
-  const mafiaCount = gameData.mafia_count
   const anonymousVotes = gameData.mafia_anonymous_votes === true
+  // Resolve once using the same logic as assignMafiaRoles so the session row stays consistent
+  const resolvedMafiaCount =
+    gameData.mafia_count != null && gameData.mafia_count > 0
+      ? gameData.mafia_count
+      : Math.max(1, Math.floor(playerIds.length / 4))
 
   // 2. Assign roles
   const roleAssignments = assignMafiaRoles(
     playerIds,
     doctorEnabled,
     detectiveEnabled,
-    mafiaCount ?? undefined
+    resolvedMafiaCount
   )
 
   // 3. Create player states
@@ -193,15 +196,18 @@ export async function initializeMafiaGame(
   const { error: sessionError } = await admin.from('mafia_sessions').insert({
     game_id: gameId,
     phase: 'role_reveal',
+    phase_deadline: new Date(Date.now() + 10 * 1000).toISOString(),
     day_number: 1,
     doctor_enabled: doctorEnabled,
     detective_enabled: detectiveEnabled,
-    mafia_count: mafiaCount ?? Math.max(1, Math.floor(playerIds.length / 4)),
+    mafia_count: resolvedMafiaCount,
     anonymous_votes: anonymousVotes,
   })
 
   if (sessionError) {
     console.error('Failed to initialize mafia session:', sessionError)
+    // Clean up orphaned player state rows
+    await admin.from('mafia_player_states').delete().eq('game_id', gameId)
     return { error: 'Failed to initialize game session' }
   }
 

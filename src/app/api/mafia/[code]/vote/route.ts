@@ -8,7 +8,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const gameId = code.toUpperCase()
   const admin = getSupabaseAdmin()
 
-  let body: { resumeToken?: unknown, targetPlayerId?: unknown } = {}
+  let body: { resumeToken?: unknown; targetPlayerId?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -53,9 +53,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'You are dead and cannot vote' }, { status: 400 })
   }
 
-  // If voting for a target, make sure they are alive
+  // If voting for a target, make sure they are alive and not the voter themselves
   let targetId: string | null = null
   if (typeof targetPlayerId === 'string' && targetPlayerId) {
+    if (targetPlayerId === playerId) {
+      return NextResponse.json({ error: 'Cannot vote for yourself' }, { status: 400 })
+    }
     const targetState = playerStates.find(p => p.player_id === targetPlayerId)
     if (!targetState) {
       return NextResponse.json({ error: 'Target player not found' }, { status: 404 })

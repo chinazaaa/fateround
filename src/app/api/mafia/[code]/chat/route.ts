@@ -8,7 +8,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const gameId = code.toUpperCase()
   const admin = getSupabaseAdmin()
 
-  let body: { resumeToken?: unknown; message?: unknown } = {}
+  let body: { resumeToken?: unknown; message?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -17,8 +17,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { resumeToken, message } = body
 
+  const MAX_CHAT_LENGTH = 500
   if (typeof resumeToken !== 'string' || typeof message !== 'string' || !message.trim()) {
     return NextResponse.json({ error: 'Invalid parameters' }, { status: 400 })
+  }
+  if (message.trim().length > MAX_CHAT_LENGTH) {
+    return NextResponse.json({ error: `Message too long (max ${MAX_CHAT_LENGTH} characters)` }, { status: 400 })
   }
 
   // 1. Fetch player and confirm participation

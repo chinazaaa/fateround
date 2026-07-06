@@ -2,7 +2,6 @@
 
 import { useCallback, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
@@ -23,7 +22,7 @@ import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameTypeConfig } from '@/lib/game-types'
 import { clearPlayerSession } from '@/lib/utils'
-import type { Game, Player, MafiaPublicPlayer, MafiaMyState, MafiaPhase, MafiaTeam, MafiaRole, MafiaChatMessage } from '@/types'
+import type { Game, MafiaPublicPlayer, MafiaMyState, MafiaPhase, MafiaTeam, MafiaChatMessage } from '@/types'
 
 type Screen =
   | 'loading'
@@ -47,6 +46,7 @@ interface MafiaStateResponse {
   winningTeam: MafiaTeam | null
   players: MafiaPublicPlayer[]
   lastNightKillPlayerId: string | null
+  lastNightMafiaHadTarget: boolean
   lastVoteResultPlayerId: string | null
   voteTallies: Record<string, number>
   myState: MafiaMyState | null
@@ -55,7 +55,7 @@ interface MafiaStateResponse {
 export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError, success: toastSuccess } = useToast()
-  const { confirm } = useConfirm()
+  useConfirm()
   const [mafiaState, setMafiaState] = useState<MafiaStateResponse | null>(null)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
@@ -101,7 +101,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         return 'join'
       }
       if (gameData.status === 'waiting') return 'waiting'
-      if (gameData.status === 'active' && stateData?.phase !== 'game_over') return 'active'
+      if (gameData.status === 'active' && stateData != null && stateData.phase !== 'game_over') return 'active'
       if (gameData.status === 'finished' || stateData?.phase === 'game_over') return 'finished'
       return 'waiting'
     },
@@ -339,10 +339,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   // Active game view
   if (screen === 'active' && mafiaState) {
-    const { phase, dayNumber, phaseDeadline, players: publicPlayers, myState, lastNightKillPlayerId, lastVoteResultPlayerId, voteTallies } = mafiaState
+    const { phase, dayNumber, phaseDeadline, players: publicPlayers, myState, lastNightKillPlayerId, lastNightMafiaHadTarget, lastVoteResultPlayerId } = mafiaState
 
     const me = publicPlayers.find(p => p.id === myPlayerId)
-    const amIAlive = me?.isAlive !== false
+    const amISpectator = !!myPlayerId && me == null
+    const amIAlive = me != null && me.isAlive !== false
     const myRole = myState?.role
     const myTeam = myState?.team
 
@@ -351,7 +352,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     const votedPlayer = publicPlayers.find(p => p.id === lastVoteResultPlayerId)
 
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 text-slate-100 flex flex-col font-sans">
+      <div className="min-h-screen bg-linear-to-b from-slate-950 via-slate-900 to-indigo-950 text-slate-100 flex flex-col font-sans">
         {isViewer && <ViewerModeBanner />}
         
         {/* Header */}
@@ -448,7 +449,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               {phase === 'night' && (
                 <div>
                   <h3 className="text-xl font-bold text-purple-300 mb-3">Night Actions</h3>
-                  {!amIAlive ? (
+                  {amISpectator ? (
+                    <p className="text-sm text-indigo-300">You are watching. Night actions are in progress...</p>
+                  ) : !amIAlive ? (
                     <p className="text-sm text-red-400">You are dead and sleeping eternally. Waiting for phase to end.</p>
                   ) : myRole === 'villager' ? (
                     <div className="text-center py-6 space-y-3">
@@ -508,7 +511,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                       <p className="text-sm text-slate-400">They were a <strong>{killedPlayer.role?.toUpperCase()}</strong></p>
                     </div>
                   ) : (
-                    <p className="text-lg text-emerald-400 font-semibold">Nobody died last night! The Doctor saved the victim.</p>
+                    <p className="text-lg text-emerald-400 font-semibold">
+                      {lastNightMafiaHadTarget
+                        ? 'The Doctor saved the village! Nobody died.'
+                        : 'The Mafia chose no target. Nobody died.'}
+                    </p>
                   )}
                 </div>
               )}
@@ -528,7 +535,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               {phase === 'voting' && (
                 <div>
                   <h3 className="text-xl font-bold text-purple-300 mb-3">Village Voting</h3>
-                  {!amIAlive ? (
+                  {amISpectator ? (
+                    <p className="text-sm text-indigo-300">You are watching. Voting is in progress...</p>
+                  ) : !amIAlive ? (
                     <p className="text-sm text-red-400">You are dead and cannot vote.</p>
                   ) : (
                     <div className="space-y-4">
@@ -719,7 +728,7 @@ function MafiaNightChat({ messages, onSendMessage, myPlayerId }: MafiaChatProps)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!text.trim() || sending) return
     setSending(true)

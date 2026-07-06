@@ -9,7 +9,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const gameId = code.toUpperCase()
   const admin = getSupabaseAdmin()
 
-  let body: { resumeToken?: unknown } = {}
+  let body: { resumeToken?: unknown } | undefined
   try {
     body = await req.json()
   } catch {
@@ -75,11 +75,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         .map(p => p.name) ?? []
     }
 
-    // Detective result
+    // Detective result — use the session-level resolved target (persists across day cycles)
+    // rather than the player's live action target which is cleared at the start of each night
     let detectiveResult: MafiaMyState['detectiveResult'] = null
-    if (role === 'detective' && myPlayerState.night_action_target_player_id && session.phase !== 'night') {
-      const targetState = playerStates.find(p => p.player_id === myPlayerState!.night_action_target_player_id)
-      const targetPlayer = playersData?.find(p => p.id === myPlayerState!.night_action_target_player_id)
+    if (role === 'detective' && session.detect_target_player_id && session.phase !== 'night') {
+      const targetState = playerStates.find(p => p.player_id === session.detect_target_player_id)
+      const targetPlayer = playersData?.find(p => p.id === session.detect_target_player_id)
       if (targetState && targetPlayer) {
         detectiveResult = {
           targetName: targetPlayer.name,
@@ -88,9 +89,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       }
     }
 
-    // Mafia night chat
+    // Mafia night chat — only for alive Mafia members during the night phase
     let mafiaChatMessages: MafiaMyState['mafiaChatMessages'] = undefined
-    if (role === 'mafia') {
+    if (role === 'mafia' && myPlayerState.is_alive && session.phase === 'night') {
       const { data: messages } = await admin
         .from('mafia_chat_messages')
         .select('*')
@@ -142,6 +143,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     winningTeam: session.winning_team,
     players: publicPlayers,
     lastNightKillPlayerId: session.night_kill_player_id,
+    lastNightMafiaHadTarget: session.mafia_target_player_id != null,
     lastVoteResultPlayerId: session.vote_result_player_id,
     voteTallies: session.anonymous_votes && session.phase === 'voting' ? {} : voteTallies,
     

@@ -8,7 +8,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const gameId = code.toUpperCase()
   const admin = getSupabaseAdmin()
 
-  let body: { resumeToken?: unknown, targetPlayerId?: unknown } = {}
+  let body: { resumeToken?: unknown; targetPlayerId?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -55,6 +55,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (myState.role === 'villager') {
     return NextResponse.json({ error: 'Villagers have no night actions' }, { status: 400 })
+  }
+  if (myState.role === 'doctor' && !session.doctor_enabled) {
+    return NextResponse.json({ error: 'Doctor is not enabled in this game' }, { status: 400 })
+  }
+  if (myState.role === 'detective' && !session.detective_enabled) {
+    return NextResponse.json({ error: 'Detective is not enabled in this game' }, { status: 400 })
   }
 
   const targetState = playerStates.find(p => p.player_id === targetPlayerId)

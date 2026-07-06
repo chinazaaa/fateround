@@ -9,7 +9,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const gameId = code.toUpperCase()
   const admin = getSupabaseAdmin()
 
-  let body: { hostToken?: unknown; nextPhase?: unknown; isAuto?: unknown } = {}
+  let body: { hostToken?: unknown; nextPhase?: unknown; isAuto?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -46,13 +46,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'Unauthorized or phase not expired yet' }, { status: 403 })
   }
 
-  let currentPhase = session.phase
+  if (game.status === 'finished' || session.phase === 'game_over') {
+    return NextResponse.json({ error: 'Game is already finished' }, { status: 400 })
+  }
+
+  const currentPhase = session.phase
+  const phaseOrder: MafiaPhase[] = ['role_reveal', 'night', 'day_report', 'discussion', 'voting', 'elimination']
   let targetPhase: MafiaPhase
   if (typeof nextPhase === 'string') {
+    if (!phaseOrder.includes(nextPhase as MafiaPhase)) {
+      return NextResponse.json({ error: 'Invalid phase' }, { status: 400 })
+    }
     targetPhase = nextPhase as MafiaPhase
   } else {
     // Determine next phase automatically
-    const phaseOrder: MafiaPhase[] = ['role_reveal', 'night', 'day_report', 'discussion', 'voting', 'elimination']
     const idx = phaseOrder.indexOf(currentPhase)
     if (idx === -1 || currentPhase === 'elimination') {
       targetPhase = 'night'
@@ -61,7 +68,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
-  let updateFields: Partial<MafiaSession> = {
+  const updateFields: Partial<MafiaSession> = {
     phase: targetPhase,
   }
 
@@ -190,15 +197,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .eq('game_id', gameId)
   }
 
-  // 4. Save session updates
-  const { error: sessionError } = await admin
+  // 4. Save session updates — guard with current phase to prevent double-processing
+  const { error: sessionError, data: updatedSession } = await admin
     .from('mafia_sessions')
     .update(updateFields)
     .eq('game_id', gameId)
+    .eq('phase', currentPhase)
+    .select('phase')
 
   if (sessionError) {
     console.error('Failed to advance phase:', sessionError)
     return NextResponse.json({ error: 'Failed to update game phase' }, { status: 500 })
+  }
+
+  if (!updatedSession || updatedSession.length === 0) {
+    // Another request already advanced this phase — treat as success
+    return NextResponse.json({ success: true })
   }
 
   return NextResponse.json({ success: true })
