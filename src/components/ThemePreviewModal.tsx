@@ -57,6 +57,7 @@ function ThemeSampleRoom({ theme, siteMode }: { theme: ThemeConfig; siteMode: Th
       className="rounded-2xl overflow-hidden border border-[var(--border)] shadow-lg"
       style={roomStyle}
       data-theme={hasRoomVars ? undefined : siteMode}
+      data-game-theme={theme.id === 'default' ? undefined : theme.id}
     >
       <div
         className="p-5 space-y-4"
@@ -128,7 +129,7 @@ export function ThemePreviewModal({
 }) {
   const { theme: siteTheme } = useTheme()
   const [previewMode, setPreviewMode] = useState<Theme>(siteTheme)
-  const isDefaultTheme = theme?.id === 'default'
+  const isAdaptiveTheme = theme?.id === 'default' || theme?.id === 'pirate'
 
   useEffect(() => {
     if (open) setPreviewMode(siteTheme)
@@ -142,14 +143,16 @@ export function ThemePreviewModal({
       onClose={onClose}
       title={`${theme.emoji} ${theme.label}`}
       subtitle={
-        isDefaultTheme
-          ? 'Default follows your site light or dark appearance'
+        isAdaptiveTheme
+          ? theme.id === 'pirate'
+            ? 'Pirate theme has both Light Mode (Day Chart) and Dark Mode (Night Sea)'
+            : 'Default follows your site light or dark appearance'
           : 'This theme uses its own fixed color palette'
       }
       size="md"
     >
       <div className="space-y-4">
-        {isDefaultTheme && (
+        {isAdaptiveTheme && (
           <div className="flex justify-center">
             <PreviewModeToggle mode={previewMode} onChange={setPreviewMode} />
           </div>
