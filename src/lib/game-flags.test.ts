@@ -45,8 +45,11 @@ const LOBBY_GAMES_EXPECTED = new Set<GameType>([
 ])
 
 describe('game join-style flags (registry-backed, behaviour-preserving)', () => {
-  it('covers every game type (>= 30)', () => {
-    expect(ALL_GAME_TYPES.length).toBeGreaterThanOrEqual(30)
+  it('anchors the exact game-type count so a silent add/remove fails loudly', () => {
+    // Exact count, not a floor: adding or removing a GameType must update this test + the
+    // maps below in lockstep. (A swap is also caught per-game by the assertions below and by
+    // the canonical-list guard in game-type-coverage.test.ts.)
+    expect(ALL_GAME_TYPES.length).toBe(33)
   })
 
   it('isNameOnlyPlayerJoin matches the original OR-list for every game', () => {
