@@ -2,7 +2,7 @@
 @import "./fate-round-ds.css";
 @import "./fate-round-rooms.css";
 
-@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+@custom-variant dark (&:where([data-theme=dark]:not([data-theme=light] *), [data-theme=dark] *:not([data-theme=light] *):not([data-theme=light])));
 
 /* On the public/marketing pages (which render a `.fr-site` wrapper), the global
    floating theme toggle is replaced by a design-system toggle inside the
@@ -30,10 +30,11 @@ body:has(.fr-site) .app-fixed-theme-toggle {
   --border-strong: rgba(0, 0, 0, 0.12);
 
   --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.06);
-  --card-shadow-strong: 0 8px 40px rgba(0, 0, 0, 0.10), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --card-shadow-strong: 0 8px 40px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.04);
   --card-shadow-glow: 0 0 0 1px rgba(244, 63, 94, 0.08), 0 8px 32px rgba(244, 63, 94, 0.12);
 
-  --bg-gradient: radial-gradient(ellipse 90% 60% at 50% -20%, rgba(244, 63, 94, 0.08) 0%, transparent 60%),
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -20%, rgba(244, 63, 94, 0.08) 0%, transparent 60%),
     radial-gradient(ellipse 60% 40% at 90% 80%, rgba(168, 85, 247, 0.05) 0%, transparent 50%);
 
   --kiss: #f97316;
@@ -66,7 +67,7 @@ body:has(.fr-site) .app-fixed-theme-toggle {
 }
 
 /* ── Dark theme override ────────────────────────────────────────── */
-[data-theme="dark"] {
+[data-theme='dark'] {
   color-scheme: dark;
 
   --background: #08080f;
@@ -87,7 +88,8 @@ body:has(.fr-site) .app-fixed-theme-toggle {
   --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
   --card-shadow-glow: 0 0 0 1px rgba(244, 63, 94, 0.15), 0 8px 40px rgba(244, 63, 94, 0.2);
 
-  --bg-gradient: radial-gradient(ellipse 90% 55% at 50% -10%, rgba(244, 63, 94, 0.12) 0%, transparent 55%),
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(244, 63, 94, 0.12) 0%, transparent 55%),
     radial-gradient(ellipse 50% 35% at 85% 90%, rgba(168, 85, 247, 0.08) 0%, transparent 50%);
 
   --marry: #f59e0b;
@@ -113,6 +115,109 @@ body:has(.fr-site) .app-fixed-theme-toggle {
   --modal-backdrop: rgba(0, 0, 0, 0.72);
 }
 
+/* ── Pirate Theme (Light Mode - Day Chart) ───────────── */
+:root[data-game-theme='pirate']:not([data-theme='dark']),
+[data-game-theme='pirate']:not([data-theme='dark']) {
+  --background: #d9c7a3;
+  --background-soft: #e2d4b7;
+  --foreground: #2b1b0e;
+  --muted: #5c4326;
+  --faint: #8c6f4b;
+
+  --card: rgba(226, 212, 183, 0.85);
+  --card-strong: rgba(235, 224, 200, 0.95);
+  --card-hover: rgba(240, 230, 210, 0.9);
+  --surface-inset-bg: rgba(43, 27, 14, 0.06);
+
+  --border: rgba(184, 134, 11, 0.3);
+  --border-strong: rgba(184, 134, 11, 0.5);
+
+  --card-shadow: 0 1px 3px rgba(43, 27, 14, 0.15), 0 4px 16px rgba(184, 134, 11, 0.1);
+  --card-shadow-strong: 0 8px 32px rgba(43, 27, 14, 0.25), 0 2px 8px rgba(184, 134, 11, 0.15);
+  --card-shadow-glow: 0 0 0 1px rgba(184, 134, 11, 0.3), 0 8px 32px rgba(184, 134, 11, 0.2);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -20%, rgba(184, 134, 11, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 80%, rgba(122, 31, 31, 0.12) 0%, transparent 50%);
+
+  --primary: #b8860b;
+  --primary-strong: #996515;
+  --primary-glow: rgba(184, 134, 11, 0.4);
+
+  --kiss: #b8860b;
+  --marry: #20603d;
+  --kill: #7a1f1f;
+  --slot-kiss-text: #8c6508;
+  --slot-marry-text: #164028;
+  --slot-kill-text: #5a1616;
+  --slot-pass-text: #5c4326;
+
+  --chip-active-text: #5a1616;
+  --chip-active-bg: rgba(184, 134, 11, 0.15);
+  --chip-active-border: rgba(184, 134, 11, 0.5);
+
+  --avatar-bg: rgba(184, 134, 11, 0.15);
+  --avatar-border: rgba(184, 134, 11, 0.35);
+  --avatar-color: #7a1f1f;
+
+  --gradient-title-start: #2b1b0e;
+  --gradient-title-end: #7a1f1f;
+
+  --modal-backdrop: rgba(43, 27, 14, 0.65);
+}
+
+/* ── Pirate Theme (Dark Mode - Night Sea) ────────────── */
+[data-theme='dark'][data-game-theme='pirate']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='pirate']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='pirate']:not([data-theme='light']) {
+  --background: #0b2545;
+  --background-soft: #113159;
+  --foreground: #efe3c8;
+  --muted: #b8a080;
+  --faint: #7d6b54;
+
+  --card: rgba(17, 49, 89, 0.85);
+  --card-strong: rgba(21, 59, 107, 0.95);
+  --card-hover: rgba(26, 70, 125, 0.9);
+  --surface-inset-bg: rgba(0, 0, 0, 0.25);
+
+  --border: rgba(184, 134, 11, 0.3);
+  --border-strong: rgba(184, 134, 11, 0.5);
+
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.6), 0 0 20px rgba(184, 134, 11, 0.15);
+  --card-shadow-glow: 0 0 0 1px rgba(184, 134, 11, 0.3), 0 8px 40px rgba(184, 134, 11, 0.2);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(184, 134, 11, 0.18) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 35% at 85% 90%, rgba(122, 31, 31, 0.18) 0%, transparent 50%);
+
+  --primary: #d4af37;
+  --primary-strong: #b8860b;
+  --primary-glow: rgba(212, 175, 55, 0.4);
+
+  --kiss: #d4af37;
+  --marry: #2e8b57;
+  --kill: #a52a2a;
+  --slot-kiss-text: #f4d068;
+  --slot-marry-text: #50c878;
+  --slot-kill-text: #e66761;
+  --slot-pass-text: #b8a080;
+
+  --chip-active-text: #f4d068;
+  --chip-active-bg: rgba(212, 175, 55, 0.15);
+  --chip-active-border: rgba(212, 175, 55, 0.5);
+
+  --avatar-bg: rgba(212, 175, 55, 0.15);
+  --avatar-border: rgba(212, 175, 55, 0.35);
+  --avatar-color: #d4af37;
+
+  --gradient-title-start: #efe3c8;
+  --gradient-title-end: #d4af37;
+
+  --modal-backdrop: rgba(5, 15, 30, 0.8);
+}
+
 /* ── Base ───────────────────────────────────────────────────────── */
 html {
   background: var(--background);
@@ -124,7 +229,9 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
   min-height: 100vh;
-  transition: background-color 0.3s ease, color 0.2s ease;
+  transition:
+    background-color 0.3s ease,
+    color 0.2s ease;
 }
 
 /* ── Ambient background ─────────────────────────────────────────── */
@@ -179,8 +286,12 @@ body {
 
 @keyframes ambient-drift {
   /* Translate only — scaling forces the blurred layer to re-rasterize each frame. */
-  0% { transform: translate3d(0, 0, 0); }
-  100% { transform: translate3d(30px, 20px, 0); }
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(30px, 20px, 0);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -203,7 +314,11 @@ body {
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   box-shadow: var(--card-shadow);
-  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.25s ease, transform 0.2s ease;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.25s ease,
+    transform 0.2s ease;
 }
 
 .glass-card-strong {
@@ -213,7 +328,10 @@ body {
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   box-shadow: var(--card-shadow-strong);
-  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.25s ease;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.25s ease;
 }
 
 .glass-card-interactive:hover {
@@ -236,7 +354,10 @@ body {
   background: var(--card-strong);
   overflow: hidden;
   text-align: left;
-  transition: transform 0.2s ease, box-shadow 0.25s ease, border-color 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.25s ease,
+    border-color 0.2s ease;
   cursor: pointer;
 }
 
@@ -252,7 +373,9 @@ body {
 
 .game-type-card-selected {
   border-color: var(--accent, var(--primary));
-  box-shadow: 0 0 0 1px var(--accent, var(--primary)), var(--card-shadow-glow);
+  box-shadow:
+    0 0 0 1px var(--accent, var(--primary)),
+    var(--card-shadow-glow);
 }
 
 .game-type-card-glow {
@@ -272,15 +395,27 @@ body {
   color: var(--faint);
 }
 
-.text-muted { color: var(--muted); }
-.text-faint { color: var(--faint); }
+.text-muted {
+  color: var(--muted);
+}
+.text-faint {
+  color: var(--faint);
+}
 
 /* Use instead of text-white/* — readable in light and dark themes */
-.text-body { color: var(--foreground); }
-.text-body-muted { color: var(--muted); }
+.text-body {
+  color: var(--foreground);
+}
+.text-body-muted {
+  color: var(--muted);
+}
 
-.border-theme { border-color: var(--border); }
-.border-theme-strong { border-color: var(--border-strong); }
+.border-theme {
+  border-color: var(--border);
+}
+.border-theme-strong {
+  border-color: var(--border-strong);
+}
 
 .bar-track-sm {
   height: 0.375rem;
@@ -317,7 +452,9 @@ body {
   box-shadow: 0 0 0 1px rgba(13, 148, 136, 0.35);
 }
 
-.label-amber { color: #b45309; }
+.label-amber {
+  color: #b45309;
+}
 .callout-warning {
   color: #92400e;
   background: rgba(251, 191, 36, 0.14);
@@ -327,31 +464,50 @@ body {
   line-height: 1.45;
   padding: 0.5rem 0.75rem;
 }
-.label-teal { color: #0f766e; }
-.label-violet { color: #6d28d9; }
-.label-sky { color: #0369a1; }
-.text-accent-correct { color: #0f766e; font-weight: 600; }
+.label-teal {
+  color: #0f766e;
+}
+.label-violet {
+  color: #6d28d9;
+}
+.label-sky {
+  color: #0369a1;
+}
+.text-accent-correct {
+  color: #0f766e;
+  font-weight: 600;
+}
 
-[data-theme="dark"] .result-row-winner-amber {
+[data-theme='dark'] .result-row-winner-amber {
   background: rgba(255, 255, 255, 0.08);
   box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.25);
 }
 
-[data-theme="dark"] .result-row-winner-teal {
+[data-theme='dark'] .result-row-winner-teal {
   background: rgba(20, 184, 166, 0.12);
   box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.3);
 }
 
-[data-theme="dark"] .label-amber { color: rgba(253, 230, 138, 0.85); }
-[data-theme="dark"] .callout-warning {
+[data-theme='dark'] .label-amber {
+  color: rgba(253, 230, 138, 0.85);
+}
+[data-theme='dark'] .callout-warning {
   color: rgba(253, 230, 138, 0.95);
   background: rgba(251, 191, 36, 0.1);
   border-color: rgba(251, 191, 36, 0.35);
 }
-[data-theme="dark"] .label-teal { color: rgba(153, 246, 228, 0.85); }
-[data-theme="dark"] .label-violet { color: rgb(196, 181, 253); }
-[data-theme="dark"] .label-sky { color: rgb(125, 211, 252); }
-[data-theme="dark"] .text-accent-correct { color: rgb(153, 246, 228); }
+[data-theme='dark'] .label-teal {
+  color: rgba(153, 246, 228, 0.85);
+}
+[data-theme='dark'] .label-violet {
+  color: rgb(196, 181, 253);
+}
+[data-theme='dark'] .label-sky {
+  color: rgb(125, 211, 252);
+}
+[data-theme='dark'] .text-accent-correct {
+  color: rgb(153, 246, 228);
+}
 
 .gradient-title {
   background: linear-gradient(135deg, var(--gradient-title-start) 10%, var(--gradient-title-end) 85%);
@@ -375,7 +531,10 @@ body {
   background: var(--card-strong);
   padding: 0.8125rem 1rem;
   color: var(--foreground);
-  transition: border-color 0.15s, box-shadow 0.15s, background 0.2s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    background 0.2s;
 }
 
 .input-field::placeholder {
@@ -400,7 +559,11 @@ body {
   color: #ffffff;
   letter-spacing: 0.01em;
   box-shadow: 0 4px 16px var(--primary-glow);
-  transition: background 0.15s, transform 0.12s, box-shadow 0.2s, opacity 0.15s;
+  transition:
+    background 0.15s,
+    transform 0.12s,
+    box-shadow 0.2s,
+    opacity 0.15s;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -438,7 +601,12 @@ body {
   padding: 0.8125rem 1.25rem;
   font-weight: 600;
   color: var(--muted);
-  transition: border-color 0.15s, color 0.15s, background 0.15s, transform 0.1s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s,
+    transform 0.1s,
+    box-shadow 0.15s;
 }
 
 .btn-secondary:hover:not(:disabled) {
@@ -471,7 +639,11 @@ body {
   padding: 0.8125rem 1.25rem;
   font-weight: 600;
   color: #dc2626;
-  transition: border-color 0.15s, color 0.15s, background 0.15s, transform 0.1s;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s,
+    transform 0.1s;
 }
 
 .btn-danger-soft:hover:not(:disabled) {
@@ -501,7 +673,9 @@ body {
   padding: 0.5rem 0.75rem;
   font-weight: 500;
   color: var(--muted);
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 
 .btn-ghost:hover {
@@ -519,7 +693,10 @@ body {
   font-weight: 500;
   color: var(--muted);
   -webkit-tap-highlight-color: transparent;
-  transition: border-color 0.12s, color 0.12s, background-color 0.12s;
+  transition:
+    border-color 0.12s,
+    color 0.12s,
+    background-color 0.12s;
 }
 
 .chip:not(.chip-active):hover {
@@ -549,7 +726,10 @@ body {
   font-weight: 600;
   color: var(--muted);
   -webkit-tap-highlight-color: transparent;
-  transition: border-color 0.12s, color 0.12s, background-color 0.12s;
+  transition:
+    border-color 0.12s,
+    color 0.12s,
+    background-color 0.12s;
 }
 
 .hot-seat-type:not(.hot-seat-type-active):hover {
@@ -645,34 +825,66 @@ body {
 }
 
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slide-up {
-  from { opacity: 0; transform: translateY(100%); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes scale-in {
-  from { opacity: 0; transform: scale(0.95) translateY(8px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 @keyframes card-stagger {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-stagger > * {
   animation: card-stagger 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
-.animate-stagger > *:nth-child(1) { animation-delay: 0.03s; }
-.animate-stagger > *:nth-child(2) { animation-delay: 0.06s; }
-.animate-stagger > *:nth-child(3) { animation-delay: 0.09s; }
-.animate-stagger > *:nth-child(4) { animation-delay: 0.12s; }
-.animate-stagger > *:nth-child(5) { animation-delay: 0.15s; }
+.animate-stagger > *:nth-child(1) {
+  animation-delay: 0.03s;
+}
+.animate-stagger > *:nth-child(2) {
+  animation-delay: 0.06s;
+}
+.animate-stagger > *:nth-child(3) {
+  animation-delay: 0.09s;
+}
+.animate-stagger > *:nth-child(4) {
+  animation-delay: 0.12s;
+}
+.animate-stagger > *:nth-child(5) {
+  animation-delay: 0.15s;
+}
 
 /* ── Misc ───────────────────────────────────────────────────────── */
 .progress-track {
@@ -704,13 +916,23 @@ body {
 }
 
 @keyframes pulse-ring {
-  0% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(1.4); opacity: 0; }
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
 }
 
 @keyframes shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .pulse-ring::before {
@@ -737,13 +959,27 @@ body {
 
 /* ── Dice Roll Animation ────────────────────────────────────────── */
 @keyframes dice-roll-spin {
-  0% { transform: rotate(0deg) scale(1) translateY(0); }
-  15% { transform: rotate(-25deg) scale(0.9) translateY(-6px); }
-  35% { transform: rotate(45deg) scale(1.1) translateY(4px); }
-  55% { transform: rotate(-45deg) scale(0.95) translateY(-3px); }
-  75% { transform: rotate(25deg) scale(1.05) translateY(2px); }
-  90% { transform: rotate(-10deg) scale(0.98) translateY(-1px); }
-  100% { transform: rotate(0deg) scale(1) translateY(0); }
+  0% {
+    transform: rotate(0deg) scale(1) translateY(0);
+  }
+  15% {
+    transform: rotate(-25deg) scale(0.9) translateY(-6px);
+  }
+  35% {
+    transform: rotate(45deg) scale(1.1) translateY(4px);
+  }
+  55% {
+    transform: rotate(-45deg) scale(0.95) translateY(-3px);
+  }
+  75% {
+    transform: rotate(25deg) scale(1.05) translateY(2px);
+  }
+  90% {
+    transform: rotate(-10deg) scale(0.98) translateY(-1px);
+  }
+  100% {
+    transform: rotate(0deg) scale(1) translateY(0);
+  }
 }
 
 .animate-dice-roll {
@@ -761,7 +997,7 @@ body {
 }
 
 [data-theme='dark'] .yahtzee-die {
-  background: linear-gradient(150deg, #f8f8fc 0%, #eeeeF4 50%, #e2e2ec 100%);
+  background: linear-gradient(150deg, #f8f8fc 0%, #eeeef4 50%, #e2e2ec 100%);
   box-shadow:
     0 6px 18px rgba(0, 0, 0, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
@@ -847,7 +1083,7 @@ body {
   background: var(--card-strong);
   border: 1.5px solid var(--border-strong);
   color: var(--foreground);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 /* Scoreable (pick this category) button */
@@ -890,3 +1126,15 @@ body {
   border-top: 2px solid color-mix(in srgb, var(--primary) 30%, var(--border-strong));
 }
 
+/* ── Monopoly Theme Typography ──────────────────────────────────── */
+@layer utilities {
+  .font-pirate {
+    font-family: var(--font-pirata), 'IM Fell English SC', Palatino, Georgia, serif;
+  }
+  .font-naval {
+    font-family: var(--font-naval), Palatino, Georgia, 'Times New Roman', serif;
+  }
+  .font-chart {
+    font-family: Palatino, Georgia, 'Times New Roman', serif;
+  }
+}

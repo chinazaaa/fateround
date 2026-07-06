@@ -1,4 +1,5 @@
 import { formatMonopolyMoney, spaceAt } from '@/lib/monopoly-board'
+import { formatThemedText } from '@/components/monopoly/monopoly-themes'
 import type { MonopolyLastTradeEvent, MonopolyPendingTrade } from '@/types'
 
 export type TradeSideItem =
@@ -62,24 +63,34 @@ export function tradeSideHasValue(cash: number, propertyIndexes: unknown, jailCa
 }
 
 /** Human-readable trade side — omits £0 when there is no cash. */
-export function formatTradeSideText(cash: number, propertyIndexes: unknown, jailCards = 0): string {
+export function formatTradeSideText(
+  cash: number,
+  propertyIndexes: unknown,
+  jailCards = 0,
+  themeId?: string | null
+): string {
   const items = buildTradeSideItems(cash, propertyIndexes, jailCards)
   if (items.length === 0) return 'Nothing'
 
-  return items
+  const raw = items
     .map((item) => {
       if (item.kind === 'cash') return formatMonopolyMoney(item.amount)
       if (item.kind === 'property') return item.name
       return `${item.count} jail card${item.count === 1 ? '' : 's'}`
     })
     .join(' · ')
+  return formatThemedText(raw, themeId)
 }
 
 function sideItemCount(cash: number, propertyIndexes: unknown, jailCards = 0): number {
   return buildTradeSideItems(cash, propertyIndexes, jailCards).length
 }
 
-export function formatIncomingTradeAlert(trade: MonopolyPendingTrade, fromName: string): string {
+export function formatIncomingTradeAlert(
+  trade: MonopolyPendingTrade,
+  fromName: string,
+  themeId?: string | null
+): string {
   const normalized = normalizePendingTrade(trade)
   const receiveCount = sideItemCount(normalized.offer_cash, normalized.offer_properties, normalized.offer_get_out_cards)
   const payCount = sideItemCount(
@@ -91,11 +102,17 @@ export function formatIncomingTradeAlert(trade: MonopolyPendingTrade, fromName: 
   const receiveSummary = formatTradeSideText(
     normalized.offer_cash,
     normalized.offer_properties,
-    normalized.offer_get_out_cards
+    normalized.offer_get_out_cards,
+    themeId
   )
   const paySummary =
     payCount > 0
-      ? formatTradeSideText(normalized.request_cash, normalized.request_properties, normalized.request_get_out_cards)
+      ? formatTradeSideText(
+          normalized.request_cash,
+          normalized.request_properties,
+          normalized.request_get_out_cards,
+          themeId
+        )
       : null
 
   let message = `${fromName} offers ${receiveSummary}`
@@ -107,46 +124,46 @@ export function formatIncomingTradeAlert(trade: MonopolyPendingTrade, fromName: 
       payCount > 0 ? `, ${payCount} requested from you` : ''
     })`
   }
-  return message
+  return formatThemedText(message, themeId)
 }
 
 export function formatTradeMessageForPlayer(
   event: MonopolyLastTradeEvent,
   myPlayerId: string | null | undefined,
-  players: { id: string; name: string }[]
+  players: { id: string; name: string }[],
+  themeId?: string | null
 ): string {
   const from = players.find((p) => p.id === event.from_player_id)?.name ?? 'A player'
   const to = players.find((p) => p.id === event.to_player_id)?.name ?? 'A player'
 
+  let msg: string
   if (event.outcome === 'declined') {
     if (myPlayerId === event.from_player_id) {
-      return `${to} declined your trade offer.`
+      msg = `${to} declined your trade offer.`
+    } else if (myPlayerId === event.to_player_id) {
+      msg = `You declined ${from}'s trade offer.`
+    } else {
+      msg = `${to} declined ${from}'s trade offer.`
     }
-    if (myPlayerId === event.to_player_id) {
-      return `You declined ${from}'s trade offer.`
-    }
-    return `${to} declined ${from}'s trade offer.`
-  }
-
-  if (event.outcome === 'accepted') {
+  } else if (event.outcome === 'accepted') {
     if (myPlayerId === event.from_player_id) {
-      return `${to} accepted your trade offer.`
+      msg = `${to} accepted your trade offer.`
+    } else if (myPlayerId === event.to_player_id) {
+      msg = `You accepted ${from}'s trade offer.`
+    } else {
+      msg = `${from} and ${to} completed a trade.`
     }
-    if (myPlayerId === event.to_player_id) {
-      return `You accepted ${from}'s trade offer.`
-    }
-    return `${from} and ${to} completed a trade.`
-  }
-
-  if (event.outcome === 'proposed') {
+  } else if (event.outcome === 'proposed') {
     if (myPlayerId === event.from_player_id) {
-      return `Trade offer sent to ${to} — waiting for a response.`
+      msg = `Trade offer sent to ${to} — waiting for a response.`
+    } else if (myPlayerId === event.to_player_id) {
+      msg = `${from} sent you a trade offer — open the popup to review every item before accepting.`
+    } else {
+      msg = `${from} sent a trade offer to ${to}.`
     }
-    if (myPlayerId === event.to_player_id) {
-      return `${from} sent you a trade offer — open the popup to review every item before accepting.`
-    }
-    return `${from} sent a trade offer to ${to}.`
+  } else {
+    msg = `${from} sent a trade offer to ${to}.`
   }
 
-  return `${from} sent a trade offer to ${to}.`
+  return formatThemedText(msg, themeId)
 }
