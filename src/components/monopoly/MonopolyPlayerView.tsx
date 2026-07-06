@@ -148,7 +148,10 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const [replayReadyPending, setReplayReadyPending] = useState(false)
   const toggleReplayReady = useCallback(
     async (ready: boolean) => {
-      if (!myResumeToken) return
+      if (!myResumeToken) {
+        toastError('Your player session expired — rejoin to continue')
+        return
+      }
       setReplayReadyPending(true)
       try {
         const res = await fetch('/api/players/ready', {

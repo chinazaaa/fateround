@@ -521,7 +521,10 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   // `ready:false` sits the player back out.
   const [replayReadyPending, setReplayReadyPending] = useState(false)
   const toggleReplayReady = async (ready: boolean) => {
-    if (!myResumeToken) return
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
     setReplayReadyPending(true)
     try {
       await fetch('/api/players/ready', {

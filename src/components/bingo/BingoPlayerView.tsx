@@ -165,6 +165,14 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         }
       )
       .on(
+        // Keep the roster live so the replay ready-up ring reflects taps as they happen.
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+        () => {
+          void load()
+        }
+      )
+      .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'bingo_called_numbers', filter: `game_id=eq.${gameCode}` },
         (payload) => {
@@ -307,7 +315,10 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const [replayReadyPending, setReplayReadyPending] = useState(false)
   const toggleReplayReady = useCallback(
     async (ready: boolean) => {
-      if (!myResumeToken) return
+      if (!myResumeToken) {
+        toastError('Your player session expired — rejoin to continue')
+        return
+      }
       setReplayReadyPending(true)
       try {
         const res = await fetch('/api/players/ready', {

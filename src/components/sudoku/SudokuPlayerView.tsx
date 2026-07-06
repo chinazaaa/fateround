@@ -340,7 +340,10 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   // `ready:false` sits the player back out.
   const [replayReadyPending, setReplayReadyPending] = useState(false)
   async function toggleReplayReady(ready: boolean) {
-    if (!myResumeToken) return
+    if (!myResumeToken) {
+      showToast('Your player session expired — rejoin to continue', false)
+      return
+    }
     setReplayReadyPending(true)
     try {
       await fetch('/api/players/ready', {
