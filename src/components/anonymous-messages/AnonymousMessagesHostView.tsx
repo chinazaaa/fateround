@@ -7,6 +7,7 @@ import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { ExitIcon } from '@/components/host/host-icons'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
+import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
 import { ResultsPagination, usePagination } from '@/components/ui/ResultsPagination'
 import { useAnonymousMessageTrim } from '@/hooks/useAnonymousMessageTrim'
 import { useAnonymousMessages } from '@/hooks/useAnonymousMessages'
@@ -376,16 +377,21 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
       <HostLateJoinSettingsCard gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
 
       {game.status === 'waiting' && (
-        <HostLobbyStartButton
-          onClick={startSession}
-          disabled={!canStart || starting}
-          starting={starting}
-          disabledHint={
-            canStart
-              ? null
-              : `Need at least ${ANONYMOUS_ROOM_MIN_PLAYERS} players to start (${players.length}/${ANONYMOUS_ROOM_MIN_PLAYERS})`
-          }
-        />
+        <>
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3">
+            <HostVisibilityToggle gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+          </div>
+          <HostLobbyStartButton
+            onClick={startSession}
+            disabled={!canStart || starting}
+            starting={starting}
+            disabledHint={
+              canStart
+                ? null
+                : `Need at least ${ANONYMOUS_ROOM_MIN_PLAYERS} players to start (${players.length}/${ANONYMOUS_ROOM_MIN_PLAYERS})`
+            }
+          />
+        </>
       )}
 
       {game.status === 'waiting' && (

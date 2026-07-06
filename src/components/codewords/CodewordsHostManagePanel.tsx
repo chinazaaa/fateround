@@ -8,6 +8,7 @@ import { CodewordsBoardGrid } from '@/components/codewords/CodewordsBoardGrid'
 import { CodewordsLobbyRoster } from '@/components/codewords/CodewordsLobbyRoster'
 import { CodewordsScoreboard } from '@/components/codewords/CodewordsScoreboard'
 import { HostLobbyStartButton } from '@/components/host-lobby/HostLobbyStartButton'
+import { HostVisibilityToggle } from '@/components/host-lobby/HostVisibilityToggle'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
@@ -459,6 +460,9 @@ export function CodewordsHostManagePanel({
       {/* Start + close — actions */}
       {inLobby && (
         <div className="space-y-3">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-3">
+            <HostVisibilityToggle gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={onGameUpdate} />
+          </div>
           <HostLobbyStartButton
             onClick={onStartGame}
             disabled={startDisabled}

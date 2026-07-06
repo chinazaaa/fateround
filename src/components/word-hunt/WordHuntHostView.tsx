@@ -468,6 +468,8 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
           <HostLobbyWaitingFooter
             gameCode={gameCode}
             hostToken={hostToken}
+            game={game ?? undefined}
+            onGameUpdate={setGame}
             onStart={() => void startGame()}
             onEnded={load}
             canStart={canStart}

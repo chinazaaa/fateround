@@ -171,6 +171,8 @@ export function TriviaHostManagePanel({
           <HostLobbyWaitingFooter
             gameCode={gameCode}
             hostToken={hostToken}
+            game={game}
+            onGameUpdate={onGameUpdate}
             onStart={onStartGame}
             onEnded={onReload}
             canStart={players.length >= TRIVIA_MIN_PLAYERS}

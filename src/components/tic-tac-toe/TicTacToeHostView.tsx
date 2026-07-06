@@ -352,6 +352,8 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
           <HostLobbyWaitingFooter
             gameCode={gameCode}
             hostToken={hostToken}
+            game={game ?? undefined}
+            onGameUpdate={setGame}
             onStart={startGame}
             onEnded={load}
             canStart={canStart}

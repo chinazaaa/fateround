@@ -910,6 +910,8 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
           <HostLobbyWaitingFooter
             gameCode={gameCode}
             hostToken={hostToken}
+            game={game ?? undefined}
+            onGameUpdate={setGame}
             onStart={startGame}
             onEnded={load}
             canStart={canStart}

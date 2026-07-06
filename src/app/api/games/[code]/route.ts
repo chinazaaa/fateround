@@ -45,6 +45,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
 
   const {
     hostToken,
+    is_public: rawIsPublic,
     rounds_count: rawRoundsCount,
     timer_seconds: rawTimerSeconds,
     operative_timer_seconds: rawOperativeTimerSeconds,
@@ -55,16 +56,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     participant_filter,
   } = body
 
-  // Fail-closed: treat this PATCH as "late-join settings only" iff every provided setting
-  // is a late-join key. Deriving lateJoinOnly from the provided keys (rather than
-  // denylisting every other field) means any newly-added setting defaults to the stricter
-  // assertHostGameSettings path instead of silently widening the weaker late-join auth.
-  const LATE_JOIN_SETTING_KEYS = new Set(['late_join_policy', 'allow_viewers', 'allow_late_players'])
+  // Fail-closed: treat this PATCH as "changeable while live" iff every provided setting is a
+  // key that's safe to edit after the game starts (late-join controls + public/private
+  // visibility, which just governs Browse listing). Deriving this from the provided keys
+  // (rather than denylisting every other field) means any newly-added setting defaults to the
+  // stricter assertHostGameSettings path instead of silently widening the weaker auth.
+  const LIVE_EDITABLE_SETTING_KEYS = new Set(['late_join_policy', 'allow_viewers', 'allow_late_players', 'is_public'])
   const providedSettingKeys = Object.entries(body)
     .filter(([key, value]) => key !== 'hostToken' && value !== undefined)
     .map(([key]) => key)
   const lateJoinOnly =
-    providedSettingKeys.length > 0 && providedSettingKeys.every((key) => LATE_JOIN_SETTING_KEYS.has(key))
+    providedSettingKeys.length > 0 && providedSettingKeys.every((key) => LIVE_EDITABLE_SETTING_KEYS.has(key))
 
   const auth = lateJoinOnly
     ? await assertHostLateJoinSettings(getSupabaseAdmin(), code, hostToken)
@@ -73,6 +75,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
 
   const updatePayload: Record<string, unknown> = {}
   const gameType = parseGameType(auth.game!.game_type)
+
+  // Public/private visibility — controls whether the game is listed in Browse.
+  // Applies to every game type, so it's handled up front with no per-type gating.
+  if (rawIsPublic !== undefined) {
+    updatePayload.is_public = rawIsPublic
+  }
 
   if (rawRoundsCount !== undefined) {
     const min = isHotSeat(gameType) ? HOT_SEAT_MIN_PLAYERS : 1

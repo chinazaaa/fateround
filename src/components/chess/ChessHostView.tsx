@@ -436,6 +436,8 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
           <HostLobbyWaitingFooter
             gameCode={gameCode}
             hostToken={hostToken}
+            game={game ?? undefined}
+            onGameUpdate={setGame}
             onStart={startGame}
             onEnded={load}
             canStart={canStart}

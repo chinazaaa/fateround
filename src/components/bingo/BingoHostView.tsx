@@ -631,6 +631,8 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
             <HostLobbyWaitingFooter
               gameCode={gameCode}
               hostToken={hostToken}
+              game={game ?? undefined}
+              onGameUpdate={setGame}
               onStart={startGame}
               onEnded={load}
               canStart={players.length >= BINGO_MIN_PLAYERS}

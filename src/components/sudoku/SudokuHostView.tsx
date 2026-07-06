@@ -458,6 +458,8 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
           <HostLobbyWaitingFooter
             gameCode={gameCode}
             hostToken={hostToken}
+            game={game ?? undefined}
+            onGameUpdate={setGame}
             onStart={() => void handleStart()}
             onEnded={load}
             canStart={activePlayers.length >= SUDOKU_MIN_PLAYERS}
