@@ -144,10 +144,50 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
   // Clear stale host-as-player state if the host's own row is removed elsewhere.
   useHostPlayerReconciliation(players, hostPlayerId, () => handlePlayerRemoved(hostPlayerId!))
 
-  const changeHostMode = (mode: MonopolyHostMode) => {
+  const changeHostMode = async (mode: MonopolyHostMode) => {
     if (game?.status !== 'waiting') return
+    const prev = hostMode
     setHostMode(mode)
     setMonopolyHostMode(gameCode, mode)
+    // Switching to "Host only" while holding a seat → give up the seat so the host
+    // drops out of the players list.
+    if (mode === 'spectator' && prev === 'player' && hostPlayerId) {
+      try {
+        const res = await fetch('/api/players', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameCode, playerId: hostPlayerId, hostToken }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error ?? 'Failed to leave seat')
+        }
+        handlePlayerRemoved(hostPlayerId)
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to leave seat')
+      }
+    }
+  }
+
+  const renameHost = async (name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed || !hostPlayerId) return
+    try {
+      const res = await fetch('/api/players', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameCode, playerId: hostPlayerId, playerName: trimmed, hostToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to update name')
+      setHostPlayerName(data.playerName)
+      setPlayerSession(gameCode, hostPlayerId, data.playerName, 'both', hostResumeToken)
+      await load()
+      success('Name updated!')
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to update name')
+    }
   }
 
   const hostJoinGame = async () => {
@@ -386,6 +426,7 @@ export function MonopolyHostView({ gameCode, hostToken }: { gameCode: string; ho
             onJoinNameChange={setHostJoinName}
             onJoin={() => void hostJoinGame()}
             joining={hostJoining}
+            onEditName={renameHost}
             spectatorHint="Spectate from the Watch tab"
             playingNote={
               <p className="text-sm text-muted">

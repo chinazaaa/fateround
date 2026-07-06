@@ -97,27 +97,39 @@ export function HostModeSelector({
           </div>
         ))}
 
-      {mode === 'player' &&
-        joinedPlayerId &&
-        (playingNote ?? (
-          <PlayingAsNote
-            name={joinedPlayerName ?? ''}
-            onEditName={onEditName}
-            disabled={disabled}
-          />
-        ))}
+      {mode === 'player' && joinedPlayerId && (
+        <div className="space-y-2">
+          {playingNote ?? (
+            <div className="flex items-center gap-2 rounded-xl border border-[var(--chip-active-border)] bg-[var(--chip-active-bg)] px-3 py-2 text-sm">
+              <span className="text-[var(--primary)]">
+                <CheckIcon size={14} />
+              </span>
+              <span className="text-body">
+                Playing as <span className="font-semibold">{joinedPlayerName}</span>
+              </span>
+            </div>
+          )}
+          {onEditName && (
+            <HostEditNameRow name={joinedPlayerName ?? ''} onEditName={onEditName} disabled={disabled} />
+          )}
+        </div>
+      )}
     </Wrapper>
   )
 }
 
-/** "Playing as X" pill with an optional inline rename (Edit → input + Save/Cancel). */
-function PlayingAsNote({
+/**
+ * "Edit your name" affordance shown under the "Playing as …" note. Collapsed to a
+ * subtle button; expands to an inline input + Save/Cancel. Rendered separately from
+ * playingNote so it appears for every game regardless of a custom note.
+ */
+function HostEditNameRow({
   name,
   onEditName,
   disabled,
 }: {
   name: string
-  onEditName?: (name: string) => void | Promise<void>
+  onEditName: (name: string) => void | Promise<void>
   disabled?: boolean
 }) {
   const [editing, setEditing] = useState(false)
@@ -134,7 +146,7 @@ function PlayingAsNote({
     if (!trimmed || saving) return
     setSaving(true)
     try {
-      await onEditName?.(trimmed)
+      await onEditName(trimmed)
       setEditing(false)
     } finally {
       setSaving(false)
@@ -143,7 +155,7 @@ function PlayingAsNote({
 
   if (editing) {
     return (
-      <div className="flex items-center gap-2 pt-1">
+      <div className="flex items-center gap-2">
         <input
           type="text"
           value={draft}
@@ -179,25 +191,15 @@ function PlayingAsNote({
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-[var(--chip-active-border)] bg-[var(--chip-active-bg)] px-3 py-2 text-sm">
-      <span className="text-[var(--primary)]">
-        <CheckIcon size={14} />
-      </span>
-      <span className="text-body">
-        Playing as <span className="font-semibold">{name}</span>
-      </span>
-      {onEditName && (
-        <button
-          type="button"
-          onClick={startEditing}
-          disabled={disabled}
-          className="ml-auto flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-[var(--primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] disabled:opacity-60"
-        >
-          <PencilIcon size={13} />
-          Edit
-        </button>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={startEditing}
+      disabled={disabled}
+      className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-[var(--primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] disabled:opacity-60"
+    >
+      <PencilIcon size={13} />
+      Edit your name
+    </button>
   )
 }
 
