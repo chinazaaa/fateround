@@ -22,9 +22,11 @@ import {
   SUDOKU_WRONG_PENALTY,
   getPlayerTimeSpent,
   completedSudokuNumbersForPlayer,
+  SUDOKU_MIN_PLAYERS,
   type SudokuSubmission,
   type SudokuUnitFlash,
 } from '@/lib/sudoku'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { PLAYER_SELECT, ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import { formatMinutesSeconds } from '@/lib/timer-format'
@@ -334,6 +336,27 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     await load()
   }
 
+  // Ready-up ring: readiness = holding a seat, so this reuses /players/ready.
+  // `ready:false` sits the player back out.
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
+  async function toggleReplayReady(ready: boolean) {
+    if (!myResumeToken) {
+      showToast('Your player session expired — rejoin to continue', false)
+      return
+    }
+    setReplayReadyPending(true)
+    try {
+      await fetch('/api/players/ready', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+      })
+      await load()
+    } finally {
+      setReplayReadyPending(false)
+    }
+  }
+
   function handlePlayerLeft() {
     clearPlayerSession(gameCode)
     setMyPlayerId(null)
@@ -622,6 +645,22 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (view === 'waiting') {
+    // "Play again · same settings" reopened the lobby with the ready-up ring.
+    if (game?.replay_pending) {
+      return (
+        <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
+          <ReplayReadyRing
+            players={players}
+            meId={myPlayerId}
+            isHost={false}
+            minPlayers={SUDOKU_MIN_PLAYERS}
+            onToggleReady={(ready) => void toggleReplayReady(ready)}
+            onStart={() => {}}
+            pending={replayReadyPending}
+          />
+        </GameJoinLobbyShell>
+      )
+    }
     return (
       <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
         <GameLobbyWaitingPanel

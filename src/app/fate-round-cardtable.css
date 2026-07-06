@@ -70,6 +70,13 @@
 .fr-room .ct-surface > .turnrail { flex: 0 0 auto; }
 .fr-room .ct-surface > .table { min-height: 0; overflow-y: auto; }
 .fr-room .ct-surface > .hand-wrap { flex: 0 0 auto; }
+/* Spectator (watch-only): invert the pinning. For a player the felt scrolls and
+   the hand is pinned; for a spectator there is no hand, and a long player roster
+   (flex:0 0 auto) squished the felt down to nothing — clipping the draw/discard
+   piles off the top of the felt. Give the felt its natural height and make the
+   roster the scroll region instead. */
+.fr-room .ct-surface:has(> .hand-wrap.spec) > .table { flex: 0 0 auto; overflow: visible; }
+.fr-room .ct-surface > .hand-wrap.spec { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-bottom: 0; }
 
 /* ── turn rail (seats along the top) ──────────────────────────────── */
 .fr-room .turnrail { display: flex; gap: 10px; padding: 12px 14px 2px; overflow-x: auto; }
@@ -116,6 +123,11 @@
 .fr-room .hand-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 0 4px; }
 .fr-room .hand-head .hl { font: 700 10px var(--font-sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
 .fr-room .hand-head .cnt { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.fr-room .hand-head-right { display: flex; align-items: center; gap: 10px; }
+/* Stack / Separate layout toggle — a personal view preference for your hand. */
+.fr-room .hand-layout { display: inline-flex; background: var(--surface-sunken, var(--bg)); border: 1px solid var(--border); border-radius: 9999px; padding: 2px; }
+.fr-room .hand-layout .hlt { font: 700 10px var(--font-sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); background: none; border: 0; border-radius: 9999px; padding: 3px 10px; cursor: pointer; transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out); }
+.fr-room .hand-layout .hlt.on { color: var(--primary-strong); background: var(--primary-soft); }
 .fr-room .hand { display: flex; justify-content: center; padding-top: 14px; min-height: 92px; }
 /* many-cards: let a big hand scroll horizontally instead of overflowing */
 /* `touch-action: pan-x` is required for the swipe to scroll on TOUCH devices —
@@ -128,6 +140,13 @@
 .fr-room .hand.scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 9999px; }
 .fr-room .hand.scroll .pc { scroll-snap-align: center; }
 .fr-room .hand.tight .pc { margin-left: -26px; }
+/* Separate layout: real gaps so every card is fully visible; scrolls when the
+   hand is wide, but stays centred while it still fits (`safe center`). */
+.fr-room .hand.separate { justify-content: safe center; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; touch-action: pan-x; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.fr-room .hand.separate::-webkit-scrollbar { height: 6px; }
+.fr-room .hand.separate::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 9999px; }
+.fr-room .hand.separate .pc { margin-left: 6px; scroll-snap-align: center; }
+.fr-room .hand.separate .pc:first-child { margin-left: 0; }
 .fr-room .hand .pc { margin-left: -15px; cursor: pointer; transition: transform var(--dur-fast) var(--ease-out); }
 .fr-room .hand .pc:first-child { margin-left: 0; }
 .fr-room .hand .pc.sel { transform: translateY(-14px); }
@@ -222,3 +241,54 @@
 .fr-room .spec-row .nm { font-size: 13.5px; font-weight: 600; color: var(--text); }
 .fr-room .spec-row .tag { font: 700 10px var(--font-sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--primary-strong); background: var(--primary-soft); border-radius: 9999px; padding: 3px 8px; }
 .fr-room .spec-row .cc { margin-left: auto; font: 700 12px var(--font-mono); color: var(--text-muted); }
+
+/* ── Whot · roomy / desktop board ─────────────────────────────────────
+   The card table is a mobile-faithful phone column. On a wide or tall
+   viewport (desktop, a 13" laptop, or a phone in desktop mode) that column
+   stretched full-height and the small piles floated in a huge empty felt —
+   the board read as tiny and lost. For Whot (scoped via `.ct-surface.whot`)
+   contain the board to a centred, framed block and scale the cards up so the
+   gameplay fills the space and reads big. Mobile (< 560px) is untouched. */
+@media (min-width: 560px) {
+  .fr-room-poll:has(.ct-surface.whot) .pr-stage { justify-content: safe center; align-items: center; padding: 24px; }
+  .fr-room .ct-surface.whot {
+    flex: 0 1 auto; width: 100%; max-width: 600px; max-height: 100%; min-height: 0;
+    border: 1px solid var(--border); border-radius: var(--radius-lg);
+    background: var(--surface-sunken); overflow: hidden;
+  }
+  .fr-room .ct-surface.whot > .pr-prog { padding: 14px 18px 10px; }
+  .fr-room .ct-surface.whot > .turnrail { padding: 12px 16px 4px; justify-content: safe center; }
+  .fr-room .ct-surface.whot > .table { flex: 0 1 auto; padding: 22px 18px; gap: 18px; }
+  .fr-room .ct-surface.whot > .hand-wrap { margin-bottom: 0; }
+  .fr-room .ct-surface.whot .pc { width: 62px; height: 90px; border-radius: 10px; }
+  .fr-room .ct-surface.whot .pc.lg { width: 92px; height: 132px; border-radius: 13px; }
+  .fr-room .ct-surface.whot .pc .mid svg { width: 30px; height: 30px; }
+  .fr-room .ct-surface.whot .pc.lg .mid svg { width: 40px; height: 40px; }
+}
+/* Below the desktop two-pane breakpoint, widen the phone frame so the bigger
+   board has room to breathe. The >= 1024px grid keeps its own full-width shell
+   + side rail, so leave that range alone. */
+@media (min-width: 560px) and (max-width: 1023px) {
+  .fr-room-poll:has(.ct-surface.whot) { max-width: 660px; }
+}
+
+/* ── Whot · short-screen felt fit ─────────────────────────────────────
+   On shorter viewports (small phones, or a tall phone with the browser
+   toolbar up) the felt's piles + demand badge + turn toast overflowed and
+   the piles / status got clipped — you had to scroll the felt to read the
+   full "…'s turn — match X" or "Must play" line. Recover the felt's wasted
+   space so it all fits without scrolling; on very short screens also shrink
+   the piles a touch. Whot-scoped. */
+@media (max-height: 820px) {
+  .fr-room .ct-surface.whot > .table { gap: 10px; padding: 8px 16px; }
+  .fr-room .ct-surface.whot .pile { gap: 5px; }
+  .fr-room .ct-surface.whot .whot-demand { padding: 5px 11px; }
+  .fr-room .ct-surface.whot .act-toast { padding: 8px 14px; }
+  .fr-room .ct-surface.whot > .hand-wrap { margin-bottom: calc(2.5dvh + env(safe-area-inset-bottom, 0px)); }
+}
+@media (max-height: 700px) {
+  .fr-room .ct-surface.whot .table .pc { width: 50px; height: 72px; }
+  .fr-room .ct-surface.whot .table .pc.lg { width: 64px; height: 92px; }
+  .fr-room .ct-surface.whot .table .pc.lg .mid { font-size: 28px; }
+  .fr-room .ct-surface.whot .table .pc.whot.lg .mid { font-size: 15px; }
+}

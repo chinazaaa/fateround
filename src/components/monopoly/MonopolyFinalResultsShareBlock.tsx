@@ -1,10 +1,12 @@
 'use client'
 
 import { useMemo, useRef, type ReactNode } from 'react'
+import { MEDALS } from '@/lib/medals'
 import type { Game, MonopolyBoard, MonopolyPlayerState, Player } from '@/types'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { buildMonopolyStandings } from '@/lib/monopoly'
 import { formatThemedMoney } from '@/components/monopoly/monopoly-themes'
 
@@ -16,6 +18,8 @@ export function MonopolyFinalResultsShareBlock({
   winnerName,
   highlightPlayerId,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
   themeId,
 }: {
   game: Game
@@ -25,6 +29,8 @@ export function MonopolyFinalResultsShareBlock({
   winnerName?: string | null
   highlightPlayerId?: string | null
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
   themeId?: string | null
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
@@ -47,43 +53,51 @@ export function MonopolyFinalResultsShareBlock({
 
   return (
     <div className="space-y-4">
-      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-4">
+      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-5">
         <ShareResultsCaptureHeader game={game} />
-        <p className="text-5xl sm:text-6xl leading-none text-center pt-1">🏆</p>
-        <p className="text-xl sm:text-2xl font-black text-center text-[var(--marry)]">
-          {displayWinner ? `${displayWinner} wins!` : 'Game over'}
-        </p>
-        {displayWinner && standings.length > 1 && (
-          <p className="text-center text-xs text-muted">Highest total assets (cash + properties + buildings)</p>
-        )}
+        <FinishedWinnerHero
+          winnerName={displayWinner}
+          game={game}
+          subtitle={
+            displayWinner && standings.length > 1 ? 'Highest total assets (cash + properties + buildings)' : undefined
+          }
+        />
         {standings.length > 0 && (
-          <div className="space-y-2 pt-2">
+          <div className="space-y-2">
             {standings.map((row) => {
               const isWinner = row.rank === 1
               const isMe = row.playerId === highlightPlayerId
               return (
                 <div
                   key={row.playerId}
-                  className={[
-                    'flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5',
+                  className={
                     isWinner
-                      ? 'border-[color-mix(in_srgb,var(--marry)_45%,var(--border-strong))] bg-[color-mix(in_srgb,var(--marry)_10%,var(--surface-inset-bg))]'
-                      : 'border-[var(--border-strong)] bg-[var(--surface-inset-bg)]',
-                    isMe && !isWinner ? 'ring-1 ring-[color-mix(in_srgb,var(--primary)_25%,transparent)]' : '',
-                  ].join(' ')}
+                      ? 'flex items-center gap-3 rounded-xl px-4 py-3 border border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_8%,var(--surface))]'
+                      : 'flex items-center gap-3 rounded-xl px-4 py-3 border border-[var(--border)] bg-[var(--surface-inset-bg)]'
+                  }
                 >
+                  <span
+                    className={`w-7 shrink-0 text-center font-black tabular-nums ${
+                      isWinner ? 'text-lg gradient-title' : 'text-base text-faint'
+                    }`}
+                  >
+                    {MEDALS[row.rank - 1] ?? row.rank}
+                  </span>
                   <div className="min-w-0">
-                    <p className="font-bold text-sm truncate">
-                      {isWinner ? '🏆 ' : `${row.rank}. `}
+                    <p className={`font-bold truncate ${isWinner ? 'text-[17px]' : 'text-[15px]'}`}>
                       {row.name}
-                      {isMe ? ' (you)' : ''}
+                      {isMe ? <span className="label-teal font-semibold"> (you)</span> : null}
                     </p>
                     <p className="text-[11px] text-muted">
                       {row.propertyCount} propert{row.propertyCount === 1 ? 'y' : 'ies'} · Cash{' '}
                       {formatThemedMoney(row.cash, themeId)}
                     </p>
                   </div>
-                  <p className="text-sm font-black tabular-nums text-[var(--primary)] shrink-0">
+                  <p
+                    className={`ml-auto shrink-0 text-sm font-black tabular-nums ${
+                      isWinner ? 'gradient-title' : 'text-[var(--primary)]'
+                    }`}
+                  >
                     {formatThemedMoney(row.netWorth, themeId)}
                   </p>
                 </div>
@@ -93,8 +107,11 @@ export function MonopolyFinalResultsShareBlock({
         )}
       </div>
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}
@@ -105,6 +122,7 @@ export function MonopolyFinalResultsShareBlock({
             players={players}
             monopolyStandings={standings}
             monopolyWinnerName={displayWinner ?? undefined}
+            primary
           />
         }
       />

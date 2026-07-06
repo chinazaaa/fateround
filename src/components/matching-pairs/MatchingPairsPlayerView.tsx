@@ -22,10 +22,12 @@ import {
   MATCHING_PAIRS_POINTS_PER_PAIR,
   MATCHING_PAIRS_STREAK_BONUS,
   matchingPairsGridLayout,
+  MATCHING_PAIRS_MIN_PLAYERS,
   type MatchingPairsMetadata,
   type MatchingPairsSubmission,
   type MatchingPairsProgress,
 } from '@/lib/memory-match'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { ROUND_SELECT, MEMORY_MATCH_SUBMISSION_SELECT, MEMORY_MATCH_PROGRESS_SELECT } from '@/lib/supabase-selects'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
@@ -515,6 +517,27 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     await load()
   }
 
+  // Ready-up ring: readiness = holding a seat, so this reuses /players/ready.
+  // `ready:false` sits the player back out.
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
+  const toggleReplayReady = async (ready: boolean) => {
+    if (!myResumeToken) {
+      toastError('Your player session expired — rejoin to continue')
+      return
+    }
+    setReplayReadyPending(true)
+    try {
+      await fetch('/api/players/ready', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+      })
+      await load()
+    } finally {
+      setReplayReadyPending(false)
+    }
+  }
+
   const gridLayout = meta ? matchingPairsGridLayout(meta.gridSizePairs) : { cols: 4, rows: 4 }
   const pairsMatched = mySubmissions.filter((s) => s.is_match).length
   const wrongAttempts = mySubmissions.filter((s) => !s.is_match).length
@@ -593,6 +616,22 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (screen === 'waiting') {
+    // "Play again · same settings" reopened the lobby with the ready-up ring.
+    if (game?.replay_pending) {
+      return (
+        <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
+          <ReplayReadyRing
+            players={players}
+            meId={myPlayerId}
+            isHost={false}
+            minPlayers={MATCHING_PAIRS_MIN_PLAYERS}
+            onToggleReady={(ready) => void toggleReplayReady(ready)}
+            onStart={() => {}}
+            pending={replayReadyPending}
+          />
+        </GameJoinLobbyShell>
+      )
+    }
     return (
       <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
         <GameLobbyWaitingPanel

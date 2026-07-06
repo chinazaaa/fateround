@@ -15,6 +15,11 @@ export const createPlayerSchema = z.object({
   // Private tournament identity secret (see tournament-player-token). Proves the
   // joiner really is the named tournament player, so only they can take/reclaim the seat.
   tournamentToken: z.string().trim().max(100).optional(),
+  // The player's own resume_token (saved locally at join). When a device re-enters a
+  // game it already holds a seat in — a reconnect, refresh, or new tab — this lets the
+  // server reclaim that exact row instead of minting a new (spectator) one. Optional:
+  // genuine first-time joiners have none.
+  resumeToken: z.string().trim().max(100).optional(),
 })
 
 export type CreatePlayerInput = z.infer<typeof createPlayerSchema>

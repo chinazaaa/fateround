@@ -152,7 +152,7 @@ export function WhotPlaySurface({
       : 0
 
   return (
-    <CardTableSurface>
+    <CardTableSurface variant="whot">
       {gameTimer?.active && <GameTimerBar label={gameTimer.label} pct={gamePct} low={gameTimer.secondsLeft <= 60} />}
       <TurnRail seats={seats} />
 
@@ -204,7 +204,7 @@ export function WhotPlaySurface({
       </Table>
 
       {watching ? (
-        <div className="hand-wrap">
+        <div className="hand-wrap spec">
           <div className="hand-head">
             <span className="hl">Players · {specSeats.length}</span>
             <span className="cnt">watch-only</span>

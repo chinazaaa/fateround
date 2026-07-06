@@ -3,6 +3,7 @@ import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
+import { normalizeResumeToken } from '@/lib/utils'
 import { removeMonopolyPlayer } from '@/lib/monopoly'
 import { removeScrabblePlayer } from '@/lib/scrabble'
 import { removeWhotPlayer } from '@/lib/whot'
@@ -215,6 +216,24 @@ export async function POST(req: NextRequest) {
   const roomMemberId = roomMember?.id ?? null
   if (!name && roomMember?.display_name) {
     name = roomMember.display_name.trim()
+  }
+
+  // Reconnect / refresh reclaim: if this device already holds a seat in this game — proven
+  // by its resume_token (saved locally at join) — return THAT row instead of creating a new
+  // one. Without this, re-entering an *active* game falls through to the join branches below,
+  // where active-game joins default to spectator, silently demoting a real player to a viewer
+  // after a network blip. Idempotent and role-preserving; mirrors the tournament reclaim below.
+  if (body.resumeToken) {
+    const token = normalizeResumeToken(body.resumeToken)
+    if (token.length >= 4) {
+      const { data: existing } = await getSupabaseAdmin()
+        .from('players')
+        .select('id, name, gender, identity_gender, joined_at, spectator, is_eliminated, resume_token')
+        .eq('game_id', gameId)
+        .eq('resume_token', token)
+        .maybeSingle()
+      if (existing) return jsonPlayerJoin(roomMemberId, existing, gameRow as Game)
+    }
   }
 
   // Tournament games have no per-game login: a player is identified by the secret

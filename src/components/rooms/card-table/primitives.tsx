@@ -17,6 +17,7 @@
  */
 
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { WhotShapeIcon } from '@/components/whot/WhotShapeIcon'
 import { CRAZY8_SUIT_SYMBOLS } from '@/lib/crazy-eights'
 import type { CrazyEightsCard, WhotCard as WhotCardType } from '@/types'
@@ -340,6 +341,12 @@ export function SpecSeats({ seats }: SpecSeatsProps) {
 
 export type CardTableSurfaceProps = {
   children: ReactNode
+  /**
+   * Per-game modifier class (e.g. "whot") added alongside `ct-surface`. Lets a
+   * game opt into game-specific layout tweaks — currently the Whot
+   * contain-and-scale treatment on desktop / roomy viewports.
+   */
+  variant?: string
 }
 
 /**
@@ -347,8 +354,8 @@ export type CardTableSurfaceProps = {
  * `.pr-stage`, which is a bounded flex column with no scroll on mobile) so the
  * pinned turn rail + hand stay on-screen and the felt scrolls between them.
  */
-export function CardTableSurface({ children }: CardTableSurfaceProps) {
-  return <div className="ct-surface">{children}</div>
+export function CardTableSurface({ children, variant }: CardTableSurfaceProps) {
+  return <div className={'ct-surface' + (variant ? ' ' + variant : '')}>{children}</div>
 }
 
 /* ─── table shell + status / toasts ─────────────────────────────── */
@@ -405,17 +412,57 @@ export type HandProps = {
   actions?: ReactNode
 }
 
+/** How the player's own cards are laid out — a personal view preference. */
+type HandLayout = 'stack' | 'separate'
+const HAND_LAYOUT_KEY = 'fr-hand-layout'
+
 /** `.hand-wrap` — header + fanned `.hand` + hint + `.hand-actions`. */
 export function Hand({ children, count, many, hint, actions }: HandProps) {
+  // Let players choose how their hand reads: "Stack" (compact overlap) or
+  // "Separate" (each card fully visible, scrolls). Personal + persisted — it's
+  // a view preference, not game state. Default: stack for big hands (fits the
+  // felt), separate for small ones. A stored choice overrides the default.
+  const [layout, setLayout] = useState<HandLayout>(many ? 'stack' : 'separate')
+  useEffect(() => {
+    const saved = window.localStorage.getItem(HAND_LAYOUT_KEY)
+    if (saved === 'stack' || saved === 'separate') setLayout(saved)
+  }, [])
+  const choose = (next: HandLayout) => {
+    setLayout(next)
+    window.localStorage.setItem(HAND_LAYOUT_KEY, next)
+  }
+
+  const handClass = 'hand' + (layout === 'separate' ? ' separate' : many ? ' scroll tight' : ' tight')
+
   return (
     <div className="hand-wrap">
       <div className="hand-head">
         <span className="hl">Your hand</span>
-        <span className="cnt">
-          {count} card{count === 1 ? '' : 's'}
-        </span>
+        <div className="hand-head-right">
+          <div className="hand-layout" role="group" aria-label="Card layout">
+            <button
+              type="button"
+              className={'hlt' + (layout === 'stack' ? ' on' : '')}
+              aria-pressed={layout === 'stack'}
+              onClick={() => choose('stack')}
+            >
+              Stack
+            </button>
+            <button
+              type="button"
+              className={'hlt' + (layout === 'separate' ? ' on' : '')}
+              aria-pressed={layout === 'separate'}
+              onClick={() => choose('separate')}
+            >
+              Separate
+            </button>
+          </div>
+          <span className="cnt">
+            {count} card{count === 1 ? '' : 's'}
+          </span>
+        </div>
       </div>
-      <div className={'hand' + (many ? ' scroll tight' : '')}>{children}</div>
+      <div className={handClass}>{children}</div>
       {hint != null && <p className="hand-hint">{hint}</p>}
       {actions != null && <div className="hand-actions">{actions}</div>}
     </div>
