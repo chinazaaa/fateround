@@ -426,8 +426,7 @@ export function Hand({ children, count, many, hint, actions }: HandProps) {
     window.localStorage.setItem(HAND_LAYOUT_KEY, next)
   }
 
-  const handClass =
-    'hand' + (layout === 'separate' ? ' separate' : many ? ' scroll tight' : ' tight')
+  const handClass = 'hand' + (layout === 'separate' ? ' separate' : many ? ' scroll tight' : ' tight')
 
   return (
     <div className="hand-wrap">
