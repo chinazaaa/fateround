@@ -5,6 +5,7 @@ import type { Game, MahjongSession, Player } from '@/types'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { MahjongCard } from '@/components/mahjong/MahjongChrome'
 import { mahjongTileShortLabel } from '@/lib/mahjong'
 import { mahjongRulesetLabel } from '@/lib/mahjong-rulesets'
@@ -48,16 +49,22 @@ export function MahjongFinalResultsShareBlock({
 
   return (
     <div className="space-y-4">
-      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-4">
+      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-5">
         <ShareResultsCaptureHeader game={game} />
-        <p className="text-5xl sm:text-6xl leading-none text-center pt-1">{isDraw ? '🤝' : '🏆'}</p>
-        <p className="text-xl sm:text-2xl font-black text-center text-[var(--marry)]">
-          {displayWinner ? `${displayWinner} calls Mahjong!` : 'Wall draw'}
-        </p>
-        {session?.winning_tile && (
-          <p className="text-sm text-center text-muted">
-            {winType} on <span className="font-bold">{mahjongTileShortLabel(session.winning_tile)}</span>
-          </p>
+        {isDraw ? (
+          <FinishedWinnerHero game={game} emoji="🤝" headline="Wall draw" />
+        ) : (
+          <FinishedWinnerHero
+            game={game}
+            headline={
+              <>
+                <span className="gradient-title">{displayWinner}</span> calls Mahjong!
+              </>
+            }
+            subtitle={
+              session?.winning_tile ? `${winType} on ${mahjongTileShortLabel(session.winning_tile)}` : undefined
+            }
+          />
         )}
         {score && (
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-4 space-y-3">

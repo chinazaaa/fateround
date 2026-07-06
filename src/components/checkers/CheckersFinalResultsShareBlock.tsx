@@ -6,6 +6,7 @@ import { checkersResultDetail, colorOfPiece } from '@/lib/checkers'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
 
 const LIGHT_SQUARE = '#e8d3ab'
 const DARK_SQUARE = '#9c6b3f'
@@ -73,20 +74,23 @@ export function CheckersFinalResultsShareBlock({
 
   return (
     <div className="space-y-4">
-      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-4">
+      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-5">
         <ShareResultsCaptureHeader game={game} />
-        <p className="text-5xl sm:text-6xl leading-none text-center pt-1">{isDraw ? '🤝' : endedEarly ? '🏁' : '🏆'}</p>
-        <p className="text-xl sm:text-2xl font-black text-center text-[var(--marry)]">
-          {isDraw
-            ? "It's a draw!"
-            : displayWinner
-              ? `${displayWinner} wins!`
-              : endedEarly
-                ? 'Game ended early'
-                : 'Game over'}
-        </p>
-        {resultDetail && !endedEarly && (
-          <p className="text-sm text-center text-faint -mt-2 capitalize">{resultDetail}</p>
+        {isDraw ? (
+          <FinishedWinnerHero
+            game={game}
+            emoji="🤝"
+            headline="It's a draw!"
+            subtitle={resultDetail ? <span className="capitalize">{resultDetail}</span> : undefined}
+          />
+        ) : endedEarly ? (
+          <FinishedWinnerHero game={game} emoji="🏁" headline="Game ended early" />
+        ) : (
+          <FinishedWinnerHero
+            winnerName={displayWinner}
+            game={game}
+            subtitle={resultDetail ? <span className="capitalize">{resultDetail}</span> : undefined}
+          />
         )}
         {session && (
           <>

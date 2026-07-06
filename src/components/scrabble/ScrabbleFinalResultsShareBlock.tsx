@@ -5,6 +5,9 @@ import type { Game, Player, ScrabbleSession, ScrabblePlayerState } from '@/types
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
+
+const MEDALS = ['👑', '🥈', '🥉']
 
 export function ScrabbleFinalResultsShareBlock({
   game,
@@ -44,38 +47,52 @@ export function ScrabbleFinalResultsShareBlock({
 
   return (
     <div className="space-y-4">
-      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-4">
+      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-5">
         <ShareResultsCaptureHeader game={game} />
-        <p className="text-5xl sm:text-6xl leading-none text-center pt-1">{isTie ? '🤝' : endedEarly ? '🏁' : '🏆'}</p>
-        <p className="text-xl sm:text-2xl font-black text-center text-[var(--marry)]">
-          {isTie
-            ? "It's a tie!"
-            : displayWinner
-              ? `${displayWinner} wins!`
-              : endedEarly
-                ? 'Game ended early'
-                : 'Game over'}
-        </p>
+        <FinishedWinnerHero
+          winnerName={isTie || endedEarly ? undefined : displayWinner}
+          game={game}
+          emoji={isTie ? '🤝' : endedEarly ? '🏁' : '🏆'}
+          headline={isTie ? "It's a tie!" : endedEarly ? 'Game ended early' : undefined}
+        />
         {standings.length > 0 && (
-          <div className="space-y-1.5">
-            {standings.map((s, i) => (
-              <div
-                key={s.playerId}
-                className={[
-                  'flex items-center justify-between rounded-lg px-3 py-2 text-sm border',
-                  s.playerId === highlightPlayerId
-                    ? 'border-[var(--primary)]/50 bg-[var(--primary)]/10'
-                    : 'border-[var(--border)] bg-[var(--surface-inset-bg)]',
-                ].join(' ')}
-              >
-                <span className="font-bold truncate">
-                  <span className="text-faint mr-1.5">{i + 1}.</span>
-                  {s.name}
-                  {s.playerId === highlightPlayerId && <span className="text-faint font-normal"> (you)</span>}
-                </span>
-                <span className="tabular-nums font-black">{s.score}</span>
-              </div>
-            ))}
+          <div className="space-y-2">
+            {standings.map((s, i) => {
+              const rank = i + 1
+              const isWinner = rank === 1
+              const isMe = s.playerId === highlightPlayerId
+              return (
+                <div
+                  key={s.playerId}
+                  className={
+                    isWinner
+                      ? 'flex items-center gap-3 rounded-xl px-4 py-3 border border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_8%,var(--surface))]'
+                      : 'flex items-center gap-3 rounded-xl px-4 py-3 border border-[var(--border)] bg-[var(--surface-inset-bg)]'
+                  }
+                >
+                  <span
+                    className={`w-7 shrink-0 text-center font-black tabular-nums ${
+                      isWinner ? 'text-lg gradient-title' : 'text-base text-faint'
+                    }`}
+                  >
+                    {MEDALS[rank - 1] ?? rank}
+                  </span>
+                  <div className="min-w-0">
+                    <p className={`font-bold truncate ${isWinner ? 'text-[17px]' : 'text-[15px]'}`}>
+                      {s.name}
+                      {isMe ? <span className="label-teal font-semibold"> (you)</span> : null}
+                    </p>
+                  </div>
+                  <p
+                    className={`ml-auto shrink-0 text-sm font-black tabular-nums ${
+                      isWinner ? 'gradient-title' : 'text-muted'
+                    }`}
+                  >
+                    {s.score}
+                  </p>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

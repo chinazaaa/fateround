@@ -5,8 +5,11 @@ import { CodewordsTeamBadge } from '@/components/codewords/CodewordsBoardGrid'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { tallyCodewordsOperativeStats, tallyCodewordsSpymasterStats, pickBestCodewordsSpymaster } from '@/lib/codewords'
 import type { CodewordsGuess, CodewordsPlayerRole, CodewordsTeam, Game, Player } from '@/types'
+
+const MEDALS = ['👑', '🥈', '🥉']
 
 export function CodewordsFinalResultsShareBlock({
   game,
@@ -43,11 +46,9 @@ export function CodewordsFinalResultsShareBlock({
 
   return (
     <div className="space-y-4">
-      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-4">
+      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-5">
         <ShareResultsCaptureHeader game={game} />
-        <p className="text-5xl sm:text-6xl leading-none text-center pt-1">🏆</p>
-        <p className="text-xl sm:text-2xl font-black text-center text-[var(--marry)]">{winnerLabel}</p>
-        {subtitle && <p className="text-center text-sm text-muted max-w-sm mx-auto">{subtitle}</p>}
+        <FinishedWinnerHero game={game} headline={winnerLabel} subtitle={subtitle} />
 
         {(bestOperative || bestSpymaster) && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
@@ -74,29 +75,40 @@ export function CodewordsFinalResultsShareBlock({
           <div className="space-y-2 pt-1">
             <p className="text-center text-xs text-muted uppercase tracking-wider">Operative leaderboard</p>
             {operativeStats.slice(0, 6).map((row, index) => {
+              const isWinner = index === 0
               const isMe = row.playerId === highlightPlayerId
               return (
                 <div
                   key={row.playerId}
-                  className={[
-                    'flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5',
-                    index === 0
-                      ? 'border-[color-mix(in_srgb,var(--marry)_45%,var(--border-strong))] bg-[color-mix(in_srgb,var(--marry)_10%,var(--surface-inset-bg))]'
-                      : 'border-[var(--border-strong)] bg-[var(--surface-inset-bg)]',
-                    isMe && index !== 0 ? 'ring-1 ring-[color-mix(in_srgb,var(--primary)_25%,transparent)]' : '',
-                  ].join(' ')}
+                  className={
+                    isWinner
+                      ? 'flex items-center gap-3 rounded-xl px-4 py-3 border border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_8%,var(--surface))]'
+                      : 'flex items-center gap-3 rounded-xl px-4 py-3 border border-[var(--border)] bg-[var(--surface-inset-bg)]'
+                  }
                 >
+                  <span
+                    className={`w-7 shrink-0 text-center font-black tabular-nums ${
+                      isWinner ? 'text-lg gradient-title' : 'text-base text-faint'
+                    }`}
+                  >
+                    {MEDALS[index] ?? index + 1}
+                  </span>
                   <div className="min-w-0">
-                    <p className="font-bold text-sm truncate">
-                      {index === 0 ? '🏆 ' : `${index + 1}. `}
+                    <p className={`font-bold truncate ${isWinner ? 'text-[17px]' : 'text-[15px]'}`}>
                       {row.name}
-                      {isMe ? ' (you)' : ''}
+                      {isMe ? <span className="label-teal font-semibold"> (you)</span> : null}
                     </p>
                     <p className="text-[11px] text-muted">
                       <CodewordsTeamBadge team={row.team} /> {row.correct} correct
                     </p>
                   </div>
-                  <p className="text-sm font-black tabular-nums text-[var(--primary)] shrink-0">{row.score} pts</p>
+                  <p
+                    className={`ml-auto shrink-0 text-sm font-black tabular-nums ${
+                      isWinner ? 'gradient-title' : 'text-muted'
+                    }`}
+                  >
+                    {row.score} pts
+                  </p>
                 </div>
               )
             })}
