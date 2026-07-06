@@ -57,8 +57,14 @@
    / under the mobile browser toolbar (reported as the hand being cut off).
    Bound the room to the dynamic viewport for card-table games too, scoped via
    `:has(.ct-surface)` so scrollable poll screens (join/lobby/finish) keep
-   their natural min-height growth. The felt (`.table`) absorbs any overflow. */
-.fr-room-poll:has(.ct-surface) { height: 100dvh; overflow: hidden; }
+   their natural min-height growth. The felt (`.table`) absorbs any overflow.
+
+   Subtract the 3.75rem marketing-header strip (`game`/`host` layout `<main>`
+   carries `pt-[3.75rem]` for the fixed header): otherwise a full 100dvh room is
+   pushed DOWN by that padding and overflows the viewport, dropping the hand
+   below the fold. `calc(100dvh - 3.75rem)` makes the room fill exactly the space
+   under the header. */
+.fr-room-poll:has(.ct-surface) { height: calc(100dvh - 3.75rem); min-height: 0; overflow: hidden; }
 .fr-room .ct-surface { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .fr-room .ct-surface > .pr-prog { flex: 0 0 auto; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 .fr-room .ct-surface > .turnrail { flex: 0 0 auto; }
@@ -78,7 +84,11 @@
 .fr-room .seat-timer.low { color: var(--danger); background: var(--danger-soft); }
 
 /* ── table (the felt: piles + status) ─────────────────────────────── */
-.fr-room .table { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 14px 16px; }
+/* `safe center` centres the felt vertically but falls back to top-alignment when
+   the content is taller than the (short) felt — otherwise plain `center` clips
+   the top row (the "DISCARD" label) under the felt's `overflow-y:auto`, most
+   visible on the host where the rail is taller. */
+.fr-room .table { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: safe center; gap: 16px; padding: 14px 16px; }
 .fr-room .piles { display: flex; align-items: center; gap: 26px; }
 .fr-room .pile { display: flex; flex-direction: column; align-items: center; gap: 7px; }
 .fr-room .pile .lab { font: 700 9px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); }
@@ -101,7 +111,12 @@
 .fr-room .hand-head .cnt { font-size: 12px; font-weight: 700; color: var(--text-muted); }
 .fr-room .hand { display: flex; justify-content: center; padding-top: 14px; min-height: 92px; }
 /* many-cards: let a big hand scroll horizontally instead of overflowing */
-.fr-room .hand.scroll { justify-content: flex-start; overflow-x: auto; overflow-y: hidden; padding: 14px 6px 6px; scroll-snap-type: x proximity; }
+/* `touch-action: pan-x` is required for the swipe to scroll on TOUCH devices —
+   without it the browser leaves the gesture ambiguous (cards have tap handlers +
+   the room owns vertical layout) and the horizontal swipe never engages, so the
+   hand scrolls with a mouse/trackpad but not by finger. `-webkit-overflow-scrolling`
+   gives iOS momentum; `overscroll-behavior-x` keeps the swipe from bubbling out. */
+.fr-room .hand.scroll { justify-content: flex-start; overflow-x: auto; overflow-y: hidden; padding: 14px 6px 6px; scroll-snap-type: x proximity; touch-action: pan-x; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
 .fr-room .hand.scroll::-webkit-scrollbar { height: 6px; }
 .fr-room .hand.scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 9999px; }
 .fr-room .hand.scroll .pc { scroll-snap-align: center; }
@@ -119,19 +134,30 @@
 .fr-room .hand-hint { text-align: center; font-size: 12px; color: var(--text-faint); margin: 10px 0 0; }
 .fr-room .hand-actions { display: flex; gap: 9px; margin-top: 12px; }
 .fr-room .hand-actions > * { flex: 1; }
-/* Lift the hand a little off the bottom edge on mobile — it read as sitting too
-   low (partly under the browser toolbar). Extra bottom padding pushes the cards
-   up within the pinned hand panel. */
+/* Float the hand panel UP off the bottom edge on mobile — it's the primary
+   control ("the main part of the game") and read as sitting too low / under the
+   browser toolbar. A bottom MARGIN lifts the whole panel (the felt above shrinks
+   to absorb it) so the cards sit well clear of the edge — unlike bottom padding,
+   which only pads empty space inside the panel. `.ct-surface > .hand-wrap` covers
+   the player hand, the host hand, AND the spectator roster (all share it).
+   dvh-relative so it scales across phones; bump the value to lift further. */
 @media (max-width: 1023px) {
-  .fr-room .hand-wrap { padding-bottom: calc(46px + env(safe-area-inset-bottom, 0px)); }
+  /* 8dvh is the sweet spot: enough to lift the hand clear of the bottom edge, but
+     small enough that the felt keeps room for the draw/discard piles even on a
+     ~700px mobile viewport (a bigger lift squeezes the felt and clips the piles). */
+  .fr-room .ct-surface > .hand-wrap { margin-bottom: calc(8dvh + env(safe-area-inset-bottom, 0px)); }
+  /* The host sits their hand a little lower than the player's (smaller lift). */
+  .fr-room-poll[data-host-room] .ct-surface > .hand-wrap { margin-bottom: calc(4dvh + env(safe-area-inset-bottom, 0px)); }
 }
 
 /* ── shape / suit / number picker overlay ─────────────────────────── */
-/* Fixed to the viewport (escapes the shell's scroll container) and z-indexed
-   above the top voice rail. The sheet caps its height and scrolls internally
-   so the full picker is always reachable even on short viewports. */
-.fr-room .picker-back { position: fixed; inset: 0; background: rgba(20, 18, 26, 0.5); display: flex; align-items: flex-end; justify-content: center; z-index: 70; }
-.fr-room .picker { width: 100%; max-width: 440px; max-height: 85dvh; overflow-y: auto; background: var(--surface); border-radius: 20px 20px 0 0; padding: 20px 20px calc(26px + env(safe-area-inset-bottom, 0px)); }
+/* A centred modal at every width (mobile + desktop) — fixed to the viewport
+   (escapes the shell's scroll container) and z-indexed above the top voice rail.
+   It caps its height and scrolls internally so the full picker is reachable even
+   on short viewports. The backdrop pads the edges so the card never touches the
+   screen sides on a phone. */
+.fr-room .picker-back { position: fixed; inset: 0; background: rgba(20, 18, 26, 0.5); display: flex; align-items: center; justify-content: center; z-index: 70; padding: 16px; }
+.fr-room .picker { width: 100%; max-width: 440px; max-height: 85dvh; overflow-y: auto; background: var(--surface); border-radius: 20px; padding: 20px 20px 26px; }
 .fr-room .picker h3 { font-family: var(--font-display); font-weight: 800; font-size: 18px; text-align: center; margin: 0 0 4px; color: var(--text); }
 .fr-room .picker p { text-align: center; font-size: 13px; color: var(--text-muted); margin: 0 0 16px; }
 .fr-room .picker-tabs { display: flex; gap: 5px; padding: 4px; border-radius: 9999px; background: var(--surface-sunken); margin: 0 auto 16px; max-width: 220px; }
@@ -157,18 +183,15 @@
   .fr-room .ct-surface > .pr-prog .pr-prow { justify-content: space-between; }
   .fr-room .ct-surface > .pr-prog .pr-prow .tm { display: inline; }
   .fr-room .ct-surface > .pr-prog .pr-bar { display: block; }
-
-  /* Picker: a centred modal (rounded all round) instead of a sheet pinned
-     to the very bottom of the window. */
-  .fr-room .picker-back { align-items: center; }
-  .fr-room .picker { border-radius: 20px; padding-bottom: 26px; }
 }
 
-/* ── host controls panel (WhotHostView active, host+play) ─────────────
-   The host's control cluster (Settings · Transfer · Share · End game).
-   Sits above the play surface in the stage at all widths (the room has no
-   side rail). */
-.fr-room .ct-host-panel { flex: 0 0 auto; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+/* ── host action in the voice-rail ⋯ menu (Transfer host) ─────────────
+   The TransferHostControl trigger styled to match RoomVoiceBar's inline
+   menu items (block row · icon + label · hover fill). Settings / Share /
+   End game live in the rail directly; Transfer rides the ⋯ menu. */
+.fr-room .ct-voice-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: none; background: transparent; font: 600 13px var(--font-sans); color: var(--text); padding: 9px 10px; border-radius: 9px; cursor: pointer; }
+.fr-room .ct-voice-menu-item:hover { background: var(--surface-sunken); }
+.fr-room .ct-voice-menu-item svg { width: 16px; height: 16px; flex-shrink: 0; }
 
 /* ── win / session summary ────────────────────────────────────────── */
 .fr-room .cards-finish { text-align: center; padding: 10px 0; }

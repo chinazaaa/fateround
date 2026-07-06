@@ -19,23 +19,32 @@ import { useHostIdentity, useHostDisplayName } from '@/hooks/useHostVoiceIdentit
 export function HostRoomShell({
   gameCode,
   hostToken,
+  resumeToken,
   gameName,
   onEndGame,
+  onSettings,
+  hostMenuExtra,
   children,
 }: {
   gameCode: string
   hostToken: string
+  /** The host's own player resume token — enables the host+play share link. */
+  resumeToken?: string
   /** Game name shown beside the room code in the top rail. */
   gameName?: string | null
   /** Host: end the game (surfaced in the voice rail's ⋯ menu). */
   onEndGame?: () => void
+  /** Host: open the game settings sheet (⚙ icon in the rail). */
+  onSettings?: () => void
+  /** Host: extra ⋯-menu items (e.g. Transfer host). */
+  hostMenuExtra?: React.ReactNode
   children: React.ReactNode
 }) {
   const hostIdentity = useHostIdentity(gameCode)
   const hostName = useHostDisplayName(gameCode)
 
   return (
-    <div className="fr-room fr-room-poll" data-game-room>
+    <div className="fr-room fr-room-poll" data-game-room data-host-room>
       {/* Design-system top voice rail — the host's room chrome (room code ·
           game name · 👑 Host · players · mic). `autoRejoin={false}` matches the
           join-first player rail. */}
@@ -49,7 +58,10 @@ export function HostRoomShell({
         host
         hostBadge
         autoRejoin={false}
+        resumeToken={resumeToken}
         onEndGame={onEndGame}
+        onSettings={onSettings}
+        hostMenuExtra={hostMenuExtra}
       />
       <div className="pr-main">
         <div className="pr-stage">{children}</div>

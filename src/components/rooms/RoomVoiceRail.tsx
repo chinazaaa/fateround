@@ -26,6 +26,10 @@ interface RoomVoiceRailProps {
   resumeToken?: string
   /** Host: end the game (shown in the ⋯ menu, below Join/Leave voice chat). */
   onEndGame?: () => void
+  /** Host: open the game settings sheet (⚙ icon shown beside Share). */
+  onSettings?: () => void
+  /** Host: extra ⋯-menu items (e.g. Transfer host). */
+  hostMenuExtra?: React.ReactNode
   /**
    * Auto-reconnect a recent voice session on mount (default true). Set false
    * for a join-first room where voice should never connect until the player
@@ -66,6 +70,8 @@ export function RoomVoiceRail({
   onLeave,
   resumeToken,
   onEndGame,
+  onSettings,
+  hostMenuExtra,
   variant = 'floating',
   autoRejoin = true,
   onVoiceParticipants,
@@ -264,6 +270,8 @@ export function RoomVoiceRail({
         hostToken={hostToken}
         resumeToken={resumeToken}
         onEndGame={onEndGame}
+        onSettings={onSettings}
+        hostMenuExtra={hostMenuExtra}
         presenceCount={isConnecting ? 0 : presenceCount}
         onJoinVoice={joinAudio}
         onLeave={onLeave}
@@ -295,6 +303,8 @@ export function RoomVoiceRail({
         hostToken={hostToken}
         resumeToken={resumeToken}
         onEndGame={onEndGame}
+        onSettings={onSettings}
+        hostMenuExtra={hostMenuExtra}
         onVoiceParticipants={onVoiceParticipants}
         onLeaveVoice={() => leaveAudio(true)}
         onLeave={() => {
@@ -318,6 +328,8 @@ function ConnectedBar(props: {
   hostToken?: string
   resumeToken?: string
   onEndGame?: () => void
+  onSettings?: () => void
+  hostMenuExtra?: React.ReactNode
   onLeaveVoice?: () => void
   onLeave?: () => void
   onVoiceParticipants?: (parts: { id: string; talking: boolean; muted: boolean }[]) => void
@@ -360,6 +372,8 @@ function ConnectedBar(props: {
       hostToken={props.hostToken}
       resumeToken={props.resumeToken}
       onEndGame={props.onEndGame}
+      onSettings={props.onSettings}
+      hostMenuExtra={props.hostMenuExtra}
       participants={mapped}
       muted={!isMicrophoneEnabled}
       onToggleMute={() => void localParticipant?.setMicrophoneEnabled(!isMicrophoneEnabled)}

@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, type CSSProperties } from 'react'
-import { PeopleIcon, ShareIcon, KebabIcon, EyeIcon, LinkIcon } from '@/components/rooms/icons'
+import { useState, type CSSProperties, type ReactNode } from 'react'
+import { PeopleIcon, ShareIcon, KebabIcon, EyeIcon, LinkIcon, GearIcon } from '@/components/rooms/icons'
 import { ShareSheet, EditNameSheet, LeaveSheet, EndGameSheet } from '@/components/rooms/sheets'
 
 export type VoiceParticipant = {
@@ -52,6 +52,10 @@ export type RoomVoiceBarProps = {
   resumeToken?: string
   /** Host: end the game (shown in the ⋯ menu, below Join/Leave voice chat). */
   onEndGame?: () => void
+  /** Host: open the game settings sheet (⚙ icon shown beside Share). */
+  onSettings?: () => void
+  /** Host: extra items appended to the ⋯ menu (e.g. Transfer host). */
+  hostMenuExtra?: ReactNode
   /** Fired when the user taps to join the voice call. */
   onJoinVoice?: () => void
   /** Fired when the user leaves the voice call (but stays in the game). */
@@ -126,6 +130,11 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
       >
         <PeopleIcon />
       </button>
+      {props.onSettings && (
+        <button style={vIconBtn} title="Game settings" aria-label="Game settings" onClick={props.onSettings}>
+          <GearIcon />
+        </button>
+      )}
       <button style={vIconBtn} title="Share / QR" aria-label="Share" onClick={() => setShare(true)}>
         <ShareIcon />
       </button>
@@ -217,6 +226,11 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
           >
             ✏️&nbsp;&nbsp;Edit your name
           </button>
+          {/* Host extras (e.g. Transfer host) — sit alongside Edit your name.
+              The provided node styles its own trigger + owns its modal. */}
+          {props.hostMenuExtra != null && (
+            <div onClick={() => setMenu(false)}>{props.hostMenuExtra}</div>
+          )}
           {/* Voice is join-first; the call can be joined or left from here too
               (the mic pill only toggles mute once you're in). */}
           {inVoice ? (

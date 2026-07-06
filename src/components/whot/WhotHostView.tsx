@@ -43,7 +43,8 @@ import { WhotGameTimerBar } from '@/components/whot/WhotGameTimerBar'
 import { useWhotGameTimer } from '@/hooks/useWhotGameTimer'
 import { WhotPlaySurface } from '@/components/whot/WhotPlaySurface'
 import { HostRoomShell } from '@/components/host/HostRoomShell'
-import { CardTableHostControls } from '@/components/rooms/card-table/CardTableHostControls'
+import { CardTableSettingsSheet } from '@/components/rooms/card-table/CardTableSettingsSheet'
+import { TransferHostControl } from '@/components/TransferHostControl'
 import { WhotFinalResultsShareBlock } from '@/components/whot/WhotFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { WhotCard, WhotPrimaryButton } from '@/components/whot/WhotChrome'
@@ -57,6 +58,9 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<WhotSession | null>(null)
   const [hands, setHands] = useState<WhotPlayerHand[]>([])
+  // Host game-settings sheet — opened from the ⚙ icon in the voice rail (the
+  // old inline host-controls bar is gone; its actions live in the rail now).
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [hostMode, setHostMode] = useState<WhotHostMode>('player')
@@ -439,25 +443,14 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
     />
   )
 
-  // Active game → design-system room shell + the same play surface players see
-  // (host+play mobile / desktop). The marketing header + floating voice are
-  // gated out for card-table games while active (see `useHostRoomChromeMode`),
-  // so this DS voice rail is the only chrome. Host controls live in the desktop
-  // side rail + an inline bar (mobile) so ending/managing stays reachable.
+  // Active game → design-system room shell + the same play surface players see.
+  // The marketing header + floating voice are gated out for card-table games
+  // while active (see `useHostRoomChromeMode`), so the DS voice rail is the only
+  // chrome — and it also owns the host actions: ⚙ Settings (icon), Transfer host
+  // + End game (⋯ menu), Share (icon). No separate host-controls bar.
   if (game.status === 'active') {
-    const controls = (
-      <CardTableHostControls
-        gameCode={gameCode}
-        hostToken={hostToken}
-        hostPlays={hostPlays}
-        onModeChange={changeHostMode}
-        onEnded={load}
-        modeLocked={!hostPlayerId}
-        settingsBody={manage}
-      />
-    )
     // End the game from the voice rail's ⋯ menu (RoomVoiceBar shows the confirm
-    // sheet). Same endpoint the inline "End game" button uses.
+    // sheet). Same endpoint the old inline "End game" button used.
     const endGame = async () => {
       try {
         const res = await fetch(`/api/games/${gameCode}/finish-game`, {
@@ -476,12 +469,31 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
       }
     }
     return (
-      <HostRoomShell gameCode={gameCode} hostToken={hostToken} gameName={cfg.label} onEndGame={endGame}>
+      <HostRoomShell
+        gameCode={gameCode}
+        hostToken={hostToken}
+        resumeToken={hostResumeToken ?? undefined}
+        gameName={cfg.label}
+        onEndGame={endGame}
+        onSettings={() => setSettingsOpen(true)}
+        hostMenuExtra={<TransferHostControl triggerClassName="ct-voice-menu-item" />}
+      >
         {session ? (
           <>
-            {/* Host controls (Settings · Transfer · Share · End game) — inline
-                above the play surface at all widths now the side rail is gone. */}
-            <div className="ct-host-panel">{controls}</div>
+            {/* Host game settings (host+play toggle · Whot rules) — opened from
+                the rail's ⚙ icon; a fixed sheet, so it can mount anywhere. */}
+            <CardTableSettingsSheet
+              open={settingsOpen}
+              onClose={() => setSettingsOpen(false)}
+              hostPlays={hostPlays}
+              onModeChange={changeHostMode}
+              // Seat is fixed once the game is active — this sheet only renders
+              // mid-game, so the Play-as-yourself toggle is always locked here
+              // (you can only take/drop a spot in the lobby).
+              modeLocked
+            >
+              {manage}
+            </CardTableSettingsSheet>
             <WhotPlaySurface
               session={session}
               players={players}
