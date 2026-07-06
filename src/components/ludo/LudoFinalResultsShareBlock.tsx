@@ -17,6 +17,8 @@ export function LudoFinalResultsShareBlock({
   winnerName,
   highlightPlayerId,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
 }: {
   game: Game
   players: Player[]
@@ -25,6 +27,8 @@ export function LudoFinalResultsShareBlock({
   winnerName?: string | null
   highlightPlayerId?: string | null
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -84,8 +88,11 @@ export function LudoFinalResultsShareBlock({
         )}
       </div>
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}
@@ -97,6 +104,7 @@ export function LudoFinalResultsShareBlock({
             ludoStandings={standings}
             ludoWinnerName={displayWinner ?? undefined}
             ludoEndedEarly={endedEarly}
+            primary
           />
         }
       />

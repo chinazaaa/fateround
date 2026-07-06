@@ -23,6 +23,8 @@ import { useToast } from '@/components/ui/Toast'
 import { MahjongGamePanel } from '@/components/mahjong/MahjongBoard'
 import { MahjongFinalResultsShareBlock } from '@/components/mahjong/MahjongFinalResultsShareBlock'
 import { MahjongCard, MahjongPrimaryButton } from '@/components/mahjong/MahjongChrome'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 
 type HostTab = 'play' | 'manage'
 type MahjongHostMode = 'spectator' | 'player'
@@ -42,6 +44,7 @@ function setHostMode(gameCode: string, mode: MahjongHostMode): void {
 
 export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
+  const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<MahjongSession | null>(null)
@@ -235,23 +238,45 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
     }
   }
 
-  const playAgain = async () => {
+  // "Play again · same settings" reopens the game as an open lobby flagged for the
+  // ready-up ring; a plain reset (sameSettings=false) is the normal "Return to lobby".
+  const resetGame = async (sameSettings: boolean) => {
     setPlayingAgain(true)
     try {
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined }),
+        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, same_settings: sameSettings }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to reset')
-      success('Ready for a new table!')
+      success(sameSettings ? 'Ready up for the next game!' : 'Back to the lobby')
       await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to reset')
     } finally {
       setPlayingAgain(false)
     }
+  }
+
+  const confirmPlayAgain = async () => {
+    const ok = await confirm({
+      title: 'Play again — same settings?',
+      message:
+        'Reopens the game with the same settings. Previous watchers and new people can join; everyone taps “ready” and you start the next game once enough players are in.',
+      confirmLabel: 'Play again',
+    })
+    if (ok) void resetGame(true)
+  }
+
+  const confirmReturnToLobby = async () => {
+    const ok = await confirm({
+      title: 'Return to lobby?',
+      message:
+        'Sends everyone back to the game lobby where you can tweak settings or let new people join before starting again.',
+      confirmLabel: 'Return to lobby',
+    })
+    if (ok) void resetGame(false)
   }
 
   const startNextHand = async () => {
@@ -317,6 +342,32 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
   }
 
   const layout = hostPlayLayoutFlags(tab, showPlayTab, game.status)
+
+  // "Play again · same settings" reopened the game as an open lobby flagged for the
+  // ready-up ring — the host sees the ring + a "Start game" button instead of the lobby.
+  if (game.status === 'waiting' && game.replay_pending) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--background)] px-3 py-8 text-[var(--foreground)]">
+        <ReplayReadyRing
+          players={players}
+          meId={hostPlayerId}
+          isHost
+          minPlayers={MAHJONG_MIN_PLAYERS}
+          onToggleReady={() => {}}
+          onStart={() => void startGame()}
+          starting={starting}
+        />
+        <button
+          type="button"
+          onClick={() => void confirmReturnToLobby()}
+          disabled={playingAgain}
+          className="mt-1 py-2 text-sm font-medium text-muted transition-colors hover:text-body disabled:opacity-60"
+        >
+          Return to lobby instead
+        </button>
+      </div>
+    )
+  }
 
   return (
     <HostPageShell gameCode={gameCode} {...layout}>
@@ -444,10 +495,32 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
                     <HostEndGameButton gameCode={gameCode} hostToken={hostToken} onEnded={load} className="w-full" />
                   </div>
                 ) : (
-                  <MahjongPrimaryButton onClick={playAgain} loading={playingAgain}>
-                    Play again
-                  </MahjongPrimaryButton>
+                  <button
+                    type="button"
+                    onClick={() => void confirmPlayAgain()}
+                    disabled={playingAgain}
+                    className="btn-secondary w-full py-3 text-base disabled:opacity-60"
+                  >
+                    {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+                  </button>
                 )
+              }
+              returnToLobbyButton={
+                game.status === 'active' && session?.phase === 'finished' ? undefined : (
+                  <button
+                    type="button"
+                    onClick={() => void confirmReturnToLobby()}
+                    disabled={playingAgain}
+                    className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
+                  >
+                    Return to lobby
+                  </button>
+                )
+              }
+              lobbyNote={
+                game.status === 'active' && session?.phase === 'finished'
+                  ? undefined
+                  : 'Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak settings first.'
               }
             />
           )}

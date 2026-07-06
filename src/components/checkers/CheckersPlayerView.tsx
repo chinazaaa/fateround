@@ -12,7 +12,8 @@ import { CheckersFinalResultsShareBlock } from '@/components/checkers/CheckersFi
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { CheckersGamePanel } from '@/components/checkers/CheckersBoard'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentTurnPlayerId, isCheckersResultsPhase } from '@/lib/checkers'
+import { currentTurnPlayerId, isCheckersResultsPhase, CHECKERS_MIN_PLAYERS } from '@/lib/checkers'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
 import { CHECKERS_SESSION_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
@@ -109,7 +110,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'checkers_sessions'], load)
+  useGameTableSync(gameCode, ['players', { table: 'games', column: 'id' }, 'checkers_sessions'], load)
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
@@ -133,6 +134,34 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
     setMyPlayerId(null)
     void load()
   }
+
+  // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
+  // toggles the spectator flag). `ready:false` sits the player back out.
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
+  const toggleReplayReady = useCallback(
+    async (ready: boolean) => {
+      if (!myResumeToken) {
+        toastError('Your player session expired — rejoin to continue')
+        return
+      }
+      setReplayReadyPending(true)
+      try {
+        const res = await fetch('/api/players/ready', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? 'Failed to update ready')
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to update ready')
+      } finally {
+        setReplayReadyPending(false)
+      }
+    },
+    [gameCode, myResumeToken, load, toastError]
+  )
 
   const movePiece = async (from: string, to: string) => {
     if (!myPlayerId || !session) return
@@ -263,6 +292,22 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'waiting') {
     const me = players.find((p) => p.id === myPlayerId)
+    // "Play again · same settings" reopened the lobby with the ready-up ring.
+    if (game?.replay_pending) {
+      return (
+        <GameJoinLobbyShell gameCode={gameCode}>
+          <ReplayReadyRing
+            players={players}
+            meId={myPlayerId}
+            isHost={false}
+            minPlayers={CHECKERS_MIN_PLAYERS}
+            onToggleReady={(ready) => void toggleReplayReady(ready)}
+            onStart={() => {}}
+            pending={replayReadyPending}
+          />
+        </GameJoinLobbyShell>
+      )
+    }
     return (
       <GameJoinLobbyShell gameCode={gameCode}>
         <GameLobbyWaitingPanel

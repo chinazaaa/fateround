@@ -12,11 +12,15 @@ export function BingoFinalResultsShareBlock({
   players,
   winnerName,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
 }: {
   game: Game
   players: Player[]
   winnerName?: string | null
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
   const endedEarly = !winnerName
@@ -32,8 +36,11 @@ export function BingoFinalResultsShareBlock({
         )}
       </div>
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}
@@ -44,6 +51,7 @@ export function BingoFinalResultsShareBlock({
             players={players}
             bingoWinnerName={winnerName ?? undefined}
             bingoEndedEarly={endedEarly}
+            primary
           />
         }
       />

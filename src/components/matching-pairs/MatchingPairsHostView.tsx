@@ -17,10 +17,14 @@ import {
   parseMatchingPairsMetadata,
   tallyMatchingPairsScore,
   formatMatchingPairsGridSize,
+  MATCHING_PAIRS_MIN_PLAYERS,
   type MatchingPairsSubmission,
   type MatchingPairsProgress,
   type MatchingPairsPlayerScore,
 } from '@/lib/memory-match'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import {
   GAME_SELECT,
   PLAYER_SELECT,
@@ -52,6 +56,7 @@ function setHostMode(gameCode: string, mode: HostMode) {
 
 export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError } = useToast()
+  const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [roundId, setRoundId] = useState<string | null>(null)
@@ -209,20 +214,53 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     }
   }, [gameCode, hostToken, load, toastError, hostModeState, hostPlayerId])
 
-  async function handlePlayAgain() {
+  // "Play again · same settings" reopens the game into the ready-up ring; a plain
+  // "Return to lobby" reset also drops the host's seat so they can re-pick play/host-only.
+  async function resetGame(sameSettings: boolean) {
     if (playingAgain) return
     setPlayingAgain(true)
-    await fetch(`/api/games/${gameCode}/play-again`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined }),
+    try {
+      const res = await fetch(`/api/games/${gameCode}/play-again`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, same_settings: sameSettings }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toastError(d.error || 'Failed to reset')
+        return
+      }
+      if (!sameSettings) {
+        clearPlayerSession(gameCode)
+        setHostPlayerId(null)
+        setHostPlayerName('')
+        setHostJoinName('')
+      }
+      setTab('manage')
+      await load()
+    } finally {
+      setPlayingAgain(false)
+    }
+  }
+
+  const confirmPlayAgain = async () => {
+    const ok = await confirm({
+      title: 'Play again — same settings?',
+      message:
+        'Reopens the game with the same settings. Previous watchers and new people can join; everyone taps “ready” and you start the next game once enough players are in.',
+      confirmLabel: 'Play again',
     })
-    clearPlayerSession(gameCode)
-    setHostPlayerId(null)
-    setHostPlayerName('')
-    setHostJoinName('')
-    setTab('manage')
-    setPlayingAgain(false)
+    if (ok) void resetGame(true)
+  }
+
+  const confirmReturnToLobby = async () => {
+    const ok = await confirm({
+      title: 'Return to lobby?',
+      message:
+        'Sends everyone back to the game lobby where you can tweak settings or let new people join before starting again.',
+      confirmLabel: 'Return to lobby',
+    })
+    if (ok) void resetGame(false)
   }
 
   // Compute per-player leaderboard from submissions + progress.
@@ -375,6 +413,32 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     />
   )
 
+  // "Play again · same settings" reopened the game as an open lobby flagged for the
+  // ready-up ring — the host sees the ring + a "Start game" button instead of the lobby.
+  if (game.status === 'waiting' && game.replay_pending) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--background)] px-3 py-8 text-[var(--foreground)]">
+        <ReplayReadyRing
+          players={players}
+          meId={hostPlayerId}
+          isHost
+          minPlayers={MATCHING_PAIRS_MIN_PLAYERS}
+          onToggleReady={() => {}}
+          onStart={() => void handleStartGame()}
+          starting={starting}
+        />
+        <button
+          type="button"
+          onClick={() => void confirmReturnToLobby()}
+          disabled={playingAgain}
+          className="mt-1 py-2 text-sm font-medium text-muted transition-colors hover:text-body disabled:opacity-60"
+        >
+          Return to lobby instead
+        </button>
+      </div>
+    )
+  }
+
   return (
     <HostGameLayout
       gameCode={gameCode}
@@ -388,16 +452,43 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       primary={hostPlays ? interactivePlay : watchBoard}
       manage={manage}
       finished={
-        <PaginatedLeaderboard
-          title="Final leaderboard"
-          rows={leaderboard.map((s, i) => ({
-            id: s.playerId,
-            rank: i + 1,
-            name: playerMap.get(s.playerId) ?? 'Unknown',
-            score: s.finalScore,
-          }))}
-          scoreLabel={(n) => `${n} pts`}
-        />
+        <>
+          <FinishedWinnerHero
+            winnerName={leaderboard[0] ? (playerMap.get(leaderboard[0].playerId) ?? undefined) : undefined}
+            game={game}
+          />
+          <PaginatedLeaderboard
+            title="Final leaderboard"
+            rows={leaderboard.map((s, i) => ({
+              id: s.playerId,
+              rank: i + 1,
+              name: playerMap.get(s.playerId) ?? 'Unknown',
+              score: s.finalScore,
+            }))}
+            scoreLabel={(n) => `${n} pts`}
+            emphasizeLeader
+          />
+          <button
+            type="button"
+            onClick={() => void confirmPlayAgain()}
+            disabled={playingAgain}
+            className="btn-secondary w-full py-3 text-base font-bold disabled:opacity-60"
+          >
+            {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void confirmReturnToLobby()}
+            disabled={playingAgain}
+            className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
+          >
+            Return to lobby
+          </button>
+          <p className="text-center text-xs text-faint leading-relaxed px-2">
+            Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak
+            settings first.
+          </p>
+        </>
       }
     />
   )

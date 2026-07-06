@@ -18,6 +18,8 @@ export function MonopolyFinalResultsShareBlock({
   winnerName,
   highlightPlayerId,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
   themeId,
 }: {
   game: Game
@@ -27,6 +29,8 @@ export function MonopolyFinalResultsShareBlock({
   winnerName?: string | null
   highlightPlayerId?: string | null
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
   themeId?: string | null
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
@@ -103,8 +107,11 @@ export function MonopolyFinalResultsShareBlock({
         )}
       </div>
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}
@@ -115,6 +122,7 @@ export function MonopolyFinalResultsShareBlock({
             players={players}
             monopolyStandings={standings}
             monopolyWinnerName={displayWinner ?? undefined}
+            primary
           />
         }
       />

@@ -27,7 +27,9 @@ import {
   hasPlayableCard,
   isDrawPileDepleted,
   parseCrazyEightsRules,
+  CRAZY8_MIN_PLAYERS,
 } from '@/lib/crazy-eights'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, CrazyEightsPlayerHand, CrazyEightsSession, CrazyEightsCalledSuit } from '@/types'
@@ -136,6 +138,34 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
+  // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
+  // toggles the spectator flag). `ready:false` sits the player back out.
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
+  const toggleReplayReady = useCallback(
+    async (ready: boolean) => {
+      if (!myResumeToken) {
+        toastError('Your player session expired — rejoin to continue')
+        return
+      }
+      setReplayReadyPending(true)
+      try {
+        const res = await fetch('/api/players/ready', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? 'Failed to update ready')
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to update ready')
+      } finally {
+        setReplayReadyPending(false)
+      }
+    },
+    [gameCode, myResumeToken, load, toastError]
+  )
+
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
   })
@@ -181,10 +211,8 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
-  const myHand = useMemo(() => {
-    const row = hands.find((h) => h.player_id === myPlayerId)
-    return row?.cards ?? []
-  }, [hands, myPlayerId])
+  const myHandRow = useMemo(() => hands.find((h) => h.player_id === myPlayerId), [hands, myPlayerId])
+  const myHand = useMemo(() => myHandRow?.cards ?? [], [myHandRow])
 
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -201,7 +229,11 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const isMyTurn = myPlayerId != null && turnPlayerId === myPlayerId
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
-  const isOut = myHand.length === 0 && game?.status === 'active'
+  // "Out" = we can see this player's dealt hand and it's now empty (they played their last
+  // card and went out). Require the hand row to actually be loaded — after a network drop
+  // `hands` can be briefly empty/unfetched, and treating a not-yet-loaded hand as empty would
+  // flip a still-playing player into the watch-only UI until the next refetch.
+  const isOut = !!myHandRow && myHand.length === 0 && game?.status === 'active'
   const isWatching = isViewer || isOut
 
   const { secondsLeft, hasTimer, urgent } = useCrazyEightsTurnTimer(
@@ -297,6 +329,22 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'waiting') {
     const me = players.find((p) => p.id === myPlayerId)
+    // "Play again · same settings" reopened the lobby with the ready-up ring.
+    if (game?.replay_pending) {
+      return (
+        <GameJoinLobbyShell gameCode={gameCode}>
+          <ReplayReadyRing
+            players={players}
+            meId={myPlayerId}
+            isHost={false}
+            minPlayers={CRAZY8_MIN_PLAYERS}
+            onToggleReady={(ready) => void toggleReplayReady(ready)}
+            onStart={() => {}}
+            pending={replayReadyPending}
+          />
+        </GameJoinLobbyShell>
+      )
+    }
     return (
       <GameJoinLobbyShell gameCode={gameCode}>
         <GameLobbyWaitingPanel

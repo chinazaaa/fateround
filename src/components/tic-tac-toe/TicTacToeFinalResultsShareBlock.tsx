@@ -70,6 +70,8 @@ export function TicTacToeFinalResultsShareBlock({
   winnerName,
   highlightPlayerId,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
 }: {
   game: Game
   players: Player[]
@@ -77,6 +79,8 @@ export function TicTacToeFinalResultsShareBlock({
   winnerName?: string | null
   highlightPlayerId?: string | null
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -117,8 +121,11 @@ export function TicTacToeFinalResultsShareBlock({
         )}
       </div>
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}
@@ -130,6 +137,7 @@ export function TicTacToeFinalResultsShareBlock({
             ticTacToeWinnerName={displayWinner ?? undefined}
             ticTacToeIsDraw={isDraw}
             ticTacToeEndedEarly={endedEarly}
+            primary
           />
         }
       />

@@ -65,6 +65,8 @@ export function ChessFinalResultsShareBlock({
   winnerName,
   highlightPlayerId,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
 }: {
   game: Game
   players: Player[]
@@ -72,6 +74,8 @@ export function ChessFinalResultsShareBlock({
   winnerName?: string | null
   highlightPlayerId?: string | null
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -126,8 +130,11 @@ export function ChessFinalResultsShareBlock({
       </div>
       {session && session.pgn ? <ChessPgnActions game={game} players={players} session={session} /> : null}
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}
@@ -139,6 +146,7 @@ export function ChessFinalResultsShareBlock({
             ticTacToeWinnerName={displayWinner ?? undefined}
             ticTacToeIsDraw={isDraw}
             ticTacToeEndedEarly={endedEarly}
+            primary
           />
         }
       />
