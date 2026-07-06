@@ -26,6 +26,8 @@ export function MahjongFinalResultsShareBlock({
   winnerName,
   highlightPlayerId,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
 }: {
   game: Game
   players: Player[]
@@ -33,6 +35,8 @@ export function MahjongFinalResultsShareBlock({
   winnerName?: string | null
   highlightPlayerId?: string | null
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
   const winnerPlayerId = session?.winner_player_id ?? null
@@ -127,8 +131,11 @@ export function MahjongFinalResultsShareBlock({
         </div>
       </div>
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}
@@ -139,6 +146,7 @@ export function MahjongFinalResultsShareBlock({
             players={players}
             mahjongWinnerName={displayWinner ?? undefined}
             mahjongIsDraw={isDraw}
+            primary
           />
         }
       />

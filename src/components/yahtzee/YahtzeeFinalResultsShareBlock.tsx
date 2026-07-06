@@ -16,6 +16,8 @@ export function YahtzeeFinalResultsShareBlock({
   winnerName,
   highlightPlayerId,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
 }: {
   game: Game
   players: Player[]
@@ -23,6 +25,8 @@ export function YahtzeeFinalResultsShareBlock({
   winnerName?: string | null
   highlightPlayerId?: string | null
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -34,8 +38,11 @@ export function YahtzeeFinalResultsShareBlock({
         <YahtzeeLeaderboard rows={scores} players={players} highlightPlayerId={highlightPlayerId} />
       </div>
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}
@@ -46,6 +53,7 @@ export function YahtzeeFinalResultsShareBlock({
             players={players}
             yahtzeeScores={scores}
             yahtzeeWinnerName={winnerName ?? undefined}
+            primary
           />
         }
       />

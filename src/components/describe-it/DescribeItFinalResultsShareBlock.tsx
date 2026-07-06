@@ -23,6 +23,8 @@ export function DescribeItFinalResultsShareBlock({
   mode = 'team',
   playerScores = [],
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
 }: {
   game: Game
   players: Player[]
@@ -31,6 +33,8 @@ export function DescribeItFinalResultsShareBlock({
   mode?: DescribeItMode
   playerScores?: { player_id: string; score?: number | null }[]
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -42,6 +46,8 @@ export function DescribeItFinalResultsShareBlock({
         players={players}
         playerScores={playerScores}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
       />
     )
   }
@@ -112,8 +118,11 @@ export function DescribeItFinalResultsShareBlock({
       </div>
 
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}
@@ -122,6 +131,7 @@ export function DescribeItFinalResultsShareBlock({
             votes={[]}
             rounds={[]}
             players={players}
+            primary
           />
         }
       />
@@ -136,12 +146,16 @@ function DescribeItIndividualResults({
   players,
   playerScores,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
 }: {
   captureRef: React.RefObject<HTMLDivElement | null>
   game: Game
   players: Player[]
   playerScores: { player_id: string; score?: number | null }[]
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
 }) {
   const leaderboard = describeItIndividualLeaderboard(playerScores, players)
   const top = leaderboard[0]?.score ?? 0
@@ -197,8 +211,11 @@ function DescribeItIndividualResults({
       </div>
 
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}
@@ -207,6 +224,7 @@ function DescribeItIndividualResults({
             votes={[]}
             rounds={[]}
             players={players}
+            primary
           />
         }
       />

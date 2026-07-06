@@ -27,7 +27,9 @@ import {
   hasPlayableCard,
   isDrawPileDepleted,
   parseCrazyEightsRules,
+  CRAZY8_MIN_PLAYERS,
 } from '@/lib/crazy-eights'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, CrazyEightsPlayerHand, CrazyEightsSession, CrazyEightsCalledSuit } from '@/types'
@@ -135,6 +137,31 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+
+  // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
+  // toggles the spectator flag). `ready:false` sits the player back out.
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
+  const toggleReplayReady = useCallback(
+    async (ready: boolean) => {
+      if (!myResumeToken) return
+      setReplayReadyPending(true)
+      try {
+        const res = await fetch('/api/players/ready', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? 'Failed to update ready')
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to update ready')
+      } finally {
+        setReplayReadyPending(false)
+      }
+    },
+    [gameCode, myResumeToken, load, toastError]
+  )
 
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
@@ -297,6 +324,22 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'waiting') {
     const me = players.find((p) => p.id === myPlayerId)
+    // "Play again · same settings" reopened the lobby with the ready-up ring.
+    if (game?.replay_pending) {
+      return (
+        <GameJoinLobbyShell gameCode={gameCode}>
+          <ReplayReadyRing
+            players={players}
+            meId={myPlayerId}
+            isHost={false}
+            minPlayers={CRAZY8_MIN_PLAYERS}
+            onToggleReady={(ready) => void toggleReplayReady(ready)}
+            onStart={() => {}}
+            pending={replayReadyPending}
+          />
+        </GameJoinLobbyShell>
+      )
+    }
     return (
       <GameJoinLobbyShell gameCode={gameCode}>
         <GameLobbyWaitingPanel

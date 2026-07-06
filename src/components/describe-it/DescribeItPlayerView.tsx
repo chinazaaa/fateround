@@ -11,7 +11,14 @@ import {
 import { DescribeItPlayPanel } from '@/components/describe-it/DescribeItPlay'
 import { DescribeItFinalResultsShareBlock } from '@/components/describe-it/DescribeItFinalResultsShareBlock'
 import { gameTypeConfig } from '@/lib/game-types'
-import { clampDescribeItMode, clampDescribeItTeams, isDescribeItResultsPhase } from '@/lib/describe-it'
+import {
+  clampDescribeItMode,
+  clampDescribeItTeams,
+  isDescribeItResultsPhase,
+  DESCRIBE_IT_MIN_PLAYERS,
+  DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
+} from '@/lib/describe-it'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { DescribeItAchievementPosts } from '@/components/describe-it/DescribeItAchievementPosts'
 import { supabase } from '@/lib/supabase'
 import {
@@ -206,6 +213,31 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
+  // toggles the spectator flag). `ready:false` sits the player back out.
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
+  const toggleReplayReady = useCallback(
+    async (ready: boolean) => {
+      if (!myResumeToken) return
+      setReplayReadyPending(true)
+      try {
+        const res = await fetch('/api/players/ready', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? 'Failed to update ready')
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to update ready')
+      } finally {
+        setReplayReadyPending(false)
+      }
+    },
+    [gameCode, myResumeToken, load, toastError]
+  )
+
   const handlePlayerLeft = () => {
     clearPlayerSession(gameCode)
     setMyPlayerId(null)
@@ -306,6 +338,22 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'lobby') {
     const me = players.find((p) => p.id === myPlayerId)
+    // "Play again · same settings" reopened the lobby with the ready-up ring.
+    if (game?.replay_pending) {
+      return (
+        <GameJoinLobbyShell gameCode={gameCode}>
+          <ReplayReadyRing
+            players={players}
+            meId={myPlayerId}
+            isHost={false}
+            minPlayers={isIndividual ? DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL : DESCRIBE_IT_MIN_PLAYERS}
+            onToggleReady={(ready) => void toggleReplayReady(ready)}
+            onStart={() => {}}
+            pending={replayReadyPending}
+          />
+        </GameJoinLobbyShell>
+      )
+    }
     return (
       <GameJoinLobbyShell gameCode={gameCode}>
         <GameLobbyWaitingPanel

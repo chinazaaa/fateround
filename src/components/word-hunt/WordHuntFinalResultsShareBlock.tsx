@@ -20,6 +20,8 @@ export function WordHuntFinalResultsShareBlock({
   allSubmissions,
   validWords,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
   showCreateNewGame = true,
 }: {
   game: Game
@@ -30,6 +32,8 @@ export function WordHuntFinalResultsShareBlock({
   allSubmissions?: Pick<WordHuntSubmission, 'word' | 'points_awarded' | 'path' | 'player_id'>[]
   validWords?: string[]
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
   showCreateNewGame?: boolean
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
@@ -102,8 +106,11 @@ export function WordHuntFinalResultsShareBlock({
         </div>
       </div>
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         showCreateNewGame={showCreateNewGame}
         shareButton={
           <ShareResults
@@ -119,6 +126,7 @@ export function WordHuntFinalResultsShareBlock({
               wordCount: row.word_count,
             }))}
             wordHuntWinnerName={winner?.name}
+            primary
           />
         }
       />

@@ -53,6 +53,8 @@ export function CheckersFinalResultsShareBlock({
   winnerName,
   highlightPlayerId,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
 }: {
   game: Game
   players: Player[]
@@ -60,6 +62,8 @@ export function CheckersFinalResultsShareBlock({
   winnerName?: string | null
   highlightPlayerId?: string | null
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -110,8 +114,11 @@ export function CheckersFinalResultsShareBlock({
         )}
       </div>
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}
@@ -123,6 +130,7 @@ export function CheckersFinalResultsShareBlock({
             ticTacToeWinnerName={displayWinner ?? undefined}
             ticTacToeIsDraw={isDraw}
             ticTacToeEndedEarly={endedEarly}
+            primary
           />
         }
       />

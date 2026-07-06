@@ -12,7 +12,8 @@ import { TicTacToeFinalResultsShareBlock } from '@/components/tic-tac-toe/TicTac
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { TicTacToeGamePanel } from '@/components/tic-tac-toe/TicTacToeBoard'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentTurnPlayerId, isTicTacToeResultsPhase } from '@/lib/tic-tac-toe'
+import { currentTurnPlayerId, isTicTacToeResultsPhase, TIC_TAC_TOE_MIN_PLAYERS } from '@/lib/tic-tac-toe'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
 import { TIC_TAC_TOE_SESSION_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
@@ -111,7 +112,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'tic_tac_toe_sessions'], load)
+  useGameTableSync(gameCode, ['players', { table: 'games', column: 'id' }, 'tic_tac_toe_sessions'], load)
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
@@ -135,6 +136,31 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
     setMyPlayerId(null)
     void load()
   }
+
+  // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
+  // toggles the spectator flag). `ready:false` sits the player back out.
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
+  const toggleReplayReady = useCallback(
+    async (ready: boolean) => {
+      if (!myResumeToken) return
+      setReplayReadyPending(true)
+      try {
+        const res = await fetch('/api/players/ready', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? 'Failed to update ready')
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to update ready')
+      } finally {
+        setReplayReadyPending(false)
+      }
+    },
+    [gameCode, myResumeToken, load, toastError]
+  )
 
   const movePiece = async (cellIndex: number) => {
     if (!myPlayerId) return
@@ -242,6 +268,22 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'waiting') {
     const me = players.find((p) => p.id === myPlayerId)
+    // "Play again · same settings" reopened the lobby with the ready-up ring.
+    if (game?.replay_pending) {
+      return (
+        <GameJoinLobbyShell gameCode={gameCode}>
+          <ReplayReadyRing
+            players={players}
+            meId={myPlayerId}
+            isHost={false}
+            minPlayers={TIC_TAC_TOE_MIN_PLAYERS}
+            onToggleReady={(ready) => void toggleReplayReady(ready)}
+            onStart={() => {}}
+            pending={replayReadyPending}
+          />
+        </GameJoinLobbyShell>
+      )
+    }
     return (
       <GameJoinLobbyShell gameCode={gameCode}>
         <GameLobbyWaitingPanel

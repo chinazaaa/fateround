@@ -14,6 +14,8 @@ import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { WordHuntBoard } from '@/components/word-hunt/WordHuntBoard'
 import { WordHuntPlayerView } from '@/components/word-hunt/WordHuntPlayerView'
 import { WordHuntFinalResultsShareBlock } from '@/components/word-hunt/WordHuntFinalResultsShareBlock'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { parseWordHuntMetadata, tallyWordHuntScores, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
@@ -57,6 +59,7 @@ interface WordHuntSubmission {
 
 export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError } = useToast()
+  const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [roundId, setRoundId] = useState<string | null>(null)
@@ -323,7 +326,9 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
     }
   }
 
-  async function handlePlayAgain() {
+  // "Play again · same settings" reopens the game as an open lobby flagged for the
+  // ready-up ring; a plain reset (sameSettings=false) is the normal "Return to lobby".
+  async function resetGame(sameSettings: boolean) {
     if (playingAgain) return
     setPlayingAgain(true)
     const keepHostSession = hostMode === 'player' && hostPlayerId && hostPlayerName
@@ -335,7 +340,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined }),
+        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, same_settings: sameSettings }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -364,6 +369,26 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
     } finally {
       setPlayingAgain(false)
     }
+  }
+
+  const confirmPlayAgain = async () => {
+    const ok = await confirm({
+      title: 'Play again — same settings?',
+      message:
+        'Reopens the game with the same settings. Previous watchers and new people can join; everyone taps “ready” and you start the next game once enough players are in.',
+      confirmLabel: 'Play again',
+    })
+    if (ok) void resetGame(true)
+  }
+
+  const confirmReturnToLobby = async () => {
+    const ok = await confirm({
+      title: 'Return to lobby?',
+      message:
+        'Sends everyone back to the game lobby where you can tweak settings or let new people join before starting again.',
+      confirmLabel: 'Return to lobby',
+    })
+    if (ok) void resetGame(false)
   }
 
   const leaderboard = tallyWordHuntScores(submissions, players)
@@ -535,13 +560,24 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
         playAgainButton={
           <button
             type="button"
-            onClick={() => void handlePlayAgain()}
+            onClick={() => void confirmPlayAgain()}
             disabled={playingAgain}
-            className="btn-primary w-full py-3 font-bold"
+            className="btn-secondary w-full py-3 text-base disabled:opacity-60"
           >
-            {playingAgain ? 'Resetting…' : 'Play again'}
+            {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
           </button>
         }
+        returnToLobbyButton={
+          <button
+            type="button"
+            onClick={() => void confirmReturnToLobby()}
+            disabled={playingAgain}
+            className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
+          >
+            Return to lobby
+          </button>
+        }
+        lobbyNote="Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak settings first."
       />
       {hostWon && (
         <div className="mt-4">
@@ -555,6 +591,32 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
       )}
     </>
   )
+
+  // "Play again · same settings" reopened the game as an open lobby flagged for the
+  // ready-up ring — the host sees the ring + a "Start game" button instead of the lobby.
+  if (game.status === 'waiting' && game.replay_pending) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--background)] px-3 py-8 text-[var(--foreground)]">
+        <ReplayReadyRing
+          players={players}
+          meId={hostPlayerId}
+          isHost
+          minPlayers={WORD_HUNT_MIN_PLAYERS}
+          onToggleReady={() => {}}
+          onStart={() => void startGame()}
+          starting={starting}
+        />
+        <button
+          type="button"
+          onClick={() => void confirmReturnToLobby()}
+          disabled={playingAgain}
+          className="mt-1 py-2 text-sm font-medium text-muted transition-colors hover:text-body disabled:opacity-60"
+        >
+          Return to lobby instead
+        </button>
+      </div>
+    )
+  }
 
   return (
     <HostGameLayout
