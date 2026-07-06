@@ -10,7 +10,7 @@ const supabase = getSupabaseAnon()
 
 // Permissive shape: catch a malformed/non-object body (400) without tightening the
 // handler's own field coercion.
-const roomJoinSchema = z.object({ memberCode: z.string().optional(), displayName: z.string().optional() }).passthrough()
+const roomJoinSchema = z.object({ memberCode: z.unknown().optional(), displayName: z.unknown().optional() })
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
