@@ -341,6 +341,12 @@ export function SpecSeats({ seats }: SpecSeatsProps) {
 
 export type CardTableSurfaceProps = {
   children: ReactNode
+  /**
+   * Per-game modifier class (e.g. "whot") added alongside `ct-surface`. Lets a
+   * game opt into game-specific layout tweaks — currently the Whot
+   * contain-and-scale treatment on desktop / roomy viewports.
+   */
+  variant?: string
 }
 
 /**
@@ -348,8 +354,8 @@ export type CardTableSurfaceProps = {
  * `.pr-stage`, which is a bounded flex column with no scroll on mobile) so the
  * pinned turn rail + hand stay on-screen and the felt scrolls between them.
  */
-export function CardTableSurface({ children }: CardTableSurfaceProps) {
-  return <div className="ct-surface">{children}</div>
+export function CardTableSurface({ children, variant }: CardTableSurfaceProps) {
+  return <div className={'ct-surface' + (variant ? ' ' + variant : '')}>{children}</div>
 }
 
 /* ─── table shell + status / toasts ─────────────────────────────── */

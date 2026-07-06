@@ -4,7 +4,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PollGamePlayerExperience } from '@/components/poll-game/PollGamePlayerExperience'
-import { NowPlayingBar } from '@/components/music/NowPlayingBar'
+// import { NowPlayingBar } from '@/components/music/NowPlayingBar'
 import { IosInstallPushNudge } from '@/components/IosInstallPushNudge'
 import { getPlayerSession } from '@/lib/utils'
 
@@ -130,7 +130,7 @@ export default function GamePage() {
     <>
       <PollGamePlayerExperience gameCode={gameCode} initialName={initialName} autoJoinAsViewer={watch} />
       <TournamentBanner gameCode={gameCode} tournamentId={tournamentId} />
-      {playerId && <NowPlayingBar gameCode={gameCode} identity={playerId} />}
+      {/* {playerId && <NowPlayingBar gameCode={gameCode} identity={playerId} />} */}
       {playerId && <IosInstallPushNudge gameCode={gameCode} />}
     </>
   )

@@ -8,7 +8,7 @@ import { HOST_GAME_SELECT } from '@/lib/supabase-selects'
 import { parseGameType } from '@/lib/game-types'
 import { HOST_VIEW_REGISTRY } from '@/components/game-host-views'
 import { PollHostView } from '@/components/poll-game/PollHostView'
-import { HostMusicControl } from '@/components/music/HostMusicControl'
+// import { HostMusicControl } from '@/components/music/HostMusicControl'
 import { readNominee, rememberNominee } from '@/lib/host-transfer'
 import { rememberHostToken, clearHostToken } from '@/lib/host-session'
 import { useHostToken } from '@/hooks/useHostToken'
@@ -225,7 +225,7 @@ export default function HostPage() {
           <PollHostView gameCode={gameCode} hostToken={hostToken} />
         )}
         {/* Floating DJ panel — persists across lobby + active play for every game type. */}
-        <HostMusicControl gameCode={gameCode} hostToken={hostToken} />
+        {/* <HostMusicControl gameCode={gameCode} hostToken={hostToken} /> */}
       </>
     )
   }
