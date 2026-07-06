@@ -88,7 +88,7 @@
   /* Fonts — mapped to the next/font variables declared in layout.tsx */
   --font-display: var(--font-fr-display), 'Instrument Sans', system-ui, sans-serif;
   --font-sans:    var(--font-fr-body), system-ui, -apple-system, sans-serif;
-  --font-mono:    var(--font-fr-mono), ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-mono:    var(--font-fr-mono), ui-monospace, 'SF Mono', 'Menlo', monospace;
 
   --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700; --fw-black: 800;
 
@@ -252,6 +252,7 @@
 .fr-code-go:not(:disabled) { background: var(--primary); color: var(--primary-contrast); cursor: pointer; box-shadow: var(--shadow-sm); }
 .fr-code-go:not(:disabled):hover { background: var(--primary-strong); transform: translateY(-50%) scale(1.06); }
 .fr-code-go:not(:disabled):active { transform: translateY(-50%) scale(0.95); }
+.fr-code-go:not(:disabled):focus-visible { outline: none; box-shadow: var(--focus-ring), var(--shadow-sm); }
 
 /* Card */
 .fr-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: var(--space-5); }
@@ -330,6 +331,7 @@
 /* Game-type card — signature tile; each game claims --accent */
 .fr-gamecard {
   --accent: var(--primary);
+
   position: relative; display: flex; flex-direction: column; gap: var(--space-3); text-align: left;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm); padding: var(--space-5); cursor: pointer; overflow: hidden;
