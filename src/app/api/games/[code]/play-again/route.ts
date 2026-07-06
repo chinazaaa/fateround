@@ -134,6 +134,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     trivia_category,
     timer_seconds,
     rounds_count,
+    same_settings: sameSettings,
   } = body
   const gameId = code.toUpperCase()
 
@@ -197,6 +198,9 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     session_started_at: null,
     finished_at: null,
     anonymous_messages_trimmed_at: null,
+    // "Play again · same settings" reopens the lobby with the ready-up ring; a plain
+    // "Return to lobby" reset (sameSettings falsy) lands in the standard lobby.
+    replay_pending: sameSettings === true,
   }
 
   if (rawCustomQuestions !== undefined && isCodewordsGame(gameType)) {

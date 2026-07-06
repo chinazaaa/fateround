@@ -10,6 +10,16 @@ type Props = {
   showBackHome?: boolean
   /** Game code — when set, shows a "View game history" link that opens the recap in a new tab. */
   gameCode?: string | null
+  /**
+   * 'winner' renders the redesigned results footer: Share results (primary) →
+   * Play again (secondary) → Return to lobby (ghost) + an optional helper note.
+   * Defaults to the original layout so screens that haven't adopted it are unchanged.
+   */
+  variant?: 'default' | 'winner'
+  /** 'winner' only — the ghost "Return to lobby" action shown under Play again. */
+  returnToLobbyButton?: React.ReactNode
+  /** 'winner' only — helper text under the buttons explaining the two play-again paths. */
+  lobbyNote?: React.ReactNode
 }
 
 export function HostGameFinishedActions({
@@ -18,8 +28,34 @@ export function HostGameFinishedActions({
   showCreateNewGame = true,
   showBackHome = true,
   gameCode,
+  variant = 'default',
+  returnToLobbyButton,
+  lobbyNote,
 }: Props) {
   const router = useRouter()
+
+  if (variant === 'winner') {
+    // The share / play-again / return-to-lobby buttons carry their own styling from the
+    // caller (btn-primary / btn-secondary / ghost); we just stack them + the helper note.
+    return (
+      <div className="space-y-2.5">
+        {shareButton}
+        {playAgainButton ? <div className="min-w-0">{playAgainButton}</div> : null}
+        {returnToLobbyButton ?? null}
+        {lobbyNote ? <p className="text-center text-xs text-faint leading-relaxed px-2 pt-0.5">{lobbyNote}</p> : null}
+        {gameCode ? (
+          <a
+            href={`/history/${gameCode}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-full pt-1 text-center text-sm font-medium text-muted hover:text-body transition-colors"
+          >
+            View game history ↗
+          </a>
+        ) : null}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-3">

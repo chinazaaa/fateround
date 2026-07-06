@@ -212,6 +212,12 @@ export const playAgainSchema = hostActionSchema.extend({
   trivia_category: z.enum(['tech', 'general']).optional(),
   timer_seconds: z.union([z.literal(10), z.literal(15), z.literal(30), z.literal(60)]).optional(),
   rounds_count: z.number().int().min(3).max(25).optional(),
+  /**
+   * Whot "Play again · same settings": reopen as an OPEN lobby but flagged so the UI
+   * shows the ready-up ring instead of the standard lobby. Omitted / false = plain
+   * "Return to lobby" reset.
+   */
+  same_settings: z.boolean().optional(),
 })
 
 export type PlayAgainInput = z.infer<typeof playAgainSchema>
