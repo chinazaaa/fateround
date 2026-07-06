@@ -35,6 +35,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+# Commit this image was built from — a runtime env (read by /api/health at request time,
+# not inlined at build like NEXT_PUBLIC_*), so it lives in the run stage. CI passes github.sha.
+ARG GIT_SHA
+ENV GIT_SHA=$GIT_SHA
 
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
