@@ -1161,9 +1161,10 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'A sunrise report announces who died last night (or if nobody died).',
         'The town discusses and debates who they suspect is Mafia.',
-        'Players vote to eliminate one suspect. Plurality wins; ties result in no elimination.',]
-      }
-    ],
+        'Players vote to eliminate one suspect. Plurality wins; ties result in no elimination.',
+      ],
+    },
+  ],
 
   matching_pairs: [
     {

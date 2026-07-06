@@ -2439,7 +2439,9 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Can the Doctor protect themselves?',
         answer:
           'No, to keep the game balanced, the Doctor cannot select themselves for protection. They must choose another player.',
-      }]}),
+      },
+    ],
+  }),
   matching_pairs: landing('matching_pairs', {
     seoTitle: 'Matching Pairs — Multiplayer Memory Game Online',
     seoDescription:

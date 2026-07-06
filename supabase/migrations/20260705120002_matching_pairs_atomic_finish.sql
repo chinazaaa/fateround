@@ -13,10 +13,17 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-  v_rank integer;
+  v_rank    integer;
   v_finished boolean;
+  v_lock_key bigint;
 BEGIN
-  -- Check if already finished (compare-and-swap).
+  -- Serialize rank assignment per round so two concurrent calls for the same
+  -- round cannot both read MAX(finish_rank)=0 and both award rank 1.
+  v_lock_key := hashtext(COALESCE(p_round_id::text, ''));
+  PERFORM pg_advisory_xact_lock(v_lock_key);
+
+  -- Check if already finished (compare-and-swap) — inside the lock so the
+  -- NOT-finished guard below and the MAX counter share a consistent snapshot.
   SELECT finished INTO v_finished
   FROM memory_match_progress
   WHERE round_id = p_round_id AND player_id = p_player_id;
@@ -45,6 +52,7 @@ BEGIN
     RETURN jsonb_build_object('error', 'ROW_MISSING');
   END IF;
 
+  -- Lock released automatically when the surrounding transaction commits.
   RETURN jsonb_build_object('finish_rank', v_rank);
 END;
 $$;

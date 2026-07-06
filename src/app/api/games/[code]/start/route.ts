@@ -713,9 +713,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       wrong_attempts: 0,
       finished: false,
     }))
-    const { error: progressError } = await getSupabaseAdmin()
-      .from('memory_match_progress')
-      .insert(progressRows)
+    const { error: progressError } = await getSupabaseAdmin().from('memory_match_progress').insert(progressRows)
     if (progressError)
       return NextResponse.json({ error: internalErrorMessage('games/code/start', progressError) }, { status: 500 })
 

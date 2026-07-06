@@ -176,7 +176,8 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
   mafia: {
     min: MAFIA_MIN_PLAYERS,
     max: MAFIA_MAX_PLAYERS,
-    default: MAFIA_DEFAULT_MAX_PLAYERS,},
+    default: MAFIA_DEFAULT_MAX_PLAYERS,
+  },
   matching_pairs: {
     min: MATCHING_PAIRS_MIN_PLAYERS,
     max: MATCHING_PAIRS_MAX_PLAYERS,

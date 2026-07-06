@@ -160,21 +160,21 @@ export async function POST(req: NextRequest) {
   let finishRank: number | null = null
   if (justFinished) {
     // Use atomic RPC to prevent duplicate ranks under concurrent finishers.
-    const { data: finishData, error: finishError } = await supabase.rpc(
-      'matching_pairs_finish_player',
-      {
-        p_round_id: round.id,
-        p_player_id: playerId,
-        p_pairs_matched: newPairsMatched,
-        p_wrong_attempts: newWrongAttempts,
-      }
-    )
+    const { data: finishData, error: finishError } = await supabase.rpc('matching_pairs_finish_player', {
+      p_round_id: round.id,
+      p_player_id: playerId,
+      p_pairs_matched: newPairsMatched,
+      p_wrong_attempts: newWrongAttempts,
+    })
     if (finishError) {
       return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', finishError) }, { status: 500 })
     }
     const result = finishData as { error?: string; finish_rank?: number } | null
     if (result?.error) {
-      return NextResponse.json({ error: result.error === 'ALREADY_FINISHED' ? 'Player already finished' : 'Failed to finish' }, { status: 409 })
+      return NextResponse.json(
+        { error: result.error === 'ALREADY_FINISHED' ? 'Player already finished' : 'Failed to finish' },
+        { status: 409 }
+      )
     }
     finishRank = result?.finish_rank ?? null
   } else {
