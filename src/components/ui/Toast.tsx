@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
 
 type ToastKind = 'success' | 'error' | 'info'
 
@@ -39,6 +39,7 @@ const kindIconColors: Record<ToastKind, string> = {
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([])
+  const nextIdRef = useRef(1)
 
   const dismiss = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id))
@@ -46,7 +47,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const toast = useCallback(
     (message: string, kind: ToastKind = 'info', durationMs = 3200) => {
-      const id = Date.now() + Math.floor(Math.random() * 1000)
+      const id = nextIdRef.current++
       setToasts((prev) => [...prev.slice(-2), { id, message, kind }])
       window.setTimeout(() => dismiss(id), durationMs)
     },

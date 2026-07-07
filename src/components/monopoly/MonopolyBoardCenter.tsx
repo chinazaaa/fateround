@@ -13,6 +13,8 @@ import {
   type MonopolyColorGroup,
 } from '@/lib/monopoly'
 import {
+  canonicalToDisplayMoney,
+  displayToCanonicalMoney,
   formatThemedMoney,
   formatThemedText,
   getBoardPalette,
@@ -334,80 +336,77 @@ export function MonopolyBoardCenter({
         </div>
       )}
 
-      {showRaiseFunds && debt && (
-        <div className={widePanelClass}>
-          <p
-            className={
-              isDock
-                ? 'text-[10px] uppercase tracking-wider text-red-500'
-                : `text-[10px] uppercase tracking-wider ${palette.centerDebtPriceText}`
-            }
-          >
-            Need to pay
+      {showRent && pendingSpace && (
+        <div className={panelClass}>
+          <p className={labelClass}>Rent Due</p>
+          <p className={titleClass}>{themedSpaceName(pendingSpace.name, pendingSpace.index, themeId)}</p>
+          <p className={debtPriceClass}>{formatThemedMoney(rentAmount, themeId)}</p>
+          <p className={isDock ? 'text-xs text-muted truncate' : 'text-xs text-muted truncate'}>
+            Owner: {rentOwner?.name ?? 'Someone'}
           </p>
-          <p className={titleClass}>{debt.reason}</p>
-          {debtCreditor && <p className={`${subtleClass} truncate`}>To {debtCreditor.name}</p>}
-          <p className={debtPriceClass}>{formatThemedMoney(debtAmount, themeId)}</p>
-          <p className={subtleClass}>Mortgage or sell houses in Build &amp; trade, then pay — or forfeit.</p>
-          <BoardPrimaryButton
-            onClick={() => postAction('/api/monopoly/settle-debt')}
-            loading={acting}
-            disabled={(myState?.cash ?? 0) < debtAmount}
-          >
-            Pay now
-          </BoardPrimaryButton>
-          <BoardSecondaryButton onClick={() => postAction('/api/monopoly/forfeit')} disabled={acting}>
-            Forfeit
-          </BoardSecondaryButton>
+          <div className="space-y-1.5 pt-0.5">
+            <BoardPrimaryButton
+              onClick={() => postAction('/api/monopoly/rent', {})}
+              loading={acting}
+              disabled={acting}
+            >
+              Pay Rent
+            </BoardPrimaryButton>
+          </div>
         </div>
       )}
 
-      {showRent && pendingSpace && (
-        <div className={panelClass}>
-          <p className={labelClass}>Rent due</p>
-          <p className={titleClass}>{themedSpaceName(pendingSpace.name, pendingSpace.index, themeId)}</p>
-          <p className={`${subtleClass} truncate`}>To {rentOwner?.name ?? 'owner'}</p>
-          <p className={debtPriceClass}>{formatThemedMoney(rentAmount, themeId)}</p>
-          <BoardPrimaryButton
-            onClick={() => postAction('/api/monopoly/rent')}
-            loading={acting}
-            disabled={(myState?.cash ?? 0) < rentAmount}
-          >
-            Pay rent
-          </BoardPrimaryButton>
+      {showRaiseFunds && debt && (
+        <div className={widePanelClass}>
+          <p className={labelClass}>Debt Due</p>
+          <p className={titleClass}>
+            Owed to {debtCreditor ? debtCreditor.name : 'Bank'}
+          </p>
+          <p className={debtPriceClass}>{formatThemedMoney(debtAmount, themeId)}</p>
+          <p className={isDock ? 'text-xs text-muted leading-tight' : 'text-xs text-muted leading-snug'}>
+            Mortgage properties or sell houses to raise cash.
+          </p>
+          <div className="space-y-1.5 pt-0.5">
+            <BoardPrimaryButton
+              onClick={() => postAction('/api/monopoly/debt', { action: 'pay' })}
+              loading={acting}
+              disabled={acting || (myState?.cash ?? 0) < debtAmount}
+            >
+              Pay Debt
+            </BoardPrimaryButton>
+          </div>
         </div>
       )}
 
       {showJail && (
         <div className={panelClass}>
-          <p className="text-lg leading-none">🔒</p>
-          <p
-            className={
-              isDock ? 'text-sm font-bold text-[var(--foreground)]' : `text-xs font-bold ${palette.centerText}`
-            }
-          >
-            In jail
+          <p className={labelClass}>In Jail</p>
+          <p className={titleClass}>Kirikiri / Jail</p>
+          <p className={isDock ? 'text-xs text-muted leading-tight' : 'text-xs text-muted leading-snug'}>
+            Attempt {(myState?.jail_turns ?? 0) + 1}/3 — roll once for doubles, or pay {formatThemedMoney(50, themeId)} now.
           </p>
-          <p className={subtleClass}>
-            Attempt {(myState?.jail_turns ?? 0) + 1}/3 — roll once for doubles, or pay {formatThemedMoney(50, themeId)}{' '}
-            before rolling.
-          </p>
-          <div className="space-y-1">
-            <BoardPrimaryButton onClick={() => postAction('/api/monopoly/roll')} loading={acting}>
-              Roll for doubles
-            </BoardPrimaryButton>
-            <BoardSecondaryButton
-              onClick={() => postAction('/api/monopoly/jail', { method: 'pay' })}
-              disabled={acting || (myState?.cash ?? 0) < MONOPOLY_JAIL_FINE}
-            >
-              Pay {formatThemedMoney(MONOPOLY_JAIL_FINE, themeId)}
-            </BoardSecondaryButton>
-            {(myState?.get_out_of_jail_free ?? 0) > 0 && (
-              <BoardSecondaryButton
-                onClick={() => postAction('/api/monopoly/jail', { method: 'card' })}
+          <div className="space-y-1.5 pt-0.5">
+            <div className="grid grid-cols-2 gap-1.5">
+              <BoardPrimaryButton
+                onClick={() => postAction('/api/monopoly/jail', { decision: 'roll' })}
+                loading={acting}
                 disabled={acting}
               >
-                {formatThemedText('Use Jail card', themeId)}
+                Roll Doubles
+              </BoardPrimaryButton>
+              <BoardSecondaryButton
+                onClick={() => postAction('/api/monopoly/jail', { decision: 'pay' })}
+                disabled={acting || (myState?.cash ?? 0) < MONOPOLY_JAIL_FINE}
+              >
+                Pay {formatThemedMoney(MONOPOLY_JAIL_FINE, themeId)}
+              </BoardSecondaryButton>
+            </div>
+            {myState && (myState.get_out_of_jail_free ?? 0) > 0 && (
+              <BoardSecondaryButton
+                onClick={() => postAction('/api/monopoly/jail', { decision: 'card' })}
+                disabled={acting}
+              >
+                Use Card ({myState.get_out_of_jail_free})
               </BoardSecondaryButton>
             )}
           </div>
@@ -423,19 +422,23 @@ export function MonopolyBoardCenter({
           </p>
           <input
             type="number"
-            min={auction.high_bid + 1}
+            min={canonicalToDisplayMoney(auction.high_bid + 1, themeId)}
+            step={canonicalToDisplayMoney(1, themeId)}
             value={bidAmount}
             onChange={(e) => setBidAmount(e.target.value)}
-            placeholder={`Min ${auction.high_bid + 1}`}
+            placeholder={`Min ${formatThemedMoney(auction.high_bid + 1, themeId)}`}
             className="input-field w-full py-1 text-xs text-center"
           />
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5 pt-0.5">
             <BoardPrimaryButton
               onClick={() =>
-                postAction('/api/monopoly/auction', { action: 'bid', amount: Number(bidAmount) || undefined })
+                postAction('/api/monopoly/auction', {
+                  action: 'bid',
+                  amount: displayToCanonicalMoney(Number(bidAmount), themeId) || undefined,
+                })
               }
               loading={acting}
-              disabled={!bidAmount || Number(bidAmount) <= auction.high_bid}
+              disabled={!bidAmount || displayToCanonicalMoney(Number(bidAmount), themeId) <= auction.high_bid}
             >
               Bid
             </BoardPrimaryButton>
