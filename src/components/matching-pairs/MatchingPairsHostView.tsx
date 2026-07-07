@@ -136,8 +136,8 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   }, [game?.status])
 
   // Realtime: subscribe to progress changes for live opponent view.
-  // Bug #4 fix: apply optimistic local update before calling load() so the host
-  // sees the correct count even when load() races ahead of the DB write.
+  // Apply optimistically from the realtime payload — no need to call load()
+  // (which re-fetches everything), since the payload contains the full row.
   useEffect(() => {
     if (!roundId) return
     const channel = supabase
@@ -157,15 +157,13 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
             }
             return [...prev, updated]
           })
-          // Then reconcile from the DB to pick up finish_rank / finished_at / etc.
-          void load()
         }
       )
       .subscribe()
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [roundId, load])
+  }, [roundId])
 
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
