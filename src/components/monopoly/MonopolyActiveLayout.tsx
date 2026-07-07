@@ -153,6 +153,7 @@ export function MonopolyActiveLayout({
 
   return (
     <>
+      {themeId === 'arctic' && <ArcticSnowfallOverlay />}
       <div className="space-y-2 sm:space-y-3">
         <MonopolyGameTimerBar gameCode={gameCode} game={game} />
 
@@ -321,5 +322,47 @@ export function MonopolyActiveLayout({
         />
       )}
     </>
+  )
+}
+
+function ArcticSnowfallOverlay() {
+  return (
+    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+      <style>{`
+        @keyframes arcticSnowFall {
+          0% { transform: translateY(-10vh) translateX(-10px); }
+          50% { transform: translateY(50vh) translateX(15px); }
+          100% { transform: translateY(105vh) translateX(-5px); }
+        }
+        @keyframes arcticSnowFall2 {
+          0% { transform: translateY(-10vh) translateX(10px); }
+          50% { transform: translateY(45vh) translateX(-20px); }
+          100% { transform: translateY(105vh) translateX(10px); }
+        }
+      `}</style>
+      {[...Array(28)].map((_, i) => {
+        const size = (i % 3) + 1.5
+        const left = `${(i * 3.7 + 2) % 100}%`
+        const duration = `${14 + (i % 6) * 3}s`
+        const delay = `-${(i * 1.9) % 20}s`
+        const opacity = 0.25 + (i % 4) * 0.15
+        const animationName = i % 2 === 0 ? 'arcticSnowFall' : 'arcticSnowFall2'
+        return (
+          <div
+            key={i}
+            className="absolute rounded-full bg-white shadow-[0_0_5px_rgba(255,255,255,0.8)]"
+            style={{
+              width: `${size}px`,
+              height: `${size}px`,
+              left,
+              top: '-10px',
+              opacity,
+              animation: `${animationName} ${duration} linear infinite`,
+              animationDelay: delay,
+            }}
+          />
+        )
+      })}
+    </div>
   )
 }

@@ -129,7 +129,7 @@ export function ThemePreviewModal({
 }) {
   const { theme: siteTheme } = useTheme()
   const [previewMode, setPreviewMode] = useState<Theme>(siteTheme)
-  const isAdaptiveTheme = theme?.id === 'default' || theme?.id === 'pirate'
+  const isAdaptiveTheme = theme?.id === 'default' || theme?.id === 'pirate' || theme?.id === 'arctic'
 
   useEffect(() => {
     if (open) setPreviewMode(siteTheme)
@@ -146,7 +146,9 @@ export function ThemePreviewModal({
         isAdaptiveTheme
           ? theme.id === 'pirate'
             ? 'Pirate theme has both Light Mode (Day Chart) and Dark Mode (Night Sea)'
-            : 'Default follows your site light or dark appearance'
+            : theme.id === 'arctic'
+              ? 'Arctic theme has both Light Mode (Polar Day) and Dark Mode (Polar Night)'
+              : 'Default follows your site light or dark appearance'
           : 'This theme uses its own fixed color palette'
       }
       size="md"

@@ -613,10 +613,18 @@ import {
   playPirateSeaSplashSound,
   playPirateShipBellSound,
 } from '@/lib/sounds-pirate'
+import {
+  playArcticAuroraPulseSound,
+  playArcticBlizzardWindSound,
+  playArcticCrunchSound,
+  playArcticFanfareSound,
+  playArcticIceClinkSound,
+  playArcticWindChimeSound,
+} from '@/lib/sounds-arctic'
 
 /**
  * Unified action sound dispatcher for Monopoly editions.
- * Routes audio events to sea/pirate sounds when themeId is 'pirate'.
+ * Routes audio events to themed sound effects when themeId is specified.
  */
 export function playMonopolyActionSound(
   actionType: 'roll' | 'buy' | 'rent' | 'card' | 'auction' | 'turn' | 'win' | 'bankrupt',
@@ -643,6 +651,29 @@ export function playMonopolyActionSound(
         break
       case 'win':
         void playPirateFanfareSound()
+        break
+    }
+  } else if (themeId === 'arctic') {
+    switch (actionType) {
+      case 'turn':
+        void playArcticWindChimeSound()
+        break
+      case 'roll':
+        void playArcticCrunchSound()
+        break
+      case 'buy':
+        void playArcticIceClinkSound()
+        break
+      case 'rent':
+      case 'bankrupt':
+        void playArcticBlizzardWindSound()
+        break
+      case 'card':
+      case 'auction':
+        void playArcticAuroraPulseSound()
+        break
+      case 'win':
+        void playArcticFanfareSound()
         break
     }
   } else {

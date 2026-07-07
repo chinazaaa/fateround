@@ -84,7 +84,7 @@ export interface MonopolyBoardPalette {
   /** Optional custom font class for tile labels */
   tileFont?: string
   /** Optional custom decoration overlay */
-  customDecoration?: 'pirate' | 'none'
+  customDecoration?: 'pirate' | 'arctic' | 'none'
 }
 
 // ---------------------------------------------------------------------------
@@ -278,8 +278,161 @@ const PIRATE_EDITION: MonopolyThemeEdition = {
 // Registry & lookup
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Arctic edition
+// ---------------------------------------------------------------------------
+
+const ARCTIC_PALETTE: MonopolyBoardPalette = {
+  boardBg:
+    'bg-gradient-to-br from-[#EAF2F5] via-[#DCEBEE] to-[#CDE2E6] dark:from-[#1E4E6B] dark:via-[#15384D] dark:to-[#0A1A2A]',
+  boardBorder: 'border-[#1E4E6B]/60 dark:border-[#3FA9A0]/60',
+  boardShadow:
+    'shadow-[0_20px_60px_rgba(30,78,107,0.25),inset_0_1px_0_rgba(255,255,255,0.8)] dark:shadow-[0_20px_60px_rgba(10,26,42,0.7),inset_0_1px_0_rgba(216,230,232,0.15)]',
+  centerBg:
+    'bg-gradient-to-br from-[#F4F9FA]/95 via-[#EAF2F5]/90 to-[#DFECEF]/95 dark:from-[#10263C]/95 dark:via-[#0D2034]/90 dark:to-[#0A1A2A]/95',
+  centerBorder: 'border-[#1E4E6B]/30 dark:border-[#3FA9A0]/40',
+  centerText: 'text-[#1B2A32] dark:text-[#D8E6E8]',
+  centerSubtleText: 'text-[#5C6B73] dark:text-[#8CA3AB]',
+  centerPriceText: 'text-[#1E4E6B] dark:text-[#3FA9A0]',
+  centerDebtPriceText: 'text-[#B34A3C] dark:text-[#B34A3C]',
+  titleColor: 'text-[#1B2A32] dark:text-[#D8E6E8]',
+  subtitleColor: 'text-[#1E4E6B] dark:text-[#3FA9A0]',
+  tileBg: 'bg-[#F8FBFC] dark:bg-[#10263C]/90',
+  tileBorder: 'border-[#1E4E6B]/25 dark:border-[#3FA9A0]/25',
+  tileText: 'text-[#1B2A32] dark:text-[#D8E6E8]',
+  highlightRing: 'ring-[#1E4E6B] dark:ring-[#3FA9A0]',
+  highlightOffset: 'ring-offset-[#EAF2F5] dark:ring-offset-[#0A1A2A]',
+  priceText: 'text-[#1E4E6B] dark:text-[#3FA9A0]',
+  rentText: 'text-[#5C6B73] dark:text-[#8CA3AB]',
+  cornerDivider: 'bg-[#1E4E6B]/20 dark:bg-[#3FA9A0]/30',
+  myTokenRing: 'ring-[#1E4E6B] dark:ring-[#3FA9A0]',
+  myTokenOffset: 'ring-offset-[#EAF2F5] dark:ring-offset-[#0A1A2A]',
+  titleFont: 'font-arctic-header font-bold text-base sm:text-3xl tracking-widest uppercase',
+  subtitleFont: 'font-arctic-header font-medium tracking-widest text-xs sm:text-sm uppercase',
+  tileFont: 'font-sans font-extrabold tracking-tight',
+  customDecoration: 'arctic',
+}
+
+const ARCTIC_EDITION: MonopolyThemeEdition = {
+  themeId: 'arctic',
+  editionName: 'Arctic',
+  editionEmoji: '🧭',
+  currencySymbol: 'Ɨ',
+  currencyWord: 'shards',
+  editionSubtitle: 'Polar Edition',
+  boardTitle: 'EXPEDITION',
+  typeIcons: {
+    go: '🧊',
+    chance: '🧭',
+    community: '⛺',
+    tax: '❄️',
+    jail: '🏔️',
+    go_to_jail: '🛷',
+    free_parking: '🔥',
+    station: '🚉',
+    utility: '⚡',
+  },
+  spaceNames: {
+    // Brown: Real Winter Trails & Passes
+    1: 'Klondike Trail',
+    3: 'Donner Pass',
+    // Light Blue: Real Northern Arctic Regions
+    6: 'Svalbard',
+    8: 'Lapland',
+    9: 'Glacier Bay',
+    // Pink: Real Glaciers & Frozen Lakes
+    11: 'Lake Louise',
+    13: 'Columbia Icefield',
+    14: 'Hubbard Glacier',
+    // Orange: Real World-Famous Ski Peaks
+    16: 'Chamonix',
+    18: 'Aspen',
+    19: 'Whistler',
+    // Red: Real Arctic Routes & Mountains
+    21: 'Yukon Trail',
+    23: 'Alaska Highway',
+    24: 'Denali',
+    // Yellow: Real Iconic Alpine Peaks
+    26: 'Matterhorn',
+    27: 'Mont Blanc',
+    29: 'Everest Base',
+    // Green: Real Polar Giants
+    31: 'Ross Ice Shelf',
+    32: 'K2 Mountain',
+    34: 'Mount Everest',
+    // Dark Blue: The Real Poles
+    37: 'South Pole',
+    39: 'North Pole',
+    // Real Polar & Alpine Stations
+    5: 'McMurdo Station',
+    15: 'Zermatt Station',
+    25: 'Summit Station',
+    35: 'Vostok Station',
+    // Utilities
+    12: 'Northern Lights',
+    28: 'Hot Springs',
+    // Community Chest & Chance
+    2: 'Supply Cache',
+    17: 'Supply Cache',
+    33: 'Supply Cache',
+    7: 'Polar Compass',
+    22: 'Polar Compass',
+    36: 'Polar Compass',
+    // Corners & Specials
+    0: 'Base Camp',
+    4: 'Ice Toll',
+    10: 'Shelter Camp',
+    20: 'Winter Feast',
+    30: 'Snow Storm',
+    38: 'Khumbu Icefall',
+  },
+  spaceLines: {
+    0: ['BASE', 'CAMP'],
+    1: ['KLONDIKE', 'TRAIL'],
+    2: ['SUPPLY', 'CACHE'],
+    3: ['DONNER', 'PASS'],
+    4: ['ICE', 'TOLL'],
+    5: ['MCMURDO', 'STATION'],
+    6: ['SVALBARD'],
+    7: ['POLAR', 'COMPASS'],
+    8: ['LAPLAND'],
+    9: ['GLACIER', 'BAY'],
+    10: ['SHELTER', 'CAMP'],
+    11: ['LAKE', 'LOUISE'],
+    12: ['NORTHERN', 'LIGHTS'],
+    13: ['COLUMBIA', 'ICEFIELD'],
+    14: ['HUBBARD', 'GLACIER'],
+    15: ['ZERMATT', 'STATION'],
+    16: ['CHAMONIX'],
+    17: ['SUPPLY', 'CACHE'],
+    18: ['ASPEN'],
+    19: ['WHISTLER'],
+    20: ['WINTER', 'FEAST'],
+    21: ['YUKON', 'TRAIL'],
+    22: ['POLAR', 'COMPASS'],
+    23: ['ALASKA', 'HIGHWAY'],
+    24: ['DENALI'],
+    25: ['SUMMIT', 'STATION'],
+    26: ['THE', 'MATTERHORN'],
+    27: ['MONT', 'BLANC'],
+    28: ['HOT', 'SPRINGS'],
+    29: ['EVEREST', 'BASE'],
+    30: ['SNOW', 'STORM'],
+    31: ['ROSS ICE', 'SHELF'],
+    32: ['K2', 'MOUNTAIN'],
+    33: ['SUPPLY', 'CACHE'],
+    34: ['MOUNT', 'EVEREST'],
+    35: ['VOSTOK', 'STATION'],
+    36: ['POLAR', 'COMPASS'],
+    37: ['SOUTH', 'POLE'],
+    38: ['KHUMBU', 'ICEFALL'],
+    39: ['NORTH', 'POLE'],
+  },
+  boardPalette: ARCTIC_PALETTE,
+}
+
 /** All Monopoly theme editions, in picker display order. */
-export const MONOPOLY_EDITIONS: MonopolyThemeEdition[] = [CLASSIC_EDITION, PIRATE_EDITION]
+export const MONOPOLY_EDITIONS: MonopolyThemeEdition[] = [CLASSIC_EDITION, PIRATE_EDITION, ARCTIC_EDITION]
 
 const EDITION_MAP: Record<string, MonopolyThemeEdition> = Object.fromEntries(
   MONOPOLY_EDITIONS.map((e) => [e.themeId, e])
@@ -351,6 +504,9 @@ export function formatThemedText(text: string | null | undefined, themeId?: stri
 
   formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, `${edition.currencySymbol}$1`)
   formatted = formatted.replace(/£/g, edition.currencySymbol)
+  if (edition.currencyWord && edition.currencyWord !== 'pounds') {
+    formatted = formatted.replace(/\bpounds\b/gi, edition.currencyWord)
+  }
 
   return formatted
 }
