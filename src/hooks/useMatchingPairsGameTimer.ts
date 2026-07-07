@@ -21,6 +21,7 @@ export function useMatchingPairsGameTimer(
       try {
         await fetch(`/api/games/${gameCode}/expire-matching-pairs`, { method: 'POST' })
       } catch {
+        // Intentionally ignored — fetch errors are retried below
       } finally {
         if (!cancelled) retryId = setTimeout(() => void fire(), 5000)
       }
