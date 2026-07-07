@@ -630,6 +630,49 @@ export function MonopolyClassicBoard({
             <div className="absolute inset-2.5 sm:inset-3 rounded border border-dotted border-[#5C6B73]/35 dark:border-[#3FA9A0]/25" />
           </div>
         )}
+        {p.customDecoration === 'naija' && (
+          <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+            {/* Subtle Ankara Wax-Print geometric pattern & fabric-grain texture */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(0,135,81,0.12)_100%)] dark:bg-[radial-gradient(circle_at_center,transparent_15%,rgba(11,31,22,0.85)_100%)] mix-blend-multiply dark:mix-blend-normal" />
+
+            {/* Fabric Grain & Ankara Border Geometric Frieze */}
+            <svg
+              className="absolute inset-0 w-full h-full text-[#008751]/20 dark:text-[#D9A441]/20"
+              viewBox="0 0 400 400"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <defs>
+                <pattern id="ankara-grain" width="10" height="10" patternUnits="userSpaceOnUse">
+                  <path d="M 0 5 L 10 5 M 5 0 L 5 10" stroke="currentColor" strokeWidth="0.4" opacity="0.4" />
+                  <circle cx="5" cy="5" r="0.8" fill="currentColor" opacity="0.3" />
+                </pattern>
+              </defs>
+              <rect width="400" height="400" fill="url(#ankara-grain)" />
+              {/* Geometric Wax-Print Edge Pattern */}
+              <rect
+                x="6"
+                y="6"
+                width="388"
+                height="388"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeDasharray="6 4"
+                opacity="0.7"
+              />
+              <rect x="12" y="12" width="376" height="376" stroke="currentColor" strokeWidth="0.8" opacity="0.5" />
+              {/* Corner Ankara Motifs */}
+              <polygon points="12,12 30,12 12,30" fill="currentColor" opacity="0.3" />
+              <polygon points="388,12 370,12 388,30" fill="currentColor" opacity="0.3" />
+              <polygon points="12,388 30,388 12,370" fill="currentColor" opacity="0.3" />
+              <polygon points="388,388 370,388 388,370" fill="currentColor" opacity="0.3" />
+            </svg>
+
+            {/* Thin wax-print border frames */}
+            <div className="absolute inset-1 sm:inset-1.5 rounded-lg sm:rounded-xl border border-[#008751]/40 dark:border-[#D9A441]/40" />
+            <div className="absolute inset-2 sm:inset-2.5 rounded sm:rounded-lg border border-dashed border-[#B5622A]/40 dark:border-[#D9A441]/30" />
+          </div>
+        )}
 
         <div
           className="absolute inset-[3px] sm:inset-2.5 grid gap-[0.5px] sm:gap-1 z-10"
@@ -788,6 +831,47 @@ export function MonopolyClassicBoard({
                     strokeDasharray="2 2"
                     opacity="0.4"
                   />
+                </svg>
+              </div>
+            )}
+            {p.customDecoration === 'naija' && (
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-0">
+                {/* Subtle Ankara rays and River Y / Eagle Motif */}
+                <svg
+                  className="w-48 h-48 sm:w-72 sm:h-72 text-[#008751]/15 dark:text-[#D9A441]/20"
+                  viewBox="0 0 100 100"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  {/* Subtle Geometric Radiance / Sun Rays */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="44"
+                    stroke="currentColor"
+                    strokeWidth="0.5"
+                    strokeDasharray="3 3"
+                    opacity="0.6"
+                  />
+                  <circle cx="50" cy="50" r="32" stroke="currentColor" strokeWidth="0.3" opacity="0.4" />
+
+                  {/* The Niger & Benue River Confluence 'Y' Mark */}
+                  <path
+                    d="M 20 25 Q 35 38 50 52 Q 65 38 80 25 L 75 20 Q 62 33 50 45 Q 38 33 25 20 Z"
+                    fill="currentColor"
+                    opacity="0.8"
+                  />
+                  <path d="M 46 50 L 54 50 L 54 85 L 46 85 Z" fill="currentColor" opacity="0.8" />
+                  <path d="M 48 50 L 52 50 L 52 85 L 48 85" stroke="currentColor" strokeWidth="0.5" opacity="0.5" />
+
+                  {/* Understated Geometric Eagle Silhouette Presiding Above */}
+                  <path
+                    d="M 50 15 L 62 23 L 68 18 L 56 26 L 50 28 L 44 26 L 32 18 L 38 23 Z"
+                    fill="currentColor"
+                    opacity="0.9"
+                  />
+                  {/* Tiny wreath diamond under eagle */}
+                  <polygon points="50,29 53,31 50,33 47,31" fill="currentColor" opacity="0.7" />
                 </svg>
               </div>
             )}

@@ -896,7 +896,8 @@ function CreateGameInner() {
         ? { participant_mode: 'import' as const, gender_based: defaultGenderBasedForType(type) }
         : {}),
       ...(supportsGenderToggle(type) && !isCustomGame(type) ? { gender_based: defaultGenderBasedForType(type) } : {}),
-      ...(type !== 'monopoly' && (settings.theme === 'pirate' || settings.theme === 'arctic')
+      ...(type !== 'monopoly' &&
+      (settings.theme === 'pirate' || settings.theme === 'arctic' || settings.theme === 'naija')
         ? { theme: 'default' as const }
         : {}),
     })
@@ -1414,7 +1415,7 @@ function CreateGameInner() {
             >
               {(settings.game_type === 'monopoly'
                 ? THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
-                : THEMES.filter((theme) => theme.id !== 'pirate' && theme.id !== 'arctic')
+                : THEMES.filter((theme) => theme.id !== 'pirate' && theme.id !== 'arctic' && theme.id !== 'naija')
               ).map((theme) => {
                 const monopolyEdition =
                   settings.game_type === 'monopoly' ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null

@@ -84,7 +84,7 @@ export interface MonopolyBoardPalette {
   /** Optional custom font class for tile labels */
   tileFont?: string
   /** Optional custom decoration overlay */
-  customDecoration?: 'pirate' | 'arctic' | 'none'
+  customDecoration?: 'pirate' | 'arctic' | 'naija' | 'none'
 }
 
 // ---------------------------------------------------------------------------
@@ -431,8 +431,150 @@ const ARCTIC_EDITION: MonopolyThemeEdition = {
   boardPalette: ARCTIC_PALETTE,
 }
 
+const NAIJA_PALETTE: MonopolyBoardPalette = {
+  boardBg:
+    'bg-gradient-to-br from-[#F4EDE1] via-[#EAE1D3] to-[#DED3C3] dark:from-[#0B1F16] dark:via-[#091811] dark:to-[#06110C]',
+  boardBorder: 'border-[#008751]/80 dark:border-[#D9A441]/80',
+  boardShadow:
+    'shadow-[0_20px_60px_rgba(26,31,28,0.3),inset_0_1px_0_rgba(255,255,255,0.5)] dark:shadow-[0_20px_60px_rgba(3,11,7,0.85),inset_0_1px_0_rgba(217,164,65,0.25)]',
+  centerBg:
+    'bg-gradient-to-br from-[#F4EDE1]/95 via-[#EAE1D3]/90 to-[#DED3C3]/95 dark:from-[#0E261B]/95 dark:via-[#0B1F16]/90 dark:to-[#07150F]/95',
+  centerBorder: 'border-[#008751]/50 dark:border-[#D9A441]/40',
+  centerText: 'text-[#1A1F1C] dark:text-[#EDE3D3]',
+  centerSubtleText: 'text-[#008751] dark:text-[#D9A441]/85',
+  centerPriceText: 'text-[#008751] dark:text-[#D9A441]',
+  centerDebtPriceText: 'text-[#B5622A] dark:text-[#9C3B2E]',
+  titleColor: 'text-[#008751] dark:text-[#D9A441]',
+  subtitleColor: 'text-[#B5622A] dark:text-[#EDE3D3]/80',
+  tileBg: 'bg-[#F9F5EE] dark:bg-[#0E261B]',
+  tileBorder: 'border-[#008751]/40 dark:border-[#D9A441]/35',
+  tileText: 'text-[#1A1F1C] dark:text-[#EDE3D3]',
+  highlightRing: 'ring-[#008751] dark:ring-[#D9A441]',
+  highlightOffset: 'ring-offset-[#EAE1D3] dark:ring-offset-[#0B1F16]',
+  priceText: 'text-[#008751] dark:text-[#D9A441]',
+  rentText: 'text-[#B5622A] dark:text-[#EDE3D3]/80',
+  cornerDivider: 'bg-[#008751]/30 dark:bg-[#D9A441]/30',
+  myTokenRing: 'ring-[#008751] dark:ring-[#D9A441]',
+  myTokenOffset: 'ring-offset-[#EAE1D3] dark:ring-offset-[#0B1F16]',
+  titleFont: 'font-sans font-black text-sm sm:text-3xl tracking-wide',
+  subtitleFont: 'font-sans font-semibold tracking-wider text-xs sm:text-sm uppercase',
+  tileFont: 'font-sans font-bold tracking-tight',
+  customDecoration: 'naija',
+}
+
+const NAIJA_EDITION: MonopolyThemeEdition = {
+  themeId: 'naija',
+  editionName: 'Naija',
+  editionEmoji: '🇳🇬',
+  currencySymbol: '₦',
+  currencyWord: 'naira',
+  editionSubtitle: 'Naija Edition',
+  boardTitle: 'COMMERCE',
+  typeIcons: {
+    go: '🛍️',
+    chance: '🎲',
+    community: '🤝',
+    tax: '🧾',
+    jail: '🔒',
+    go_to_jail: '🚨',
+    free_parking: '🅿️',
+    station: '🚆',
+    utility: '💡',
+  },
+  spaceNames: {
+    0: 'Balogun Market',
+    1: 'Oshodi Market',
+    2: 'Esusu Fund',
+    3: 'Yaba Market',
+    4: 'LGA Market Levy',
+    5: 'Iddo Railway Terminal',
+    6: 'Ariaria Market',
+    7: 'Trade Venture',
+    8: 'Main Market Onitsha',
+    9: 'Alaba International',
+    10: 'Kirikiri',
+    11: 'Tejuosho Market',
+    12: 'NEPA / PHCN',
+    13: 'Ogbete Market',
+    14: 'Kurmi Market',
+    15: 'Abuja Metro Station',
+    16: 'Mile 12 Market',
+    17: 'Market Guild',
+    18: 'Garki Model Market',
+    19: 'Computer Village',
+    20: 'Obalende Park',
+    21: 'Bodija Market',
+    22: 'Trade Venture',
+    23: 'Wuse Market',
+    24: 'Idumota Market',
+    25: 'Port Harcourt Terminus',
+    26: 'Dugbe Market',
+    27: 'Aba Mills',
+    28: 'Water Board',
+    29: 'Tin Can Island',
+    30: 'Taskforce Arrest',
+    31: 'Allen Avenue',
+    32: 'Adetokunbo Ademola',
+    33: 'Esusu Fund',
+    34: 'Ahmadu Bello Way',
+    35: 'Rigasa Station',
+    36: 'Trade Venture',
+    37: 'Wuse II',
+    38: 'FIRS Luxury Tax',
+    39: 'Bourdillon Road',
+  },
+  spaceLines: {
+    0: ['BALOGUN', 'MARKET'],
+    1: ['OSHODI', 'MARKET'],
+    2: ['ESUSU', 'FUND'],
+    3: ['YABA', 'MARKET'],
+    4: ['MARKET', 'LEVY'],
+    5: ['IDDO', 'TERMINAL'],
+    6: ['ARIARIA', 'MARKET'],
+    7: ['TRADE', 'VENTURE'],
+    8: ['MAIN MKT', 'ONITSHA'],
+    9: ['ALABA', 'INTL'],
+    10: ['KIRIKIRI', 'PRISON'],
+    11: ['TEJUOSHO', 'MARKET'],
+    12: ['NEPA /', 'PHCN'],
+    13: ['OGBETE', 'MARKET'],
+    14: ['KURMI', 'MARKET'],
+    15: ['ABUJA', 'METRO'],
+    16: ['MILE 12', 'MARKET'],
+    17: ['MARKET', 'GUILD'],
+    18: ['GARKI', 'MODEL'],
+    19: ['COMPUTER', 'VILLAGE'],
+    20: ['OBALENDE', 'PARK'],
+    21: ['BODIJA', 'MARKET'],
+    22: ['TRADE', 'VENTURE'],
+    23: ['WUSE', 'MARKET'],
+    24: ['IDUMOTA', 'MARKET'],
+    25: ['PH', 'TERMINUS'],
+    26: ['DUGBE', 'MARKET'],
+    27: ['ABA', 'MILLS'],
+    28: ['WATER', 'BOARD'],
+    29: ['TIN CAN', 'ISLAND'],
+    30: ['TASKFORCE', 'ARREST'],
+    31: ['ALLEN', 'AVENUE'],
+    32: ['ADETOKUNBO', 'ADEMOLA'],
+    33: ['ESUSU', 'FUND'],
+    34: ['AHMADU', 'BELLO WAY'],
+    35: ['RIGASA', 'STATION'],
+    36: ['TRADE', 'VENTURE'],
+    37: ['WUSE', 'II'],
+    38: ['LUXURY', 'TAX'],
+    39: ['BOURDILLON', 'ROAD'],
+  },
+  boardPalette: NAIJA_PALETTE,
+}
+
 /** All Monopoly theme editions, in picker display order. */
-export const MONOPOLY_EDITIONS: MonopolyThemeEdition[] = [CLASSIC_EDITION, PIRATE_EDITION, ARCTIC_EDITION]
+export const MONOPOLY_EDITIONS: MonopolyThemeEdition[] = [
+  CLASSIC_EDITION,
+  PIRATE_EDITION,
+  ARCTIC_EDITION,
+  NAIJA_EDITION,
+]
 
 const EDITION_MAP: Record<string, MonopolyThemeEdition> = Object.fromEntries(
   MONOPOLY_EDITIONS.map((e) => [e.themeId, e])
@@ -471,10 +613,27 @@ export function themedSpaceIcon(spaceType: MonopolySpaceType, themeId?: string |
   return edition.typeIcons[spaceType] ?? ''
 }
 
+/** Get the numerical multiplier for currency in the current theme (e.g. 1000 for Naija Edition). */
+export function getMoneyScale(themeId?: string | null): number {
+  const edition = getMonopolyEdition(themeId)
+  return edition.themeId === 'naija' ? 1000 : 1
+}
+
+/** Convert a canonical game money amount (e.g. 10) to its displayed numerical value (e.g. 10000). */
+export function canonicalToDisplayMoney(canonicalAmount: number, themeId?: string | null): number {
+  return canonicalAmount * getMoneyScale(themeId)
+}
+
+/** Convert a user-entered numerical display value (e.g. 10000) to canonical game money (e.g. 10). */
+export function displayToCanonicalMoney(displayAmount: number, themeId?: string | null): number {
+  return Math.round(displayAmount / getMoneyScale(themeId))
+}
+
 /** Format a money amount with the themed currency symbol. */
 export function formatThemedMoney(amount: number, themeId?: string | null): string {
   const edition = getMonopolyEdition(themeId)
-  return `${edition.currencySymbol}${amount.toLocaleString('en-GB')}`
+  const displayVal = canonicalToDisplayMoney(amount, themeId)
+  return `${edition.currencySymbol}${displayVal.toLocaleString('en-GB')}`
 }
 
 /** Get the board visual palette for a theme. */
@@ -502,7 +661,14 @@ export function formatThemedText(text: string | null | undefined, themeId?: stri
     }
   }
 
-  formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, `${edition.currencySymbol}$1`)
+  if (edition.themeId === 'naija') {
+    formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, (_, numStr) => {
+      const num = parseFloat(numStr.replace(/,/g, ''))
+      return `${edition.currencySymbol}${(num * 1000).toLocaleString('en-GB')}`
+    })
+  } else {
+    formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, `${edition.currencySymbol}$1`)
+  }
   formatted = formatted.replace(/£/g, edition.currencySymbol)
   if (edition.currencyWord && edition.currencyWord !== 'pounds') {
     formatted = formatted.replace(/\bpounds\b/g, edition.currencyWord)
