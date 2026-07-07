@@ -466,8 +466,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   return (
-    <div className="min-h-screen pb-24 overflow-x-hidden">
-      <div className="max-w-5xl mx-auto px-2 sm:px-4 py-3 sm:py-6 space-y-3 sm:space-y-4">
+    <div className="min-h-screen pb-24 overflow-x-hidden px-2 sm:px-4 py-3 sm:py-6">
+      <div className="max-w-6xl mx-auto space-y-3 sm:space-y-4">
         <MonopolyPageHeader title={game?.title}>
           {myPlayerId && sessionName ? (
             <PlayerSessionControls
