@@ -5,10 +5,10 @@ import { GAME_TYPE_CONFIG, isNameOnlyPlayerJoin, isLobbyGame } from './game-type
 // Canonical game list (the coverage test derives from the same source).
 const ALL_GAME_TYPES = Object.keys(GAME_TYPE_CONFIG) as GameType[]
 
-// The intended name-only-join set: the original OR-list PLUS scrabble + snake_and_ladder,
-// which this PR fixes (board games wrongly omitted from the original list, which sent their
-// players down the gender-required participant join path). Transcribed independently of the
-// Record maps, so any drift from this intended behaviour fails here.
+// The intended name-only-join set. Includes scrabble + snake_and_ladder — board games that
+// self-join by name; when they were omitted their players were wrongly sent down the
+// gender-required participant join path. Transcribed independently of the Record maps, so any
+// drift from this intended behaviour fails here.
 const NAME_ONLY_PLAYER_JOIN_EXPECTED = new Set<GameType>([
   'would_you_rather',
   'never_have_i_ever',
@@ -30,10 +30,10 @@ const NAME_ONLY_PLAYER_JOIN_EXPECTED = new Set<GameType>([
   'chess',
   'checkers',
   'describe_it',
-  // Fixed in this PR — board games that now self-join by name like every other board game.
+  // Board games that self-join by name like every other board game.
   'scrabble',
   'snake_and_ladder',
-  // Merged from dev — matching_pairs self-joins by name (mafia does not).
+  // matching_pairs self-joins by name; mafia does not.
   'matching_pairs',
 ])
 
