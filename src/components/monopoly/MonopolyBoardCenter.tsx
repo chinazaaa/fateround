@@ -377,16 +377,12 @@ export function MonopolyBoardCenter({
           <p className={labelClass}>In Jail</p>
           <p className={titleClass}>{themedSpaceName('Jail', 10, themeId)}</p>
           <p className={isDock ? 'text-xs text-muted leading-tight' : 'text-xs text-muted leading-snug'}>
-            Attempt {(myState?.jail_turns ?? 0) + 1}/3 — roll once for doubles, or pay {formatThemedMoney(MONOPOLY_JAIL_FINE, themeId)}{' '}
-            now.
+            Attempt {(myState?.jail_turns ?? 0) + 1}/3 — roll once for doubles, or pay{' '}
+            {formatThemedMoney(MONOPOLY_JAIL_FINE, themeId)} now.
           </p>
           <div className="space-y-1.5 pt-0.5">
             <div className="grid grid-cols-2 gap-1.5">
-              <BoardPrimaryButton
-                onClick={() => postAction('/api/monopoly/roll')}
-                loading={acting}
-                disabled={acting}
-              >
+              <BoardPrimaryButton onClick={() => postAction('/api/monopoly/roll')} loading={acting} disabled={acting}>
                 Roll Doubles
               </BoardPrimaryButton>
               <BoardSecondaryButton

@@ -185,7 +185,9 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
               </span>
               <h2 className="text-3xl font-black text-slate-100">Mafia Room Lobby</h2>
               <p className="text-slate-400 text-sm">
-                Share game code <strong className="font-mono text-purple-300 bg-slate-800 px-2 py-1 rounded">{gameCode}</strong> with your players to join.
+                Share game code{' '}
+                <strong className="font-mono text-purple-300 bg-slate-800 px-2 py-1 rounded">{gameCode}</strong> with
+                your players to join.
               </p>
             </div>
 
@@ -194,9 +196,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
                 <h3 className="text-sm font-semibold tracking-widest uppercase text-indigo-400">
                   Joined Players ({mafiaState.players.length})
                 </h3>
-                <span className="text-xs text-slate-500">
-                  Minimum {MAFIA_MIN_PLAYERS} players required
-                </span>
+                <span className="text-xs text-slate-500">Minimum {MAFIA_MIN_PLAYERS} players required</span>
               </div>
 
               {mafiaState.players.length === 0 ? (
