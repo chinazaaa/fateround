@@ -257,6 +257,9 @@ export const boardGameLobbySettingsSchema = z.object({
   ludo_variant: z.enum(['modern', 'traditional']).optional(),
   mahjong_ruleset: mahjongRulesetEnum.optional(),
   mahjong_rule_options: mahjongRuleOptionsSchema,
+  mafia_doctor_enabled: z.boolean().optional(),
+  mafia_detective_enabled: z.boolean().optional(),
+  mafia_anonymous_votes: z.boolean().optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>
