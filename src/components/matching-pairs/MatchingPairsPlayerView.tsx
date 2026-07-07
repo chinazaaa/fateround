@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { MatchingPairsStatDetails } from '@/components/matching-pairs/MatchingPairsStatDetails'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
@@ -696,28 +697,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             name: row.name,
             score: row.finalScore,
             correctCount: row.pairsMatched,
-            expandDetails: (
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                <div className="text-muted">Pairs</div>
-                <div className="text-right font-semibold text-body">
-                  {row.pairsMatched}/{meta?.gridSizePairs ?? 0}
-                </div>
-                <div className="text-muted">Wrong attempts</div>
-                <div className="text-right font-semibold text-body">{row.wrongAttempts}</div>
-                <div className="text-muted">Highest streak</div>
-                <div className="text-right font-semibold text-body">{row.longestStreak}</div>
-                <div className="text-muted">Streak bonus</div>
-                <div className="text-right font-semibold text-body">+{row.streakBonusTotal} pts</div>
-                <div className="text-muted">Placement bonus</div>
-                <div className="text-right font-semibold text-body">+{row.placementBonus} pts</div>
-                {row.perfectGame && (
-                  <>
-                    <div />
-                    <div className="text-right font-semibold text-emerald-500">Perfect game! ⭐</div>
-                  </>
-                )}
-              </div>
-            ),
+            expandDetails: <MatchingPairsStatDetails score={row} gridSizePairs={meta?.gridSizePairs ?? 0} />,
           }))}
           totalQuestions={meta?.gridSizePairs}
           highlightId={myPlayerId ?? undefined}

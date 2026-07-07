@@ -27,6 +27,99 @@ interface PaginatedLeaderboardProps {
   emphasizeLeader?: boolean
 }
 
+interface RowContentProps {
+  row: LeaderboardRow
+  i: number
+  start: number
+  highlightId?: string | null
+  scoreLabel: (score: number) => string
+  totalQuestions?: number
+  expandedId: string | null
+  setExpandedId: (id: string | null) => void
+}
+
+function RowContent({
+  row,
+  i,
+  start,
+  highlightId,
+  scoreLabel,
+  totalQuestions,
+  expandedId,
+  setExpandedId,
+}: RowContentProps) {
+  const rank = row.rank ?? start + i + 1
+  const isLeader = rank === 1
+  const isYou = row.id === highlightId
+  const hasDetails = !!row.expandDetails
+  const isExpanded = expandedId === row.id
+
+  return (
+    <>
+      <div
+        className={
+          isLeader
+            ? 'flex items-center gap-3 rounded-xl px-4 py-3 border border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_8%,var(--surface))]'
+            : 'flex items-center gap-3 rounded-xl px-4 py-3 glass-card'
+        }
+      >
+        <span
+          className={`w-7 shrink-0 text-center font-black tabular-nums ${
+            isLeader ? 'text-lg gradient-title' : 'text-base text-faint'
+          }`}
+        >
+          {MEDALS[rank - 1] ?? rank}
+        </span>
+        <span className={`min-w-0 truncate font-bold ${isLeader ? 'text-[17px] text-body' : 'text-[15px] text-body'}`}>
+          {row.name}
+          {isYou ? <span className="label-teal font-semibold"> (you)</span> : null}
+        </span>
+        <span className="ml-auto shrink-0 text-right flex items-center gap-2">
+          <span>
+            <span className={`font-bold text-sm tabular-nums ${isLeader ? 'gradient-title' : 'text-muted'}`}>
+              {scoreLabel(row.score)}
+            </span>
+            {row.correctCount !== undefined && totalQuestions !== undefined && (
+              <span className="block text-xs text-faint tabular-nums">
+                {row.correctCount}/{totalQuestions}
+              </span>
+            )}
+          </span>
+          {hasDetails && (
+            <button
+              type="button"
+              onClick={() => setExpandedId(isExpanded ? null : row.id)}
+              className="shrink-0 text-faint hover:text-body transition-colors p-1"
+              aria-label={isExpanded ? 'Collapse stats' : 'Expand stats'}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+          )}
+        </span>
+      </div>
+      {isExpanded && hasDetails && (
+        <div className="px-5 pb-3 -mt-1 animate-slide-down">
+          <div className="text-xs space-y-1.5 bg-[color-mix(in_srgb,var(--primary)_6%,var(--surface))] rounded-xl p-4 border border-[var(--border)] shadow-sm">
+            {row.expandDetails}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 export function PaginatedLeaderboard({
   title,
   rows,
@@ -48,81 +141,6 @@ export function PaginatedLeaderboard({
 
   const pageRows = rows.slice(start, end)
 
-  function RowContent({ row, i }: { row: LeaderboardRow; i: number }) {
-    const rank = row.rank ?? start + i + 1
-    const isLeader = rank === 1
-    const isYou = row.id === highlightId
-    const hasDetails = !!row.expandDetails
-    const isExpanded = expandedId === row.id
-
-    return (
-      <>
-        <div
-          className={
-            isLeader
-              ? 'flex items-center gap-3 rounded-xl px-4 py-3 border border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_8%,var(--surface))]'
-              : 'flex items-center gap-3 rounded-xl px-4 py-3 glass-card'
-          }
-        >
-          <span
-            className={`w-7 shrink-0 text-center font-black tabular-nums ${
-              isLeader ? 'text-lg gradient-title' : 'text-base text-faint'
-            }`}
-          >
-            {MEDALS[rank - 1] ?? rank}
-          </span>
-          <span
-            className={`min-w-0 truncate font-bold ${isLeader ? 'text-[17px] text-body' : 'text-[15px] text-body'}`}
-          >
-            {row.name}
-            {isYou ? <span className="label-teal font-semibold"> (you)</span> : null}
-          </span>
-          <span className="ml-auto shrink-0 text-right flex items-center gap-2">
-            <span>
-              <span className={`font-bold text-sm tabular-nums ${isLeader ? 'gradient-title' : 'text-muted'}`}>
-                {scoreLabel(row.score)}
-              </span>
-              {row.correctCount !== undefined && totalQuestions !== undefined && (
-                <span className="block text-xs text-faint tabular-nums">
-                  {row.correctCount}/{totalQuestions}
-                </span>
-              )}
-            </span>
-            {hasDetails && (
-              <button
-                type="button"
-                onClick={() => setExpandedId(isExpanded ? null : row.id)}
-                className="shrink-0 text-faint hover:text-body transition-colors p-1"
-                aria-label={isExpanded ? 'Collapse stats' : 'Expand stats'}
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                >
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-            )}
-          </span>
-        </div>
-        {isExpanded && hasDetails && (
-          <div className="px-5 pb-3 -mt-1 animate-slide-down">
-            <div className="text-xs space-y-1.5 bg-[color-mix(in_srgb,var(--primary)_6%,var(--surface))] rounded-xl p-4 border border-[var(--border)] shadow-sm">
-              {row.expandDetails}
-            </div>
-          </div>
-        )}
-      </>
-    )
-  }
-
   if (emphasizeLeader) {
     return (
       <div className="space-y-3">
@@ -130,7 +148,16 @@ export function PaginatedLeaderboard({
         <div className="space-y-2">
           {pageRows.map((row, i) => (
             <div key={row.id} className="space-y-0">
-              <RowContent row={row} i={i} />
+              <RowContent
+                row={row}
+                i={i}
+                start={start}
+                highlightId={highlightId}
+                scoreLabel={scoreLabel}
+                totalQuestions={totalQuestions}
+                expandedId={expandedId}
+                setExpandedId={setExpandedId}
+              />
             </div>
           ))}
         </div>

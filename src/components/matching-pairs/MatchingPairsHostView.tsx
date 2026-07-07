@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { MatchingPairsPlayerView } from '@/components/matching-pairs/MatchingPairsPlayerView'
+import { MatchingPairsStatDetails } from '@/components/matching-pairs/MatchingPairsStatDetails'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
@@ -288,6 +289,10 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const hostWonMp =
     leaderboard.length > 1 && leaderboard[0]?.playerId === hostPlayerId && leaderboard[0]?.finalScore > 0
 
+  const winnerId = leaderboard[0]?.playerId
+  const isHostWinner = !!winnerId && winnerId === hostPlayerId
+  const winnerName = isHostWinner ? hostPlayerName : winnerId ? (playerMap.get(winnerId) ?? winnerId) : 'Someone'
+
   if (!game) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -458,7 +463,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       finished={
         <>
           <FinishedWinnerHero
-            winnerName={leaderboard[0] ? (playerMap.get(leaderboard[0].playerId) ?? undefined) : undefined}
+            winnerName={winnerName}
             game={game}
             headline={
               hostWonMp ? (
@@ -469,7 +474,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
             }
             stats={[
               {
-                value: leaderboard[0]?.finalScore.toLocaleString() ?? '0',
+                value: (leaderboard[0]?.finalScore ?? 0).toLocaleString(),
                 label: 'Points total',
               },
             ]}
@@ -482,28 +487,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
               name: playerMap.get(s.playerId) ?? 'Unknown',
               score: s.finalScore,
               correctCount: s.pairsMatched,
-              expandDetails: (
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                  <div className="text-muted">Pairs</div>
-                  <div className="text-right font-semibold text-body">
-                    {s.pairsMatched}/{gridSizePairs}
-                  </div>
-                  <div className="text-muted">Wrong attempts</div>
-                  <div className="text-right font-semibold text-body">{s.wrongAttempts}</div>
-                  <div className="text-muted">Highest streak</div>
-                  <div className="text-right font-semibold text-body">{s.longestStreak}</div>
-                  <div className="text-muted">Streak bonus</div>
-                  <div className="text-right font-semibold text-body">+{s.streakBonusTotal} pts</div>
-                  <div className="text-muted">Placement bonus</div>
-                  <div className="text-right font-semibold text-body">+{s.placementBonus} pts</div>
-                  {s.perfectGame && (
-                    <>
-                      <div />
-                      <div className="text-right font-semibold text-emerald-500">Perfect game! ⭐</div>
-                    </>
-                  )}
-                </div>
-              ),
+              expandDetails: <MatchingPairsStatDetails score={s} gridSizePairs={gridSizePairs} />,
             }))}
             totalQuestions={gridSizePairs}
             scoreLabel={(n) => `${n} pts`}
@@ -533,7 +517,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
             <PostWinToCommunity
               gameType="matching_pairs"
               gameCode={gameCode}
-              winnerName={playerMap.get(leaderboard[0]?.playerId) ?? ''}
+              winnerName={hostPlayerName}
               roundKey={game?.session_started_at ?? undefined}
             />
           )}

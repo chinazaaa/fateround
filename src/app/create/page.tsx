@@ -872,6 +872,13 @@ function CreateGameInner() {
             rounds_count: 1,
           }
         : {}),
+      ...(isMatchingPairsGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+          }
+        : {}),
       ...(isWordHuntGame(type)
         ? {
             participant_mode: 'joiners' as const,
@@ -1266,7 +1273,9 @@ function CreateGameInner() {
                                     ? sudokuMaxPlayers
                                     : isWordHunt
                                       ? wordHuntMaxPlayers
-                                      : undefined,
+                                      : isMatchingPairs
+                                        ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
+                                        : undefined,
           operative_timer_seconds: isCodewords ? codewordsOperativeTimer : isNpat ? npatMarkingTimer : undefined,
           codewords_player_picks: isCodewords ? codewordsPlayerPicks : undefined,
           codewords_late_join: isCodewords ? lateJoinPolicy === 'viewers_and_players' : undefined,
@@ -2866,7 +2875,7 @@ function CreateGameInner() {
                   label={`Max players (${effectiveLimits.matching_pairs.min}–${effectiveLimits.matching_pairs.max})`}
                 >
                   <select
-                    value={settings.max_players ?? 20}
+                    value={settings.max_players ?? effectiveLimits.matching_pairs.max}
                     onChange={(e) => setSettings({ ...settings, max_players: Number(e.target.value) })}
                     className="input-field w-full"
                   >
