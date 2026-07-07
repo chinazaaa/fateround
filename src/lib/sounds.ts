@@ -621,6 +621,14 @@ import {
   playArcticIceClinkSound,
   playArcticWindChimeSound,
 } from '@/lib/sounds-arctic'
+import {
+  playNaijaAfrobeatsFanfareSound,
+  playNaijaCashCountSound,
+  playNaijaOganlaInflectionSound,
+  playNaijaShekereShakeSound,
+  playNaijaTalkingDrumSound,
+  playNaijaTextileSwipeSound,
+} from '@/lib/sounds-naija'
 
 /**
  * Unified action sound dispatcher for Monopoly editions.
@@ -674,6 +682,29 @@ export function playMonopolyActionSound(
         break
       case 'win':
         void playArcticFanfareSound()
+        break
+    }
+  } else if (themeId === 'naija') {
+    switch (actionType) {
+      case 'turn':
+        void playNaijaTalkingDrumSound()
+        break
+      case 'roll':
+        void playNaijaShekereShakeSound()
+        break
+      case 'buy':
+        void playNaijaCashCountSound()
+        break
+      case 'rent':
+      case 'bankrupt':
+        void playNaijaOganlaInflectionSound()
+        break
+      case 'card':
+      case 'auction':
+        void playNaijaTextileSwipeSound()
+        break
+      case 'win':
+        void playNaijaAfrobeatsFanfareSound()
         break
     }
   } else {

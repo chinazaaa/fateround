@@ -322,6 +322,109 @@ body:has(.fr-site) .app-fixed-theme-toggle {
   --modal-backdrop: rgba(10, 26, 42, 0.75);
 }
 
+/* ── Nigerian Markets Theme (Light Mode - Balogun Sun) ─ */
+:root[data-game-theme='naija']:not([data-theme='dark']),
+[data-game-theme='naija']:not([data-theme='dark']) {
+  --background: #f4ede1;
+  --background-soft: #e8dfce;
+  --foreground: #1a1f1c;
+  --muted: #4a5750;
+  --faint: #6a7970;
+
+  --card: rgba(232, 223, 206, 0.85);
+  --card-strong: rgba(244, 237, 225, 0.95);
+  --card-hover: rgba(220, 210, 190, 0.9);
+  --surface-inset-bg: rgba(26, 31, 28, 0.05);
+
+  --border: rgba(0, 135, 81, 0.25);
+  --border-strong: rgba(0, 135, 81, 0.45);
+
+  --card-shadow: 0 1px 3px rgba(26, 31, 28, 0.12), 0 4px 16px rgba(0, 135, 81, 0.08);
+  --card-shadow-strong: 0 8px 32px rgba(26, 31, 28, 0.2), 0 2px 8px rgba(0, 135, 81, 0.12);
+  --card-shadow-glow: 0 0 0 1px rgba(0, 135, 81, 0.25), 0 8px 32px rgba(0, 135, 81, 0.15);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -20%, rgba(0, 135, 81, 0.15) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 80%, rgba(181, 98, 42, 0.12) 0%, transparent 50%);
+
+  --primary: #008751;
+  --primary-strong: #00663d;
+  --primary-glow: rgba(0, 135, 81, 0.35);
+
+  --kiss: #008751;
+  --marry: #2a7b6c;
+  --kill: #b5622a;
+  --slot-kiss-text: #00663d;
+  --slot-marry-text: #1c544a;
+  --slot-kill-text: #823429;
+  --slot-pass-text: #4a5750;
+
+  --chip-active-text: #00663d;
+  --chip-active-bg: rgba(0, 135, 81, 0.12);
+  --chip-active-border: rgba(0, 135, 81, 0.4);
+
+  --avatar-bg: rgba(0, 135, 81, 0.12);
+  --avatar-border: rgba(0, 135, 81, 0.3);
+  --avatar-color: #008751;
+
+  --gradient-title-start: #1a1f1c;
+  --gradient-title-end: #008751;
+
+  --modal-backdrop: rgba(26, 31, 28, 0.65);
+}
+
+/* ── Nigerian Markets Theme (Dark Mode - Wuse Night) ─── */
+[data-theme='dark'][data-game-theme='naija']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='naija']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='naija']:not([data-theme='light']) {
+  --background: #0b1f16;
+  --background-soft: #122b1f;
+  --foreground: #ede3d3;
+  --muted: #8f9e96;
+  --faint: #687870;
+
+  --card: rgba(18, 43, 31, 0.85);
+  --card-strong: rgba(24, 56, 40, 0.95);
+  --card-hover: rgba(28, 66, 47, 0.9);
+  --surface-inset-bg: rgba(0, 0, 0, 0.3);
+
+  --border: rgba(217, 164, 65, 0.25);
+  --border-strong: rgba(217, 164, 65, 0.45);
+
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.6), 0 0 20px rgba(217, 164, 65, 0.15);
+  --card-shadow-glow: 0 0 0 1px rgba(217, 164, 65, 0.3), 0 8px 40px rgba(217, 164, 65, 0.2);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(217, 164, 65, 0.15) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 35% at 85% 90%, rgba(156, 59, 46, 0.15) 0%, transparent 50%);
+
+  --primary: #d9a441;
+  --primary-strong: #b8862d;
+  --primary-glow: rgba(217, 164, 65, 0.4);
+
+  --kiss: #d9a441;
+  --marry: #4ecdc4;
+  --kill: #9c3b2e;
+  --slot-kiss-text: #fbe5ab;
+  --slot-marry-text: #7efff5;
+  --slot-kill-text: #ff8b7d;
+  --slot-pass-text: #8f9e96;
+
+  --chip-active-text: #fbe5ab;
+  --chip-active-bg: rgba(217, 164, 65, 0.15);
+  --chip-active-border: rgba(217, 164, 65, 0.5);
+
+  --avatar-bg: rgba(217, 164, 65, 0.15);
+  --avatar-border: rgba(217, 164, 65, 0.35);
+  --avatar-color: #d9a441;
+
+  --gradient-title-start: #ede3d3;
+  --gradient-title-end: #d9a441;
+
+  --modal-backdrop: rgba(11, 31, 22, 0.75);
+}
+
 /* ── Base ───────────────────────────────────────────────────────── */
 html {
   background: var(--background);
