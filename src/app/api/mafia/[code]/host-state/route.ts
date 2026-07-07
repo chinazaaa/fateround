@@ -36,6 +36,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   ])
 
   if (!mafiaSession || !mafiaPlayerStates) {
+    if (game.status === 'waiting') {
+      const hostPlayers = (playersData ?? [])
+        .filter((p) => p.spectator !== true)
+        .map((p) => ({
+          id: p.id,
+          name: p.name ?? 'Unknown',
+          isAlive: true,
+          role: 'villager' as const,
+          deathDay: null,
+          deathCause: null,
+          nightActionTargetPlayerId: null,
+          dayVoteTargetPlayerId: null,
+        }))
+      return NextResponse.json({
+        gameTitle: game.title,
+        status: 'waiting',
+        phase: 'role_reveal',
+        dayNumber: 0,
+        phaseDeadline: null,
+        doctorEnabled: true,
+        detectiveEnabled: true,
+        anonymousVotes: true,
+        winningTeam: null,
+        players: hostPlayers,
+        lastNightKillPlayerId: null,
+        lastVoteResultPlayerId: null,
+        mafiaTargetPlayerId: null,
+        doctorTargetPlayerId: null,
+        detectTargetPlayerId: null,
+      })
+    }
     return NextResponse.json({ error: 'Game session not initialized' }, { status: 404 })
   }
 

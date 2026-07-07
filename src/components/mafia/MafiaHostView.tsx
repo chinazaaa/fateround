@@ -8,6 +8,8 @@ import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import type { MafiaPhase, MafiaTeam, MafiaRole } from '@/types'
+import { MAFIA_MIN_PLAYERS } from '@/lib/mafia'
+import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 
 interface HostPlayer {
   id: string
@@ -44,6 +46,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const { confirm } = useConfirm()
   const [mafiaState, setMafiaState] = useState<MafiaHostStateResponse | null>(null)
   const [acting, setActing] = useState(false)
+  const [starting, setStarting] = useState(false)
 
   // Fetch host state
   const load = useCallback(async (): Promise<{ state: MafiaHostStateResponse | null; ok: boolean }> => {
@@ -121,6 +124,29 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     }
   }, [gameCode, hostToken, load])
 
+  const startGame = async () => {
+    if (starting) return
+    setStarting(true)
+    try {
+      const res = await fetch(`/api/games/${gameCode}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toastError(data.error ?? 'Failed to start game')
+        return
+      }
+      toastSuccess('Mafia game started!')
+      await load()
+    } catch {
+      toastError('Failed to start game')
+    } finally {
+      setStarting(false)
+    }
+  }
+
   if (!mafiaState) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-950 text-purple-200">
@@ -128,6 +154,90 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
           <div className="h-12 w-12 animate-spin rounded-full border-4 border-purple-500 border-t-transparent" />
           <p className="text-lg font-medium">Loading Narrator Dashboard...</p>
         </div>
+      </div>
+    )
+  }
+
+  if (mafiaState.status === 'waiting') {
+    const canStart = mafiaState.players.length >= MAFIA_MIN_PLAYERS
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+        <header className="px-6 py-4 border-b border-indigo-950 bg-slate-900 flex justify-between items-center shadow-lg">
+          <div className="flex items-center space-x-3">
+            <span className="text-2xl">👁️</span>
+            <div>
+              <h1 className="font-extrabold text-lg text-purple-300">Narrator Dashboard</h1>
+              <p className="text-xs text-indigo-400 uppercase tracking-widest font-semibold">Game Code: {gameCode}</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-4">
+            <span className="text-xs font-mono bg-slate-800 px-3 py-1 rounded border border-slate-700 text-slate-400">
+              Lobby
+            </span>
+          </div>
+        </header>
+
+        <main className="flex-1 max-w-4xl w-full mx-auto p-6 flex flex-col justify-center items-center">
+          <div className="w-full bg-slate-900 border border-indigo-950 rounded-2xl p-8 shadow-2xl space-y-8">
+            <div className="text-center space-y-2">
+              <span className="inline-block px-3 py-1 bg-purple-950/80 border border-purple-800 rounded-full text-xs font-bold tracking-widest uppercase text-purple-300">
+                Waiting for Players
+              </span>
+              <h2 className="text-3xl font-black text-slate-100">Mafia Room Lobby</h2>
+              <p className="text-slate-400 text-sm">
+                Share game code{' '}
+                <strong className="font-mono text-purple-300 bg-slate-800 px-2 py-1 rounded">{gameCode}</strong> with
+                your players to join.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-center border-b border-indigo-950/60 pb-2">
+                <h3 className="text-sm font-semibold tracking-widest uppercase text-indigo-400">
+                  Joined Players ({mafiaState.players.length})
+                </h3>
+                <span className="text-xs text-slate-500">Minimum {MAFIA_MIN_PLAYERS} players required</span>
+              </div>
+
+              {mafiaState.players.length === 0 ? (
+                <div className="text-center py-12 bg-slate-950/50 rounded-xl border border-dashed border-indigo-950 text-slate-500 text-sm">
+                  No players have joined yet...
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {mafiaState.players.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center space-x-3 p-3 bg-slate-950/80 border border-indigo-950 rounded-xl shadow-inner"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-purple-900/50 border border-purple-700/50 flex items-center justify-center font-bold text-purple-300 text-xs">
+                        {p.name.charAt(0).toUpperCase()}
+                      </div>
+                      <span className="font-semibold text-slate-200 text-sm truncate">{p.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-4 border-t border-indigo-950/80">
+              <HostLobbyWaitingFooter
+                gameCode={gameCode}
+                hostToken={hostToken}
+                onStart={() => void startGame()}
+                onEnded={() => void load()}
+                canStart={canStart}
+                starting={starting}
+                startLabel="Start Mafia Game"
+                startDisabledHint={
+                  canStart
+                    ? null
+                    : `Need at least ${MAFIA_MIN_PLAYERS} players to start (${mafiaState.players.length}/${MAFIA_MIN_PLAYERS})`
+                }
+              />
+            </div>
+          </div>
+        </main>
       </div>
     )
   }
