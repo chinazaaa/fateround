@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { MatchingPairsPlayerView } from '@/components/matching-pairs/MatchingPairsPlayerView'
+import { MatchingPairsStatDetails } from '@/components/matching-pairs/MatchingPairsStatDetails'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
 import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
@@ -173,26 +175,26 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     if (!hostJoinName.trim()) return
     setHostJoining(true)
     try {
-      const res = await fetch(`/api/games/${gameCode}/route`, {
+      const res = await fetch('/api/players', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'join', name: hostJoinName.trim(), hostToken }),
+        body: JSON.stringify({ gameCode, playerName: hostJoinName.trim() }),
       })
       const data = await res.json()
       if (!res.ok) {
         toastError(data.error ?? 'Failed to join')
         return
       }
-      if (data.player) {
-        setPlayerSession(gameCode, data.player.id, data.player.name, 'both', data.player.resume_token)
-        setHostPlayerId(data.player.id)
-        setHostPlayerName(data.player.name)
-        await load()
-      }
+      setPlayerSession(gameCode, data.playerId, data.playerName, 'both', data.resumeToken)
+      setHostPlayerId(data.playerId)
+      setHostPlayerName(data.playerName)
+      await load()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to join')
     } finally {
       setHostJoining(false)
     }
-  }, [gameCode, hostJoinName, hostToken, toastError, load])
+  }, [gameCode, hostJoinName, toastError, load])
 
   const handleStartGame = useCallback(async () => {
     setStarting(true)
@@ -283,6 +285,13 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     for (const p of players) m.set(p.id, p.name)
     return m
   }, [players])
+
+  const hostWonMp =
+    leaderboard.length > 1 && leaderboard[0]?.playerId === hostPlayerId && leaderboard[0]?.finalScore > 0
+
+  const winnerId = leaderboard[0]?.playerId
+  const isHostWinner = !!winnerId && winnerId === hostPlayerId
+  const winnerName = isHostWinner ? hostPlayerName : winnerId ? (playerMap.get(winnerId) ?? winnerId) : 'Someone'
 
   if (!game) {
     return (
@@ -454,8 +463,21 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       finished={
         <>
           <FinishedWinnerHero
-            winnerName={leaderboard[0] ? (playerMap.get(leaderboard[0].playerId) ?? undefined) : undefined}
+            winnerName={winnerName}
             game={game}
+            headline={
+              hostWonMp ? (
+                <>
+                  <span className="gradient-title">You</span> won!
+                </>
+              ) : undefined
+            }
+            stats={[
+              {
+                value: (leaderboard[0]?.finalScore ?? 0).toLocaleString(),
+                label: 'Points total',
+              },
+            ]}
           />
           <PaginatedLeaderboard
             title="Final leaderboard"
@@ -464,7 +486,10 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
               rank: i + 1,
               name: playerMap.get(s.playerId) ?? 'Unknown',
               score: s.finalScore,
+              correctCount: s.pairsMatched,
+              expandDetails: <MatchingPairsStatDetails score={s} gridSizePairs={gridSizePairs} />,
             }))}
+            totalQuestions={gridSizePairs}
             scoreLabel={(n) => `${n} pts`}
             emphasizeLeader
           />
@@ -488,6 +513,14 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
             Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak
             settings first.
           </p>
+          {hostWonMp && (
+            <PostWinToCommunity
+              gameType="matching_pairs"
+              gameCode={gameCode}
+              winnerName={hostPlayerName}
+              roundKey={game?.session_started_at ?? undefined}
+            />
+          )}
         </>
       }
     />

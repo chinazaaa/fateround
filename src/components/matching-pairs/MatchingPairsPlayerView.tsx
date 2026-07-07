@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
+import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { MatchingPairsStatDetails } from '@/components/matching-pairs/MatchingPairsStatDetails'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
 import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
@@ -107,6 +110,11 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const [finished, setFinished] = useState(false)
   const [finishRank, setFinishRank] = useState<number | null>(null)
 
+  // Memorization phase state
+  const getMemorizeSeconds = (gridSizePairs: number) => (gridSizePairs >= 16 ? 5 : 3)
+  const [memorizeCountdown, setMemorizeCountdown] = useState<number | null>(null)
+  const memorizeRoundRef = useRef<string | null>(null)
+
   // Flash feedback
   const [lastFlashType, setLastFlashType] = useState<'match' | 'miss' | 'streak' | null>(null)
   const flashRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -180,6 +188,12 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
               }
             }
             setBoard(boardState)
+
+            // Start memorization phase for fresh games (no submissions yet)
+            if (subs.length === 0 && gameData.status === 'active' && memorizeRoundRef.current !== roundData.id) {
+              memorizeRoundRef.current = roundData.id
+              setMemorizeCountdown(getMemorizeSeconds(parsedMeta.gridSizePairs))
+            }
 
             // Reconstruct streak & points from last submission
             if (subs.length > 0) {
@@ -329,6 +343,14 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       void supabase.removeChannel(channel)
     }
   }, [gameCode, load, setGame])
+
+  // ── Memorization countdown timer ────────────────────────────────────────────
+
+  useEffect(() => {
+    if (memorizeCountdown === null || memorizeCountdown <= 0) return
+    const t = setTimeout(() => setMemorizeCountdown((c) => (c !== null ? (c <= 1 ? null : c - 1) : null)), 1000)
+    return () => clearTimeout(t)
+  }, [memorizeCountdown])
 
   // Cleanup timeouts on unmount
   useEffect(() => {
@@ -653,9 +675,43 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (screen === 'finished') {
+    const iWon = leaderboard.length > 1 && leaderboard[0]?.playerId === myPlayerId && leaderboard[0]?.finalScore > 0
     return (
       <MatchingPairsPlayShell>
-        <MatchingPairsResultsScreen leaderboard={leaderboard} highlightPlayerId={myPlayerId} />
+        <div className="glass-card-strong p-8 text-center space-y-2">
+          <p className="text-4xl">🏆</p>
+          <p className="text-2xl font-black">Puzzle complete!</p>
+          {leaderboard[0] && (
+            <p className="text-muted text-base">
+              {iWon
+                ? 'You won! 🎉'
+                : `${leaderboard[0].name} wins with ${leaderboard[0].finalScore.toLocaleString()} pts`}
+            </p>
+          )}
+        </div>
+        <PaginatedLeaderboard
+          title="Final leaderboard"
+          rows={leaderboard.map((row, i) => ({
+            id: row.playerId,
+            rank: i + 1,
+            name: row.name,
+            score: row.finalScore,
+            correctCount: row.pairsMatched,
+            expandDetails: <MatchingPairsStatDetails score={row} gridSizePairs={meta?.gridSizePairs ?? 0} />,
+          }))}
+          totalQuestions={meta?.gridSizePairs}
+          highlightId={myPlayerId ?? undefined}
+          scoreLabel={(n) => `${n} pts`}
+          emphasizeLeader
+        />
+        {iWon && (
+          <PostWinToCommunity
+            gameType="matching_pairs"
+            gameCode={gameCode}
+            winnerName={leaderboard[0]?.name ?? ''}
+            roundKey={game?.session_started_at ?? undefined}
+          />
+        )}
       </MatchingPairsPlayShell>
     )
   }
@@ -705,16 +761,44 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         )}
       </div>
 
-      {/* Flash feedback */}
-      {lastFlashType && (
+      {/* Memorize countdown banner */}
+      {memorizeCountdown !== null && (
         <div
           style={{
-            textAlign: 'center',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            padding: '10px 16px',
+            borderRadius: 12,
+            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            color: '#fff',
             fontWeight: 700,
-            fontSize: 18,
-            marginBottom: 8,
+            fontSize: 16,
+            boxShadow: '0 2px 12px rgba(99,102,241,0.3)',
+          }}
+        >
+          <span>Memorize card positions!</span>
+          <span style={{ fontSize: 24, fontWeight: 800 }}>{memorizeCountdown}s</span>
+        </div>
+      )}
+
+      {/* Floating flash feedback */}
+      {lastFlashType && (
+        <div
+          className="animate-float-up-fade"
+          style={{
+            position: 'fixed',
+            left: '50%',
+            top: '45%',
+            transform: 'translateX(-50%)',
+            zIndex: 999,
+            fontWeight: 800,
+            fontSize: 22,
+            textAlign: 'center',
+            pointerEvents: 'none',
             color: lastFlashType === 'miss' ? '#ef4444' : lastFlashType === 'streak' ? '#f97316' : '#22c55e',
-            animation: 'mpFlash 0.3s ease-out',
+            textShadow: '0 2px 8px rgba(0,0,0,0.15)',
           }}
         >
           {lastFlashType === 'match' && `+${MATCHING_PAIRS_POINTS_PER_PAIR} 🎉`}
@@ -736,14 +820,15 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           {board.cardStates.map((state, i) => {
             const pairIdx = board.cardOrder[i]
             const pair = meta.pairs[pairIdx]
+            const memorizing = memorizeCountdown !== null
             return (
               <MemoryCard
                 key={i}
-                state={state}
+                state={memorizing ? 'flipped' : state}
                 icon={pair?.icon ?? '?'}
                 color={pair?.color ?? '#888'}
                 onClick={() => void handleCardFlip(i)}
-                disabled={board.locked || finished}
+                disabled={board.locked || finished || memorizing}
               />
             )
           })}
@@ -764,7 +849,6 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
       <style>{`
         @keyframes mpFlash { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes mpCardFlip { 0% { transform: rotateY(0deg); } 50% { transform: rotateY(90deg); } 100% { transform: rotateY(0deg); } }
         @keyframes mpCardMatch { 0% { transform: scale(1); } 50% { transform: scale(1.08); } 100% { transform: scale(1); } }
       `}</style>
     </MatchingPairsPlayShell>
@@ -775,9 +859,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
 function MatchingPairsPlayShell({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col bg-(--background)">
+    <div className="min-h-screen flex flex-col">
       <GamePlayerChrome />
-      <main className="pt-16 flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-4">{children}</main>
+      <main className="pt-16 flex-1 px-4 py-8 max-w-lg mx-auto w-full space-y-6">{children}</main>
     </div>
   )
 }
@@ -808,47 +892,94 @@ function MemoryCard({
 }) {
   const isHidden = state === 'hidden'
   const isMatched = state === 'matched'
+  const showFront = !isHidden
 
   return (
     <button
       onClick={disabled && !isMatched ? undefined : onClick}
       disabled={disabled && !isMatched}
       aria-label={isHidden ? 'Hidden card' : `Card: ${icon}`}
+      className="memory-card-btn"
       style={{
         aspectRatio: '1 / 1',
         borderRadius: 12,
-        border: isMatched ? `2px solid ${color}` : '2px solid var(--border-strong)',
-        background: isMatched ? `${color}22` : isHidden ? 'var(--surface)' : `${color}33`,
+        border: 'none',
+        background: 'transparent',
         cursor: isHidden || isMatched ? (isHidden ? 'pointer' : 'default') : 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: 'clamp(18px, 4vw, 30px)',
-        transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-        boxShadow: isMatched ? `0 0 0 1px ${color}44` : undefined,
-        animation: isMatched ? 'mpCardMatch 0.3s ease' : undefined,
-        transform: state === 'flipped' ? 'scale(1.05)' : undefined,
-        opacity: isMatched ? 0.85 : 1,
-        position: 'relative',
-        overflow: 'hidden',
+        padding: 0,
+        perspective: '600px',
         WebkitTapHighlightColor: 'transparent',
       }}
     >
-      {!isHidden ? (
-        <span role="img" aria-hidden="true" style={{ userSelect: 'none', lineHeight: 1 }}>
-          {icon}
-        </span>
-      ) : (
-        <span
+      <div
+        className="memory-card-inner"
+        style={{
+          width: '100%',
+          height: '100%',
+          position: 'relative',
+          transformStyle: 'preserve-3d',
+          transition: 'transform 0.4s ease',
+          transform: showFront ? 'rotateY(180deg)' : 'rotateY(0deg)',
+          border: isMatched ? `2px solid ${color}` : '2px solid var(--border-strong)',
+          borderRadius: 12,
+          boxSizing: 'border-box' as const,
+          animation: isMatched ? 'mpCardMatch 0.3s ease' : undefined,
+        }}
+      >
+        {/* Back face — shown when card is hidden */}
+        <div
+          className="memory-card-back"
           style={{
-            width: '55%',
-            height: '55%',
-            borderRadius: 6,
-            background: 'linear-gradient(135deg, var(--border-strong), var(--border))',
-            display: 'block',
+            position: 'absolute',
+            inset: 0,
+            backfaceVisibility: 'hidden',
+            borderRadius: 10,
+            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
           }}
-        />
-      )}
+        >
+          <div
+            style={{
+              width: '42%',
+              height: '42%',
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.12)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 'clamp(16px, 3.5vw, 26px)',
+              color: 'rgba(255,255,255,0.45)',
+              fontWeight: 700,
+            }}
+          >
+            ?
+          </div>
+        </div>
+        {/* Front face — shown when flipped or matched */}
+        <div
+          className="memory-card-front"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            backfaceVisibility: 'hidden',
+            borderRadius: 10,
+            transform: 'rotateY(180deg)',
+            background: isMatched ? `${color}22` : `${color}33`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 'clamp(18px, 4vw, 30px)',
+            opacity: isMatched ? 0.85 : 1,
+          }}
+        >
+          <span role="img" aria-hidden="true" style={{ userSelect: 'none', lineHeight: 1 }}>
+            {icon}
+          </span>
+        </div>
+      </div>
     </button>
   )
 }
@@ -1031,50 +1162,6 @@ function MatchingPairsWaitingForOthers({
               </div>
             )
           })}
-      </div>
-    </div>
-  )
-}
-
-function MatchingPairsResultsScreen({
-  leaderboard,
-  highlightPlayerId,
-}: {
-  leaderboard: MatchingPairsLeaderboardRow[]
-  highlightPlayerId: string | null
-}) {
-  const medals = ['🥇', '🥈', '🥉']
-  return (
-    <div style={{ padding: '16px 0' }}>
-      <h2 style={{ fontWeight: 800, fontSize: 20, marginBottom: 16, textAlign: 'center' }}>Final Results</h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {leaderboard.map((row, i) => (
-          <div
-            key={row.playerId}
-            style={{
-              outline: row.playerId === highlightPlayerId ? '2px solid var(--primary)' : undefined,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              background: i === 0 ? 'rgba(245,158,11,0.1)' : 'var(--surface)',
-              border: `1px solid ${i === 0 ? 'rgba(245,158,11,0.3)' : 'var(--border)'}`,
-              borderRadius: 12,
-              padding: '12px 16px',
-            }}
-          >
-            <span style={{ fontSize: 22, minWidth: 32 }}>{medals[i] ?? `${i + 1}.`}</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700 }}>{row.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>
-                {row.pairsMatched} pairs · {row.wrongAttempts} miss{row.wrongAttempts !== 1 ? 'es' : ''}
-                {row.streakBonusTotal > 0 ? ` · +${row.streakBonusTotal} streak` : ''}
-                {row.perfectGame ? ' · ⭐ Perfect' : ''}
-                {row.placementBonus > 0 ? ` · +${row.placementBonus} finish` : ''}
-              </div>
-            </div>
-            <span style={{ fontWeight: 800, fontSize: 18, color: '#f59e0b' }}>{row.finalScore.toLocaleString()}</span>
-          </div>
-        ))}
       </div>
     </div>
   )
