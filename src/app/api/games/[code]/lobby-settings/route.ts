@@ -23,6 +23,7 @@ import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
+import { MATCHING_PAIRS_GAME_DURATION_OPTIONS } from '@/lib/memory-match'
 import { clampLobbyMaxPlayers, fetchGamePlayerLimits, type LobbyLimitGameType } from '@/lib/game-limits'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
@@ -156,6 +157,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.timer_seconds = [30, 45, 60, 90, 120, 180].includes(timer_seconds) ? timer_seconds : 60
     } else if (boardLobbyType) {
       gameUpdate.timer_seconds = clampBoardGameTurnTimer(timer_seconds, boardLobbyType)
+    } else if (limitOnlyType === 'matching_pairs') {
+      // Matching Pairs game time limit (0 = no limit)
+      const maxOption = MATCHING_PAIRS_GAME_DURATION_OPTIONS[MATCHING_PAIRS_GAME_DURATION_OPTIONS.length - 1]
+      gameUpdate.timer_seconds = Math.max(0, Math.min(maxOption, Math.round(timer_seconds)))
     } else {
       // Limit-only games (sudoku) have no timer — an update here would otherwise
       // fall through silently and hit the DB with an empty patch.
