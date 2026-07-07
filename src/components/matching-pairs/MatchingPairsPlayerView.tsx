@@ -299,9 +299,10 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
   // Realtime: progress updates (opponents finishing, etc.).
-  // Apply optimistically to local state immediately AND call load() to reconcile
-  // with the DB — this prevents the race where a rapid load() reads before the
-  // DB write for the finishing player has fully propagated.
+  // Apply optimistically to local state from the realtime payload.
+  // We do NOT call load() here because that would rebuild the board from
+  // submissions, overwriting the optimistic local flip state and causing
+  // matched cards to flicker or a newly-flipped single card to revert.
   useEffect(() => {
     if (!roundId) return
     const channel = supabase
@@ -321,16 +322,13 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             }
             return [...prev, updated]
           })
-          // Then reconcile from DB so we never miss a write that landed slightly
-          // after the realtime event fired (finish_rank, finished_at, etc.).
-          void load()
         }
       )
       .subscribe()
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [roundId, load])
+  }, [roundId])
 
   // Bug #1 fix: listen for game status changes so non-host players transition
   // from the waiting screen to the live game view when the host starts the game.
