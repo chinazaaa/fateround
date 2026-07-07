@@ -13,6 +13,7 @@ import {
   isWordHuntGame,
   isSudokuGame,
   isMatchingPairsGame,
+  isMafiaGame,
   parseGameType,
 } from '@/lib/game-types'
 import { clampBoardGameTurnTimer, type BoardGameLobbyType } from '@/lib/board-game-lobby-settings'
@@ -43,6 +44,7 @@ function boardGameLobbyType(gameType: string): BoardGameLobbyType | null {
 function timedLobbyLimitType(gameType: string): LobbyLimitGameType | null {
   const parsed = parseGameType(gameType)
   if (isWordHuntGame(parsed)) return 'word_hunt'
+  if (isMafiaGame(parsed)) return 'mafia'
   return null
 }
 
@@ -78,6 +80,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     ludo_variant,
     mahjong_ruleset,
     mahjong_rule_options,
+    mafia_doctor_enabled,
+    mafia_detective_enabled,
+    mafia_anonymous_votes,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -95,7 +100,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     crazy8_pick2_stacking === undefined &&
     ludo_variant === undefined &&
     mahjong_ruleset === undefined &&
-    mahjong_rule_options === undefined
+    mahjong_rule_options === undefined &&
+    mafia_doctor_enabled === undefined &&
+    mafia_detective_enabled === undefined &&
+    mafia_anonymous_votes === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -145,6 +153,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (timer_seconds !== undefined) {
     if (timedLobbyType === 'word_hunt') {
       gameUpdate.timer_seconds = clampWordHuntTimer(timer_seconds)
+    } else if (timedLobbyType === 'mafia') {
+      gameUpdate.timer_seconds = [30, 45, 60, 90, 120, 180].includes(timer_seconds) ? timer_seconds : 60
     } else if (boardLobbyType) {
       gameUpdate.timer_seconds = clampBoardGameTurnTimer(timer_seconds, boardLobbyType)
     } else if (limitOnlyType === 'matching_pairs') {
@@ -217,6 +227,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   } else if (mahjong_ruleset !== undefined || mahjong_rule_options !== undefined) {
     return NextResponse.json({ error: 'Mahjong rules only apply to Mahjong games' }, { status: 400 })
+  }
+
+  if (timedLobbyType === 'mafia') {
+    if (mafia_doctor_enabled !== undefined) gameUpdate.mafia_doctor_enabled = mafia_doctor_enabled
+    if (mafia_detective_enabled !== undefined) gameUpdate.mafia_detective_enabled = mafia_detective_enabled
+    if (mafia_anonymous_votes !== undefined) gameUpdate.mafia_anonymous_votes = mafia_anonymous_votes
+  } else if (
+    mafia_doctor_enabled !== undefined ||
+    mafia_detective_enabled !== undefined ||
+    mafia_anonymous_votes !== undefined
+  ) {
+    return NextResponse.json({ error: 'Special rules only apply to Mafia games' }, { status: 400 })
   }
 
   const { data: updated, error } = await getSupabaseAdmin()

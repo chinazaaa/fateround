@@ -20,7 +20,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   // 1. Fetch game and verify host token
-  const { data: game } = await admin.from('games').select('host_token, status, title').eq('id', gameId).maybeSingle()
+  const { data: game } = await admin
+    .from('games')
+    .select(
+      'host_token, status, title, max_players, timer_seconds, mafia_doctor_enabled, mafia_detective_enabled, mafia_anonymous_votes'
+    )
+    .eq('id', gameId)
+    .maybeSingle()
   if (!game) {
     return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   }
@@ -55,9 +61,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         phase: 'role_reveal',
         dayNumber: 0,
         phaseDeadline: null,
-        doctorEnabled: true,
-        detectiveEnabled: true,
-        anonymousVotes: true,
+        maxPlayers: game.max_players ?? 10,
+        timerSeconds: game.timer_seconds ?? 60,
+        doctorEnabled: game.mafia_doctor_enabled !== false,
+        detectiveEnabled: game.mafia_detective_enabled !== false,
+        anonymousVotes: game.mafia_anonymous_votes === true,
         winningTeam: null,
         players: hostPlayers,
         lastNightKillPlayerId: null,
@@ -95,6 +103,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     phase: session.phase,
     dayNumber: session.day_number,
     phaseDeadline: session.phase_deadline,
+    maxPlayers: game.max_players ?? 10,
+    timerSeconds: game.timer_seconds ?? 60,
     doctorEnabled: session.doctor_enabled,
     detectiveEnabled: session.detective_enabled,
     anonymousVotes: session.anonymous_votes,
