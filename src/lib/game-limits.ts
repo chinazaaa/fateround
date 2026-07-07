@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+﻿import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS,
   ANONYMOUS_ROOM_MAX_PLAYERS,
@@ -27,6 +27,12 @@ import {
   SNAKE_LADDER_MAX_PLAYERS,
   SNAKE_LADDER_MIN_PLAYERS,
 } from '@/lib/snake-and-ladder'
+import { MAFIA_MIN_PLAYERS, MAFIA_MAX_PLAYERS, MAFIA_DEFAULT_MAX_PLAYERS } from '@/lib/mafia'
+import {
+  MATCHING_PAIRS_MIN_PLAYERS,
+  MATCHING_PAIRS_MAX_PLAYERS,
+  MATCHING_PAIRS_DEFAULT_MAX_PLAYERS,
+} from '@/lib/memory-match'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
   'anonymous_messages',
@@ -49,6 +55,8 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'scrabble',
   'describe_it',
   'snake_and_ladder',
+  'mafia',
+  'matching_pairs',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -165,6 +173,16 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: SNAKE_LADDER_MAX_PLAYERS,
     default: SNAKE_LADDER_DEFAULT_MAX_PLAYERS,
   },
+  mafia: {
+    min: MAFIA_MIN_PLAYERS,
+    max: MAFIA_MAX_PLAYERS,
+    default: MAFIA_DEFAULT_MAX_PLAYERS,
+  },
+  matching_pairs: {
+    min: MATCHING_PAIRS_MIN_PLAYERS,
+    max: MATCHING_PAIRS_MAX_PLAYERS,
+    default: MATCHING_PAIRS_DEFAULT_MAX_PLAYERS,
+  },
 }
 
 export function isLobbyLimitGameType(value: string): value is LobbyLimitGameType {
@@ -193,6 +211,8 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     scrabble: { ...GAME_LIMIT_CODE_DEFAULTS.scrabble },
     describe_it: { ...GAME_LIMIT_CODE_DEFAULTS.describe_it },
     snake_and_ladder: { ...GAME_LIMIT_CODE_DEFAULTS.snake_and_ladder },
+    mafia: { ...GAME_LIMIT_CODE_DEFAULTS.mafia },
+    matching_pairs: { ...GAME_LIMIT_CODE_DEFAULTS.matching_pairs },
   }
 }
 

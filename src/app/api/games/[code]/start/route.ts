@@ -25,6 +25,7 @@ import {
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
+  isMatchingPairsGame,
 } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
@@ -96,6 +97,12 @@ import { buildNpatInitialRound, NPAT_MIN_PLAYERS, shufflePlayerOrder as npatShuf
 import { buildSudokuRoundRow, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
 import { buildWordHuntMetadata } from '@/lib/word-hunt-dictionary'
+import {
+  buildMatchingPairsRoundMetadata,
+  buildMatchingPairsRoundRow,
+  MATCHING_PAIRS_MIN_PLAYERS,
+  type MatchingPairsGridSize,
+} from '@/lib/memory-match'
 import { appearanceCountsForParticipants, mergeUsageMaps, parsePoolUsage, poolUsageToMap } from '@/lib/pool-usage'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
@@ -375,6 +382,8 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         session_started_at: sessionStartedAt,
         current_round_number: 1,
         rounds_count: 1,
+        // A "same settings" replay lands here — clear the ready-up flag now that we've dealt.
+        replay_pending: false,
       })
       .eq('id', code.toUpperCase())
 
@@ -654,6 +663,61 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRow)
     if (roundError)
       return NextResponse.json({ error: internalErrorMessage('games/code/start', roundError) }, { status: 500 })
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+        rounds_count: 1,
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isMatchingPairsGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    if (playingPlayers.length < MATCHING_PAIRS_MIN_PLAYERS) {
+      return NextResponse.json(
+        { error: `Need at least ${MATCHING_PAIRS_MIN_PLAYERS} player to start` },
+        { status: 400 }
+      )
+    }
+
+    // Resolve grid size from game settings (stored in game_duration_seconds:
+    // 0 = Standard/8 pairs, 16 = Large/16 pairs).
+    const gridSizePairs: MatchingPairsGridSize = game.game_duration_seconds === 16 ? 16 : 8
+
+    const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
+    const playerIds = playingPlayers.map((p: { id: string }) => p.id)
+    const metadata = buildMatchingPairsRoundMetadata(code.toUpperCase(), seed, gridSizePairs, playerIds)
+    const roundRow = buildMatchingPairsRoundRow(code.toUpperCase(), metadata)
+
+    const { data: insertedRound, error: roundError } = await getSupabaseAdmin()
+      .from('rounds')
+      .insert(roundRow)
+      .select('id')
+      .single()
+    if (roundError || !insertedRound) {
+      return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
+    }
+
+    // Seed per-player progress rows so realtime subscriptions can track from the start.
+    const progressRows = playerIds.map((playerId: string) => ({
+      game_id: code.toUpperCase(),
+      round_id: insertedRound.id,
+      player_id: playerId,
+      pairs_matched: 0,
+      wrong_attempts: 0,
+      finished: false,
+    }))
+    const { error: progressError } = await getSupabaseAdmin().from('memory_match_progress').insert(progressRows)
+    if (progressError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', progressError) }, { status: 500 })
 
     const { error: gameError } = await getSupabaseAdmin()
       .from('games')

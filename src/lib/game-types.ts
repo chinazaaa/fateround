@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   Game,
   GameType,
   VoteAssignment,
@@ -1234,6 +1234,50 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  matching_pairs: {
+    id: 'matching_pairs',
+    label: 'Matching Pairs',
+    tagline: 'Flip and match icons — streaks and speed score big',
+    headerEmoji: '🃏✨',
+    card: {
+      accent: '#f59e0b',
+      accentSoft: 'rgba(245, 158, 11, 0.15)',
+      emoji: '🃏',
+      players: '1–20 players',
+      vibe: 'Memory race',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '✅',
+        label: 'Pairs',
+        color: '#22c55e',
+        leaderboardLabel: 'Pairs matched',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      marry: {
+        emoji: '⭐',
+        label: 'Points',
+        color: '#f59e0b',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      kill: {
+        emoji: '✗',
+        label: 'Misses',
+        color: '#ef4444',
+        leaderboardLabel: 'Wrong attempts',
+        activeClass: 'bg-red-500/20 text-red-100 border-red-400',
+        borderClass: 'border-red-500/50 bg-red-500/10',
+        textColor: '#fca5a5',
+      },
+    },
+  },
+
   word_hunt: {
     id: 'word_hunt',
     label: 'Word Hunt',
@@ -1449,6 +1493,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  mafia: {
+    id: 'mafia',
+    label: 'Mafia',
+    tagline: 'Uncover the secret killers before it is too late',
+    headerEmoji: '🐺🔪',
+    card: {
+      accent: '#7c3aed',
+      accentSoft: 'rgba(124, 58, 237, 0.15)',
+      emoji: '🐺',
+      players: '5–16 players',
+      vibe: 'Social deduction',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏘️',
+        label: 'Villager',
+        color: '#10b981',
+        leaderboardLabel: 'Village wins',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      marry: {
+        emoji: '🔪',
+        label: 'Mafia',
+        color: '#ef4444',
+        leaderboardLabel: 'Mafia wins',
+        activeClass: 'bg-red-500/20 text-red-100 border-red-400',
+        borderClass: 'border-red-500/50 bg-red-500/10',
+        textColor: '#fca5a5',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
 }
 
 /** Home page “Popular games” grid — order is display order. */
@@ -1497,6 +1584,8 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'snake_and_ladder',
   'crazy_eights',
   'checkers',
+  'mafia',
+  'matching_pairs',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -1522,6 +1611,8 @@ const PINNED_GAME_TYPES: GameType[] = [
   'bingo',
   'this_or_that',
   'two_truths',
+  'mafia',
+  'matching_pairs',
 ]
 
 // Display order: pinned games first, then the remaining games in their default order.
@@ -1563,6 +1654,8 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'snake_and_ladder' || raw === 'snakes-and-ladders') return 'snake_and_ladder'
   if (raw === 'crazy_eights' || raw === 'crazy-eights') return 'crazy_eights'
   if (raw === 'checkers' || raw === 'draughts') return 'checkers'
+  if (raw === 'mafia' || raw === 'werewolf') return 'mafia'
+  if (raw === 'matching_pairs') return 'matching_pairs'
   return 'smash_marry_kill'
 }
 
@@ -1629,10 +1722,14 @@ export function gameHowItWorks(
       return 'Two players join with their name. The host can play too. Ultimate Tic-Tac-Toe is nine small 3x3 boards in one big grid — the cell you play sends your opponent to the matching board. Win a small board with three in a row, and win the game by taking three boards in a row.'
     case 'word_hunt':
       return 'Players join with their name. Everyone gets the same 4×4 letter grid — connect adjacent letters to spell valid words (3+ letters) before the timer runs out. Longer words score more points.'
+    case 'matching_pairs':
+      return 'Players join with their name. Everyone gets their own board with the same set of icons — flip two cards per turn; a match keeps them face-up and scores +1000 pts. Hit 3 in a row with no miss for a +500 streak bonus. Match every pair with zero misses for a +2000 perfect-game bonus. Fastest to finish scores a placement bonus. Most points when everyone is done wins.'
     case 'chess':
       return 'Two players join with their name. The host can play too. One player is White, the other Black — White moves first. Move pieces by the standard rules; checkmate your opponent to win. Optional chess clock — each player gets their own time bank that only ticks on their turn, and the first to run out loses.'
     case 'checkers':
       return 'Two players join with their name. The host can play too. One player is Black (and moves first), the other Red. Move diagonally forward one square; jump an adjacent opponent piece to capture it — and if a jump is available you must take it, chaining multiple jumps in one turn. Reach the far row to crown a king that moves both ways. Capture all your opponent’s pieces, or leave them with no move, to win. Optional clock — each player has their own time bank that only ticks on their turn.'
+    case 'mafia':
+      return 'Players join with their name (5 to 16 players). Each player is secretly assigned a role: Villager, Mafia, Doctor, or Detective. The game alternates between Night (when the Mafia kills, the Doctor heals, and the Detective investigates) and Day (when the village discusses and votes to eliminate a suspect). Eliminate the Mafia to win, or parity wins for the Mafia.'
     case 'describe_it':
       return 'Players join with their name and split into teams (you pick how many). Each round, one team is on the clock — a describer sees a secret word and types clues without saying it, while teammates race to type the word. Every correct guess scores a point. Most words across all rounds wins.'
     case 'i_call_on':
@@ -1897,6 +1994,8 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   snake_and_ladder: true,
   crazy_eights: true,
   checkers: true,
+  matching_pairs: true,
+  mafia: false,
 }
 
 const LOBBY_GAMES: Record<GameType, boolean> = {
@@ -1933,6 +2032,8 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   snake_and_ladder: false,
   crazy_eights: false,
   checkers: false,
+  matching_pairs: false,
+  mafia: false,
 }
 
 /** WYR + MLT + This or That player join: free name entry, no list. Hot Seat uses import + name claim (see isImportNameClaimGame). */
@@ -2041,6 +2142,10 @@ export function isCheckersGame(gameType: GameType | string | undefined): boolean
   return parseGameType(gameType) === 'checkers'
 }
 
+export function isMafiaGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'mafia'
+}
+
 export function isDescribeItGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'describe_it'
 }
@@ -2063,6 +2168,10 @@ export function isSudokuGame(gameType: GameType | string | undefined): boolean {
 
 export function isWordHuntGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'word_hunt'
+}
+
+export function isMatchingPairsGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'matching_pairs'
 }
 
 /** Anonymous room or host-only secret message inbox — shared message storage. */

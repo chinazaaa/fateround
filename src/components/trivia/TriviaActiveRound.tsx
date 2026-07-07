@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
 import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import {
   formatTriviaChoiceLabel,
@@ -235,21 +236,14 @@ export function TriviaActiveRound({
           players={players}
           triviaAnswers={answers}
         >
-          <div className="glass-card-strong p-8 text-center space-y-2">
-            <p className="text-4xl">🏆</p>
-            <p className="text-2xl font-black">Game over!</p>
-            {leaderboard[0] && (
-              <p className="text-muted text-base mt-2">
-                {leaderboard[0].name} wins with {leaderboard[0].score} pts
-              </p>
-            )}
-          </div>
+          <FinishedWinnerHero winnerName={leaderboard[0]?.name} game={game} />
           <PaginatedLeaderboard
             title="Final leaderboard"
             rows={leaderboard.map((row, i) => ({ ...row, rank: i + 1 }))}
             highlightId={myPlayerId}
             scoreLabel={(n) => `${n} pts`}
             totalQuestions={game.rounds_count ?? undefined}
+            emphasizeLeader
           />
         </FinalResultsShareBlock>
         {iWonTrivia && (

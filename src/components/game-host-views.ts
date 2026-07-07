@@ -22,6 +22,8 @@ import { DescribeItHostView } from '@/components/describe-it/DescribeItHostView'
 import { NpatHostView } from '@/components/npat/NpatHostView'
 import { SudokuHostView } from '@/components/sudoku/SudokuHostView'
 import { WordHuntHostView } from '@/components/word-hunt/WordHuntHostView'
+import { MafiaHostView } from '@/components/mafia/MafiaHostView'
+import { MatchingPairsHostView } from '@/components/matching-pairs/MatchingPairsHostView'
 
 export type GameHostView = ComponentType<{ gameCode: string; hostToken: string }>
 
@@ -53,5 +55,7 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   describe_it: DescribeItHostView,
   sudoku: SudokuHostView,
   word_hunt: WordHuntHostView,
+  matching_pairs: MatchingPairsHostView,
   anonymous_messages: AnonymousMessagesHostView,
+  mafia: MafiaHostView,
 }

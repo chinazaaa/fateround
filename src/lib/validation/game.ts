@@ -119,6 +119,9 @@ export const createGameSchema = z.object({
   scrabble_clock_seconds: z.coerce.number().optional(),
   chess_board_theme: z.string().optional(),
   chess_piece_set: z.string().optional(),
+  mafia_doctor_enabled: z.boolean().optional(),
+  mafia_detective_enabled: z.boolean().optional(),
+  mafia_anonymous_votes: z.boolean().optional(),
   custom_slots: z
     .object({
       slots: z
@@ -209,6 +212,12 @@ export const playAgainSchema = hostActionSchema.extend({
   trivia_category: z.enum(['tech', 'general']).optional(),
   timer_seconds: z.union([z.literal(10), z.literal(15), z.literal(30), z.literal(60)]).optional(),
   rounds_count: z.number().int().min(3).max(25).optional(),
+  /**
+   * Whot "Play again · same settings": reopen as an OPEN lobby but flagged so the UI
+   * shows the ready-up ring instead of the standard lobby. Omitted / false = plain
+   * "Return to lobby" reset.
+   */
+  same_settings: z.boolean().optional(),
 })
 
 export type PlayAgainInput = z.infer<typeof playAgainSchema>
