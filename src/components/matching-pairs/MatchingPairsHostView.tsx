@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { MatchingPairsPlayerView } from '@/components/matching-pairs/MatchingPairsPlayerView'
+import { MatchingPairsGameTimerBar } from '@/components/matching-pairs/MatchingPairsGameTimerBar'
 import { MatchingPairsStatDetails } from '@/components/matching-pairs/MatchingPairsStatDetails'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
@@ -35,6 +36,7 @@ import {
   MEMORY_MATCH_PROGRESS_SELECT,
 } from '@/lib/supabase-selects'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
+import { formatMinutesSeconds } from '@/lib/timer-format'
 import type { Game, Player } from '@/types'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -74,6 +76,16 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
+  const [nowMs, setNowMs] = useState<number>(Date.now())
+
+  useEffect(() => {
+    if (game?.status === 'active') {
+      const interval = setInterval(() => {
+        setNowMs(Date.now())
+      }, 1000)
+      return () => clearInterval(interval)
+    }
+  }, [game?.status])
 
   useTurnNotifications({ status: game?.status })
 
@@ -285,7 +297,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     return progressRows
       .map((prog) => {
         const playerSubs = submissions.filter((s) => s.player_id === prog.player_id)
-        return tallyMatchingPairsScore(playerSubs, prog, gridSizePairs)
+        return tallyMatchingPairsScore(playerSubs, prog, gridSizePairs, game?.session_started_at)
       })
       .sort((a, b) => {
         // Bug #5 fix: sort by finish_rank FIRST (the authoritative server-assigned
@@ -299,7 +311,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         if (a.wrongAttempts !== b.wrongAttempts) return a.wrongAttempts - b.wrongAttempts
         return (a.timeTakenMs ?? Infinity) - (b.timeTakenMs ?? Infinity)
       })
-  }, [submissions, progressRows, gridSizePairs])
+  }, [submissions, progressRows, gridSizePairs, game?.session_started_at])
 
   const playerMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -330,8 +342,24 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
 
   const interactivePlay = <MatchingPairsPlayerView gameCode={gameCode} />
 
+  const memorizeSeconds = gridSizePairs >= 16 ? 5 : 3
+  const playStartMs = game?.session_started_at
+    ? new Date(game.session_started_at).getTime() + memorizeSeconds * 1000
+    : 0
+  const getPlayerElapsedSecs = (prog: MatchingPairsProgress): number => {
+    if (prog.finished && prog.finished_at) {
+      const endMs = new Date(prog.finished_at).getTime()
+      return Math.max(0, Math.floor((endMs - playStartMs) / 1000))
+    }
+    if (playStartMs > 0) {
+      return Math.max(0, Math.floor((nowMs - playStartMs) / 1000))
+    }
+    return 0
+  }
+
   const watchBoard = (
-    <section style={{ padding: '0 0 16px' }}>
+    <section className="space-y-4" style={{ padding: '0 0 16px' }}>
+      <MatchingPairsGameTimerBar gameCode={gameCode} game={game} />
       <p style={{ color: 'var(--text-faint)', fontSize: 13, marginBottom: 8 }}>
         Live progress — {formatMatchingPairsGridSize(gridSizePairs)}
       </p>
@@ -341,6 +369,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
           .map((prog) => {
             const name = playerMap.get(prog.player_id) ?? 'Unknown'
             const pct = Math.round((prog.pairs_matched / gridSizePairs) * 100)
+            const elapsedSecs = getPlayerElapsedSecs(prog)
             return (
               <div
                 key={prog.player_id}
@@ -373,8 +402,18 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
                     }}
                   />
                 </div>
-                <span style={{ fontSize: 12, color: 'var(--text-faint)', minWidth: 60, textAlign: 'right' }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: 'var(--text-faint)',
+                    minWidth: 80,
+                    textAlign: 'right',
+                    whiteSpace: 'nowrap' as const,
+                  }}
+                >
                   {prog.finished ? '✓ Done' : `${prog.pairs_matched}/${gridSizePairs}`}
+                  <br />
+                  <span style={{ fontSize: 10 }}>⏱️ {formatMinutesSeconds(elapsedSecs)}</span>
                 </span>
               </div>
             )

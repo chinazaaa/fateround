@@ -6,6 +6,7 @@ import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { MatchingPairsStatDetails } from '@/components/matching-pairs/MatchingPairsStatDetails'
+import { MatchingPairsGameTimerBar } from '@/components/matching-pairs/MatchingPairsGameTimerBar'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameJoinHeader } from '@/components/game-lobby/GameJoinHeader'
@@ -593,7 +594,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         .map((prog) => {
           const subs = allSubmissions.filter((s) => s.player_id === prog.player_id)
           return {
-            ...tallyMatchingPairsScore(subs, prog, meta.gridSizePairs),
+            ...tallyMatchingPairsScore(subs, prog, meta.gridSizePairs, game?.session_started_at),
             name: playerMap.get(prog.player_id) ?? 'Unknown',
           }
         })
@@ -768,6 +769,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       {isViewer && (
         <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={me} onPromoted={load} />
       )}
+      <MatchingPairsGameTimerBar gameCode={gameCode} game={game} />
+
       {/* Score header */}
       <div
         style={{
