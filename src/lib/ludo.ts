@@ -372,12 +372,17 @@ export function applyMoveLocally(
   const victimKeys = new Set(captureVictims.map((v) => `${v.playerId}:${v.pieceId}`))
   const isCapture = victimKeys.size > 0
 
-  // Standard Ludo capture: the victim goes back to its yard and the capturing
-  // piece stays on the square it landed on. It is NOT teleported anywhere, so
-  // any die still owed for this turn keeps a real piece to move — a player can
-  // never dodge a leftover die by capturing (e.g. a 6 that brings a piece out
-  // onto an opponent still leaves that piece on the board to spend the 2nd die).
-  const moverDest: LudoPiece = { ...move.to, id: move.pieceId }
+  // House rule: capturing sends the victim back to its yard AND teleports the
+  // capturing piece straight to its own finished home as the reward.
+  //
+  // This does NOT let a player dodge a leftover die: persistMove still forces any
+  // remaining die onto whatever OTHER piece can move it, and only forfeits it when
+  // the player has no other movable piece — i.e. they're genuinely back "in their
+  // house" (all remaining pieces in the yard). "Use all rolls when possible" is
+  // about the leftover die finding another piece, not about this piece staying put.
+  const moverDest: LudoPiece = isCapture
+    ? { id: move.pieceId, zone: 'finished', pos: 0 }
+    : { ...move.to, id: move.pieceId }
 
   const nextStates = states.map((row) => {
     if (row.player_id !== playerId) return row
@@ -640,7 +645,7 @@ async function persistMove(
     victimsAtTrackPos(states, move.to.pos, playerRow.color).length > 0 &&
     wouldCaptureAt(states, move.to.pos, playerRow.color, playerId, move.pieceId, variant)
   const moveNote = didCapture
-    ? 'captured an opponent and sent it back to its yard'
+    ? 'captured an opponent and raced their own piece home!'
     : movedFromBase
       ? 'brought a piece onto the board'
       : move.to.zone === 'finished'
