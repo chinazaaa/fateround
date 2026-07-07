@@ -124,6 +124,8 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   }, [game?.status])
 
   // Realtime: subscribe to progress changes for live opponent view.
+  // Bug #4 fix: apply optimistic local update before calling load() so the host
+  // sees the correct count even when load() races ahead of the DB write.
   useEffect(() => {
     if (!roundId) return
     const channel = supabase
@@ -131,7 +133,19 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'memory_match_progress', filter: `round_id=eq.${roundId}` },
-        () => {
+        (payload) => {
+          // Optimistic local update so the host's progress bar reacts instantly.
+          const updated = payload.new as import('@/lib/memory-match').MatchingPairsProgress
+          setProgressRows((prev) => {
+            const idx = prev.findIndex((p) => p.player_id === updated.player_id)
+            if (idx >= 0) {
+              const next = [...prev]
+              next[idx] = updated
+              return next
+            }
+            return [...prev, updated]
+          })
+          // Then reconcile from the DB to pick up finish_rank / finished_at / etc.
           void load()
         }
       )
@@ -274,6 +288,13 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         return tallyMatchingPairsScore(playerSubs, prog, gridSizePairs)
       })
       .sort((a, b) => {
+        // Bug #5 fix: sort by finish_rank FIRST (the authoritative server-assigned
+        // order) so the first finisher always ranks #1 regardless of score ties.
+        // finish_rank 999 = didn't finish (used in tallyMatchingPairsScore).
+        const rankA = a.placement ?? 999
+        const rankB = b.placement ?? 999
+        if (rankA !== rankB) return rankA - rankB
+        // Among players with the same rank (e.g. non-finishers), fall back to score.
         if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
         if (a.wrongAttempts !== b.wrongAttempts) return a.wrongAttempts - b.wrongAttempts
         return (a.timeTakenMs ?? Infinity) - (b.timeTakenMs ?? Infinity)

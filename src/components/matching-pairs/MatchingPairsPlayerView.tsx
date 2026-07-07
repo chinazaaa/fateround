@@ -297,7 +297,10 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
 
-  // Realtime: progress updates (opponents finishing, etc.)
+  // Realtime: progress updates (opponents finishing, etc.).
+  // Apply optimistically to local state immediately AND call load() to reconcile
+  // with the DB — this prevents the race where a rapid load() reads before the
+  // DB write for the finishing player has fully propagated.
   useEffect(() => {
     if (!roundId) return
     const channel = supabase
@@ -305,8 +308,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'memory_match_progress', filter: `round_id=eq.${roundId}` },
-        async (payload) => {
+        (payload) => {
           const updated = payload.new as MatchingPairsProgress
+          // Optimistic local update first so the UI reacts instantly.
           setAllProgress((prev) => {
             const idx = prev.findIndex((p) => p.player_id === updated.player_id)
             if (idx >= 0) {
@@ -316,15 +320,21 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             }
             return [...prev, updated]
           })
+          // Then reconcile from DB so we never miss a write that landed slightly
+          // after the realtime event fired (finish_rank, finished_at, etc.).
+          void load()
         }
       )
       .subscribe()
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [roundId])
+  }, [roundId, load])
 
-  // Game finished via realtime (game status changed to 'finished')
+  // Bug #1 fix: listen for game status changes so non-host players transition
+  // from the waiting screen to the live game view when the host starts the game.
+  // Previously setGame() was called but load() was not, so computeScreen never
+  // ran and the screen stayed on 'waiting'.
   useEffect(() => {
     if (!gameCode) return
     const channel = supabase
@@ -335,7 +345,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         (payload) => {
           const updated = payload.new as Game
           setGame(updated)
-          if (updated.status === 'finished') void load()
+          // Always call load() so computeScreen re-runs with the new game status.
+          // This covers both 'active' (game started) and 'finished' transitions.
+          void load()
         }
       )
       .subscribe()
@@ -439,15 +451,23 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           } else {
             const d = await res.json()
             if (d.finishRank) setFinishRank(d.finishRank)
-            // Refresh submissions to keep local state in sync
-            const { data } = await supabase
-              .from('memory_match_submissions')
-              .select(MEMORY_MATCH_SUBMISSION_SELECT)
-              .eq('round_id', roundId)
-              .order('submitted_at', { ascending: true })
-            const nextSubmissions = (data ?? []) as MatchingPairsSubmission[]
-            setAllSubmissions(nextSubmissions)
-            setMySubmissions(nextSubmissions.filter((s) => s.player_id === myPlayerId))
+            // Bug #2 fix: call load() after a finishing flip so computeScreen
+            // transitions to 'waiting_for_others' immediately. Without this,
+            // setFinished(true) updates local state but screen stays on 'playing'
+            // because computeScreen only reads state.ownFinished (set inside load).
+            if (justFinished) {
+              void load()
+            } else {
+              // Non-finishing match: just refresh submission counts.
+              const { data } = await supabase
+                .from('memory_match_submissions')
+                .select(MEMORY_MATCH_SUBMISSION_SELECT)
+                .eq('round_id', roundId)
+                .order('submitted_at', { ascending: true })
+              const nextSubmissions = (data ?? []) as MatchingPairsSubmission[]
+              setAllSubmissions(nextSubmissions)
+              setMySubmissions(nextSubmissions.filter((s) => s.player_id === myPlayerId))
+            }
           }
         })
       } else {
@@ -564,7 +584,10 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const pairsMatched = mySubmissions.filter((s) => s.is_match).length
   const wrongAttempts = mySubmissions.filter((s) => !s.is_match).length
 
-  // Leaderboard for finished screen
+  // Leaderboard for finished screen.
+  // Bug #5 fix: sort by finish_rank first (server-assigned, atomic) so the
+  // first-to-finish player is always shown in 1st place, even when two players
+  // end up with the same score.
   const leaderboard: MatchingPairsLeaderboardRow[] = meta
     ? allProgress
         .map((prog) => {
@@ -574,7 +597,13 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             name: playerMap.get(prog.player_id) ?? 'Unknown',
           }
         })
-        .sort((a, b) => b.finalScore - a.finalScore)
+        .sort((a, b) => {
+          const rankA = a.placement ?? 999
+          const rankB = b.placement ?? 999
+          if (rankA !== rankB) return rankA - rankB
+          if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
+          return (a.timeTakenMs ?? Infinity) - (b.timeTakenMs ?? Infinity)
+        })
     : []
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -971,7 +1000,10 @@ function MemoryCard({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 'clamp(18px, 4vw, 30px)',
+            // Bug #3 fix: emoji was too small on mobile.
+            // Cards are 25% of the viewport on a 4-col grid; use a larger clamp
+            // so the icon reads clearly on small screens (≥22px floor).
+            fontSize: 'clamp(22px, 7vw, 36px)',
             opacity: isMatched ? 0.85 : 1,
           }}
         >
