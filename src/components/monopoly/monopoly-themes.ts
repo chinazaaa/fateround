@@ -505,7 +505,9 @@ export function formatThemedText(text: string | null | undefined, themeId?: stri
   formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, `${edition.currencySymbol}$1`)
   formatted = formatted.replace(/£/g, edition.currencySymbol)
   if (edition.currencyWord && edition.currencyWord !== 'pounds') {
-    formatted = formatted.replace(/\bpounds\b/gi, edition.currencyWord)
+    formatted = formatted.replace(/\bpounds\b/g, edition.currencyWord)
+    formatted = formatted.replace(/\bPounds\b/g, edition.currencyWord[0].toUpperCase() + edition.currencyWord.slice(1))
+    formatted = formatted.replace(/\bPOUNDS\b/g, edition.currencyWord.toUpperCase())
   }
 
   return formatted
