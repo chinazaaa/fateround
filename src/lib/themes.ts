@@ -1,4 +1,4 @@
-export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate'
+export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate' | 'arctic'
 
 export interface ThemeConfig {
   id: ThemeId
@@ -193,6 +193,13 @@ export const THEMES: ThemeConfig[] = [
     label: 'Pirate',
     emoji: '🏴‍☠️',
     preview: { bg: '#0B2545', accent: '#D4AF37', text: '#EFE3C8' },
+    cssVars: {},
+  },
+  {
+    id: 'arctic',
+    label: 'Arctic Exploration',
+    emoji: '🧭',
+    preview: { bg: '#0A1A2A', accent: '#3FA9A0', text: '#D8E6E8' },
     cssVars: {},
   },
 ]

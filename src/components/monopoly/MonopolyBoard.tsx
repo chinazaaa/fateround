@@ -526,6 +526,111 @@ export function MonopolyClassicBoard({
             <div className="absolute inset-1.5 sm:inset-2 rounded sm:rounded-lg border border-[#B8860B]/40 dark:border-[#B8860B]/30" />
           </div>
         )}
+        {p.customDecoration === 'arctic' && (
+          <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+            {/* Frost vignette & slight grain */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(30,78,107,0.2)_100%)] dark:bg-[radial-gradient(circle_at_center,transparent_15%,rgba(10,26,42,0.85)_100%)] mix-blend-multiply dark:mix-blend-normal" />
+
+            {/* Glacial Rift Shards, Frost Filigree Corners & Arctic Streamlines */}
+            <svg
+              className="absolute inset-0 w-full h-full text-[#1E4E6B]/25 dark:text-[#3FA9A0]/25"
+              viewBox="0 0 400 400"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              {/* Glacial Rift Shards / Floating Ice Floes */}
+              <polygon
+                points="40,90 70,85 85,110 50,120"
+                stroke="currentColor"
+                strokeWidth="1"
+                strokeDasharray="4 2"
+                opacity="0.4"
+              />
+              <polygon
+                points="310,60 350,50 365,80 320,95"
+                stroke="currentColor"
+                strokeWidth="1"
+                strokeDasharray="4 2"
+                opacity="0.4"
+              />
+              <polygon
+                points="55,280 90,270 105,305 65,315"
+                stroke="currentColor"
+                strokeWidth="1"
+                strokeDasharray="4 2"
+                opacity="0.4"
+              />
+              <polygon
+                points="320,290 360,280 375,310 330,325"
+                stroke="currentColor"
+                strokeWidth="1"
+                strokeDasharray="4 2"
+                opacity="0.4"
+              />
+
+              {/* Soft Glacial Fissures / Contour Cracks */}
+              <path
+                d="M -50 80 Q 100 50 200 130 T 450 100 M -50 260 Q 80 320 220 270 T 450 340"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeDasharray="14 8"
+                opacity="0.6"
+              />
+              <path
+                d="M 60 -50 Q 130 140 90 240 T 160 450 M 350 -50 Q 320 120 380 280 T 320 450"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeDasharray="8 8"
+                opacity="0.5"
+              />
+
+              {/* Arctic Wind / Glacial Streamlines */}
+              <path d="M 20 180 Q 120 160 220 190 T 380 170" stroke="currentColor" strokeWidth="0.8" opacity="0.3" />
+              <path d="M 20 220 Q 180 240 280 210 T 380 230" stroke="currentColor" strokeWidth="0.8" opacity="0.3" />
+
+              {/* Intricate Nordic Frost Filigree Corners & Crystal Runes */}
+              {/* Top-Left */}
+              <path
+                d="M 12 48 L 12 12 L 48 12 M 12 12 L 35 35 M 12 28 L 28 12 M 12 38 L 38 12"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <circle cx="35" cy="35" r="2.5" fill="currentColor" opacity="0.6" />
+              {/* Top-Right */}
+              <path
+                d="M 388 48 L 388 12 L 352 12 M 388 12 L 365 35 M 388 28 L 372 12 M 388 38 L 362 12"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <circle cx="365" cy="35" r="2.5" fill="currentColor" opacity="0.6" />
+              {/* Bottom-Left */}
+              <path
+                d="M 12 352 L 12 388 L 48 388 M 12 388 L 35 365 M 12 372 L 28 388 M 12 362 L 38 388"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <circle cx="35" cy="365" r="2.5" fill="currentColor" opacity="0.6" />
+              {/* Bottom-Right */}
+              <path
+                d="M 388 352 L 388 388 L 352 388 M 388 388 L 365 365 M 388 372 L 372 388 M 388 362 L 362 388"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <circle cx="365" cy="365" r="2.5" fill="currentColor" opacity="0.6" />
+            </svg>
+
+            {/* Intricate Glacial Border Frames */}
+            <div className="absolute inset-0.5 sm:inset-1 rounded-lg sm:rounded-xl border-2 sm:border-[3px] border-[#1E4E6B]/50 dark:border-[#3FA9A0]/45 shadow-[inset_0_0_12px_rgba(63,169,160,0.2)]" />
+            {/* Geometric Lattice / Chevron Border */}
+            <div className="absolute inset-1.5 sm:inset-2 rounded sm:rounded-lg border-2 border-dashed border-[#1E4E6B]/40 dark:border-[#D8E6E8]/30" />
+            <div className="absolute inset-2.5 sm:inset-3 rounded border border-dotted border-[#5C6B73]/35 dark:border-[#3FA9A0]/25" />
+          </div>
+        )}
+
         <div
           className="absolute inset-[3px] sm:inset-2.5 grid gap-[0.5px] sm:gap-1 z-10"
           style={{
@@ -584,6 +689,105 @@ export function MonopolyClassicBoard({
                   <line x1="200" y1="0" x2="0" y2="200" />
                   <line x1="100" y1="0" x2="100" y2="200" />
                   <line x1="0" y1="100" x2="200" y2="100" />
+                </svg>
+              </div>
+            )}
+            {p.customDecoration === 'arctic' && (
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-0">
+                {/* Multi-Layered Aurora Borealis, 3-Depth Alpine Peaks & Polaris Constellation */}
+                <svg
+                  className="absolute inset-0 w-full h-full text-[#1E4E6B]/30 dark:text-[#3FA9A0]/35"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  {/* Background Towering Summits */}
+                  <path
+                    d="M 0 80 L 15 55 L 28 68 L 42 42 L 55 60 L 70 38 L 85 58 L 100 48 L 100 100 L 0 100 Z"
+                    fill="currentColor"
+                    opacity="0.12"
+                  />
+                  {/* Mid-Ground Glacial Peaks with Ice Caps */}
+                  <path
+                    d="M 0 85 L 12 65 L 25 74 L 38 50 L 52 68 L 65 45 L 78 64 L 90 52 L 100 70 L 100 100 L 0 100 Z"
+                    fill="currentColor"
+                    opacity="0.22"
+                  />
+                  {/* Forefront Jagged Ridges */}
+                  <path
+                    d="M 0 92 L 18 75 L 32 84 L 48 62 L 60 78 L 75 58 L 88 72 L 100 80 L 100 100 L 0 100 Z"
+                    fill="currentColor"
+                    opacity="0.35"
+                  />
+                  {/* Vertical Glacial Crevasse Lines */}
+                  <path
+                    d="M 38 50 L 38 100 M 65 45 L 65 100 M 78 64 L 78 100 M 42 42 L 42 100 M 70 38 L 70 100"
+                    stroke="currentColor"
+                    strokeWidth="0.4"
+                    opacity="0.3"
+                  />
+
+                  {/* Multi-Layered Flowing Aurora Borealis Curtains */}
+                  <path
+                    d="M -10 32 Q 20 10 50 28 T 110 15"
+                    stroke="currentColor"
+                    strokeWidth="5"
+                    strokeLinecap="round"
+                    className="animate-[pulse_4s_ease-in-out_infinite]"
+                    opacity="0.25"
+                  />
+                  <path
+                    d="M -10 40 Q 30 18 60 34 T 110 22"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeDasharray="8 4"
+                    className="animate-[pulse_5s_ease-in-out_infinite_1s]"
+                    opacity="0.35"
+                  />
+                  <path
+                    d="M -10 22 Q 35 32 70 12 T 110 30"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className="animate-[pulse_6s_ease-in-out_infinite_2s]"
+                    opacity="0.2"
+                  />
+                  <path
+                    d="M -10 48 Q 25 28 55 44 T 110 32"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    className="animate-[pulse_4.5s_ease-in-out_infinite_0.5s]"
+                    opacity="0.28"
+                  />
+
+                  {/* Celestial Polar Constellations & Polaris (North Star) */}
+                  {/* Polaris (North Star) with glowing diamond rays */}
+                  <g className="animate-[pulse_3s_ease-in-out_infinite]">
+                    <circle cx="75" cy="18" r="1.8" fill="currentColor" />
+                    <path d="M 75 13 L 75 23 M 70 18 L 80 18" stroke="currentColor" strokeWidth="0.6" />
+                  </g>
+                  {/* Ursa Major / Big Dipper constellation lines pointing to Polaris */}
+                  <path
+                    d="M 18 28 L 25 26 L 32 30 L 38 36 L 48 34 L 48 42 L 38 36"
+                    stroke="currentColor"
+                    strokeWidth="0.4"
+                    strokeDasharray="1 1"
+                    opacity="0.5"
+                  />
+                  <circle cx="18" cy="28" r="0.8" fill="currentColor" opacity="0.7" />
+                  <circle cx="25" cy="26" r="0.8" fill="currentColor" opacity="0.7" />
+                  <circle cx="32" cy="30" r="0.8" fill="currentColor" opacity="0.7" />
+                  <circle cx="38" cy="36" r="1" fill="currentColor" opacity="0.8" />
+                  <circle cx="48" cy="34" r="1" fill="currentColor" opacity="0.8" />
+                  <circle cx="48" cy="42" r="1" fill="currentColor" opacity="0.8" />
+                  {/* Pointer stars line to Polaris */}
+                  <path
+                    d="M 48 34 L 75 18"
+                    stroke="currentColor"
+                    strokeWidth="0.3"
+                    strokeDasharray="2 2"
+                    opacity="0.4"
+                  />
                 </svg>
               </div>
             )}
