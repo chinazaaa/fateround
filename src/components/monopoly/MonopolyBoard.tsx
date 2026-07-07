@@ -650,7 +650,16 @@ export function MonopolyClassicBoard({
               </defs>
               <rect width="400" height="400" fill="url(#ankara-grain)" />
               {/* Geometric Wax-Print Edge Pattern */}
-              <rect x="6" y="6" width="388" height="388" stroke="currentColor" strokeWidth="1.5" strokeDasharray="6 4" opacity="0.7" />
+              <rect
+                x="6"
+                y="6"
+                width="388"
+                height="388"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeDasharray="6 4"
+                opacity="0.7"
+              />
               <rect x="12" y="12" width="376" height="376" stroke="currentColor" strokeWidth="0.8" opacity="0.5" />
               {/* Corner Ankara Motifs */}
               <polygon points="12,12 30,12 12,30" fill="currentColor" opacity="0.3" />
@@ -835,26 +844,25 @@ export function MonopolyClassicBoard({
                   xmlns="http://www.w3.org/2000/svg"
                 >
                   {/* Subtle Geometric Radiance / Sun Rays */}
-                  <circle cx="50" cy="50" r="44" stroke="currentColor" strokeWidth="0.5" strokeDasharray="3 3" opacity="0.6" />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="44"
+                    stroke="currentColor"
+                    strokeWidth="0.5"
+                    strokeDasharray="3 3"
+                    opacity="0.6"
+                  />
                   <circle cx="50" cy="50" r="32" stroke="currentColor" strokeWidth="0.3" opacity="0.4" />
-                  
+
                   {/* The Niger & Benue River Confluence 'Y' Mark */}
                   <path
                     d="M 20 25 Q 35 38 50 52 Q 65 38 80 25 L 75 20 Q 62 33 50 45 Q 38 33 25 20 Z"
                     fill="currentColor"
                     opacity="0.8"
                   />
-                  <path
-                    d="M 46 50 L 54 50 L 54 85 L 46 85 Z"
-                    fill="currentColor"
-                    opacity="0.8"
-                  />
-                  <path
-                    d="M 48 50 L 52 50 L 52 85 L 48 85"
-                    stroke="currentColor"
-                    strokeWidth="0.5"
-                    opacity="0.5"
-                  />
+                  <path d="M 46 50 L 54 50 L 54 85 L 46 85 Z" fill="currentColor" opacity="0.8" />
+                  <path d="M 48 50 L 52 50 L 52 85 L 48 85" stroke="currentColor" strokeWidth="0.5" opacity="0.5" />
 
                   {/* Understated Geometric Eagle Silhouette Presiding Above */}
                   <path
