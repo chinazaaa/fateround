@@ -375,7 +375,7 @@ export function MonopolyBoardCenter({
           </p>
           <div className="space-y-1.5 pt-0.5">
             <BoardPrimaryButton
-              onClick={() => postAction('/api/monopoly/debt', { action: 'pay' })}
+              onClick={() => postAction('/api/monopoly/settle-debt', { action: 'pay' })}
               loading={acting}
               disabled={acting || (myState?.cash ?? 0) < debtAmount}
             >
