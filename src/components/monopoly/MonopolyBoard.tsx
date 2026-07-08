@@ -24,6 +24,9 @@ import {
   boardEdgeForSpace,
   boardGridCell,
   boardSpaceLines,
+  mobileBoardSpaceLines,
+  shortSpaceName,
+  shortPlayerName,
   spaceIcon,
   tokenColorForOrder,
 } from '@/components/monopoly/monopoly-ui'
@@ -278,6 +281,7 @@ function BoardSpaceCell({
   const isCorner = edge === 'corner'
   const icon = spaceIcon(space.type, themeId)
   const lines = boardSpaceLines(space.name, space.type, spaceIndex, themeId)
+  const mobileLines = mobileBoardSpaceLines(space.name, space.type, spaceIndex, themeId)
   const rentLabel = boardTileRentLabel(space, ownerId, owners, buildings, mortgaged, diceTotal, themeId)
   const palette = getBoardPalette(themeId)
   const lineClass = [
@@ -335,9 +339,29 @@ function BoardSpaceCell({
             )}
           </div>
         )}
-        <div className="flex flex-col items-center justify-center gap-px min-w-0 max-w-full px-px text-center overflow-hidden">
+        <div className="hidden sm:flex flex-col items-center justify-center gap-px min-w-0 max-w-full px-px text-center overflow-hidden">
           {lines.map((line, i) => (
-            <span key={i} className={[lineClass, 'max-w-full break-all sm:break-words sm:tracking-tight'].join(' ')}>
+            <span key={i} className={[lineClass, 'max-w-full break-words tracking-tight'].join(' ')}>
+              {line}
+            </span>
+          ))}
+        </div>
+        <div
+          className={[
+            'flex sm:hidden flex-col items-center justify-center gap-0.5 min-w-0 max-w-full max-h-full px-1 py-1 text-center overflow-hidden',
+            edge === 'top' || edge === 'bottom' ? '[writing-mode:vertical-rl] rotate-180' : '',
+          ].join(' ')}
+        >
+          {mobileLines.map((line, i) => (
+            <span
+              key={i}
+              className={[
+                lineClass,
+                edge === 'top' || edge === 'bottom'
+                  ? 'max-h-full tracking-tighter'
+                  : 'max-w-full truncate tracking-tighter',
+              ].join(' ')}
+            >
               {line}
             </span>
           ))}
@@ -512,7 +536,7 @@ export function MonopolyClassicBoard({
     <div className="mx-auto w-full min-w-0 max-w-[740px] lg:max-w-[880px] xl:max-w-[940px]">
       <div
         className={[
-          'relative w-full aspect-square overflow-hidden rounded-xl sm:rounded-2xl',
+          'relative w-full aspect-[7/8] sm:aspect-square overflow-hidden rounded-xl sm:rounded-2xl',
           p.boardBg,
           `border-2 sm:border-[3px] ${p.boardBorder} ${p.boardShadow}`,
         ].join(' ')}
@@ -674,13 +698,19 @@ export function MonopolyClassicBoard({
           </div>
         )}
 
-        <div
-          className="absolute inset-[3px] sm:inset-2.5 grid gap-[0.5px] sm:gap-1 z-10"
-          style={{
-            gridTemplateColumns: 'minmax(0, 1.55fr) repeat(9, minmax(0, 1fr)) minmax(0, 1.55fr)',
-            gridTemplateRows: 'minmax(0, 1.55fr) repeat(9, minmax(0, 1fr)) minmax(0, 1.55fr)',
-          }}
-        >
+        <style>{`
+          .monopoly-grid-tracks {
+            grid-template-columns: minmax(0, 1.85fr) repeat(9, minmax(0, 1fr)) minmax(0, 1.85fr);
+            grid-template-rows: minmax(0, 1.85fr) repeat(9, minmax(0, 1.25fr)) minmax(0, 1.85fr);
+          }
+          @media (min-width: 640px) {
+            .monopoly-grid-tracks {
+              grid-template-columns: minmax(0, 1.55fr) repeat(9, minmax(0, 1fr)) minmax(0, 1.55fr);
+              grid-template-rows: minmax(0, 1.55fr) repeat(9, minmax(0, 1fr)) minmax(0, 1.55fr);
+            }
+          }
+        `}</style>
+        <div className="absolute inset-[3px] sm:inset-2.5 grid gap-[0.5px] sm:gap-1 z-10 monopoly-grid-tracks">
           <div
             className={[
               'z-0 relative flex min-h-0 min-w-0 flex-col items-center justify-center overflow-hidden rounded-md sm:rounded-xl',
@@ -963,7 +993,8 @@ export function MonopolyCurrentSpace({
             <p
               className={`text-sm font-black text-[var(--foreground)] truncate leading-tight mt-0.5 ${getBoardPalette(themeId).tileFont ?? ''}`}
             >
-              {themedSpaceName(space.name, index, themeId)}
+              <span className="hidden sm:inline">{themedSpaceName(space.name, index, themeId)}</span>
+              <span className="sm:hidden">{shortSpaceName(space.name, 16, index, themeId)}</span>
             </p>
             {detailLine && <p className="text-[11px] text-muted truncate leading-snug mt-0.5">{detailLine}</p>}
           </div>
@@ -991,7 +1022,8 @@ export function MonopolyCurrentSpace({
             <p
               className={`mt-0.5 text-xl sm:text-2xl font-black text-[var(--foreground)] leading-tight ${getBoardPalette(themeId).tileFont ?? ''}`}
             >
-              {themedSpaceName(space.name, index, themeId)}
+              <span className="hidden sm:inline">{themedSpaceName(space.name, index, themeId)}</span>
+              <span className="sm:hidden">{shortSpaceName(space.name, 18, index, themeId)}</span>
             </p>
             {space.price != null && (
               <p className="mt-2 text-sm text-muted">
@@ -1089,7 +1121,8 @@ export function MonopolyMyProperties({
                 <p
                   className={`text-sm font-bold text-[var(--foreground)] truncate ${getBoardPalette(themeId).tileFont ?? ''}`}
                 >
-                  {themedSpaceName(space.name, space.index, themeId)}
+                  <span className="hidden sm:inline">{themedSpaceName(space.name, space.index, themeId)}</span>
+                  <span className="sm:hidden">{shortSpaceName(space.name, 14, space.index, themeId)}</span>
                 </p>
                 <p className="text-[10px] text-faint">
                   {formatThemedMoney(space.price!, themeId)}
@@ -1159,7 +1192,8 @@ export function MonopolyPlayerList({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <p className="font-bold truncate text-[var(--foreground)]">
-                    {name}
+                    <span className="hidden sm:inline">{name}</span>
+                    <span className="sm:hidden">{shortPlayerName(name, 12)}</span>
                     {isMe && <span className="ml-1.5 text-xs font-normal text-[var(--primary)]">(you)</span>}
                   </p>
                   {isTurn && (
