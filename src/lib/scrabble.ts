@@ -804,7 +804,7 @@ export async function processScrabbleExchange(
   if (!session) return { error: 'Game not found' }
   if (session.phase === 'finished') return { error: 'Game already finished' }
   if (currentTurnPlayerId(session) !== playerId) return { error: "It's not your turn" }
-  if (session.bag.length < 1) return { error: 'Not enough tiles in the bag to exchange' }
+  if (session.bag.length < SCRABBLE_RACK_SIZE) return { error: 'Not enough tiles in the bag to exchange' }
 
   const states = await loadPlayerStates(supabase, gameId)
   const state = states.find((s) => s.player_id === playerId)
