@@ -23,7 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: game } = await admin
     .from('games')
     .select(
-      'host_token, status, title, max_players, timer_seconds, mafia_doctor_enabled, mafia_detective_enabled, mafia_anonymous_votes'
+      'host_token, status, title, max_players, timer_seconds, mafia_doctor_enabled, mafia_detective_enabled, mafia_anonymous_votes, replay_pending'
     )
     .eq('id', gameId)
     .maybeSingle()
@@ -66,6 +66,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         doctorEnabled: game.mafia_doctor_enabled !== false,
         detectiveEnabled: game.mafia_detective_enabled !== false,
         anonymousVotes: game.mafia_anonymous_votes === true,
+        replayPending: game.replay_pending === true,
         winningTeam: null,
         players: hostPlayers,
         lastNightKillPlayerId: null,
@@ -108,6 +109,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     doctorEnabled: session.doctor_enabled,
     detectiveEnabled: session.detective_enabled,
     anonymousVotes: session.anonymous_votes,
+    replayPending: game.replay_pending === true,
     winningTeam: session.winning_team,
     players: hostPlayers,
     lastNightKillPlayerId: session.night_kill_player_id,

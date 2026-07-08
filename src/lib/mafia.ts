@@ -202,3 +202,27 @@ export async function initializeMafiaGame(
 
   return { error: null }
 }
+
+export async function clearMafiaSessionData(
+  admin: SupabaseClient,
+  gameId: string
+): Promise<{ error?: string | null }> {
+  try {
+    const [{ error: e1 }, { error: e2 }, { error: e3 }] = await Promise.all([
+      admin.from('mafia_sessions').delete().eq('game_id', gameId),
+      admin.from('mafia_player_states').delete().eq('game_id', gameId),
+      admin.from('mafia_chat_messages').delete().eq('game_id', gameId),
+    ])
+
+    if (e1 || e2 || e3) {
+      const err = e1 || e2 || e3
+      console.error('Failed to clear mafia session data:', err)
+      return { error: 'Failed to clear mafia session data' }
+    }
+
+    return { error: null }
+  } catch (err) {
+    console.error('Error clearing mafia session:', err)
+    return { error: 'Error clearing mafia session data' }
+  }
+}

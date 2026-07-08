@@ -124,6 +124,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
         .from('mafia_chat_messages')
         .select('*')
         .eq('game_id', gameId)
+        .eq('scope', 'night')
         .order('created_at', { ascending: true })
         .limit(50)
       if (messages) {
@@ -146,6 +147,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       detectiveResult,
       mafiaTeammates,
       mafiaChatMessages,
+    }
+  }
+
+  // Fetch day chat messages (public to all players)
+  let dayChatMessages: any[] = []
+  if (session.phase !== 'role_reveal') {
+    const { data: messages } = await admin
+      .from('mafia_chat_messages')
+      .select('*')
+      .eq('game_id', gameId)
+      .eq('scope', 'day')
+      .order('created_at', { ascending: true })
+      .limit(100)
+    if (messages) {
+      dayChatMessages = messages.map((m) => ({
+        id: m.id,
+        game_id: m.game_id,
+        sender_player_id: m.sender_player_id,
+        sender_name: m.sender_name,
+        message: m.message,
+        created_at: m.created_at,
+      }))
     }
   }
 
@@ -174,6 +197,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     lastNightMafiaHadTarget: session.mafia_target_player_id != null,
     lastVoteResultPlayerId: session.vote_result_player_id,
     voteTallies: session.anonymous_votes && session.phase === 'voting' ? {} : voteTallies,
+    dayChatMessages,
 
     // Private state
     myState,
