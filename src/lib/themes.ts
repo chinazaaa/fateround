@@ -1,4 +1,4 @@
-export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate' | 'arctic' | 'naija'
+export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate' | 'arctic' | 'naija' | 'mafia'
 
 export interface ThemeConfig {
   id: ThemeId
@@ -208,6 +208,31 @@ export const THEMES: ThemeConfig[] = [
     emoji: '🇳🇬',
     preview: { bg: '#0B1F16', accent: '#D9A441', text: '#EDE3D3' },
     cssVars: {},
+  },
+  {
+    id: 'mafia',
+    label: 'Mafia',
+    emoji: '🐺',
+    preview: { bg: '#080510', accent: '#dc2626', text: '#f2f2f8' },
+    cssVars: {
+      '--background': '#080510',
+      '--background-soft': '#0e0b1a',
+      '--foreground': '#f2f2f8',
+      '--muted': '#948fb0',
+      '--faint': '#5e5a78',
+      '--card': 'rgba(16, 12, 32, 0.75)',
+      '--card-strong': 'rgba(22, 18, 42, 0.92)',
+      '--card-hover': 'rgba(30, 24, 56, 0.85)',
+      '--surface-inset-bg': 'rgba(120, 80, 255, 0.04)',
+      '--border': 'rgba(120, 80, 255, 0.1)',
+      '--border-strong': 'rgba(120, 80, 255, 0.2)',
+      '--primary': '#a855f7',
+      '--primary-strong': '#9333ea',
+      '--primary-glow': 'rgba(168, 85, 247, 0.4)',
+      '--gradient-title-start': '#f2f2f8',
+      '--gradient-title-end': '#a855f7',
+      '--modal-backdrop': 'rgba(4, 2, 8, 0.85)',
+    },
   },
 ]
 

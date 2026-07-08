@@ -20,7 +20,9 @@ import { useRoomMemberJoin, useRoomMemberNamePrefill, useRoomMemberAutoJoin } fr
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { gameTypeConfig } from '@/lib/game-types'
+import { MAFIA_MIN_PLAYERS } from '@/lib/mafia'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, MafiaPublicPlayer, MafiaMyState, MafiaPhase, MafiaTeam, MafiaChatMessage } from '@/types'
 
@@ -49,6 +51,7 @@ interface MafiaStateResponse {
   lastNightMafiaHadTarget: boolean
   lastVoteResultPlayerId: string | null
   voteTallies: Record<string, number>
+  dayChatMessages?: MafiaChatMessage[]
   myState: MafiaMyState | null
 }
 
@@ -134,11 +137,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   useApplyGameTheme('mafia') // Force deep indigo mafia theme
 
   // Table sync triggers state reload
-  useGameTableSync(
-    gameCode,
-    [{ table: 'games', column: 'id' }, 'mafia_sessions', 'mafia_player_states', 'mafia_chat_messages'],
-    load
-  )
+  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'mafia_sessions', 'mafia_player_states'], load)
 
   // Polling fallback
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
@@ -242,6 +241,54 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     [gameCode, myResumeToken, load, toastError]
   )
 
+  const sendDayMessage = useCallback(
+    async (msg: string) => {
+      if (!myResumeToken) return
+      try {
+        const res = await fetch(`/api/mafia/${gameCode}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resumeToken: myResumeToken, message: msg, scope: 'day' }),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          toastError(data.error ?? 'Failed to send message')
+        } else {
+          await load()
+        }
+      } catch {
+        toastError('Failed to send message')
+      }
+    },
+    [gameCode, myResumeToken, load, toastError]
+  )
+
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
+  const toggleReplayReady = useCallback(
+    async (ready: boolean) => {
+      if (!myResumeToken) {
+        toastError('Your player session expired — rejoin to continue')
+        return
+      }
+      setReplayReadyPending(true)
+      try {
+        const res = await fetch('/api/players/ready', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? 'Failed to update ready')
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to update ready')
+      } finally {
+        setReplayReadyPending(false)
+      }
+    },
+    [gameCode, myResumeToken, load, toastError]
+  )
+
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
 
@@ -322,6 +369,23 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'waiting') {
     const me = players.find((p) => p.id === myPlayerId)
+    if (game?.replay_pending) {
+      return (
+        <GameJoinLobbyShell gameCode={gameCode}>
+          <div className="glass-card p-6 rounded-2xl border border-[var(--border)]">
+            <ReplayReadyRing
+              players={players}
+              meId={myPlayerId}
+              isHost={false}
+              minPlayers={MAFIA_MIN_PLAYERS}
+              onToggleReady={(ready) => void toggleReplayReady(ready)}
+              onStart={() => {}}
+              pending={replayReadyPending}
+            />
+          </div>
+        </GameJoinLobbyShell>
+      )
+    }
     return (
       <GameJoinLobbyShell gameCode={gameCode}>
         <GameLobbyWaitingPanel
@@ -351,6 +415,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       lastNightKillPlayerId,
       lastNightMafiaHadTarget,
       lastVoteResultPlayerId,
+      dayChatMessages,
     } = mafiaState
 
     const me = publicPlayers.find((p) => p.id === myPlayerId)
@@ -364,15 +429,15 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     const votedPlayer = publicPlayers.find((p) => p.id === lastVoteResultPlayerId)
 
     return (
-      <div className="min-h-screen bg-linear-to-b from-slate-950 via-slate-900 to-indigo-950 text-slate-100 flex flex-col font-sans">
+      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col font-sans">
         {isViewer && <ViewerModeBanner />}
 
         {/* Header */}
-        <header className="px-6 py-4 border-b border-indigo-950 bg-slate-950/80 backdrop-blur flex justify-between items-center shadow-lg">
+        <header className="px-6 py-4 border-b border-[var(--border)] bg-[var(--card)] backdrop-blur flex justify-between items-center shadow-lg">
           <div className="flex items-center space-x-3">
             <span className="text-2xl">🐺</span>
             <div>
-              <h1 className="font-bold text-lg text-purple-300">Mafia</h1>
+              <h1 className="font-bold text-lg text-[var(--primary)]">Mafia</h1>
               <p className="text-xs text-indigo-400 uppercase tracking-widest font-semibold">
                 {phase === 'role_reveal' ? 'Intro' : `Day ${dayNumber} — ${phase.replace('_', ' ')}`}
               </p>
@@ -398,8 +463,10 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         {/* Main Content Grid */}
         <main className="flex-1 max-w-4xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Left panel: My Secret Role & Status */}
-          <div className="md:col-span-1 bg-slate-900/60 border border-indigo-950/80 rounded-xl p-6 flex flex-col items-center justify-center text-center shadow-xl backdrop-blur">
-            <h2 className="text-sm font-semibold tracking-widest uppercase text-indigo-400 mb-4">Your Identity</h2>
+          <div className="md:col-span-1 glass-card border border-[var(--border)] rounded-2xl p-6 flex flex-col items-center justify-center text-center shadow-xl">
+            <h2 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4">
+              Your Identity
+            </h2>
             {myState ? (
               <div className="flex flex-col items-center space-y-3">
                 <div className="text-6xl animate-pulse">
@@ -410,7 +477,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                 >
                   {myRole ? myRole.toUpperCase() : 'VILLAGER'}
                 </div>
-                <div className="text-xs text-slate-400 px-3 py-1 bg-indigo-950/40 rounded-full border border-indigo-900/30">
+                <div className="text-xs text-muted px-3 py-1 bg-[var(--surface-inset-bg)] rounded-full border border-[var(--border)]">
                   Team: {myTeam === 'mafia' ? 'Mafia 🔪' : 'Village 🏘️'}
                 </div>
                 <div className="mt-4 text-sm text-slate-300">
@@ -460,7 +527,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           {/* Right panel: Game Board/Phases & Public Players */}
           <div className="md:col-span-2 space-y-6">
             {/* Phase instruction banner */}
-            <div className="bg-slate-900/60 border border-indigo-950/80 rounded-xl p-6 shadow-xl backdrop-blur">
+            <div className="glass-card border border-[var(--border)] rounded-2xl p-6 shadow-xl">
               {phase === 'role_reveal' && (
                 <div className="text-center py-6 space-y-4">
                   <h3 className="text-xl font-bold text-purple-300">Look at your role Card!</h3>
@@ -640,9 +707,19 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               )}
             </div>
 
+            {/* Daytime Public Chat (shown during all daytime phases) */}
+            {phase !== 'night' && phase !== 'role_reveal' && (
+              <MafiaDayChat
+                messages={dayChatMessages || []}
+                onSendMessage={sendDayMessage}
+                myPlayerId={myPlayerId}
+                disabled={!amIAlive || amISpectator}
+              />
+            )}
+
             {/* Players List Panel */}
-            <div className="bg-slate-900/60 border border-indigo-950/80 rounded-xl p-6 shadow-xl backdrop-blur">
-              <h3 className="text-sm font-semibold tracking-widest uppercase text-indigo-400 mb-4">
+            <div className="glass-card border border-[var(--border)] rounded-2xl p-6 shadow-xl">
+              <h3 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4">
                 Players Directory
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -691,13 +768,13 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   // Fallback / finished state
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-6 text-center">
-      <div className="max-w-md w-full bg-slate-900 border border-indigo-950 rounded-xl p-8 shadow-2xl space-y-6">
-        <h1 className="text-4xl font-extrabold text-purple-400 animate-pulse">GAME OVER</h1>
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col justify-center items-center p-6 text-center">
+      <div className="max-w-md w-full glass-card border border-[var(--border)] rounded-2xl p-8 shadow-2xl space-y-6">
+        <h1 className="text-4xl font-extrabold text-[var(--primary)] animate-pulse">GAME OVER</h1>
 
         {mafiaState?.winningTeam ? (
           <div className="space-y-2">
-            <p className="text-slate-400 text-sm uppercase tracking-widest font-bold">Winning Team</p>
+            <p className="text-muted text-sm uppercase tracking-widest font-bold">Winning Team</p>
             <div
               className={`text-3xl font-black ${mafiaState.winningTeam === 'mafia' ? 'text-red-500' : 'text-emerald-400'}`}
             >
@@ -705,15 +782,20 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
             </div>
           </div>
         ) : (
-          <p className="text-slate-300">The game has finished!</p>
+          <p className="text-muted">The game has finished!</p>
         )}
 
-        <div className="border-t border-indigo-950/60 pt-6">
-          <h3 className="text-sm font-semibold tracking-widest uppercase text-indigo-400 mb-4">Roles Reveal</h3>
+        <div className="border-t border-[var(--border)] pt-6">
+          <h3 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4 font-mono">
+            Roles Reveal
+          </h3>
           <div className="space-y-2">
             {mafiaState?.players.map((p) => (
-              <div key={p.id} className="flex justify-between items-center text-sm p-2 rounded bg-slate-950/40">
-                <span className="font-semibold text-slate-300">{p.name}</span>
+              <div
+                key={p.id}
+                className="flex justify-between items-center text-sm p-2 rounded bg-[var(--surface-inset-bg)] border border-[var(--border)]"
+              >
+                <span className="font-semibold text-muted">{p.name}</span>
                 <span
                   className={`font-mono text-xs uppercase ${p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}
                 >
@@ -726,9 +808,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
         <button
           onClick={() => router.push('/')}
-          className="w-full py-3 bg-purple-600 hover:bg-purple-700 font-semibold rounded-lg transition"
+          className="w-full py-3 btn-secondary font-semibold rounded-xl transition"
         >
-          Return to Lobby
+          Exit to Home
         </button>
       </div>
     </div>
@@ -826,6 +908,80 @@ function MafiaNightChat({ messages, onSendMessage, myPlayerId }: MafiaChatProps)
           type="submit"
           disabled={sending || !text.trim()}
           className="px-4 py-2 bg-red-750 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition"
+        >
+          Send
+        </button>
+      </form>
+    </div>
+  )
+}
+
+interface MafiaDayChatProps {
+  messages: MafiaChatMessage[]
+  onSendMessage: (msg: string) => Promise<void>
+  myPlayerId: string | null
+  disabled?: boolean
+}
+
+function MafiaDayChat({ messages, onSendMessage, myPlayerId, disabled = false }: MafiaDayChatProps) {
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!text.trim() || sending || disabled) return
+    setSending(true)
+    try {
+      await onSendMessage(text.trim())
+      setText('')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="glass-card p-6 rounded-xl border border-[var(--border)] mt-6">
+      <h4 className="text-sm font-semibold tracking-wider text-[var(--primary)] uppercase mb-3">
+        💬 Town Discussion Chat
+      </h4>
+      <div className="bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-lg p-4 h-48 overflow-y-auto space-y-2 flex flex-col justify-end font-sans">
+        {messages.length === 0 ? (
+          <p className="text-xs text-muted italic text-center py-4">
+            No messages yet. Share your thoughts or point fingers!
+          </p>
+        ) : (
+          messages.map((m) => {
+            const isMe = m.sender_player_id === myPlayerId
+            return (
+              <div key={m.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                <div
+                  className={`px-3 py-1.5 rounded-lg text-sm max-w-[80%] ${
+                    isMe
+                      ? 'bg-[var(--primary)] text-white border border-[var(--primary-glow)] font-sans'
+                      : 'bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] font-sans'
+                  }`}
+                >
+                  {!isMe && <span className="block text-[10px] text-muted font-bold mb-0.5">{m.sender_name}</span>}
+                  <span>{m.message}</span>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+      <form onSubmit={handleSubmit} className="mt-2 flex space-x-2">
+        <input
+          type="text"
+          value={text}
+          disabled={sending || disabled}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={disabled ? 'You are dead/spectator and cannot type...' : 'Type your arguments here...'}
+          className="flex-1 px-3 py-2 bg-[var(--background)] border border-[var(--border)] rounded-lg text-sm focus:outline-none focus:border-[var(--primary)] text-[var(--foreground)] placeholder:text-muted"
+        />
+        <button
+          type="submit"
+          disabled={sending || !text.trim() || disabled}
+          className="px-4 py-2 btn-primary text-sm font-semibold rounded-lg transition"
         >
           Send
         </button>
