@@ -190,6 +190,7 @@ import {
 } from '@/lib/npat'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_DEFAULT_TIMER, WORD_HUNT_TIMER_OPTIONS } from '@/lib/word-hunt'
 import { formatSudokuGameDuration, SUDOKU_GAME_DURATION_OPTIONS } from '@/lib/sudoku'
+import { MATCHING_PAIRS_GAME_DURATION_OPTIONS, formatMatchingPairsGameDuration } from '@/lib/memory-match'
 import {
   DESCRIBE_IT_DEFAULT_ROUNDS,
   DESCRIBE_IT_DEFAULT_TURN_SECONDS,
@@ -535,6 +536,7 @@ function CreateGameInner() {
               participant_mode: 'joiners' as const,
               anonymous: true,
               rounds_count: 1,
+              game_duration_seconds: 0,
             }
           : {}),
         ...(isWhoSaidThis(type)
@@ -2887,6 +2889,33 @@ function CreateGameInner() {
                       )
                     )}
                   </select>
+                </Field>
+                <Field label="Time limit">
+                  <select
+                    value={settings.timer_seconds ?? 0}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {MATCHING_PAIRS_GAME_DURATION_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {formatMatchingPairsGameDuration(s)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Rounds">
+                  <select
+                    value={settings.rounds_count ?? 1}
+                    onChange={(e) => setSettings({ ...settings, rounds_count: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {[1, 2, 3, 5, 10].map((n) => (
+                      <option key={n} value={n}>
+                        {n} round{n === 1 ? '' : 's'}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-faint text-xs mt-1">Scores accumulate across all rounds.</p>
                 </Field>
                 <Field label="Grid size">
                   <div className="grid grid-cols-2 gap-3">

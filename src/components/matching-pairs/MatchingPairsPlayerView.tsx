@@ -25,6 +25,7 @@ import {
   MATCHING_PAIRS_FLIP_BACK_MS,
   MATCHING_PAIRS_POINTS_PER_PAIR,
   MATCHING_PAIRS_STREAK_BONUS,
+  MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY,
   matchingPairsGridLayout,
   MATCHING_PAIRS_MIN_PLAYERS,
   type MatchingPairsMetadata,
@@ -124,7 +125,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const showFlash = useCallback((type: 'match' | 'miss' | 'streak') => {
     if (flashRef.current) clearTimeout(flashRef.current)
     setLastFlashType(type)
-    flashRef.current = setTimeout(() => setLastFlashType(null), 1200)
+    flashRef.current = setTimeout(() => setLastFlashType(null), 1800)
   }, [])
 
   // ── Bootstrap ──────────────────────────────────────────────────────────────
@@ -300,9 +301,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // Realtime: progress updates (opponents finishing, etc.).
   // Apply optimistically to local state from the realtime payload.
-  // We do NOT call load() here because that would rebuild the board from
-  // submissions, overwriting the optimistic local flip state and causing
-  // matched cards to flicker or a newly-flipped single card to revert.
+  // Also transition the screen when this player's own finished flag flips
+  // (e.g. the server marks them finished from a finishing flip) or when the
+  // game status transitions to finished (all players done).
   useEffect(() => {
     if (!roundId) return
     const channel = supabase
@@ -312,7 +313,6 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         { event: '*', schema: 'public', table: 'memory_match_progress', filter: `round_id=eq.${roundId}` },
         (payload) => {
           const updated = payload.new as MatchingPairsProgress
-          // Optimistic local update first so the UI reacts instantly.
           setAllProgress((prev) => {
             const idx = prev.findIndex((p) => p.player_id === updated.player_id)
             if (idx >= 0) {
@@ -322,13 +322,18 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             }
             return [...prev, updated]
           })
+          // If our own row flips to finished, call load() so computeScreen
+          // transitions to 'waiting_for_others' immediately.
+          if (myPlayerId && updated.player_id === myPlayerId && updated.finished && !finished) {
+            void load()
+          }
         }
       )
       .subscribe()
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [roundId])
+  }, [roundId, myPlayerId, finished, load])
 
   // Bug #1 fix: listen for game status changes so non-host players transition
   // from the waiting screen to the live game view when the host starts the game.
@@ -473,6 +478,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         // Mismatch — flip back after delay.
         showFlash('miss')
         setCurrentStreak(0)
+        setTotalPoints((prev) => Math.max(0, prev - MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY))
 
         flipTimeoutRef.current = setTimeout(() => {
           setBoard((prev) => {
@@ -584,9 +590,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const wrongAttempts = mySubmissions.filter((s) => !s.is_match).length
 
   // Leaderboard for finished screen.
-  // Bug #5 fix: sort by finish_rank first (server-assigned, atomic) so the
-  // first-to-finish player is always shown in 1st place, even when two players
-  // end up with the same score.
+  // Ranked by final score descending (primary), then finish rank as tiebreaker.
   const leaderboard: MatchingPairsLeaderboardRow[] = meta
     ? allProgress
         .map((prog) => {
@@ -597,11 +601,11 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           }
         })
         .sort((a, b) => {
+          if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
           const rankA = a.placement ?? 999
           const rankB = b.placement ?? 999
           if (rankA !== rankB) return rankA - rankB
-          if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
-          return (a.timeTakenMs ?? Infinity) - (b.timeTakenMs ?? Infinity)
+          return (a.wrongAttempts ?? 0) - (b.wrongAttempts ?? 0)
         })
     : []
 
@@ -785,8 +789,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           <ScoreChip label="Streak" value={`${currentStreak}🔥`} accent="#f97316" />
         </div>
         {wrongAttempts > 0 && (
-          <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>
-            {wrongAttempts} miss{wrongAttempts !== 1 ? 'es' : ''}
+          <span style={{ fontSize: 12, color: '#ef4444' }}>
+            -{wrongAttempts * MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY} ({wrongAttempts} miss
+            {wrongAttempts !== 1 ? 'es' : ''})
           </span>
         )}
       </div>
@@ -813,7 +818,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         </div>
       )}
 
-      {/* Floating flash feedback */}
+      {/* Floating flash feedback — green for additions, red for deductions */}
       {lastFlashType && (
         <div
           className="animate-float-up-fade"
@@ -827,19 +832,26 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             fontSize: 22,
             textAlign: 'center',
             pointerEvents: 'none',
-            color: lastFlashType === 'miss' ? '#ef4444' : lastFlashType === 'streak' ? '#f97316' : '#22c55e',
             textShadow: '0 2px 8px rgba(0,0,0,0.15)',
           }}
         >
-          {lastFlashType === 'match' && `+${MATCHING_PAIRS_POINTS_PER_PAIR} 🎉`}
-          {lastFlashType === 'miss' && 'Miss — flip back!'}
-          {lastFlashType === 'streak' && `Streak! +${MATCHING_PAIRS_STREAK_BONUS} 🔥`}
+          {lastFlashType === 'match' && <span style={{ color: '#22c55e' }}>+{MATCHING_PAIRS_POINTS_PER_PAIR} 🎉</span>}
+          {lastFlashType === 'miss' && (
+            <div>
+              <div style={{ color: '#ef4444' }}>-{MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY}</div>
+              <div style={{ color: '#ef4444', fontSize: 14, marginTop: 2 }}>Miss — flip back!</div>
+            </div>
+          )}
+          {lastFlashType === 'streak' && (
+            <span style={{ color: '#22c55e' }}>Streak! +{MATCHING_PAIRS_STREAK_BONUS} 🔥</span>
+          )}
         </div>
       )}
 
       {/* Card grid */}
       {board && meta ? (
         <div
+          className={gridLayout.cols === 8 ? 'matching-pairs-grid-8x4' : ''}
           style={{
             display: 'grid',
             gridTemplateColumns: `repeat(${gridLayout.cols}, 1fr)`,
@@ -880,6 +892,12 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       <style>{`
         @keyframes mpFlash { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes mpCardMatch { 0% { transform: scale(1); } 50% { transform: scale(1.08); } 100% { transform: scale(1); } }
+        @media (max-width: 480px) {
+          .matching-pairs-grid-8x4 {
+            grid-template-columns: repeat(4, 1fr) !important;
+            gap: 4px !important;
+          }
+        }
       `}</style>
     </MatchingPairsPlayShell>
   )
@@ -1135,6 +1153,23 @@ function MatchingPairsWaitingForOthers({
         <ScoreChip label="Streak" value={`${currentStreak}🔥`} accent="#f97316" />
       </div>
 
+      {wrongAttempts > 0 && (
+        <div
+          style={{
+            background: 'rgba(239,68,68,0.08)',
+            border: '1px solid rgba(239,68,68,0.2)',
+            borderRadius: 12,
+            padding: '10px 16px',
+            display: 'inline-block',
+            marginBottom: 16,
+          }}
+        >
+          <span style={{ color: '#ef4444', fontWeight: 700 }}>
+            -{wrongAttempts * MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY} penalty ({wrongAttempts} miss
+            {wrongAttempts !== 1 ? 'es' : ''})
+          </span>
+        </div>
+      )}
       {wrongAttempts === 0 && pairsMatched >= gridSizePairs && (
         <div
           style={{
