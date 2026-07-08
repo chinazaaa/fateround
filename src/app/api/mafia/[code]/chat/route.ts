@@ -8,14 +8,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const gameId = code.toUpperCase()
   const admin = getSupabaseAdmin()
 
-  let body: { resumeToken?: unknown; message?: unknown }
+  let body: { resumeToken?: unknown; message?: unknown; scope?: unknown }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
   }
 
-  const { resumeToken, message } = body
+  const { resumeToken, message, scope = 'night' } = body
 
   const MAX_CHAT_LENGTH = 500
   if (typeof resumeToken !== 'string' || typeof message !== 'string' || !message.trim()) {
@@ -44,15 +44,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const session = mafiaSession as MafiaSession
   const playerState = mafiaPlayerState as MafiaPlayerState
 
-  // 3. Verify player is alive Mafia and it's night phase
-  if (playerState.role !== 'mafia') {
-    return NextResponse.json({ error: 'Only Mafia members can use night chat' }, { status: 403 })
-  }
+  const targetScope = scope === 'day' ? 'day' : 'night'
+
+  // 3. Verify player is alive and phase restrictions match scope
   if (!playerState.is_alive) {
     return NextResponse.json({ error: 'Dead players cannot chat' }, { status: 403 })
   }
-  if (session.phase !== 'night') {
-    return NextResponse.json({ error: 'Night chat is only active during the night phase' }, { status: 403 })
+
+  if (targetScope === 'night') {
+    if (playerState.role !== 'mafia') {
+      return NextResponse.json({ error: 'Only Mafia members can use night chat' }, { status: 403 })
+    }
+    if (session.phase !== 'night') {
+      return NextResponse.json({ error: 'Night chat is only active during the night phase' }, { status: 403 })
+    }
+  } else {
+    const dayPhases = ['day_report', 'discussion', 'voting', 'elimination']
+    if (!dayPhases.includes(session.phase)) {
+      return NextResponse.json({ error: 'Day chat is only active during daytime phases' }, { status: 403 })
+    }
   }
 
   // 4. Save message to database
@@ -61,6 +71,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     sender_player_id: auth.player.id,
     sender_name: auth.player.name,
     message: message.trim(),
+    scope: targetScope,
   })
 
   if (error) {

@@ -17,6 +17,7 @@ import { HostMafiaLobbyPanel } from '@/components/host-lobby/HostMafiaLobbyPanel
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 
 interface HostPlayer {
   id: string
@@ -40,6 +41,7 @@ interface MafiaHostStateResponse {
   doctorEnabled: boolean
   detectiveEnabled: boolean
   anonymousVotes: boolean
+  replayPending: boolean
   winningTeam: MafiaTeam | null
   players: HostPlayer[]
   lastNightKillPlayerId: string | null
@@ -165,6 +167,52 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     }
   }
 
+  const confirmReturnToLobby = async () => {
+    const ok = await confirm({
+      title: 'Return to lobby setup?',
+      message: 'This will reset the rematch ready ring and reopen settings.',
+      confirmLabel: 'Return to lobby',
+    })
+    if (!ok) return
+    try {
+      const res = await fetch(`/api/games/${gameCode}/play-again`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, same_settings: false }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? 'Failed to return to lobby')
+      }
+      await load()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to return to lobby')
+    }
+  }
+
+  const playAgain = async () => {
+    const ok = await confirm({
+      title: 'Play again with same settings?',
+      message: 'This will reset the game state and invite all players to ready up.',
+      confirmLabel: 'Play again',
+    })
+    if (!ok) return
+    try {
+      const res = await fetch(`/api/games/${gameCode}/play-again`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken, same_settings: true }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? 'Failed to trigger play again')
+      }
+      await load()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to play again')
+    }
+  }
+
   if (!mafiaState) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-950 text-purple-200">
@@ -192,6 +240,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     mafia_doctor_enabled: mafiaState.doctorEnabled ?? true,
     mafia_detective_enabled: mafiaState.detectiveEnabled ?? true,
     mafia_anonymous_votes: mafiaState.anonymousVotes ?? false,
+    replay_pending: mafiaState.replayPending,
     created_at: new Date().toISOString(),
   } as unknown as Game
 
@@ -217,41 +266,68 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
       gameType="mafia"
       settings={
         isWaiting ? (
-          <HostMafiaLobbyPanel
-            gameCode={gameCode}
-            hostToken={hostToken}
-            game={gameObj}
-            playerCount={playersList.length}
-            onGameUpdate={() => void load()}
-          />
+          mafiaState.replayPending ? (
+            <div className="surface-inset rounded-xl p-6 border border-[var(--border)]">
+              <ReplayReadyRing
+                players={playersList}
+                meId={null}
+                isHost
+                minPlayers={MAFIA_MIN_PLAYERS}
+                onToggleReady={() => {}}
+                onStart={() => void startGame()}
+                starting={starting}
+              />
+            </div>
+          ) : (
+            <HostMafiaLobbyPanel
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={gameObj}
+              playerCount={playersList.length}
+              onGameUpdate={() => void load()}
+            />
+          )
         ) : undefined
       }
       top={
         isWaiting ? (
-          <p className="surface-inset rounded-xl px-4 py-3 text-sm text-muted">
-            You&apos;re hosting this Mafia game as the Narrator. Share the invite link with players, then start the game
-            below once at least {MAFIA_MIN_PLAYERS} players have joined.
-          </p>
+          mafiaState.replayPending ? undefined : (
+            <p className="surface-inset rounded-xl px-4 py-3 text-sm text-muted">
+              You&apos;re hosting this Mafia game as the Narrator. Share the invite link with players, then start the
+              game below once at least {MAFIA_MIN_PLAYERS} players have joined.
+            </p>
+          )
         ) : undefined
       }
       footer={
         isWaiting ? (
-          <HostLobbyWaitingFooter
-            gameCode={gameCode}
-            hostToken={hostToken}
-            game={gameObj}
-            onStart={() => void startGame()}
-            onEnded={() => void load()}
-            canStart={canStart}
-            starting={starting}
-            startLabel="Start Mafia Game"
-            startDisabledHint={
-              canStart
-                ? null
-                : `Need at least ${MAFIA_MIN_PLAYERS} players to start (${mafiaState.players.length}/${MAFIA_MIN_PLAYERS})`
-            }
-            className="space-y-3"
-          />
+          mafiaState.replayPending ? (
+            <div className="pt-4 border-t border-[var(--border)] text-center">
+              <button
+                onClick={() => void confirmReturnToLobby()}
+                className="btn-secondary py-2 px-4 text-xs font-semibold rounded-lg"
+              >
+                Return to lobby setup instead
+              </button>
+            </div>
+          ) : (
+            <HostLobbyWaitingFooter
+              gameCode={gameCode}
+              hostToken={hostToken}
+              game={gameObj}
+              onStart={() => void startGame()}
+              onEnded={() => void load()}
+              canStart={canStart}
+              starting={starting}
+              startLabel="Start Mafia Game"
+              startDisabledHint={
+                canStart
+                  ? null
+                  : `Need at least ${MAFIA_MIN_PLAYERS} players to start (${mafiaState.players.length}/${MAFIA_MIN_PLAYERS})`
+              }
+              className="space-y-3"
+            />
+          )
         ) : !isFinished ? (
           <HostEndGameButton
             gameCode={gameCode}
@@ -431,6 +507,61 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     </div>
   )
 
+  const hostFinishedPanel = (
+    <div className="max-w-2xl w-full mx-auto glass-card border border-[var(--border)] rounded-2xl p-8 shadow-2xl space-y-6 text-center">
+      <h1 className="text-4xl font-extrabold text-[var(--primary)] animate-pulse">GAME OVER</h1>
+
+      {mafiaState?.winningTeam ? (
+        <div className="space-y-2">
+          <p className="text-muted text-sm uppercase tracking-widest font-bold">Winning Team</p>
+          <div
+            className={`text-3xl font-black ${mafiaState.winningTeam === 'mafia' ? 'text-red-500' : 'text-emerald-400'}`}
+          >
+            {mafiaState.winningTeam === 'mafia' ? 'MAFIA 🔪' : 'VILLAGE 🏘️'}
+          </div>
+        </div>
+      ) : (
+        <p className="text-muted font-semibold">The game has finished!</p>
+      )}
+
+      <div className="border-t border-[var(--border)] pt-6">
+        <h3 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4 font-mono">
+          Roles Reveal
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {players.map((p) => (
+            <div
+              key={p.id}
+              className="flex justify-between items-center text-sm p-3 rounded bg-[var(--surface-inset-bg)] border border-[var(--border)]"
+            >
+              <span className="font-semibold text-muted">{p.name}</span>
+              <span
+                className={`font-mono text-xs uppercase ${p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}
+              >
+                {p.role}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="border-t border-[var(--border)] pt-6 flex flex-col sm:flex-row gap-3 justify-center">
+        <button
+          onClick={() => void playAgain()}
+          className="btn-primary py-3 px-6 text-sm font-semibold rounded-xl transition"
+        >
+          ↻ Play again · same settings
+        </button>
+        <button
+          onClick={() => void confirmReturnToLobby()}
+          className="btn-secondary py-3 px-6 text-sm font-semibold rounded-xl transition"
+        >
+          Return to lobby
+        </button>
+      </div>
+    </div>
+  )
+
   return (
     <HostGameLayout
       gameCode={gameCode}
@@ -443,7 +574,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
       header={<HostGameHeader game={gameObj} />}
       primary={primary}
       manage={manage}
-      finished={manage}
+      finished={hostFinishedPanel}
     />
   )
 }
