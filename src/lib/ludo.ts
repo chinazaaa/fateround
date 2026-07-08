@@ -826,14 +826,7 @@ export async function processLudoRoll(
   // legal move, the player enters the move phase; the move handler then advances
   // the turn if the remaining die can't be used. (Requiring the full two-die
   // sequence to be playable here wrongly skipped turns where only one die moved.)
-  const turnMoves = resolveLudoMovesForTurn(
-    playerRow.color,
-    playerRow.pieces,
-    remainingDice,
-    states,
-    playerId,
-    variant
-  )
+  const turnMoves = resolveLudoMovesForTurn(playerRow.color, playerRow.pieces, remainingDice, states, playerId, variant)
   const canPlay = turnMoves.length > 0
   const name = playerNames.get(playerId) ?? 'Player'
   const rollLabel = formatLudoDiceRoll(dice)
@@ -940,11 +933,7 @@ export async function processLudoMove(
 
   let move =
     diceIndex != null
-      ? moves.find(
-          (m) =>
-            m.pieceId === pieceId &&
-            (m.diceIndex === diceIndex || (m.usesAllDice && diceIndex === 0))
-        )
+      ? moves.find((m) => m.pieceId === pieceId && (m.diceIndex === diceIndex || (m.usesAllDice && diceIndex === 0)))
       : undefined
 
   if (!move) {

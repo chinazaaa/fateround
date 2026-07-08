@@ -694,14 +694,14 @@ export function LudoGamePanel({
                 {hasCombinedMove
                   ? `Move your piece ${remainingDice.reduce((sum, n) => sum + n, 0)} spaces`
                   : allSixes && remainingDice.length === 2
-                  ? 'Doubles! Use each 6 — bring out two pieces, or one out then move 6'
-                  : allSixes && remainingDice.length === 1
-                    ? 'Use your 6 — bring out another piece or move 6 spaces'
-                    : hasBaseSixMove
-                      ? 'Use your 6 — pick a piece to bring onto your ★ square'
-                      : remainingDice.length === 1
-                        ? `Move a piece ${remainingDice[0]} spaces`
-                        : `Use each die (${remainingDice.join(' & ')}) — pick a piece`}
+                    ? 'Doubles! Use each 6 — bring out two pieces, or one out then move 6'
+                    : allSixes && remainingDice.length === 1
+                      ? 'Use your 6 — bring out another piece or move 6 spaces'
+                      : hasBaseSixMove
+                        ? 'Use your 6 — pick a piece to bring onto your ★ square'
+                        : remainingDice.length === 1
+                          ? `Move a piece ${remainingDice[0]} spaces`
+                          : `Use each die (${remainingDice.join(' & ')}) — pick a piece`}
               </p>
               <p className="text-center text-xs text-white/60">
                 Tap a highlighted piece on the board or use a button below
