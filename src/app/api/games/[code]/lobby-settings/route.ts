@@ -170,8 +170,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
-  if (rounds_count !== undefined) {
-    gameUpdate.rounds_count = Math.max(1, Math.min(100, Math.round(rounds_count)))
+  if (limitOnlyType === 'matching_pairs') {
+    if (rounds_count !== undefined) {
+      gameUpdate.rounds_count = Math.max(1, Math.min(100, Math.round(rounds_count)))
+    }
+  } else if (rounds_count !== undefined) {
+    return NextResponse.json({ error: 'Rounds count only applies to Matching Pairs games' }, { status: 400 })
   }
 
   if (game_duration_seconds !== undefined) {

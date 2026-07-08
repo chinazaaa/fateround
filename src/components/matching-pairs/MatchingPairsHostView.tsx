@@ -264,22 +264,19 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       }
       setTab('manage')
       await load()
-      // After load, if the host's session was preserved but hostPlayerId is
-      // still null, try to reclaim the host's previous player from the roster
-      // using the stored session name. This prevents the host from being
-      // prompted to re-enter their name when their player already exists.
+      // Use a fresh roster query (instead of the stale `players` closure state
+      // that hasn't been re-rendered after load()) to check whether the host's
+      // stored player still exists in the game.
       const stored = getPlayerSession(gameCode)
-      if (stored && !players.some((p) => p.id === hostPlayerId)) {
-        const { data: freshPlayers } = await supabase.from('players').select('id, name').eq('game_id', gameCode)
-        if (freshPlayers) {
-          const matchingPlayer = (freshPlayers as { id: string; name: string }[]).find(
-            (p) => p.name === stored.playerName
-          )
-          if (matchingPlayer) {
-            setPlayerSession(gameCode, matchingPlayer.id, stored.playerName, 'both', stored.resumeToken)
-            setHostPlayerId(matchingPlayer.id)
-            setHostPlayerName(stored.playerName)
-          }
+      const { data: freshPlayers } = await supabase.from('players').select('id, name').eq('game_id', gameCode)
+      if (stored && freshPlayers && !freshPlayers.some((p) => p.id === stored.playerId)) {
+        const matchingPlayer = (freshPlayers as { id: string; name: string }[]).find(
+          (p) => p.name === stored.playerName
+        )
+        if (matchingPlayer) {
+          setPlayerSession(gameCode, matchingPlayer.id, stored.playerName, 'both', stored.resumeToken)
+          setHostPlayerId(matchingPlayer.id)
+          setHostPlayerName(stored.playerName)
         }
       }
     } finally {

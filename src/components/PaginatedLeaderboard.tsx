@@ -90,7 +90,8 @@ function RowContent({
               type="button"
               onClick={() => onToggleExpand(row.id)}
               className="shrink-0 text-faint hover:text-body transition-colors p-1"
-              aria-label={isExpanded ? 'Collapse stats' : 'Expand stats'}
+              aria-label={isExpanded ? `Collapse stats for ${row.name}` : `Expand stats for ${row.name}`}
+              aria-expanded={isExpanded}
             >
               <svg
                 width="16"
@@ -209,7 +210,8 @@ export function PaginatedLeaderboard({
                       type="button"
                       onClick={() => toggleExpanded(row.id)}
                       className="shrink-0 text-faint hover:text-body transition-colors p-1"
-                      aria-label={isExpanded ? 'Collapse stats' : 'Expand stats'}
+                      aria-label={isExpanded ? `Collapse stats for ${row.name}` : `Expand stats for ${row.name}`}
+                      aria-expanded={isExpanded}
                     >
                       <svg
                         width="14"
