@@ -106,8 +106,9 @@ export function ReplayReadyRing({
                 {p.name.charAt(0).toUpperCase()}
               </span>
               <span className="min-w-0 flex-1 text-left">
-                <span className="block truncate text-sm font-semibold text-body">{isMe ? 'You' : p.name}</span>
-                {isMe ? <span className="block text-[11px] text-faint">this device</span> : null}
+                <span className="block truncate text-sm font-semibold text-body">
+                  {isMe ? `${p.name} (you)` : p.name}
+                </span>
               </span>
               {on ? (
                 <span className="shrink-0 text-xs font-bold text-[var(--primary)]">✅ Ready</span>

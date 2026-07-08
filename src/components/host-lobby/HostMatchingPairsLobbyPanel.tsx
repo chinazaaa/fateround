@@ -43,6 +43,7 @@ export function HostMatchingPairsLobbyPanel({ gameCode, hostToken, game, playerC
   const [gridSizePairs, setGridSizePairs] = useState<8 | 16>(8)
   // Game time limit is stored in timer_seconds (0 = no limit).
   const [timerSeconds, setTimerSeconds] = useState(0)
+  const [roundsCount, setRoundsCount] = useState(1)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -63,6 +64,7 @@ export function HostMatchingPairsLobbyPanel({ gameCode, hostToken, game, playerC
     setGridSizePairs(raw === 16 ? 16 : 8)
     // Decode game time limit: timer_seconds (0 = no limit).
     setTimerSeconds(game.timer_seconds ?? 0)
+    setRoundsCount(game.rounds_count ?? 1)
   }, [game, limits])
 
   useEffect(() => {
@@ -137,6 +139,15 @@ export function HostMatchingPairsLobbyPanel({ gameCode, hostToken, game, playerC
     })
   }
 
+  const onRoundsCountChange = (next: number) => {
+    if (saveState === 'saving') return
+    const previous = roundsCount
+    setRoundsCount(next)
+    void patchSettings({ rounds_count: next }).then((ok) => {
+      if (!ok) setRoundsCount(previous)
+    })
+  }
+
   const maxPlayerOptions = useMemo(
     () =>
       playerCountOptions(minPlayers, maxCap).map((n) => ({
@@ -169,7 +180,7 @@ export function HostMatchingPairsLobbyPanel({ gameCode, hostToken, game, playerC
   return (
     <HostLobbySettingsSection
       status={statusLabel}
-      summary={`${maxPlayers} max · ${formatMatchingPairsGridSize(gridSizePairs)} · ${formatMatchingPairsGameDuration(timerSeconds)}`}
+      summary={`${maxPlayers} max · ${formatMatchingPairsGridSize(gridSizePairs)} · ${formatMatchingPairsGameDuration(timerSeconds)} · ${roundsCount} round${roundsCount === 1 ? '' : 's'}`}
     >
       <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
         <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
@@ -181,6 +192,20 @@ export function HostMatchingPairsLobbyPanel({ gameCode, hostToken, game, playerC
 
       <HostLobbySettingBlock title="Game time limit">
         <HostLobbyOptionChips value={timerSeconds} options={timerSecondsOptions} onChange={onTimerSecondsChange} />
+      </HostLobbySettingBlock>
+
+      <HostLobbySettingBlock title="Rounds">
+        <HostLobbyOptionChips
+          value={roundsCount}
+          options={[
+            { value: 1, label: '1' },
+            { value: 2, label: '2' },
+            { value: 3, label: '3' },
+            { value: 5, label: '5' },
+            { value: 10, label: '10' },
+          ]}
+          onChange={onRoundsCountChange}
+        />
       </HostLobbySettingBlock>
 
       {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
