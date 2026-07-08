@@ -154,3 +154,11 @@ jobs:
             [ "$status" = "Success" ] || { echo "redeploy failed on $iid: $status"; rc=1; }
           done
           exit $rc
+
+      - name: Notify search engines (IndexNow)
+        if: env.ECR_REPOSITORY == 'fateround-prod'
+        run: |
+          set -euo pipefail
+          # Give the redeploy a moment to serve the new image (key file + pages).
+          sleep 15
+          node scripts/submit-indexnow.mjs

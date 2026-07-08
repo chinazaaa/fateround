@@ -9,7 +9,7 @@ import {
   TRACK_LENGTH,
   finishedPieceCount,
   dedupeLudoMovesForUi,
-  getLegalMovesFromRemaining,
+  resolveLudoMovesForTurn,
   parseLudoDice,
   pickLudoMoveForPiece,
   resolveRemainingDice,
@@ -576,7 +576,7 @@ export function LudoGamePanel({
     if (!isMyTurn || session.phase !== 'move' || !myState || remainingDice.length === 0 || !myPlayerId) {
       return []
     }
-    return getLegalMovesFromRemaining(myState.color, myState.pieces, remainingDice, states, myPlayerId, variant)
+    return resolveLudoMovesForTurn(myState.color, myState.pieces, remainingDice, states, myPlayerId, variant)
   }, [isMyTurn, session.phase, myState, states, myPlayerId, remainingDice, variant])
 
   const displayMoves = useMemo(() => dedupeLudoMovesForUi(legalMoves), [legalMoves])
@@ -614,6 +614,7 @@ export function LudoGamePanel({
   const diceDisplay = session.phase === 'move' ? parsedLastDice : rolling ? null : (displayDice ?? parsedLastDice)
 
   const hasBaseSixMove = displayMoves.some((m) => m.from.zone === 'base' && m.diceValue === 6)
+  const hasCombinedMove = displayMoves.some((m) => m.usesAllDice)
   const allSixes = remainingDice.length > 0 && remainingDice.every((value) => value === 6)
 
   return (
@@ -690,15 +691,17 @@ export function LudoGamePanel({
           {isMyTurn && session.phase === 'move' && displayMoves.length > 0 && onMovePiece && (
             <div className="space-y-2">
               <p className="text-center text-sm font-semibold text-white">
-                {allSixes && remainingDice.length === 2
-                  ? 'Doubles! Use each 6 — bring out two pieces, or one out then move 6'
-                  : allSixes && remainingDice.length === 1
-                    ? 'Use your 6 — bring out another piece or move 6 spaces'
-                    : hasBaseSixMove
-                      ? 'Use your 6 — pick a piece to bring onto your ★ square'
-                      : remainingDice.length === 1
-                        ? `Move a piece ${remainingDice[0]} spaces`
-                        : `Use each die (${remainingDice.join(' & ')}) — pick a piece`}
+                {hasCombinedMove
+                  ? `Move your piece ${remainingDice.reduce((sum, n) => sum + n, 0)} spaces`
+                  : allSixes && remainingDice.length === 2
+                    ? 'Doubles! Use each 6 — bring out two pieces, or one out then move 6'
+                    : allSixes && remainingDice.length === 1
+                      ? 'Use your 6 — bring out another piece or move 6 spaces'
+                      : hasBaseSixMove
+                        ? 'Use your 6 — pick a piece to bring onto your ★ square'
+                        : remainingDice.length === 1
+                          ? `Move a piece ${remainingDice[0]} spaces`
+                          : `Use each die (${remainingDice.join(' & ')}) — pick a piece`}
               </p>
               <p className="text-center text-xs text-white/60">
                 Tap a highlighted piece on the board or use a button below
@@ -731,7 +734,7 @@ export function LudoGamePanel({
                         </span>
                         Piece {move.pieceId + 1}
                         <span className="rounded bg-white/90 px-1 text-[10px] font-bold text-slate-900">
-                          🎲 {move.diceValue}
+                          🎲 {move.usesAllDice ? remainingDice.join('+') : move.diceValue}
                         </span>
                       </span>
                       <span className="mt-0.5 block font-normal text-white/60">
