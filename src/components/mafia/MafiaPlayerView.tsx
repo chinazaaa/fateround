@@ -467,7 +467,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         <main className="flex-1 max-w-4xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Left panel: My Secret Role & Status */}
           <div className="md:col-span-1 glass-card border border-[var(--border)] rounded-2xl p-6 flex flex-col items-center justify-center text-center shadow-xl">
-            <h2 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4">Your Identity</h2>
+            <h2 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4">
+              Your Identity
+            </h2>
             {myState ? (
               <div className="flex flex-col items-center space-y-3">
                 <div className="text-6xl animate-pulse">
@@ -787,10 +789,15 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         )}
 
         <div className="border-t border-[var(--border)] pt-6">
-          <h3 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4 font-mono">Roles Reveal</h3>
+          <h3 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4 font-mono">
+            Roles Reveal
+          </h3>
           <div className="space-y-2">
             {mafiaState?.players.map((p) => (
-              <div key={p.id} className="flex justify-between items-center text-sm p-2 rounded bg-[var(--surface-inset-bg)] border border-[var(--border)]">
+              <div
+                key={p.id}
+                className="flex justify-between items-center text-sm p-2 rounded bg-[var(--surface-inset-bg)] border border-[var(--border)]"
+              >
                 <span className="font-semibold text-muted">{p.name}</span>
                 <span
                   className={`font-mono text-xs uppercase ${p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}
@@ -937,10 +944,14 @@ function MafiaDayChat({ messages, onSendMessage, myPlayerId, disabled = false }:
 
   return (
     <div className="glass-card p-6 rounded-xl border border-[var(--border)] mt-6">
-      <h4 className="text-sm font-semibold tracking-wider text-[var(--primary)] uppercase mb-3">💬 Town Discussion Chat</h4>
+      <h4 className="text-sm font-semibold tracking-wider text-[var(--primary)] uppercase mb-3">
+        💬 Town Discussion Chat
+      </h4>
       <div className="bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-lg p-4 h-48 overflow-y-auto space-y-2 flex flex-col justify-end font-sans">
         {messages.length === 0 ? (
-          <p className="text-xs text-muted italic text-center py-4">No messages yet. Share your thoughts or point fingers!</p>
+          <p className="text-xs text-muted italic text-center py-4">
+            No messages yet. Share your thoughts or point fingers!
+          </p>
         ) : (
           messages.map((m) => {
             const isMe = m.sender_player_id === myPlayerId
@@ -967,7 +978,7 @@ function MafiaDayChat({ messages, onSendMessage, myPlayerId, disabled = false }:
           value={text}
           disabled={sending || disabled}
           onChange={(e) => setText(e.target.value)}
-          placeholder={disabled ? "You are dead/spectator and cannot type..." : "Type your arguments here..."}
+          placeholder={disabled ? 'You are dead/spectator and cannot type...' : 'Type your arguments here...'}
           className="flex-1 px-3 py-2 bg-[var(--background)] border border-[var(--border)] rounded-lg text-sm focus:outline-none focus:border-[var(--primary)] text-[var(--foreground)] placeholder:text-muted"
         />
         <button

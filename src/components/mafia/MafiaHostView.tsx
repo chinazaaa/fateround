@@ -293,8 +293,8 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
         isWaiting ? (
           mafiaState.replayPending ? undefined : (
             <p className="surface-inset rounded-xl px-4 py-3 text-sm text-muted">
-              You&apos;re hosting this Mafia game as the Narrator. Share the invite link with players, then start the game
-              below once at least {MAFIA_MIN_PLAYERS} players have joined.
+              You&apos;re hosting this Mafia game as the Narrator. Share the invite link with players, then start the
+              game below once at least {MAFIA_MIN_PLAYERS} players have joined.
             </p>
           )
         ) : undefined
@@ -525,10 +525,15 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
       )}
 
       <div className="border-t border-[var(--border)] pt-6">
-        <h3 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4 font-mono">Roles Reveal</h3>
+        <h3 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4 font-mono">
+          Roles Reveal
+        </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {players.map((p) => (
-            <div key={p.id} className="flex justify-between items-center text-sm p-3 rounded bg-[var(--surface-inset-bg)] border border-[var(--border)]">
+            <div
+              key={p.id}
+              className="flex justify-between items-center text-sm p-3 rounded bg-[var(--surface-inset-bg)] border border-[var(--border)]"
+            >
               <span className="font-semibold text-muted">{p.name}</span>
               <span
                 className={`font-mono text-xs uppercase ${p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}

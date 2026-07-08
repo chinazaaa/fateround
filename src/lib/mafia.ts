@@ -203,10 +203,7 @@ export async function initializeMafiaGame(
   return { error: null }
 }
 
-export async function clearMafiaSessionData(
-  admin: SupabaseClient,
-  gameId: string
-): Promise<{ error?: string | null }> {
+export async function clearMafiaSessionData(admin: SupabaseClient, gameId: string): Promise<{ error?: string | null }> {
   try {
     const [{ error: e1 }, { error: e2 }, { error: e3 }] = await Promise.all([
       admin.from('mafia_sessions').delete().eq('game_id', gameId),
