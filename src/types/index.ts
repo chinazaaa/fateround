@@ -229,6 +229,9 @@ export interface Game {
   chess_piece_set?: string | null
   /** Codewords — operative guess phase timer. */
   operative_timer_seconds?: number | null
+  mafia_doctor_enabled?: boolean
+  mafia_detective_enabled?: boolean
+  mafia_anonymous_votes?: boolean
   anonymous: boolean
   auto_reveal: boolean
   auto_submit_behavior: AutoSubmitBehavior

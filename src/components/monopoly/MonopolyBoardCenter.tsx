@@ -375,22 +375,18 @@ export function MonopolyBoardCenter({
       {showJail && (
         <div className={panelClass}>
           <p className={labelClass}>In Jail</p>
-          <p className={titleClass}>Kirikiri / Jail</p>
+          <p className={titleClass}>{themedSpaceName('Jail', 10, themeId)}</p>
           <p className={isDock ? 'text-xs text-muted leading-tight' : 'text-xs text-muted leading-snug'}>
-            Attempt {(myState?.jail_turns ?? 0) + 1}/3 — roll once for doubles, or pay {formatThemedMoney(50, themeId)}{' '}
-            now.
+            Attempt {(myState?.jail_turns ?? 0) + 1}/3 — roll once for doubles, or pay{' '}
+            {formatThemedMoney(MONOPOLY_JAIL_FINE, themeId)} now.
           </p>
           <div className="space-y-1.5 pt-0.5">
             <div className="grid grid-cols-2 gap-1.5">
-              <BoardPrimaryButton
-                onClick={() => postAction('/api/monopoly/jail', { decision: 'roll' })}
-                loading={acting}
-                disabled={acting}
-              >
+              <BoardPrimaryButton onClick={() => postAction('/api/monopoly/roll')} loading={acting} disabled={acting}>
                 Roll Doubles
               </BoardPrimaryButton>
               <BoardSecondaryButton
-                onClick={() => postAction('/api/monopoly/jail', { decision: 'pay' })}
+                onClick={() => postAction('/api/monopoly/jail', { method: 'pay' })}
                 disabled={acting || (myState?.cash ?? 0) < MONOPOLY_JAIL_FINE}
               >
                 Pay {formatThemedMoney(MONOPOLY_JAIL_FINE, themeId)}
@@ -398,7 +394,7 @@ export function MonopolyBoardCenter({
             </div>
             {myState && (myState.get_out_of_jail_free ?? 0) > 0 && (
               <BoardSecondaryButton
-                onClick={() => postAction('/api/monopoly/jail', { decision: 'card' })}
+                onClick={() => postAction('/api/monopoly/jail', { method: 'card' })}
                 disabled={acting}
               >
                 Use Card ({myState.get_out_of_jail_free})

@@ -12,6 +12,8 @@ import {
   isMahjongGame,
   isWordHuntGame,
   isSudokuGame,
+  isMatchingPairsGame,
+  isMafiaGame,
   parseGameType,
 } from '@/lib/game-types'
 import { clampBoardGameTurnTimer, type BoardGameLobbyType } from '@/lib/board-game-lobby-settings'
@@ -21,6 +23,7 @@ import { clampCrazyEightsGameDuration } from '@/lib/crazy-eights'
 import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
+import { MATCHING_PAIRS_GAME_DURATION_OPTIONS } from '@/lib/memory-match'
 import { clampLobbyMaxPlayers, fetchGamePlayerLimits, type LobbyLimitGameType } from '@/lib/game-limits'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
@@ -41,6 +44,7 @@ function boardGameLobbyType(gameType: string): BoardGameLobbyType | null {
 function timedLobbyLimitType(gameType: string): LobbyLimitGameType | null {
   const parsed = parseGameType(gameType)
   if (isWordHuntGame(parsed)) return 'word_hunt'
+  if (isMafiaGame(parsed)) return 'mafia'
   return null
 }
 
@@ -48,6 +52,7 @@ function timedLobbyLimitType(gameType: string): LobbyLimitGameType | null {
 function limitOnlyLobbyType(gameType: string): LobbyLimitGameType | null {
   const parsed = parseGameType(gameType)
   if (isSudokuGame(parsed)) return 'sudoku'
+  if (isMatchingPairsGame(parsed)) return 'matching_pairs'
   return null
 }
 
@@ -75,6 +80,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     ludo_variant,
     mahjong_ruleset,
     mahjong_rule_options,
+    mafia_doctor_enabled,
+    mafia_detective_enabled,
+    mafia_anonymous_votes,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -92,7 +100,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     crazy8_pick2_stacking === undefined &&
     ludo_variant === undefined &&
     mahjong_ruleset === undefined &&
-    mahjong_rule_options === undefined
+    mahjong_rule_options === undefined &&
+    mafia_doctor_enabled === undefined &&
+    mafia_detective_enabled === undefined &&
+    mafia_anonymous_votes === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -142,8 +153,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (timer_seconds !== undefined) {
     if (timedLobbyType === 'word_hunt') {
       gameUpdate.timer_seconds = clampWordHuntTimer(timer_seconds)
+    } else if (timedLobbyType === 'mafia') {
+      gameUpdate.timer_seconds = [30, 45, 60, 90, 120, 180].includes(timer_seconds) ? timer_seconds : 60
     } else if (boardLobbyType) {
       gameUpdate.timer_seconds = clampBoardGameTurnTimer(timer_seconds, boardLobbyType)
+    } else if (limitOnlyType === 'matching_pairs') {
+      // Matching Pairs game time limit (0 = no limit)
+      const maxOption = MATCHING_PAIRS_GAME_DURATION_OPTIONS[MATCHING_PAIRS_GAME_DURATION_OPTIONS.length - 1]
+      gameUpdate.timer_seconds = Math.max(0, Math.min(maxOption, Math.round(timer_seconds)))
     } else {
       // Limit-only games (sudoku) have no timer — an update here would otherwise
       // fall through silently and hit the DB with an empty patch.
@@ -154,6 +171,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (game_duration_seconds !== undefined) {
     if (limitOnlyType === 'sudoku') {
       gameUpdate.game_duration_seconds = clampSudokuGameDuration(game_duration_seconds)
+    } else if (limitOnlyType === 'matching_pairs') {
+      // Matching Pairs stores grid size as game_duration_seconds (0=8 pairs, 16=16 pairs)
+      gameUpdate.game_duration_seconds = game_duration_seconds === 16 ? 16 : 0
     } else if (!boardLobbyType) {
       return NextResponse.json({ error: 'This game type does not support game length settings' }, { status: 400 })
     } else if (boardLobbyType === 'monopoly') {
@@ -207,6 +227,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   } else if (mahjong_ruleset !== undefined || mahjong_rule_options !== undefined) {
     return NextResponse.json({ error: 'Mahjong rules only apply to Mahjong games' }, { status: 400 })
+  }
+
+  if (timedLobbyType === 'mafia') {
+    if (mafia_doctor_enabled !== undefined) gameUpdate.mafia_doctor_enabled = mafia_doctor_enabled
+    if (mafia_detective_enabled !== undefined) gameUpdate.mafia_detective_enabled = mafia_detective_enabled
+    if (mafia_anonymous_votes !== undefined) gameUpdate.mafia_anonymous_votes = mafia_anonymous_votes
+  } else if (
+    mafia_doctor_enabled !== undefined ||
+    mafia_detective_enabled !== undefined ||
+    mafia_anonymous_votes !== undefined
+  ) {
+    return NextResponse.json({ error: 'Special rules only apply to Mafia games' }, { status: 400 })
   }
 
   const { data: updated, error } = await getSupabaseAdmin()

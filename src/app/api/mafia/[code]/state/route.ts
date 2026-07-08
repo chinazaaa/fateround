@@ -27,8 +27,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       admin.from('mafia_player_states').select('*').eq('game_id', gameId),
     ])
 
-  if (!game || !mafiaSession || !mafiaPlayerStates) {
+  if (!game) {
     return NextResponse.json({ error: 'Game not found' }, { status: 404 })
+  }
+  if (!mafiaSession || !mafiaPlayerStates) {
+    if (game.status === 'waiting') {
+      const publicPlayers = (playersData ?? []).map((p) => ({
+        id: p.id,
+        name: p.name ?? 'Unknown',
+        isAlive: true,
+        deathDay: null,
+        deathCause: null,
+      }))
+      return NextResponse.json({
+        gameTitle: game.title,
+        status: 'waiting',
+        phase: 'role_reveal',
+        dayNumber: 0,
+        phaseDeadline: null,
+        doctorEnabled: true,
+        detectiveEnabled: true,
+        anonymousVotes: true,
+        winningTeam: null,
+        players: publicPlayers,
+        lastNightKillPlayerId: null,
+        lastNightMafiaHadTarget: false,
+        lastVoteResultPlayerId: null,
+        voteTallies: {},
+        myState: null,
+      })
+    }
+    return NextResponse.json({ error: 'Game session not initialized' }, { status: 404 })
   }
 
   const session = mafiaSession as MafiaSession

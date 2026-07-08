@@ -20,7 +20,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   // 1. Fetch game and verify host token
-  const { data: game } = await admin.from('games').select('host_token, status, title').eq('id', gameId).maybeSingle()
+  const { data: game } = await admin
+    .from('games')
+    .select(
+      'host_token, status, title, max_players, timer_seconds, mafia_doctor_enabled, mafia_detective_enabled, mafia_anonymous_votes'
+    )
+    .eq('id', gameId)
+    .maybeSingle()
   if (!game) {
     return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   }
@@ -36,6 +42,39 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   ])
 
   if (!mafiaSession || !mafiaPlayerStates) {
+    if (game.status === 'waiting') {
+      const hostPlayers = (playersData ?? [])
+        .filter((p) => p.spectator !== true)
+        .map((p) => ({
+          id: p.id,
+          name: p.name ?? 'Unknown',
+          isAlive: true,
+          role: 'villager' as const,
+          deathDay: null,
+          deathCause: null,
+          nightActionTargetPlayerId: null,
+          dayVoteTargetPlayerId: null,
+        }))
+      return NextResponse.json({
+        gameTitle: game.title,
+        status: 'waiting',
+        phase: 'role_reveal',
+        dayNumber: 0,
+        phaseDeadline: null,
+        maxPlayers: game.max_players ?? 10,
+        timerSeconds: game.timer_seconds ?? 60,
+        doctorEnabled: game.mafia_doctor_enabled !== false,
+        detectiveEnabled: game.mafia_detective_enabled !== false,
+        anonymousVotes: game.mafia_anonymous_votes === true,
+        winningTeam: null,
+        players: hostPlayers,
+        lastNightKillPlayerId: null,
+        lastVoteResultPlayerId: null,
+        mafiaTargetPlayerId: null,
+        doctorTargetPlayerId: null,
+        detectTargetPlayerId: null,
+      })
+    }
     return NextResponse.json({ error: 'Game session not initialized' }, { status: 404 })
   }
 
@@ -64,6 +103,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     phase: session.phase,
     dayNumber: session.day_number,
     phaseDeadline: session.phase_deadline,
+    maxPlayers: game.max_players ?? 10,
+    timerSeconds: game.timer_seconds ?? 60,
     doctorEnabled: session.doctor_enabled,
     detectiveEnabled: session.detective_enabled,
     anonymousVotes: session.anonymous_votes,

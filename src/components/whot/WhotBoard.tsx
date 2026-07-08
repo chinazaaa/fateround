@@ -226,7 +226,7 @@ export function WhotStandings({
     const finishIdx = finishOrder.indexOf(p.id)
     const finished = finishIdx >= 0
     const place = finishIdx + 1
-    const placeLabel = finishIdx === 0 ? '🏆 Winner' : `${place}${place === 2 ? 'nd' : place === 3 ? 'rd' : 'th'}`
+    const placeLabel = finishIdx === 0 ? '👑 Winner' : `${place}${place === 2 ? 'nd' : place === 3 ? 'rd' : 'th'}`
 
     return (
       <div
@@ -270,7 +270,7 @@ export function WhotStandings({
           )}
         </div>
         <span className="text-muted ml-2 shrink-0 tabular-nums">
-          {finished ? (finishIdx === 0 ? '🏆' : '👀') : watching ? '👀' : `${count} 🃏`}
+          {finished ? (finishIdx === 0 ? '👑' : '👀') : watching ? '👀' : `${count} 🃏`}
         </span>
       </div>
     )

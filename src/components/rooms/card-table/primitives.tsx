@@ -237,6 +237,8 @@ export type TurnSeat = {
   you?: boolean
   /** show the host crown */
   host?: boolean
+  /** show the winner crown (first to empty their hand in Whot) */
+  winner?: boolean
   /** per-turn countdown chip (e.g. "0:18") — only rendered on the active seat */
   timeLabel?: string
   /** flag the countdown as running low (turns it red) */
@@ -264,7 +266,7 @@ export function TurnRail({ seats }: TurnRailProps) {
           <span className="nm">
             {s.name}
             {s.you ? ' (you)' : ''}
-            {s.host ? ' 👑' : ''}
+            {s.host || s.winner ? ' 👑' : ''}
           </span>
           {s.turn && s.timeLabel != null && (
             <span className={'seat-timer' + (s.timeLow ? ' low' : '')}>{s.timeLabel}</span>
@@ -312,6 +314,8 @@ export type SpecSeat = {
   /** is it this seat's turn (ringed + "Playing…" tag) */
   turn?: boolean
   host?: boolean
+  /** show the winner crown (first to empty their hand in Whot) */
+  winner?: boolean
 }
 
 export type SpecSeatsProps = {
@@ -327,7 +331,7 @@ export function SpecSeats({ seats }: SpecSeatsProps) {
           <div className="sav">{s.name.charAt(0).toUpperCase()}</div>
           <span className="nm">
             {s.name}
-            {s.host ? ' 👑' : ''}
+            {s.host || s.winner ? ' 👑' : ''}
           </span>
           {s.turn && <span className="tag">Playing…</span>}
           {s.cards != null && <span className="cc">{s.cards} cards</span>}

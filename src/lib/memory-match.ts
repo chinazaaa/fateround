@@ -27,6 +27,24 @@ export const MATCHING_PAIRS_PLACEMENT_BONUS = [0, 1500, 1000, 500] as const // [
 /** Flat bonus for zero wrong attempts on a completed board. */
 export const MATCHING_PAIRS_PERFECT_GAME_BONUS = 2000
 
+export const MATCHING_PAIRS_GAME_DURATION_OPTIONS = [0, 60, 120, 180, 300, 600] as const
+
+export function formatMatchingPairsGameDuration(seconds: number): string {
+  if (!seconds) return 'No limit'
+  const minutes = Math.round(seconds / 60)
+  if (minutes === 0) return `${seconds}s`
+  return `${minutes} minute${minutes === 1 ? '' : 's'}`
+}
+
+export function matchingPairsGameSessionExpired(
+  sessionStartedAt: string | null | undefined,
+  timerSeconds: number | null | undefined
+): boolean {
+  if (!timerSeconds || timerSeconds <= 0) return false
+  if (!sessionStartedAt) return false
+  return Date.now() - new Date(sessionStartedAt).getTime() >= timerSeconds * 1000
+}
+
 // ── Icon pool (80 distinct emoji/symbol strings) ─────────────────────────────
 // Spec: "80 curated icons spanning varied categories — fruits, shapes, everyday
 // objects. No icon library installed; use Unicode emoji/symbols."
@@ -232,7 +250,8 @@ export function matchingPairsPlacementBonus(rank: number): number {
 export function tallyMatchingPairsScore(
   submissions: MatchingPairsSubmission[],
   progress: MatchingPairsProgress,
-  gridSizePairs: MatchingPairsGridSize
+  gridSizePairs: MatchingPairsGridSize,
+  sessionStartedAt?: string | null
 ): MatchingPairsPlayerScore {
   const pairsMatched = submissions.filter((s) => s.is_match).length
   const wrongAttempts = submissions.filter((s) => !s.is_match).length
@@ -258,10 +277,16 @@ export function tallyMatchingPairsScore(
   const finalScore =
     baseScore + streakBonusTotal + placementBonus + (perfectGame ? MATCHING_PAIRS_PERFECT_GAME_BONUS : 0)
 
-  const timeTakenMs =
-    progress.finished_at && progress.created_at
-      ? new Date(progress.finished_at).getTime() - new Date(progress.created_at).getTime()
-      : null
+  let timeTakenMs: number | null = null
+  if (progress.finished_at) {
+    if (sessionStartedAt) {
+      const memorizeSeconds = gridSizePairs >= 16 ? 5 : 3
+      const startMs = new Date(sessionStartedAt).getTime() + memorizeSeconds * 1000
+      timeTakenMs = new Date(progress.finished_at).getTime() - startMs
+    } else if (progress.created_at) {
+      timeTakenMs = new Date(progress.finished_at).getTime() - new Date(progress.created_at).getTime()
+    }
+  }
 
   return {
     playerId: progress.player_id,
