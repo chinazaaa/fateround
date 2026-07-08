@@ -282,7 +282,7 @@ function BoardSpaceCell({
   const palette = getBoardPalette(themeId)
   const lineClass = [
     `font-extrabold ${palette.tileText} ${palette.tileFont ?? ''} leading-[1.05]`,
-    isCorner ? 'text-[7.2px] sm:text-[9px]' : 'text-[6.4px] sm:text-[8px] md:text-[8.5px]',
+    isCorner ? 'text-[8px] sm:text-[10px]' : 'text-[7.2px] sm:text-[9px] md:text-[9.5px]',
   ].join(' ')
 
   return (
@@ -317,7 +317,7 @@ function BoardSpaceCell({
           <div className="hidden sm:flex flex-col items-center gap-px leading-none">
             {space.price != null && !ownerId && (
               <span
-                className={`text-[6.8px] sm:text-[8.5px] md:text-[9.5px] font-black ${palette.priceText} ${palette.tileFont ?? ''}`}
+                className={`text-[7.5px] sm:text-[9.5px] md:text-[10.5px] font-black ${palette.priceText} ${palette.tileFont ?? ''}`}
               >
                 {formatThemedMoney(space.price!, themeId)}
               </span>
@@ -325,7 +325,7 @@ function BoardSpaceCell({
             {rentLabel && (
               <span
                 className={[
-                  'text-[5.5px] sm:text-[6.8px] md:text-[7.5px] font-bold tabular-nums',
+                  'text-[6.2px] sm:text-[7.5px] md:text-[8.2px] font-bold tabular-nums',
                   rentLabel === 'Mortgaged' ? 'text-red-600' : palette.rentText,
                   palette.tileFont ?? '',
                 ].join(' ')}
@@ -488,10 +488,8 @@ export function MonopolyClassicBoard({
 
   const defaultMobileCenter = (
     <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center relative z-10">
-      <p className={`text-xs font-black tracking-[0.18em] ${p.titleColor} ${p.titleFont ?? ''}`}>
-        {edition.boardTitle}
-      </p>
-      <p className={`text-[9px] uppercase tracking-widest ${p.subtitleColor} ${p.subtitleFont ?? ''}`}>
+      <p className={`${p.titleColor} ${p.titleFont ?? 'text-xs font-black tracking-[0.18em]'}`}>{edition.boardTitle}</p>
+      <p className={`${p.subtitleColor} ${p.subtitleFont ?? 'text-[9px] uppercase tracking-widest'}`}>
         {edition.editionSubtitle}
       </p>
     </div>
@@ -499,13 +497,11 @@ export function MonopolyClassicBoard({
 
   const defaultDesktopCenter = center ?? (
     <div className="flex h-full w-full flex-col items-center justify-center relative z-10">
-      <p
-        className={`text-xl sm:text-2xl font-black tracking-tight ${p.titleColor} drop-shadow-sm ${p.titleFont ?? ''}`}
-      >
+      <p className={`${p.titleColor} drop-shadow-sm ${p.titleFont ?? 'text-xl sm:text-2xl font-black tracking-tight'}`}>
         {edition.boardTitle}
       </p>
       <p
-        className={`text-[9px] sm:text-[10px] ${p.subtitleColor} mt-0.5 uppercase tracking-[0.15em] ${p.subtitleFont ?? ''}`}
+        className={`${p.subtitleColor} mt-0.5 ${p.subtitleFont ?? 'text-[9px] sm:text-[10px] uppercase tracking-[0.15em]'}`}
       >
         {edition.editionSubtitle}
       </p>
@@ -530,6 +526,154 @@ export function MonopolyClassicBoard({
             <div className="absolute inset-1.5 sm:inset-2 rounded sm:rounded-lg border border-[#B8860B]/40 dark:border-[#B8860B]/30" />
           </div>
         )}
+        {p.customDecoration === 'arctic' && (
+          <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+            {/* Frost vignette & slight grain */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(30,78,107,0.2)_100%)] dark:bg-[radial-gradient(circle_at_center,transparent_15%,rgba(10,26,42,0.85)_100%)] mix-blend-multiply dark:mix-blend-normal" />
+
+            {/* Glacial Rift Shards, Frost Filigree Corners & Arctic Streamlines */}
+            <svg
+              className="absolute inset-0 w-full h-full text-[#1E4E6B]/25 dark:text-[#3FA9A0]/25"
+              viewBox="0 0 400 400"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              {/* Glacial Rift Shards / Floating Ice Floes */}
+              <polygon
+                points="40,90 70,85 85,110 50,120"
+                stroke="currentColor"
+                strokeWidth="1"
+                strokeDasharray="4 2"
+                opacity="0.4"
+              />
+              <polygon
+                points="310,60 350,50 365,80 320,95"
+                stroke="currentColor"
+                strokeWidth="1"
+                strokeDasharray="4 2"
+                opacity="0.4"
+              />
+              <polygon
+                points="55,280 90,270 105,305 65,315"
+                stroke="currentColor"
+                strokeWidth="1"
+                strokeDasharray="4 2"
+                opacity="0.4"
+              />
+              <polygon
+                points="320,290 360,280 375,310 330,325"
+                stroke="currentColor"
+                strokeWidth="1"
+                strokeDasharray="4 2"
+                opacity="0.4"
+              />
+
+              {/* Soft Glacial Fissures / Contour Cracks */}
+              <path
+                d="M -50 80 Q 100 50 200 130 T 450 100 M -50 260 Q 80 320 220 270 T 450 340"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeDasharray="14 8"
+                opacity="0.6"
+              />
+              <path
+                d="M 60 -50 Q 130 140 90 240 T 160 450 M 350 -50 Q 320 120 380 280 T 320 450"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeDasharray="8 8"
+                opacity="0.5"
+              />
+
+              {/* Arctic Wind / Glacial Streamlines */}
+              <path d="M 20 180 Q 120 160 220 190 T 380 170" stroke="currentColor" strokeWidth="0.8" opacity="0.3" />
+              <path d="M 20 220 Q 180 240 280 210 T 380 230" stroke="currentColor" strokeWidth="0.8" opacity="0.3" />
+
+              {/* Intricate Nordic Frost Filigree Corners & Crystal Runes */}
+              {/* Top-Left */}
+              <path
+                d="M 12 48 L 12 12 L 48 12 M 12 12 L 35 35 M 12 28 L 28 12 M 12 38 L 38 12"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <circle cx="35" cy="35" r="2.5" fill="currentColor" opacity="0.6" />
+              {/* Top-Right */}
+              <path
+                d="M 388 48 L 388 12 L 352 12 M 388 12 L 365 35 M 388 28 L 372 12 M 388 38 L 362 12"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <circle cx="365" cy="35" r="2.5" fill="currentColor" opacity="0.6" />
+              {/* Bottom-Left */}
+              <path
+                d="M 12 352 L 12 388 L 48 388 M 12 388 L 35 365 M 12 372 L 28 388 M 12 362 L 38 388"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <circle cx="35" cy="365" r="2.5" fill="currentColor" opacity="0.6" />
+              {/* Bottom-Right */}
+              <path
+                d="M 388 352 L 388 388 L 352 388 M 388 388 L 365 365 M 388 372 L 372 388 M 388 362 L 362 388"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <circle cx="365" cy="365" r="2.5" fill="currentColor" opacity="0.6" />
+            </svg>
+
+            {/* Intricate Glacial Border Frames */}
+            <div className="absolute inset-0.5 sm:inset-1 rounded-lg sm:rounded-xl border-2 sm:border-[3px] border-[#1E4E6B]/50 dark:border-[#3FA9A0]/45 shadow-[inset_0_0_12px_rgba(63,169,160,0.2)]" />
+            {/* Geometric Lattice / Chevron Border */}
+            <div className="absolute inset-1.5 sm:inset-2 rounded sm:rounded-lg border-2 border-dashed border-[#1E4E6B]/40 dark:border-[#D8E6E8]/30" />
+            <div className="absolute inset-2.5 sm:inset-3 rounded border border-dotted border-[#5C6B73]/35 dark:border-[#3FA9A0]/25" />
+          </div>
+        )}
+        {p.customDecoration === 'naija' && (
+          <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+            {/* Subtle Ankara Wax-Print geometric pattern & fabric-grain texture */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(0,135,81,0.12)_100%)] dark:bg-[radial-gradient(circle_at_center,transparent_15%,rgba(11,31,22,0.85)_100%)] mix-blend-multiply dark:mix-blend-normal" />
+
+            {/* Fabric Grain & Ankara Border Geometric Frieze */}
+            <svg
+              className="absolute inset-0 w-full h-full text-[#008751]/20 dark:text-[#D9A441]/20"
+              viewBox="0 0 400 400"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <defs>
+                <pattern id="ankara-grain" width="10" height="10" patternUnits="userSpaceOnUse">
+                  <path d="M 0 5 L 10 5 M 5 0 L 5 10" stroke="currentColor" strokeWidth="0.4" opacity="0.4" />
+                  <circle cx="5" cy="5" r="0.8" fill="currentColor" opacity="0.3" />
+                </pattern>
+              </defs>
+              <rect width="400" height="400" fill="url(#ankara-grain)" />
+              {/* Geometric Wax-Print Edge Pattern */}
+              <rect
+                x="6"
+                y="6"
+                width="388"
+                height="388"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeDasharray="6 4"
+                opacity="0.7"
+              />
+              <rect x="12" y="12" width="376" height="376" stroke="currentColor" strokeWidth="0.8" opacity="0.5" />
+              {/* Corner Ankara Motifs */}
+              <polygon points="12,12 30,12 12,30" fill="currentColor" opacity="0.3" />
+              <polygon points="388,12 370,12 388,30" fill="currentColor" opacity="0.3" />
+              <polygon points="12,388 30,388 12,370" fill="currentColor" opacity="0.3" />
+              <polygon points="388,388 370,388 388,370" fill="currentColor" opacity="0.3" />
+            </svg>
+
+            {/* Thin wax-print border frames */}
+            <div className="absolute inset-1 sm:inset-1.5 rounded-lg sm:rounded-xl border border-[#008751]/40 dark:border-[#D9A441]/40" />
+            <div className="absolute inset-2 sm:inset-2.5 rounded sm:rounded-lg border border-dashed border-[#B5622A]/40 dark:border-[#D9A441]/30" />
+          </div>
+        )}
+
         <div
           className="absolute inset-[3px] sm:inset-2.5 grid gap-[0.5px] sm:gap-1 z-10"
           style={{
@@ -588,6 +732,146 @@ export function MonopolyClassicBoard({
                   <line x1="200" y1="0" x2="0" y2="200" />
                   <line x1="100" y1="0" x2="100" y2="200" />
                   <line x1="0" y1="100" x2="200" y2="100" />
+                </svg>
+              </div>
+            )}
+            {p.customDecoration === 'arctic' && (
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-0">
+                {/* Multi-Layered Aurora Borealis, 3-Depth Alpine Peaks & Polaris Constellation */}
+                <svg
+                  className="absolute inset-0 w-full h-full text-[#1E4E6B]/30 dark:text-[#3FA9A0]/35"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  {/* Background Towering Summits */}
+                  <path
+                    d="M 0 80 L 15 55 L 28 68 L 42 42 L 55 60 L 70 38 L 85 58 L 100 48 L 100 100 L 0 100 Z"
+                    fill="currentColor"
+                    opacity="0.12"
+                  />
+                  {/* Mid-Ground Glacial Peaks with Ice Caps */}
+                  <path
+                    d="M 0 85 L 12 65 L 25 74 L 38 50 L 52 68 L 65 45 L 78 64 L 90 52 L 100 70 L 100 100 L 0 100 Z"
+                    fill="currentColor"
+                    opacity="0.22"
+                  />
+                  {/* Forefront Jagged Ridges */}
+                  <path
+                    d="M 0 92 L 18 75 L 32 84 L 48 62 L 60 78 L 75 58 L 88 72 L 100 80 L 100 100 L 0 100 Z"
+                    fill="currentColor"
+                    opacity="0.35"
+                  />
+                  {/* Vertical Glacial Crevasse Lines */}
+                  <path
+                    d="M 38 50 L 38 100 M 65 45 L 65 100 M 78 64 L 78 100 M 42 42 L 42 100 M 70 38 L 70 100"
+                    stroke="currentColor"
+                    strokeWidth="0.4"
+                    opacity="0.3"
+                  />
+
+                  {/* Multi-Layered Flowing Aurora Borealis Curtains */}
+                  <path
+                    d="M -10 32 Q 20 10 50 28 T 110 15"
+                    stroke="currentColor"
+                    strokeWidth="5"
+                    strokeLinecap="round"
+                    className="animate-[pulse_4s_ease-in-out_infinite]"
+                    opacity="0.25"
+                  />
+                  <path
+                    d="M -10 40 Q 30 18 60 34 T 110 22"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeDasharray="8 4"
+                    className="animate-[pulse_5s_ease-in-out_infinite_1s]"
+                    opacity="0.35"
+                  />
+                  <path
+                    d="M -10 22 Q 35 32 70 12 T 110 30"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className="animate-[pulse_6s_ease-in-out_infinite_2s]"
+                    opacity="0.2"
+                  />
+                  <path
+                    d="M -10 48 Q 25 28 55 44 T 110 32"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    className="animate-[pulse_4.5s_ease-in-out_infinite_0.5s]"
+                    opacity="0.28"
+                  />
+
+                  {/* Celestial Polar Constellations & Polaris (North Star) */}
+                  {/* Polaris (North Star) with glowing diamond rays */}
+                  <g className="animate-[pulse_3s_ease-in-out_infinite]">
+                    <circle cx="75" cy="18" r="1.8" fill="currentColor" />
+                    <path d="M 75 13 L 75 23 M 70 18 L 80 18" stroke="currentColor" strokeWidth="0.6" />
+                  </g>
+                  {/* Ursa Major / Big Dipper constellation lines pointing to Polaris */}
+                  <path
+                    d="M 18 28 L 25 26 L 32 30 L 38 36 L 48 34 L 48 42 L 38 36"
+                    stroke="currentColor"
+                    strokeWidth="0.4"
+                    strokeDasharray="1 1"
+                    opacity="0.5"
+                  />
+                  <circle cx="18" cy="28" r="0.8" fill="currentColor" opacity="0.7" />
+                  <circle cx="25" cy="26" r="0.8" fill="currentColor" opacity="0.7" />
+                  <circle cx="32" cy="30" r="0.8" fill="currentColor" opacity="0.7" />
+                  <circle cx="38" cy="36" r="1" fill="currentColor" opacity="0.8" />
+                  <circle cx="48" cy="34" r="1" fill="currentColor" opacity="0.8" />
+                  <circle cx="48" cy="42" r="1" fill="currentColor" opacity="0.8" />
+                  {/* Pointer stars line to Polaris */}
+                  <path
+                    d="M 48 34 L 75 18"
+                    stroke="currentColor"
+                    strokeWidth="0.3"
+                    strokeDasharray="2 2"
+                    opacity="0.4"
+                  />
+                </svg>
+              </div>
+            )}
+            {p.customDecoration === 'naija' && (
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-0">
+                {/* Subtle Ankara rays and River Y / Eagle Motif */}
+                <svg
+                  className="w-48 h-48 sm:w-72 sm:h-72 text-[#008751]/15 dark:text-[#D9A441]/20"
+                  viewBox="0 0 100 100"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  {/* Subtle Geometric Radiance / Sun Rays */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="44"
+                    stroke="currentColor"
+                    strokeWidth="0.5"
+                    strokeDasharray="3 3"
+                    opacity="0.6"
+                  />
+                  <circle cx="50" cy="50" r="32" stroke="currentColor" strokeWidth="0.3" opacity="0.4" />
+
+                  {/* The Niger & Benue River Confluence 'Y' Mark */}
+                  <path
+                    d="M 20 25 Q 35 38 50 52 Q 65 38 80 25 L 75 20 Q 62 33 50 45 Q 38 33 25 20 Z"
+                    fill="currentColor"
+                    opacity="0.8"
+                  />
+                  <path d="M 46 50 L 54 50 L 54 85 L 46 85 Z" fill="currentColor" opacity="0.8" />
+                  <path d="M 48 50 L 52 50 L 52 85 L 48 85" stroke="currentColor" strokeWidth="0.5" opacity="0.5" />
+
+                  {/* Understated Geometric Eagle Silhouette Presiding Above */}
+                  <path
+                    d="M 50 15 L 62 23 L 68 18 L 56 26 L 50 28 L 44 26 L 32 18 L 38 23 Z"
+                    fill="currentColor"
+                    opacity="0.9"
+                  />
+                  {/* Tiny wreath diamond under eagle */}
+                  <polygon points="50,29 53,31 50,33 47,31" fill="currentColor" opacity="0.7" />
                 </svg>
               </div>
             )}

@@ -27,8 +27,8 @@ export function useApplyGameTheme(theme: string | null | undefined) {
 
     root.setAttribute('data-game-theme', themeId)
 
-    if (themeId === 'pirate') {
-      // For Pirate theme, styles are defined in globals.css under data-game-theme="pirate"
+    if (themeId === 'pirate' || themeId === 'arctic' || themeId === 'naija') {
+      // For Pirate, Arctic, and Naija themes, styles are defined in globals.css under data-game-theme
       // to support both Light and Dark modes without inline style interference.
       return () => {
         root.removeAttribute('data-game-theme')

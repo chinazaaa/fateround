@@ -5,6 +5,7 @@ import type { Game, MahjongSession, Player } from '@/types'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { MahjongCard } from '@/components/mahjong/MahjongChrome'
 import { mahjongTileShortLabel } from '@/lib/mahjong'
 import { mahjongRulesetLabel } from '@/lib/mahjong-rulesets'
@@ -25,6 +26,8 @@ export function MahjongFinalResultsShareBlock({
   winnerName,
   highlightPlayerId,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
 }: {
   game: Game
   players: Player[]
@@ -32,6 +35,8 @@ export function MahjongFinalResultsShareBlock({
   winnerName?: string | null
   highlightPlayerId?: string | null
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
   const winnerPlayerId = session?.winner_player_id ?? null
@@ -44,20 +49,27 @@ export function MahjongFinalResultsShareBlock({
   const displayWinner = winnerName ?? (winnerNames.length > 0 ? winnerNames.join(', ') : null) ?? null
   const isDraw = !displayWinner
   const winType = session?.win_type === 'self_draw' ? 'Self draw' : session?.win_type === 'discard' ? 'On discard' : ''
+  const winTile = session?.winning_tile ? mahjongTileShortLabel(session.winning_tile) : null
+  // Guard the empty win_type case so we never render a leading " on <tile>".
+  const winSubtitle = winTile ? (winType ? `${winType} on ${winTile}` : `Won on ${winTile}`) : undefined
   const score = session?.score_summary ?? null
 
   return (
     <div className="space-y-4">
-      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-4">
+      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-5">
         <ShareResultsCaptureHeader game={game} />
-        <p className="text-5xl sm:text-6xl leading-none text-center pt-1">{isDraw ? '🤝' : '🏆'}</p>
-        <p className="text-xl sm:text-2xl font-black text-center text-[var(--marry)]">
-          {displayWinner ? `${displayWinner} calls Mahjong!` : 'Wall draw'}
-        </p>
-        {session?.winning_tile && (
-          <p className="text-sm text-center text-muted">
-            {winType} on <span className="font-bold">{mahjongTileShortLabel(session.winning_tile)}</span>
-          </p>
+        {isDraw ? (
+          <FinishedWinnerHero game={game} emoji="🤝" headline="Wall draw" />
+        ) : (
+          <FinishedWinnerHero
+            game={game}
+            headline={
+              <>
+                <span className="gradient-title">{displayWinner}</span> calls Mahjong!
+              </>
+            }
+            subtitle={winSubtitle}
+          />
         )}
         {score && (
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-inset-bg)] p-4 space-y-3">
@@ -119,8 +131,11 @@ export function MahjongFinalResultsShareBlock({
         </div>
       </div>
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}
@@ -131,6 +146,7 @@ export function MahjongFinalResultsShareBlock({
             players={players}
             mahjongWinnerName={displayWinner ?? undefined}
             mahjongIsDraw={isDraw}
+            primary
           />
         }
       />

@@ -42,6 +42,8 @@ export type GameType =
   | 'snake_and_ladder'
   | 'crazy_eights'
   | 'checkers'
+  | 'mafia'
+  | 'matching_pairs'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -171,7 +173,7 @@ export interface CodewordsMessage {
   created_at: string
   player_name?: string
 }
-export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate'
+export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate' | 'arctic' | 'naija'
 export type WyrChoice = 'a' | 'b'
 
 export type ParticipantGender = 'male' | 'female'
@@ -227,6 +229,9 @@ export interface Game {
   chess_piece_set?: string | null
   /** Codewords — operative guess phase timer. */
   operative_timer_seconds?: number | null
+  mafia_doctor_enabled?: boolean
+  mafia_detective_enabled?: boolean
+  mafia_anonymous_votes?: boolean
   anonymous: boolean
   auto_reveal: boolean
   auto_submit_behavior: AutoSubmitBehavior
@@ -246,6 +251,8 @@ export interface Game {
   is_public?: boolean
   /** When true, the host has enabled in-game Spotify music for this room (default off). */
   music_enabled?: boolean
+  /** Play Again · same settings — true while the post-game ready-up ring is armed (Whot). */
+  replay_pending?: boolean
   current_round_number: number
   created_at: string
   /** When the game session ended (status set to finished). */
@@ -1236,4 +1243,71 @@ export interface BingoClaim {
   pattern: 'line' | 'full_house'
   status: 'pending' | 'approved' | 'rejected'
   created_at: string
+}
+
+// --- MAFIA TYPES ---
+export type MafiaRole = 'villager' | 'mafia' | 'doctor' | 'detective'
+export type MafiaTeam = 'village' | 'mafia'
+export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'discussion' | 'voting' | 'elimination' | 'game_over'
+
+export interface MafiaSession {
+  id: string
+  game_id: string
+  phase: MafiaPhase
+  day_number: number
+  phase_deadline: string | null
+  mafia_target_player_id: string | null
+  doctor_target_player_id: string | null
+  detect_target_player_id: string | null
+  night_kill_player_id: string | null
+  vote_result_player_id: string | null
+  doctor_enabled: boolean
+  detective_enabled: boolean
+  mafia_count: number
+  anonymous_votes: boolean
+  winning_team: MafiaTeam | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MafiaPlayerState {
+  id: string
+  game_id: string
+  player_id: string
+  role: MafiaRole
+  is_alive: boolean
+  death_day: number | null
+  death_cause: 'mafia_kill' | 'village_vote' | null
+  night_action_target_player_id: string | null
+  day_vote_target_player_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MafiaPublicPlayer {
+  id: string
+  name: string
+  isAlive: boolean
+  deathDay: number | null
+  deathCause: 'mafia_kill' | 'village_vote' | null
+  role?: MafiaRole // Only revealed on death or game over
+}
+
+export interface MafiaChatMessage {
+  id: string
+  game_id: string
+  sender_player_id: string
+  sender_name: string
+  message: string
+  created_at: string
+}
+
+export interface MafiaMyState {
+  role: MafiaRole
+  team: MafiaTeam
+  nightActionSubmitted: boolean
+  dayVoteSubmitted: boolean
+  detectiveResult: { targetName: string; alignment: MafiaTeam } | null
+  mafiaTeammates: string[] // Only for mafia players
+  mafiaChatMessages?: MafiaChatMessage[]
 }

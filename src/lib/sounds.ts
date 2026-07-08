@@ -60,7 +60,7 @@ export function subscribeSoundMuted(callback: (muted: boolean) => void): () => v
  * Call `setupAudioUnlock()` once on page load so the first tap
  * pre-warms the context for subsequent programmatic sounds.
  */
-async function ensureContext(): Promise<boolean> {
+export async function ensureContext(): Promise<boolean> {
   if (typeof window === 'undefined') return false
   // Recreate if missing or garbage-collected into closed state
   if (!audioCtx || audioCtx.state === 'closed') {
@@ -78,6 +78,11 @@ async function ensureContext(): Promise<boolean> {
     }
   }
   return audioCtx.state === 'running'
+}
+
+/** Get the running AudioContext instance if initialized. */
+export function getAudioContext(): AudioContext | null {
+  return audioCtx
 }
 
 /**
@@ -597,5 +602,131 @@ export function stopTimerMusic() {
     timerGains = []
     timerLfo = null
     timerLfoGain = null
+  }
+}
+
+import {
+  playPirateCannonBlastSound,
+  playPirateCoinsSound,
+  playPirateDiceRollSound,
+  playPirateFanfareSound,
+  playPirateSeaSplashSound,
+  playPirateShipBellSound,
+} from '@/lib/sounds-pirate'
+import {
+  playArcticAuroraPulseSound,
+  playArcticBlizzardWindSound,
+  playArcticCrunchSound,
+  playArcticFanfareSound,
+  playArcticIceClinkSound,
+  playArcticWindChimeSound,
+} from '@/lib/sounds-arctic'
+import {
+  playNaijaAfrobeatsFanfareSound,
+  playNaijaCashCountSound,
+  playNaijaOganlaInflectionSound,
+  playNaijaShekereShakeSound,
+  playNaijaTalkingDrumSound,
+  playNaijaTextileSwipeSound,
+} from '@/lib/sounds-naija'
+
+/**
+ * Unified action sound dispatcher for Monopoly editions.
+ * Routes audio events to themed sound effects when themeId is specified.
+ */
+export function playMonopolyActionSound(
+  actionType: 'roll' | 'buy' | 'rent' | 'card' | 'auction' | 'turn' | 'win' | 'bankrupt',
+  themeId?: string | null
+) {
+  if (themeId === 'pirate') {
+    switch (actionType) {
+      case 'turn':
+        void playPirateShipBellSound()
+        break
+      case 'roll':
+        void playPirateDiceRollSound()
+        break
+      case 'buy':
+        void playPirateCoinsSound()
+        break
+      case 'rent':
+      case 'bankrupt':
+        void playPirateSeaSplashSound()
+        break
+      case 'card':
+      case 'auction':
+        void playPirateCannonBlastSound()
+        break
+      case 'win':
+        void playPirateFanfareSound()
+        break
+    }
+  } else if (themeId === 'arctic') {
+    switch (actionType) {
+      case 'turn':
+        void playArcticWindChimeSound()
+        break
+      case 'roll':
+        void playArcticCrunchSound()
+        break
+      case 'buy':
+        void playArcticIceClinkSound()
+        break
+      case 'rent':
+      case 'bankrupt':
+        void playArcticBlizzardWindSound()
+        break
+      case 'card':
+      case 'auction':
+        void playArcticAuroraPulseSound()
+        break
+      case 'win':
+        void playArcticFanfareSound()
+        break
+    }
+  } else if (themeId === 'naija') {
+    switch (actionType) {
+      case 'turn':
+        void playNaijaTalkingDrumSound()
+        break
+      case 'roll':
+        void playNaijaShekereShakeSound()
+        break
+      case 'buy':
+        void playNaijaCashCountSound()
+        break
+      case 'rent':
+      case 'bankrupt':
+        void playNaijaOganlaInflectionSound()
+        break
+      case 'card':
+      case 'auction':
+        void playNaijaTextileSwipeSound()
+        break
+      case 'win':
+        void playNaijaAfrobeatsFanfareSound()
+        break
+    }
+  } else {
+    switch (actionType) {
+      case 'turn':
+        void playRoundStartSound()
+        break
+      case 'roll':
+        void playDiceRollSound()
+        break
+      case 'buy':
+      case 'rent':
+      case 'card':
+      case 'auction':
+        void playVoteSubmittedSound()
+        break
+      case 'win':
+        void playGameFinishedSound()
+        break
+      case 'bankrupt':
+        void playRoundEndSound()
+        break
+    }
   }
 }

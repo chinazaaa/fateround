@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { supabasePollOk } from '@/hooks/usePolling'
 import { resolvePlayerSession } from '@/lib/player-resume'
 import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
-import { setPlayerSession } from '@/lib/utils'
+import { getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { currentTournamentPlayerToken } from '@/lib/tournament-player-token'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import type { Game, Player } from '@/types'
@@ -168,6 +168,11 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       if (!name) return
       setJoining(true)
       try {
+        // If this device already holds a seat here (reconnect / refresh / new tab), send its
+        // resume token so the server reclaims that exact row — role and all — instead of
+        // creating a fresh one. On an active game a fresh row defaults to spectator, which is
+        // how a real player gets silently demoted to a viewer after a network blip.
+        const existingToken = getPlayerSession(gameCode)?.resumeToken ?? null
         const res = await fetch('/api/players', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -176,6 +181,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
             playerName: name,
             ...joinExtras,
             ...(tournamentToken ? { tournamentToken } : {}),
+            ...(existingToken ? { resumeToken: existingToken } : {}),
             ...(game?.status === 'active' ? { joinAsViewer: joinOpts?.joinAsViewer ?? true } : {}),
           }),
         })

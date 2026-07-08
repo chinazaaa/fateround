@@ -17,6 +17,11 @@ export interface Settings {
   isPublic: boolean
   describe_it_num_teams: number
   describe_it_mode: DescribeItMode
+  max_players?: number
+  game_duration_seconds?: number
+  mafia_doctor_enabled?: boolean
+  mafia_detective_enabled?: boolean
+  mafia_anonymous_votes?: boolean
 }
 
 export type Step = 'settings' | 'participants' | 'done'

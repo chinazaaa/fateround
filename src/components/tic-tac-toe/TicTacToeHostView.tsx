@@ -17,6 +17,7 @@ import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import type { Game, Player, TicTacToeSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
@@ -26,7 +27,7 @@ import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { TicTacToeGamePanel } from '@/components/tic-tac-toe/TicTacToeBoard'
 import { TicTacToeFinalResultsShareBlock } from '@/components/tic-tac-toe/TicTacToeFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
-import { TicTacToePrimaryButton } from '@/components/tic-tac-toe/TicTacToeChrome'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 
 type HostTab = 'play' | 'manage'
 type TicTacToeHostMode = 'spectator' | 'player'
@@ -45,6 +46,7 @@ function setHostMode(gameCode: string, mode: TicTacToeHostMode): void {
 
 export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
+  const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [session, setSession] = useState<TicTacToeSession | null>(null)
@@ -103,7 +105,7 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
   }, [game?.status, session])
 
   // Realtime push: reload on any change to this game's row + its tables.
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'tic_tac_toe_sessions'], load)
+  useGameTableSync(gameCode, ['players', { table: 'games', column: 'id' }, 'tic_tac_toe_sessions'], load)
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
@@ -236,24 +238,46 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
     }
   }
 
-  const playAgain = async () => {
+  // "Play again · same settings" reopens the game as an open lobby flagged for the
+  // ready-up ring; a plain reset (sameSettings=false) is the normal "Return to lobby".
+  const resetGame = async (sameSettings: boolean) => {
     setPlayingAgain(true)
     try {
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined }),
+        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, same_settings: sameSettings }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to reset')
       if (data.game) setGame(data.game)
-      success('Ready for a new game!')
+      success(sameSettings ? 'Ready up for the next game!' : 'Back to the lobby')
       await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to reset')
     } finally {
       setPlayingAgain(false)
     }
+  }
+
+  const confirmPlayAgain = async () => {
+    const ok = await confirm({
+      title: 'Play again — same settings?',
+      message:
+        'Reopens the game with the same settings. Previous watchers and new people can join; everyone taps “ready” and you start the next game once enough players are in.',
+      confirmLabel: 'Play again',
+    })
+    if (ok) void resetGame(true)
+  }
+
+  const confirmReturnToLobby = async () => {
+    const ok = await confirm({
+      title: 'Return to lobby?',
+      message:
+        'Sends everyone back to the game lobby where you can tweak settings or let new people join before starting again.',
+      confirmLabel: 'Return to lobby',
+    })
+    if (ok) void resetGame(false)
   }
 
   const readyPlayers = players.filter((p) => p.spectator !== true)
@@ -383,6 +407,32 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
     />
   )
 
+  // "Play again · same settings" reopened the game as an open lobby flagged for the
+  // ready-up ring — the host sees the ring + a "Start game" button instead of the lobby.
+  if (game.status === 'waiting' && game.replay_pending) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--background)] px-3 py-8 text-[var(--foreground)]">
+        <ReplayReadyRing
+          players={players}
+          meId={hostPlayerId}
+          isHost
+          minPlayers={TIC_TAC_TOE_MIN_PLAYERS}
+          onToggleReady={() => {}}
+          onStart={() => void startGame()}
+          starting={starting}
+        />
+        <button
+          type="button"
+          onClick={() => void confirmReturnToLobby()}
+          disabled={playingAgain}
+          className="mt-1 py-2 text-sm font-medium text-muted transition-colors hover:text-body disabled:opacity-60"
+        >
+          Return to lobby instead
+        </button>
+      </div>
+    )
+  }
+
   return (
     <HostGameLayout
       gameCode={gameCode}
@@ -404,10 +454,26 @@ export function TicTacToeHostView({ gameCode, hostToken }: { gameCode: string; h
             winnerName={winner?.name}
             highlightPlayerId={hostPlayerId}
             playAgainButton={
-              <TicTacToePrimaryButton onClick={playAgain} loading={playingAgain}>
-                Play again
-              </TicTacToePrimaryButton>
+              <button
+                type="button"
+                onClick={() => void confirmPlayAgain()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-base disabled:opacity-60"
+              >
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+              </button>
             }
+            returnToLobbyButton={
+              <button
+                type="button"
+                onClick={() => void confirmReturnToLobby()}
+                disabled={playingAgain}
+                className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
+              >
+                Return to lobby
+              </button>
+            }
+            lobbyNote="Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak settings first."
           />
           {hostPlayerId && session?.winner_player_id === hostPlayerId && (
             <PostWinToCommunity

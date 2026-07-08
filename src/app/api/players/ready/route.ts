@@ -10,13 +10,17 @@ const schema = z.object({
   gameId: z.string().min(2).max(12),
   // Self-action: the player marks themselves ready — authorized by their resume_token.
   resumeToken: z.string().min(4),
+  // Whot replay ring: `false` sits the player back out (spectator) to un-ready.
+  // Omitted/`true` keeps the original behaviour (take a seat / ready up).
+  ready: z.boolean().optional(),
 })
 
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, schema)
   if (bodyError) return bodyError
 
-  const { gameId, resumeToken } = body
+  const { gameId, resumeToken, ready } = body
+  const wantsSeat = ready !== false
   const gameCode = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
@@ -48,7 +52,7 @@ export async function POST(req: NextRequest) {
   // seats. Spectators may exceed the cap as watchers; un-spectatoring into an
   // already-full table is refused. Only board-style games carry a seat limit;
   // poll games (not in the lobby-limit set) have none, so they're never blocked.
-  if (isLobbyLimitGameType(game.game_type)) {
+  if (wantsSeat && isLobbyLimitGameType(game.game_type)) {
     const limits = await fetchGamePlayerLimits(supabase)
     const maxPlayers = lobbyMaxPlayersFromGame(game.game_type, game, limits)
     const { count: seatedCount } = await supabase
@@ -67,7 +71,7 @@ export async function POST(req: NextRequest) {
 
   const { error } = await supabase
     .from('players')
-    .update({ spectator: false })
+    .update({ spectator: !wantsSeat })
     .eq('id', auth.player.id)
     .eq('game_id', gameCode)
 

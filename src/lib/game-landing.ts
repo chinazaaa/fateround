@@ -60,6 +60,8 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   describe_it: 'text-charades',
   scrabble: 'scrabble',
   snake_and_ladder: 'snakes-and-ladders',
+  mafia: 'mafia',
+  matching_pairs: 'matching-pairs',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -2373,6 +2375,147 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         question: 'Does rolling a 6 do anything special?',
         answer:
           'Yes — rolling a 6 earns you another roll. But roll three 6s in a row and your turn is forfeited, so press your luck carefully.',
+      },
+    ],
+  }),
+  mafia: landing('mafia', {
+    seoTitle: 'Mafia Online — Play Werewolf Social Deduction Game',
+    seoDescription:
+      'Play Mafia (Werewolf) online with friends. Secret roles, day and night cycles, voting and strategy. Uncover the killers or eliminate the town. No sign-up.',
+    keywords: [
+      'mafia online',
+      'play mafia with friends',
+      'online werewolf game',
+      'social deduction games online',
+      'play werewolf online free',
+      'mafia party game online',
+      'mafia rules',
+      'how to play mafia',
+      'mafia online free no download',
+      'mafia online no sign up',
+    ],
+    heroSubtitle: 'Trust no one — discuss, vote, and uncover the secret killers in your group.',
+    bodyParagraph:
+      'Mafia on Fate Round is a real-time multiplayer social deduction game. Players are secretly assigned roles: Villagers, Mafia, Doctor, or Detective. During the Night, the Mafia votes to eliminate a player, the Doctor protects a player, and the Detective investigates players alignments. During the Day, the village discusses and votes on who they suspect is Mafia. The village wins if they eliminate all Mafia; the Mafia wins if they reach parity with the village.',
+    highlights: ['5–16 players', 'Secret roles', 'Voice chat supported'],
+    features: [
+      {
+        title: 'Secret roles',
+        description:
+          'Assigned automatically and privately. Only you know if you are a Villager, Mafia, Doctor, or Detective.',
+        emoji: '🔍',
+      },
+      {
+        title: 'Day & night phases',
+        description:
+          'Automated phase transitions keep the game moving seamlessly from night actions to daytime discussions.',
+        emoji: '🌒',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      {
+        title: 'Join the lobby',
+        description: 'Enter the room code, get your secret role assigned when the host starts.',
+      },
+      {
+        title: 'Perform night actions',
+        description: 'Mafia vote on a target, Doctor heals, Detective investigates, Villagers sleep.',
+      },
+      {
+        title: 'Discuss and vote',
+        description: 'Read the night report, debate in public chat or voice, and vote to eliminate a suspect.',
+      },
+    ],
+    perfectFor: ['Party nights', 'Large groups', 'Strategy fans'],
+    extraFaqs: [
+      {
+        question: 'What are the roles in the game?',
+        answer:
+          'The default roles are Villagers (find the Mafia), Mafia (eliminate the Villagers), Doctor (protects one player from being killed each night), and Detective (investigates one player each night to see if they are Mafia).',
+      },
+      {
+        question: 'Can the Doctor protect themselves?',
+        answer:
+          'No, to keep the game balanced, the Doctor cannot select themselves for protection. They must choose another player.',
+      },
+    ],
+  }),
+  matching_pairs: landing('matching_pairs', {
+    seoTitle: 'Matching Pairs — Multiplayer Memory Game Online',
+    seoDescription:
+      'Play Matching Pairs online with friends for free. Flip cards, match icons, build streaks and race to finish your board. No sign-up.',
+    keywords: [
+      'matching pairs online',
+      'memory match game online',
+      'multiplayer memory game',
+      'flip and match game',
+      'matching game with friends',
+      'memory game online free',
+      'matching pairs game free',
+      'online memory game no sign up',
+      'memory card game online',
+      'concentration card game online',
+    ],
+    heroSubtitle:
+      'Everyone gets the same icons, different layouts. Flip two cards per turn and match the pair to keep them. Build streaks, finish first, and score big.',
+    highlights: ['Per-player private boards', 'Streak and placement bonuses', 'Perfect-game reward'],
+    features: [
+      {
+        title: 'Streak bonuses',
+        description: 'Match 3 in a row with no miss and earn +500 bonus points. Streaks stack!',
+        emoji: '🔥',
+      },
+      {
+        title: 'Placement reward',
+        description: 'First to match every pair earns +1500. Second gets +1000. Third gets +500.',
+        emoji: '🏆',
+      },
+      {
+        title: 'Perfect game',
+        description: 'Complete your board with zero wrong attempts for a +2000 accuracy bonus.',
+        emoji: '⭐',
+      },
+      {
+        title: 'No sign-up',
+        description: 'Join with a name, play instantly on any device.',
+        emoji: '🚀',
+      },
+    ],
+    steps: [
+      { title: 'Join the room', description: 'Enter your name and wait for the host to pick a grid size and start.' },
+      {
+        title: 'Flip your cards',
+        description: 'Tap two cards per turn. Icons match? They stay face-up. Miss? They flip back after 0.8 s.',
+      },
+      {
+        title: 'Score and finish',
+        description:
+          'Earn 1000 pts per pair, streak bonuses for consecutive matches, and a placement bonus for finishing early.',
+      },
+    ],
+    perfectFor: ['Family game night', 'Kids and all ages', 'Brain training', 'Party games'],
+    extraFaqs: [
+      {
+        question: 'How does scoring work in Matching Pairs?',
+        answer:
+          'You earn 1000 points per matched pair. Match 3 in a row without a miss and earn a +500 streak bonus — streaks stack so 6-in-a-row gives +1000 total streak bonus. The first player to finish gets +1500, second +1000, third +500. Completing the board with zero misses adds a +2000 perfect-game bonus.',
+      },
+      {
+        question: 'Does everyone play the same board?',
+        answer:
+          'Everyone sees the same set of icons, but each player gets their own independently shuffled layout — so two players can never simply copy each other. Same fairness, different challenge.',
+      },
+      {
+        question: 'What happens if I flip two cards that do not match?',
+        answer:
+          'Both cards flip back face-down after 0.8 seconds. Your streak resets to 0, but you can keep playing. There is no per-miss point penalty, only missed streak opportunities.',
+      },
+      {
+        question: 'Can I play Matching Pairs solo?',
+        answer:
+          'Yes — the game works with a single player. Placement bonuses apply when there are multiple players, but you can still chase the perfect-game and streak bonuses on your own.',
       },
     ],
   }),

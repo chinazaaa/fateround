@@ -6,7 +6,8 @@ import { BingoCardGrid, BingoCardLegend, CalledNumbersBoard } from '@/components
 import { BingoFinalResultsShareBlock } from '@/components/bingo/BingoFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { gameTypeConfig } from '@/lib/game-types'
-import { formatBingoNumber, hasBingoWin } from '@/lib/bingo'
+import { formatBingoNumber, hasBingoWin, BINGO_MIN_PLAYERS } from '@/lib/bingo'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
 import { BINGO_CALLED_NUMBER_SELECT, BINGO_CARD_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
@@ -164,6 +165,14 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         }
       )
       .on(
+        // Keep the roster live so the replay ready-up ring reflects taps as they happen.
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+        () => {
+          void load()
+        }
+      )
+      .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'bingo_called_numbers', filter: `game_id=eq.${gameCode}` },
         (payload) => {
@@ -301,6 +310,34 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     setScreen('join')
   }
 
+  // Ready-up ring: readiness = holding a seat, so this reuses /players/ready (which
+  // toggles the spectator flag). `ready:false` sits the player back out.
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
+  const toggleReplayReady = useCallback(
+    async (ready: boolean) => {
+      if (!myResumeToken) {
+        toastError('Your player session expired — rejoin to continue')
+        return
+      }
+      setReplayReadyPending(true)
+      try {
+        const res = await fetch('/api/players/ready', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? 'Failed to update ready')
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to update ready')
+      } finally {
+        setReplayReadyPending(false)
+      }
+    },
+    [gameCode, myResumeToken, load, toastError]
+  )
+
   const cfg = gameTypeConfig('bingo')
   const called = calledNumbers.map((row) => row.number)
   const lastCalled = called.length > 0 ? called[called.length - 1] : null
@@ -409,6 +446,22 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'waiting') {
     const me = players.find((p) => p.id === myPlayerId)
+    // "Play again · same settings" reopened the lobby with the ready-up ring.
+    if (game?.replay_pending) {
+      return (
+        <GameJoinLobbyShell gameCode={gameCode}>
+          <ReplayReadyRing
+            players={players}
+            meId={myPlayerId}
+            isHost={false}
+            minPlayers={BINGO_MIN_PLAYERS}
+            onToggleReady={(ready) => void toggleReplayReady(ready)}
+            onStart={() => {}}
+            pending={replayReadyPending}
+          />
+        </GameJoinLobbyShell>
+      )
+    }
     return (
       <GameJoinLobbyShell gameCode={gameCode}>
         <GameLobbyWaitingPanel

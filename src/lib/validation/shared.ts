@@ -71,11 +71,13 @@ export const gameTypeEnum = z.enum([
   'sudoku',
   'tic_tac_toe',
   'word_hunt',
+  'matching_pairs',
   'chess',
   'checkers',
   'describe_it',
   'scrabble',
   'snake_and_ladder',
+  'mafia',
 ])
 
 export const participantModeEnum = z.enum(['import', 'joiners', 'voters'])
@@ -89,7 +91,7 @@ export const wyrChoiceEnum = z.enum(['a', 'b'])
 export const participantGenderEnum = z.enum(['male', 'female'])
 export const playerGenderEnum = z.enum(['male', 'female', 'both'])
 export const pairFlagEnum = z.enum(['kiss', 'kill'])
-export const themeEnum = z.enum(['default', 'neon', 'retro', 'elegant', 'tropical', 'pirate'])
+export const themeEnum = z.enum(['default', 'neon', 'retro', 'elegant', 'tropical', 'pirate', 'arctic', 'naija'])
 export const participantFilterEnum = z.enum(['all', 'joined'])
 export const timerSecondsEnum = z.union([z.literal(10), z.literal(15), z.literal(30), z.literal(60)])
 

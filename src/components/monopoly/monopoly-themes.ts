@@ -84,7 +84,7 @@ export interface MonopolyBoardPalette {
   /** Optional custom font class for tile labels */
   tileFont?: string
   /** Optional custom decoration overlay */
-  customDecoration?: 'pirate' | 'none'
+  customDecoration?: 'pirate' | 'arctic' | 'naija' | 'none'
 }
 
 // ---------------------------------------------------------------------------
@@ -140,9 +140,9 @@ const PIRATE_PALETTE: MonopolyBoardPalette = {
   cornerDivider: 'bg-[#B8860B]/40 dark:bg-[#B8860B]/30',
   myTokenRing: 'ring-[#B8860B] dark:ring-[#D4AF37]',
   myTokenOffset: 'ring-offset-[#D9C7A3] dark:ring-offset-[#0B2545]',
-  titleFont: 'font-pirate font-normal tracking-wide',
+  titleFont: 'font-pirate-bold font-bold text-sm sm:text-3xl tracking-wide',
   subtitleFont: 'font-naval font-normal tracking-widest',
-  tileFont: 'font-chart',
+  tileFont: 'font-sans font-extrabold tracking-tight',
   customDecoration: 'pirate',
 }
 
@@ -278,8 +278,303 @@ const PIRATE_EDITION: MonopolyThemeEdition = {
 // Registry & lookup
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Arctic edition
+// ---------------------------------------------------------------------------
+
+const ARCTIC_PALETTE: MonopolyBoardPalette = {
+  boardBg:
+    'bg-gradient-to-br from-[#EAF2F5] via-[#DCEBEE] to-[#CDE2E6] dark:from-[#1E4E6B] dark:via-[#15384D] dark:to-[#0A1A2A]',
+  boardBorder: 'border-[#1E4E6B]/60 dark:border-[#3FA9A0]/60',
+  boardShadow:
+    'shadow-[0_20px_60px_rgba(30,78,107,0.25),inset_0_1px_0_rgba(255,255,255,0.8)] dark:shadow-[0_20px_60px_rgba(10,26,42,0.7),inset_0_1px_0_rgba(216,230,232,0.15)]',
+  centerBg:
+    'bg-gradient-to-br from-[#F4F9FA]/95 via-[#EAF2F5]/90 to-[#DFECEF]/95 dark:from-[#10263C]/95 dark:via-[#0D2034]/90 dark:to-[#0A1A2A]/95',
+  centerBorder: 'border-[#1E4E6B]/30 dark:border-[#3FA9A0]/40',
+  centerText: 'text-[#1B2A32] dark:text-[#D8E6E8]',
+  centerSubtleText: 'text-[#5C6B73] dark:text-[#8CA3AB]',
+  centerPriceText: 'text-[#1E4E6B] dark:text-[#3FA9A0]',
+  centerDebtPriceText: 'text-[#B34A3C] dark:text-[#B34A3C]',
+  titleColor: 'text-[#1B2A32] dark:text-[#D8E6E8]',
+  subtitleColor: 'text-[#1E4E6B] dark:text-[#3FA9A0]',
+  tileBg: 'bg-[#F8FBFC] dark:bg-[#10263C]/90',
+  tileBorder: 'border-[#1E4E6B]/25 dark:border-[#3FA9A0]/25',
+  tileText: 'text-[#1B2A32] dark:text-[#D8E6E8]',
+  highlightRing: 'ring-[#1E4E6B] dark:ring-[#3FA9A0]',
+  highlightOffset: 'ring-offset-[#EAF2F5] dark:ring-offset-[#0A1A2A]',
+  priceText: 'text-[#1E4E6B] dark:text-[#3FA9A0]',
+  rentText: 'text-[#5C6B73] dark:text-[#8CA3AB]',
+  cornerDivider: 'bg-[#1E4E6B]/20 dark:bg-[#3FA9A0]/30',
+  myTokenRing: 'ring-[#1E4E6B] dark:ring-[#3FA9A0]',
+  myTokenOffset: 'ring-offset-[#EAF2F5] dark:ring-offset-[#0A1A2A]',
+  titleFont: 'font-arctic-header font-bold text-base sm:text-3xl tracking-widest uppercase',
+  subtitleFont: 'font-arctic-header font-medium tracking-widest text-xs sm:text-sm uppercase',
+  tileFont: 'font-sans font-extrabold tracking-tight',
+  customDecoration: 'arctic',
+}
+
+const ARCTIC_EDITION: MonopolyThemeEdition = {
+  themeId: 'arctic',
+  editionName: 'Arctic',
+  editionEmoji: '🧭',
+  currencySymbol: 'Ɨ',
+  currencyWord: 'shards',
+  editionSubtitle: 'Polar Edition',
+  boardTitle: 'EXPEDITION',
+  typeIcons: {
+    go: '🧊',
+    chance: '🧭',
+    community: '⛺',
+    tax: '❄️',
+    jail: '🏔️',
+    go_to_jail: '🛷',
+    free_parking: '🔥',
+    station: '🚉',
+    utility: '⚡',
+  },
+  spaceNames: {
+    // Brown: Real Winter Trails & Passes
+    1: 'Klondike Trail',
+    3: 'Donner Pass',
+    // Light Blue: Real Northern Arctic Regions
+    6: 'Svalbard',
+    8: 'Lapland',
+    9: 'Glacier Bay',
+    // Pink: Real Glaciers & Frozen Lakes
+    11: 'Lake Louise',
+    13: 'Columbia Icefield',
+    14: 'Hubbard Glacier',
+    // Orange: Real World-Famous Ski Peaks
+    16: 'Chamonix',
+    18: 'Aspen',
+    19: 'Whistler',
+    // Red: Real Arctic Routes & Mountains
+    21: 'Yukon Trail',
+    23: 'Alaska Highway',
+    24: 'Denali',
+    // Yellow: Real Iconic Alpine Peaks
+    26: 'Matterhorn',
+    27: 'Mont Blanc',
+    29: 'Everest Base',
+    // Green: Real Polar Giants
+    31: 'Ross Ice Shelf',
+    32: 'K2 Mountain',
+    34: 'Mount Everest',
+    // Dark Blue: The Real Poles
+    37: 'South Pole',
+    39: 'North Pole',
+    // Real Polar & Alpine Stations
+    5: 'McMurdo Station',
+    15: 'Zermatt Station',
+    25: 'Summit Station',
+    35: 'Vostok Station',
+    // Utilities
+    12: 'Northern Lights',
+    28: 'Hot Springs',
+    // Community Chest & Chance
+    2: 'Supply Cache',
+    17: 'Supply Cache',
+    33: 'Supply Cache',
+    7: 'Polar Compass',
+    22: 'Polar Compass',
+    36: 'Polar Compass',
+    // Corners & Specials
+    0: 'Base Camp',
+    4: 'Ice Toll',
+    10: 'Shelter Camp',
+    20: 'Winter Feast',
+    30: 'Snow Storm',
+    38: 'Khumbu Icefall',
+  },
+  spaceLines: {
+    0: ['BASE', 'CAMP'],
+    1: ['KLONDIKE', 'TRAIL'],
+    2: ['SUPPLY', 'CACHE'],
+    3: ['DONNER', 'PASS'],
+    4: ['ICE', 'TOLL'],
+    5: ['MCMURDO', 'STATION'],
+    6: ['SVALBARD'],
+    7: ['POLAR', 'COMPASS'],
+    8: ['LAPLAND'],
+    9: ['GLACIER', 'BAY'],
+    10: ['SHELTER', 'CAMP'],
+    11: ['LAKE', 'LOUISE'],
+    12: ['NORTHERN', 'LIGHTS'],
+    13: ['COLUMBIA', 'ICEFIELD'],
+    14: ['HUBBARD', 'GLACIER'],
+    15: ['ZERMATT', 'STATION'],
+    16: ['CHAMONIX'],
+    17: ['SUPPLY', 'CACHE'],
+    18: ['ASPEN'],
+    19: ['WHISTLER'],
+    20: ['WINTER', 'FEAST'],
+    21: ['YUKON', 'TRAIL'],
+    22: ['POLAR', 'COMPASS'],
+    23: ['ALASKA', 'HIGHWAY'],
+    24: ['DENALI'],
+    25: ['SUMMIT', 'STATION'],
+    26: ['THE', 'MATTERHORN'],
+    27: ['MONT', 'BLANC'],
+    28: ['HOT', 'SPRINGS'],
+    29: ['EVEREST', 'BASE'],
+    30: ['SNOW', 'STORM'],
+    31: ['ROSS ICE', 'SHELF'],
+    32: ['K2', 'MOUNTAIN'],
+    33: ['SUPPLY', 'CACHE'],
+    34: ['MOUNT', 'EVEREST'],
+    35: ['VOSTOK', 'STATION'],
+    36: ['POLAR', 'COMPASS'],
+    37: ['SOUTH', 'POLE'],
+    38: ['KHUMBU', 'ICEFALL'],
+    39: ['NORTH', 'POLE'],
+  },
+  boardPalette: ARCTIC_PALETTE,
+}
+
+const NAIJA_PALETTE: MonopolyBoardPalette = {
+  boardBg:
+    'bg-gradient-to-br from-[#F4EDE1] via-[#EAE1D3] to-[#DED3C3] dark:from-[#0B1F16] dark:via-[#091811] dark:to-[#06110C]',
+  boardBorder: 'border-[#008751]/80 dark:border-[#D9A441]/80',
+  boardShadow:
+    'shadow-[0_20px_60px_rgba(26,31,28,0.3),inset_0_1px_0_rgba(255,255,255,0.5)] dark:shadow-[0_20px_60px_rgba(3,11,7,0.85),inset_0_1px_0_rgba(217,164,65,0.25)]',
+  centerBg:
+    'bg-gradient-to-br from-[#F4EDE1]/95 via-[#EAE1D3]/90 to-[#DED3C3]/95 dark:from-[#0E261B]/95 dark:via-[#0B1F16]/90 dark:to-[#07150F]/95',
+  centerBorder: 'border-[#008751]/50 dark:border-[#D9A441]/40',
+  centerText: 'text-[#1A1F1C] dark:text-[#EDE3D3]',
+  centerSubtleText: 'text-[#008751] dark:text-[#D9A441]/85',
+  centerPriceText: 'text-[#008751] dark:text-[#D9A441]',
+  centerDebtPriceText: 'text-[#B5622A] dark:text-[#9C3B2E]',
+  titleColor: 'text-[#008751] dark:text-[#D9A441]',
+  subtitleColor: 'text-[#B5622A] dark:text-[#EDE3D3]/80',
+  tileBg: 'bg-[#F9F5EE] dark:bg-[#0E261B]',
+  tileBorder: 'border-[#008751]/40 dark:border-[#D9A441]/35',
+  tileText: 'text-[#1A1F1C] dark:text-[#EDE3D3]',
+  highlightRing: 'ring-[#008751] dark:ring-[#D9A441]',
+  highlightOffset: 'ring-offset-[#EAE1D3] dark:ring-offset-[#0B1F16]',
+  priceText: 'text-[#008751] dark:text-[#D9A441]',
+  rentText: 'text-[#B5622A] dark:text-[#EDE3D3]/80',
+  cornerDivider: 'bg-[#008751]/30 dark:bg-[#D9A441]/30',
+  myTokenRing: 'ring-[#008751] dark:ring-[#D9A441]',
+  myTokenOffset: 'ring-offset-[#EAE1D3] dark:ring-offset-[#0B1F16]',
+  titleFont: 'font-sans font-black text-sm sm:text-3xl tracking-wide',
+  subtitleFont: 'font-sans font-semibold tracking-wider text-xs sm:text-sm uppercase',
+  tileFont: 'font-sans font-bold tracking-tight',
+  customDecoration: 'naija',
+}
+
+const NAIJA_EDITION: MonopolyThemeEdition = {
+  themeId: 'naija',
+  editionName: 'Naija',
+  editionEmoji: '🇳🇬',
+  currencySymbol: '₦',
+  currencyWord: 'naira',
+  editionSubtitle: 'Naija Edition',
+  boardTitle: 'COMMERCE',
+  typeIcons: {
+    go: '🛍️',
+    chance: '🎲',
+    community: '🤝',
+    tax: '🧾',
+    jail: '🔒',
+    go_to_jail: '🚨',
+    free_parking: '🅿️',
+    station: '🚆',
+    utility: '💡',
+  },
+  spaceNames: {
+    0: 'Balogun Market',
+    1: 'Oshodi Market',
+    2: 'Esusu Fund',
+    3: 'Yaba Market',
+    4: 'LGA Market Levy',
+    5: 'Iddo Railway Terminal',
+    6: 'Ariaria Market',
+    7: 'Trade Venture',
+    8: 'Main Market Onitsha',
+    9: 'Alaba International',
+    10: 'Kirikiri',
+    11: 'Tejuosho Market',
+    12: 'NEPA / PHCN',
+    13: 'Ogbete Market',
+    14: 'Kurmi Market',
+    15: 'Abuja Metro Station',
+    16: 'Mile 12 Market',
+    17: 'Market Guild',
+    18: 'Garki Model Market',
+    19: 'Computer Village',
+    20: 'Obalende Park',
+    21: 'Bodija Market',
+    22: 'Trade Venture',
+    23: 'Wuse Market',
+    24: 'Idumota Market',
+    25: 'Port Harcourt Terminus',
+    26: 'Dugbe Market',
+    27: 'Aba Mills',
+    28: 'Water Board',
+    29: 'Tin Can Island',
+    30: 'Taskforce Arrest',
+    31: 'Allen Avenue',
+    32: 'Adetokunbo Ademola',
+    33: 'Esusu Fund',
+    34: 'Ahmadu Bello Way',
+    35: 'Rigasa Station',
+    36: 'Trade Venture',
+    37: 'Wuse II',
+    38: 'FIRS Luxury Tax',
+    39: 'Bourdillon Road',
+  },
+  spaceLines: {
+    0: ['BALOGUN', 'MARKET'],
+    1: ['OSHODI', 'MARKET'],
+    2: ['ESUSU', 'FUND'],
+    3: ['YABA', 'MARKET'],
+    4: ['MARKET', 'LEVY'],
+    5: ['IDDO', 'TERMINAL'],
+    6: ['ARIARIA', 'MARKET'],
+    7: ['TRADE', 'VENTURE'],
+    8: ['MAIN MKT', 'ONITSHA'],
+    9: ['ALABA', 'INTL'],
+    10: ['KIRIKIRI', 'PRISON'],
+    11: ['TEJUOSHO', 'MARKET'],
+    12: ['NEPA /', 'PHCN'],
+    13: ['OGBETE', 'MARKET'],
+    14: ['KURMI', 'MARKET'],
+    15: ['ABUJA', 'METRO'],
+    16: ['MILE 12', 'MARKET'],
+    17: ['MARKET', 'GUILD'],
+    18: ['GARKI', 'MODEL'],
+    19: ['COMPUTER', 'VILLAGE'],
+    20: ['OBALENDE', 'PARK'],
+    21: ['BODIJA', 'MARKET'],
+    22: ['TRADE', 'VENTURE'],
+    23: ['WUSE', 'MARKET'],
+    24: ['IDUMOTA', 'MARKET'],
+    25: ['PH', 'TERMINUS'],
+    26: ['DUGBE', 'MARKET'],
+    27: ['ABA', 'MILLS'],
+    28: ['WATER', 'BOARD'],
+    29: ['TIN CAN', 'ISLAND'],
+    30: ['TASKFORCE', 'ARREST'],
+    31: ['ALLEN', 'AVENUE'],
+    32: ['ADETOKUNBO', 'ADEMOLA'],
+    33: ['ESUSU', 'FUND'],
+    34: ['AHMADU', 'BELLO WAY'],
+    35: ['RIGASA', 'STATION'],
+    36: ['TRADE', 'VENTURE'],
+    37: ['WUSE', 'II'],
+    38: ['LUXURY', 'TAX'],
+    39: ['BOURDILLON', 'ROAD'],
+  },
+  boardPalette: NAIJA_PALETTE,
+}
+
 /** All Monopoly theme editions, in picker display order. */
-export const MONOPOLY_EDITIONS: MonopolyThemeEdition[] = [CLASSIC_EDITION, PIRATE_EDITION]
+export const MONOPOLY_EDITIONS: MonopolyThemeEdition[] = [
+  CLASSIC_EDITION,
+  PIRATE_EDITION,
+  ARCTIC_EDITION,
+  NAIJA_EDITION,
+]
 
 const EDITION_MAP: Record<string, MonopolyThemeEdition> = Object.fromEntries(
   MONOPOLY_EDITIONS.map((e) => [e.themeId, e])
@@ -318,10 +613,27 @@ export function themedSpaceIcon(spaceType: MonopolySpaceType, themeId?: string |
   return edition.typeIcons[spaceType] ?? ''
 }
 
+/** Get the numerical multiplier for currency in the current theme (e.g. 1000 for Naija Edition). */
+export function getMoneyScale(themeId?: string | null): number {
+  const edition = getMonopolyEdition(themeId)
+  return edition.themeId === 'naija' ? 1000 : 1
+}
+
+/** Convert a canonical game money amount (e.g. 10) to its displayed numerical value (e.g. 10000). */
+export function canonicalToDisplayMoney(canonicalAmount: number, themeId?: string | null): number {
+  return canonicalAmount * getMoneyScale(themeId)
+}
+
+/** Convert a user-entered numerical display value (e.g. 10000) to canonical game money (e.g. 10). */
+export function displayToCanonicalMoney(displayAmount: number, themeId?: string | null): number {
+  return Math.round(displayAmount / getMoneyScale(themeId))
+}
+
 /** Format a money amount with the themed currency symbol. */
 export function formatThemedMoney(amount: number, themeId?: string | null): string {
   const edition = getMonopolyEdition(themeId)
-  return `${edition.currencySymbol}${amount.toLocaleString('en-GB')}`
+  const displayVal = canonicalToDisplayMoney(amount, themeId)
+  return `${edition.currencySymbol}${displayVal.toLocaleString('en-GB')}`
 }
 
 /** Get the board visual palette for a theme. */
@@ -349,8 +661,20 @@ export function formatThemedText(text: string | null | undefined, themeId?: stri
     }
   }
 
-  formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, `${edition.currencySymbol}$1`)
+  if (edition.themeId === 'naija') {
+    formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, (_, numStr) => {
+      const num = parseFloat(numStr.replace(/,/g, ''))
+      return `${edition.currencySymbol}${(num * 1000).toLocaleString('en-GB')}`
+    })
+  } else {
+    formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, `${edition.currencySymbol}$1`)
+  }
   formatted = formatted.replace(/£/g, edition.currencySymbol)
+  if (edition.currencyWord && edition.currencyWord !== 'pounds') {
+    formatted = formatted.replace(/\bpounds\b/g, edition.currencyWord)
+    formatted = formatted.replace(/\bPounds\b/g, edition.currencyWord[0].toUpperCase() + edition.currencyWord.slice(1))
+    formatted = formatted.replace(/\bPOUNDS\b/g, edition.currencyWord.toUpperCase())
+  }
 
   return formatted
 }

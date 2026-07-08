@@ -21,7 +21,7 @@ vi.mock('@/lib/supabase', () => {
   }
 })
 vi.mock('@/lib/player-resume', () => ({ resolvePlayerSession: vi.fn(async () => null) }))
-vi.mock('@/lib/utils', () => ({ setPlayerSession: vi.fn() }))
+vi.mock('@/lib/utils', () => ({ setPlayerSession: vi.fn(), getPlayerSession: vi.fn(() => null) }))
 
 import { useGameViewBootstrap } from './useGameViewBootstrap'
 
@@ -106,6 +106,35 @@ describe('useGameViewBootstrap', () => {
     expect(onJoinSuccess).toHaveBeenCalledWith(
       expect.objectContaining({ playerId: 'p9', playerName: 'Zed', codewordsRole: 'spy' })
     )
+    vi.unstubAllGlobals()
+  })
+
+  it('sends the stored resume token on join so the server reclaims an existing seat', async () => {
+    // A device that already holds a seat (reconnect / refresh) must reclaim it rather than
+    // create a new row — on an active game a new row defaults to spectator, demoting a player.
+    const utils = await import('@/lib/utils')
+    // Persistent (not …Once): bootstrap may read getPlayerSession more than once during
+    // resolve + join, so every call in this test should see the seated session.
+    vi.mocked(utils.getPlayerSession).mockReturnValue({
+      playerId: 'p9',
+      playerName: 'Zed',
+      playerGender: 'both',
+      resumeToken: 'RT-EXISTING',
+    })
+    h.gameRow = { id: 'ABCD', status: 'active' }
+    h.players = [{ id: 'p9' }]
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ playerId: 'p9', playerName: 'Zed' }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = setup()
+    await waitFor(() => expect(result.current.screen).toBe('active'))
+    await act(async () => {
+      await result.current.join({ name: 'Zed' })
+    })
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }]
+    const body = JSON.parse(init.body)
+    expect(body.resumeToken).toBe('RT-EXISTING')
+    // Restore the default so the persistent mock doesn't leak into other tests.
+    vi.mocked(utils.getPlayerSession).mockReturnValue(null)
     vi.unstubAllGlobals()
   })
 

@@ -109,6 +109,7 @@ export function WhotPlaySurface({
 
   // Turn rail: order players by turn_order so seats read left→right in play order.
   const byId = new Map(players.map((p) => [p.id, p]))
+  const winnerId = (session.finish_order ?? [])[0]
   const seats: TurnSeat[] = session.turn_order
     .map((id) => byId.get(id))
     .filter((p): p is Player => !!p)
@@ -119,6 +120,7 @@ export function WhotPlaySurface({
         cards: handCounts[p.id] ?? 0,
         turn: isTurn,
         you: p.id === myPlayerId,
+        winner: p.id === winnerId,
         timeLabel: isTurn ? turnTimeLabel : undefined,
         timeLow: isTurn ? turnTimer?.urgent : undefined,
       }
@@ -144,7 +146,7 @@ export function WhotPlaySurface({
         ? `Draw ${pickPenalty.count} (Pick 3)`
         : 'Draw a card'
 
-  const specSeats: SpecSeat[] = seats.map((s) => ({ name: s.name, cards: s.cards, turn: s.turn, host: s.host }))
+  const specSeats: SpecSeat[] = seats.map((s) => ({ name: s.name, cards: s.cards, turn: s.turn, winner: s.winner }))
 
   const gamePct =
     gameTimer && gameTimer.durationSeconds > 0
@@ -152,7 +154,7 @@ export function WhotPlaySurface({
       : 0
 
   return (
-    <CardTableSurface>
+    <CardTableSurface variant="whot">
       {gameTimer?.active && <GameTimerBar label={gameTimer.label} pct={gamePct} low={gameTimer.secondsLeft <= 60} />}
       <TurnRail seats={seats} />
 
@@ -161,6 +163,22 @@ export function WhotPlaySurface({
           draw={<DrawPile count={drawCount} accent={WHOT_ACCENT} />}
           discard={top ? <WhotCardFace card={top} big /> : <span className="turn-status g">No card</span>}
         />
+
+        {/* Persistent demand badge — stays visible for the whole WHOT call, even
+            after a player draws (which overwrites status_message without the hint). */}
+        {requirement && (
+          <div className="whot-demand" role="status">
+            <span className="whot-demand__lbl">Must play</span>
+            {session.required_shape ? (
+              <span className="whot-demand__val">
+                <WhotShapeIcon shape={session.required_shape} size="sm" />
+                {WHOT_SHAPE_LABELS[session.required_shape]}
+              </span>
+            ) : (
+              <span className="whot-demand__val">number {session.required_number}</span>
+            )}
+          </div>
+        )}
 
         {watching ? (
           <TurnStatus muted>
@@ -179,17 +197,16 @@ export function WhotPlaySurface({
         ) : pickPenalty.type === 'pick3' ? (
           <ActionToast tone="hot">🔥 Pick 3 — play a 5 or draw {pickPenalty.count}</ActionToast>
         ) : isMyTurn ? (
-          <TurnStatus>
-            Your turn{requirement ? ' — ' : ''}
-            {requirement && <span className="g">{requirement}</span>}
-          </TurnStatus>
+          // The required shape/number is shown persistently by the demand badge
+          // above, so the turn prompt no longer repeats it inline.
+          <TurnStatus>Your turn</TurnStatus>
         ) : (
           <TurnStatus muted>Waiting for {turnName}…</TurnStatus>
         )}
       </Table>
 
       {watching ? (
-        <div className="hand-wrap">
+        <div className="hand-wrap spec">
           <div className="hand-head">
             <span className="hl">Players · {specSeats.length}</span>
             <span className="cnt">watch-only</span>

@@ -6,6 +6,7 @@ import { checkOverallWinner, subBoardCells } from '@/lib/tic-tac-toe'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
 
 function glyph(value: string | null): string {
   return value === 'X' ? '✕' : value === 'O' ? '○' : ''
@@ -69,6 +70,8 @@ export function TicTacToeFinalResultsShareBlock({
   winnerName,
   highlightPlayerId,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
 }: {
   game: Game
   players: Player[]
@@ -76,6 +79,8 @@ export function TicTacToeFinalResultsShareBlock({
   winnerName?: string | null
   highlightPlayerId?: string | null
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -89,18 +94,15 @@ export function TicTacToeFinalResultsShareBlock({
 
   return (
     <div className="space-y-4">
-      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-4">
+      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-5">
         <ShareResultsCaptureHeader game={game} />
-        <p className="text-5xl sm:text-6xl leading-none text-center pt-1">{isDraw ? '🤝' : endedEarly ? '🏁' : '🏆'}</p>
-        <p className="text-xl sm:text-2xl font-black text-center text-[var(--marry)]">
-          {isDraw
-            ? "It's a draw!"
-            : displayWinner
-              ? `${displayWinner} wins!`
-              : endedEarly
-                ? 'Game ended early'
-                : 'Game over'}
-        </p>
+        {isDraw ? (
+          <FinishedWinnerHero game={game} emoji="🤝" headline="It's a draw!" />
+        ) : endedEarly ? (
+          <FinishedWinnerHero game={game} emoji="🏁" headline="Game ended early" />
+        ) : (
+          <FinishedWinnerHero winnerName={displayWinner} game={game} />
+        )}
         {session && (
           <>
             <div className="flex items-center justify-between gap-3 text-sm px-1">
@@ -119,8 +121,11 @@ export function TicTacToeFinalResultsShareBlock({
         )}
       </div>
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}
@@ -132,6 +137,7 @@ export function TicTacToeFinalResultsShareBlock({
             ticTacToeWinnerName={displayWinner ?? undefined}
             ticTacToeIsDraw={isDraw}
             ticTacToeEndedEarly={endedEarly}
+            primary
           />
         }
       />

@@ -20,6 +20,7 @@ export function PlayerRoomShell({
   gameName,
   playerName,
   playerId,
+  resumeToken,
   onLeave,
   children,
 }: {
@@ -30,6 +31,8 @@ export function PlayerRoomShell({
   playerName?: string | null
   /** Player id — the voice identity + gate for mounting the rail. */
   playerId?: string | null
+  /** The player's resume token — powers their "play on another device" share link. */
+  resumeToken?: string | null
   /** Handler for the rail's "Leave game" action — without it the button is a noop. */
   onLeave?: () => void
   children: React.ReactNode
@@ -49,6 +52,7 @@ export function PlayerRoomShell({
           playerName={playerName!}
           identity={playerId!}
           auth={{ kind: 'player' }}
+          resumeToken={resumeToken ?? undefined}
           autoRejoin={false}
           onLeave={onLeave}
         />

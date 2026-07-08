@@ -221,8 +221,8 @@ export function YahtzeeDiceTray({
       </div>
 
       {/* Dice + Roll button */}
-      <div className="flex items-end gap-3">
-        <div className="flex-1 flex justify-center pb-2">
+      <div className="flex flex-col sm:flex-row items-center sm:items-end gap-3">
+        <div className="flex-1 flex justify-center pb-0 sm:pb-2">
           <YahtzeeDiceRow dice={dice} held={held} interactive={interactive} onToggleHold={onToggleHold} />
         </div>
 
@@ -234,7 +234,7 @@ export function YahtzeeDiceTray({
             }}
             loading={rolling}
             compact
-            className="shrink-0 !w-auto min-w-[5.5rem]"
+            className="w-full sm:w-auto sm:shrink-0 text-center sm:min-w-[5.5rem]"
           >
             {rollsThisTurn === 0 ? '🎲 Roll' : '🎲 Roll again'}
           </YahtzeePrimaryButton>

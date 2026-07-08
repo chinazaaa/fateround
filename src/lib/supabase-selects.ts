@@ -1,4 +1,4 @@
-/** Slim column lists for hot-path Supabase queries (avoids select('*') egress). */
+﻿/** Slim column lists for hot-path Supabase queries (avoids select('*') egress). */
 
 // NOTE: host_token / resume_token are deliberately excluded — they are secret auth
 // credentials anon must never read (migration 0122 revokes them at the DB). They are
@@ -6,7 +6,7 @@
 // server-side via the service role. Anon `select('*')` on games/players now ERRORS, so
 // client reads must use these curated lists.
 export const GAME_SELECT =
-  'id,title,rounds_count,timer_seconds,operative_timer_seconds,anonymous,auto_reveal,auto_submit_behavior,participant_mode,participant_filter,pair_vote_mode,question_source,custom_questions,player_questions_enabled,player_questions_order,game_type,theme,status,current_round_number,created_at,finished_at,session_started_at,allow_viewers,allow_late_players,max_players,anonymous_messages_trimmed_at,wst_quote_source,custom_slots,gender_based,codewords_player_picks,codewords_late_join,codewords_randomize_teams,describe_it_num_teams,describe_it_mode,pool_usage,trivia_category,bingo_call_mode,bingo_call_interval_seconds,game_duration_seconds,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,ludo_variant,mahjong_ruleset,mahjong_rule_options,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,chess_board_theme,chess_piece_set,tournament_id,pending_host_player_id,is_public,music_enabled'
+  'id,title,rounds_count,timer_seconds,operative_timer_seconds,anonymous,auto_reveal,auto_submit_behavior,participant_mode,participant_filter,pair_vote_mode,question_source,custom_questions,player_questions_enabled,player_questions_order,game_type,theme,status,current_round_number,created_at,finished_at,session_started_at,allow_viewers,allow_late_players,max_players,anonymous_messages_trimmed_at,wst_quote_source,custom_slots,gender_based,codewords_player_picks,codewords_late_join,codewords_randomize_teams,describe_it_num_teams,describe_it_mode,pool_usage,trivia_category,bingo_call_mode,bingo_call_interval_seconds,game_duration_seconds,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,ludo_variant,mahjong_ruleset,mahjong_rule_options,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,chess_board_theme,chess_piece_set,tournament_id,pending_host_player_id,is_public,music_enabled,replay_pending'
 
 export const PLAYER_SELECT = 'id,game_id,name,gender,identity_gender,participant_id,joined_at,spectator,monopoly_token'
 
@@ -22,7 +22,7 @@ export const PARTICIPANT_SELECT =
   'id,game_id,name,gender,photo_url,description,display_order,in_mlt_poll,submitted_by_player_id'
 
 export const ROUND_SELECT =
-  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,quote_submitted_at,status,started_at,ended_at,anime_metadata,trivia_metadata,ttl_metadata,npat_metadata,sudoku_metadata,word_hunt_metadata'
+  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,quote_submitted_at,status,started_at,ended_at,anime_metadata,trivia_metadata,ttl_metadata,npat_metadata,sudoku_metadata,word_hunt_metadata,memory_match_metadata'
 
 export const SUDOKU_SUBMISSION_SELECT =
   'id,game_id,round_id,player_id,block_index,cell_row,cell_col,submitted_value,is_correct,points_awarded,submitted_at'
@@ -128,3 +128,9 @@ export const NPAT_MARK_SELECT =
 export const WST_QUOTE_POOL_SELECT = 'id,game_id,player_id,quote_text,author_participant_id,created_at,updated_at'
 
 export const PLAYER_QUESTION_SELECT = 'id,player_id,question_type,option_a,option_b,question_text'
+
+export const MEMORY_MATCH_SUBMISSION_SELECT =
+  'id,game_id,round_id,player_id,pair_index,is_match,streak_at_time,streak_bonus,points_after,submitted_at'
+
+export const MEMORY_MATCH_PROGRESS_SELECT =
+  'id,game_id,round_id,player_id,pairs_matched,wrong_attempts,finished,finish_rank,finished_at,created_at,updated_at'
