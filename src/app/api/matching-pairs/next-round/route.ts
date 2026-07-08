@@ -12,15 +12,15 @@ import {
 import { GAME_SELECT } from '@/lib/supabase-selects'
 
 const schema = z.object({
+  gameCode: z.string().min(1).max(10).toUpperCase(),
   hostToken: z.string().min(4),
 })
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
-  const { code } = await params
+export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, schema)
   if (bodyError) return bodyError
 
-  const gameId = code.toUpperCase()
+  const gameId = body.gameCode
   const supabase = getSupabaseAdmin()
 
   // Verify host.

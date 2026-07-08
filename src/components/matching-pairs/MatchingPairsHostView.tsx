@@ -126,7 +126,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       const res = await fetch('/api/matching-pairs/next-round', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken }),
+        body: JSON.stringify({ gameCode, hostToken }),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
