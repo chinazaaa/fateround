@@ -13,24 +13,24 @@ GRANT SELECT (mafia_doctor_enabled, mafia_detective_enabled, mafia_count, mafia_
 CREATE TABLE IF NOT EXISTS mafia_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   game_id text NOT NULL UNIQUE REFERENCES games(id) ON DELETE CASCADE,
-  
+
   phase text NOT NULL DEFAULT 'role_reveal' CHECK (phase IN ('role_reveal', 'night', 'day_report', 'discussion', 'voting', 'elimination', 'game_over')),
   day_number integer NOT NULL DEFAULT 0,
   phase_deadline timestamptz,
-  
+
   mafia_target_player_id uuid REFERENCES players(id) ON DELETE SET NULL,
   doctor_target_player_id uuid REFERENCES players(id) ON DELETE SET NULL,
   detect_target_player_id uuid REFERENCES players(id) ON DELETE SET NULL,
   night_kill_player_id uuid REFERENCES players(id) ON DELETE SET NULL,
   vote_result_player_id uuid REFERENCES players(id) ON DELETE SET NULL,
-  
+
   doctor_enabled boolean NOT NULL DEFAULT true,
   detective_enabled boolean NOT NULL DEFAULT true,
   mafia_count integer NOT NULL DEFAULT 1,
   anonymous_votes boolean NOT NULL DEFAULT false,
-  
+
   winning_team text CHECK (winning_team IN ('village', 'mafia')),
-  
+
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -41,15 +41,15 @@ CREATE TABLE IF NOT EXISTS mafia_player_states (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   game_id text NOT NULL REFERENCES games(id) ON DELETE CASCADE,
   player_id uuid NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-  
+
   role text NOT NULL CHECK (role IN ('villager', 'mafia', 'doctor', 'detective')),
   is_alive boolean NOT NULL DEFAULT true,
   death_day integer,
   death_cause text CHECK (death_cause IN ('mafia_kill', 'village_vote')),
-  
+
   night_action_target_player_id uuid REFERENCES players(id) ON DELETE SET NULL,
   day_vote_target_player_id uuid REFERENCES players(id) ON DELETE SET NULL,
-  
+
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (game_id, player_id)
@@ -113,7 +113,8 @@ ALTER TABLE games ADD CONSTRAINT games_game_type_check CHECK (game_type IN (
   'snake_and_ladder',
   'crazy_eights',
   'checkers',
-  'mafia'
+  'mafia',
+  'matching_pairs'
 ));
 
 ALTER TABLE app_feedback DROP CONSTRAINT IF EXISTS app_feedback_game_type_check;
@@ -152,7 +153,8 @@ ALTER TABLE app_feedback ADD CONSTRAINT app_feedback_game_type_check CHECK (game
   'snake_and_ladder',
   'crazy_eights',
   'checkers',
-  'mafia'
+  'mafia',
+  'matching_pairs'
 ));
 
 ALTER TABLE game_player_limits DROP CONSTRAINT IF EXISTS game_player_limits_game_type_check;
@@ -178,7 +180,8 @@ ALTER TABLE game_player_limits ADD CONSTRAINT game_player_limits_game_type_check
     'snake_and_ladder',
     'crazy_eights',
     'checkers',
-    'mafia'
+    'mafia',
+    'matching_pairs'
   )
 );
 

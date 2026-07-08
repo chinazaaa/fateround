@@ -24,6 +24,24 @@
 .fr-room .railbtn svg { width: 16px; height: 16px; }
 .fr-room .divider-v { width: 1px; height: 22px; background: var(--border); }
 
+/* ── voice topbar (RoomVoiceBar variant="topbar") · responsive ───────
+   The bar is built with inline styles, so it can't respond to width and the
+   controls + "in the room" popover spilled off the right edge on a phone.
+   On narrow screens condense it: drop the game-name label, crown-only host
+   badge, icon-only mic pill, tighter gaps — and cap the popover to the
+   viewport. `!important` is required to override the component's inline styles;
+   scoped under `.rvbar` so the floating pill variant is untouched. */
+.fr-room .rvbar { min-width: 0; }
+.fr-room .rvb-pop { max-width: calc(100vw - 20px); }
+@media (max-width: 480px) {
+  .fr-room .rvbar { gap: 5px !important; padding: 9px 10px !important; }
+  .fr-room .rvbar .rvbar-ctrls { gap: 5px !important; }
+  .fr-room .rvbar .rvb-ico { width: 30px !important; height: 30px !important; }
+  .fr-room .rvbar-label { display: none !important; }
+  .fr-room .rvbar-host-lbl { display: none !important; }
+  .fr-room .rvbar .rvb-me-words { display: none !important; }
+}
+
 /* ── round + timer ───────────────────────────────────────────────── */
 .fr-room .pr-prog { padding: 12px 16px 0; }
 .fr-room .pr-prow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }

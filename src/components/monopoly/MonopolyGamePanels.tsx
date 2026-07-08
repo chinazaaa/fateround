@@ -28,7 +28,13 @@ import {
   unmortgageCost,
   type MonopolyColorGroup,
 } from '@/lib/monopoly'
-import { formatThemedMoney, formatThemedText, themedSpaceName } from '@/components/monopoly/monopoly-themes'
+import {
+  canonicalToDisplayMoney,
+  displayToCanonicalMoney,
+  formatThemedMoney,
+  formatThemedText,
+  themedSpaceName,
+} from '@/components/monopoly/monopoly-themes'
 import {
   buildTradeSideItems,
   normalizePendingTrade,
@@ -330,8 +336,8 @@ export function MonopolyManagePanel({
   }
 
   const targetName = tradeTarget ? (players.find((p) => p.id === tradeTarget)?.name ?? 'player') : ''
-  const parsedOfferCash = Number(offerCash) || 0
-  const parsedRequestCash = Number(requestCash) || 0
+  const parsedOfferCash = displayToCanonicalMoney(Number(offerCash) || 0, themeId)
+  const parsedRequestCash = displayToCanonicalMoney(Number(requestCash) || 0, themeId)
   const givingSomething = tradeSideHasValue(parsedOfferCash, offerProps, offerJailCards)
   const gettingSomething = tradeSideHasValue(parsedRequestCash, requestProps, requestJailCards)
   const isOneWayGift = givingSomething && !gettingSomething
@@ -486,6 +492,7 @@ export function MonopolyManagePanel({
                   <input
                     type="number"
                     min={0}
+                    step={canonicalToDisplayMoney(1, themeId)}
                     value={offerCash}
                     onChange={(e) => {
                       setOfferCash(e.target.value)
@@ -534,6 +541,7 @@ export function MonopolyManagePanel({
                   <input
                     type="number"
                     min={0}
+                    step={canonicalToDisplayMoney(1, themeId)}
                     value={requestCash}
                     onChange={(e) => {
                       setRequestCash(e.target.value)

@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
-import { MATCHING_PAIRS_GRID_SIZES, formatMatchingPairsGridSize } from '@/lib/memory-match'
+import {
+  MATCHING_PAIRS_GRID_SIZES,
+  MATCHING_PAIRS_GAME_DURATION_OPTIONS,
+  formatMatchingPairsGridSize,
+  formatMatchingPairsGameDuration,
+} from '@/lib/memory-match'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
@@ -36,6 +41,8 @@ export function HostMatchingPairsLobbyPanel({ gameCode, hostToken, game, playerC
   // config reuse pattern also used by other games that need one integer setting without
   // a new DB column. 0 maps to 8 pairs (Standard); anything else is 16 pairs (Large).
   const [gridSizePairs, setGridSizePairs] = useState<8 | 16>(8)
+  // Game time limit is stored in timer_seconds (0 = no limit).
+  const [timerSeconds, setTimerSeconds] = useState(0)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -54,6 +61,8 @@ export function HostMatchingPairsLobbyPanel({ gameCode, hostToken, game, playerC
     // Decode grid size: game_duration_seconds=0 → 8 pairs, =16 → 16 pairs.
     const raw = game.game_duration_seconds ?? 0
     setGridSizePairs(raw === 16 ? 16 : 8)
+    // Decode game time limit: timer_seconds (0 = no limit).
+    setTimerSeconds(game.timer_seconds ?? 0)
   }, [game, limits])
 
   useEffect(() => {
@@ -119,6 +128,15 @@ export function HostMatchingPairsLobbyPanel({ gameCode, hostToken, game, playerC
     })
   }
 
+  const onTimerSecondsChange = (next: number) => {
+    if (saveState === 'saving') return
+    const previous = timerSeconds
+    setTimerSeconds(next)
+    void patchSettings({ timer_seconds: next }).then((ok) => {
+      if (!ok) setTimerSeconds(previous)
+    })
+  }
+
   const maxPlayerOptions = useMemo(
     () =>
       playerCountOptions(minPlayers, maxCap).map((n) => ({
@@ -137,12 +155,21 @@ export function HostMatchingPairsLobbyPanel({ gameCode, hostToken, game, playerC
     []
   )
 
+  const timerSecondsOptions = useMemo(
+    () =>
+      MATCHING_PAIRS_GAME_DURATION_OPTIONS.map((n) => ({
+        value: n,
+        label: formatMatchingPairsGameDuration(n),
+      })),
+    []
+  )
+
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
     <HostLobbySettingsSection
       status={statusLabel}
-      summary={`${maxPlayers} max · ${formatMatchingPairsGridSize(gridSizePairs)}`}
+      summary={`${maxPlayers} max · ${formatMatchingPairsGridSize(gridSizePairs)} · ${formatMatchingPairsGameDuration(timerSeconds)}`}
     >
       <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
         <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
@@ -150,6 +177,10 @@ export function HostMatchingPairsLobbyPanel({ gameCode, hostToken, game, playerC
 
       <HostLobbySettingBlock title="Grid size">
         <HostLobbyOptionChips value={gridSizePairs} options={gridSizeOptions} onChange={onGridSizeChange} />
+      </HostLobbySettingBlock>
+
+      <HostLobbySettingBlock title="Game time limit">
+        <HostLobbyOptionChips value={timerSeconds} options={timerSecondsOptions} onChange={onTimerSecondsChange} />
       </HostLobbySettingBlock>
 
       {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (

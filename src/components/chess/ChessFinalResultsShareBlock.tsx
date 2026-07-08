@@ -10,6 +10,7 @@ import { ChessPgnActions } from '@/components/chess/ChessPgnActions'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
+import { FinishedWinnerHero } from '@/components/FinishedWinner'
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const
 const RANKS = [8, 7, 6, 5, 4, 3, 2, 1] as const
@@ -64,6 +65,8 @@ export function ChessFinalResultsShareBlock({
   winnerName,
   highlightPlayerId,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
 }: {
   game: Game
   players: Player[]
@@ -71,6 +74,8 @@ export function ChessFinalResultsShareBlock({
   winnerName?: string | null
   highlightPlayerId?: string | null
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -85,20 +90,23 @@ export function ChessFinalResultsShareBlock({
 
   return (
     <div className="space-y-4">
-      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-4">
+      <div ref={captureRef} className="glass-card-strong p-6 sm:p-8 space-y-5">
         <ShareResultsCaptureHeader game={game} />
-        <p className="text-5xl sm:text-6xl leading-none text-center pt-1">{isDraw ? '🤝' : endedEarly ? '🏁' : '🏆'}</p>
-        <p className="text-xl sm:text-2xl font-black text-center text-[var(--marry)]">
-          {isDraw
-            ? "It's a draw!"
-            : displayWinner
-              ? `${displayWinner} wins!`
-              : endedEarly
-                ? 'Game ended early'
-                : 'Game over'}
-        </p>
-        {resultDetail && !endedEarly && (
-          <p className="text-sm text-center text-faint -mt-2 capitalize">{resultDetail}</p>
+        {isDraw ? (
+          <FinishedWinnerHero
+            game={game}
+            emoji="🤝"
+            headline="It's a draw!"
+            subtitle={resultDetail ? <span className="capitalize">{resultDetail}</span> : undefined}
+          />
+        ) : endedEarly ? (
+          <FinishedWinnerHero game={game} emoji="🏁" headline="Game ended early" />
+        ) : (
+          <FinishedWinnerHero
+            winnerName={displayWinner}
+            game={game}
+            subtitle={resultDetail ? <span className="capitalize">{resultDetail}</span> : undefined}
+          />
         )}
         {session && (
           <>
@@ -122,8 +130,11 @@ export function ChessFinalResultsShareBlock({
       </div>
       {session && session.pgn ? <ChessPgnActions game={game} players={players} session={session} /> : null}
       <HostGameFinishedActions
+        variant="winner"
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         shareButton={
           <ShareResults
             captureRef={captureRef}
@@ -135,6 +146,7 @@ export function ChessFinalResultsShareBlock({
             ticTacToeWinnerName={displayWinner ?? undefined}
             ticTacToeIsDraw={isDraw}
             ticTacToeEndedEarly={endedEarly}
+            primary
           />
         }
       />

@@ -45,6 +45,11 @@ vi.mock('@/components/game-host-views', () => ({
 vi.mock('@/components/music/HostMusicControl', () => ({
   HostMusicControl: () => null,
 }))
+// The floating voice pill pulls in LiveKit + Toast (needs ToastProvider) — stub it so
+// the dispatcher test stays about the routing decision, not the voice UI.
+vi.mock('@/components/AudioChat', () => ({
+  AudioChat: () => null,
+}))
 
 import HostPage from './page'
 

@@ -19,7 +19,6 @@ import {
   MONOPOLY_BOARD,
   MONOPOLY_BOARD_SIZE,
   MONOPOLY_GO_SALARY,
-  MONOPOLY_GO_TO_JAIL_POSITION,
   MONOPOLY_HOUSES_IN_BANK,
   MONOPOLY_HOUSES_UNDER_HOTEL,
   MONOPOLY_HOTELS_IN_BANK,
@@ -31,7 +30,6 @@ import {
   formatMonopolyMoney,
   mortgageValue,
   spaceAt,
-  spacesInGroup,
   unmortgageCost,
   type MonopolyColorGroup,
   type MonopolySpace,
@@ -2663,7 +2661,7 @@ async function bankruptPlayer(
   reason: string,
   expectedUpdatedAt: string,
   creditorId?: string,
-  amount?: number
+  _amount?: number
 ): Promise<{ error?: string }> {
   const state = states.find((s) => s.player_id === playerId)
   if (!state) return { error: 'Player not found' }

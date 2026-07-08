@@ -120,7 +120,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const [replayReadyPending, setReplayReadyPending] = useState(false)
   const toggleReplayReady = useCallback(
     async (ready: boolean) => {
-      if (!myResumeToken) return
+      if (!myResumeToken) {
+        toastError('Your player session expired — rejoin to continue')
+        return
+      }
       setReplayReadyPending(true)
       try {
         const res = await fetch('/api/players/ready', {
@@ -185,10 +188,8 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
-  const myHand = useMemo(() => {
-    const row = hands.find((h) => h.player_id === myPlayerId)
-    return row?.cards ?? []
-  }, [hands, myPlayerId])
+  const myHandRow = useMemo(() => hands.find((h) => h.player_id === myPlayerId), [hands, myPlayerId])
+  const myHand = useMemo(() => myHandRow?.cards ?? [], [myHandRow])
 
   const handCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -204,7 +205,11 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const isMyTurn = myPlayerId != null && turnPlayerId === myPlayerId
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
-  const isOut = myHand.length === 0 && game?.status === 'active'
+  // "Out" = we can see this player's dealt hand and it's now empty (they played their last
+  // card and went out). Require the hand row to actually be loaded — after a network drop
+  // `hands` can be briefly empty/unfetched, and treating a not-yet-loaded hand as empty would
+  // flip a still-playing player into the watch-only UI until the next refetch.
+  const isOut = !!myHandRow && myHand.length === 0 && game?.status === 'active'
   const isWatching = isViewer || isOut
 
   // Turn timer (per-player countdown) + game timer (overall duration). Both hooks
@@ -378,6 +383,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       gameName={game?.title ?? cfg.label}
       playerName={activePlayer?.name ?? roomDisplayName}
       playerId={myPlayerId}
+      resumeToken={myResumeToken}
       onLeave={() => {
         clearPlayerSession(gameCode)
         router.push('/')

@@ -71,6 +71,7 @@ import {
   isSudokuGame,
   isWordHuntGame,
   isMafiaGame,
+  isMatchingPairsGame,
 } from '@/lib/game-types'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
@@ -529,6 +530,13 @@ function CreateGameInner() {
               mafia_anonymous_votes: true,
             }
           : {}),
+        ...(isMatchingPairsGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+            }
+          : {}),
         ...(isWhoSaidThis(type)
           ? {
               participant_mode: 'import' as const,
@@ -607,6 +615,7 @@ function CreateGameInner() {
   const isNpat = isICallOnGame(settings.game_type)
   const isSudoku = isSudokuGame(settings.game_type)
   const isWordHunt = isWordHuntGame(settings.game_type)
+  const isMatchingPairs = isMatchingPairsGame(settings.game_type)
   const showViewerToggle = gameSupportsViewerSetting(settings.game_type)
   const isWst = isWhoSaidThis(settings.game_type)
   const isHotSeatGame = isHotSeat(settings.game_type)
@@ -713,7 +722,8 @@ function CreateGameInner() {
     isDescribeIt ||
     isNpat ||
     isSudoku ||
-    isWordHunt
+    isWordHunt ||
+    isMatchingPairs
   const isTriviaQuickCreate = isTrivia
   const needsParticipantStep =
     !isQuickLobby && !isTriviaQuickCreate && !isBinaryLobby && !(isMlt && isJoinersMode) && !isJoinersMode
@@ -862,6 +872,13 @@ function CreateGameInner() {
             rounds_count: 1,
           }
         : {}),
+      ...(isMatchingPairsGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+          }
+        : {}),
       ...(isWordHuntGame(type)
         ? {
             participant_mode: 'joiners' as const,
@@ -896,7 +913,10 @@ function CreateGameInner() {
         ? { participant_mode: 'import' as const, gender_based: defaultGenderBasedForType(type) }
         : {}),
       ...(supportsGenderToggle(type) && !isCustomGame(type) ? { gender_based: defaultGenderBasedForType(type) } : {}),
-      ...(type !== 'monopoly' && settings.theme === 'pirate' ? { theme: 'default' as const } : {}),
+      ...(type !== 'monopoly' &&
+      (settings.theme === 'pirate' || settings.theme === 'arctic' || settings.theme === 'naija')
+        ? { theme: 'default' as const }
+        : {}),
     })
   }
 
@@ -1253,7 +1273,9 @@ function CreateGameInner() {
                                     ? sudokuMaxPlayers
                                     : isWordHunt
                                       ? wordHuntMaxPlayers
-                                      : undefined,
+                                      : isMatchingPairs
+                                        ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
+                                        : undefined,
           operative_timer_seconds: isCodewords ? codewordsOperativeTimer : isNpat ? npatMarkingTimer : undefined,
           codewords_player_picks: isCodewords ? codewordsPlayerPicks : undefined,
           codewords_late_join: isCodewords ? lateJoinPolicy === 'viewers_and_players' : undefined,
@@ -1277,7 +1299,9 @@ function CreateGameInner() {
                     ? scrabbleGameDuration
                     : isSudoku
                       ? sudokuGameDuration
-                      : undefined,
+                      : isMatchingPairs
+                        ? (settings.game_duration_seconds ?? 0)
+                        : undefined,
           whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
           whot_pick2_stacking: isWhot ? whotPick2Stacking : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
@@ -1412,7 +1436,7 @@ function CreateGameInner() {
             >
               {(settings.game_type === 'monopoly'
                 ? THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
-                : THEMES.filter((theme) => theme.id !== 'pirate')
+                : THEMES.filter((theme) => theme.id !== 'pirate' && theme.id !== 'arctic' && theme.id !== 'naija')
               ).map((theme) => {
                 const monopolyEdition =
                   settings.game_type === 'monopoly' ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
@@ -2843,6 +2867,94 @@ function CreateGameInner() {
                 <p className="text-faint text-sm leading-relaxed">
                   Social deduction game. The Mafia tries to eliminate the Villagers without getting caught, while the
                   Villagers use deduction and power roles (Doctor, Detective) to vote out the Mafia.
+                </p>
+              </SettingsGroup>
+            ) : isMatchingPairs ? (
+              <SettingsGroup title="Matching Pairs room">
+                <Field
+                  label={`Max players (${effectiveLimits.matching_pairs.min}–${effectiveLimits.matching_pairs.max})`}
+                >
+                  <select
+                    value={settings.max_players ?? effectiveLimits.matching_pairs.max}
+                    onChange={(e) => setSettings({ ...settings, max_players: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(effectiveLimits.matching_pairs.min, effectiveLimits.matching_pairs.max).map(
+                      (n) => (
+                        <option key={n} value={n}>
+                          {n} players
+                        </option>
+                      )
+                    )}
+                  </select>
+                </Field>
+                <Field label="Grid size">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, game_duration_seconds: 0 })}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        (settings.game_duration_seconds ?? 0) === 0
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Standard</span>
+                      <span className="text-faint text-xs sm:text-sm">4×4 grid (8 pairs)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, game_duration_seconds: 16 })}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        (settings.game_duration_seconds ?? 0) === 16
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Large</span>
+                      <span className="text-faint text-xs sm:text-sm">8×4 grid (16 pairs)</span>
+                    </button>
+                  </div>
+                </Field>
+                {showViewerToggle && (
+                  <Field label="Late joiners">
+                    <LateJoinPolicyToggle
+                      value={lateJoinPolicy}
+                      onChange={setLateJoinPolicy}
+                      gameType="matching_pairs"
+                    />
+                  </Field>
+                )}
+                <Field label="Public game">
+                  <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, isPublic: false })}
+                      className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                        !settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
+                      }`}
+                    >
+                      🔒 Private
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, isPublic: true })}
+                      className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                        settings.isPublic ? 'bg-[var(--primary)] text-white' : 'text-muted hover:text-body'
+                      }`}
+                    >
+                      🌐 Public
+                    </button>
+                  </div>
+                  <p className="text-faint text-xs mt-2">
+                    List in Browse so anyone can find and join. Off keeps it invite-only via the share link.
+                  </p>
+                </Field>
+                <p className="text-faint text-sm leading-relaxed">
+                  Flip cards and find matching pairs. Race to complete the grid with the most matches. Streaks earn
+                  bonus points — every 3 in a row gives extra points.
                 </p>
               </SettingsGroup>
             ) : (

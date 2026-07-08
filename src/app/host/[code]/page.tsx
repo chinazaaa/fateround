@@ -5,13 +5,15 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { LOAD_TIMEOUT_MS, supabasePollOk } from '@/hooks/usePolling'
 import { HOST_GAME_SELECT } from '@/lib/supabase-selects'
-import { parseGameType } from '@/lib/game-types'
+import { parseGameType, gameHasHeaderVoice } from '@/lib/game-types'
 import { HOST_VIEW_REGISTRY } from '@/components/game-host-views'
 import { PollHostView } from '@/components/poll-game/PollHostView'
-import { HostMusicControl } from '@/components/music/HostMusicControl'
+import { AudioChat } from '@/components/AudioChat'
+// import { HostMusicControl } from '@/components/music/HostMusicControl'
 import { readNominee, rememberNominee } from '@/lib/host-transfer'
 import { rememberHostToken, clearHostToken } from '@/lib/host-session'
 import { useHostToken } from '@/hooks/useHostToken'
+import { useHostIdentity, useHostDisplayName } from '@/hooks/useHostVoiceIdentity'
 import type { Game } from '@/types'
 
 /**
@@ -28,6 +30,9 @@ export default function HostPage() {
   // this device) we fall back to the remembered token — resolved in an effect so there's
   // no hydration mismatch, and `resolved` lets us hold off "access denied" until checked.
   const { hostToken, resolved } = useHostToken(gameCode)
+  // Voice identity for the host's floating pill (mounted for non-header games below).
+  const hostIdentity = useHostIdentity(gameCode)
+  const hostName = useHostDisplayName(gameCode)
 
   const [game, setGame] = useState<Game | null>(null)
   const [loading, setLoading] = useState(true)
@@ -224,8 +229,18 @@ export default function HostPage() {
         ) : (
           <PollHostView gameCode={gameCode} hostToken={hostToken} />
         )}
+        {/* Floating "Join voice" pill for the host. Skipped for games with the
+            header voice rail (Whot) so they don't get two voice controls. */}
+        {hostToken && !gameHasHeaderVoice(game.game_type) && (
+          <AudioChat
+            roomCode={gameCode}
+            playerName={hostName}
+            identity={hostIdentity}
+            auth={{ kind: 'host', token: hostToken }}
+          />
+        )}
         {/* Floating DJ panel — persists across lobby + active play for every game type. */}
-        <HostMusicControl gameCode={gameCode} hostToken={hostToken} />
+        {/* <HostMusicControl gameCode={gameCode} hostToken={hostToken} /> */}
       </>
     )
   }

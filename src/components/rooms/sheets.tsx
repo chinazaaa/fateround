@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import QRCode from 'react-qr-code'
-import { playerGameUrl, hostGameUrl, hostPlayerUrl, shareOrigin } from '@/lib/site'
+import { playerGameUrl, hostGameUrl, hostPlayerUrl, playerResumeUrl, shareOrigin } from '@/lib/site'
 
 /* ══════════════════════════════════════════════════════════════════
    Fate Round · Rooms — shared host sheet UI
@@ -14,7 +14,7 @@ import { playerGameUrl, hostGameUrl, hostPlayerUrl, shareOrigin } from '@/lib/si
 
 const DEFAULT_CODE = 'F8K2QP'
 
-type LinkKey = 'invite' | 'host' | 'play'
+type LinkKey = 'invite' | 'host' | 'play' | 'self'
 
 interface LinkDef {
   label: string
@@ -45,6 +45,8 @@ function buildLinks(
       : opts.hostToken
         ? hostGameUrl(code, opts.hostToken, origin)
         : invite
+  // A joined player's own "continue on another device" link (name + seat).
+  const self = opts.resumeToken ? playerResumeUrl(code, opts.resumeToken, origin) : invite
   return {
     invite: {
       label: 'Invite players',
@@ -63,6 +65,12 @@ function buildLinks(
       desc: 'Run the game and play as yourself on another device.',
       url: play,
       copy: 'Copy host + play link',
+    },
+    self: {
+      label: 'Your player link',
+      desc: 'Reopen your seat — same name, same cards — on another device.',
+      url: self,
+      copy: 'Copy your player link',
     },
   }
 }
@@ -83,15 +91,25 @@ export function ShareSheet(props: {
   // Host tabs (host panel + host+play) only make sense with a host token; without
   // one, fall back to the invite-only share so we never surface a tokenless link.
   const host = props.host !== false && !!props.hostToken
+  const resume = props.resumeToken?.trim()
   // "Host + play" needs a resume token; without one buildLinks falls back to the
   // host-panel URL, so don't surface a misleading tokenless play link.
-  const hasHostPlay = host && !!props.resumeToken?.trim()
+  const hasHostPlay = host && !!resume
+  // A joined player (not a host) with their own resume token gets a "continue on
+  // another device" link alongside the invite — the player-side of host+play.
+  const hasSelf = !host && !!resume
   const links = buildLinks(props.code ?? DEFAULT_CODE, {
     hostToken: props.hostToken,
-    resumeToken: hasHostPlay ? props.resumeToken : undefined,
+    resumeToken: hasHostPlay || hasSelf ? props.resumeToken : undefined,
     origin: props.origin,
   })
-  const tabs: LinkKey[] = host ? (hasHostPlay ? ['invite', 'host', 'play'] : ['invite', 'host']) : ['invite']
+  const tabs: LinkKey[] = host
+    ? hasHostPlay
+      ? ['invite', 'host', 'play']
+      : ['invite', 'host']
+    : hasSelf
+      ? ['invite', 'self']
+      : ['invite']
   const [tab, setTab] = useState<LinkKey>('invite')
   const [copied, setCopied] = useState(false)
 
@@ -135,7 +153,7 @@ export function ShareSheet(props: {
             {'✕'}
           </button>
         </div>
-        {host && (
+        {tabs.length > 1 && (
           <div style={sheetStyles.segWrap}>
             {tabs.map((t) => (
               <button

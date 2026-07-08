@@ -171,6 +171,23 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     return NextResponse.json({ error: 'Game must be finished before playing again' }, { status: 400 })
   }
 
+  // Exiting the ready-up ring back to the normal lobby ("Return to lobby" while the ring
+  // is armed): the game is already reset (waiting), so just drop the ring flag and KEEP
+  // everyone's seats — players who tapped "ready" stay ready instead of being reset to
+  // spectators. Only this soft transition applies here; a full reset would re-run
+  // resetSpectatorsForLobby and wipe the ready state the host is trying to preserve.
+  if (sameSettings !== true && game.status === 'waiting' && game.replay_pending === true) {
+    const { data: updated, error: exitError } = await getSupabaseAdmin()
+      .from('games')
+      .update({ replay_pending: false })
+      .eq('id', gameId)
+      .select()
+      .single()
+    if (exitError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/play-again', exitError) }, { status: 500 })
+    return NextResponse.json({ success: true, game: updated })
+  }
+
   const genderBased = isGameGenderBased(game)
 
   const [{ data: rounds }, { data: participantsData }, { data: codewordsBoard }] = await Promise.all([

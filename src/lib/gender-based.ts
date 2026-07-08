@@ -50,5 +50,6 @@ export function isGenderFreeVotersJoin(
 
 /** Rounds and voting ignore gender (names-only mode). */
 export function isGenderFreeVoting(game: Pick<Game, 'game_type' | 'gender_based' | 'custom_slots'>): boolean {
-  return supportsGenderToggle(game.game_type) && !isGameGenderBased(game)
+  if (!supportsGenderToggle(game.game_type)) return true
+  return !isGameGenderBased(game)
 }

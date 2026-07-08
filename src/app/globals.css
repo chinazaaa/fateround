@@ -1,7 +1,7 @@
-@import "tailwindcss";
-@import "./fate-round-ds.css";
-@import "./fate-round-rooms.css";
-@import "./fate-round-cardtable.css";
+@import 'tailwindcss';
+@import './fate-round-ds.css';
+@import './fate-round-rooms.css';
+@import './fate-round-cardtable.css';
 
 @custom-variant dark (&:where([data-theme=dark]:not([data-theme=light] *), [data-theme=dark] *:not([data-theme=light] *):not([data-theme=light])));
 
@@ -217,6 +217,212 @@ body:has(.fr-site) .app-fixed-theme-toggle {
   --gradient-title-end: #d4af37;
 
   --modal-backdrop: rgba(5, 15, 30, 0.8);
+}
+
+/* ── Arctic Theme (Light Mode - Polar Day) ───────────── */
+:root[data-game-theme='arctic']:not([data-theme='dark']),
+[data-game-theme='arctic']:not([data-theme='dark']) {
+  --background: #eaf2f5;
+  --background-soft: #d8e6eb;
+  --foreground: #1b2a32;
+  --muted: #5c6b73;
+  --faint: #7d8f99;
+
+  --card: rgba(216, 230, 235, 0.85);
+  --card-strong: rgba(234, 242, 245, 0.95);
+  --card-hover: rgba(225, 237, 241, 0.9);
+  --surface-inset-bg: rgba(27, 42, 50, 0.05);
+
+  --border: rgba(30, 78, 107, 0.25);
+  --border-strong: rgba(30, 78, 107, 0.45);
+
+  --card-shadow: 0 1px 3px rgba(27, 42, 50, 0.12), 0 4px 16px rgba(30, 78, 107, 0.08);
+  --card-shadow-strong: 0 8px 32px rgba(27, 42, 50, 0.2), 0 2px 8px rgba(30, 78, 107, 0.12);
+  --card-shadow-glow: 0 0 0 1px rgba(30, 78, 107, 0.25), 0 8px 32px rgba(30, 78, 107, 0.15);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -20%, rgba(30, 78, 107, 0.15) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 80%, rgba(92, 107, 115, 0.12) 0%, transparent 50%);
+
+  --primary: #1e4e6b;
+  --primary-strong: #15384d;
+  --primary-glow: rgba(30, 78, 107, 0.35);
+
+  --kiss: #1e4e6b;
+  --marry: #2a7b6c;
+  --kill: #b34a3c;
+  --slot-kiss-text: #15384d;
+  --slot-marry-text: #1c544a;
+  --slot-kill-text: #823429;
+  --slot-pass-text: #5c6b73;
+
+  --chip-active-text: #15384d;
+  --chip-active-bg: rgba(30, 78, 107, 0.12);
+  --chip-active-border: rgba(30, 78, 107, 0.4);
+
+  --avatar-bg: rgba(30, 78, 107, 0.12);
+  --avatar-border: rgba(30, 78, 107, 0.3);
+  --avatar-color: #1e4e6b;
+
+  --gradient-title-start: #1b2a32;
+  --gradient-title-end: #1e4e6b;
+
+  --modal-backdrop: rgba(27, 42, 50, 0.65);
+}
+
+/* ── Arctic Theme (Dark Mode - Polar Night) ──────────── */
+[data-theme='dark'][data-game-theme='arctic']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='arctic']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='arctic']:not([data-theme='light']) {
+  --background: #0a1a2a;
+  --background-soft: #10263c;
+  --foreground: #d8e6e8;
+  --muted: #8ca3ab;
+  --faint: #5c737c;
+
+  --card: rgba(16, 38, 60, 0.85);
+  --card-strong: rgba(20, 46, 74, 0.95);
+  --card-hover: rgba(25, 56, 88, 0.9);
+  --surface-inset-bg: rgba(0, 0, 0, 0.3);
+
+  --border: rgba(63, 169, 160, 0.25);
+  --border-strong: rgba(63, 169, 160, 0.45);
+
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.6), 0 0 20px rgba(63, 169, 160, 0.15);
+  --card-shadow-glow: 0 0 0 1px rgba(63, 169, 160, 0.3), 0 8px 40px rgba(63, 169, 160, 0.2);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(63, 169, 160, 0.15) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 35% at 85% 90%, rgba(179, 74, 60, 0.15) 0%, transparent 50%);
+
+  --primary: #3fa9a0;
+  --primary-strong: #2c857e;
+  --primary-glow: rgba(63, 169, 160, 0.4);
+
+  --kiss: #3fa9a0;
+  --marry: #4ecdc4;
+  --kill: #b34a3c;
+  --slot-kiss-text: #71f2e8;
+  --slot-marry-text: #7efff5;
+  --slot-kill-text: #ff8b7d;
+  --slot-pass-text: #8ca3ab;
+
+  --chip-active-text: #71f2e8;
+  --chip-active-bg: rgba(63, 169, 160, 0.15);
+  --chip-active-border: rgba(63, 169, 160, 0.5);
+
+  --avatar-bg: rgba(63, 169, 160, 0.15);
+  --avatar-border: rgba(63, 169, 160, 0.35);
+  --avatar-color: #3fa9a0;
+
+  --gradient-title-start: #d8e6e8;
+  --gradient-title-end: #3fa9a0;
+
+  --modal-backdrop: rgba(10, 26, 42, 0.75);
+}
+
+/* ── Nigerian Markets Theme (Light Mode - Balogun Sun) ─ */
+:root[data-game-theme='naija']:not([data-theme='dark']),
+[data-game-theme='naija']:not([data-theme='dark']) {
+  --background: #f4ede1;
+  --background-soft: #e8dfce;
+  --foreground: #1a1f1c;
+  --muted: #4a5750;
+  --faint: #6a7970;
+
+  --card: rgba(232, 223, 206, 0.85);
+  --card-strong: rgba(244, 237, 225, 0.95);
+  --card-hover: rgba(220, 210, 190, 0.9);
+  --surface-inset-bg: rgba(26, 31, 28, 0.05);
+
+  --border: rgba(0, 135, 81, 0.25);
+  --border-strong: rgba(0, 135, 81, 0.45);
+
+  --card-shadow: 0 1px 3px rgba(26, 31, 28, 0.12), 0 4px 16px rgba(0, 135, 81, 0.08);
+  --card-shadow-strong: 0 8px 32px rgba(26, 31, 28, 0.2), 0 2px 8px rgba(0, 135, 81, 0.12);
+  --card-shadow-glow: 0 0 0 1px rgba(0, 135, 81, 0.25), 0 8px 32px rgba(0, 135, 81, 0.15);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 50% -20%, rgba(0, 135, 81, 0.15) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 80%, rgba(181, 98, 42, 0.12) 0%, transparent 50%);
+
+  --primary: #008751;
+  --primary-strong: #00663d;
+  --primary-glow: rgba(0, 135, 81, 0.35);
+
+  --kiss: #008751;
+  --marry: #2a7b6c;
+  --kill: #b5622a;
+  --slot-kiss-text: #00663d;
+  --slot-marry-text: #1c544a;
+  --slot-kill-text: #823429;
+  --slot-pass-text: #4a5750;
+
+  --chip-active-text: #00663d;
+  --chip-active-bg: rgba(0, 135, 81, 0.12);
+  --chip-active-border: rgba(0, 135, 81, 0.4);
+
+  --avatar-bg: rgba(0, 135, 81, 0.12);
+  --avatar-border: rgba(0, 135, 81, 0.3);
+  --avatar-color: #008751;
+
+  --gradient-title-start: #1a1f1c;
+  --gradient-title-end: #008751;
+
+  --modal-backdrop: rgba(26, 31, 28, 0.65);
+}
+
+/* ── Nigerian Markets Theme (Dark Mode - Wuse Night) ─── */
+[data-theme='dark'][data-game-theme='naija']:not([data-theme='light']),
+:root[data-theme='dark'] [data-game-theme='naija']:not([data-theme='light']),
+[data-theme='dark'] [data-game-theme='naija']:not([data-theme='light']) {
+  --background: #0b1f16;
+  --background-soft: #122b1f;
+  --foreground: #ede3d3;
+  --muted: #8f9e96;
+  --faint: #687870;
+
+  --card: rgba(18, 43, 31, 0.85);
+  --card-strong: rgba(24, 56, 40, 0.95);
+  --card-hover: rgba(28, 66, 47, 0.9);
+  --surface-inset-bg: rgba(0, 0, 0, 0.3);
+
+  --border: rgba(217, 164, 65, 0.25);
+  --border-strong: rgba(217, 164, 65, 0.45);
+
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(0, 0, 0, 0.3);
+  --card-shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.6), 0 0 20px rgba(217, 164, 65, 0.15);
+  --card-shadow-glow: 0 0 0 1px rgba(217, 164, 65, 0.3), 0 8px 40px rgba(217, 164, 65, 0.2);
+
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(217, 164, 65, 0.15) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 35% at 85% 90%, rgba(156, 59, 46, 0.15) 0%, transparent 50%);
+
+  --primary: #d9a441;
+  --primary-strong: #b8862d;
+  --primary-glow: rgba(217, 164, 65, 0.4);
+
+  --kiss: #d9a441;
+  --marry: #4ecdc4;
+  --kill: #9c3b2e;
+  --slot-kiss-text: #fbe5ab;
+  --slot-marry-text: #7efff5;
+  --slot-kill-text: #ff8b7d;
+  --slot-pass-text: #8f9e96;
+
+  --chip-active-text: #fbe5ab;
+  --chip-active-bg: rgba(217, 164, 65, 0.15);
+  --chip-active-border: rgba(217, 164, 65, 0.5);
+
+  --avatar-bg: rgba(217, 164, 65, 0.15);
+  --avatar-border: rgba(217, 164, 65, 0.35);
+  --avatar-color: #d9a441;
+
+  --gradient-title-start: #ede3d3;
+  --gradient-title-end: #d9a441;
+
+  --modal-backdrop: rgba(11, 31, 22, 0.75);
 }
 
 /* ── Base ───────────────────────────────────────────────────────── */
@@ -1127,6 +1333,36 @@ body {
   border-top: 2px solid color-mix(in srgb, var(--primary) 30%, var(--border-strong));
 }
 
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 300px;
+  }
+}
+
+.animate-slide-down {
+  animation: slide-down 0.2s ease-out;
+}
+
+@keyframes float-up-fade {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-80px) scale(0.9);
+  }
+}
+
+.animate-float-up-fade {
+  animation: float-up-fade 1.2s ease-out forwards;
+}
+
 /* ── Monopoly Theme Typography ──────────────────────────────────── */
 @layer utilities {
   .font-pirate {
@@ -1141,5 +1377,11 @@ body {
   }
   .font-chart {
     font-family: Palatino, Georgia, 'Times New Roman', serif;
+  }
+  .font-arctic-header {
+    font-family: var(--font-arctic), 'Roboto Condensed', 'Arial Narrow', 'Trebuchet MS', system-ui, sans-serif;
+  }
+  .font-arctic-body {
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
   }
 }

@@ -27,7 +27,7 @@ import { useChessClockExpiry } from '@/hooks/useChessClocks'
 import { ChessGamePanel } from '@/components/chess/ChessBoard'
 import { ChessFinalResultsShareBlock } from '@/components/chess/ChessFinalResultsShareBlock'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
-import { ChessPrimaryButton } from '@/components/chess/ChessChrome'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 
 type HostTab = 'play' | 'manage'
 type ChessHostMode = 'spectator' | 'player'
@@ -121,10 +121,7 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
   // Realtime push: reload on any change to this game's row + its tables.
   useGameTableSync(
     gameCode,
-    [
-      { table: 'games', column: 'id' },
-      { table: 'chess_sessions', apply: applySessionRow },
-    ],
+    ['players', { table: 'games', column: 'id' }, { table: 'chess_sessions', apply: applySessionRow }],
     load
   )
 
@@ -324,24 +321,46 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
     }
   }
 
-  const playAgain = async () => {
+  // "Play again · same settings" reopens the game as an open lobby flagged for the
+  // ready-up ring; a plain reset (sameSettings=false) is the normal "Return to lobby".
+  const resetGame = async (sameSettings: boolean) => {
     setPlayingAgain(true)
     try {
       const res = await fetch(`/api/games/${gameCode}/play-again`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined }),
+        body: JSON.stringify({ hostToken, hostPlayerId: hostPlayerId ?? undefined, same_settings: sameSettings }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to reset')
       if (data.game) setGame(data.game)
-      success('Ready for a new game!')
+      success(sameSettings ? 'Ready up for the next game!' : 'Back to the lobby')
       await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to reset')
     } finally {
       setPlayingAgain(false)
     }
+  }
+
+  const confirmPlayAgain = async () => {
+    const ok = await confirm({
+      title: 'Play again — same settings?',
+      message:
+        'Reopens the game with the same settings. Previous watchers and new people can join; everyone taps “ready” and you start the next game once enough players are in.',
+      confirmLabel: 'Play again',
+    })
+    if (ok) void resetGame(true)
+  }
+
+  const confirmReturnToLobby = async () => {
+    const ok = await confirm({
+      title: 'Return to lobby?',
+      message:
+        'Sends everyone back to the game lobby where you can tweak settings or let new people join before starting again.',
+      confirmLabel: 'Return to lobby',
+    })
+    if (ok) void resetGame(false)
   }
 
   const readyPlayers = players.filter((p) => p.spectator !== true)
@@ -469,6 +488,32 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
     />
   )
 
+  // "Play again · same settings" reopened the game as an open lobby flagged for the
+  // ready-up ring — the host sees the ring + a "Start game" button instead of the lobby.
+  if (game.status === 'waiting' && game.replay_pending) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--background)] px-3 py-8 text-[var(--foreground)]">
+        <ReplayReadyRing
+          players={players}
+          meId={hostPlayerId}
+          isHost
+          minPlayers={CHESS_MIN_PLAYERS}
+          onToggleReady={() => {}}
+          onStart={() => void startGame()}
+          starting={starting}
+        />
+        <button
+          type="button"
+          onClick={() => void confirmReturnToLobby()}
+          disabled={playingAgain}
+          className="mt-1 py-2 text-sm font-medium text-muted transition-colors hover:text-body disabled:opacity-60"
+        >
+          Return to lobby instead
+        </button>
+      </div>
+    )
+  }
+
   return (
     <HostGameLayout
       gameCode={gameCode}
@@ -490,10 +535,26 @@ export function ChessHostView({ gameCode, hostToken }: { gameCode: string; hostT
             winnerName={winner?.name}
             highlightPlayerId={hostPlayerId}
             playAgainButton={
-              <ChessPrimaryButton onClick={playAgain} loading={playingAgain}>
-                Play again
-              </ChessPrimaryButton>
+              <button
+                type="button"
+                onClick={() => void confirmPlayAgain()}
+                disabled={playingAgain}
+                className="btn-secondary w-full py-3 text-base disabled:opacity-60"
+              >
+                {playingAgain ? 'Starting…' : '↻ Play again · same settings'}
+              </button>
             }
+            returnToLobbyButton={
+              <button
+                type="button"
+                onClick={() => void confirmReturnToLobby()}
+                disabled={playingAgain}
+                className="w-full py-2.5 text-sm font-semibold text-muted transition-colors hover:text-body disabled:opacity-60"
+              >
+                Return to lobby
+              </button>
+            }
+            lobbyNote="Same settings reopens the game for ready-up — watchers and new people can join · lobby lets you tweak settings first."
           />
           {hostPlayerId && session?.winner_player_id === hostPlayerId && (
             <PostWinToCommunity

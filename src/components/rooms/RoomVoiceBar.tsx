@@ -96,6 +96,7 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
 
   const right = (
     <div
+      className="rvbar-ctrls"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -120,6 +121,7 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
         </span>
       )}
       <button
+        className="rvb-ico"
         style={vIconBtn}
         title="Players & voice"
         aria-label="Players and voice"
@@ -131,14 +133,21 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
         <PeopleIcon />
       </button>
       {props.onSettings && (
-        <button style={vIconBtn} title="Game settings" aria-label="Game settings" onClick={props.onSettings}>
+        <button
+          className="rvb-ico"
+          style={vIconBtn}
+          title="Game settings"
+          aria-label="Game settings"
+          onClick={props.onSettings}
+        >
           <GearIcon />
         </button>
       )}
-      <button style={vIconBtn} title="Share / QR" aria-label="Share" onClick={() => setShare(true)}>
+      <button className="rvb-ico" style={vIconBtn} title="Share / QR" aria-label="Share" onClick={() => setShare(true)}>
         <ShareIcon />
       </button>
       <button
+        className="rvb-ico"
         style={vIconBtn}
         title="More"
         aria-label="More options"
@@ -150,6 +159,7 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
         <KebabIcon />
       </button>
       <button
+        className="rvb-me"
         style={{ ...mePill, ...(!inVoice ? mePillSpec : muted ? mePillMuted : mePillLive) }}
         title={
           !inVoice
@@ -174,25 +184,35 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
       >
         <span style={mePillAv}>{you}</span>
         {!inVoice ? (
-          <span style={{ font: '700 11px var(--font-sans)', color: 'var(--text)', whiteSpace: 'nowrap' }}>
-            🎙️ Join voice
-            {presence > 0 && <span style={{ color: 'var(--success)' }}> · {presence}</span>}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span aria-hidden>🎙️</span>
+            <span
+              className="rvb-me-words"
+              style={{ font: '700 11px var(--font-sans)', color: 'var(--text)', whiteSpace: 'nowrap' }}
+            >
+              Join voice
+              {presence > 0 && <span style={{ color: 'var(--success)' }}> · {presence}</span>}
+            </span>
           </span>
         ) : (
-          <span
-            style={{
-              font: '700 11px var(--font-sans)',
-              color: muted ? 'var(--danger)' : 'var(--success)',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {muted ? '🔇 Muted' : `🎙️ ${yourName}`}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span aria-hidden>{muted ? '🔇' : '🎙️'}</span>
+            <span
+              className="rvb-me-words"
+              style={{
+                font: '700 11px var(--font-sans)',
+                color: muted ? 'var(--danger)' : 'var(--success)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {muted ? 'Muted' : yourName}
+            </span>
           </span>
         )}
       </button>
 
       {open && (
-        <div style={popStyle} onMouseLeave={() => setOpen(false)}>
+        <div className="rvb-pop" style={popStyle} onMouseLeave={() => setOpen(false)}>
           <p style={popTitle}>In the room · voice</p>
           {people.map((p) => {
             const st = p.muted ? '🔇' : p.talking ? '🗣️' : '🎙️'
@@ -337,15 +357,32 @@ export function RoomVoiceBar(props: RoomVoiceBarProps) {
   }
 
   return (
-    <div style={vbar}>
-      <span style={{ display: 'inline-flex', color: 'var(--text-muted)' }}>
+    <div className="rvbar" style={vbar}>
+      <span style={{ display: 'inline-flex', color: 'var(--text-muted)', flexShrink: 0 }}>
         <LinkIcon size={15} />
       </span>
       <span style={vcode}>{props.code || CODE}</span>
       {props.label && (
-        <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>· {props.label}</span>
+        <span
+          className="rvbar-label"
+          style={{
+            fontSize: 12,
+            color: 'var(--text-muted)',
+            fontWeight: 600,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          · {props.label}
+        </span>
       )}
-      {props.hostBadge && <span style={vHostTag}>👑 Host</span>}
+      {props.hostBadge && (
+        <span style={vHostTag}>
+          👑<span className="rvbar-host-lbl">&nbsp;Host</span>
+        </span>
+      )}
       {right}
       {sheets}
     </div>
@@ -360,7 +397,12 @@ const vbar: CSSProperties = {
   borderBottom: '1px solid var(--border)',
   background: 'var(--surface)',
 }
-const vcode: CSSProperties = { font: '700 13px var(--font-mono)', letterSpacing: '.1em', color: 'var(--text)' }
+const vcode: CSSProperties = {
+  font: '700 13px var(--font-mono)',
+  letterSpacing: '.1em',
+  color: 'var(--text)',
+  flexShrink: 0,
+}
 const vHostTag: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
@@ -372,6 +414,7 @@ const vHostTag: CSSProperties = {
   background: 'var(--primary-soft)',
   borderRadius: 9999,
   padding: '4px 8px',
+  flexShrink: 0,
 }
 const vIconBtn: CSSProperties = {
   width: 32,
