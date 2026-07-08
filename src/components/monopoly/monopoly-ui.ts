@@ -46,15 +46,15 @@ export function spaceIcon(type: MonopolySpaceType, themeId?: string | null): str
 export function shortSpaceName(name: string, max = 12, spaceIndex?: number, themeId?: string | null): string {
   const displayName = spaceIndex != null ? themedSpaceName(name, spaceIndex, themeId) : name
   if (displayName.length <= max) return displayName
-  const parts = displayName.split(' ')
-  if (parts.length > 1 && parts[0]!.length <= max) return parts[0]!
+  const parts = displayName.trim().split(/\s+/)
+  if (parts.length > 1 && parts[0]!.length >= 3 && parts[0]!.length <= max) return parts[0]!
   return `${displayName.slice(0, max - 1)}…`
 }
 
 export function shortPlayerName(name: string, max = 12): string {
   if (name.length <= max) return name
   const parts = name.trim().split(/\s+/)
-  if (parts.length > 1 && parts[0]!.length <= max) return parts[0]!
+  if (parts.length > 1 && parts[0]!.length >= 3 && parts[0]!.length <= max) return parts[0]!
   return `${name.slice(0, max - 1)}…`
 }
 
