@@ -5,7 +5,7 @@ ALTER TABLE mafia_chat_messages ADD COLUMN IF NOT EXISTS scope text NOT NULL DEF
 -- The server-only state API handles all chat reads, enforcing scope & role visibility
 DO $$ BEGIN
   ALTER PUBLICATION supabase_realtime DROP TABLE mafia_chat_messages;
-EXCEPTION WHEN OTHERS THEN NULL;
+EXCEPTION WHEN SQLSTATE '42704' THEN NULL;
 END $$;
 
 -- Drop permissive SELECT policy (no client should read this table directly)
