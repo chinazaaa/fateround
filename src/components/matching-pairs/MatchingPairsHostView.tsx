@@ -81,47 +81,6 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const [startingNextRound, setStartingNextRound] = useState(false)
   const [autoAdvanceTick, setAutoAdvanceTick] = useState<number | null>(null)
 
-  useEffect(() => {
-    if (game?.status === 'active') {
-      const interval = setInterval(() => {
-        setNowMs(Date.now())
-      }, 1000)
-      return () => clearInterval(interval)
-    }
-  }, [game?.status])
-
-  useTurnNotifications({ status: game?.status })
-
-  // Auto-advance countdown for the next round.
-  useEffect(() => {
-    if (!roundEnded || startingNextRound) return
-    const totalRounds = game?.rounds_count ?? 1
-    const currentRoundNumber = game?.current_round_number ?? 1
-    if (currentRoundNumber >= totalRounds) return // last round — no auto-advance
-    setAutoAdvanceTick(30)
-    const t = setInterval(() => {
-      setAutoAdvanceTick((prev) => {
-        if (prev === null || prev <= 1) {
-          clearInterval(t)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-    return () => clearInterval(t)
-  }, [roundEnded, startingNextRound, game?.rounds_count, game?.current_round_number])
-
-  // Auto-advance trigger when countdown reaches 0.
-  useEffect(() => {
-    if (autoAdvanceTick !== 0) return
-    setAutoAdvanceTick(null)
-    if (game?.status !== 'active') return
-    const totalRounds = game?.rounds_count ?? 1
-    const currentRoundNumber = game?.current_round_number ?? 1
-    if (currentRoundNumber >= totalRounds) return
-    void handleStartNextRound()
-  }, [autoAdvanceTick])
-
   const load = useCallback(async () => {
     const [{ data: gameData }, { data: playersData }] = await Promise.all([
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
@@ -180,6 +139,47 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       setStartingNextRound(false)
     }
   }, [gameCode, hostToken, load, toastError, startingNextRound])
+
+  useEffect(() => {
+    if (game?.status === 'active') {
+      const interval = setInterval(() => {
+        setNowMs(Date.now())
+      }, 1000)
+      return () => clearInterval(interval)
+    }
+  }, [game?.status])
+
+  useTurnNotifications({ status: game?.status })
+
+  // Auto-advance countdown for the next round.
+  useEffect(() => {
+    if (!roundEnded || startingNextRound) return
+    const totalRounds = game?.rounds_count ?? 1
+    const currentRoundNumber = game?.current_round_number ?? 1
+    if (currentRoundNumber >= totalRounds) return // last round — no auto-advance
+    setAutoAdvanceTick(30)
+    const t = setInterval(() => {
+      setAutoAdvanceTick((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(t)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(t)
+  }, [roundEnded, startingNextRound, game?.rounds_count, game?.current_round_number])
+
+  // Auto-advance trigger when countdown reaches 0.
+  useEffect(() => {
+    if (autoAdvanceTick !== 0) return
+    setAutoAdvanceTick(null)
+    if (game?.status !== 'active') return
+    const totalRounds = game?.rounds_count ?? 1
+    const currentRoundNumber = game?.current_round_number ?? 1
+    if (currentRoundNumber >= totalRounds) return
+    void handleStartNextRound()
+  }, [autoAdvanceTick, handleStartNextRound, game?.status, game?.rounds_count, game?.current_round_number])
 
   useEffect(() => {
     void load()
@@ -429,6 +429,8 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const showTabs = game.status !== 'finished'
   const gameStarted = game.status === 'active'
   const primaryKind: 'play' | 'watch' = hostPlays ? 'play' : 'watch'
+  const currentRoundNumber = game.current_round_number ?? 1
+  const totalRounds = game.rounds_count ?? 1
   const isLastRound = currentRoundNumber >= totalRounds
 
   const interactivePlay = <MatchingPairsPlayerView gameCode={gameCode} />
@@ -490,14 +492,12 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     return 0
   }
 
-  const currentRoundNumber = game.current_round_number ?? 1
-  const totalRounds = game.rounds_count ?? 1
-
-  const roundIndicator = totalRounds > 1 ? (
-    <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-faint)', marginBottom: 4 }}>
-      Round {currentRoundNumber}/{totalRounds}
-    </div>
-  ) : null
+  const roundIndicator =
+    totalRounds > 1 ? (
+      <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-faint)', marginBottom: 4 }}>
+        Round {currentRoundNumber}/{totalRounds}
+      </div>
+    ) : null
 
   const watchBoard = (
     <section className="space-y-4" style={{ padding: '0 0 16px' }}>
