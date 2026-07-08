@@ -9,6 +9,7 @@ import {
   computeStreakBonus,
   finishMatchingPairsIfAllDone,
   MATCHING_PAIRS_POINTS_PER_PAIR,
+  MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY,
   type MatchingPairsGridSize,
 } from '@/lib/memory-match'
 
@@ -134,8 +135,10 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   const prevPoints = (lastSub as { points_after: number } | null)?.points_after ?? 0
-  const pointsDelta = isMatch ? MATCHING_PAIRS_POINTS_PER_PAIR + streakBonus : 0
-  const pointsAfter = prevPoints + pointsDelta
+  const matchPoints = isMatch ? MATCHING_PAIRS_POINTS_PER_PAIR + streakBonus : 0
+  const penaltyPoints = !isMatch ? MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY : 0
+  const pointsDelta = matchPoints - penaltyPoints
+  const pointsAfter = Math.max(0, prevPoints + pointsDelta)
 
   // Insert submission row.
   const { error: subError } = await supabase.from('memory_match_submissions').insert({
@@ -204,6 +207,7 @@ export async function POST(req: NextRequest) {
     pointsDelta,
     pointsAfter,
     streakBonus,
+    wrongPenalty: isMatch ? 0 : MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY,
     currentStreak: newStreak,
     pairsMatched: newPairsMatched,
     finished: justFinished,

@@ -247,6 +247,7 @@ export const boardGameLobbySettingsSchema = z.object({
   max_players: z.coerce.number().int().min(1).max(100).optional(),
   timer_seconds: z.coerce.number().optional(),
   game_duration_seconds: z.coerce.number().optional(),
+  rounds_count: z.coerce.number().int().min(1).max(100).optional(),
   whot_pick3_enabled: z.boolean().optional(),
   whot_cards_enabled: z.boolean().optional(),
   whot_number_calls_enabled: z.boolean().optional(),

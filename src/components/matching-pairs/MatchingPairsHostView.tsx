@@ -264,6 +264,24 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       }
       setTab('manage')
       await load()
+      // After load, if the host's session was preserved but hostPlayerId is
+      // still null, try to reclaim the host's previous player from the roster
+      // using the stored session name. This prevents the host from being
+      // prompted to re-enter their name when their player already exists.
+      const stored = getPlayerSession(gameCode)
+      if (stored && !players.some((p) => p.id === hostPlayerId)) {
+        const { data: freshPlayers } = await supabase.from('players').select('id, name').eq('game_id', gameCode)
+        if (freshPlayers) {
+          const matchingPlayer = (freshPlayers as { id: string; name: string }[]).find(
+            (p) => p.name === stored.playerName
+          )
+          if (matchingPlayer) {
+            setPlayerSession(gameCode, matchingPlayer.id, stored.playerName, 'both', stored.resumeToken)
+            setHostPlayerId(matchingPlayer.id)
+            setHostPlayerName(stored.playerName)
+          }
+        }
+      }
     } finally {
       setPlayingAgain(false)
     }
@@ -290,6 +308,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   }
 
   // Compute per-player leaderboard from submissions + progress.
+  // Ranked by final score descending (primary), then finish rank as tiebreaker.
   const leaderboard = useMemo<MatchingPairsPlayerScore[]>(() => {
     if (!progressRows.length) return []
     return progressRows
@@ -298,16 +317,11 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         return tallyMatchingPairsScore(playerSubs, prog, gridSizePairs, game?.session_started_at)
       })
       .sort((a, b) => {
-        // Bug #5 fix: sort by finish_rank FIRST (the authoritative server-assigned
-        // order) so the first finisher always ranks #1 regardless of score ties.
-        // finish_rank 999 = didn't finish (used in tallyMatchingPairsScore).
+        if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
         const rankA = a.placement ?? 999
         const rankB = b.placement ?? 999
         if (rankA !== rankB) return rankA - rankB
-        // Among players with the same rank (e.g. non-finishers), fall back to score.
-        if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
-        if (a.wrongAttempts !== b.wrongAttempts) return a.wrongAttempts - b.wrongAttempts
-        return (a.timeTakenMs ?? Infinity) - (b.timeTakenMs ?? Infinity)
+        return (a.wrongAttempts ?? 0) - (b.wrongAttempts ?? 0)
       })
   }, [submissions, progressRows, gridSizePairs, game?.session_started_at])
 

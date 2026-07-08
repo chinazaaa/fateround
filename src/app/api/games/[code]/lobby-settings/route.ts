@@ -70,6 +70,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     max_players,
     timer_seconds,
     game_duration_seconds,
+    rounds_count,
     whot_pick3_enabled,
     whot_cards_enabled,
     whot_number_calls_enabled,
@@ -91,6 +92,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     max_players === undefined &&
     timer_seconds === undefined &&
     game_duration_seconds === undefined &&
+    rounds_count === undefined &&
     whot_pick3_enabled === undefined &&
     whot_cards_enabled === undefined &&
     whot_number_calls_enabled === undefined &&
@@ -166,6 +168,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       // fall through silently and hit the DB with an empty patch.
       return NextResponse.json({ error: 'This game type does not support timer settings' }, { status: 400 })
     }
+  }
+
+  if (rounds_count !== undefined) {
+    gameUpdate.rounds_count = Math.max(1, Math.min(100, Math.round(rounds_count)))
   }
 
   if (game_duration_seconds !== undefined) {
