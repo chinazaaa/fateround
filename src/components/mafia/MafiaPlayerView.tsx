@@ -22,6 +22,7 @@ import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { gameTypeConfig } from '@/lib/game-types'
+import { MAFIA_MIN_PLAYERS } from '@/lib/mafia'
 import { clearPlayerSession } from '@/lib/utils'
 import type { Game, MafiaPublicPlayer, MafiaMyState, MafiaPhase, MafiaTeam, MafiaChatMessage } from '@/types'
 
@@ -136,11 +137,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   useApplyGameTheme('mafia') // Force deep indigo mafia theme
 
   // Table sync triggers state reload
-  useGameTableSync(
-    gameCode,
-    [{ table: 'games', column: 'id' }, 'mafia_sessions', 'mafia_player_states', 'mafia_chat_messages'],
-    load
-  )
+  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'mafia_sessions', 'mafia_player_states'], load)
 
   // Polling fallback
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
@@ -380,7 +377,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               players={players}
               meId={myPlayerId}
               isHost={false}
-              minPlayers={5}
+              minPlayers={MAFIA_MIN_PLAYERS}
               onToggleReady={(ready) => void toggleReplayReady(ready)}
               onStart={() => {}}
               pending={replayReadyPending}
