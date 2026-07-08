@@ -263,8 +263,10 @@ export interface LudoMoveOption {
   captures: boolean
   /** Index into remaining_dice for which die this move uses. */
   diceIndex: number
-  /** Pip value of the die consumed (e.g. 6 or 3). */
+  /** Pip value of the die consumed (e.g. 6 or 3), or the sum when usesAllDice. */
   diceValue: number
+  /** When true, this move spends every die in remaining_dice on one piece at once. */
+  usesAllDice?: boolean
 }
 
 export function getLegalMovesForSteps(
@@ -358,6 +360,44 @@ export function getLegalMovesFromRemaining(
   return moves
 }
 
+/** Pieces on the track or in the home column — not in the yard or finished. */
+export function ludoPiecesOnBoard(pieces: LudoPiece[]): LudoPiece[] {
+  return pieces.filter((p) => p.zone === 'track' || p.zone === 'home')
+}
+
+/**
+ * When only one piece is outside the yard and every remaining die must land on
+ * it (no bring-out choice), offer a single combined move instead of counting
+ * die-by-die.
+ */
+export function resolveLudoMovesForTurn(
+  color: LudoColor,
+  pieces: LudoPiece[],
+  remainingDice: number[],
+  allStates: LudoPlayerState[],
+  playerId: string,
+  variant: LudoVariant = LUDO_DEFAULT_VARIANT
+): LudoMoveOption[] {
+  const perDie = getLegalMovesFromRemaining(color, pieces, remainingDice, allStates, playerId, variant)
+  if (remainingDice.length <= 1) return perDie
+
+  const onBoard = ludoPiecesOnBoard(pieces)
+  if (onBoard.length !== 1) return perDie
+
+  if (perDie.some((m) => m.from.zone === 'base')) return perDie
+
+  const onlyPiece = onBoard[0]!
+  const pieceIds = new Set(perDie.map((m) => m.pieceId))
+  if (pieceIds.size !== 1 || !pieceIds.has(onlyPiece.id)) return perDie
+
+  const totalSteps = remainingDice.reduce((sum, n) => sum + n, 0)
+  const combined = getLegalMovesForSteps(color, pieces, totalSteps, allStates, playerId, variant)
+  const forPiece = combined.find((m) => m.pieceId === onlyPiece.id)
+  if (!forPiece) return perDie
+
+  return [{ ...forPiece, diceIndex: 0, diceValue: totalSteps, usesAllDice: true }]
+}
+
 export function applyMoveLocally(
   states: LudoPlayerState[],
   playerId: string,
@@ -436,6 +476,10 @@ export function dedupeLudoMovesForUi(moves: LudoMoveOption[]): LudoMoveOption[] 
 export function pickLudoMoveForPiece(moves: LudoMoveOption[], pieceId: number): LudoMoveOption | null {
   const pieceMoves = moves.filter((m) => m.pieceId === pieceId)
   if (pieceMoves.length === 0) return null
+
+  const combined = pieceMoves.find((m) => m.usesAllDice)
+  if (combined) return combined
+
   if (pieceMoves.length === 1) return pieceMoves[0]!
 
   // Prefer a capturing move: tapping a piece that can eat an opponent should
@@ -637,7 +681,7 @@ async function persistMove(
   const roll = parseLudoDice(session.last_dice)
 
   const remainingBefore = resolveRemainingDice(session)
-  const remainingAfter = remainingBefore.filter((_, i) => i !== move.diceIndex)
+  const remainingAfter = move.usesAllDice ? [] : remainingBefore.filter((_, i) => i !== move.diceIndex)
 
   const movedFromBase = move.from.zone === 'base' && move.to.zone === 'track'
   const didCapture =
@@ -782,10 +826,11 @@ export async function processLudoRoll(
   // legal move, the player enters the move phase; the move handler then advances
   // the turn if the remaining die can't be used. (Requiring the full two-die
   // sequence to be playable here wrongly skipped turns where only one die moved.)
-  const canPlay =
-    getLegalMovesFromRemaining(playerRow.color, playerRow.pieces, remainingDice, states, playerId, variant).length > 0
+  const turnMoves = resolveLudoMovesForTurn(playerRow.color, playerRow.pieces, remainingDice, states, playerId, variant)
+  const canPlay = turnMoves.length > 0
   const name = playerNames.get(playerId) ?? 'Player'
   const rollLabel = formatLudoDiceRoll(dice)
+  const combinedOnly = turnMoves.length === 1 && turnMoves[0]?.usesAllDice
 
   if (!canPlay) {
     let consecutiveSixes = session.consecutive_sixes
@@ -855,7 +900,9 @@ export async function processLudoRoll(
       last_dice: dice,
       remaining_dice: remainingDice,
       phase: 'move',
-      status_message: `${name} rolled ${rollLabel} — use each die (${dice.d1} & ${dice.d2})`,
+      status_message: combinedOnly
+        ? `${name} rolled ${rollLabel} — move ${turnMoves[0]!.diceValue} spaces`
+        : `${name} rolled ${rollLabel} — use each die (${dice.d1} & ${dice.d2})`,
     },
     timerSeconds,
     session.updated_at
@@ -882,9 +929,12 @@ export async function processLudoMove(
   const remaining = resolveRemainingDice(session)
   if (remaining.length === 0) return { error: 'No dice left to play' }
 
-  const moves = getLegalMovesFromRemaining(playerRow.color, playerRow.pieces, remaining, states, playerId, variant)
+  const moves = resolveLudoMovesForTurn(playerRow.color, playerRow.pieces, remaining, states, playerId, variant)
 
-  let move = diceIndex != null ? moves.find((m) => m.pieceId === pieceId && m.diceIndex === diceIndex) : undefined
+  let move =
+    diceIndex != null
+      ? moves.find((m) => m.pieceId === pieceId && (m.diceIndex === diceIndex || (m.usesAllDice && diceIndex === 0)))
+      : undefined
 
   if (!move) {
     move = pickLudoMoveForPiece(moves, pieceId) ?? undefined
