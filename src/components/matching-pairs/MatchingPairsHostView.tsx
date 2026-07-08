@@ -77,6 +77,9 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
   const [nowMs, setNowMs] = useState<number>(Date.now())
+  const [roundEnded, setRoundEnded] = useState(false)
+  const [startingNextRound, setStartingNextRound] = useState(false)
+  const [autoAdvanceTick, setAutoAdvanceTick] = useState<number | null>(null)
 
   useEffect(() => {
     if (game?.status === 'active') {
@@ -89,6 +92,36 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
 
   useTurnNotifications({ status: game?.status })
 
+  // Auto-advance countdown for the next round.
+  useEffect(() => {
+    if (!roundEnded || startingNextRound) return
+    const totalRounds = game?.rounds_count ?? 1
+    const currentRoundNumber = game?.current_round_number ?? 1
+    if (currentRoundNumber >= totalRounds) return // last round — no auto-advance
+    setAutoAdvanceTick(30)
+    const t = setInterval(() => {
+      setAutoAdvanceTick((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(t)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(t)
+  }, [roundEnded, startingNextRound, game?.rounds_count, game?.current_round_number])
+
+  // Auto-advance trigger when countdown reaches 0.
+  useEffect(() => {
+    if (autoAdvanceTick !== 0) return
+    setAutoAdvanceTick(null)
+    if (game?.status !== 'active') return
+    const totalRounds = game?.rounds_count ?? 1
+    const currentRoundNumber = game?.current_round_number ?? 1
+    if (currentRoundNumber >= totalRounds) return
+    void handleStartNextRound()
+  }, [autoAdvanceTick])
+
   const load = useCallback(async () => {
     const [{ data: gameData }, { data: playersData }] = await Promise.all([
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
@@ -99,14 +132,16 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     setPlayers((playersData ?? []) as Player[])
 
     if (gameData.status === 'active' || gameData.status === 'finished') {
+      const currentRoundNumber = (gameData as Game).current_round_number ?? 1
       const { data: roundData } = await supabase
         .from('rounds')
         .select(ROUND_SELECT)
         .eq('game_id', gameCode)
-        .eq('round_number', 1)
+        .eq('round_number', currentRoundNumber)
         .maybeSingle()
       if (roundData) {
         setRoundId(roundData.id)
+        setRoundEnded(roundData.status === 'finished')
         const meta = parseMatchingPairsMetadata(roundData.memory_match_metadata)
         if (meta) setGridSizePairs(meta.gridSizePairs)
 
@@ -116,9 +151,35 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         ])
         setSubmissions((subData ?? []) as MatchingPairsSubmission[])
         setProgressRows((progData ?? []) as MatchingPairsProgress[])
+      } else {
+        setRoundEnded(false)
       }
+    } else {
+      setRoundEnded(false)
     }
   }, [gameCode])
+
+  const handleStartNextRound = useCallback(async () => {
+    if (startingNextRound) return
+    setStartingNextRound(true)
+    setAutoAdvanceTick(null)
+    try {
+      const res = await fetch('/api/matching-pairs/next-round', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostToken }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toastError(d.error ?? 'Failed to start next round')
+      } else {
+        setRoundEnded(false)
+        await load()
+      }
+    } finally {
+      setStartingNextRound(false)
+    }
+  }, [gameCode, hostToken, load, toastError, startingNextRound])
 
   useEffect(() => {
     void load()
@@ -164,6 +225,24 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       void supabase.removeChannel(channel)
     }
   }, [roundId])
+
+  // Realtime: round transitions (round ended → round results, new round → playing).
+  useEffect(() => {
+    if (!gameCode) return
+    const channel = supabase
+      .channel(`mp_host_rounds_${gameCode}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
+        () => {
+          void load()
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [gameCode, load])
 
   useGameRosterPoll(gameCode, game?.status, { setGame, setPlayers, reload: load })
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
@@ -256,6 +335,9 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         toastError(d.error || 'Failed to reset')
         return
       }
+      // Save the stored session BEFORE clearing it (clearPlayerSession destroys it,
+      // so the post-load fixup below needs the original to re-match by name).
+      const storedSession = getPlayerSession(gameCode)
       if (!sameSettings) {
         clearPlayerSession(gameCode)
         setHostPlayerId(null)
@@ -267,16 +349,15 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       // Use a fresh roster query (instead of the stale `players` closure state
       // that hasn't been re-rendered after load()) to check whether the host's
       // stored player still exists in the game.
-      const stored = getPlayerSession(gameCode)
       const { data: freshPlayers } = await supabase.from('players').select('id, name').eq('game_id', gameCode)
-      if (stored && freshPlayers && !freshPlayers.some((p) => p.id === stored.playerId)) {
+      if (storedSession && freshPlayers && !freshPlayers.some((p) => p.id === storedSession.playerId)) {
         const matchingPlayer = (freshPlayers as { id: string; name: string }[]).find(
-          (p) => p.name === stored.playerName
+          (p) => p.name === storedSession.playerName
         )
         if (matchingPlayer) {
-          setPlayerSession(gameCode, matchingPlayer.id, stored.playerName, 'both', stored.resumeToken)
+          setPlayerSession(gameCode, matchingPlayer.id, storedSession.playerName, 'both', storedSession.resumeToken)
           setHostPlayerId(matchingPlayer.id)
-          setHostPlayerName(stored.playerName)
+          setHostPlayerName(storedSession.playerName)
         }
       }
     } finally {
@@ -348,8 +429,51 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const showTabs = game.status !== 'finished'
   const gameStarted = game.status === 'active'
   const primaryKind: 'play' | 'watch' = hostPlays ? 'play' : 'watch'
+  const isLastRound = currentRoundNumber >= totalRounds
 
   const interactivePlay = <MatchingPairsPlayerView gameCode={gameCode} />
+
+  const roundResultsUI = (
+    <section className="space-y-4" style={{ padding: '0 0 16px', textAlign: 'center' }}>
+      <div className="glass-card-strong p-8 space-y-2">
+        <p className="text-3xl">🏁</p>
+        <p className="text-xl font-black">
+          Round {currentRoundNumber}/{totalRounds} complete!
+        </p>
+      </div>
+      <PaginatedLeaderboard
+        title="Round standings"
+        rows={leaderboard.map((s, i) => ({
+          id: s.playerId,
+          rank: i + 1,
+          name: playerMap.get(s.playerId) ?? 'Unknown',
+          score: s.finalScore,
+          correctCount: s.pairsMatched,
+          expandDetails: <MatchingPairsStatDetails score={s} gridSizePairs={gridSizePairs} />,
+        }))}
+        totalQuestions={gridSizePairs}
+        scoreLabel={(n) => `${n} pts`}
+        emphasizeLeader
+      />
+      {isLastRound ? (
+        <p className="text-sm text-muted py-2">Final results coming up...</p>
+      ) : (
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => void handleStartNextRound()}
+            disabled={startingNextRound}
+            className="btn-primary w-full py-3 text-base font-bold disabled:opacity-60"
+          >
+            {startingNextRound ? 'Starting...' : `→ Start Round ${currentRoundNumber + 1}`}
+          </button>
+          {autoAdvanceTick !== null && autoAdvanceTick > 0 && (
+            <p className="text-xs text-muted">Auto-starting in {autoAdvanceTick}s…</p>
+          )}
+        </div>
+      )}
+    </section>
+  )
 
   const memorizeSeconds = gridSizePairs >= 16 ? 5 : 3
   const playStartMs = game?.session_started_at
@@ -366,9 +490,19 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     return 0
   }
 
+  const currentRoundNumber = game.current_round_number ?? 1
+  const totalRounds = game.rounds_count ?? 1
+
+  const roundIndicator = totalRounds > 1 ? (
+    <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-faint)', marginBottom: 4 }}>
+      Round {currentRoundNumber}/{totalRounds}
+    </div>
+  ) : null
+
   const watchBoard = (
     <section className="space-y-4" style={{ padding: '0 0 16px' }}>
       <MatchingPairsGameTimerBar gameCode={gameCode} game={game} />
+      {roundIndicator}
       <p style={{ color: 'var(--text-faint)', fontSize: 13, marginBottom: 8 }}>
         Live progress — {formatMatchingPairsGridSize(gridSizePairs)}
       </p>
@@ -527,7 +661,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       showTabs={showTabs}
       gameStarted={gameStarted}
       header={<HostGameHeader game={game} />}
-      primary={hostPlays ? interactivePlay : watchBoard}
+      primary={hostPlays ? interactivePlay : roundEnded ? roundResultsUI : watchBoard}
       manage={manage}
       finished={
         <>
