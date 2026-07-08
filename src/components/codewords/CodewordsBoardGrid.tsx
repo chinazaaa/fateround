@@ -3,6 +3,17 @@
 import { spymasterCellClass, cellColorClass } from '@/lib/codewords'
 import type { CodewordsBoard, CodewordsCellType } from '@/types'
 
+/** Scale board labels down as words get longer so they stay inside each cell. */
+function boardWordTextClass(word: string): string {
+  const len = word.length
+  if (len > 18) return 'text-[6px] sm:text-[7px] leading-[1.1]'
+  if (len > 14) return 'text-[7px] sm:text-[8px] leading-[1.1]'
+  if (len > 11) return 'text-[7px] sm:text-[8px]'
+  if (len > 9) return 'text-[8px] sm:text-[9px]'
+  if (len > 7) return 'text-[9px] sm:text-[10px]'
+  return 'text-[10px] sm:text-xs'
+}
+
 type CodewordsBoardGridProps = {
   board: CodewordsBoard
   showKey?: boolean
@@ -43,7 +54,7 @@ export function CodewordsBoardGrid({
             disabled={!canTap}
             onClick={() => onGuess?.(index)}
             className={[
-              'min-h-[3.25rem] sm:min-h-[4rem] rounded-lg border-2 px-1 py-2 text-[10px] sm:text-xs font-bold leading-tight transition-all',
+              'flex min-h-[3.25rem] sm:min-h-[4rem] flex-col items-center justify-center overflow-hidden rounded-lg border-2 px-1 py-1.5 font-bold leading-tight transition-all',
               className,
               canTap ? 'cursor-pointer hover:scale-[1.02] ring-2 ring-blue-400/30' : '',
               !canTap && !isRevealed ? 'cursor-default' : '',
@@ -51,7 +62,14 @@ export function CodewordsBoardGrid({
               .filter(Boolean)
               .join(' ')}
           >
-            <span className="block">{word}</span>
+            <span
+              className={[
+                'block w-full max-w-full text-center break-words hyphens-auto',
+                boardWordTextClass(word),
+              ].join(' ')}
+            >
+              {word}
+            </span>
             {isRevealed && cellAttribution?.[index] && (
               <span className="block text-[9px] font-semibold opacity-80 mt-0.5 truncate">
                 {cellAttribution[index]}
