@@ -1962,32 +1962,95 @@ export function isHotSeat(gameType: GameType | string | undefined): boolean {
 
 type LobbyCounts = { participantMode?: string; participantCount: number }
 
+// Join-style / poll-family membership as exhaustive Record<GameType, boolean> maps rather
+// than hand-written OR-lists: adding a GameType is now a compile error until it's
+// classified here, so a new game can't be silently forgotten from a group. Kept
+// behaviour-identical to the previous OR-lists — verified per game in game-flags.test.ts.
+//
+// NOTE: scrabble + snake_and_ladder are fixed here (flipped to true). They're board games
+// that were wrongly omitted from the original isNameOnlyPlayerJoin OR-list, which sent their
+// players down the gender-required participant join path instead of the clean self-join-by-
+// name every other board game uses (monopoly/chess/…). bingo + codewords stay `false` — they
+// aren't board games and have their own join flows.
+const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
+  smash_marry_kill: false,
+  red_flag_green_flag: false,
+  smash_or_pass: false,
+  would_you_rather: true,
+  never_have_i_ever: true,
+  pick_a_number: true,
+  this_or_that: true,
+  most_likely_to: true,
+  who_said_this: false,
+  hot_seat: false,
+  custom: false,
+  anonymous_messages: false,
+  secret_message: false,
+  bingo: false,
+  codewords: false,
+  trivia: true,
+  two_truths: true,
+  parent_approval: false,
+  monopoly: true,
+  yahtzee: true,
+  whot: true,
+  ludo: true,
+  mahjong: true,
+  i_call_on: true,
+  sudoku: true,
+  tic_tac_toe: true,
+  word_hunt: true,
+  chess: true,
+  describe_it: true,
+  scrabble: true,
+  snake_and_ladder: true,
+  crazy_eights: true,
+  checkers: true,
+  matching_pairs: true,
+  mafia: false,
+}
+
+const LOBBY_GAMES: Record<GameType, boolean> = {
+  smash_marry_kill: false,
+  red_flag_green_flag: false,
+  smash_or_pass: false,
+  would_you_rather: true,
+  never_have_i_ever: true,
+  pick_a_number: true,
+  this_or_that: true,
+  most_likely_to: false,
+  who_said_this: false,
+  hot_seat: false,
+  custom: false,
+  anonymous_messages: true,
+  secret_message: true,
+  bingo: false,
+  codewords: false,
+  trivia: false,
+  two_truths: false,
+  parent_approval: false,
+  monopoly: false,
+  yahtzee: false,
+  whot: false,
+  ludo: false,
+  mahjong: false,
+  i_call_on: false,
+  sudoku: false,
+  tic_tac_toe: false,
+  word_hunt: false,
+  chess: false,
+  describe_it: false,
+  scrabble: false,
+  snake_and_ladder: false,
+  crazy_eights: false,
+  checkers: false,
+  matching_pairs: false,
+  mafia: false,
+}
+
 /** WYR + MLT + This or That player join: free name entry, no list. Hot Seat uses import + name claim (see isImportNameClaimGame). */
 export function isNameOnlyPlayerJoin(gameType: GameType | string | undefined): boolean {
-  const type = parseGameType(gameType)
-  return (
-    type === 'would_you_rather' ||
-    type === 'never_have_i_ever' ||
-    type === 'pick_a_number' ||
-    type === 'this_or_that' ||
-    type === 'most_likely_to' ||
-    type === 'trivia' ||
-    type === 'two_truths' ||
-    type === 'monopoly' ||
-    type === 'yahtzee' ||
-    type === 'whot' ||
-    type === 'crazy_eights' ||
-    type === 'ludo' ||
-    type === 'mahjong' ||
-    type === 'i_call_on' ||
-    type === 'sudoku' ||
-    type === 'tic_tac_toe' ||
-    type === 'word_hunt' ||
-    type === 'chess' ||
-    type === 'checkers' ||
-    type === 'describe_it' ||
-    type === 'matching_pairs'
-  )
+  return NAME_ONLY_PLAYER_JOIN_GAMES[parseGameType(gameType)]
 }
 
 /** Import list + claim your name when joining (no gender) — Who Said This & Hot Seat (import mode). */
@@ -2016,15 +2079,7 @@ export function isPlayerOnlyJoinLobby(gameType: GameType | string | undefined, o
 
 /** WYR + This or That — forced joiners, no gender, always anonymous. */
 export function isLobbyGame(gameType: GameType | string | undefined): boolean {
-  const type = parseGameType(gameType)
-  return (
-    type === 'would_you_rather' ||
-    type === 'never_have_i_ever' ||
-    type === 'pick_a_number' ||
-    type === 'this_or_that' ||
-    type === 'anonymous_messages' ||
-    type === 'secret_message'
-  )
+  return LOBBY_GAMES[parseGameType(gameType)]
 }
 
 export function isAnonymousGame(gameType: GameType | string | undefined): boolean {

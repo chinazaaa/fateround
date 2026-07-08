@@ -47,6 +47,7 @@ import {
   isSudokuGame,
   isWordHuntGame,
   isSnakeAndLadderGame,
+  isMatchingPairsGame,
 } from '@/lib/game-types'
 import { wstAutoRoundCount } from '@/lib/who-said-this'
 import { parseLudoVariant } from '@/lib/ludo'
@@ -651,9 +652,11 @@ export async function POST(req: NextRequest) {
                               ? clampBoardGameTurnTimer(timer_seconds, 'crazy_eights')
                               : isMahjongGame(game_type)
                                 ? clampBoardGameTurnTimer(timer_seconds, 'mahjong')
-                                : [15, 30, 60].includes(Number(timer_seconds))
-                                  ? Number(timer_seconds)
-                                  : 30,
+                                : isMatchingPairsGame(game_type)
+                                  ? Math.max(0, Math.min(600, Math.round(Number(timer_seconds) || 0)))
+                                  : [15, 30, 60].includes(Number(timer_seconds))
+                                    ? Number(timer_seconds)
+                                    : 30,
     ...(isCodewordsGame(game_type)
       ? {
           operative_timer_seconds: clampCodewordsTimer(
@@ -790,15 +793,17 @@ export async function POST(req: NextRequest) {
                   mahjong_ruleset: parseMahjongRuleset(rawMahjongRuleset),
                   mahjong_rule_options: parseMahjongRuleOptions(rawMahjongRuleOptions),
                 }
-              : isSudokuGame(game_type)
-                ? { game_duration_seconds: clampSudokuGameDuration(rawGameDurationSeconds ?? 0) }
-                : isMafiaGame(game_type)
-                  ? {
-                      mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
-                      mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
-                      mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
-                    }
-                  : {}),
+              : isMatchingPairsGame(game_type)
+                ? { game_duration_seconds: rawGameDurationSeconds ?? 0 }
+                : isSudokuGame(game_type)
+                  ? { game_duration_seconds: clampSudokuGameDuration(rawGameDurationSeconds ?? 0) }
+                  : isMafiaGame(game_type)
+                    ? {
+                        mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
+                        mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
+                        mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
+                      }
+                    : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {
