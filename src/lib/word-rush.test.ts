@@ -11,6 +11,12 @@ import {
   wordRushLobbyReady,
   rebalanceWordRushTeams,
   shuffleWordRushTeams,
+  wordRushIndividualGuessPoints,
+  allWordRushIndividualPlayersSubmitted,
+  wordRushIndividualAnswerers,
+  isWordRushResultsPhase,
+  WORD_RUSH_INDIVIDUAL_BASE_POINTS,
+  WORD_RUSH_INDIVIDUAL_SPEED_BONUS,
 } from '@/lib/word-rush'
 
 describe('word-rush-dictionary', () => {
@@ -119,5 +125,36 @@ describe('word-rush helpers', () => {
       expect(team).toBeGreaterThanOrEqual(1)
       expect(team).toBeLessThanOrEqual(2)
     }
+  })
+
+  it('awards more points for faster individual answers', () => {
+    const fast = wordRushIndividualGuessPoints(new Date(Date.now() + 120_000).toISOString(), 120)
+    const slow = wordRushIndividualGuessPoints(new Date(Date.now() + 2_000).toISOString(), 120)
+    expect(fast).toBeGreaterThanOrEqual(WORD_RUSH_INDIVIDUAL_BASE_POINTS + WORD_RUSH_INDIVIDUAL_SPEED_BONUS - 1)
+    expect(slow).toBeGreaterThanOrEqual(WORD_RUSH_INDIVIDUAL_BASE_POINTS)
+    expect(fast).toBeGreaterThan(slow)
+  })
+
+  it('detects when every individual player has answered', () => {
+    const session = {
+      roster: ['a', 'b', 'c'],
+      prompt_setter_player_id: 'a',
+      turn_index: 0,
+    }
+    expect(allWordRushIndividualPlayersSubmitted(session, [{ player_id: 'b', turn_index: 0 }])).toBe(false)
+    expect(
+      allWordRushIndividualPlayersSubmitted(session, [
+        { player_id: 'b', turn_index: 0 },
+        { player_id: 'c', turn_index: 0 },
+      ])
+    ).toBe(true)
+    expect(wordRushIndividualAnswerers({ roster: ['a', 'b', 'c'], prompt_setter_player_id: 'a' })).toEqual(['b', 'c'])
+  })
+
+  it('shows results when the game is finished', () => {
+    expect(isWordRushResultsPhase('finished', { status: 'active', phase: 'playing' })).toBe(true)
+    expect(isWordRushResultsPhase('active', { status: 'finished', phase: 'finished' })).toBe(true)
+    expect(isWordRushResultsPhase('waiting', { status: 'finished', phase: 'finished' })).toBe(false)
+    expect(isWordRushResultsPhase('active', { status: 'active', phase: 'playing' })).toBe(false)
   })
 })

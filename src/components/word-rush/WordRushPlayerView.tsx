@@ -99,8 +99,9 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
         return 'join'
       }
       if (gameData.status === 'waiting') return 'lobby'
-      if (isWordRushResultsPhase(sessionData)) return 'finished'
+      if (isWordRushResultsPhase(gameData.status, sessionData)) return 'finished'
       if (gameData.status === 'active') return 'active'
+      if (gameData.status === 'finished') return 'finished'
       return 'lobby'
     },
     []
@@ -150,7 +151,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   const sendAction = async (path: string, body: Record<string, unknown>) => {
     if (!myResumeToken) {
       toastError('Your player session expired — rejoin to continue')
-      return
+      return { error: 'Session expired' }
     }
     setActing(true)
     try {
@@ -160,8 +161,15 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
         body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ...body }),
       })
       const data = await res.json()
-      if (!res.ok) toastError(data.error ?? 'Action failed')
-      else await load()
+      if (!res.ok) {
+        toastError(data.error ?? 'Action failed')
+        return { error: data.error ?? 'Action failed' }
+      }
+      await load()
+      if (path.includes('/submit')) {
+        return { correct: data.correct as boolean | undefined, points: data.points as number | undefined }
+      }
+      return {}
     } finally {
       setActing(false)
     }
@@ -332,7 +340,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'finished' && game) {
     return (
-      <WordRushShell>
+      <WordRushShell compact>
         <WordRushFinishedResults
           game={game}
           session={session}
@@ -357,7 +365,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   return (
-    <WordRushShell>
+    <WordRushShell compact wide>
       {isViewer && <ViewerModeBanner />}
       {session && (
         <WordRushPlayPanel
@@ -369,7 +377,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           secondsLeft={secondsLeft}
           intermissionLeft={intermissionLeft}
           urgent={urgent}
-          onSubmit={isViewer ? undefined : (text) => void sendAction('/api/word-rush/submit', { text })}
+          onSubmit={isViewer ? undefined : (text) => sendAction('/api/word-rush/submit', { text })}
           onPrompt={
             isViewer
               ? undefined

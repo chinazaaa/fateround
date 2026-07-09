@@ -13,6 +13,10 @@ export const WORD_RUSH_MAX_PLAYER_OPTIONS = [6, 8, 10, 12, 16, 20] as const
 
 export const WORD_RUSH_DEFAULT_TURN_SECONDS = 120
 export const WORD_RUSH_DEFAULT_ROUNDS = 5
+/** Individual mode: flat points before the speed bonus (Text Charades style). */
+export const WORD_RUSH_INDIVIDUAL_BASE_POINTS = 10
+/** Individual mode: extra points for an instant answer, decaying to 0 at time-up. */
+export const WORD_RUSH_INDIVIDUAL_SPEED_BONUS = 40
 export const WORD_RUSH_MIN_PER_TEAM = 1
 export const WORD_RUSH_BREAK_SECONDS = 6
 export const WORD_RUSH_ROUND_RESULTS_SECONDS = 8
@@ -67,6 +71,25 @@ export function clampWordRushTurnSeconds(value: unknown): number {
   return (WORD_RUSH_TURN_OPTIONS as readonly number[]).includes(n) ? n : WORD_RUSH_DEFAULT_TURN_SECONDS
 }
 
+/** Speed-scaled points for a correct individual-mode answer at a given moment. */
+export function wordRushIndividualGuessPointsAt(
+  turnDeadlineAt: string | null,
+  turnSeconds: number,
+  atMs: number
+): number {
+  if (!turnDeadlineAt) return WORD_RUSH_INDIVIDUAL_BASE_POINTS
+  const totalMs = Math.max(turnSeconds, 1) * 1000
+  const startMs = new Date(turnDeadlineAt).getTime() - totalMs
+  const elapsed = Math.max(0, atMs - startMs)
+  const ratio = Math.max(0, Math.min(1, 1 - elapsed / totalMs))
+  return WORD_RUSH_INDIVIDUAL_BASE_POINTS + Math.floor(WORD_RUSH_INDIVIDUAL_SPEED_BONUS * ratio)
+}
+
+/** Speed-scaled points for a correct individual-mode answer (uses current time). */
+export function wordRushIndividualGuessPoints(turnDeadlineAt: string | null, turnSeconds: number): number {
+  return wordRushIndividualGuessPointsAt(turnDeadlineAt, turnSeconds, Date.now())
+}
+
 export function formatWordRushTurnTimer(seconds: number): string {
   if (seconds === 60) return '1 min'
   if (seconds === 90) return '1.5 min'
@@ -104,8 +127,14 @@ export function promptSetterForIndividualRound(roster: string[], roundIndex: num
   return roster[roundIndex % roster.length] ?? null
 }
 
-export function isWordRushResultsPhase(session: Pick<WordRushSession, 'phase' | 'status'> | null): boolean {
-  return session?.status === 'finished' || session?.phase === 'finished'
+export function isWordRushResultsPhase(
+  gameStatus: string | undefined,
+  session: Pick<WordRushSession, 'phase' | 'status'> | null | undefined
+): boolean {
+  if (!gameStatus || gameStatus === 'waiting') return false
+  if (gameStatus === 'finished') return true
+  if (!session) return false
+  return session.status === 'finished' || session.phase === 'finished'
 }
 
 export function computeWordRushTeamScores(
@@ -129,6 +158,26 @@ export function computeWordRushPlayerScores(
   return players
     .map((p) => ({ id: p.id, name: p.name, score: scoreById.get(p.id) ?? 0 }))
     .sort((a, b) => b.score - a.score)
+}
+
+export function allWordRushIndividualPlayersSubmitted(
+  session: Pick<WordRushSession, 'roster' | 'prompt_setter_player_id' | 'turn_index'>,
+  answers: Pick<WordRushAnswer, 'player_id' | 'turn_index'>[]
+): boolean {
+  const eligible = wordRushIndividualAnswerers(session)
+  if (eligible.length === 0) return false
+  const submitted = new Set(answers.filter((a) => a.turn_index === session.turn_index).map((a) => a.player_id))
+  return eligible.every((id) => submitted.has(id))
+}
+
+export function wordRushIndividualAnswerers(
+  session: Pick<WordRushSession, 'roster' | 'prompt_setter_player_id'>
+): string[] {
+  const roster = session.roster ?? []
+  if (session.prompt_setter_player_id) {
+    return roster.filter((id) => id !== session.prompt_setter_player_id)
+  }
+  return roster
 }
 
 export function wordRushLobbyReady(

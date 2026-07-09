@@ -10,6 +10,7 @@ import {
   WORD_RUSH_MIN_PLAYERS_INDIVIDUAL,
   WORD_RUSH_ROUND_RESULTS_SECONDS,
   balanceWordRushTeams,
+  allWordRushIndividualPlayersSubmitted,
   clampWordRushMode,
   clampWordRushPromptMode,
   clampWordRushRounds,
@@ -18,6 +19,8 @@ import {
   letterPairKey,
   normalizeWordRushWord,
   promptSetterForIndividualRound,
+  wordRushIndividualGuessPoints,
+  wordRushIndividualGuessPointsAt,
   teamForTurnIndex,
   teamLabel,
   teamRoster,
@@ -162,8 +165,7 @@ export async function initializeWordRushGame(
     if (!ready.ok) return { error: ready.error }
   }
 
-  const promptSetterId =
-    mode === 'individual' && promptMode === 'manual' ? promptSetterForIndividualRound(roster, 0) : null
+  const promptSetterId = mode === 'individual' ? promptSetterForIndividualRound(roster, 0) : null
 
   const teamPromptSetter =
     mode === 'team' && promptMode === 'manual'
@@ -254,7 +256,7 @@ export async function processWordRushSubmit(
   gameId: string,
   playerId: string,
   text: string
-): Promise<{ error?: string; correct?: boolean; internal?: boolean }> {
+): Promise<{ error?: string; correct?: boolean; points?: number; internal?: boolean }> {
   const { session, error, internal } = await loadSession(supabase, gameId)
   if (error) return { error, internal }
   if (!session || session.status === 'finished') return { error: 'Game not active' }
@@ -271,8 +273,13 @@ export async function processWordRushSubmit(
       return { error: 'Prompt setter enters letters, not answers' }
     }
   } else {
-    if (session.prompt_setter_player_id === playerId && session.prompt_mode === 'manual') {
-      return { error: 'You are setting the prompt this round' }
+    if (session.prompt_setter_player_id === playerId) {
+      return {
+        error:
+          session.prompt_mode === 'manual'
+            ? 'You are setting the prompt this round'
+            : 'You are hosting this round — others are guessing',
+      }
     }
     const { data: existing } = await supabase
       .from('word_rush_answers')
@@ -304,10 +311,29 @@ export async function processWordRushSubmit(
       text: guess.slice(0, 80),
       correct,
     })
+    let points = 0
     if (correct) {
-      await supabase.rpc('word_rush_add_score', { p_game_id: gameId, p_player_id: playerId, p_delta: 1 })
+      points = wordRushIndividualGuessPoints(session.turn_deadline_at, session.turn_seconds)
+      await supabase.rpc('word_rush_add_score', { p_game_id: gameId, p_player_id: playerId, p_delta: points })
     }
-    return { correct }
+
+    const { data: roundAnswers } = await supabase
+      .from('word_rush_answers')
+      .select('player_id, turn_index')
+      .eq('game_id', gameId)
+      .eq('turn_index', session.turn_index)
+
+    if (
+      allWordRushIndividualPlayersSubmitted(
+        session,
+        (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number }>
+      )
+    ) {
+      const endResult = await endIndividualRound(supabase, gameId, session)
+      if (endResult.error) return endResult
+    }
+
+    return correct ? { correct, points } : { correct }
   }
 
   await supabase.from('word_rush_answers').insert({
@@ -406,35 +432,84 @@ async function endIndividualRound(
   gameId: string,
   session: WordRushSession
 ): Promise<{ error?: string; internal?: boolean }> {
-  const nextRound = session.turn_index + 1
-  if (nextRound >= session.total_rounds) {
-    return finishWordRushGame(supabase, gameId, session, 'All rounds complete!')
+  const { data: correctGuesses, error: guessesError } = await supabase
+    .from('word_rush_answers')
+    .select('player_id, created_at')
+    .eq('game_id', gameId)
+    .eq('turn_index', session.turn_index)
+    .eq('correct', true)
+  if (guessesError) return internalFailure('word-rush:end-individual-round:guesses', guessesError)
+
+  const setterId = session.prompt_setter_player_id
+  let mirrorPoints = 0
+  let guessedCount = 0
+  for (const guess of correctGuesses ?? []) {
+    if (guess.player_id === setterId) continue
+    guessedCount += 1
+    mirrorPoints += wordRushIndividualGuessPointsAt(
+      session.turn_deadline_at,
+      session.turn_seconds,
+      new Date(guess.created_at).getTime()
+    )
   }
 
-  const promptSetter =
-    session.prompt_mode === 'manual' ? promptSetterForIndividualRound(session.roster, nextRound) : null
+  const nextRound = session.turn_index + 1
+  const isLastRound = nextRound >= session.total_rounds
+  const nextSetter = isLastRound ? null : promptSetterForIndividualRound(session.roster, nextRound)
 
-  const nextStart = buildIndividualRoundStart({
-    roundIndex: nextRound,
-    totalRounds: session.total_rounds,
-    turnSeconds: session.turn_seconds,
-    promptMode: session.prompt_mode,
-    promptSetterId: promptSetter,
-    usedPairs: session.used_pairs,
-  })
+  const nextStart = isLastRound
+    ? null
+    : buildIndividualRoundStart({
+        roundIndex: nextRound,
+        totalRounds: session.total_rounds,
+        turnSeconds: session.turn_seconds,
+        promptMode: session.prompt_mode,
+        promptSetterId: nextSetter,
+        usedPairs: session.used_pairs,
+      })
 
-  const { error } = await supabase
+  const statusMessage = isLastRound
+    ? 'All rounds complete!'
+    : `Round ${session.current_round} complete — ${guessedCount} guessed it`
+
+  const { data: claimed, error } = await supabase
     .from('word_rush_sessions')
     .update({
-      ...nextStart,
-      phase: 'intermission',
-      intermission_deadline_at: deadline(WORD_RUSH_ROUND_RESULTS_SECONDS),
-      status_message: `Round ${session.current_round} complete — next round coming up`,
+      ...(isLastRound
+        ? {
+            phase: 'finished' as const,
+            status: 'finished' as const,
+            status_message: statusMessage,
+            turn_deadline_at: null,
+            intermission_deadline_at: null,
+          }
+        : {
+            ...nextStart,
+            phase: 'intermission' as const,
+            intermission_deadline_at: deadline(WORD_RUSH_ROUND_RESULTS_SECONDS),
+            status_message: statusMessage,
+          }),
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
     .eq('turn_index', session.turn_index)
+    .in('phase', ['playing', 'awaiting_prompt'])
+    .select('id')
+
   if (error) return internalFailure('word-rush:end-individual-round', error)
+  if (!claimed?.length) return {}
+
+  if (mirrorPoints > 0 && setterId) {
+    await supabase.rpc('word_rush_add_score', {
+      p_game_id: gameId,
+      p_player_id: setterId,
+      p_delta: mirrorPoints,
+    })
+  }
+
+  if (isLastRound) {
+    await markGameFinished(supabase, gameId)
+  }
   return {}
 }
 
@@ -444,7 +519,7 @@ async function finishWordRushGame(
   session: WordRushSession,
   message: string
 ): Promise<{ error?: string; internal?: boolean }> {
-  const { error } = await supabase
+  const { data: claimed, error } = await supabase
     .from('word_rush_sessions')
     .update({
       phase: 'finished',
@@ -455,9 +530,57 @@ async function finishWordRushGame(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    .neq('status', 'finished')
+    .select('id')
   if (error) return internalFailure('word-rush:finish', error)
+  if (!claimed?.length) return {}
   await markGameFinished(supabase, gameId)
   return {}
+}
+
+export async function finishWordRushGameEarly(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error?: string; internal?: boolean }> {
+  const { session, error, internal } = await loadSession(supabase, gameId)
+  if (error) return { error, internal }
+  if (!session || session.status === 'finished') return {}
+
+  const { error: updateError } = await supabase
+    .from('word_rush_sessions')
+    .update({
+      phase: 'finished',
+      status: 'finished',
+      status_message: 'Host ended the game',
+      turn_deadline_at: null,
+      intermission_deadline_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('game_id', gameId)
+    .neq('status', 'finished')
+  if (updateError) return internalFailure('word-rush:finish-early', updateError)
+  return {}
+}
+
+export async function processWordRushEndRoundEarly(
+  supabase: SupabaseClient,
+  gameId: string,
+  hostToken: string
+): Promise<{ error?: string; internal?: boolean }> {
+  const { data: game } = await supabase.from('games').select('host_token, status').eq('id', gameId).maybeSingle()
+  if (!game) return { error: 'Game not found' }
+  if (game.host_token !== hostToken) return { error: 'Invalid host token' }
+  if (game.status !== 'active') return { error: 'Game not active' }
+
+  const { session, error, internal } = await loadSession(supabase, gameId)
+  if (error) return { error, internal }
+  if (!session || session.status === 'finished') return { error: 'Game not active' }
+  if (session.phase !== 'playing' && session.phase !== 'awaiting_prompt') {
+    return { error: 'Round already ended' }
+  }
+
+  if (session.mode === 'team') return endTeamTurn(supabase, gameId, session)
+  return endIndividualRound(supabase, gameId, session)
 }
 
 export async function processWordRushExpireTurn(
