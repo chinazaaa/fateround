@@ -252,7 +252,11 @@ describe('solo and no-voter battles', () => {
       ended_at: null,
     }
     expect(isNoVoterDrawBattle(battle, [])).toBe(true)
-    expect(isNoVoterDrawBattle(battle, [{ id: 'v1', game_id: 'GAME', battle_id: 'battle-1', player_id: 'p3', chosen_answer_id: 'ans-a', voted_at: '' }])).toBe(false)
+    expect(
+      isNoVoterDrawBattle(battle, [
+        { id: 'v1', game_id: 'GAME', battle_id: 'battle-1', player_id: 'p3', chosen_answer_id: 'ans-a', voted_at: '' },
+      ])
+    ).toBe(false)
   })
 })
 

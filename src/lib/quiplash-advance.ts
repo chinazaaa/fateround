@@ -283,13 +283,7 @@ async function transitionWritingToBattles(
     return endRoundAndAdvance(supabase, game, game.current_round_number)
   }
 
-  const phase = await activateBattleWithAutoFinish(
-    supabase,
-    firstBattle,
-    voteTimerSeconds,
-    participantCount,
-    roundId
-  )
+  const phase = await activateBattleWithAutoFinish(supabase, firstBattle, voteTimerSeconds, participantCount, roundId)
   return { ok: true, code: phase }
 }
 

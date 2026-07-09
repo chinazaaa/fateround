@@ -130,7 +130,12 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   }, [setScreen, load])
 
   useLobbyOpenNotification(game?.status, () => {
-    if (screen === 'game_started_waiting' || screen === 'late_join_choice' || screen === 'lobby' || screen === 'playing')
+    if (
+      screen === 'game_started_waiting' ||
+      screen === 'late_join_choice' ||
+      screen === 'lobby' ||
+      screen === 'playing'
+    )
       void load()
   })
 

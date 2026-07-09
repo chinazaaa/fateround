@@ -150,15 +150,9 @@ export function HostQuiplashLobbyPanel({ gameCode, hostToken, game, playerCount,
     []
   )
 
-  const submitTimerOptions = useMemo(
-    () => QUIPLASH_SUBMIT_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s}s` })),
-    []
-  )
+  const submitTimerOptions = useMemo(() => QUIPLASH_SUBMIT_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s}s` })), [])
 
-  const voteTimerOptions = useMemo(
-    () => QUIPLASH_VOTE_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s}s` })),
-    []
-  )
+  const voteTimerOptions = useMemo(() => QUIPLASH_VOTE_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s}s` })), [])
 
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 

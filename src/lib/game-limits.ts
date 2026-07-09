@@ -294,10 +294,7 @@ export function seatedParticipantCount(players: ReadonlyArray<{ spectator?: bool
 }
 
 /** Client-side max seats when DB limits aren't loaded (uses code defaults). */
-export function lobbyMaxPlayersFromGameClient(
-  gameType: string,
-  game: { max_players?: number | null }
-): number | null {
+export function lobbyMaxPlayersFromGameClient(gameType: string, game: { max_players?: number | null }): number | null {
   if (!isLobbyLimitGameType(gameType)) return null
   const typed = gameType as LobbyLimitGameType
   return lobbyMaxPlayersFromGame(typed, game, GAME_LIMIT_CODE_DEFAULTS)

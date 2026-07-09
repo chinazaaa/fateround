@@ -460,8 +460,7 @@ export function QuiplashActiveRound({
           )}
           {revealAnswers.map((answer, index) => {
             const label = answerOptionLabel(index)
-            const votesFor =
-              answer.id === activeBattle.answer_a_id ? revealTally.votesA : revealTally.votesB
+            const votesFor = answer.id === activeBattle.answer_a_id ? revealTally.votesA : revealTally.votesB
             const isWinner = revealTally.winnerId === answer.id
             return (
               <div

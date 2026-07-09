@@ -133,9 +133,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   const lobbyLimits = await fetchGamePlayerLimits(supabase)
-  const limitKey = (quiplashLobby
-    ? 'quiplash'
-    : (timedLobbyType ?? limitOnlyType ?? boardLobbyType)) as LobbyLimitGameType
+  const limitKey = (
+    quiplashLobby ? 'quiplash' : (timedLobbyType ?? limitOnlyType ?? boardLobbyType)
+  ) as LobbyLimitGameType
   const gameUpdate: Record<string, unknown> = {}
 
   // Public/private visibility — controls whether the game shows up in Browse. Not
@@ -188,7 +188,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.rounds_count = clampQuiplashRounds(rounds_count)
     }
   } else if (rounds_count !== undefined) {
-    return NextResponse.json({ error: 'Rounds count only applies to Matching Pairs and Quiplash games' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'Rounds count only applies to Matching Pairs and Quiplash games' },
+      { status: 400 }
+    )
   }
 
   if (operative_timer_seconds !== undefined) {

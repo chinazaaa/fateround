@@ -155,8 +155,6 @@ export function PostWinToCommunity({
 
   // Posting — show feedback so winners know it's happening (untracked games hide after 404).
   return (
-    <div className="glass-card p-4 text-center text-sm text-muted">
-      Adding your win to the community leaderboard…
-    </div>
+    <div className="glass-card p-4 text-center text-sm text-muted">Adding your win to the community leaderboard…</div>
   )
 }

@@ -174,16 +174,10 @@ export function answerAuthorName(
 /** Player ids whose answers are competing in this battle (usually two). */
 export function battleContestantPlayerIds(battle: QuiplashBattle, answers: QuiplashAnswer[]): string[] {
   const byId = new Map(answers.map((a) => [a.id, a.player_id]))
-  return [battle.answer_a_id, battle.answer_b_id]
-    .map((id) => byId.get(id))
-    .filter((id): id is string => !!id)
+  return [battle.answer_a_id, battle.answer_b_id].map((id) => byId.get(id)).filter((id): id is string => !!id)
 }
 
-export function playerIsBattleContestant(
-  battle: QuiplashBattle,
-  answers: QuiplashAnswer[],
-  playerId: string
-): boolean {
+export function playerIsBattleContestant(battle: QuiplashBattle, answers: QuiplashAnswer[], playerId: string): boolean {
   return battleContestantPlayerIds(battle, answers).includes(playerId)
 }
 
@@ -268,7 +262,10 @@ export function maxBattlesPerRound(submitterCount: number): number {
 }
 
 /** Shorter vote windows when a round has many battles to get through. */
-export function effectiveQuiplashVoteTimer(configuredSeconds: number | null | undefined, participantCount: number): number {
+export function effectiveQuiplashVoteTimer(
+  configuredSeconds: number | null | undefined,
+  participantCount: number
+): number {
   const configured = clampQuiplashVoteTimer(configuredSeconds)
   if (participantCount <= 5) return configured
   if (participantCount <= 6) return Math.min(configured, 12)
