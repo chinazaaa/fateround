@@ -1022,6 +1022,39 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  word_rush: [
+    {
+      title: 'Objective',
+      points: [
+        'Name valid English words that start with one letter and end with another.',
+        'Team mode: most words in your timed run wins. Individual mode: most correct answers across rounds wins.',
+      ],
+    },
+    {
+      title: 'Team mode',
+      points: [
+        'Each team gets one timed run (default 2 minutes). Everyone on the active team can type answers.',
+        'The first correct answer scores and the next letter pair appears immediately.',
+        'Automatic mode generates prompts; manual mode lets a teammate enter the next pair while the timer runs.',
+      ],
+    },
+    {
+      title: 'Individual mode',
+      points: [
+        'Each round shows one letter pair. Everyone submits one answer before the timer ends.',
+        'Correct answers score 1 point. Results show on the leaderboard, then the next round begins.',
+        'In manual mode, a rotating player enters the letters each round.',
+      ],
+    },
+    {
+      title: 'Valid words',
+      points: [
+        'Answers must be real dictionary words (3+ letters), matching both the start and end letter.',
+        'Only the first correct answer counts in team rush mode when multiple teammates answer at once.',
+      ],
+    },
+  ],
+
   scrabble: [
     {
       title: 'Objective',

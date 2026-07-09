@@ -1,4 +1,12 @@
-import type { ParticipantMode, PairVoteMode, GameType, DescribeItMode, ThemeId } from '@/types'
+import type {
+  ParticipantMode,
+  PairVoteMode,
+  GameType,
+  DescribeItMode,
+  WordRushMode,
+  WordRushPromptMode,
+  ThemeId,
+} from '@/types'
 
 export interface Settings {
   title: string
@@ -17,6 +25,9 @@ export interface Settings {
   isPublic: boolean
   describe_it_num_teams: number
   describe_it_mode: DescribeItMode
+  word_rush_num_teams: number
+  word_rush_mode: WordRushMode
+  word_rush_prompt_mode: WordRushPromptMode
   max_players?: number
   game_duration_seconds?: number
   mafia_doctor_enabled?: boolean
