@@ -62,6 +62,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   snake_and_ladder: 'snakes-and-ladders',
   mafia: 'mafia',
   matching_pairs: 'matching-pairs',
+  quiplash: 'quiplash',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -2518,6 +2519,39 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Yes — the game works with a single player. Placement bonuses apply when there are multiple players, but you can still chase the perfect-game and streak bonuses on your own.',
       },
     ],
+  }),
+
+  quiplash: landing('quiplash', {
+    seoTitle: 'Quiplash Online — Free Fill-in-the-Blank Party Game',
+    seoDescription:
+      'Play Quiplash-style fill-in-the-blank battles online with friends. Write funny answers, vote head-to-head, and crown the wittiest player. Free, no sign-up.',
+    keywords: [
+      'quiplash online',
+      'quiplash game online free',
+      'fill in the blank party game',
+      'funny answer game online',
+      'jackbox quiplash alternative',
+      'play quiplash with friends',
+      'quiplash style game browser',
+    ],
+    heroSubtitle:
+      'Everyone gets the same prompt — write the funniest answer you can. Answers battle head-to-head and the group votes. Most votes wins the round.',
+    highlights: ['3–6 players', 'Head-to-head battles', '~10 minute games'],
+    features: [
+      {
+        title: 'Write & vote',
+        description: 'Fill in the blank, then pick the funnier answer in each battle.',
+        emoji: '✍️',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Create a room', description: 'Pick rounds, timers, and max players (up to 6).' },
+      { title: 'Share the code', description: 'Friends join from their phones with a nickname.' },
+      { title: 'Battle it out', description: 'Submit answers, vote on battles, and climb the leaderboard.' },
+    ],
+    perfectFor: ['Party nights', 'Discord calls', 'Icebreakers', 'Remote teams'],
   }),
 }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { canSwitchViewerToPlayer } from '@/lib/viewers'
+import { lobbyHasOpenPlayerSeat } from '@/lib/game-limits'
 import { usePromoteToPlayer } from '@/hooks/usePromoteToPlayer'
 import type { Game, Player } from '@/types'
 
@@ -17,8 +18,10 @@ type Props = {
     | 'codewords_late_join'
     | 'game_type'
     | 'tournament_id'
+    | 'max_players'
   > | null
   player?: Pick<Player, 'joined_at' | 'spectator'> | null
+  players?: ReadonlyArray<Pick<Player, 'spectator'>>
   playerDetail?: string
   onPromoted?: () => void | Promise<unknown>
 }
@@ -29,10 +32,11 @@ export function ViewerModeBanner({
   playerId,
   game,
   player,
+  players,
   playerDetail,
   onPromoted,
 }: Props) {
-  const canPromote = !!(game && player && canSwitchViewerToPlayer(player, game))
+  const canPromote = !!(game && player && canSwitchViewerToPlayer(player, game, players))
   const { promote, promoting } = usePromoteToPlayer(gameCode ?? '', playerId, onPromoted)
 
   return (
@@ -43,7 +47,9 @@ export function ViewerModeBanner({
       <p className="text-muted text-xs mt-1">
         {canPromote
           ? 'You joined after the game started — watch live or switch to playing now.'
-          : 'You joined after the game started — watch only until the next lobby.'}
+          : players && game && !lobbyHasOpenPlayerSeat(game, players)
+            ? 'This game is full — you can watch but there are no player seats left.'
+            : 'You joined after the game started — watch only until the next lobby.'}
       </p>
       {canPromote && gameCode && playerId && (
         <button

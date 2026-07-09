@@ -261,6 +261,7 @@ export const boardGameLobbySettingsSchema = z.object({
   mafia_doctor_enabled: z.boolean().optional(),
   mafia_detective_enabled: z.boolean().optional(),
   mafia_anonymous_votes: z.boolean().optional(),
+  operative_timer_seconds: z.coerce.number().optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>

@@ -27,6 +27,7 @@ type Props = {
   playerListLabel?: string
   isSpectator?: boolean
   onReady?: () => Promise<void>
+  onReadyError?: (message: string) => void
 }
 
 export function GameLobbyWaitingPanel({
@@ -45,6 +46,7 @@ export function GameLobbyWaitingPanel({
   playerListLabel = 'In lobby',
   isSpectator = false,
   onReady,
+  onReadyError,
 }: Props) {
   const [readying, setReadying] = useState(false)
   const gameCfg = gameType ? gameTypeConfig(parseGameType(gameType)) : null
@@ -54,6 +56,9 @@ export function GameLobbyWaitingPanel({
     setReadying(true)
     try {
       await onReady()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong — try again'
+      onReadyError?.(message)
     } finally {
       setReadying(false)
     }
