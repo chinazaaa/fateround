@@ -7,7 +7,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import {
   parseMatchingPairsMetadata,
   computeStreakBonus,
-  finishMatchingPairsIfAllDone,
+  finishMatchingPairsRoundIfAllDone,
   MATCHING_PAIRS_POINTS_PER_PAIR,
   MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY,
   type MatchingPairsGridSize,
@@ -43,22 +43,29 @@ export async function POST(req: NextRequest) {
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
-  // Verify game is active.
-  const { data: game } = await supabase.from('games').select('id, status').eq('id', code).maybeSingle()
+  // Verify game is active and read round info.
+  const { data: game } = await supabase
+    .from('games')
+    .select('id, status, current_round_number, rounds_count')
+    .eq('id', code)
+    .maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.status !== 'active') return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
+
+  const currentRoundNumber = game.current_round_number ?? 1
+  const totalRounds = game.rounds_count ?? 1
 
   // Auth.
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const playerId = auth.player.id
 
-  // Load the round to get metadata.
+  // Load the active round to get metadata.
   const { data: round } = await supabase
     .from('rounds')
     .select('id, memory_match_metadata')
     .eq('game_id', code)
-    .eq('round_number', 1)
+    .eq('round_number', currentRoundNumber)
     .maybeSingle()
   if (!round) return NextResponse.json({ error: 'Round not found' }, { status: 404 })
 
@@ -197,9 +204,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // If everyone is done, end the game.
+  // If everyone is done, end the round (and the game if this was the final round).
   if (justFinished) {
-    await finishMatchingPairsIfAllDone(supabase, code, round.id, gridSizePairs)
+    await finishMatchingPairsRoundIfAllDone(supabase, code, round.id, currentRoundNumber, totalRounds, gridSizePairs)
   }
 
   return NextResponse.json({
