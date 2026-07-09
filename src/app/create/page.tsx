@@ -259,6 +259,7 @@ function CreateGameInner() {
     word_rush_num_teams: 2,
     word_rush_mode: 'team',
     word_rush_prompt_mode: 'automatic',
+    word_rush_difficulty: 'standard',
   })
   const [describeItWords, setDescribeItWords] = useState('')
   const [describeItUploadError, setDescribeItUploadError] = useState<string | null>(null)
@@ -570,6 +571,7 @@ function CreateGameInner() {
               word_rush_num_teams: 2,
               word_rush_mode: 'team' as const,
               word_rush_prompt_mode: 'automatic' as const,
+              word_rush_difficulty: 'standard' as const,
             }
           : {}),
         ...(isMafiaGame(type)
@@ -1308,6 +1310,7 @@ function CreateGameInner() {
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
           word_rush_mode: isWordRush ? settings.word_rush_mode : undefined,
           word_rush_prompt_mode: isWordRush ? settings.word_rush_prompt_mode : undefined,
+          word_rush_difficulty: isWordRush ? settings.word_rush_difficulty : undefined,
           word_rush_num_teams: isWordRush ? settings.word_rush_num_teams : undefined,
           participants: isJoinersMode ? [] : participants,
           wst_quote_source: isWst ? wstQuoteSource : undefined,
@@ -2600,6 +2603,30 @@ function CreateGameInner() {
                         <span className="font-bold block text-base">{mode}</span>
                         <span className="text-faint text-xs">
                           {mode === 'automatic' ? 'System picks letters' : 'Players pick letters'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                <Field label="Difficulty">
+                  <div className="grid grid-cols-2 gap-3">
+                    {(['standard', 'hard'] as const).map((difficulty) => (
+                      <button
+                        key={difficulty}
+                        type="button"
+                        onClick={() => setSettings({ ...settings, word_rush_difficulty: difficulty })}
+                        className={[
+                          'rounded-2xl border-2 px-4 py-4 text-left capitalize',
+                          settings.word_rush_difficulty === difficulty
+                            ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                            : 'border-[var(--border-strong)] text-muted',
+                        ].join(' ')}
+                      >
+                        <span className="font-bold block text-base">{difficulty}</span>
+                        <span className="text-faint text-xs">
+                          {difficulty === 'standard'
+                            ? '3–20 letter words every round'
+                            : 'Min length grows each round (3, 5, 7…)'}
                         </span>
                       </button>
                     ))}

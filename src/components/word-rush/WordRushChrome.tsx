@@ -173,9 +173,11 @@ export function WordRushPlayerScoreboard({
 export function WordRushPromptDisplay({
   startLetter,
   endLetter,
+  minWordLength,
 }: {
   startLetter: string | null
   endLetter: string | null
+  minWordLength?: number
 }) {
   if (!startLetter || !endLetter) return null
   return (
@@ -184,6 +186,9 @@ export function WordRushPromptDisplay({
       <p className="text-5xl font-black tracking-tight">{startLetter.toUpperCase()}</p>
       <p className="text-faint text-sm pt-2">Ends with</p>
       <p className="text-5xl font-black tracking-tight">{endLetter.toUpperCase()}</p>
+      {minWordLength !== undefined && minWordLength > 3 && (
+        <p className="text-faint text-sm pt-2">Minimum {minWordLength} letters</p>
+      )}
     </div>
   )
 }
