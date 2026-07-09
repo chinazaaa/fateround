@@ -7,7 +7,7 @@ import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { WordRushCard, WordRushPromptDisplay, WordRushTeamBadge } from '@/components/word-rush/WordRushChrome'
 import { computeWordRushPlayerScores, computeWordRushTeamScores, teamLabel } from '@/lib/word-rush'
 
-type SubmitResult = { correct?: boolean; error?: string }
+type SubmitResult = { correct?: boolean; error?: string; message?: string }
 
 function AnswerInput({
   placeholder,
@@ -35,7 +35,7 @@ function AnswerInput({
       return
     }
     if (result?.correct === false) {
-      setWrongMessage(`"${text}" isn't a valid dictionary word for this letter pair`)
+      setWrongMessage(result.message ?? `"${text}" isn't in the dictionary for this letter pair`)
       if (!allowRetry) setValue('')
       return
     }

@@ -3,7 +3,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalFailure } from '@/lib/api-errors'
 import { markGameFinished } from '@/lib/game-finish'
-import { isValidWordRushWord, pickRandomLetterPair, validLetterPairCount } from '@/lib/word-rush-dictionary'
+import { pickRandomLetterPair, validLetterPairCount, wordRushWordRejectReason } from '@/lib/word-rush-dictionary'
 import {
   WORD_RUSH_BREAK_SECONDS,
   WORD_RUSH_MIN_PLAYERS,
@@ -273,7 +273,7 @@ export async function processWordRushSubmit(
   gameId: string,
   playerId: string,
   text: string
-): Promise<{ error?: string; correct?: boolean; points?: number; internal?: boolean }> {
+): Promise<{ error?: string; correct?: boolean; points?: number; message?: string; internal?: boolean }> {
   const { session, error, internal } = await loadSession(supabase, gameId)
   if (error) return { error, internal }
   if (!session || session.status === 'finished') return { error: 'Game not active' }
@@ -318,11 +318,10 @@ export async function processWordRushSubmit(
   if (!guess) return { error: 'Answer is empty' }
 
   const normalized = normalizeWordRushWord(guess)
-  const correct = isValidWordRushWord(normalized, session.start_letter, session.end_letter)
+  const rejectReason = wordRushWordRejectReason(guess, session.start_letter, session.end_letter)
+  if (rejectReason) return { correct: false, message: rejectReason }
 
   if (session.mode === 'individual') {
-    if (!correct) return { correct: false }
-
     const answerRow = {
       game_id: gameId,
       turn_index: session.turn_index,
@@ -363,8 +362,6 @@ export async function processWordRushSubmit(
 
     return { correct: true, points }
   }
-
-  if (!correct) return { correct: false }
 
   const name = await playerName(supabase, gameId, playerId)
   const nextPromptIndex = session.prompt_index + 1

@@ -425,7 +425,10 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
       }
       if (data.correct && data.points) success(`+${data.points} pts!`)
       await load()
-      return { correct: data.correct as boolean | undefined }
+      return {
+        correct: data.correct as boolean | undefined,
+        message: data.message as string | undefined,
+      }
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to submit')
       return { error: err instanceof Error ? err.message : 'Failed to submit' }
