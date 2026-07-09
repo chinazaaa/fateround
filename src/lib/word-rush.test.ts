@@ -167,27 +167,63 @@ describe('word-rush helpers', () => {
   })
 
   it('detects when every individual player has answered', () => {
-    const session = {
+    const manualSession = {
       roster: ['a', 'b', 'c'],
+      prompt_mode: 'manual' as const,
       prompt_setter_player_id: 'a',
       turn_index: 0,
     }
-    expect(allWordRushIndividualPlayersSubmitted(session, [{ player_id: 'b', turn_index: 0, correct: true }])).toBe(
-      false
-    )
     expect(
-      allWordRushIndividualPlayersSubmitted(session, [
+      allWordRushIndividualPlayersSubmitted(manualSession, [{ player_id: 'b', turn_index: 0, correct: true }])
+    ).toBe(false)
+    expect(
+      allWordRushIndividualPlayersSubmitted(manualSession, [
         { player_id: 'b', turn_index: 0, correct: true },
         { player_id: 'c', turn_index: 0, correct: true },
       ])
     ).toBe(true)
     expect(
-      allWordRushIndividualPlayersSubmitted(session, [
+      allWordRushIndividualPlayersSubmitted(manualSession, [
         { player_id: 'b', turn_index: 0, correct: false },
         { player_id: 'c', turn_index: 0, correct: true },
       ])
     ).toBe(false)
-    expect(wordRushIndividualAnswerers({ roster: ['a', 'b', 'c'], prompt_setter_player_id: 'a' })).toEqual(['b', 'c'])
+    expect(
+      wordRushIndividualAnswerers({
+        roster: ['a', 'b', 'c'],
+        prompt_mode: 'manual',
+        prompt_setter_player_id: 'a',
+      })
+    ).toEqual(['b', 'c'])
+  })
+
+  it('includes every player as an answerer in automatic individual mode', () => {
+    const automaticSession = {
+      roster: ['a', 'b', 'c'],
+      prompt_mode: 'automatic' as const,
+      prompt_setter_player_id: 'a',
+      turn_index: 0,
+    }
+    expect(
+      wordRushIndividualAnswerers({
+        roster: ['a', 'b', 'c'],
+        prompt_mode: 'automatic',
+        prompt_setter_player_id: 'a',
+      })
+    ).toEqual(['a', 'b', 'c'])
+    expect(
+      allWordRushIndividualPlayersSubmitted(automaticSession, [
+        { player_id: 'a', turn_index: 0, correct: true },
+        { player_id: 'b', turn_index: 0, correct: true },
+      ])
+    ).toBe(false)
+    expect(
+      allWordRushIndividualPlayersSubmitted(automaticSession, [
+        { player_id: 'a', turn_index: 0, correct: true },
+        { player_id: 'b', turn_index: 0, correct: true },
+        { player_id: 'c', turn_index: 0, correct: true },
+      ])
+    ).toBe(true)
   })
 
   it('shows results when the game is finished', () => {

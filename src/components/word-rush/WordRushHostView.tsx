@@ -755,6 +755,20 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
           onStart={() => void startGame()}
           starting={starting}
         />
+        <button
+          type="button"
+          onClick={() =>
+            void confirm({
+              title: 'Return to lobby?',
+              message: 'Tweak settings before the next game.',
+              confirmLabel: 'Return to lobby',
+            }).then((ok) => ok && void resetGame(false))
+          }
+          disabled={playingAgain}
+          className="mt-1 py-2 text-sm font-medium text-muted transition-colors hover:text-body disabled:opacity-60"
+        >
+          Return to lobby instead
+        </button>
       </div>
     )
   }

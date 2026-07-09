@@ -7,6 +7,7 @@ import { ShareResults } from '@/components/ShareResults'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { WordRushPlayerAnswerDetails, WordRushTeamMemberBreakdown } from '@/components/word-rush/WordRushAnswerDetails'
 import {
   computeWordRushPlayerScores,
   computeWordRushTeamScores,
@@ -58,7 +59,15 @@ export function WordRushFinishedResults({
           <FinishedWinnerHero winnerName={playerLeaderboard[0]?.name} game={game} />
           <PaginatedLeaderboard
             title="Final leaderboard"
-            rows={playerLeaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
+            rows={playerLeaderboard.map((row, i) => ({
+              id: row.id,
+              name: row.name,
+              score: row.score,
+              rank: i + 1,
+              expandDetails: (
+                <WordRushPlayerAnswerDetails answers={answers.filter((answer) => answer.player_id === row.id)} />
+              ),
+            }))}
             highlightId={highlightPlayerId ?? undefined}
             scoreLabel={(score) => `${score} ${score === 1 ? 'pt' : 'pts'}`}
             emphasizeLeader
@@ -111,6 +120,9 @@ export function WordRushFinishedResults({
             name: teamLabel(row.team),
             score: row.score,
             rank: i + 1,
+            expandDetails: (
+              <WordRushTeamMemberBreakdown team={row.team} players={players} teamRows={teamRows} answers={answers} />
+            ),
           }))}
           scoreLabel={(score) => `${score} words`}
           emphasizeLeader
