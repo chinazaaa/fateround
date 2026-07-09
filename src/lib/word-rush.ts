@@ -7,7 +7,7 @@ export const WORD_RUSH_MAX_PLAYERS = 20
 export const WORD_RUSH_DEFAULT_MAX_PLAYERS = 12
 
 export const WORD_RUSH_TEAM_OPTIONS = [2, 3, 4] as const
-export const WORD_RUSH_TURN_OPTIONS = [60, 90, 120, 180] as const
+export const WORD_RUSH_TURN_OPTIONS = [30, 60, 90, 120, 180] as const
 export const WORD_RUSH_ROUND_OPTIONS = [3, 5, 7, 10] as const
 export const WORD_RUSH_MAX_PLAYER_OPTIONS = [6, 8, 10, 12, 16, 20] as const
 
