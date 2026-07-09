@@ -121,12 +121,7 @@ export function WordRushFinishedResults({
             score: row.score,
             rank: i + 1,
             expandDetails: (
-              <WordRushTeamMemberBreakdown
-                team={row.team}
-                players={players}
-                teamRows={teamRows}
-                answers={answers}
-              />
+              <WordRushTeamMemberBreakdown team={row.team} players={players} teamRows={teamRows} answers={answers} />
             ),
           }))}
           scoreLabel={(score) => `${score} words`}

@@ -481,9 +481,7 @@ async function endIndividualRound(
   const nextRound = session.turn_index + 1
   const isLastRound = nextRound >= session.total_rounds
   const nextSetter =
-    isLastRound || session.prompt_mode !== 'manual'
-      ? null
-      : promptSetterForIndividualRound(session.roster, nextRound)
+    isLastRound || session.prompt_mode !== 'manual' ? null : promptSetterForIndividualRound(session.roster, nextRound)
 
   const nextStart = isLastRound
     ? null
@@ -626,7 +624,9 @@ export async function processWordRushExpireTurn(
   return endIndividualRound(supabase, gameId, session)
 }
 
-function individualPlayingStatusMessage(session: Pick<WordRushSession, 'current_round' | 'start_letter' | 'end_letter'>): string {
+function individualPlayingStatusMessage(
+  session: Pick<WordRushSession, 'current_round' | 'start_letter' | 'end_letter'>
+): string {
   if (session.start_letter && session.end_letter) {
     return `Round ${session.current_round} — Starts with ${session.start_letter.toUpperCase()}, Ends with ${session.end_letter.toUpperCase()}`
   }

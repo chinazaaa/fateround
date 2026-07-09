@@ -7,9 +7,7 @@ export function WordRushPlayerAnswerDetails({
   answers: Pick<WordRushAnswer, 'text' | 'round' | 'start_letter' | 'end_letter' | 'correct'>[]
   emptyLabel?: string
 }) {
-  const correct = answers
-    .filter((a) => a.correct)
-    .sort((a, b) => a.round - b.round || a.text.localeCompare(b.text))
+  const correct = answers.filter((a) => a.correct).sort((a, b) => a.round - b.round || a.text.localeCompare(b.text))
 
   if (correct.length === 0) {
     return <p className="text-faint text-sm">{emptyLabel}</p>
