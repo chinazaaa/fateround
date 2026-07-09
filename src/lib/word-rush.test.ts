@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { isValidWordRushWord, pickRandomLetterPair, countWordsForPair } from '@/lib/word-rush-dictionary'
+import {
+  isValidWordRushWord,
+  pickRandomLetterPair,
+  countWordsForPair,
+  validLetterPairCount,
+} from '@/lib/word-rush-dictionary'
 import {
   clampWordRushMode,
   clampWordRushPromptMode,
@@ -34,8 +39,14 @@ describe('word-rush-dictionary', () => {
     expect(isValidWordRushWord('monkey', 'm', 'y')).toBe(true)
     expect(isValidWordRushWord('boat', 'b', 't')).toBe(true)
     expect(isValidWordRushWord('information', 'i', 'n')).toBe(true)
+    expect(isValidWordRushWord('jinx', 'j', 'x')).toBe(true)
     expect(isValidWordRushWord('monkey', 'b', 't')).toBe(false)
     expect(isValidWordRushWord('notaword', 'n', 'd')).toBe(false)
+  })
+
+  it('uses a broad merged English dictionary', () => {
+    expect(validLetterPairCount()).toBeGreaterThan(500)
+    expect(countWordsForPair('i', 'n')).toBeGreaterThan(100)
   })
 
   it('normalizes input', () => {
