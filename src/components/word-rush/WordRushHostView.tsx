@@ -735,6 +735,7 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
       players={players}
       teamRows={teamRows}
       answers={answers}
+      highlightPlayerId={hostPlays ? hostPlayerId : null}
       playAgainButton={
         <button
           type="button"
