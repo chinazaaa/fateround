@@ -38,6 +38,7 @@ import {
   wordRushTotalTeamTurns,
   wordRushIndividualGuessPoints,
   wordRushIndividualGuessPointsAt,
+  wordRushIndividualAnswerers,
   teamForTurnIndex,
   teamLabel,
   teamRoster,
@@ -736,7 +737,11 @@ export async function syncWordRushAfterPlayerRemoved(
   supabase: SupabaseClient,
   gameId: string,
   removedPlayerId: string
-): Promise<{ error?: string; internal?: boolean }> {
+): Promise<{
+  error?: string
+  internal?: boolean
+  rollback?: { roster: string[]; prompt_setter_player_id: string | null }
+}> {
   const { data: game } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
   if (!game || game.status !== 'active') return {}
 
@@ -747,9 +752,12 @@ export async function syncWordRushAfterPlayerRemoved(
   const newRoster = session.roster.filter((id) => id !== removedPlayerId)
   if (newRoster.length === session.roster.length) return {}
 
+  const rollback = { roster: session.roster, prompt_setter_player_id: session.prompt_setter_player_id }
   const sessionPatch: Partial<WordRushSession> = { roster: newRoster }
 
-  if (session.prompt_setter_player_id === removedPlayerId) {
+  // Only pick a new letter-setter before letters are live — during playing keep the
+  // removed setter id so mirror scoring and answerer eligibility stay consistent.
+  if (session.prompt_setter_player_id === removedPlayerId && session.phase === 'awaiting_prompt') {
     if (session.mode === 'individual' && session.prompt_mode === 'manual') {
       sessionPatch.prompt_setter_player_id = promptSetterForIndividualRound(newRoster, session.turn_index)
     } else if (session.mode === 'team' && session.prompt_mode === 'manual') {
@@ -774,23 +782,37 @@ export async function syncWordRushAfterPlayerRemoved(
     updatedSession.mode === 'individual' &&
     (updatedSession.phase === 'playing' || updatedSession.phase === 'awaiting_prompt')
   ) {
+    const eligible = wordRushIndividualAnswerers(updatedSession)
     const { data: roundAnswers } = await supabase
       .from('word_rush_answers')
       .select('player_id, turn_index, correct')
       .eq('game_id', gameId)
       .eq('turn_index', session.turn_index)
 
-    if (
-      allWordRushIndividualPlayersSubmitted(
-        updatedSession,
-        (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number; correct: boolean }>
-      )
-    ) {
-      return endIndividualRound(supabase, gameId, updatedSession)
+    const answers = (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number; correct: boolean }>
+    if (eligible.length === 0 || allWordRushIndividualPlayersSubmitted(updatedSession, answers)) {
+      const endResult = await endIndividualRound(supabase, gameId, updatedSession)
+      if (endResult.error) return { ...endResult, rollback }
+      return { rollback }
     }
   }
 
-  return {}
+  return { rollback }
+}
+
+export async function revertWordRushRosterAfterFailedPlayerDelete(
+  supabase: SupabaseClient,
+  gameId: string,
+  snapshot: { roster: string[]; prompt_setter_player_id: string | null }
+): Promise<void> {
+  await supabase
+    .from('word_rush_sessions')
+    .update({
+      roster: snapshot.roster,
+      prompt_setter_player_id: snapshot.prompt_setter_player_id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('game_id', gameId)
 }
 
 export async function assignWordRushTeam(

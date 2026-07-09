@@ -291,6 +291,22 @@ describe('word-rush helpers', () => {
     expect(allWordRushIndividualPlayersSubmitted({ ...beforeRemoval, roster: ['a', 'b'] }, answers)).toBe(true)
   })
 
+  it('has no individual answerers when the roster is empty', () => {
+    expect(
+      wordRushIndividualAnswerers({
+        roster: [],
+        prompt_mode: 'automatic',
+        prompt_setter_player_id: null,
+      })
+    ).toEqual([])
+    expect(
+      allWordRushIndividualPlayersSubmitted(
+        { roster: [], prompt_mode: 'manual', prompt_setter_player_id: 'a', turn_index: 0 },
+        []
+      )
+    ).toBe(false)
+  })
+
   it('reuses letter pairs only after the room pool is exhausted', () => {
     const first = pickRandomLetterPair()!
     const key = `${first.start}-${first.end}`
