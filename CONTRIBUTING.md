@@ -84,6 +84,10 @@ Reserve serial work for genuinely dependent steps or edits to the same file.
 
 ## Conventions
 
+- **New game types:** follow the full wiring checklist in
+  [`docs/new-game-checklist.md`](./new-game-checklist.md) — lobby, spectators,
+  late join, ready-up, play again, leaderboard, and rules pages all share the
+  same shell; half-wiring is the usual source of playtest bugs.
 - **Commits/PRs:** clear, imperative messages. **No AI / co-author signature
   lines.**
 - **Migrations — the rules that keep the CI migrate step working** (a long drift

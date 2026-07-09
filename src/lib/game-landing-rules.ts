@@ -1043,7 +1043,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'On your turn, place tiles from your rack to form a single word (across or down) that connects to tiles already on the board.',
         'Every word you make — the main word and any crosswords — must be a valid dictionary word, or the play is rejected.',
-        'Instead of playing, you can swap any number of tiles back into the bag, or pass.',
+        'Instead of playing, you can swap any number of tiles back into the bag (only while at least 7 tiles remain), or pass.',
         'A blank tile can be any letter (worth 0). Use all 7 tiles in one turn for a 50-point bonus.',
       ],
     },
@@ -1198,6 +1198,36 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
         'The game ends when the last remaining player finishes matching every pair on their board.',
         'Players who finish early see a live progress screen showing how many pairs each opponent has matched.',
         'Final scores include base points + streak bonus + placement bonus + perfect-game bonus (if earned).',
+      ],
+    },
+  ],
+
+  quiplash: [
+    {
+      title: 'Objective',
+      points: [
+        'Each round shows a fill-in-the-blank prompt.',
+        'Everyone writes one funny answer.',
+        'Answers are paired head-to-head — the group votes for the funnier one.',
+        'You earn one point per vote your answer receives. Most points after all rounds wins.',
+      ],
+    },
+    {
+      title: 'How it works',
+      points: [
+        '3–6 players join with their name.',
+        'Writing phase: everyone submits one answer (default 60 seconds).',
+        'Battle phase: two answers face off at a time — everyone else votes (default 15 seconds per battle).',
+        'With 6 players, battles are capped so every answer still gets voted on without the round dragging.',
+        'Repeat battles until the round’s matchups are done, then move to the next prompt.',
+      ],
+    },
+    {
+      title: 'Tips',
+      points: [
+        'You cannot vote for your own answer.',
+        'With 6 players, vote time shortens slightly so battles keep moving.',
+        'Ties award no points — convince the room to pick a side!',
       ],
     },
   ],

@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Player, ScrabbleSession, ScrabblePlayerState, ScrabblePlacedTile } from '@/types'
-import { SCRABBLE_BOARD_SIZE, SCRABBLE_CENTER, scrabblePremiumAt, type ScrabblePremium } from '@/lib/scrabble-constants'
+import {
+  SCRABBLE_BOARD_SIZE,
+  SCRABBLE_CENTER,
+  SCRABBLE_RACK_SIZE,
+  scrabblePremiumAt,
+  type ScrabblePremium,
+} from '@/lib/scrabble-constants'
 import { currentTurnPlayerId, scorePlacement } from '@/lib/scrabble-board'
 import { ScrabbleCard, ScrabbleTurnBar } from '@/components/scrabble/ScrabbleChrome'
 import { useScrabbleChessClock, useScrabbleTurnTimer } from '@/hooks/useScrabbleTurnTimer'
@@ -705,6 +711,7 @@ export function ScrabbleGamePanel({
   // even when it isn't your turn.
   const canArrange = !!myState && !finished && !exchangeMode
   const showShuffle = canArrange && rack.length > 1
+  const canExchange = session.bag.length >= SCRABBLE_RACK_SIZE
 
   return (
     <div>
@@ -941,7 +948,12 @@ export function ScrabbleGamePanel({
                       <button
                         type="button"
                         onClick={enterExchange}
-                        disabled={acting || rack.length === 0}
+                        disabled={acting || rack.length === 0 || !canExchange}
+                        title={
+                          canExchange
+                            ? undefined
+                            : `Exchange requires at least ${SCRABBLE_RACK_SIZE} tiles left in the bag`
+                        }
                         className="btn-secondary py-2.5 text-sm font-semibold disabled:opacity-50"
                       >
                         Exchange

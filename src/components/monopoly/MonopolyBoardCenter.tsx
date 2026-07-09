@@ -118,9 +118,11 @@ export function MonopolyBoardCenter({
     board.phase === 'pay_rent' && board.pending_space != null ? owners[String(board.pending_space)] : null
   const rentOwner = rentOwnerId ? players.find((p) => p.id === rentOwnerId) : null
   const rentAmount =
-    pendingSpace && rentOwnerId
-      ? computeRent(pendingSpace, owners, rentOwnerId, board.last_dice?.total ?? 2, buildings, mortgaged)
-      : 0
+    board.pending_debt?.debt_type === 'rent' && board.pending_debt?.amount != null
+      ? board.pending_debt.amount
+      : pendingSpace && rentOwnerId
+        ? computeRent(pendingSpace, owners, rentOwnerId, board.last_dice?.total ?? 2, buildings, mortgaged)
+        : 0
 
   const auction = board.auction_state
   const auctionSpace = auction ? spaceAt(auction.space_index) : null
@@ -129,18 +131,7 @@ export function MonopolyBoardCenter({
 
   const debt = board.pending_debt
   const isMyDebt = debt?.player_id === myPlayerId
-  const debtAmount = debt
-    ? debt.debt_type === 'rent' && debt.space_index != null
-      ? computeRent(
-          spaceAt(debt.space_index),
-          owners,
-          debt.creditor_player_id ?? '',
-          board.last_dice?.total ?? 2,
-          buildings,
-          mortgaged
-        )
-      : debt.amount
-    : 0
+  const debtAmount = debt?.amount ?? 0
   const debtCreditor = debt?.creditor_player_id ? players.find((p) => p.id === debt.creditor_player_id) : null
 
   const showRaiseFunds = !!(isMyDebt && board.phase === 'raise_funds' && debt)

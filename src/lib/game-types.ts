@@ -1278,6 +1278,50 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
     },
   },
 
+  quiplash: {
+    id: 'quiplash',
+    label: 'Quiplash',
+    tagline: 'Fill in the blank — vote for the funniest answer',
+    headerEmoji: '✍️😂',
+    card: {
+      accent: '#ec4899',
+      accentSoft: 'rgba(236, 72, 153, 0.15)',
+      emoji: '✍️',
+      players: '3–6 players',
+      vibe: 'Funny answers',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏆',
+        label: 'Points',
+        color: '#f59e0b',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      marry: {
+        emoji: '😂',
+        label: 'Wins',
+        color: '#ec4899',
+        leaderboardLabel: 'Battle wins',
+        activeClass: 'bg-pink-500/20 text-pink-100 border-pink-400',
+        borderClass: 'border-pink-500/50 bg-pink-500/10',
+        textColor: '#f9a8d4',
+      },
+      kill: {
+        emoji: '✍️',
+        label: 'Answers',
+        color: '#a855f7',
+        leaderboardLabel: 'Answers submitted',
+        activeClass: 'bg-violet-500/20 text-violet-100 border-violet-400',
+        borderClass: 'border-violet-500/50 bg-violet-500/10',
+        textColor: '#c4b5fd',
+      },
+    },
+  },
+
   word_hunt: {
     id: 'word_hunt',
     label: 'Word Hunt',
@@ -1586,6 +1630,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'checkers',
   'mafia',
   'matching_pairs',
+  'quiplash',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -1613,6 +1658,7 @@ const PINNED_GAME_TYPES: GameType[] = [
   'two_truths',
   'mafia',
   'matching_pairs',
+  'quiplash',
 ]
 
 // Display order: pinned games first, then the remaining games in their default order.
@@ -1656,6 +1702,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'checkers' || raw === 'draughts') return 'checkers'
   if (raw === 'mafia' || raw === 'werewolf') return 'mafia'
   if (raw === 'matching_pairs') return 'matching_pairs'
+  if (raw === 'quiplash') return 'quiplash'
   return 'smash_marry_kill'
 }
 
@@ -1736,6 +1783,8 @@ export function gameHowItWorks(
       return 'Players join with their name. Everyone gets the same 4×4 letter grid — connect adjacent letters to spell valid words (3+ letters) before the timer runs out. Longer words score more points.'
     case 'matching_pairs':
       return 'Players join with their name. Everyone gets their own board with the same set of icons — flip two cards per turn; a match keeps them face-up and scores +1000 pts. Hit 3 in a row with no miss for a +500 streak bonus. Match every pair with zero misses for a +2000 perfect-game bonus. Fastest to finish scores a placement bonus. Most points when everyone is done wins.'
+    case 'quiplash':
+      return 'Players join with their name. Each round shows a fill-in-the-blank prompt — everyone writes one funny answer. Answers are paired head-to-head and the group votes for the funniest. You earn one point per vote your answer gets. Most points after all rounds wins.'
     case 'chess':
       return 'Two players join with their name. The host can play too. One player is White, the other Black — White moves first. Move pieces by the standard rules; checkmate your opponent to win. Optional chess clock — each player gets their own time bank that only ticks on their turn, and the first to run out loses.'
     case 'checkers':
@@ -2007,6 +2056,7 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   crazy_eights: true,
   checkers: true,
   matching_pairs: true,
+  quiplash: true,
   mafia: false,
 }
 
@@ -2045,6 +2095,7 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   crazy_eights: false,
   checkers: false,
   matching_pairs: false,
+  quiplash: false,
   mafia: false,
 }
 
@@ -2184,6 +2235,10 @@ export function isWordHuntGame(gameType: GameType | string | undefined): boolean
 
 export function isMatchingPairsGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'matching_pairs'
+}
+
+export function isQuiplashGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'quiplash'
 }
 
 /** Anonymous room or host-only secret message inbox — shared message storage. */

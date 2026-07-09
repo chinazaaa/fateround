@@ -39,6 +39,17 @@ These come straight from `account-tiers.md` and constrain every decision below:
 5. **Accessibility/fun is never behind the account.** The games are all free; the account
    only adds *persistence*.
 
+### Revenue boundaries (see [`revenue-model.md`](./revenue-model.md))
+
+Trophies and streaks are **retention**, not a revenue line:
+
+- **Never sell** trophies, trophy progress, streak length, or tournament placement.
+- **Do sell** optional flair *around* trophies: profile frames, showcase borders, champion
+  podium art — cosmetics only.
+- **Tournament trophies** (First Tournament Win, Game Night Host, etc.) are earned like any
+  other trophy — they drive signup, not checkout.
+- Trophies hook into the flywheel: earn → save to account → see shop → buy cosmetic.
+
 ---
 
 ## 1. The retention loop (why these three pieces fit together)
@@ -398,6 +409,10 @@ per-game code** beyond incrementing the shared counters.
 | Warmed Up (7-day streak) | 🥈 | `streak ≥ 7` |
 | On Fire (30-day streak) | 🥇 | `streak ≥ 30` |
 | Party Host (host 10 nights) | 🥈 | `counter host.nights ≥ 10` |
+| First Tournament Win | 🥉 | `event tournament.win` |
+| Tournament Regular | 🥈 | `counter tournament.games ≥ 10` |
+| Game Night Host | 🥈 | `counter tournament.hosted ≥ 5` |
+| Triple Crown | 🥇 | `distinct tournament.wins_by_game_type ≥ 3` |
 | Social Butterfly (play with 20 people) | 🥈 | `distinct opponents ≥ 20` |
 | Explorer (try 10 modes) | 🥉 | `distinct modes_played ≥ 10` |
 | Completionist (Platinum 3 games) | 🥇 | `counter platinums ≥ 3` |
@@ -557,8 +572,9 @@ Aligned with `account-tiers.md` §"Streak = any game played today":
   available (Duolingo model). One freeze auto-consumes to cover one missed day.
 - Grant freezes slowly (e.g. earn 1 per 7 consecutive days, cap ~2 held). Tunable
   constants. This forgiveness is a large part of why streaks retain instead of demoralise.
-- Freezes are a candidate future cosmetic/Pro perk (extra freezes) — but the **base
-  forgiveness stays free**; see principle §0.5 and `revenue-model.md`.
+- Extra streak freezes (beyond the free base) may be sold later as a **₦300 cosmetic
+  convenience** — never bundled in Pro, never required to keep a streak. The **base
+  forgiveness stays free**; see principle §0.5 and [`revenue-model.md`](./revenue-model.md).
 
 ### 4.5 Milestones & nudges
 
@@ -824,8 +840,9 @@ The push infra already exists (VAPID keys + `push_subscriptions`), but it is cur
     without a deploy.
 
 **Phase 3:**
-11. Community auto-posts for Ultra-Rare unlocks; seasonal leaderboard tie-in; extra
-    freezes as a cosmetic/Pro perk.
+11. Community auto-posts for Ultra-Rare unlocks; seasonal leaderboard tie-in; tournament
+    trophy catalog (see [`revenue-model.md`](./revenue-model.md) §Tournaments); extra streak
+    freeze as optional cosmetic (not Pro).
 
 ---
 

@@ -79,6 +79,34 @@ export const ttlAdvanceSchema = z.object({
 
 export type TtlAdvanceInput = z.infer<typeof ttlAdvanceSchema>
 
+const quiplashAnswerText = sanitizedString(1, 120)
+
+export const quiplashAnswerSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  roundId: uuidString('roundId'),
+  text: quiplashAnswerText,
+})
+
+export type QuiplashAnswerInput = z.infer<typeof quiplashAnswerSchema>
+
+export const quiplashVoteSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  battleId: uuidString('battleId'),
+  chosenAnswerId: uuidString('chosenAnswerId'),
+})
+
+export type QuiplashVoteInput = z.infer<typeof quiplashVoteSchema>
+
+export const quiplashAdvanceSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: z.string().min(1).optional(),
+  force: z.boolean().optional(),
+})
+
+export type QuiplashAdvanceInput = z.infer<typeof quiplashAdvanceSchema>
+
 export const npatSubmitSchema = z.object({
   gameId: gameCodeString(),
   // Player action authorized by the secret resume_token (see snakeLadderActionSchema).

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { GameRulesLoader } from '@/components/GameRulesLoader'
+import { GameThemeFonts } from '@/components/GameThemeFonts'
 import { GameRulesProvider } from '@/contexts/GameRulesContext'
 import { noIndexMetadata } from '@/lib/seo'
 
@@ -8,10 +9,12 @@ export const metadata: Metadata = noIndexMetadata('Join Game')
 
 export default function GameLayout({ children }: { children: React.ReactNode }) {
   return (
-    <GameRulesProvider>
-      <GameRulesLoader />
-      <GamePlayerChrome />
-      <main className="pt-[3.75rem]">{children}</main>
-    </GameRulesProvider>
+    <GameThemeFonts>
+      <GameRulesProvider>
+        <GameRulesLoader />
+        <GamePlayerChrome />
+        <main className="pt-[3.75rem]">{children}</main>
+      </GameRulesProvider>
+    </GameThemeFonts>
   )
 }
