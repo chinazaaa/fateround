@@ -203,7 +203,12 @@ export function WordRushPlayPanel({
   const roundHeader = (
     <div className="flex items-center justify-between gap-3">
       {isTeam ? (
-        <WordRushTeamBadge team={session.active_team} />
+        <div className="flex flex-col gap-0.5">
+          <p className="font-bold text-sm">
+            Round {session.current_round} of {session.total_rounds}
+          </p>
+          <WordRushTeamBadge team={session.active_team} />
+        </div>
       ) : (
         <p className="font-bold">
           Round {session.current_round} of {session.total_rounds}

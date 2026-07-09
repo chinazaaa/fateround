@@ -139,6 +139,25 @@ export function teamForTurnIndex(turnIndex: number, numTeams: number): number {
   return (turnIndex % numTeams) + 1
 }
 
+/** 0-based round index for team mode (each round = every team plays once). */
+export function teamRoundIndexFromTurn(turnIndex: number, numTeams: number): number {
+  return Math.floor(turnIndex / numTeams)
+}
+
+export function currentTeamRoundNumber(turnIndex: number, numTeams: number): number {
+  return teamRoundIndexFromTurn(turnIndex, numTeams) + 1
+}
+
+export function wordRushTotalTeamTurns(numTeams: number, totalRounds: number): number {
+  return numTeams * totalRounds
+}
+
+export function promptSetterForTeamRound(members: string[], roundIndex: number): string | null {
+  if (members.length === 0) return null
+  const sorted = [...members].sort()
+  return sorted[roundIndex % sorted.length] ?? null
+}
+
 export function promptSetterForIndividualRound(roster: string[], roundIndex: number): string | null {
   if (roster.length === 0) return null
   return roster[roundIndex % roster.length] ?? null

@@ -6,6 +6,10 @@ import {
   computeWordRushTeamScores,
   normalizeWordRushWord,
   promptSetterForIndividualRound,
+  promptSetterForTeamRound,
+  teamRoundIndexFromTurn,
+  currentTeamRoundNumber,
+  wordRushTotalTeamTurns,
   teamForTurnIndex,
   wordMatchesLetters,
   wordRushLobbyReady,
@@ -84,6 +88,23 @@ describe('word-rush helpers', () => {
     expect(teamForTurnIndex(0, 2)).toBe(1)
     expect(teamForTurnIndex(1, 2)).toBe(2)
     expect(teamForTurnIndex(2, 2)).toBe(1)
+    expect(teamForTurnIndex(3, 2)).toBe(2)
+  })
+
+  it('maps team turns to rounds across multiple rounds', () => {
+    expect(currentTeamRoundNumber(0, 2)).toBe(1)
+    expect(currentTeamRoundNumber(1, 2)).toBe(1)
+    expect(currentTeamRoundNumber(2, 2)).toBe(2)
+    expect(wordRushTotalTeamTurns(2, 3)).toBe(6)
+    expect(teamRoundIndexFromTurn(4, 2)).toBe(2)
+  })
+
+  it('rotates manual prompt setter per team round', () => {
+    const members = ['z', 'a', 'm']
+    expect(promptSetterForTeamRound(members, 0)).toBe('a')
+    expect(promptSetterForTeamRound(members, 1)).toBe('m')
+    expect(promptSetterForTeamRound(members, 2)).toBe('z')
+    expect(promptSetterForTeamRound(members, 3)).toBe('a')
   })
 
   it('lobby ready requires players on each team', () => {

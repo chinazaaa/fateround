@@ -19,6 +19,10 @@ import {
   letterPairKey,
   normalizeWordRushWord,
   promptSetterForIndividualRound,
+  promptSetterForTeamRound,
+  teamRoundIndexFromTurn,
+  currentTeamRoundNumber,
+  wordRushTotalTeamTurns,
   wordRushIndividualGuessPoints,
   wordRushIndividualGuessPointsAt,
   teamForTurnIndex,
@@ -62,17 +66,20 @@ function nextAutoPrompt(usedPairs: string[]): { start: string; end: string; key:
 function buildTeamTurnStart(opts: {
   turnIndex: number
   numTeams: number
+  totalRounds: number
   turnSeconds: number
   promptMode: WordRushPromptMode
   promptSetterId: string | null
   usedPairs: string[]
 }): Partial<WordRushSession> {
   const activeTeam = teamForTurnIndex(opts.turnIndex, opts.numTeams)
+  const currentRound = currentTeamRoundNumber(opts.turnIndex, opts.numTeams)
   const auto = opts.promptMode === 'automatic' ? nextAutoPrompt(opts.usedPairs) : null
   const awaiting = opts.promptMode === 'manual' && !auto
   return {
     phase: awaiting ? 'awaiting_prompt' : 'playing',
     turn_index: opts.turnIndex,
+    current_round: currentRound,
     active_team: activeTeam,
     prompt_setter_player_id: opts.promptSetterId,
     start_letter: auto?.start ?? null,
@@ -81,8 +88,8 @@ function buildTeamTurnStart(opts: {
     turn_deadline_at: deadline(opts.turnSeconds),
     intermission_deadline_at: null,
     status_message: awaiting
-      ? `${teamLabel(activeTeam)} — enter the first letter pair`
-      : `${teamLabel(activeTeam)} — Starts with ${auto!.start.toUpperCase()}, Ends with ${auto!.end.toUpperCase()}`,
+      ? `Round ${currentRound} — ${teamLabel(activeTeam)} enter the first letter pair`
+      : `Round ${currentRound} — ${teamLabel(activeTeam)} — Starts with ${auto!.start.toUpperCase()}, Ends with ${auto!.end.toUpperCase()}`,
     used_pairs: auto ? [...opts.usedPairs, auto.key] : opts.usedPairs,
   }
 }
@@ -169,7 +176,7 @@ export async function initializeWordRushGame(
 
   const teamPromptSetter =
     mode === 'team' && promptMode === 'manual'
-      ? (teamRoster(await loadTeamRows(supabase, gameId)).get(1)?.[0] ?? null)
+      ? promptSetterForTeamRound(teamRoster(await loadTeamRows(supabase, gameId)).get(1) ?? [], 0)
       : null
 
   const startPartial =
@@ -185,6 +192,7 @@ export async function initializeWordRushGame(
       : buildTeamTurnStart({
           turnIndex: 0,
           numTeams,
+          totalRounds,
           turnSeconds,
           promptMode,
           promptSetterId: teamPromptSetter,
@@ -392,10 +400,10 @@ async function endTeamTurn(
   session: WordRushSession
 ): Promise<{ error?: string; internal?: boolean }> {
   const nextTurn = session.turn_index + 1
-  const totalTeamTurns = session.num_teams
+  const totalTeamTurns = wordRushTotalTeamTurns(session.num_teams, session.total_rounds)
 
   if (nextTurn >= totalTeamTurns) {
-    return finishWordRushGame(supabase, gameId, session, `${teamLabel(session.active_team)} time's up!`)
+    return finishWordRushGame(supabase, gameId, session, 'All rounds complete!')
   }
 
   const { count } = await supabase
@@ -407,24 +415,36 @@ async function endTeamTurn(
     .eq('correct', true)
 
   const teamScore = count ?? 0
+  const finishedRound = session.current_round
   const nextTeam = teamForTurnIndex(nextTurn, session.num_teams)
+  const nextRound = currentTeamRoundNumber(nextTurn, session.num_teams)
   const teamRows = await loadTeamRows(supabase, gameId)
-  const promptSetter = session.prompt_mode === 'manual' ? (teamRoster(teamRows).get(nextTeam)?.[0] ?? null) : null
+  const roundIndex = teamRoundIndexFromTurn(nextTurn, session.num_teams)
+  const promptSetter =
+    session.prompt_mode === 'manual'
+      ? promptSetterForTeamRound(teamRoster(teamRows).get(nextTeam) ?? [], roundIndex)
+      : null
 
   const nextStart = buildTeamTurnStart({
     turnIndex: nextTurn,
     numTeams: session.num_teams,
+    totalRounds: session.total_rounds,
     turnSeconds: session.turn_seconds,
     promptMode: session.prompt_mode,
     promptSetterId: promptSetter,
     usedPairs: session.used_pairs,
   })
 
+  const statusMessage =
+    nextRound > finishedRound
+      ? `Round ${finishedRound} complete — ${teamLabel(session.active_team)} scored ${teamScore}. Round ${nextRound} — ${teamLabel(nextTeam)} is up`
+      : `${teamLabel(session.active_team)} scored ${teamScore}! ${teamLabel(nextTeam)} is up next`
+
   const { error } = await supabase
     .from('word_rush_sessions')
     .update({
       ...nextStart,
-      status_message: `${teamLabel(session.active_team)} scored ${teamScore}! ${teamLabel(nextTeam)} is up next`,
+      status_message: statusMessage,
       intermission_deadline_at: deadline(WORD_RUSH_BREAK_SECONDS),
       phase: 'intermission',
       updated_at: new Date().toISOString(),
