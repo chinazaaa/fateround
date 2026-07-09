@@ -197,7 +197,7 @@ export function computeWordRushPlayerScores(
 }
 
 export function allWordRushIndividualPlayersSubmitted(
-  session: Pick<WordRushSession, 'roster' | 'prompt_setter_player_id' | 'turn_index'>,
+  session: Pick<WordRushSession, 'roster' | 'prompt_mode' | 'prompt_setter_player_id' | 'turn_index'>,
   answers: Pick<WordRushAnswer, 'player_id' | 'turn_index' | 'correct'>[]
 ): boolean {
   const eligible = wordRushIndividualAnswerers(session)
@@ -209,10 +209,10 @@ export function allWordRushIndividualPlayersSubmitted(
 }
 
 export function wordRushIndividualAnswerers(
-  session: Pick<WordRushSession, 'roster' | 'prompt_setter_player_id'>
+  session: Pick<WordRushSession, 'roster' | 'prompt_mode' | 'prompt_setter_player_id'>
 ): string[] {
   const roster = session.roster ?? []
-  if (session.prompt_setter_player_id) {
+  if (session.prompt_mode === 'manual' && session.prompt_setter_player_id) {
     return roster.filter((id) => id !== session.prompt_setter_player_id)
   }
   return roster

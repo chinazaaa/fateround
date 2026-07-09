@@ -172,7 +172,8 @@ export async function initializeWordRushGame(
     if (!ready.ok) return { error: ready.error }
   }
 
-  const promptSetterId = mode === 'individual' ? promptSetterForIndividualRound(roster, 0) : null
+  const promptSetterId =
+    mode === 'individual' && promptMode === 'manual' ? promptSetterForIndividualRound(roster, 0) : null
 
   const teamPromptSetter =
     mode === 'team' && promptMode === 'manual'
@@ -283,13 +284,8 @@ export async function processWordRushSubmit(
       return { error: 'Prompt setter enters letters, not answers' }
     }
   } else {
-    if (session.prompt_setter_player_id === playerId) {
-      return {
-        error:
-          session.prompt_mode === 'manual'
-            ? 'You are setting the prompt this round'
-            : 'You are hosting this round — others are guessing',
-      }
+    if (session.prompt_mode === 'manual' && session.prompt_setter_player_id === playerId) {
+      return { error: 'You are setting the prompt this round' }
     }
     const { data: existing } = await supabase
       .from('word_rush_answers')
@@ -484,7 +480,10 @@ async function endIndividualRound(
 
   const nextRound = session.turn_index + 1
   const isLastRound = nextRound >= session.total_rounds
-  const nextSetter = isLastRound ? null : promptSetterForIndividualRound(session.roster, nextRound)
+  const nextSetter =
+    isLastRound || session.prompt_mode !== 'manual'
+      ? null
+      : promptSetterForIndividualRound(session.roster, nextRound)
 
   const nextStart = isLastRound
     ? null
@@ -627,6 +626,13 @@ export async function processWordRushExpireTurn(
   return endIndividualRound(supabase, gameId, session)
 }
 
+function individualPlayingStatusMessage(session: Pick<WordRushSession, 'current_round' | 'start_letter' | 'end_letter'>): string {
+  if (session.start_letter && session.end_letter) {
+    return `Round ${session.current_round} — Starts with ${session.start_letter.toUpperCase()}, Ends with ${session.end_letter.toUpperCase()}`
+  }
+  return `Round ${session.current_round} — enter the letter pair`
+}
+
 export async function processWordRushAdvance(
   supabase: SupabaseClient,
   gameId: string,
@@ -644,11 +650,20 @@ export async function processWordRushAdvance(
     return {}
   }
 
+  const nextPhase = session.start_letter ? 'playing' : 'awaiting_prompt'
+  const statusMessage =
+    session.mode === 'individual'
+      ? individualPlayingStatusMessage(session)
+      : nextPhase === 'playing' && session.start_letter && session.end_letter
+        ? `Round ${session.current_round} — ${teamLabel(session.active_team)} — Starts with ${session.start_letter.toUpperCase()}, Ends with ${session.end_letter.toUpperCase()}`
+        : session.status_message
+
   const { error: updateError } = await supabase
     .from('word_rush_sessions')
     .update({
-      phase: session.start_letter ? 'playing' : 'awaiting_prompt',
+      phase: nextPhase,
       intermission_deadline_at: null,
+      status_message: statusMessage,
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
