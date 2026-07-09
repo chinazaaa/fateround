@@ -1,6 +1,7 @@
 export type Theme = 'light' | 'dark'
 
 export const THEME_COOKIE = 'kmk-theme'
+export const THEME_STORAGE_KEY = THEME_COOKIE
 
 export function parseThemeCookie(value: string | undefined | null): Theme {
   return value === 'dark' ? 'dark' : 'light'

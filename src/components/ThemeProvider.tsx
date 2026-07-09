@@ -1,9 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState } from 'react'
-import { setThemeCookie, type Theme } from '@/lib/theme-cookie'
-
-const THEME_STORAGE_KEY = 'kmk-theme'
+import { setThemeCookie, THEME_STORAGE_KEY, type Theme } from '@/lib/theme-cookie'
 
 const ThemeContext = createContext<{ theme: Theme; toggle: () => void }>({
   theme: 'light',
@@ -33,23 +31,22 @@ function writeStoredTheme(theme: Theme) {
   }
 }
 
-export function ThemeProvider({
-  children,
-  initialTheme = 'light',
-}: {
-  children: React.ReactNode
-  initialTheme?: Theme
-}) {
-  const [theme, setTheme] = useState<Theme>(initialTheme)
+function readDomTheme(): Theme {
+  if (typeof document === 'undefined') return 'light'
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'
+}
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [theme, setTheme] = useState<Theme>(readDomTheme)
 
   useEffect(() => {
     const stored = readStoredTheme()
-    const resolved: Theme = stored ?? initialTheme
+    const resolved: Theme = stored ?? readDomTheme()
     setTheme(resolved)
     document.documentElement.setAttribute('data-theme', resolved)
     setThemeCookie(resolved)
     if (stored !== resolved) writeStoredTheme(resolved)
-  }, [initialTheme])
+  }, [])
 
   const toggle = () => {
     const next: Theme = theme === 'light' ? 'dark' : 'light'
