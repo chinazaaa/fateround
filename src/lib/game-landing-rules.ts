@@ -469,6 +469,12 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
 
   monopoly: [
     {
+      title: 'Note on Editions & Themes',
+      points: [
+        'The detailed rules below use classic UK theme terminology and currency (£) as reference examples, but apply identically to all customizable Monopoly variations (including Naija Edition and others) where space names and currency units adapt to the selected theme.',
+      ],
+    },
+    {
       title: 'Objective',
       points: [
         'Buy, rent, and sell properties to grow your wealth until every opponent is bankrupt.',
@@ -1048,9 +1054,16 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
     {
+      title: 'Hard mode',
+      points: [
+        'Optional difficulty where the minimum word length increases each round (round 1: 3 letters, round 2: 5, round 3: 7, and so on, up to 20).',
+        'Works in both team and individual modes. Automatic prompt mode uses the round minimum; in manual mode the letter-setter can raise the minimum for that pair (but not go below the round floor).',
+      ],
+    },
+    {
       title: 'Valid words',
       points: [
-        'Answers must be real dictionary words (3–12 letters), matching both the start and end letter. Words are checked against merged English Scrabble lists (ENABLE, Collins, TWL) plus our Word Hunt word bank.',
+        'Answers must be real dictionary words (3–20 letters), matching both the start and end letter. Words are checked against merged English Scrabble lists (ENABLE, Collins, TWL) plus our Word Hunt word bank.',
         'In team mode, only the first correct answer on each letter pair counts — the pair advances immediately, so type fast.',
         'In individual mode, every player answers the same pair and multiple players can use the same word.',
       ],

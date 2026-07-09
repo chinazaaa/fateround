@@ -9,7 +9,7 @@ import { parseJsonBody } from '@/lib/parse-body'
 export async function POST(req: NextRequest) {
   const { data, error: bodyError } = await parseJsonBody(req, wordRushPromptSchema)
   if (bodyError) return bodyError
-  const { gameId, resumeToken, startLetter, endLetter } = data
+  const { gameId, resumeToken, startLetter, endLetter, minWordLength } = data
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
@@ -24,7 +24,14 @@ export async function POST(req: NextRequest) {
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   if (auth.player.spectator) return NextResponse.json({ error: 'Spectators cannot set prompts' }, { status: 403 })
 
-  const { error, internal } = await processWordRushPrompt(supabase, code, auth.player.id, startLetter, endLetter)
+  const { error, internal } = await processWordRushPrompt(
+    supabase,
+    code,
+    auth.player.id,
+    startLetter,
+    endLetter,
+    minWordLength
+  )
   if (error) return NextResponse.json({ error }, { status: internal ? 500 : 400 })
   return NextResponse.json({ success: true })
 }

@@ -137,6 +137,7 @@ import {
   clampDescribeItTurnSeconds,
 } from '@/lib/describe-it'
 import {
+  clampWordRushDifficulty,
   clampWordRushMode,
   clampWordRushPromptMode,
   clampWordRushRounds,
@@ -336,6 +337,7 @@ export async function POST(req: NextRequest) {
     word_rush_num_teams: rawWordRushNumTeams,
     word_rush_mode: rawWordRushMode,
     word_rush_prompt_mode: rawWordRushPromptMode,
+    word_rush_difficulty: rawWordRushDifficulty,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -740,6 +742,7 @@ export async function POST(req: NextRequest) {
           word_rush_num_teams: clampWordRushTeams(rawWordRushNumTeams),
           word_rush_mode: clampWordRushMode(rawWordRushMode),
           word_rush_prompt_mode: clampWordRushPromptMode(rawWordRushPromptMode),
+          word_rush_difficulty: clampWordRushDifficulty(rawWordRushDifficulty),
         }
       : {}),
     ...(gameSupportsViewerSetting(game_type)

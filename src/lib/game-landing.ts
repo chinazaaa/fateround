@@ -22,6 +22,7 @@ export type GameLandingContent = {
   features: { title: string; description: string; emoji: string }[]
   steps: { title: string; description: string }[]
   rules: GameLandingRuleSection[]
+  rulesNote?: string
   perfectFor: string[]
   extraFaqs?: GameLandingFaq[]
 }
@@ -1223,12 +1224,13 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     heroSubtitle:
       'Classic Monopoly on your phones. Join a room, roll the dice, buy properties, and be the last player standing.',
     bodyParagraph:
-      'Monopoly on Fate Round uses the UK edition board — London streets, Stations, £ currency, full Chance and Community Chest decks, property auctions, houses, hotels, mortgages, and player trading. Join 2–6 players and play turn-by-turn in real time.',
+      'Monopoly on Fate Round features customizable themed editions — including classic London streets and Naija Edition — with full Chance and Community Chest decks, property auctions, houses, hotels, mortgages, and player trading. Join 2–6 players and play turn-by-turn in real time.',
     highlights: ['Full 40-space board', '2–6 players', 'Real-time turns'],
     features: [
       {
         title: 'Classic board',
-        description: 'All the familiar spaces — London properties, Stations, Utilities, Chance, and Community Chest.',
+        description:
+          'All the familiar spaces across editions — famous properties, transport terminals, utilities, Chance, and Community Chest.',
         emoji: '🏠',
       },
       {
@@ -1245,7 +1247,10 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         title: 'Create a game',
         description: 'Set the player cap and share the link — everyone joins with their name.',
       },
-      { title: 'Start the game', description: 'Everyone begins on GO with £1,500. The host starts when ready.' },
+      {
+        title: 'Start the game',
+        description: 'Everyone begins on GO with 1,500 starting cash. The host starts when ready.',
+      },
       {
         title: 'Last one wins',
         description: 'Buy properties, collect rent, and bankrupt opponents until one player remains.',
@@ -1261,7 +1266,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How much money do you start with in Monopoly?',
         answer:
-          'Every player starts on GO with £1,500 in the UK edition used on Fate Round, and collects £200 each time they pass GO (after their first lap around the board).',
+          'Every player starts on GO with 1,500 starting cash in your selected edition’s currency (e.g., £1,500 or ₦1.5m), and collects 200 each time they pass GO (after their first lap around the board).',
       },
       {
         question: 'What happens when you land on an unowned property?',
@@ -1271,7 +1276,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How do you get out of Jail in Monopoly?',
         answer:
-          'Pay the £50 fine before your next roll, use a Get Out of Jail Free card, or roll doubles on any of your next three turns. After three turns without doubles, you pay £50 and move by your roll.',
+          'Pay the 50 fine before your next roll, use a Get Out of Jail Free card, or roll doubles on any of your next three turns. After three turns without doubles, you pay 50 and move by your roll.',
       },
       {
         question: 'Can I set how long a Monopoly game lasts?',

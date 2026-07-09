@@ -325,6 +325,10 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           setAllProgress((prev) => {
             const idx = prev.findIndex((p) => p.player_id === updated.player_id)
             if (idx >= 0) {
+              // Reject stale updates — an older payload arriving after a newer one
+              // (due to network timing) must not regress the displayed state.
+              const existing = prev[idx]
+              if (existing.updated_at >= updated.updated_at) return prev
               const next = [...prev]
               next[idx] = updated
               return next

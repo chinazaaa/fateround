@@ -1,4 +1,11 @@
-import type { Game, WordRushAnswer, WordRushMode, WordRushPromptMode, WordRushSession } from '@/types'
+import type {
+  Game,
+  WordRushAnswer,
+  WordRushDifficulty,
+  WordRushMode,
+  WordRushPromptMode,
+  WordRushSession,
+} from '@/types'
 import { WORD_HUNT_MIN_WORD_LENGTH } from '@/lib/word-hunt'
 
 export const WORD_RUSH_MIN_PLAYERS = 4
@@ -24,7 +31,9 @@ export const WORD_RUSH_BREAK_SECONDS = 6
 export const WORD_RUSH_ROUND_RESULTS_SECONDS = 8
 
 export const WORD_RUSH_MIN_WORD_LENGTH = WORD_HUNT_MIN_WORD_LENGTH
-export const WORD_RUSH_MAX_WORD_LENGTH = 12
+export const WORD_RUSH_MAX_WORD_LENGTH = 20
+/** Hard mode: add this many letters to the minimum each round after the first. */
+export const WORD_RUSH_HARD_LENGTH_STEP = 2
 
 export const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3', 'Team 4'] as const
 export const TEAM_EMOJI = ['🟦', '🟥', '🟩', '🟨'] as const
@@ -42,6 +51,29 @@ export function wordMatchesLetters(word: string, startLetter: string, endLetter:
   return normalized[0] === startLetter.toLowerCase() && normalized[normalized.length - 1] === endLetter.toLowerCase()
 }
 
+/** Why a word fails length/letter checks before dictionary lookup. */
+export function wordRushWordFormatRejectReason(
+  word: string,
+  startLetter: string,
+  endLetter: string,
+  minLength: number = WORD_RUSH_MIN_WORD_LENGTH
+): string | null {
+  const normalized = normalizeWordRushWord(word)
+  if (!normalized) return 'Enter a word'
+  if (normalized.length > WORD_RUSH_MAX_WORD_LENGTH) {
+    return `Too long — maximum is ${WORD_RUSH_MAX_WORD_LENGTH} letters`
+  }
+  if (normalized.length < minLength) {
+    return minLength > WORD_RUSH_MIN_WORD_LENGTH
+      ? `Too short — need at least ${minLength} letters this round`
+      : `Too short — minimum is ${minLength} letters`
+  }
+  if (!wordMatchesLetters(normalized, startLetter, endLetter)) {
+    return `Must start with ${startLetter.toUpperCase()} and end with ${endLetter.toUpperCase()}`
+  }
+  return null
+}
+
 export function letterPairKey(start: string, end: string): string {
   return `${start.toLowerCase()}-${end.toLowerCase()}`
 }
@@ -56,6 +88,27 @@ export function clampWordRushMode(value: unknown): WordRushMode {
 
 export function clampWordRushPromptMode(value: unknown): WordRushPromptMode {
   return value === 'manual' ? 'manual' : 'automatic'
+}
+
+export function clampWordRushDifficulty(value: unknown): WordRushDifficulty {
+  return value === 'hard' ? 'hard' : 'standard'
+}
+
+export function wordRushMinLengthForRound(round: number, difficulty: WordRushDifficulty): number {
+  if (difficulty !== 'hard') return WORD_RUSH_MIN_WORD_LENGTH
+  const safeRound = Math.max(1, Math.round(round))
+  const min = WORD_RUSH_MIN_WORD_LENGTH + (safeRound - 1) * WORD_RUSH_HARD_LENGTH_STEP
+  return Math.min(WORD_RUSH_MAX_WORD_LENGTH, min)
+}
+
+export function clampWordRushManualMinLength(requested: unknown, floor: number): number {
+  const n = Math.round(Number(requested ?? floor))
+  if (!Number.isFinite(n)) return floor
+  return Math.min(WORD_RUSH_MAX_WORD_LENGTH, Math.max(floor, n))
+}
+
+export function wordRushMinLengthHint(minLength: number): string {
+  return minLength > WORD_RUSH_MIN_WORD_LENGTH ? ` · Min ${minLength} letters` : ''
 }
 
 export function clampWordRushTeams(value: unknown): number {

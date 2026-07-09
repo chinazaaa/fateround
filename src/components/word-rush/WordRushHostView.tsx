@@ -42,6 +42,7 @@ import {
   WORD_RUSH_MAX_PLAYER_OPTIONS,
   clampWordRushMode,
   clampWordRushPromptMode,
+  clampWordRushDifficulty,
   clampWordRushTeams,
   wordRushLobbyReady,
 } from '@/lib/word-rush'
@@ -374,6 +375,7 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   const mode = clampWordRushMode(game.word_rush_mode)
   const promptMode = clampWordRushPromptMode(game.word_rush_prompt_mode)
+  const difficulty = clampWordRushDifficulty(game.word_rush_difficulty)
   const numTeams = clampWordRushTeams(game.word_rush_num_teams)
   const readyPlayers = players.filter((p) => p.spectator !== true)
   const minPlayers = mode === 'individual' ? WORD_RUSH_MIN_PLAYERS_INDIVIDUAL : WORD_RUSH_MIN_PLAYERS
@@ -425,7 +427,10 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
       }
       if (data.correct && data.points) success(`+${data.points} pts!`)
       await load()
-      return { correct: data.correct as boolean | undefined }
+      return {
+        correct: data.correct as boolean | undefined,
+        message: data.message as string | undefined,
+      }
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to submit')
       return { error: err instanceof Error ? err.message : 'Failed to submit' }
@@ -466,12 +471,18 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
       endingRound={endingRound}
       onPrompt={
         hostPlays
-          ? (startLetter, endLetter) => {
+          ? (startLetter, endLetter, minWordLength) => {
               if (!hostResumeToken) return
               void fetch('/api/word-rush/prompt', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, startLetter, endLetter }),
+                body: JSON.stringify({
+                  gameId: gameCode,
+                  resumeToken: hostResumeToken,
+                  startLetter,
+                  endLetter,
+                  ...(minWordLength !== undefined ? { minWordLength } : {}),
+                }),
               }).then(() => load())
             }
           : undefined
@@ -536,6 +547,22 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
                 ].join(' ')}
               >
                 {p}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {(['standard', 'hard'] as const).map((d) => (
+              <button
+                key={d}
+                type="button"
+                disabled={savingSettings}
+                onClick={() => void saveSettings({ difficulty: d })}
+                className={[
+                  'rounded-xl border-2 px-3 py-3 text-sm font-bold capitalize',
+                  difficulty === d ? 'border-orange-400 bg-orange-500/15' : 'border-[var(--border-strong)]',
+                ].join(' ')}
+              >
+                {d}
               </button>
             ))}
           </div>
