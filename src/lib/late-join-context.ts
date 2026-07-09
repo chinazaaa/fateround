@@ -14,6 +14,7 @@ import {
   isBinaryChoiceGame,
   isWouldYouRather,
   isWordHuntGame,
+  isWordRushGame,
   isQuiplashGame,
   parseGameType,
 } from '@/lib/game-types'
@@ -139,6 +140,15 @@ export async function fetchLateJoinContext(
       statusLine: 'Round in progress',
       playerDetail: "You'll be randomly assigned to a team as an operative and jump into the current round.",
       viewerDetail: "Watch the board and teams live — you can't play.",
+    }
+  }
+
+  if (isWordRushGame(type)) {
+    return {
+      statusLine: 'Round in progress',
+      playerDetail:
+        "You'll join the team with the fewest players and jump into the current round. Pick viewer mode if you only want to watch.",
+      viewerDetail: "Watch scores and the live round — you can't submit answers.",
     }
   }
 

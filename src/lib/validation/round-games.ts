@@ -234,6 +234,16 @@ export const describeItBalanceSchema = z.object({
   hostToken: hostTokenString(),
 })
 
+export const wordRushBalanceSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: hostTokenString(),
+})
+
+export const wordRushShuffleSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: hostTokenString(),
+})
+
 export const wordRushSubmitSchema = z.object({
   gameId: gameCodeString(),
   resumeToken: z.string().min(4),
