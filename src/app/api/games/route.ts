@@ -43,6 +43,7 @@ import {
   isMafiaGame,
   isScrabbleGame,
   isDescribeItGame,
+  isWordRushGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
@@ -135,6 +136,13 @@ import {
   clampDescribeItTeams,
   clampDescribeItTurnSeconds,
 } from '@/lib/describe-it'
+import {
+  clampWordRushMode,
+  clampWordRushPromptMode,
+  clampWordRushRounds,
+  clampWordRushTeams,
+  clampWordRushTurnSeconds,
+} from '@/lib/word-rush'
 import { gameSupportsViewerSetting, lateJoinPolicyToFields, type LateJoinPolicy } from '@/lib/viewers'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { z } from 'zod/v4'
@@ -325,6 +333,9 @@ export async function POST(req: NextRequest) {
     codewords_randomize_teams: rawCodewordsRandomizeTeams,
     describe_it_num_teams: rawDescribeItNumTeams,
     describe_it_mode: rawDescribeItMode,
+    word_rush_num_teams: rawWordRushNumTeams,
+    word_rush_mode: rawWordRushMode,
+    word_rush_prompt_mode: rawWordRushPromptMode,
     allow_viewers: rawAllowViewers,
     allow_late_players: rawAllowLatePlayers,
     late_join_policy: rawLateJoinPolicy,
@@ -406,7 +417,8 @@ export async function POST(req: NextRequest) {
     isCheckersGame(game_type) ||
     isMafiaGame(game_type) ||
     isScrabbleGame(game_type) ||
-    isDescribeItGame(game_type)
+    isDescribeItGame(game_type) ||
+    isWordRushGame(game_type)
       ? 'joiners'
       : isWhoSaidThis(game_type)
         ? 'import'
@@ -470,17 +482,22 @@ export async function POST(req: NextRequest) {
       ? 1
       : isDescribeItGame(game_type)
         ? clampDescribeItRounds(rounds_count)
-        : isWhoSaidThis(game_type)
-          ? wstAutoRoundCount(participants.length)
-          : isHotSeat(game_type)
-            ? clampHotSeatMaxCap(rounds_count ?? HOT_SEAT_MIN_PLAYERS, hotSeatMaxCapUpperBound(0, participants.length))
-            : isPickANumber(game_type)
-              ? clampPanRounds(rounds_count ?? 5)
-              : isTriviaGame(game_type)
-                ? Math.min(Math.max(Number(rounds_count) || TRIVIA_DEFAULT_ROUNDS, 1), maxRounds)
-                : isQuiplashGame(game_type)
-                  ? clampQuiplashRounds(rounds_count ?? QUIPLASH_DEFAULT_ROUNDS)
-                  : Math.min(Math.max(Number(rounds_count) || 3, 1), maxRounds)
+        : isWordRushGame(game_type)
+          ? clampWordRushRounds(rounds_count)
+          : isWhoSaidThis(game_type)
+            ? wstAutoRoundCount(participants.length)
+            : isHotSeat(game_type)
+              ? clampHotSeatMaxCap(
+                  rounds_count ?? HOT_SEAT_MIN_PLAYERS,
+                  hotSeatMaxCapUpperBound(0, participants.length)
+                )
+              : isPickANumber(game_type)
+                ? clampPanRounds(rounds_count ?? 5)
+                : isTriviaGame(game_type)
+                  ? Math.min(Math.max(Number(rounds_count) || TRIVIA_DEFAULT_ROUNDS, 1), maxRounds)
+                  : isQuiplashGame(game_type)
+                    ? clampQuiplashRounds(rounds_count ?? QUIPLASH_DEFAULT_ROUNDS)
+                    : Math.min(Math.max(Number(rounds_count) || 3, 1), maxRounds)
 
   if (
     question_source === 'custom' &&
@@ -624,7 +641,13 @@ export async function POST(req: NextRequest) {
                                                   rawMaxPlayers,
                                                   lobbyDefaultMaxPlayers('describe_it', lobbyLimits)
                                                 )
-                                              : null
+                                              : isWordRushGame(game_type)
+                                                ? resolveMaxPlayers(
+                                                    'word_rush',
+                                                    rawMaxPlayers,
+                                                    lobbyDefaultMaxPlayers('word_rush', lobbyLimits)
+                                                  )
+                                                : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
@@ -670,17 +693,19 @@ export async function POST(req: NextRequest) {
                           ? clampScrabbleTimer(timer_seconds)
                           : isDescribeItGame(game_type)
                             ? clampDescribeItTurnSeconds(timer_seconds)
-                            : isWhotGame(game_type)
-                              ? clampBoardGameTurnTimer(timer_seconds, 'whot')
-                              : isCrazyEightsGame(game_type)
-                                ? clampBoardGameTurnTimer(timer_seconds, 'crazy_eights')
-                                : isMahjongGame(game_type)
-                                  ? clampBoardGameTurnTimer(timer_seconds, 'mahjong')
-                                  : isMatchingPairsGame(game_type)
-                                    ? Math.max(0, Math.min(600, Math.round(Number(timer_seconds) || 0)))
-                                    : [15, 30, 60].includes(Number(timer_seconds))
-                                      ? Number(timer_seconds)
-                                      : 30,
+                            : isWordRushGame(game_type)
+                              ? clampWordRushTurnSeconds(timer_seconds)
+                              : isWhotGame(game_type)
+                                ? clampBoardGameTurnTimer(timer_seconds, 'whot')
+                                : isCrazyEightsGame(game_type)
+                                  ? clampBoardGameTurnTimer(timer_seconds, 'crazy_eights')
+                                  : isMahjongGame(game_type)
+                                    ? clampBoardGameTurnTimer(timer_seconds, 'mahjong')
+                                    : isMatchingPairsGame(game_type)
+                                      ? Math.max(0, Math.min(600, Math.round(Number(timer_seconds) || 0)))
+                                      : [15, 30, 60].includes(Number(timer_seconds))
+                                        ? Number(timer_seconds)
+                                        : 30,
     ...(isCodewordsGame(game_type)
       ? {
           operative_timer_seconds: clampCodewordsTimer(
@@ -708,6 +733,13 @@ export async function POST(req: NextRequest) {
       ? {
           describe_it_num_teams: clampDescribeItTeams(rawDescribeItNumTeams),
           describe_it_mode: clampDescribeItMode(rawDescribeItMode),
+        }
+      : {}),
+    ...(isWordRushGame(game_type)
+      ? {
+          word_rush_num_teams: clampWordRushTeams(rawWordRushNumTeams),
+          word_rush_mode: clampWordRushMode(rawWordRushMode),
+          word_rush_prompt_mode: clampWordRushPromptMode(rawWordRushPromptMode),
         }
       : {}),
     ...(gameSupportsViewerSetting(game_type)

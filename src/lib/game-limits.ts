@@ -34,6 +34,7 @@ import {
   MATCHING_PAIRS_DEFAULT_MAX_PLAYERS,
 } from '@/lib/memory-match'
 import { QUIPLASH_MIN_PLAYERS, QUIPLASH_MAX_PLAYERS, QUIPLASH_DEFAULT_MAX_PLAYERS } from '@/lib/quiplash'
+import { WORD_RUSH_MIN_PLAYERS, WORD_RUSH_MAX_PLAYERS, WORD_RUSH_DEFAULT_MAX_PLAYERS } from '@/lib/word-rush'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
   'anonymous_messages',
@@ -59,6 +60,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'mafia',
   'matching_pairs',
   'quiplash',
+  'word_rush',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -175,6 +177,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     max: DESCRIBE_IT_MAX_PLAYERS,
     default: DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
   },
+  word_rush: {
+    min: WORD_RUSH_MIN_PLAYERS,
+    max: WORD_RUSH_MAX_PLAYERS,
+    default: WORD_RUSH_DEFAULT_MAX_PLAYERS,
+  },
   snake_and_ladder: {
     min: SNAKE_LADDER_MIN_PLAYERS,
     max: SNAKE_LADDER_MAX_PLAYERS,
@@ -218,6 +225,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     checkers: { ...GAME_LIMIT_CODE_DEFAULTS.checkers },
     scrabble: { ...GAME_LIMIT_CODE_DEFAULTS.scrabble },
     describe_it: { ...GAME_LIMIT_CODE_DEFAULTS.describe_it },
+    word_rush: { ...GAME_LIMIT_CODE_DEFAULTS.word_rush },
     snake_and_ladder: { ...GAME_LIMIT_CODE_DEFAULTS.snake_and_ladder },
     mafia: { ...GAME_LIMIT_CODE_DEFAULTS.mafia },
     matching_pairs: { ...GAME_LIMIT_CODE_DEFAULTS.matching_pairs },
