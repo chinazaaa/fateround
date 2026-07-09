@@ -21,7 +21,7 @@ import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
 import { createBingoCardForPlayer } from '@/lib/bingo'
 import { assignCodewordsLateJoinOperative, codewordsAllowsPlayerChanges, removeCodewordsPlayer } from '@/lib/codewords'
 import { assignDescribeItLateJoinTeam } from '@/lib/describe-it'
-import { assignWordRushLateJoinTeam } from '@/lib/word-rush-server'
+import { assignWordRushLateJoinTeam, syncWordRushAfterPlayerRemoved } from '@/lib/word-rush-server'
 import {
   parseGameType,
   isNameOnlyPlayerJoin,
@@ -1642,6 +1642,12 @@ export async function DELETE(req: NextRequest) {
     const { error } = await removeTicTacToePlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
+  }
+
+  if (isWordRushGame(gameType)) {
+    // Dropping a player leaves their id in word_rush_sessions.roster, so the round
+    // can keep waiting for an answer that will never come — mirror Sudoku's re-check.
+    await syncWordRushAfterPlayerRemoved(getSupabaseAdmin(), id, playerId)
   }
 
   if (game!.participant_mode === 'joiners') {

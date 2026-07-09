@@ -732,6 +732,67 @@ export async function processWordRushAdvance(
   return {}
 }
 
+export async function syncWordRushAfterPlayerRemoved(
+  supabase: SupabaseClient,
+  gameId: string,
+  removedPlayerId: string
+): Promise<{ error?: string; internal?: boolean }> {
+  const { data: game } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
+  if (!game || game.status !== 'active') return {}
+
+  const { session, error, internal } = await loadSession(supabase, gameId)
+  if (error) return { error, internal }
+  if (!session || session.status === 'finished') return {}
+
+  const newRoster = session.roster.filter((id) => id !== removedPlayerId)
+  if (newRoster.length === session.roster.length) return {}
+
+  const sessionPatch: Partial<WordRushSession> = { roster: newRoster }
+
+  if (session.prompt_setter_player_id === removedPlayerId) {
+    if (session.mode === 'individual' && session.prompt_mode === 'manual') {
+      sessionPatch.prompt_setter_player_id = promptSetterForIndividualRound(newRoster, session.turn_index)
+    } else if (session.mode === 'team' && session.prompt_mode === 'manual') {
+      const teamRows = await loadTeamRows(supabase, gameId)
+      const members = (teamRoster(teamRows).get(session.active_team) ?? []).filter((id) => id !== removedPlayerId)
+      const roundIndex = teamRoundIndexFromTurn(session.turn_index, session.num_teams)
+      sessionPatch.prompt_setter_player_id = promptSetterForTeamRound(members, roundIndex)
+    } else {
+      sessionPatch.prompt_setter_player_id = null
+    }
+  }
+
+  const { error: updateError } = await supabase
+    .from('word_rush_sessions')
+    .update({ ...sessionPatch, updated_at: new Date().toISOString() })
+    .eq('game_id', gameId)
+  if (updateError) return internalFailure('word-rush:remove-player', updateError)
+
+  const updatedSession = { ...session, ...sessionPatch }
+
+  if (
+    updatedSession.mode === 'individual' &&
+    (updatedSession.phase === 'playing' || updatedSession.phase === 'awaiting_prompt')
+  ) {
+    const { data: roundAnswers } = await supabase
+      .from('word_rush_answers')
+      .select('player_id, turn_index, correct')
+      .eq('game_id', gameId)
+      .eq('turn_index', session.turn_index)
+
+    if (
+      allWordRushIndividualPlayersSubmitted(
+        updatedSession,
+        (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number; correct: boolean }>
+      )
+    ) {
+      return endIndividualRound(supabase, gameId, updatedSession)
+    }
+  }
+
+  return {}
+}
+
 export async function assignWordRushTeam(
   supabase: SupabaseClient,
   gameId: string,
