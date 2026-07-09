@@ -87,6 +87,9 @@ export const createGameSchema = z.object({
   codewords_late_join: z.boolean().optional(),
   describe_it_num_teams: z.coerce.number().int().min(2).max(4).optional(),
   describe_it_mode: z.enum(['team', 'individual']).optional(),
+  word_rush_num_teams: z.coerce.number().int().min(2).max(4).optional(),
+  word_rush_mode: z.enum(['team', 'individual']).optional(),
+  word_rush_prompt_mode: z.enum(['automatic', 'manual']).optional(),
   allow_viewers: z.boolean().optional(),
   allow_late_players: z.boolean().optional(),
   late_join_policy: z.enum(['lobby_only', 'viewers_only', 'viewers_and_players']).optional(),
@@ -261,6 +264,7 @@ export const boardGameLobbySettingsSchema = z.object({
   mafia_doctor_enabled: z.boolean().optional(),
   mafia_detective_enabled: z.boolean().optional(),
   mafia_anonymous_votes: z.boolean().optional(),
+  operative_timer_seconds: z.coerce.number().optional(),
 })
 
 export type BoardGameLobbySettingsInput = z.infer<typeof boardGameLobbySettingsSchema>

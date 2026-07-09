@@ -15,6 +15,7 @@ import {
   isCheckersGame,
   isScrabbleGame,
   isDescribeItGame,
+  isWordRushGame,
   isWordHuntGame,
   isMostLikelyTo,
   isNeverHaveIEver,
@@ -25,10 +26,12 @@ import {
   isTwoTruthsGame,
   isICallOnGame,
   isWouldYouRather,
+  isQuiplashGame,
   parseGameType,
 } from '@/lib/game-types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Game, GameType, Player } from '@/types'
+import { lobbyHasOpenPlayerSeat } from '@/lib/game-limits'
 
 export type LateJoinPolicy = 'lobby_only' | 'viewers_only' | 'viewers_and_players'
 
@@ -69,6 +72,7 @@ export function clampLateJoinPolicyForGameType(policy: LateJoinPolicy, gameType:
  */
 export function defaultLateJoinPolicyForGameType(gameType: GameType): LateJoinPolicy {
   if (isDescribeItGame(gameType)) return 'viewers_and_players'
+  if (isWordRushGame(gameType)) return 'viewers_and_players'
   return 'viewers_only'
 }
 
@@ -100,6 +104,7 @@ export function gameOffersLateJoinChoice(gameType: GameType): boolean {
     isTriviaGame(gameType) ||
     isCodewordsGame(gameType) ||
     isDescribeItGame(gameType) ||
+    isWordRushGame(gameType) ||
     isBingoGame(gameType) ||
     isWordHuntGame(gameType) ||
     isWouldYouRather(gameType) ||
@@ -108,7 +113,8 @@ export function gameOffersLateJoinChoice(gameType: GameType): boolean {
     isMostLikelyTo(gameType) ||
     isTwoTruthsGame(gameType) ||
     isICallOnGame(gameType) ||
-    isSudokuGame(gameType)
+    isSudokuGame(gameType) ||
+    isQuiplashGame(gameType)
   )
 }
 
@@ -171,7 +177,9 @@ export function canSwitchViewerToPlayer(
     | 'codewords_late_join'
     | 'game_type'
     | 'tournament_id'
-  >
+    | 'max_players'
+  >,
+  players?: ReadonlyArray<Pick<Player, 'spectator'>>
 ): boolean {
   if (player.is_eliminated) return false
   // Tournament rosters lock when the first game starts — watchers and eliminated
@@ -179,7 +187,9 @@ export function canSwitchViewerToPlayer(
   if (game.tournament_id) return false
   if (game.status !== 'active') return false
   if (!playerIsViewer(player, game)) return false
-  return allowLatePlayers(game)
+  if (!allowLatePlayers(game)) return false
+  if (players && !lobbyHasOpenPlayerSeat(game, players)) return false
+  return true
 }
 
 export function lateJoinBlockedMessage(gameType: GameType): string {

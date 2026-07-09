@@ -58,10 +58,12 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   chess: 'chess',
   checkers: 'checkers',
   describe_it: 'text-charades',
+  word_rush: 'word-rush',
   scrabble: 'scrabble',
   snake_and_ladder: 'snakes-and-ladders',
   mafia: 'mafia',
   matching_pairs: 'matching-pairs',
+  quiplash: 'quiplash',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -2240,6 +2242,53 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
   }),
 
+  word_rush: landing('word_rush', {
+    seoTitle: 'Word Rush — Online Letter Word Game',
+    seoDescription:
+      'Play Word Rush online with friends. Name words that start and end with given letters — team rush or individual rounds. Dictionary-validated. No sign-up.',
+    keywords: [
+      'word rush game',
+      'starts with ends with word game',
+      'letter word game online',
+      'word game with friends',
+      'play word rush online free',
+      'team word game online',
+    ],
+    heroSubtitle: 'Starts with M, ends with Y — how fast can you name a valid word?',
+    bodyParagraph:
+      'Word Rush is a fast letter-constraint word game. In team mode, each team gets a timed run to name as many dictionary-valid words as possible that start and end with the given letters — Monkey ✅, then instantly on to the next pair. In individual mode, everyone answers the same prompt each round and scores on the leaderboard. Choose automatic prompts from the system or manual mode where players pick the letters.',
+    highlights: ['2–20 players', 'Team or solo', 'Dictionary checked'],
+    features: [
+      {
+        title: 'Starts with / ends with',
+        description: 'Every prompt gives a start letter and end letter — first valid word wins in team rush mode.',
+        emoji: '🔤',
+      },
+      {
+        title: 'Four ways to play',
+        description: 'Team or individual, automatic or manual letter prompts — mix and match for your group.',
+        emoji: '⚡',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      {
+        title: 'Pick your mode',
+        description: 'Team rush (2-minute blitz per team) or individual rounds with a leaderboard.',
+      },
+      {
+        title: 'See the letters',
+        description: 'Automatic mode generates letter pairs; manual mode lets a player enter them.',
+      },
+      {
+        title: 'Race to answer',
+        description: 'Type a real word that fits — valid answers score instantly and the next prompt appears.',
+      },
+    ],
+    perfectFor: ['Parties', 'Classrooms', 'Word nerds', 'Quick icebreakers'],
+  }),
+
   scrabble: landing('scrabble', {
     seoTitle: 'Scrabble Online — Play with Friends',
     seoDescription:
@@ -2518,6 +2567,39 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Yes — the game works with a single player. Placement bonuses apply when there are multiple players, but you can still chase the perfect-game and streak bonuses on your own.',
       },
     ],
+  }),
+
+  quiplash: landing('quiplash', {
+    seoTitle: 'Quiplash Online — Free Fill-in-the-Blank Party Game',
+    seoDescription:
+      'Play Quiplash-style fill-in-the-blank battles online with friends. Write funny answers, vote head-to-head, and crown the wittiest player. Free, no sign-up.',
+    keywords: [
+      'quiplash online',
+      'quiplash game online free',
+      'fill in the blank party game',
+      'funny answer game online',
+      'jackbox quiplash alternative',
+      'play quiplash with friends',
+      'quiplash style game browser',
+    ],
+    heroSubtitle:
+      'Everyone gets the same prompt — write the funniest answer you can. Answers battle head-to-head and the group votes. Most votes wins the round.',
+    highlights: ['3–6 players', 'Head-to-head battles', '~10 minute games'],
+    features: [
+      {
+        title: 'Write & vote',
+        description: 'Fill in the blank, then pick the funnier answer in each battle.',
+        emoji: '✍️',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Create a room', description: 'Pick rounds, timers, and max players (up to 6).' },
+      { title: 'Share the code', description: 'Friends join from their phones with a nickname.' },
+      { title: 'Battle it out', description: 'Submit answers, vote on battles, and climb the leaderboard.' },
+    ],
+    perfectFor: ['Party nights', 'Discord calls', 'Icebreakers', 'Remote teams'],
   }),
 }
 

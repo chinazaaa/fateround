@@ -79,6 +79,34 @@ export const ttlAdvanceSchema = z.object({
 
 export type TtlAdvanceInput = z.infer<typeof ttlAdvanceSchema>
 
+const quiplashAnswerText = sanitizedString(1, 120)
+
+export const quiplashAnswerSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  roundId: uuidString('roundId'),
+  text: quiplashAnswerText,
+})
+
+export type QuiplashAnswerInput = z.infer<typeof quiplashAnswerSchema>
+
+export const quiplashVoteSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  battleId: uuidString('battleId'),
+  chosenAnswerId: uuidString('chosenAnswerId'),
+})
+
+export type QuiplashVoteInput = z.infer<typeof quiplashVoteSchema>
+
+export const quiplashAdvanceSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: z.string().min(1).optional(),
+  force: z.boolean().optional(),
+})
+
+export type QuiplashAdvanceInput = z.infer<typeof quiplashAdvanceSchema>
+
 export const npatSubmitSchema = z.object({
   gameId: gameCodeString(),
   // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
@@ -204,6 +232,57 @@ export const describeItAdvanceSchema = z.object({
 export const describeItBalanceSchema = z.object({
   gameId: gameCodeString(),
   hostToken: hostTokenString(),
+})
+
+export const wordRushBalanceSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: hostTokenString(),
+})
+
+export const wordRushShuffleSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: hostTokenString(),
+})
+
+export const wordRushSubmitSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  text: z.string().trim().min(1).max(80),
+})
+
+export const wordRushPromptSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  startLetter: z.string().trim().min(1).max(1),
+  endLetter: z.string().trim().min(1).max(1),
+})
+
+export const wordRushTeamSchema = z.object({
+  gameId: gameCodeString(),
+  team: z.coerce.number().int().min(1).max(4),
+  resumeToken: z.string().min(4).optional(),
+  hostToken: z.string().min(1).optional(),
+  playerId: uuidString('playerId').optional(),
+})
+
+export const wordRushGameSchema = z.object({
+  gameId: gameCodeString(),
+})
+
+export const wordRushAdvanceSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: z.string().min(1).optional(),
+})
+
+export const wordRushSettingsSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: hostTokenString(),
+  mode: z.enum(['team', 'individual']).optional(),
+  promptMode: z.enum(['automatic', 'manual']).optional(),
+  numTeams: z.coerce.number().int().min(2).max(4).optional(),
+  turnSeconds: z.coerce.number().int().optional(),
+  rounds: z.coerce.number().int().optional(),
+  maxPlayers: z.coerce.number().int().min(2).max(20).optional(),
 })
 
 const codewordsTeamEnum = z.enum(['red', 'blue'])

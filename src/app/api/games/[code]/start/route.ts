@@ -22,10 +22,12 @@ import {
   isTriviaGame,
   isTwoTruthsGame,
   isDescribeItGame,
+  isWordRushGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
   isMatchingPairsGame,
+  isQuiplashGame,
 } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
@@ -93,6 +95,8 @@ import {
   DESCRIBE_IT_MIN_PLAYERS,
   DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
 } from '@/lib/describe-it'
+import { WORD_RUSH_MIN_PLAYERS, WORD_RUSH_MIN_PLAYERS_INDIVIDUAL } from '@/lib/word-rush'
+import { initializeWordRushGame } from '@/lib/word-rush-server'
 import { buildNpatInitialRound, NPAT_MIN_PLAYERS, shufflePlayerOrder as npatShufflePlayerOrder } from '@/lib/npat'
 import { buildSudokuRoundRow, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
@@ -103,6 +107,13 @@ import {
   MATCHING_PAIRS_MIN_PLAYERS,
   type MatchingPairsGridSize,
 } from '@/lib/memory-match'
+import {
+  QUIPLASH_MIN_PLAYERS,
+  buildQuiplashRoundRows,
+  clampQuiplashSubmitTimer,
+  quiplashUsageFromPrompts,
+} from '@/lib/quiplash'
+import { pickCustomQuiplashPrompts, pickQuiplashPrompts } from '@/lib/quiplash-prompts'
 import { appearanceCountsForParticipants, mergeUsageMaps, parsePoolUsage, poolUsageToMap } from '@/lib/pool-usage'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
@@ -401,6 +412,30 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     }
 
     const { error: initError, internal: initInternal } = await initializeDescribeItGame(
+      getSupabaseAdmin(),
+      code.toUpperCase(),
+      playingPlayers.map((p) => p.id)
+    )
+    if (initError) return NextResponse.json({ error: initError }, { status: initInternal ? 500 : 400 })
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({ status: 'active', session_started_at: sessionStartedAt, current_round_number: 1 })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isWordRushGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    const minPlayers = game.word_rush_mode === 'individual' ? WORD_RUSH_MIN_PLAYERS_INDIVIDUAL : WORD_RUSH_MIN_PLAYERS
+    if (playingPlayers.length < minPlayers) {
+      return NextResponse.json({ error: `Need at least ${minPlayers} players to start` }, { status: 400 })
+    }
+
+    const { error: initError, internal: initInternal } = await initializeWordRushGame(
       getSupabaseAdmin(),
       code.toUpperCase(),
       playingPlayers.map((p) => p.id)
@@ -731,6 +766,79 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
     if (gameError)
       return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isQuiplashGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    if (playingPlayers.length < QUIPLASH_MIN_PLAYERS) {
+      return NextResponse.json({ error: `Need at least ${QUIPLASH_MIN_PLAYERS} players to start` }, { status: 400 })
+    }
+
+    const questionSource = parseQuestionSource(game.question_source, gameType)
+    const customPool = parseStoredMltQuestions(game.custom_questions)
+    const useCustom = questionSource === 'custom'
+
+    if (useCustom && customPool.length < game.rounds_count) {
+      return NextResponse.json(
+        { error: `Need at least ${game.rounds_count} custom prompts — upload more or lower the round count` },
+        { status: 400 }
+      )
+    }
+
+    const quiplashUsage = poolUsageToMap(poolUsage.quiplash as Record<string, number> | undefined)
+    const prompts = useCustom
+      ? pickCustomQuiplashPrompts(customPool, game.rounds_count, quiplashUsage)
+      : pickQuiplashPrompts(game.rounds_count, quiplashUsage)
+
+    if (prompts.length === 0) {
+      return NextResponse.json({ error: 'No prompts available' }, { status: 400 })
+    }
+
+    const roundRows = buildQuiplashRoundRows({
+      gameId: code.toUpperCase(),
+      prompts,
+      now,
+    })
+
+    const { error: roundError } = await getSupabaseAdmin().from('rounds').insert(roundRows)
+    if (roundError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', roundError) }, { status: 500 })
+
+    const submitTimer = clampQuiplashSubmitTimer(game.timer_seconds)
+    const writingDeadline = new Date(Date.now() + submitTimer * 1000).toISOString()
+
+    const { error: sessionError } = await getSupabaseAdmin().from('quiplash_sessions').insert({
+      game_id: code.toUpperCase(),
+      phase: 'writing',
+      battle_index: 0,
+      turn_deadline_at: writingDeadline,
+    })
+    if (sessionError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', sessionError) }, { status: 500 })
+
+    const updatedPoolUsage = {
+      ...poolUsage,
+      quiplash: {
+        ...(poolUsage.quiplash ?? {}),
+        ...quiplashUsageFromPrompts(prompts),
+      },
+    }
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+        rounds_count: roundRows.length,
+        pool_usage: updatedPoolUsage,
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+
     return NextResponse.json({ success: true })
   }
 

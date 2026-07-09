@@ -14,6 +14,8 @@ import {
   isBinaryChoiceGame,
   isWouldYouRather,
   isWordHuntGame,
+  isWordRushGame,
+  isQuiplashGame,
   parseGameType,
 } from '@/lib/game-types'
 import type { Game } from '@/types'
@@ -138,6 +140,36 @@ export async function fetchLateJoinContext(
       statusLine: 'Round in progress',
       playerDetail: "You'll be randomly assigned to a team as an operative and jump into the current round.",
       viewerDetail: "Watch the board and teams live — you can't play.",
+    }
+  }
+
+  if (isWordRushGame(type)) {
+    return {
+      statusLine: 'Round in progress',
+      playerDetail:
+        "You'll join the team with the fewest players and jump into the current round. Pick viewer mode if you only want to watch.",
+      viewerDetail: "Watch scores and the live round — you can't submit answers.",
+    }
+  }
+
+  if (isQuiplashGame(type)) {
+    const { data: session } = await supabase
+      .from('quiplash_sessions')
+      .select('phase')
+      .eq('game_id', gameCode.toUpperCase())
+      .maybeSingle()
+    const phaseLabel =
+      session?.phase === 'writing'
+        ? 'Writing answers'
+        : session?.phase === 'voting'
+          ? 'Voting on battles'
+          : session?.phase === 'reveal'
+            ? 'Battle results'
+            : 'Round in progress'
+    return {
+      statusLine: `Round ${roundLabel(current)} · ${phaseLabel}`,
+      playerDetail: "You'll answer and vote from the current round onward. Earlier rounds can't be made up.",
+      viewerDetail: "Watch prompts, answers, and battles live — you can't submit or vote.",
     }
   }
 

@@ -24,6 +24,8 @@ import { SudokuPlayerView } from '@/components/sudoku/SudokuPlayerView'
 import { WordHuntPlayerView } from '@/components/word-hunt/WordHuntPlayerView'
 import { MafiaPlayerView } from '@/components/mafia/MafiaPlayerView'
 import { MatchingPairsPlayerView } from '@/components/matching-pairs/MatchingPairsPlayerView'
+import { QuiplashPlayerView } from '@/components/quiplash/QuiplashPlayerView'
+import { WordRushPlayerView } from '@/components/word-rush/WordRushPlayerView'
 
 export type GamePlayerView = ComponentType<{ gameCode: string }>
 
@@ -58,4 +60,6 @@ export const PLAYER_VIEW_REGISTRY: Partial<Record<GameType, GamePlayerView>> = {
   matching_pairs: MatchingPairsPlayerView,
   anonymous_messages: AnonymousMessagesPlayerView,
   mafia: MafiaPlayerView,
+  quiplash: QuiplashPlayerView,
+  word_rush: WordRushPlayerView,
 }

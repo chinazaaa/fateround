@@ -1,257 +1,291 @@
-# Revenue Model — Pro Host Accounts
+# Revenue Model — Pro Host, Cosmetics & Retention
 
-> Status: **Draft / planning.** This document captures the monetization strategy and the
-> full Free vs. Pro feature split. Nothing here is built yet — it's the spec we'll work
-> from.
+> Status: **Revised strategy (Jul 2026).** Companion docs:
+> [`account-tiers.md`](./account-tiers.md) · [`trophies-and-streaks.md`](./trophies-and-streaks.md)
+>
+> Nothing here is fully built yet — this is the spec we ship from.
 
 ## TL;DR
 
-There are **two separate things we sell** — keep them distinct in your head, because
-they earn money in completely different ways:
+**The business is volume in Nigeria, not whales abroad.** A $2 one-time unlock alone is a
+tip jar. The real model is:
 
-1. **The $2 Pro Host unlock (utility).** A host pays once to remove limits and get
-   host-only powers — bigger rooms, more concurrent rooms, add-time, longer games,
-   bigger imports. **Pay once, owned on your account.** This is the *floor*: it's what
-   makes the app worth a couple of dollars to a serious host. It is **not** a promise of
-   "every future feature free forever" — it unlocks the **Pro Host feature set** (the
-   utility rows below).
-2. **Cosmetics (status & self-expression).** Themes, board/piece/card/dice skins, and
-   **limited-time seasonal drops** (e.g. a "Wednesday"-style themed skin tied to whatever's
-   trending that month). These are bought **individually**, are **cheap and impulse-priced**,
-   and — unlike the unlock — can be sold to **players too, not just hosts**. This is the
-   *repeatable, long-term* revenue line that keeps the app alive for years.
+| Line | Who pays | Price (Nigeria anchor) | Role |
+|------|----------|------------------------|------|
+| **1. Pro Host** (utility) | Hosts only | **₦1,000** (~$2 international) | Removes host friction at the moment they feel it — add-time, bigger rooms, 2nd room/tournament. **Pay once, forever.** Floor revenue. |
+| **2. Cosmetics** (status) | Any account — hosts *and* players | **₦200–600** per item | **Primary engine.** Themes, skins, profile frames, tournament podium art. Repeatable, impulse-priced. |
+| **3. Season drops** (urgency) | Any account | **₦500–1,200** per drop | Limited-time Naija-local + global-inspired styling. Same engine as cosmetics + a time window. |
+| **4. Season Pass** (optional, later) | Any account | **₦2,500 / quarter** | Bundle of that season's drops at a discount — *not* a subscription to play. |
 
-Guardrails that never move:
+**Retention flywheel (not a revenue line, but required for #2–3 to work):**
 
-- **Playing is free, forever.** Joining a room and playing any game never costs anything.
-- **We never charge to *play* — only to *unlock host powers* or to *look good*.** Selling
-  an optional skin doesn't gate play (the default look stays free), so cosmetics can reach
-  the whole player base without breaking this rule.
-- **Cosmetic only — never pay-for-power.** No purchase ever buys a gameplay advantage. The
-  app works because friends play *fairly*; selling an edge would poison that.
+```
+Play free → earn trophies / streaks → save to account → see cosmetics on profile
+         → buy a skin or drop → show off in the next game night
+```
 
----
+**Tournaments** and **trophies** are free to use and free to earn. They drive return visits
+and account signups, which is what makes cosmetics purchasable. Monetize *around* them —
+never *on* them.
 
-## Why this model
+**Guardrails that never move:**
 
-- **Zero friction for players.** A party-game app only works when the room fills up.
-  Charging players would kill the network effect. Joins must stay free.
-- **Hosts feel the limits.** The host is the one who hits the player cap, wants a longer
-  Monopoly game, or runs back-to-back rooms. They're the ones with a reason to pay.
-- **One-time price is an easy yes.** A couple of dollars, paid once, is an impulse buy. No
-  recurring-billing anxiety, no churn, no "is this worth my subscription" second-guessing.
-  Low support burden.
-- **It scales with the catalogue.** We're at 20+ game modes. Every new game adds more
-  surface area where Pro perks matter, without changing the price.
+- **Playing is free, forever.** Joining, spectating, tournaments, trophy hunting — all free.
+- **Never pay-for-power.** No purchase buys a gameplay edge.
+- **Pro = host utility only.** Themes and skins are **never** bundled into Pro.
+- **Trophies and streaks are earned, never sold.**
 
 ---
 
-## What the $2 Pro Host unlock includes — master list
+## Why this model (Nigeria-first)
 
-**This table is *only* the $2 unlock — the utility line.** Cosmetics (themes, skins,
-seasonal drops) are a **separate purchase** and live in their own section:
-[Cosmetics — themes, skins & seasonal drops](#cosmetics--themes-skins--seasonal-drops).
-Keeping them apart is deliberate: if cosmetics were bundled into the $2 unlock, we'd
-permanently give away our only *repeatable* revenue line.
+- **Zero friction for players.** A party app dies if the room doesn't fill. Joins stay free.
+- **₦1,000 Pro is one airtime top-up, not a decision.** At ₦3,000+ people pause and churn.
+  Price for *feel*, not FX parity.
+- **Many people × small amounts beats few people × large amounts.** Nigeria is not a rich
+  market — design for 5–10% of accounts buying a ₦400 skin, not 0.5% buying ₦5,000 bundles.
+- **Hosts convert on emotion; players convert on identity.** Add-time mid-Monopoly sells Pro.
+  A Detty December room theme sells to the whole room.
+- **Cosmetics scale with the catalogue.** Every new game mode is new skin surface area
+  without raising the Pro price.
+
+---
+
+## The retention flywheel
+
+Trophies, streaks, tournaments, and clubs are **not** paywalled. They exist so people come
+back and create an account — because you can't sell cosmetics to a ghost.
+
+| System | Status | Role in revenue |
+|--------|--------|-----------------|
+| **Trophies** | Spec'd — [`trophies-and-streaks.md`](./trophies-and-streaks.md) | Drives account signup ("save this trophy"). Cosmetic upsell: profile frames, showcase borders. **Never sell trophies or progress.** |
+| **Streaks** | Spec'd — same doc | Daily return habit. Base streak freezes stay **free**. Optional extra freeze = cosmetic/convenience purchase later, not required. |
+| **Tournaments** | **Shipped** — `src/lib/tournament-*`, `/tournament` | Game-night playlists with running leaderboards. Free to run and join. Pro unlocks *host power*; cosmetics sell podium/bracket styling. |
+| **Clubs** | Planned — [`account-tiers.md`](./account-tiers.md) | Persistent teams + seasons. Free to join/create (≤20). Crests/banners = cosmetics later. |
+| **Accounts** | **Not built** — Phase 0 | Anonymous-first play; email OTP to save progress. Required to buy anything. |
+
+**Signup moments (when we ask for an account):**
+
+1. Post-win: *"Save this trophy to your profile."*
+2. Streak day 2+: *"Don't lose your 🔥 streak."*
+3. Tournament finish: *"Save your standing on the leaderboard."*
+4. Cosmetic shop: inherent — can't charge a ghost.
+5. Pro unlock: inherent — can't attach ₦1,000 to a `localStorage` token.
+
+---
+
+## What Pro Host includes (utility only)
+
+**Pro is host powers and ceilings — nothing visual.** Themes, skins, frames, and seasonal
+drops are the **cosmetics line**, sold separately to any account.
 
 Legend: ✅ included · ⛔ not available · 🔸 limited / capped
 
-| # | Feature | Free Host | Pro Host ($2) |
+| # | Feature | Free Host | Pro Host |
 |---|---------|:---------:|:--------:|
 | **Core (always free)** |
-| 1 | Join any room and play any game | ✅ | ✅ |
-| 2 | Create rooms | ✅ | ✅ |
-| 3 | All 20+ game modes | ✅ | ✅ |
+| 1 | Join, play, spectate any game | ✅ | ✅ |
+| 2 | Create rooms & tournaments | ✅ | ✅ |
+| 3 | All game modes | ✅ | ✅ |
 | 4 | Real-time sync, history, leaderboards | ✅ | ✅ |
+| 5 | Earn trophies & streaks | ✅ | ✅ |
 | **Capacity** |
-| 5 | Player cap per game | 🔸 standard default | ✅ raised to game max |
-| 6 | Concurrent active rooms | 🔸 1 | ✅ up to 3–5 |
-| 7 | Spectator slots (watch without a seat) | ⛔ | ✅ |
+| 6 | Player cap per game | 🔸 `default` | ✅ raised to `max` |
+| 7 | Concurrent active rooms **or tournaments** | 🔸 1 | ✅ 2 (raise to 3 if abuse stays low) |
+| 8 | Spectator slots | ⛔ | ✅ (Phase 2) |
 | **Game control** |
-| 8 | Monopoly per-turn timer (0–90s) | ✅ | ✅ |
-| 9 | Monopoly game-length limit | 🔸 up to 2 hrs | ✅ up to 4 hrs |
-| 10 | Monopoly "add time" mid-game | ⛔ | ✅ |
-| 11 | Custom round/turn timers (timed games) | 🔸 presets only | ✅ fully custom |
-| 12 | Monopoly house rules / starting balance | 🔸 defaults | ✅ customizable |
-| 13 | Force-skip / kick an idle player | 🔸 basic | ✅ full host controls |
+| 9 | Monopoly per-turn timer | ✅ | ✅ |
+| 10 | Monopoly game-length limit | 🔸 up to 2 hrs | ✅ up to 4 hrs |
+| 11 | Monopoly / Scrabble add-time mid-game | ⛔ | ✅ |
+| 12 | Custom round/turn timers (timed games) | 🔸 presets | ✅ fully custom (Phase 2) |
+| 13 | Monopoly house rules / starting balance | ⛔ | ✅ (Phase 3) |
+| 14 | Force-skip / kick idle player | 🔸 basic | ✅ full (Phase 3) |
 | **Content** |
-| 14 | Custom question / participant CSV import | 🔸 small cap | ✅ large cap |
-| 15 | Save & reuse question packs / player lists | ⛔ | ✅ |
-| 16 | AI-generated questions (when shipped) | ⛔ | ✅ |
-| 17 | Custom voting categories / game modes | ⛔ | ✅ |
-| **Identity & polish** |
-| 18 | Custom / vanity room codes | ⛔ | ✅ |
+| 15 | Custom question / participant CSV import | 🔸 small cap | ✅ large cap (Phase 2) |
+| 16 | Save & reuse question packs / player lists | ⛔ | ✅ (Phase 2) |
+| 17 | AI-generated questions | ⛔ | ✅ (Phase 3) |
+| 18 | Custom voting categories / game modes | ⛔ | ✅ (Phase 3) |
+| **Host identity** |
+| 19 | Vanity room / tournament codes | ⛔ | ✅ (Phase 2) |
 | 20 | Pro badge on profile & in lobby | ⛔ | ✅ |
-| 21 | Remove "Made with Fate Round" footer | ⛔ | ✅ |
-| **Perks** |
-| 22 | Early access to new game modes | ⛔ | ✅ |
-| 23 | Priority support | ⛔ | ✅ |
+| 21 | Remove "Made with Fate Round" footer | ⛔ | ✅ (Phase 2) |
+| **Tournament host powers** |
+| 22 | Run tournaments (basic) | ✅ | ✅ |
+| 23 | Custom placement-points array | ⛔ | ✅ |
+| 24 | Pre-planned multi-game playlist (unlimited games) | 🔸 up to 5 games | ✅ unlimited |
+| 25 | Tournament season history on profile | ⛔ | ✅ (Phase 2) |
 
-> **What the $2 buys, in one line:** *more* (bigger + more rooms), *longer* (add-time,
-> 4-hr games), *more control* (custom timers, host powers, kick/skip), *more content*
-> (big imports, saved packs), and a bit of *status* (Pro badge, no footer). It is the
-> **utility** upgrade. Looking good is sold separately as cosmetics.
+**Explicitly NOT in Pro:**
 
-> Rows 19 (themes) and 19b (board/piece skins) from the old version have **moved** into the
-> [Cosmetics](#cosmetics--themes-skins--seasonal-drops) section — they're no longer part of
-> the unlock. Item 8 and the core rows already exist in the codebase today; most Pro rows
-> are net-new gating work.
+- Room themes (beyond the free set everyone gets)
+- Board / piece / card / dice skins
+- Profile frames or trophy showcase borders
+- Seasonal / limited-time drops
+- Extra streak freezes (sold as cosmetics later, if at all)
+- Early access to new game modes (all modes stay free for everyone)
+- Priority support (not viable at ₦1,000; community/help docs only)
+
+> **One line:** Pro = *more room*, *longer games*, *more control*, *better tournaments*.
+> Looking good is bought separately.
 
 ---
 
-## Cosmetics — themes, skins & seasonal drops
+## Cosmetics — the primary revenue engine
 
-**This is the second revenue line, and the long-term one.** The $2 unlock has a ceiling
-(a host buys it once and is done). Cosmetics don't — they're repeatable, they scale with
-the game catalogue, and they can be sold to the **whole player base**, not just hosts.
-This is the answer to "will the model still work in 5 years."
+**Cosmetics are sold to any account (host or player), not bundled in Pro.**
 
-### Two layers of theming — and yes, every game can be themed
+### Two layers of theming
 
-There are **two different things** people mean by "theme," and they apply to different
-games:
+| Layer | What it themes | Which games | Built? |
+|-------|----------------|-------------|--------|
+| **Room themes** | Lobby UI — background, colours, accents | **Every game** | ✅ `src/lib/themes.ts` — 5 free themes today |
+| **Component skins** | Board, pieces, tiles, cards, dice | Surface games only | ✅ Partly — Chess (`chess-appearance.ts`) |
 
-| Layer | What it themes | Which games | Already built? |
-|-------|----------------|-------------|----------------|
-| **1. Room themes** | The whole room UI — background, colours, accents, lobby look | **Every game**, no exceptions | ✅ Yes — [`src/lib/themes.ts`](../src/lib/themes.ts) ships 5 (Default, Neon, Retro, Elegant, Tropical) |
-| **2. Component skins** | The actual play surface — board, pieces, tiles, cards, dice | Only games that draw a surface (table below) | ✅ Partly — Chess already has it ([`src/lib/chess-appearance.ts`](../src/lib/chess-appearance.ts): 8 boards, 6 piece sets) |
+**Free tier gets:** Default + **2–3 room themes** (e.g. Default, Neon, Retro). Clean,
+good-looking — never degraded to push sales.
 
-So **"all games can be themed" is true** — via room themes (layer 1). On top of that, the
-games with a physical surface *also* get skins (layer 2). The infrastructure for both
-already exists once in the codebase, which means new themes/skins are mostly **art + a
-catalogue entry**, not new engineering.
+**Paid tier gets:** Everything else — premium evergreen themes + all seasonal drops +
+component skins + profile/tournament cosmetics.
 
-### Which games can get component skins (layer 2)
+### Who sees what (player-owned, never host-gated)
 
-Pulled from each game's actual render code. "Surface" = it draws a board/cards/dice we can
-re-skin without touching any rules.
+| Kind | Who sees it | How it renders |
+|------|-------------|----------------|
+| **Board / surface art** | You see your own | Local per viewer (like chess today) |
+| **Your piece / token / card-back** | Everyone sees yours | Synced `skin_id` per player in game record |
+| **Room theme** | Everyone in the room sees the **host's** room theme | Host picks; free hosts use free themes only |
+| **Profile frame / trophy border** | Everyone on leaderboards & lobby | Synced on profile |
 
-| Game | Board art — *you see your own* | Your piece / identity — *everyone sees yours* |
-|------|-------------------------------|-----------------------------------------------|
-| **Monopoly** | Board | Token |
-| **Ludo** | Board | Tokens |
-| **Snake & Ladder** | Board | Token |
-| **Scrabble** | Board | Tile/rack style |
-| **Bingo** | Card backdrop | Dauber / ball style |
-| **Whot** | Table felt | Card-back |
-| **Crazy Eights** | Table felt | Card-back |
-| **Tic-Tac-Toe** | Board | Your mark (X/O style) |
-| **Chess** | Board (already shipped) | Piece set (already shipped) |
-| **Sudoku** | Grid theme | — (solo surface) |
-| **Yahtzee** | — | Your dice |
+> **Room themes are the one host-visible cosmetic.** A host buys premium themes to style
+> their game night. Players buy skins and frames for themselves. Neither gates play.
 
-Everything **not** on this list (Trivia, Two Truths, Describe It, Codewords, Word Hunt,
-NPAT, Most Likely To, Never Have I Ever, Would You Rather, This or That, Who Said This,
-Pick a Number, Hot Seat, Anonymous Messages, Anime Quotes, polls, etc.) has no physical
-surface, so it monetizes through **room themes (layer 1) only** — which is plenty, because
-the room theme is what everyone in the lobby sees.
+### Seasonal / topical drops
 
-### Who sees what — how skins resolve (the key design rule)
+Limited-time themes and skins tied to cultural moments. **Inspired-by styling only — no
+licensed IP.**
 
-**Skins are always owned by the *player*, never by the host.** This is the most important
-rule in the whole cosmetics system — it's what makes a skin worth buying even when you're
-not the one hosting. A shared board is a *single object* everyone looks at, so "the host's
-skin wins" would mean a non-host buyer never sees what they paid for. We avoid that entirely
-by splitting every cosmetic into two kinds, **neither host-gated**:
+- **🇳🇬 Nigeria-first (our edge):** Detty December, Independence Day (Oct 1), BBNaija
+  season, Afrobeats festival moments, campus week vibes.
+- **🌍 Global:** Halloween, Christmas, Valentine's, back-to-school — generic festive styling.
 
-| Kind | Who sees it | How it renders | Sells on |
-|------|-------------|----------------|----------|
-| **Board / surface art** | **You see your own** | Rendered **locally per viewer** — game *state* is shared, the decorative art is not. Exactly how [`chess-appearance.ts`](../src/lib/chess-appearance.ts) already works ("opponents are unaffected"). | Comfort / self-expression |
-| **Your piece / token / card-back** | **Everyone sees yours** | A small "skin id" per player synced in the game record; every client renders *your* piece as you chose. It represents **you** at the table. | Status / identity |
+Urgency converts: *"Available until Jan 5"* beats an always-on store item.
 
-So whether or not you host:
+**What a single drop contains** — usually 3–4 items, sold **à la carte or as a pack**:
 
-- Buy a **Monopoly board skin** → *you* see your board every game (others see their own). No host dependency.
-- Buy a **gold token** → *everyone* sees your token is gold, every game, because it's your identity.
+| Slot | What it is | Typical price (NGN) |
+|------|------------|--------------------:|
+| 1 | Room theme (host-visible) | ₦600–800 |
+| 2 | Component skin (player token / card-back / dice) | ₦400–500 |
+| 3 | Profile frame | ₦400–500 |
+| 4 | Optional extra (tournament podium, streak flame) | ₦300–500 |
+| **Pack** | All items in that drop bundled | ~15–20% off vs buying separately |
 
-**There is no skin that only works when you host.** That scenario — the thing that would
-stop a player buying — simply doesn't exist under this model. Chess and Sudoku aren't
-special; they're just the first games that already render "you see your own." Every game
-works the same way.
+Items are also listed individually in the shop during the drop window — nobody is forced to
+buy the full pack.
 
-> **Technical split (falls out cleanly):**
-> - *Board art* = purely **local**, no sync needed (localStorage, like chess today). Cheap.
-> - *Your piece/token* = one **synced skin-id per player** in the game record so everyone
->   can render it. Light.
+### Cosmetics catalogue (launch → grow)
 
-### The hard line: cosmetic, never content
+| Category | Examples | Price (NGN) |
+|----------|----------|-------------|
+| Room theme (evergreen) | Elegant, Tropical, Midnight Lagos | ₦400–600 |
+| Room theme (seasonal drop) | Detty December, Spooky Season | ₦600–1,200 |
+| Component skin | Chess set, Whot card-back, Ludo tokens | ₦300–600 |
+| Profile frame | Bronze/Silver/Gold/Platinum borders | ₦400–800 |
+| Trophy showcase | Animated border when viewing your Platinum | ₦600–1,000 |
+| Tournament podium | Winner's stand styling after a tournament | ₦500–800 |
+| Streak flame style | Custom 🔥 animation on profile | ₦300 (later) |
+| Bundle / pack | "Festive: room + tokens + frame" | ₦1,000–1,500 (small discount) |
 
-A skin may only change **colour, art, and style**. The moment a "skin" changes a **label,
-layout, or meaning** — e.g. a Monopoly board with renamed streets, or different tile values —
-that is **content, not cosmetic**: it's part of the game, must be shared by everyone, and
-can't be a per-player look. Our chess code already enforces exactly this boundary ("never
-touches game state"). Keep it everywhere — it's also what keeps cosmetics safely on the
-right side of the **never pay-for-power** rule.
+- **No virtual currency at launch.** Direct NGN/USD checkout via Paystack/Stripe.
+- **Volume, not whales.** Target: many accounts each buying 1–3 items per year.
 
-### Seasonal / topical drops — the "Wednesday skin" idea
+---
 
-**Yes — we should do this, and it's one of the best ideas on the table.** When the
-*Wednesday* show blew up, Fortnite shipped a Wednesday skin and rode the wave. Same play
-for us: a **limited-time themed skin/room-theme tied to whatever's hot that month**, that
-people unlock while it's available.
+## Tournaments — free to play, monetize around the edges
 
-Why it works especially well here:
+Tournaments are **already shipped** (bracket & head-to-head across 13 competitive game types).
+They are a retention and social engine, not a paywall.
 
-- **Urgency drives the impulse buy.** "Available this month only" converts far better than
-  an always-on store item. It's the same psychology as add-time, applied to cosmetics.
-- **It rides culture for free marketing.** A drop timed to a trending moment is its own ad.
-- **Two flavours — and we should do both:**
-  - **🌍 Global moments:** a hit show/movie launch (legally: *inspired-by* style, not
-    licensed IP), Halloween, Christmas, Valentine's, New Year.
-  - **🇳🇬 Local / Nigerian moments:** Detty December, Independence Day (Oct 1), BBNaija
-    season, a big Afrobeats/AMVCA moment. **This is our edge** — global apps won't make a
-    Naija-specific drop; we will, and our core community will feel seen. As we expand
-    abroad, we add region-specific drops per market.
-- **Mechanically it's the same engine as a normal skin** — just time-boxed availability.
-  No new tech beyond a "available from/until" window on a cosmetic.
+### Free (everyone)
 
-> **Important — keep drops cosmetic and inspired-by, never licensed IP.** We don't pay for
-> or claim official movie/brand licenses. A drop is "spooky season" or "festive" styling,
-> not a trademarked character. Cosmetic only, no gameplay change, same as every other skin.
+- Create and join tournaments
+- Running leaderboard with placement points
+- Up to **5 games** in a pre-planned playlist
+- Default placement points `[10, 7, 5, 3, 2, 1]`
+- Share tournament code via WhatsApp
 
-### Who can buy cosmetics — players too, not just hosts
+### Pro (host utility)
 
-This is the big unlock for sustainability. The $2 utility upgrade is **host-only** (only a
-host feels the limits). But cosmetics have **no reason to be host-only** — a *player* wants
-their own chess set or a cool token just as much. And selling a player an optional skin
-doesn't gate play (default look stays free), so it doesn't break "never charge to play."
+- **Unlimited games** in a tournament playlist
+- **Custom placement-points** array
+- **Vanity tournament code**
+- **2 concurrent** rooms/tournaments (vs 1 free)
+- Tournament history persisted on host profile (Phase 2)
 
-> **Effect:** the paying base goes from *"1 host per room"* to *"potentially everyone in
-> the room."* That's the single biggest lever for the app sustaining itself. The only
-> requirement: a player buying a cosmetic needs an (optional, opt-in) account — they make
-> one only when they want to buy.
+### Cosmetics (any account)
 
-### Cosmetics pricing
+- Tournament **bracket theme** (visual styling of the standings screen)
+- **Winner podium** art shown on the final leaderboard
+- **Champion frame** on profile for 30 days after winning a tournament (cosmetic, not power)
 
-Same impulse logic as the unlock — **cheaper, because there are more of them**:
+### Trophies (earned, free)
 
-- **Per item: a snack price.** Roughly **$0.50–$1.50 / ₦300–₦800** per skin or theme.
-  Cheap enough to tap without thinking.
-- **Bundles / packs:** a themed bundle (e.g. "Festive pack: board + tokens + room theme")
-  at a small discount to lift basket size.
-- **Seasonal drops** can sit slightly higher than evergreen skins because scarcity justifies
-  it — but still impulse territory.
-- **Volume, not whales** (see the Nigeria note in the strategy discussion): the model is
-  *many people buying cheap cosmetics*, which is exactly what a price-sensitive,
-  Nigeria-first base supports. The same catalogue earns *more* per user as we expand abroad.
-- **No virtual currency / coins at launch** — sell items directly for money. Coins add
-  friction and only pay off at large scale; revisit only if volume gets huge.
+Add tournament trophies to the catalog ([`trophies-and-streaks.md`](./trophies-and-streaks.md)):
 
-### Cosmetics guardrails
+| Trophy | Tier | Criteria |
+|--------|------|----------|
+| First Tournament Win | 🥉 | Win a tournament |
+| Tournament Regular | 🥈 | Play 10 tournament games |
+| Game Night Host | 🥈 | Host 5 tournaments |
+| Triple Crown | 🥇 | Win tournaments in 3 different game types |
+| **Tournament Master** | 🏆 | Platinum (all above) |
 
-- **Cosmetic only — never pay-for-power.** A skin never changes a rule, a score, or an odds.
-- **Never make the default *worse* to push skins.** Free players keep a clean, good-looking
-  default; cosmetics are *extra* on top, never a downgrade of what's free today.
-- **Never gate language / accessibility as "cosmetic."** The Scrabble language editions are
-  accessibility, not skins — they stay free.
-- **No licensed IP.** Drops are *inspired-by* styling, not trademarked characters.
+Trophy unlock → account signup prompt → cosmetic shop exposure. **Never sell tournament
+wins or points.**
+
+---
+
+## Trophies & streaks — retention, not revenue
+
+Full spec: [`trophies-and-streaks.md`](./trophies-and-streaks.md).
+
+**Hard rules:**
+
+- Trophies and streak progress are **earned by playing, never purchased.**
+- Base streak forgiveness (freezes) stays **free** — punishing daily players kills retention.
+- Optional **extra streak freeze** may be sold later as a ₦300 convenience cosmetic. Never
+  required to maintain a streak.
+- **Profile frames tied to trophy tier** (e.g. a Gold-border frame) are cosmetics — you
+  still have to *earn* the trophy; the frame is optional flair.
+
+**How trophies feed revenue:**
+
+1. Guest earns a trophy → prompt to save → creates account.
+2. Account sees cosmetic shop on profile.
+3. Player buys a frame to show off their Platinum.
+4. Friends see it in the next game → social proof → more cosmetic impressions.
+
+---
+
+## Clubs (planned)
+
+Persistent named groups for recurring teams. Spec in [`account-tiers.md`](./account-tiers.md).
+
+| Capability | Tier |
+|------------|------|
+| Join a club | Free account |
+| Create a club (≤ 20 members) | Free account |
+| Club crest / banner | Cosmetic purchase |
+| Rosters > 20, vanity club code, seasons/leagues | Pro or future Club+ (later) |
+
+Clubs move the community off WhatsApp into FateRound. Monetize **crests and seasons**, not
+membership, until clubs are sticky.
 
 ---
 
 ## Player caps — Free default vs. Pro ceiling
 
-These are the **real numbers** from `src/lib/game-limits.ts`. "Free default" is what a
-room is created with today; "Pro ceiling" is the game's hard `max`.
+From `src/lib/game-limits.ts`. Free uses `default`; Pro uses `max`.
 
 | Game | Free default | Pro ceiling | Pro gain |
 |------|:---:|:---:|:---:|
@@ -261,374 +295,387 @@ room is created with today; "Pro ceiling" is the game's hard `max`.
 | Trivia | 30 | 40 | **+10** |
 | Describe It | 12 | 20 | **+8** |
 | Snake & Ladder | 4 | 6 | **+2** |
-| Crazy Eights | 6 | 6 | — |
-| Anonymous Messages | 20 | 20 | — |
-| I Call On (NPAT) | 20 | 20 | — |
-| Word Hunt | 20 | 20 | — |
-| Sudoku | 20 | 20 | — |
-| Monopoly | 6 | 6 | — *(fixed by rules)* |
-| Whot | 6 | 6 | — *(fixed)* |
-| Yahtzee | 6 | 6 | — *(fixed)* |
-| Ludo | 4 | 4 | — *(fixed)* |
-| Scrabble | 4 | 4 | — *(fixed)* |
-| Chess | 2 | 2 | — *(fixed)* |
-| Checkers | 2 | 2 | — *(fixed)* |
-| Tic-Tac-Toe | 2 | 2 | — *(fixed)* |
+| Board games (Monopoly, Ludo, Chess, etc.) | rules cap | rules cap | — |
 
-### ⚠️ Important design note
+**Honest note:** cap raises only matter for ~6 party games. For board games, Pro sells
+**add-time, control, and tournaments** — not headcount.
 
-**"Raise the player cap" only helps 6 games** with the current numbers (the ones with a
-gain above). Board games like Monopoly, Ludo, and Chess are capped by their own rules — Pro
-can't add a 7th Monopoly player. For those games the real Pro lever is **time, control, and
-content**, not headcount.
-
-Two ways to do the capacity perk:
-
-- **Option A — reuse `max` (✅ DECIDED for launch):** Free uses `default`, Pro uses the
-  existing `max`. Helps 6 games, modest gains, but **zero new schema** — the `max` ceiling
-  already exists and is already enforced server-side in `game-limits.ts`. Ship this first.
-- **Option B — separate `proMax` (later upsell lever):** Introduce a higher Pro ceiling per
-  game (e.g. Bingo 20→50, Trivia 30→60, Two Truths 20→60) above today's `max`. Stronger
-  headline ("up to 60 players") but needs a new `proMax` field and a bump to
-  `GAME_LIMIT_ABSOLUTE_MAX` (currently 100). Hold for after launch — it's a knob we can turn
-  up later to make Pro feel even better without re-architecting anything.
-
-**Decision:** launch with **Option A** (reuse `max`). It's the fastest path and the
-add-time flagships + skins carry more of the "worth it" weight than raw player count anyway.
+**Decision:** launch with **Option A** (Pro reuses existing `max`). Option B (`proMax` field
+above today's `max`) is a later upsell knob.
 
 ---
 
-## Monopoly deep-dive (the flagship Pro game)
+## Per-game Pro hooks (utility only — skins are cosmetics)
 
-Monopoly already has the richest host controls in the codebase, which makes it the best
-showcase for Pro. Current constants (`src/lib/monopoly.ts`):
+| Game | Pro hook (utility) | Monetize visually via |
+|------|-------------------|----------------------|
+| **Monopoly** | Add-time, 4-hr length, house rules | Board + token skins (cosmetic) |
+| **Scrabble** | Time-extension mid-match | Board + tile skins (cosmetic) |
+| **Whot** | Custom house-rule variants | Card-back skins (cosmetic) |
+| **Trivia** | Rounds capped ~15 free → 25 Pro | Room themes (cosmetic) |
+| **Describe It** | 4 teams + 10 rounds | Room themes (cosmetic) |
+| **Tournaments** | Unlimited playlist, custom points | Bracket + podium (cosmetic) |
+| **Chess** | Custom clocks (Phase 3) | Board + piece sets (cosmetic) |
 
-- **Per-turn timer:** off / 30 / 45 / 60 / 90 seconds.
-- **Game length:** no limit / 15 / 30 / 45 min / 1 / 1.5 / 2 hrs.
-- **Mid-game add-time ceiling:** 4 hours.
-
-Recommended Pro vs. Free split for Monopoly:
-
-| Monopoly control | Free | Pro |
-|---|:---:|:---:|
-| Set per-turn timer | ✅ | ✅ |
-| Game-length presets | 🔸 up to 2 hrs | ✅ up to 4 hrs |
-| **Add time mid-game** (the headline ask) | ⛔ | ✅ |
-| Custom starting balance / house rules | ⛔ | ✅ |
-| Pause / resume game | 🔸 | ✅ |
-
-"Add time to a Monopoly game" is exactly the kind of small, emotional, in-the-moment ask
-that converts well — the host is mid-game, people are having fun, and one tap + a couple of
-dollars keeps it going.
-
----
-
-## Per-game Pro hooks
-
-Monopoly gets the deep-dive above because it has the richest controls, but it's **not the
-only game with game-specific Pro levers.** Most games map cleanly to the generic rows in the
-master list (timers, round counts, imports), but a few have unique hooks worth gating. This
-table is the full per-game view — pulled from each game's `src/lib/<game>.ts` constants.
-
-| Game | Game-specific options that exist today | Recommended Pro hook |
-|------|----------------------------------------|----------------------|
-| **Monopoly** | turn timer, game length (→2 hr), **add-time (→4 hr)**, house rules | Add-time, 4-hr length, custom rules — *flagship* · **custom board skins** |
-| **Scrabble** | turn timer, game length (→2 hr), **time-extension (10/15/30 min)** | **Extend game time** mid-match — *second flagship* · **custom board + tile skins** |
-| **Whot** | game length, variant toggles: pick-3, whot-cards, number-calls, pick-2 stacking | Unlock **custom house-rule variants** · **custom card-deck skins** |
-| **Trivia** | rounds **3–25** (default 10), timer 10–60s | Free capped at ~15 rounds; Pro full **25** |
-| **Describe It** | teams **2–4**, rounds **2–10**, turn timer 60–120s | Pro unlocks **4 teams + 10 rounds** |
-| **NPAT (I Call On)** | answer timer, marking timer, game length (→1 hr) | Pro unlocks **longer sessions + custom timers** |
-| **Bingo** | call mode (auto/manual), call interval 3–15s | Pro unlocks **manual call mode + fast intervals** · **custom card/ball skins** |
-| **Chess** | time control (off / 3 / 5 / 10 min) | Pro unlocks **longer clocks / custom time** · **custom board + piece sets** |
-| **Two Truths** | timer 10–90s | Generic (custom timer) |
-| **Word Hunt** | timer 60–300s | Generic (custom timer) |
-| **Codewords** | timer 30–120s | Generic (custom timer) |
-| **Sudoku** | session duration (default 15 min) | Pro unlocks **longer / custom duration** · **custom board themes** |
-| **Ludo** | host mode only | **Custom board + token skins** (cap is fixed at 4) |
-| **Yahtzee** | minimal config | Generic |
-| **Tic-Tac-Toe** | minimal config | Generic |
-| **Anonymous Messages** | room-level only | Generic |
-
-**Takeaways:**
-
-- **Two flagships, not one.** Scrabble's time-extension is the same emotional "keep the
-  game going" moment as Monopoly's add-time — lead with both.
-- **Whot is the only game with true variant toggles** (house rules). That's a distinctive
-  "build your own game" Pro angle no other game offers.
-- **Round/team counts** (Trivia, Describe It) are the cleanest content ceilings to gate —
-  free gets a taste, Pro gets the full range.
-- Everything else genuinely is generic — gating "custom timers" once (row 11) covers Two
-  Truths, Word Hunt, Codewords, and the timer side of every other timed game at once.
-- **Language / localization stays FREE — never gate it.** Scrabble now ships English,
-  French, German & Spanish editions ([PR #116](https://github.com/chinazaaa/fateround/pull/116)),
-  each with its own tiles, scoring, and dictionary, chosen from the lobby picker. These are
-  **accessibility, not premium content** — a host should never have to pay to play in their
-  own language, and keeping it free grows the player base (more languages = more people who
-  can use the app at all). Monetize Scrabble through time-extension + skins instead. The only
-  case for gating would be a long tail of dozens of niche editions later — major world
-  languages stay free.
-- **Cosmetic board/piece skins are a strong, low-risk Pro perk.** Chess (pieces + board),
-  Scrabble (tiles + board), Ludo (tokens + board), Whot (card deck), Sudoku (board theme),
-  Monopoly (board), and Bingo (cards/balls) all render their boards as components today, so
-  themed skins are a purely visual swap — feasible for all seven, no gameplay impact, and
-  they don't touch the "never make the free room worse" guardrail (free keeps the standard
-  look; Pro adds extra skins on top). Bundle them under one "Game Skins" Pro perk (row 19b)
-  rather than gating each separately. **Main cost is art/asset design, not code.**
+**Language editions stay free forever** (Scrabble EN/FR/DE/ES, etc.) — accessibility, not
+premium.
 
 ---
 
 ## Pricing
 
-**Recommendation: keep it cheap and impulse-priced — $2–3 one-time, with regional pricing.**
+### Pro Host — one-time
 
-These are casual party games, not a productivity tool. The price has to be low enough that
-a host taps "buy" mid-game without thinking. Anything that makes them pause to weigh it is
-too high.
+| Region | Currency | Price | Notes |
+|--------|----------|------:|-------|
+| 🌍 International | USD | **$2.00** | Anchor |
+| 🇳🇬 Nigeria | NGN | **₦1,000** | Primary market — one snack/data-bundle impulse |
+| 🇬🇭 Ghana | GHS | **GH₵15** | Below FX on purpose |
+| 🇰🇪 Kenya | KES | **KSh 200** | Round, impulse |
+| 🇿🇦 South Africa | ZAR | **R30** | Round, impulse |
 
-- **Global anchor price:** one-time **$2.99** (or just stick with **$2** for a rounder,
-  even-easier number — both are fine; $2 is the safer impulse floor).
-- **Regional pricing matters.** $2.99 is trivial in the US but meaningful in Naira. Charge a
-  **locally-calibrated equivalent** per region rather than a flat USD figure — e.g. a
-  ₦-priced tier via Paystack that *feels* like an impulse buy locally, not a direct FX
-  conversion. Paystack/Stripe both support per-currency pricing.
-- **One-time, per account.** Tied to the host's account, unlocked forever once paid.
-- **No per-game purchases or consumables at launch.** One unlock, everything on. Fewer
-  decisions for the buyer = higher conversion.
-- **Why not higher?** At $2–3 the decision is "sure, why not." At $5+ people start asking
-  "is this worth it" — and for party games the honest answer is often no. Volume of cheap
-  one-time unlocks beats a higher price that converts a fraction as many hosts.
-- **Later (optional):** a higher one-time "Founder / Lifetime+" tier for superfans, or a
-  cheap recurring option *in addition to* (never replacing) the one-time unlock. Keep it
-  simple at launch.
+**Payment:** Paystack (Nigeria/Africa — cards, bank transfer, USSD where supported) +
+Stripe (international). Region-routed checkout.
 
-> **My pick:** launch at **$2 flat globally**, with a hand-set local price for Nigeria/Africa
-> via Paystack. Round, friendly, unmistakably an impulse buy. Raise to $2.99 later only if
-> conversion is strong and you want more margin.
+### Cosmetics — per item
 
----
+| Region | Range |
+|--------|-------|
+| 🇳🇬 Nigeria | **₦200–1,200** per item; bundles **₦800–1,500** |
+| 🌍 International | **$0.49–2.99** per item |
 
-## Launch set vs. roadmap
+### Season Pass (Phase 2+, optional)
 
-**Every feature row is assigned to a phase below — nothing is left unscheduled.**
-Don't build it all at once; ship in this order.
+**₦2,500 / quarter** — all cosmetic **drops** in that calendar quarter, bundled at ~30% off
+vs buying each drop's pack separately. Opt-in, not required to play. Better fit for Nigeria
+than a monthly subscription.
 
-### Free baseline — already live, no work (rows 1–4, 8)
-Joining/playing, creating rooms, all game modes, real-time sync/history/leaderboards, and
-the Monopoly per-turn timer already exist and stay free. These are the "✅ / ✅" rows in the
-master list — listed here only so the coverage is complete.
+**Includes:** every seasonal drop pack in the quarter (room theme + skins + frames in each
+drop). **Excludes:** Pro Host, evergreen shop items, Founder cosmetics, trophies/streaks.
 
-### Phase 0 — Foundations (no perks yet, but nothing ships without these)
-- **Accounts** (Supabase Auth + `profiles` table with `is_pro`) — see prerequisite above.
-- **Payments**: Stripe (international) + Paystack (Africa), region-routed checkout.
-- **Webhook** to flip `is_pro`, and the server-side gating helper every perk will call.
+See [Worked example — Q4 2026](#worked-example--q4-2026-octdec) below for exact items and
+math.
 
-### Phase 1 — Launch (smallest set that's clearly worth $2)
-- Raised player caps — **Option A, reuse `max`** — row 5
-- Multiple concurrent rooms (1 → 3) — row 6
-- **Both add-time flagships:** Monopoly add-time + 4-hr length (rows 9, 10), Scrabble time-extension
-- Higher round/team counts (Trivia 25, Describe It 10) — content side of rows 5/16-ish
-- Custom room themes unlocked — row 19
-- Pro badge — row 20
+### Worked example — Q4 2026 (Oct–Dec)
 
-### Phase 2 — Fast follows
-- Spectator slots — row 7
-- Custom timers across timed games — row 11 (covers Two Truths, Word Hunt, Codewords, NPAT)
-- Whot custom house-rule variants (pick-3 / pick-2 stacking / etc.)
-- Larger CSV imports — row 14
-- Save & reuse question packs / player lists — row 15
-- Vanity room codes — row 18
-- **Game Skins** (Chess, Scrabble, Ludo, Whot, Sudoku, Monopoly, Bingo) — row 19b
-- Remove "Made with Fate Round" footer — row 21
+A full quarter calendar with **exact items, IDs, prices, and Season Pass math.** Use this
+as the template for every future quarter.
 
-### Phase 3 — When the underlying features exist
-- Monopoly house rules / custom starting balance — row 12
-- Full force-skip / kick host controls — row 13
-- AI-generated questions — row 16
-- Custom voting categories / game modes — row 17
-- Smaller per-game hooks: Bingo manual call mode, Chess custom clocks, Sudoku custom duration
-- Early access to new modes — row 22
-- Priority support — row 23
+#### Quarter overview
 
-> **Coverage check:** rows 1–4 & 8 = free baseline; 5, 6, 9, 10, 19, 20 = Phase 1; 7, 11,
-> 14, 15, 18, 19b, 21 = Phase 2; 12, 13, 16, 17, 22, 23 = Phase 3. All 23 (+19b) accounted
-> for, on top of Phase 0 foundations.
+| Drop | Window (WAT) | Cultural hook | Pack price |
+|------|----------------|---------------|----------:|
+| **Independence '26** | 28 Sep – 5 Oct | Nigeria @ 66 | ₦1,000 |
+| **Spooky Season** | 20 Oct – 2 Nov | Halloween / Detty pre-party | ₦900 |
+| **Detty December '26** | 1 Dec – 5 Jan 2027 | Detty December / NYE | ₦1,200 |
+| **Q4 Season Pass** | 28 Sep – 5 Jan | All three packs | **₦2,500** |
+
+Buying all three packs separately: **₦3,100** → Pass saves **₦600 (~19%)**.
 
 ---
 
-## ⚠️ Prerequisite: there are no accounts yet (Phase 0)
+#### Drop 1 — Independence '26 🇳🇬
 
-**This is the single biggest dependency, so it's called out first.**
+*Available 28 Sep – 5 Oct 2026 · inspired-by green-white styling, no official coat of arms
+or government marks*
 
-Today the app has **no user accounts at all.** Every game is owned by a `host_token` — a
-random string kept in the browser's `localStorage` and checked server-side for host actions.
-There is no users / auth / profiles table anywhere in the schema.
+| ID | Item | Type | Solo price |
+|----|------|------|----------:|
+| `drop-q4-ind-room` | **Green & Gold Room** — white lobby, green accents, gold trim | Room theme | ₦700 |
+| `drop-q4-ind-ludo` | **Eagle Tokens** — gold Ludo pieces with green base | Component skin (Ludo) | ₦450 |
+| `drop-q4-ind-frame` | **Independence Frame '26** — green ring, small 🇳🇬 chip (generic) | Profile frame | ₦450 |
+| `drop-q4-ind-pack` | **Independence Pack** — all three above | Bundle | **₦1,000** |
 
-That model can't hold a paid "forever" unlock:
+**Shop copy:** *"Celebrate the season — available one week only."*
 
-- A `localStorage` token is **per-device and per-browser**. Clear the cache, switch phones,
-  or use a different browser and it's gone — along with any Pro status attached to it.
-- You can't honestly sell "Pro forever" against something that disappears when someone
-  reinstalls the app or logs in from a friend's phone.
-
-**So real accounts are a hard prerequisite for the entire revenue model.** Nothing else in
-this doc can ship without it. Recommended approach:
-
-- Use **Supabase Auth** (it's already the backend) — email magic-link + Google sign-in is
-  enough. Low friction, no passwords to manage.
-- Add a `profiles` (or `hosts`) table keyed to the auth user, carrying the `is_pro` flag.
-- **Keep playing — and hosting — 100% anonymous.** Players join with just a name and a room
-  code, no account ever. **Hosts can also create rooms, host games, and use every free
-  feature with no account at all** — exactly as they do today. Signing up is **only** ever
-  prompted at the moment a host reaches for a *Pro* feature; that's when we say "create a
-  free account to unlock Pro." Free hosting never requires login.
-- **Migration nicety:** let an existing anonymous host "claim" their current device's
-  `host_token` by signing up, so they don't lose their active rooms.
-
-This is Phase 0 — build it before any Pro feature.
+**Who buys what:** hosts lean room theme; players lean frame + tokens. Pack is for crews
+doing a game night that week.
 
 ---
 
-## How a host becomes Pro (flow)
+#### Drop 2 — Spooky Season 🎃
 
-1. **Host has (or creates) an account.** First time they want Pro, they sign in / sign up
-   (email magic-link or Google — one tap). Playing *and* free hosting never require this —
-   the account prompt only ever appears at the point of unlocking a Pro feature.
-2. Free host hits a Pro-gated action (raise the cap, add Monopoly time, open a 2nd room) —
-   or visits `/upgrade` directly.
-3. Friendly upgrade prompt: *"Unlock Pro Host — one-time $2."*
-4. Checkout, routed by region: **Stripe** for international cards, **Paystack** for
-   Nigeria/Africa.
-5. A signature-verified webhook flips the account's `is_pro` flag on successful payment.
-6. Pro perks unlock immediately, everywhere they sign in, forever.
+*Available 20 Oct – 2 Nov 2026 · generic spooky styling, no branded characters*
 
-The upgrade prompt lives both inline (when they hit a wall) and on a dedicated `/upgrade`
-page so hosts can buy proactively. Because Pro is tied to the **account** (not a device),
-it follows them across every browser and phone they sign in on.
+| ID | Item | Type | Solo price |
+|----|------|------|----------:|
+| `drop-q4-spooky-room` | **Midnight Manor** — deep purple lobby, faint lantern glow | Room theme | ₦650 |
+| `drop-q4-spooky-whot` | **Phantom Deck** — dark card-back with silver edge | Component skin (Whot) | ₦400 |
+| `drop-q4-spooky-frame` | **Spooky Frame** — purple border, subtle bat silhouette | Profile frame | ₦400 |
+| `drop-q4-spooky-podium` | **Haunted Podium** — tournament winner stand styling | Tournament cosmetic | ₦350 |
+| `drop-q4-spooky-pack` | **Spooky Pack** — room + deck + frame + podium | Bundle | **₦900** |
+
+**Shop copy:** *"Two weeks only — gone after Nov 2."*
+
+**Note:** this drop adds a **podium** (4 items) because Halloween overlaps with office
+tournament season — hosts running brackets are a natural buyer.
 
 ---
 
-## Where Pro plugs into the code (high level)
+#### Drop 3 — Detty December '26 🎄
 
-Orientation for when we build it — not a final design.
+*Available 1 Dec 2026 – 5 Jan 2027 · the flagship Q4 drop — longest window, highest price*
 
-- **Accounts first (Phase 0).** There is no user table today — hosts are just a
-  `localStorage` `host_token`. Add Supabase Auth + a `profiles` table carrying `is_pro`; that
-  flag becomes the single source of truth for every gate. See the prerequisite section above.
-- **Limits already exist.** `src/lib/game-limits.ts` defines per-game `min/max/default` and
-  a `GAME_LIMIT_ABSOLUTE_MAX` of 100, with admin overrides cached in `game_player_limits`.
-  Pro caps slot in right here (Option A reuses `max`; Option B adds a `proMax`).
-- **Monopoly controls exist.** `src/lib/monopoly.ts` already has timer/duration/add-time
-  constants — gate the upper options behind `is_pro`.
-- **Server-side gating.** Every Pro action (room-count, cap override, add-time, large
-  import) must be checked in the **API route / server**, never just hidden in the UI. Hosts
-  can't be trusted to self-report.
-- **Payments + webhook.** Payment provider handles checkout; a signature-verified webhook
-  flips `is_pro` to true on success.
-- **UI gates.** Free hosts see locked perks with an upgrade nudge; Pro hosts see them
-  unlocked. Everything reads off the one account flag.
+| ID | Item | Type | Solo price |
+|----|------|------|----------:|
+| `drop-q4-detty-room` | **Detty Nights** — Lagos nightlife palette, gold + neon accents | Room theme | ₦800 |
+| `drop-q4-detty-ludo` | **Detty Gold Tokens** — metallic gold Ludo pieces | Component skin (Ludo) | ₦500 |
+| `drop-q4-detty-dice` | **Champagne Dice** — gold Yahtzee dice with sparkle idle | Component skin (Yahtzee) | ₦450 |
+| `drop-q4-detty-frame` | **Detty '26 Frame** — gold ring, confetti accent | Profile frame | ₦500 |
+| `drop-q4-detty-podium` | **NYE Podium** — gold winner's stand for tournament finals | Tournament cosmetic | ₦450 |
+| `drop-q4-detty-pack` | **Detty December Pack** — all five above | Bundle | **₦1,200** |
+
+**Shop copy:** *"The Detty drop — Dec 1 to Jan 5. Your game night look for the holidays."*
+
+**Why the highest price:** longest availability, most items, peak usage (Dec game nights,
+NYE tournaments, homecoming crews). Still impulse territory — one snack run, not a grocery
+trip.
+
+**À la carte totals if bought separately:** ₦2,700 → pack saves **₦1,500 (~56%)** on the
+full set. Most people buy 1–2 items; the pack targets hosts doing a Detty game night.
+
+---
+
+#### Q4 2026 Season Pass
+
+| | |
+|---|---|
+| **Price** | **₦2,500** (one payment, covers 28 Sep – 5 Jan window) |
+| **You get** | Independence Pack + Spooky Pack + Detty Pack — all items, all drops |
+| **Separate total** | ₦1,000 + ₦900 + ₦1,200 = **₦3,100** |
+| **You save** | **₦600** |
+| **Who it's for** | Regular players who buy every drop; friend groups splitting cost |
+| **Who it's NOT for** | Someone who only wants Detty — buy that pack alone (₦1,200) |
+
+**Pass rules:**
+
+- Purchase anytime during the quarter; you receive **all drops immediately** (including
+  past drops still in-window — e.g. buy Pass on 1 Dec, you still get Independence if we
+  re-enable it as "legacy" is **not** automatic; only active-window drops count).
+- **Clarification for implementation:** on Pass purchase, grant every drop pack whose
+  `available_until` is still in the future at time of purchase. Drops whose window already
+  closed are **not** retroactively granted — buy early or buy à la carte.
+- Pass does **not** include Pro Host, evergreen themes, or Founder items.
+- Pass is **cosmetic only** — no gameplay, caps, or add-time.
+
+**International pricing (Q4 Pass):** **$4.99** (same ~20% savings vs $1.99 + $1.79 + $2.49
+drop packs).
+
+---
+
+#### Q4 marketing beats (free — drives shop impressions)
+
+| Date | Beat | Purpose |
+|------|------|---------|
+| 28 Sep | Independence drop live + push | First Q4 urgency |
+| 1 Oct | Independence last day | FOMO |
+| 20 Oct | Spooky drop live | Second beat |
+| 1 Dec | Detty drop live + Pass reminder | Flagship |
+| 26 Dec | "Detty week — 10 days left" | Mid-window nudge |
+| 2 Jan | "Last 3 days of Detty drop" | Final urgency |
+
+Trophy tie-in (free): platform trophy **"Detty Regular"** — play any game on 5 separate
+days in December. Drives return visits; frame is still sold separately.
+
+---
+
+#### 2027 calendar sketch (future quarters — not priced yet)
+
+| Quarter | Drops (draft) |
+|---------|----------------|
+| **Q1** | Valentine's · Easter / Eid (generic spring) |
+| **Q2** | Children's Day · Summer / Rainy season |
+| **Q3** | Back to School · BBNaija-inspired lounge |
+| **Q4** | Independence · Spooky · Detty (annual recurrence) |
+
+Annual drops (Independence, Detty) can return each year with a new year suffix (`'27`) so
+last year's cosmetics become **legacy** — collectors keep them; new players get fresh art.
+
+### Founder tier (optional, much later)
+
+**₦5,000–8,000 one-time** — Pro + exclusive Founder frame + early cosmetic drops. Limited
+quantity. **Do not promise "everything free forever"** — scope it to Pro utility + Founder
+cosmetics only.
+
+---
+
+## Honest unit economics (plan with eyes open)
+
+Illustrative monthly scenario — **verify with real metrics after launch:**
+
+| Assumption | Value |
+|------------|-------|
+| Monthly active users | 10,000 |
+| Account conversion (guest → account) | 25% → 2,500 accounts |
+| Pro conversion (of hosts, ~20% of MAU = 2,000 hosts) | 3% → 60 sales |
+| Pro revenue | 60 × ₦1,000 = **₦60,000** (~$40) one-time that month |
+| Cosmetic buyers (of accounts) | 8% → 200 buyers |
+| Avg cosmetic spend | ₦500 |
+| Cosmetic revenue | 200 × ₦500 = **₦100,000** (~$65) |
+
+**Takeaway:** Pro alone doesn't fund the product. Cosmetics + seasonal drops must work, which
+means **accounts + trophies + tournaments must ship first** (or alongside) the shop. LiveKit
+voice, Supabase, and art production have real costs — track CAC and conversion from day one.
+
+**Target metrics to prove the model:**
+
+- Guest → account conversion ≥ 20% (post-trophy prompt)
+- Account → cosmetic buyer ≥ 5% within 90 days
+- Host → Pro conversion ≥ 2% when hitting a gated action
+- Repeat cosmetic purchase ≥ 15% of buyers within 6 months
+
+---
+
+## Launch phases
+
+### Phase 0 — Foundations (block everything else)
+
+Aligned with [`trophies-and-streaks.md`](./trophies-and-streaks.md) §9:
+
+- Supabase Auth — **anonymous-first**, email OTP upgrade (not separate login/signup)
+- `profiles` table: `is_pro`, `is_anonymous`, trophy/streak fields
+- Stripe + Paystack checkout + webhooks (`is_pro`, `owned_cosmetics`)
+- Server-side `requirePro()` + `requireOwned(cosmeticId)` helpers
+- Anonymous host can claim `host_token` on signup
+
+### Phase 1 — First money (ship together, not Pro alone)
+
+**Pro (minimal, high-emotion):**
+
+- Monopoly + Scrabble add-time / long duration
+- Raised caps (Option A)
+- 2 concurrent rooms/tournaments
+- Pro badge
+- Tournament: unlimited playlist + custom placement points
+
+**Cosmetics (first shop — this is the engine):**
+
+- 2–3 **paid** room themes + keep 2–3 **free**
+- 1 **Naija seasonal drop** at launch (e.g. Detty December or a generic festive pack)
+- 1 component skin (Chess set — code already exists)
+- Profile frame (basic)
+
+**Retention (drives the shop):**
+
+- Trophies Phase 1 (top 5 games + platform set) — [`trophies-and-streaks.md`](./trophies-and-streaks.md)
+- Streaks + profile button
+- Post-win / post-trophy account prompts
+
+### Phase 2 — Expand
+
+- Vanity room/tournament codes
+- Spectator slots, custom timers, larger CSV imports
+- Save & reuse question packs
+- More component skins (Scrabble, Ludo, Whot, Monopoly, Bingo)
+- Tournament history on profile
+- Season Pass (if drop cadence is steady)
+- Clubs MVP (free, ≤20 members)
+
+### Phase 3 — Depth
+
+- Monopoly house rules, full kick/skip
+- AI-generated questions (Pro)
+- Club crests, seasons/leagues
+- Extra streak-freeze cosmetic (optional)
+- Founder tier (if demand exists)
+
+---
+
+## Prerequisite: accounts (Phase 0)
+
+Today there are **no user accounts** — only `host_token` in `localStorage`. You cannot sell
+"forever" against that.
+
+**Approach** (matches trophies spec):
+
+- `supabase.auth.signInAnonymously()` on first play — trophies attach immediately
+- Email + 6-digit OTP to upgrade anonymous → permanent (same `auth.uid()`, no progress loss)
+- **Playing and free hosting need no email.** Prompt only at earned value or purchase.
+- See [`trophies-and-streaks.md`](./trophies-and-streaks.md) §2 for merge logic and OTP rationale.
+
+---
+
+## Purchase flows
+
+### Pro Host
+
+1. Host hits a Pro gate (add-time, 2nd room, cap raise) or visits `/upgrade`
+2. If no account → email OTP signup (10 seconds)
+3. Checkout: **₦1,000** via Paystack (NG) or **$2** via Stripe
+4. Webhook sets `is_pro = true`
+5. Perk unlocks immediately, all devices
+
+### Cosmetics
+
+1. User opens shop from profile or post-game
+2. If guest → email OTP signup
+3. Tap item → checkout at listed price
+4. Webhook adds to `owned_cosmetics`
+5. Equip from profile or game appearance settings
+
+### Season drop
+
+Same as cosmetics, with `available_from` / `available_until` enforced server-side. Miss the
+window → gone (may return next year as a "legacy" drop at a premium).
+
+---
+
+## Where this plugs into the code
+
+| Area | File / pattern |
+|------|----------------|
+| Player limits | `src/lib/game-limits.ts` — Pro uses `max` |
+| Monopoly / Scrabble timers | `src/lib/monopoly.ts`, `src/lib/scrabble.ts` |
+| Tournaments | `src/lib/tournament-*`, `src/app/tournament/` |
+| Room themes (free vs paid) | `src/lib/themes.ts` — add `tier: 'free' \| 'paid'` |
+| Component skins | `src/lib/chess-appearance.ts` — extend pattern per game |
+| Trophies | `src/lib/trophies/` (to build) — award on `finish-game` |
+| Gating | `requirePro()` / `requireOwned()` in API routes — never UI-only |
+| Payments | Webhook routes under `src/app/api/billing/` |
 
 ### Build checklist
 
-- [ ] **Phase 0:** Supabase Auth + `profiles`/`hosts` table with `is_pro` flag (+ migration).
-- [ ] **Phase 0:** let anonymous hosts "claim" their `host_token` on sign-up (don't lose rooms).
-- [ ] **Phase 0:** Stripe + Paystack checkout, region-routed.
-- [ ] **Phase 0:** signature-verified webhook to set `is_pro` on payment success.
-- [ ] **Phase 0:** shared server-side `requirePro()` gating helper for every perk to call.
-- [ ] Caps via **Option A** (Pro reuses `max` in `game-limits.ts`) — no new schema.
-- [ ] Gate the Monopoly/Scrabble add-time + long-duration options behind `is_pro`.
-- [ ] Concurrent-room enforcement (count active rooms per account; free = 1, Pro = 3).
-- [ ] Upgrade prompt component + `/upgrade` page.
-- [ ] Pro badge in lobby / profile.
-- [ ] (Phase 2) Game Skins — needs art assets + a theme selector per game.
+- [ ] Phase 0: anonymous auth + `profiles` + `owned_cosmetics` table
+- [ ] Phase 0: Paystack + Stripe checkout + webhooks
+- [ ] Phase 0: `requirePro()` + `requireOwned()` server helpers
+- [ ] Phase 1: Gate add-time, caps, concurrent rooms/tournaments
+- [ ] Phase 1: Cosmetic shop + 3–5 launch items
+- [ ] Phase 1: Trophies + streaks + profile button
+- [ ] Phase 1: Upgrade prompt + `/upgrade` page
+- [ ] Phase 2: Component skins expansion + season pass
 
 ---
 
-## Guardrails / principles
+## Guardrails
 
-- **Never charge to *play*.** Joining and playing is free, permanently. The $2 unlock only
-  affects the host's powers; cosmetics are optional and never gate play.
-- **Cosmetic only — never pay-for-power.** No purchase (unlock or skin) ever buys a
-  gameplay advantage. Fair play is the whole reason friends show up.
-- **Never make a free room *worse* to push Pro.** We add ceilings for Pro; we don't degrade
-  today's free baseline.
-- **Never gate language / accessibility.** Localization (e.g. the French/German/Spanish
-  Scrabble editions) stays free — paying to play in your own language is the wrong line to
-  draw and shrinks the audience.
-- **Free hosting needs no account.** Accounts are only ever required to *buy or use* Pro,
-  never to host a normal free game.
+- **Never charge to play.** Joining, hosting free games, tournaments, earning trophies — free.
+- **Never pay-for-power.** Cosmetics and Pro convenience only.
+- **Never bundle cosmetics into Pro.** Pro = utility; shop = identity.
+- **Never sell trophies, streaks, or tournament points.**
+- **Never gate language / accessibility.**
+- **Never degrade the free default** to push sales.
 - **Gate on the server.** UI hiding is not security.
-- **Keep the buy simple.** One unlock, one price, everything on.
+- **No priority support at ₦1,000.** Help docs + community only.
 
 ---
 
 ## Decisions (resolved)
 
-| Question | Decision | Notes |
-|----------|----------|-------|
-| Launch price | **$2 flat globally**, locally-calibrated price for Africa | See [Regional pricing](#regional-pricing-starting-points) table below |
-| Player caps | **Option A — Pro reuses existing `max`** | No new schema; ship fast. Option B (`proMax`) later |
-| Payment provider | **Stripe (international) + Paystack (Africa)** | Region-routed checkout |
-| Concurrent rooms | **Free = 1, Pro = 3** | 3 is meaningful but abuse-resistant; can raise to 5 if hosts ask |
-| Accounts | **Required for Pro; Supabase Auth (Phase 0)** | Playing stays anonymous forever |
-| Phase-1 minimum | Caps + multi-room + both add-time flagships + themes + Pro badge | See below |
-| Early access to new games | **Yes, long-term (Phase 3)** | Standing Pro perk once we ship games regularly |
-| Founder / Lifetime+ tier | **Optional, later** | Premium one-time SKU for superfans; not at launch |
-| **Two revenue lines** | **$2 unlock (utility) + cosmetics (status), kept separate** | Cosmetics are NOT bundled into the unlock — they're the repeatable, long-term line |
-| **Cosmetics buyer** | **Hosts *and* players** (opt-in account to buy) | Unlock stays host-only; cosmetics open to everyone — biggest sustainability lever |
-| **Skin ownership scope** | **Player-owned, never host-owned** | Board art renders locally (you see your own); your piece/token syncs (everyone sees yours). No skin is host-gated, so a non-host buyer always sees what they paid for |
-| **Theming scope** | **Room themes = all games; component skins = surface games only** | Both already partly built (`themes.ts`, `chess-appearance.ts`) |
-| **Seasonal / topical drops** | **Yes — limited-time, inspired-by, global *and* Naija-local** | Same engine as skins + an availability window; urgency drives the buy |
-| **Virtual currency / coins** | **No at launch** — sell items directly | Coins add friction, only pay off at scale; revisit if volume is huge |
-| **Pay-for-power** | **Never** | Cosmetic only, forever — protects fair-play, the whole reason the app works |
-
-### Why these are the right Phase-1 minimum
-
-For $2 to *feel* worth it, the perks should match the moments a host actually feels
-constrained:
-
-- **Add-time (Monopoly + Scrabble)** — the highest-emotion conversion moment: mid-game,
-  everyone's having fun, one tap keeps it alive. This alone can justify the $2.
-- **Multiple rooms** — the host running back-to-back game nights hits this constantly.
-- **Raised caps** — the "we have one more friend who wants in" moment.
-- **Themes + Pro badge** — cheap to ship, give instant *visible* value so the purchase feels
-  real the second it completes.
-
-Everything heavier (skins art, AI questions, custom modes) is deliberately Phase 2/3 so
-launch isn't blocked on asset design or net-new features. **Game Skins are the most likely
-thing to pull forward into Phase 1** if you want a stronger visual hook — the only cost is
-art, the code wiring is trivial.
-
-### Regional pricing (starting points)
-
-Charge a **locally-calibrated impulse price**, not a raw FX conversion of $2. The numbers
-below are friendly round figures meant to *feel* like a snack/data-bundle impulse buy
-locally. **Verify against live FX at launch** — African rates move, so treat these as the
-intended price *feel*, not locked figures.
-
-| Region | Currency | Suggested price | Raw-FX of $2 (approx) | Why |
-|--------|----------|----------------:|----------------------:|-----|
-| 🌍 International | USD | **$2.00** | — | Global anchor |
-| 🇳🇬 Nigeria | NGN | **₦1,500** | ~₦3,000 | Below FX on purpose — keeps it a true impulse buy locally |
-| 🇬🇭 Ghana | GHS | **GH₵20** | ~GH₵25–30 | Round, snack-priced |
-| 🇰🇪 Kenya | KES | **KSh 250** | ~KSh 260 | Roughly at FX, clean number |
-| 🇿🇦 South Africa | ZAR | **R35** | ~R36 | Roughly at FX, clean number |
-
-**Note on Naira:** I priced it *below* a straight conversion deliberately — ₦3,000 starts to
-feel like a real purchase, while ₦1,500 stays in "sure, why not" territory and matches the
-impulse-buy goal. Paystack lets you set the NGN price directly, so it's not tied to the USD
-figure. Adjust if FX drifts hard.
-
-### Founder / Lifetime+ tier — long-term, optional
-
-A *higher-priced* one-time tier above the standard unlock, for superfans who want to pay
-more. E.g. a **launch-only "Founder" edition** ($10–15 one-time) that bundles all of Pro + a
-Founder badge + "everything we ever add to Pro, free forever" + early access. Same pay-once
-model, just a premium SKU. **Not needed at launch** — add it later as an upsell once there's
-a base of enthusiastic hosts. Limited-time framing ("Founder edition") creates urgency.
-
-### Early access to new games — long-term YES
-
-**Decision: yes, eventually.** Pro hosts get new game modes first (e.g. a 1–2 week head
-start) as a standing perk — it's a recurring reason to stay Pro and a natural reward. Not a
-Phase-1 priority (it only matters once we're shipping games at a steady cadence and have the
-ops to stage a gated rollout), so it stays in **Phase 3**, but the long-run answer is yes.
+| Question | Decision |
+|----------|----------|
+| Primary market | **Nigeria first** — price for impulse (₦1,000 Pro, ₦200–600 cosmetics) |
+| Pro price (NG) | **₦1,000** one-time |
+| Pro price (intl) | **$2** one-time |
+| Themes in Pro? | **No** — free set for everyone; premium themes are cosmetics |
+| Skins in Pro? | **No** — sold à la carte to any account |
+| Player caps | **Option A** — Pro reuses `max` |
+| Concurrent rooms | **Free = 1, Pro = 2** (3 later if safe) |
+| Payments | **Paystack (Africa) + Stripe (intl)** |
+| Accounts | **Anonymous-first; email OTP to save/buy** |
+| Trophies / streaks | **Earned only, never sold** |
+| Tournaments | **Free to play; Pro = host power; cosmetics = styling** |
+| Early access to games | **No** — all modes free for everyone |
+| Priority support | **No** — not viable at this price |
+| Virtual currency | **No at launch** |
+| Season Pass | **Optional Phase 2** — quarterly, not monthly sub |
+| Founder tier | **Optional, much later** — scoped narrowly, no "forever everything" |

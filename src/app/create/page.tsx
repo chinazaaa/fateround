@@ -67,11 +67,13 @@ import {
   isCheckersGame,
   isScrabbleGame,
   isDescribeItGame,
+  isWordRushGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
   isMafiaGame,
   isMatchingPairsGame,
+  isQuiplashGame,
 } from '@/lib/game-types'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
@@ -147,6 +149,17 @@ import {
   CODEWORDS_TIMER_OPTIONS,
 } from '@/lib/codewords'
 import { TRIVIA_DEFAULT_MAX_PLAYERS, TRIVIA_DEFAULT_ROUNDS, TRIVIA_DEFAULT_TIMER } from '@/lib/trivia'
+import {
+  QUIPLASH_DEFAULT_MAX_PLAYERS,
+  QUIPLASH_DEFAULT_ROUNDS,
+  QUIPLASH_DEFAULT_SUBMIT_TIMER,
+  QUIPLASH_DEFAULT_VOTE_TIMER,
+  QUIPLASH_SUBMIT_TIMER_OPTIONS,
+  QUIPLASH_VOTE_TIMER_OPTIONS,
+  QUIPLASH_MIN_ROUNDS,
+  QUIPLASH_MAX_ROUNDS,
+  clampQuiplashRounds,
+} from '@/lib/quiplash'
 import { TTL_DEFAULT_MAX_PLAYERS, TTL_DEFAULT_TIMER, TTL_TIMER_OPTIONS } from '@/lib/two-truths'
 import {
   MONOPOLY_DEFAULT_MAX_PLAYERS,
@@ -200,6 +213,18 @@ import {
   DESCRIBE_IT_TEAM_OPTIONS,
   DESCRIBE_IT_TURN_OPTIONS,
 } from '@/lib/describe-it'
+import {
+  WORD_RUSH_DEFAULT_MAX_PLAYERS,
+  WORD_RUSH_DEFAULT_ROUNDS,
+  WORD_RUSH_DEFAULT_TURN_SECONDS,
+  WORD_RUSH_MAX_PLAYER_OPTIONS,
+  WORD_RUSH_MIN_PLAYERS,
+  WORD_RUSH_MIN_PLAYERS_INDIVIDUAL,
+  WORD_RUSH_ROUND_OPTIONS,
+  WORD_RUSH_TEAM_OPTIONS,
+  WORD_RUSH_TURN_OPTIONS,
+  formatWordRushTurnTimer,
+} from '@/lib/word-rush'
 import { parseDescribeItWords, parseExcelDescribeItWords } from '@/lib/describe-it-words'
 import { getCodeDefaultLimits, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
@@ -231,6 +256,9 @@ function CreateGameInner() {
     isPublic: false,
     describe_it_num_teams: 2,
     describe_it_mode: 'team',
+    word_rush_num_teams: 2,
+    word_rush_mode: 'team',
+    word_rush_prompt_mode: 'automatic',
   })
   const [describeItWords, setDescribeItWords] = useState('')
   const [describeItUploadError, setDescribeItUploadError] = useState<string | null>(null)
@@ -273,6 +301,8 @@ function CreateGameInner() {
   const codewordsFileRef = useRef<HTMLInputElement>(null)
   const [triviaCategory, setTriviaCategory] = useState<TriviaCategory>('general')
   const [triviaMaxPlayers, setTriviaMaxPlayers] = useState(TRIVIA_DEFAULT_MAX_PLAYERS)
+  const [quiplashMaxPlayers, setQuiplashMaxPlayers] = useState(QUIPLASH_DEFAULT_MAX_PLAYERS)
+  const [quiplashVoteTimer, setQuiplashVoteTimer] = useState(QUIPLASH_DEFAULT_VOTE_TIMER)
   const [ttlMaxPlayers, setTtlMaxPlayers] = useState(TTL_DEFAULT_MAX_PLAYERS)
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
@@ -305,6 +335,7 @@ function CreateGameInner() {
   const [sudokuMaxPlayers, setSudokuMaxPlayers] = useState(20)
   const [sudokuGameDuration, setSudokuGameDuration] = useState(0)
   const [wordHuntMaxPlayers, setWordHuntMaxPlayers] = useState(WORD_HUNT_DEFAULT_MAX_PLAYERS)
+  const [wordRushMaxPlayers, setWordRushMaxPlayers] = useState(WORD_RUSH_DEFAULT_MAX_PLAYERS)
   const [wordHuntTimer, setWordHuntTimer] = useState(WORD_HUNT_DEFAULT_TIMER)
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
@@ -372,6 +403,7 @@ function CreateGameInner() {
     setCodewordsMaxPlayers((v) => clamp('codewords', v))
     setTriviaMaxPlayers((v) => clamp('trivia', v))
     setTtlMaxPlayers((v) => clamp('two_truths', v))
+    setQuiplashMaxPlayers((v) => clamp('quiplash', v))
     setMonopolyMaxPlayers((v) => clamp('monopoly', v))
     setYahtzeeMaxPlayers((v) => clamp('yahtzee', v))
     setWhotMaxPlayers((v) => clamp('whot', v))
@@ -379,6 +411,7 @@ function CreateGameInner() {
     setLudoMaxPlayers((v) => clamp('ludo', v))
     setSnakeLadderMaxPlayers((v) => clamp('snake_and_ladder', v))
     setNpatMaxPlayers((v) => clamp('i_call_on', v))
+    setWordRushMaxPlayers((v) => clamp('word_rush', v))
   }, [lobbyLimits])
 
   useEffect(() => {
@@ -422,6 +455,14 @@ function CreateGameInner() {
               anonymous: true,
               rounds_count: TRIVIA_DEFAULT_ROUNDS,
               timer_seconds: TRIVIA_DEFAULT_TIMER,
+            }
+          : {}),
+        ...(isQuiplashGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: QUIPLASH_DEFAULT_ROUNDS,
+              timer_seconds: QUIPLASH_DEFAULT_SUBMIT_TIMER,
             }
           : {}),
         ...(isTwoTruthsGame(type)
@@ -520,6 +561,17 @@ function CreateGameInner() {
               describe_it_mode: 'team' as const,
             }
           : {}),
+        ...(isWordRushGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: WORD_RUSH_DEFAULT_ROUNDS,
+              timer_seconds: WORD_RUSH_DEFAULT_TURN_SECONDS,
+              word_rush_num_teams: 2,
+              word_rush_mode: 'team' as const,
+              word_rush_prompt_mode: 'automatic' as const,
+            }
+          : {}),
         ...(isMafiaGame(type)
           ? {
               participant_mode: 'joiners' as const,
@@ -598,6 +650,7 @@ function CreateGameInner() {
   const isBinaryLobby = isWyr || isTot || isNhie
   const isMlt = isMostLikelyTo(settings.game_type)
   const isTrivia = isTriviaGame(settings.game_type)
+  const isQuiplash = isQuiplashGame(settings.game_type)
   const isTwoTruths = isTwoTruthsGame(settings.game_type)
   const isMonopoly = isMonopolyGame(settings.game_type)
   const isYahtzee = isYahtzeeGame(settings.game_type)
@@ -613,6 +666,7 @@ function CreateGameInner() {
   const isCheckers = isCheckersGame(settings.game_type)
   const isScrabble = isScrabbleGame(settings.game_type)
   const isDescribeIt = isDescribeItGame(settings.game_type)
+  const isWordRush = isWordRushGame(settings.game_type)
   const isMafia = isMafiaGame(settings.game_type)
   const isNpat = isICallOnGame(settings.game_type)
   const isSudoku = isSudokuGame(settings.game_type)
@@ -642,7 +696,7 @@ function CreateGameInner() {
   const canCreateImport =
     participants.length >= minPool && hasEnoughForRounds(participants, settings.game_type, participantOpts)
   const canCreateJoiners = !!settings.title.trim()
-  const isLobbyQuestions = isBinaryLobby || isMlt || isTrivia || isPan
+  const isLobbyQuestions = isBinaryLobby || isMlt || isTrivia || isPan || isQuiplash
   const isPeoplePoll = isPeoplePollGame(settings.game_type)
   const isPeoplePollVoters = isPeoplePoll && settings.participant_mode === 'voters'
   const isPlayerSubmissions = (isLobbyQuestions && !isTrivia) || isPeoplePollVoters
@@ -722,6 +776,7 @@ function CreateGameInner() {
     isChess ||
     isScrabble ||
     isDescribeIt ||
+    isWordRush ||
     isNpat ||
     isSudoku ||
     isWordHunt ||
@@ -783,6 +838,14 @@ function CreateGameInner() {
             anonymous: true,
             rounds_count: TRIVIA_DEFAULT_ROUNDS,
             timer_seconds: TRIVIA_DEFAULT_TIMER,
+          }
+        : {}),
+      ...(isQuiplashGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: QUIPLASH_DEFAULT_ROUNDS,
+            timer_seconds: QUIPLASH_DEFAULT_SUBMIT_TIMER,
           }
         : {}),
       ...(isTwoTruthsGame(type)
@@ -1237,10 +1300,15 @@ function CreateGameInner() {
                   ? customWyrQuestions
                   : isTrivia
                     ? customTriviaQuestions
-                    : customMltQuestions
+                    : isQuiplash
+                      ? customMltQuestions
+                      : customMltQuestions
                 : null,
           trivia_category: isTrivia ? triviaCategory : undefined,
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
+          word_rush_mode: isWordRush ? settings.word_rush_mode : undefined,
+          word_rush_prompt_mode: isWordRush ? settings.word_rush_prompt_mode : undefined,
+          word_rush_num_teams: isWordRush ? settings.word_rush_num_teams : undefined,
           participants: isJoinersMode ? [] : participants,
           wst_quote_source: isWst ? wstQuoteSource : undefined,
           custom_slots: isCustom ? customSlots : null,
@@ -1255,30 +1323,40 @@ function CreateGameInner() {
                 ? codewordsMaxPlayers
                 : isTrivia
                   ? triviaMaxPlayers
-                  : isTwoTruths
-                    ? ttlMaxPlayers
-                    : isMonopoly
-                      ? monopolyMaxPlayers
-                      : isYahtzee
-                        ? yahtzeeMaxPlayers
-                        : isWhot
-                          ? whotMaxPlayers
-                          : isCrazy8
-                            ? crazy8MaxPlayers
-                            : isLudo
-                              ? ludoMaxPlayers
-                              : isSnakeLadder
-                                ? snakeLadderMaxPlayers
-                                : isNpat
-                                  ? npatMaxPlayers
-                                  : isSudoku
-                                    ? sudokuMaxPlayers
-                                    : isWordHunt
-                                      ? wordHuntMaxPlayers
-                                      : isMatchingPairs
-                                        ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
-                                        : undefined,
-          operative_timer_seconds: isCodewords ? codewordsOperativeTimer : isNpat ? npatMarkingTimer : undefined,
+                  : isQuiplash
+                    ? quiplashMaxPlayers
+                    : isTwoTruths
+                      ? ttlMaxPlayers
+                      : isMonopoly
+                        ? monopolyMaxPlayers
+                        : isYahtzee
+                          ? yahtzeeMaxPlayers
+                          : isWhot
+                            ? whotMaxPlayers
+                            : isCrazy8
+                              ? crazy8MaxPlayers
+                              : isLudo
+                                ? ludoMaxPlayers
+                                : isSnakeLadder
+                                  ? snakeLadderMaxPlayers
+                                  : isNpat
+                                    ? npatMaxPlayers
+                                    : isSudoku
+                                      ? sudokuMaxPlayers
+                                      : isWordHunt
+                                        ? wordHuntMaxPlayers
+                                        : isWordRush
+                                          ? wordRushMaxPlayers
+                                          : isMatchingPairs
+                                            ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
+                                            : undefined,
+          operative_timer_seconds: isCodewords
+            ? codewordsOperativeTimer
+            : isNpat
+              ? npatMarkingTimer
+              : isQuiplash
+                ? quiplashVoteTimer
+                : undefined,
           codewords_player_picks: isCodewords ? codewordsPlayerPicks : undefined,
           codewords_late_join: isCodewords ? lateJoinPolicy === 'viewers_and_players' : undefined,
           codewords_randomize_teams: isCodewords ? codewordsRandomizeTeams : undefined,
@@ -1570,6 +1648,74 @@ function CreateGameInner() {
                   {bingoCallMode === 'auto'
                     ? ' Numbers are called automatically — no tapping required from the host.'
                     : ' You call numbers B1–O75 from the host panel.'}
+                </p>
+              </SettingsGroup>
+            ) : isQuiplash ? (
+              <SettingsGroup title="Quiplash">
+                <Field label={`Max players (${effectiveLimits.quiplash.min}–${effectiveLimits.quiplash.max})`}>
+                  <select
+                    value={quiplashMaxPlayers}
+                    onChange={(e) => setQuiplashMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(effectiveLimits.quiplash.min, effectiveLimits.quiplash.max).map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Rounds">
+                  <ChipGrid>
+                    {Array.from(
+                      { length: QUIPLASH_MAX_ROUNDS - QUIPLASH_MIN_ROUNDS + 1 },
+                      (_, i) => i + QUIPLASH_MIN_ROUNDS
+                    ).map((n) => (
+                      <Chip
+                        key={n}
+                        active={settings.rounds_count === n}
+                        onClick={() => setSettings((prev) => ({ ...prev, rounds_count: clampQuiplashRounds(n) }))}
+                        className="!px-0 w-full"
+                      >
+                        {n}
+                      </Chip>
+                    ))}
+                  </ChipGrid>
+                </Field>
+                <Field label="Answer timer">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {QUIPLASH_SUBMIT_TIMER_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s} seconds
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Vote timer (per battle)">
+                  <select
+                    value={quiplashVoteTimer}
+                    onChange={(e) => setQuiplashVoteTimer(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {QUIPLASH_VOTE_TIMER_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s} seconds
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {showViewerToggle && (
+                  <Field label="Late joiners">
+                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
+                  </Field>
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  Everyone writes a funny answer to the same prompt. Answers battle head-to-head and the group votes for
+                  the funniest — you earn one point per vote.
                 </p>
               </SettingsGroup>
             ) : isTwoTruths ? (
@@ -2409,6 +2555,116 @@ function CreateGameInner() {
                   Add your own words to use those first (the built-in bank only tops up if you run out); leave it blank
                   for the built-in bank.
                 </p>
+              </SettingsGroup>
+            ) : isWordRush ? (
+              <SettingsGroup title="Word Rush room">
+                <p className="text-faint text-sm">
+                  {settings.word_rush_mode === 'individual'
+                    ? `Everyone races to name a valid word each round. ${WORD_RUSH_MIN_PLAYERS_INDIVIDUAL}+ players.`
+                    : `Teams race the clock to name as many valid words as possible. ${WORD_RUSH_MIN_PLAYERS}+ players.`}
+                </p>
+                <Field label="Player mode">
+                  <div className="grid grid-cols-2 gap-3">
+                    {(['team', 'individual'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setSettings({ ...settings, word_rush_mode: mode })}
+                        className={[
+                          'rounded-2xl border-2 px-4 py-4 text-left capitalize',
+                          settings.word_rush_mode === mode
+                            ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                            : 'border-[var(--border-strong)] text-muted',
+                        ].join(' ')}
+                      >
+                        <span className="font-bold block text-base">{mode}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                <Field label="Prompt mode">
+                  <div className="grid grid-cols-2 gap-3">
+                    {(['automatic', 'manual'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setSettings({ ...settings, word_rush_prompt_mode: mode })}
+                        className={[
+                          'rounded-2xl border-2 px-4 py-4 text-left capitalize',
+                          settings.word_rush_prompt_mode === mode
+                            ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                            : 'border-[var(--border-strong)] text-muted',
+                        ].join(' ')}
+                      >
+                        <span className="font-bold block text-base">{mode}</span>
+                        <span className="text-faint text-xs">
+                          {mode === 'automatic' ? 'System picks letters' : 'Players pick letters'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                {settings.word_rush_mode !== 'individual' && (
+                  <Field label="Teams">
+                    <select
+                      value={settings.word_rush_num_teams}
+                      onChange={(e) => setSettings({ ...settings, word_rush_num_teams: Number(e.target.value) })}
+                      className="input-field w-full"
+                    >
+                      {WORD_RUSH_TEAM_OPTIONS.map((n) => (
+                        <option key={n} value={n}>
+                          {n} teams
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+                <Field
+                  label={`Max players (${WORD_RUSH_MIN_PLAYERS_INDIVIDUAL}–${WORD_RUSH_MAX_PLAYER_OPTIONS.at(-1)})`}
+                >
+                  <select
+                    value={wordRushMaxPlayers}
+                    onChange={(e) => setWordRushMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {WORD_RUSH_MAX_PLAYER_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={settings.word_rush_mode === 'individual' ? 'Round length' : 'Team turn length'}>
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {WORD_RUSH_TURN_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {formatWordRushTurnTimer(n)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {settings.word_rush_mode === 'individual' && (
+                  <Field label="Rounds">
+                    <select
+                      value={settings.rounds_count}
+                      onChange={(e) => setSettings({ ...settings, rounds_count: Number(e.target.value) })}
+                      className="input-field w-full"
+                    >
+                      {WORD_RUSH_ROUND_OPTIONS.map((n) => (
+                        <option key={n} value={n}>
+                          {n} rounds
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+                <Field label="Late joiners">
+                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_rush" />
+                </Field>
               </SettingsGroup>
             ) : isNpat ? (
               <SettingsGroup title="I Call On room">

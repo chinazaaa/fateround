@@ -44,6 +44,8 @@ export type GameType =
   | 'checkers'
   | 'mafia'
   | 'matching_pairs'
+  | 'quiplash'
+  | 'word_rush'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -281,6 +283,12 @@ export interface Game {
   describe_it_num_teams?: number
   /** Describe It — 'team' (teams race) or 'individual' (skribbl-style solo scoring). */
   describe_it_mode?: DescribeItMode
+  /** Word Rush — 'team' (teams race the clock) or 'individual' (everyone answers each round). */
+  word_rush_mode?: WordRushMode
+  /** Word Rush — 'automatic' (system picks letters) or 'manual' (player/host picks letters). */
+  word_rush_prompt_mode?: WordRushPromptMode
+  /** Word Rush — number of teams (2-4). */
+  word_rush_num_teams?: number
   /** Cumulative usage across play-again sessions — unused pool items are prioritized next game. */
   pool_usage?: Record<string, unknown> | null
   /** Trivia — platform pool category when question_source is platform. */
@@ -950,6 +958,63 @@ export interface DescribeItGuess {
   created_at: string
 }
 
+// ── Word Rush ──
+
+export type WordRushPhase = 'playing' | 'awaiting_prompt' | 'intermission' | 'finished'
+export type WordRushMode = 'team' | 'individual'
+export type WordRushPromptMode = 'automatic' | 'manual'
+
+export interface WordRushSession {
+  id: string
+  game_id: string
+  mode: WordRushMode
+  prompt_mode: WordRushPromptMode
+  num_teams: number
+  total_rounds: number
+  turn_seconds: number
+  phase: WordRushPhase
+  turn_index: number
+  current_round: number
+  active_team: number
+  prompt_setter_player_id: string | null
+  roster: string[]
+  start_letter: string | null
+  end_letter: string | null
+  prompt_index: number
+  used_pairs: string[]
+  turn_deadline_at: string | null
+  intermission_deadline_at: string | null
+  status: 'active' | 'finished'
+  status_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface WordRushPlayer {
+  id: string
+  game_id: string
+  player_id: string
+  team: number
+  score: number
+  created_at: string
+}
+
+export interface WordRushAnswer {
+  id: string
+  game_id: string
+  turn_index: number
+  round: number
+  team: number
+  team_turn_index: number | null
+  prompt_index: number
+  start_letter: string
+  end_letter: string
+  player_id: string
+  text: string
+  correct: boolean
+  created_at: string
+}
+
 // ── Scrabble ──
 /** A single board cell. null when empty, else a placed tile. */
 export interface ScrabbleBoardCell {
@@ -1074,6 +1139,56 @@ export interface TtlGuess {
   guessed_at: string
 }
 
+export interface QuiplashMetadata {
+  prompt: string
+}
+
+export type QuiplashPhase = 'writing' | 'voting' | 'reveal' | 'finished'
+
+export interface QuiplashSession {
+  id: string
+  game_id: string
+  phase: QuiplashPhase
+  battle_index: number
+  active_battle_id: string | null
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface QuiplashAnswer {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  text: string
+  is_bye: boolean
+  submitted_at: string
+}
+
+export interface QuiplashBattle {
+  id: string
+  game_id: string
+  round_id: string
+  battle_number: number
+  answer_a_id: string
+  answer_b_id: string
+  winner_answer_id: string | null
+  points_awarded: number
+  status: 'pending' | 'active' | 'finished'
+  started_at: string | null
+  ended_at: string | null
+}
+
+export interface QuiplashVote {
+  id: string
+  game_id: string
+  battle_id: string
+  player_id: string
+  chosen_answer_id: string
+  voted_at: string
+}
+
 export interface Participant {
   id: string
   game_id: string
@@ -1132,6 +1247,7 @@ export interface Round {
   trivia_metadata?: TriviaMetadata | null
   ttl_metadata?: TtlMetadata | null
   npat_metadata?: NpatMetadata | null
+  quiplash_metadata?: QuiplashMetadata | null
 }
 
 export type PairFlag = 'kiss' | 'kill'

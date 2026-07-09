@@ -24,6 +24,8 @@ import { SudokuHostView } from '@/components/sudoku/SudokuHostView'
 import { WordHuntHostView } from '@/components/word-hunt/WordHuntHostView'
 import { MafiaHostView } from '@/components/mafia/MafiaHostView'
 import { MatchingPairsHostView } from '@/components/matching-pairs/MatchingPairsHostView'
+import { QuiplashHostView } from '@/components/quiplash/QuiplashHostView'
+import { WordRushHostView } from '@/components/word-rush/WordRushHostView'
 
 export type GameHostView = ComponentType<{ gameCode: string; hostToken: string }>
 
@@ -58,4 +60,6 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   matching_pairs: MatchingPairsHostView,
   anonymous_messages: AnonymousMessagesHostView,
   mafia: MafiaHostView,
+  quiplash: QuiplashHostView,
+  word_rush: WordRushHostView,
 }
