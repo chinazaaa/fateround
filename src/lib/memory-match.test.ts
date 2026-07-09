@@ -14,6 +14,7 @@ import {
   MATCHING_PAIRS_PERFECT_GAME_BONUS,
   MATCHING_PAIRS_PLACEMENT_BONUS,
   MATCHING_PAIRS_CLEAN_STREAK_MULTIPLIER,
+  MATCHING_PAIRS_SPEED_PAR_BONUS_PER_MINUTE,
   MEMORY_MATCH_ICON_POOL,
   MEMORY_MATCH_PAIR_COLORS,
   type MatchingPairsSubmission,
@@ -302,13 +303,16 @@ describe('tallyMatchingPairsScore', () => {
     const expectedPlacement = MATCHING_PAIRS_PLACEMENT_BONUS[1]
     const expectedPerfect = MATCHING_PAIRS_PERFECT_GAME_BONUS
     const expectedCleanMultiplier = MATCHING_PAIRS_PLACEMENT_BONUS[1] * (MATCHING_PAIRS_CLEAN_STREAK_MULTIPLIER - 1)
+
+    // Derive expected speed par independently using the same formula as the production code.
+    // sessionStartedAt = 2026-01-01T00:00:00Z, finished_at = 2026-01-01T00:02:30Z
+    // memorizeMs = 8 >= 16 ? 5000 : 3000 = 3000
+    // startMs = sessionStartedAt + 3000ms, elapsedMs = finished_at - startMs = 150000 - 3000 = 147000
+    // parMs = 8 * 15 * 1000 = 120000 → underParMs = max(0, 120000 - 147000) = 0 → bonus = 0
+    const expectedSpeedPar = 0
+
     expect(result.finalScore).toBe(
-      expectedBase +
-        expectedStreak +
-        expectedPlacement +
-        expectedPerfect +
-        expectedCleanMultiplier +
-        result.speedParBonus
+      expectedBase + expectedStreak + expectedPlacement + expectedPerfect + expectedCleanMultiplier + expectedSpeedPar
     )
   })
 

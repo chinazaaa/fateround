@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { MatchingPairsProgress } from '@/lib/memory-match'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { checkAllMatchingPairsPlayersDone, type MatchingPairsProgress } from '@/lib/memory-match'
+import { supabase } from '@/lib/supabase'
 
 // ── Mock supabase ───────────────────────────────────────────────────────────
 
@@ -9,6 +10,12 @@ type ChannelCallback = (payload: { new: MatchingPairsProgress }) => void
 const channelState = vi.hoisted(() => ({
   onCallback: null as ChannelCallback | null,
   channelName: null as string | null,
+}))
+
+const dbState = vi.hoisted(() => ({
+  players: [] as { id: string; spectator: boolean }[],
+  progressRows: [] as { player_id: string; pairs_matched: number; finished: boolean }[],
+  gameStatus: 'active' as string | null,
 }))
 
 vi.mock('@/lib/supabase', () => ({
@@ -31,8 +38,16 @@ vi.mock('@/lib/supabase', () => ({
       channelState.onCallback = null
       return Promise.resolve('ok')
     },
-    from() {
-      const p = Promise.resolve({ data: [], error: null })
+    from(table: string) {
+      let data: unknown = null
+      if (table === 'games') {
+        data = dbState.gameStatus ? { id: 'G', status: dbState.gameStatus } : null
+      } else if (table === 'players') {
+        data = dbState.players
+      } else if (table === 'memory_match_progress') {
+        data = dbState.progressRows
+      }
+      const p = Promise.resolve({ data, error: null })
       const b: any = {
         select: () => b,
         eq: () => b,
@@ -90,20 +105,39 @@ vi.mock('@/components/GamePlayerChrome', () => ({ GamePlayerChrome: () => null }
 // ── Group 1: Progress Realtime Handler ─────────────────────────────────────
 
 describe('Group 1: Progress Realtime Handler', () => {
-  let setAllProgress: ReturnType<typeof vi.fn>
-  let load: ReturnType<typeof vi.fn>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let setAllProgress: (...args: any[]) => any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let load: (...args: any[]) => any
   let handler: ((payload: { new: MatchingPairsProgress }) => void) | null
   let finished: boolean
   let myPlayerId: string | null
 
+  let allProgress: MatchingPairsProgress[]
+
   beforeEach(() => {
-    setAllProgress = vi.fn()
+    allProgress = []
+    setAllProgress = vi.fn((updaterOrValue: unknown) => {
+      if (typeof updaterOrValue === 'function') {
+        allProgress = (updaterOrValue as (prev: MatchingPairsProgress[]) => MatchingPairsProgress[])(allProgress)
+      }
+    })
     load = vi.fn()
     finished = false
     myPlayerId = 'p1'
     handler = (payload: { new: MatchingPairsProgress }) => {
       const updated = payload.new
-      setAllProgress(updated)
+      setAllProgress((prev: MatchingPairsProgress[]) => {
+        const idx = prev.findIndex((p) => p.player_id === updated.player_id)
+        if (idx >= 0) {
+          const existing = prev[idx]
+          if (existing.updated_at >= updated.updated_at) return prev
+          const next = [...prev]
+          next[idx] = updated
+          return next
+        }
+        return [...prev, updated]
+      })
       if (myPlayerId && updated.player_id === myPlayerId && updated.finished && !finished) {
         load()
       }
@@ -171,36 +205,42 @@ describe('Group 4: Finish Detection & Multi-Player Sync', () => {
     expect(9 >= totalPairs).toBe(true)
   })
 
-  it('check all players done reads current state, not stale snapshot', () => {
-    const totalPairs = 8
-    const playerIds = ['p1', 'p2', 'p3']
+  afterEach(() => {
+    dbState.players = []
+    dbState.progressRows = []
+    dbState.gameStatus = null
+  })
 
-    function allDone(progressMap: Map<string, { pairs_matched: number; finished: boolean }>): boolean {
-      return playerIds.every((id) => {
-        const p = progressMap.get(id)
-        return p?.finished === true || (p?.pairs_matched ?? 0) >= totalPairs
-      })
-    }
+  it('check all players done reads current state, not stale snapshot', async () => {
+    dbState.gameStatus = 'active'
+    dbState.players = [
+      { id: 'p1', spectator: false },
+      { id: 'p2', spectator: false },
+      { id: 'p3', spectator: false },
+    ]
 
-    expect(allDone(new Map([['p1', { pairs_matched: 8, finished: true }]]))).toBe(false)
-    expect(
-      allDone(
-        new Map([
-          ['p1', { pairs_matched: 8, finished: true }],
-          ['p2', { pairs_matched: 5, finished: true }],
-          ['p3', { pairs_matched: 8, finished: true }],
-        ])
-      )
-    ).toBe(true)
-    expect(
-      allDone(
-        new Map([
-          ['p1', { pairs_matched: 8, finished: false }],
-          ['p2', { pairs_matched: 8, finished: false }],
-          ['p3', { pairs_matched: 8, finished: false }],
-        ])
-      )
-    ).toBe(true)
+    // Only p1 done — not all done
+    dbState.progressRows = [{ player_id: 'p1', pairs_matched: 8, finished: true }]
+    const result1 = await checkAllMatchingPairsPlayersDone(supabase as never, 'G', 'R', 8)
+    expect(result1.allDone).toBe(false)
+
+    // All three done via finished flag
+    dbState.progressRows = [
+      { player_id: 'p1', pairs_matched: 8, finished: true },
+      { player_id: 'p2', pairs_matched: 5, finished: true },
+      { player_id: 'p3', pairs_matched: 8, finished: true },
+    ]
+    const result2 = await checkAllMatchingPairsPlayersDone(supabase as never, 'G', 'R', 8)
+    expect(result2.allDone).toBe(true)
+
+    // All done via pairs_matched fallback even without finished flag
+    dbState.progressRows = [
+      { player_id: 'p1', pairs_matched: 8, finished: false },
+      { player_id: 'p2', pairs_matched: 8, finished: false },
+      { player_id: 'p3', pairs_matched: 8, finished: false },
+    ]
+    const result3 = await checkAllMatchingPairsPlayersDone(supabase as never, 'G', 'R', 8)
+    expect(result3.allDone).toBe(true)
   })
 
   it('finish_rank is assigned atomically and uniquely', () => {
