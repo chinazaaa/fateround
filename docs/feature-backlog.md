@@ -15,8 +15,14 @@ cross-session streak system — tracking a player's activity across games and da
 
 ## Monetization
 
-### Pro Host Accounts
-One-time purchase (e.g. $2) that unlocks host-only powers — raised player caps, multiple concurrent rooms, Monopoly add-time, custom timers, larger imports, Pro badge. Playing/joining stays free forever; only hosts can pay. Plugs into the existing per-game limits in `src/lib/game-limits.ts` plus an `is_pro` account flag and a payment webhook. Full spec: [revenue-model.md](./revenue-model.md).
+### Accounts + Pro + Cosmetics (Phase 0–1)
+Anonymous-first auth (Supabase), email OTP upgrade, `profiles.is_pro` + `owned_cosmetics`.
+**Pro Host** — one-time ₦1,000 / $2 host utility (add-time, caps, concurrent
+rooms/tournaments). **Cosmetics** — primary revenue: premium themes, skins, frames,
+seasonal drops (₦200–1,200); sold to any account, **not** bundled in Pro. **Trophies +
+streaks** drive account signup (earned, never sold). Payments: Paystack (Africa) + Stripe.
+Full spec: [revenue-model.md](./revenue-model.md) · [account-tiers.md](./account-tiers.md) ·
+[trophies-and-streaks.md](./trophies-and-streaks.md).
 
 ## Shipped
 
