@@ -1228,7 +1228,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     features: [
       {
         title: 'Classic board',
-        description: 'All the familiar spaces across editions — famous properties, transport terminals, utilities, Chance, and Community Chest.',
+        description:
+          'All the familiar spaces across editions — famous properties, transport terminals, utilities, Chance, and Community Chest.',
         emoji: '🏠',
       },
       {
@@ -1245,7 +1246,10 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         title: 'Create a game',
         description: 'Set the player cap and share the link — everyone joins with their name.',
       },
-      { title: 'Start the game', description: 'Everyone begins on GO with 1,500 starting cash. The host starts when ready.' },
+      {
+        title: 'Start the game',
+        description: 'Everyone begins on GO with 1,500 starting cash. The host starts when ready.',
+      },
       {
         title: 'Last one wins',
         description: 'Buy properties, collect rent, and bankrupt opponents until one player remains.',
