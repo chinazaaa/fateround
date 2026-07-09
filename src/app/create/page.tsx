@@ -2647,21 +2647,26 @@ function CreateGameInner() {
                     ))}
                   </select>
                 </Field>
-                {settings.word_rush_mode === 'individual' && (
-                  <Field label="Rounds">
-                    <select
-                      value={settings.rounds_count}
-                      onChange={(e) => setSettings({ ...settings, rounds_count: Number(e.target.value) })}
-                      className="input-field w-full"
-                    >
-                      {WORD_RUSH_ROUND_OPTIONS.map((n) => (
-                        <option key={n} value={n}>
-                          {n} rounds
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                )}
+                <Field label="Rounds">
+                  <select
+                    value={settings.rounds_count}
+                    onChange={(e) => setSettings({ ...settings, rounds_count: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {WORD_RUSH_ROUND_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n} rounds
+                      </option>
+                    ))}
+                  </select>
+                  {settings.word_rush_mode === 'team' && (
+                    <p className="text-faint text-xs mt-1">
+                      Each round, every team gets one timed run (e.g. {settings.word_rush_num_teams} teams ×{' '}
+                      {settings.rounds_count} rounds = {settings.word_rush_num_teams * settings.rounds_count} team
+                      turns).
+                    </p>
+                  )}
+                </Field>
                 <Field label="Late joiners">
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_rush" />
                 </Field>
