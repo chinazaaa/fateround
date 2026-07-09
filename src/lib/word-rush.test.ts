@@ -33,6 +33,10 @@ import {
   readWordRushUsedPairsFromPoolUsage,
   wordRushPriorUsedPairsForNewGame,
   wordRushWordFormatRejectReason,
+  wordRushMinLengthForRound,
+  clampWordRushManualMinLength,
+  wordRushMinLengthHint,
+  WORD_RUSH_MIN_WORD_LENGTH,
   WORD_RUSH_MAX_WORD_LENGTH,
   WORD_RUSH_POOL_USAGE_KEY,
 } from '@/lib/word-rush'
@@ -61,7 +65,21 @@ describe('word-rush-dictionary', () => {
     )
     expect(wordRushWordRejectReason('notaword', 'n', 'd')).toBe('Not in the dictionary for this letter pair')
     expect(wordRushWordFormatRejectReason('ab', 'a', 'b')).toBe('Too short — minimum is 3 letters')
+    expect(wordRushWordFormatRejectReason('abcd', 'a', 'd', 5)).toBe('Too short — need at least 5 letters this round')
     expect(wordRushWordFormatRejectReason('monkey', 'b', 't')).toBe('Must start with B and end with T')
+  })
+
+  it('escalates minimum length in hard mode', () => {
+    expect(wordRushMinLengthForRound(1, 'standard')).toBe(WORD_RUSH_MIN_WORD_LENGTH)
+    expect(wordRushMinLengthForRound(2, 'standard')).toBe(WORD_RUSH_MIN_WORD_LENGTH)
+    expect(wordRushMinLengthForRound(1, 'hard')).toBe(3)
+    expect(wordRushMinLengthForRound(2, 'hard')).toBe(5)
+    expect(wordRushMinLengthForRound(3, 'hard')).toBe(7)
+    expect(wordRushMinLengthForRound(10, 'hard')).toBe(20)
+    expect(clampWordRushManualMinLength(4, 5)).toBe(5)
+    expect(clampWordRushManualMinLength(8, 5)).toBe(8)
+    expect(wordRushMinLengthHint(5)).toBe(' · Min 5 letters')
+    expect(wordRushMinLengthHint(3)).toBe('')
   })
 
   it('normalizes input', () => {

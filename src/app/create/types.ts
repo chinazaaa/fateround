@@ -5,6 +5,7 @@ import type {
   DescribeItMode,
   WordRushMode,
   WordRushPromptMode,
+  WordRushDifficulty,
   ThemeId,
 } from '@/types'
 
@@ -28,6 +29,7 @@ export interface Settings {
   word_rush_num_teams: number
   word_rush_mode: WordRushMode
   word_rush_prompt_mode: WordRushPromptMode
+  word_rush_difficulty: WordRushDifficulty
   max_players?: number
   game_duration_seconds?: number
   mafia_doctor_enabled?: boolean

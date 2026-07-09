@@ -90,6 +90,7 @@ export const createGameSchema = z.object({
   word_rush_num_teams: z.coerce.number().int().min(2).max(4).optional(),
   word_rush_mode: z.enum(['team', 'individual']).optional(),
   word_rush_prompt_mode: z.enum(['automatic', 'manual']).optional(),
+  word_rush_difficulty: z.enum(['standard', 'hard']).optional(),
   allow_viewers: z.boolean().optional(),
   allow_late_players: z.boolean().optional(),
   late_join_policy: z.enum(['lobby_only', 'viewers_only', 'viewers_and_players']).optional(),

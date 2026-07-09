@@ -81,17 +81,23 @@ function AnswerInput({
 function PromptSetterInput({
   onSubmit,
   disabled,
+  floorMinLength = 3,
 }: {
-  onSubmit: (start: string, end: string) => void
+  onSubmit: (start: string, end: string, minWordLength?: number) => void
   disabled?: boolean
+  floorMinLength?: number
 }) {
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
+  const [minLength, setMinLength] = useState(String(floorMinLength))
   const submit = () => {
     if (!start.trim() || !end.trim() || disabled) return
-    onSubmit(start.trim(), end.trim())
+    const parsed = Math.round(Number(minLength))
+    const minWordLength = Number.isFinite(parsed) ? Math.max(floorMinLength, parsed) : floorMinLength
+    onSubmit(start.trim(), end.trim(), minWordLength)
     setStart('')
     setEnd('')
+    setMinLength(String(floorMinLength))
   }
   return (
     <div className="space-y-3">
@@ -117,6 +123,18 @@ function PromptSetterInput({
           disabled={disabled}
         />
       </div>
+      <label className="block text-sm text-center">
+        <span className="text-faint">Min letters (at least {floorMinLength})</span>
+        <input
+          type="number"
+          min={floorMinLength}
+          max={20}
+          value={minLength}
+          onChange={(e) => setMinLength(e.target.value)}
+          className="input-field w-full mt-1 text-center"
+          disabled={disabled}
+        />
+      </label>
       <button type="button" onClick={submit} disabled={disabled || !start || !end} className="btn-primary w-full">
         Set letters
       </button>
@@ -149,13 +167,14 @@ export function WordRushPlayPanel({
   intermissionLeft: number
   urgent: boolean
   onSubmit?: (text: string) => void | Promise<SubmitResult | void>
-  onPrompt?: (start: string, end: string) => void
+  onPrompt?: (start: string, end: string, minWordLength?: number) => void
   onEndRoundEarly?: () => void
   endingRound?: boolean
   acting?: boolean
   readOnly?: boolean
 }) {
   const isTeam = session.mode === 'team'
+  const minWordLength = session.min_word_length ?? 3
   const myTeam = teamRows.find((r) => r.player_id === myPlayerId)?.team ?? null
   const onActiveTeam = isTeam && myTeam === session.active_team
   const isPromptSetter = !!myPlayerId && session.prompt_setter_player_id === myPlayerId
@@ -255,7 +274,12 @@ export function WordRushPlayPanel({
 
         {session.phase === 'awaiting_prompt' ? (
           isPromptSetter && !readOnly ? (
-            <PromptSetterInput onSubmit={(s, e) => onPrompt?.(s, e)} disabled={acting} />
+            <PromptSetterInput
+              key={`${session.turn_index}-${minWordLength}`}
+              floorMinLength={minWordLength}
+              onSubmit={(s, e, min) => onPrompt?.(s, e, min)}
+              disabled={acting}
+            />
           ) : (
             <p className="text-center text-faint py-6">
               Waiting for {players.find((p) => p.id === session.prompt_setter_player_id)?.name ?? 'prompt setter'}…
@@ -263,12 +287,16 @@ export function WordRushPlayPanel({
           )
         ) : (
           <>
-            <WordRushPromptDisplay startLetter={session.start_letter} endLetter={session.end_letter} />
+            <WordRushPromptDisplay
+              startLetter={session.start_letter}
+              endLetter={session.end_letter}
+              minWordLength={minWordLength}
+            />
             {!readOnly &&
               !myCorrectAnswerThisRound &&
               ((!isTeam && !isIndividualManualSetter) || (isTeam && onActiveTeam && !isPromptSetter)) && (
                 <AnswerInput
-                  placeholder="Type a word…"
+                  placeholder={minWordLength > 3 ? `Type a word (${minWordLength}+ letters)…` : 'Type a word…'}
                   buttonLabel="Submit"
                   onSubmit={(t) => onSubmit?.(t) ?? undefined}
                   disabled={acting}

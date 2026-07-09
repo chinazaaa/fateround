@@ -385,7 +385,12 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           onPrompt={
             isViewer
               ? undefined
-              : (startLetter, endLetter) => void sendAction('/api/word-rush/prompt', { startLetter, endLetter })
+              : (startLetter, endLetter, minWordLength) =>
+                  void sendAction('/api/word-rush/prompt', {
+                    startLetter,
+                    endLetter,
+                    ...(minWordLength !== undefined ? { minWordLength } : {}),
+                  })
           }
           acting={acting}
           readOnly={isViewer}
