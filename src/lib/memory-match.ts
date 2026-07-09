@@ -574,7 +574,11 @@ export async function finishMatchingPairsRoundIfAllDone(
 
   // End the current round
   const now = new Date().toISOString()
-  await supabase.from('rounds').update({ status: 'finished', ended_at: now }).eq('id', roundId)
+  const { error: roundUpdateError } = await supabase
+    .from('rounds')
+    .update({ status: 'finished', ended_at: now })
+    .eq('id', roundId)
+  if (roundUpdateError) return { roundEnded: false, gameEnded: false, error: roundUpdateError.message }
 
   if (roundNumber >= totalRounds) {
     // Last round — end the game

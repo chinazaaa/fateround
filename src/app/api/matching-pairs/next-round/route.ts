@@ -4,11 +4,7 @@ import { assertHostPlayerRemove } from '@/lib/game-admin'
 import { parseJsonBody } from '@/lib/parse-body'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { z } from 'zod'
-import {
-  buildMatchingPairsRoundMetadata,
-  buildMatchingPairsRoundRow,
-  type MatchingPairsGridSize,
-} from '@/lib/memory-match'
+import { buildMatchingPairsRoundMetadata, type MatchingPairsGridSize } from '@/lib/memory-match'
 import { GAME_SELECT } from '@/lib/supabase-selects'
 
 const schema = z.object({
@@ -55,24 +51,34 @@ export async function POST(req: NextRequest) {
   // Resolve grid size.
   const gridSizePairs: MatchingPairsGridSize = game.game_duration_seconds === 16 ? 16 : 8
 
-  // Generate fresh metadata for the new round.
+  // Promote the pre-seeded pending round with fresh board metadata.
   const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff) ^ (nextRoundNumber * 0x10000)
   const metadata = buildMatchingPairsRoundMetadata(gameId, seed, gridSizePairs, playerIds)
-  const roundRow = buildMatchingPairsRoundRow(gameId, metadata, nextRoundNumber)
+  const now = new Date().toISOString()
 
-  const { data: insertedRound, error: roundError } = await supabase
+  const { data: activatedRound, error: roundError } = await supabase
     .from('rounds')
-    .insert(roundRow)
+    .update({
+      status: 'active',
+      started_at: now,
+      memory_match_metadata: metadata,
+    })
+    .eq('game_id', gameId)
+    .eq('round_number', nextRoundNumber)
+    .eq('status', 'pending')
     .select('id')
-    .single()
-  if (roundError || !insertedRound) {
-    return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
+  if (roundError) {
+    return NextResponse.json({ error: roundError.message ?? 'Failed to activate round' }, { status: 500 })
   }
+  if (!activatedRound || activatedRound.length === 0) {
+    return NextResponse.json({ error: 'Next round not found' }, { status: 404 })
+  }
+  const roundId = activatedRound[0].id
 
   // Create fresh progress rows for all players in the new round.
   const progressRows = playerIds.map((playerId: string) => ({
     game_id: gameId,
-    round_id: insertedRound.id,
+    round_id: roundId,
     player_id: playerId,
     pairs_matched: 0,
     wrong_attempts: 0,
