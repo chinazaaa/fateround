@@ -141,9 +141,7 @@ describe('word-rush helpers', () => {
       prompt_setter_player_id: 'a',
       turn_index: 0,
     }
-    expect(
-      allWordRushIndividualPlayersSubmitted(session, [{ player_id: 'b', turn_index: 0 }])
-    ).toBe(false)
+    expect(allWordRushIndividualPlayersSubmitted(session, [{ player_id: 'b', turn_index: 0 }])).toBe(false)
     expect(
       allWordRushIndividualPlayersSubmitted(session, [
         { player_id: 'b', turn_index: 0 },

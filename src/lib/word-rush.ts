@@ -161,14 +161,12 @@ export function computeWordRushPlayerScores(
 }
 
 export function allWordRushIndividualPlayersSubmitted(
-  session: Pick<WordRushSession, 'roster' | 'prompt_mode' | 'prompt_setter_player_id' | 'turn_index'>,
+  session: Pick<WordRushSession, 'roster' | 'prompt_setter_player_id' | 'turn_index'>,
   answers: Pick<WordRushAnswer, 'player_id' | 'turn_index'>[]
 ): boolean {
   const eligible = wordRushIndividualAnswerers(session)
   if (eligible.length === 0) return false
-  const submitted = new Set(
-    answers.filter((a) => a.turn_index === session.turn_index).map((a) => a.player_id)
-  )
+  const submitted = new Set(answers.filter((a) => a.turn_index === session.turn_index).map((a) => a.player_id))
   return eligible.every((id) => submitted.has(id))
 }
 

@@ -324,7 +324,10 @@ export async function processWordRushSubmit(
       .eq('turn_index', session.turn_index)
 
     if (
-      allWordRushIndividualPlayersSubmitted(session, (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number }>)
+      allWordRushIndividualPlayersSubmitted(
+        session,
+        (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number }>
+      )
     ) {
       const endResult = await endIndividualRound(supabase, gameId, session)
       if (endResult.error) return endResult
