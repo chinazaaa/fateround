@@ -34,6 +34,7 @@ import {
   WORD_RUSH_ROUND_OPTIONS,
   WORD_RUSH_TEAM_OPTIONS,
   WORD_RUSH_TURN_OPTIONS,
+  formatWordRushTurnTimer,
   WORD_RUSH_MAX_PLAYER_OPTIONS,
   clampWordRushMode,
   clampWordRushPromptMode,
@@ -270,7 +271,7 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
             >
               {WORD_RUSH_TURN_OPTIONS.map((n) => (
                 <option key={n} value={n}>
-                  {n}s
+                  {formatWordRushTurnTimer(n)}
                 </option>
               ))}
             </select>

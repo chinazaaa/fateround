@@ -221,6 +221,7 @@ import {
   WORD_RUSH_ROUND_OPTIONS,
   WORD_RUSH_TEAM_OPTIONS,
   WORD_RUSH_TURN_OPTIONS,
+  formatWordRushTurnTimer,
 } from '@/lib/word-rush'
 import { parseDescribeItWords, parseExcelDescribeItWords } from '@/lib/describe-it-words'
 import { getCodeDefaultLimits, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
@@ -2620,7 +2621,7 @@ function CreateGameInner() {
                   >
                     {WORD_RUSH_TURN_OPTIONS.map((n) => (
                       <option key={n} value={n}>
-                        {n}s
+                        {formatWordRushTurnTimer(n)}
                       </option>
                     ))}
                   </select>

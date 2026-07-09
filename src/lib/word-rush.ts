@@ -67,6 +67,15 @@ export function clampWordRushTurnSeconds(value: unknown): number {
   return (WORD_RUSH_TURN_OPTIONS as readonly number[]).includes(n) ? n : WORD_RUSH_DEFAULT_TURN_SECONDS
 }
 
+export function formatWordRushTurnTimer(seconds: number): string {
+  if (seconds === 60) return '1 min'
+  if (seconds === 90) return '1.5 min'
+  if (seconds === 120) return '2 min'
+  if (seconds === 180) return '3 min'
+  if (seconds % 60 === 0) return `${seconds / 60} min`
+  return `${seconds}s`
+}
+
 export function clampWordRushMaxPlayers(value: unknown): number {
   const n = Math.round(Number(value))
   if (!Number.isFinite(n)) return WORD_RUSH_DEFAULT_MAX_PLAYERS
