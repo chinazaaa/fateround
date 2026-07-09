@@ -53,13 +53,29 @@ vi.mock('@/components/AudioChat', () => ({
 
 import HostPage from './page'
 
+const store: Record<string, string> = {}
+const mockLocalStorage = {
+  getItem: (key: string) => store[key] ?? null,
+  setItem: (key: string, val: string) => {
+    store[key] = val
+  },
+  removeItem: (key: string) => {
+    delete store[key]
+  },
+  clear: () => {
+    for (const k in store) delete store[k]
+  },
+}
+
 beforeEach(() => {
+  vi.stubGlobal('localStorage', mockLocalStorage)
+  mockLocalStorage.clear()
   h.gameRow = null
   h.verifyOk = true
   h.verifyResponseOk = true
   // The host page resolves its token from storage (clean-URL flow, like tournaments) via
   // useHostToken — seed it under the upper-cased code the page reads.
-  localStorage.setItem('game_host_ABCD', 'secret')
+  mockLocalStorage.setItem('game_host_ABCD', 'secret')
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => ({ ok: h.verifyResponseOk, json: async () => ({ ok: h.verifyOk }) }))
@@ -67,7 +83,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  localStorage.clear()
+  mockLocalStorage.clear()
   window.history.replaceState({}, '', '/') // reset the URL so a strip test can't leak into others
   vi.unstubAllGlobals() // restore the real global.fetch so it can't leak into other suites
 })
