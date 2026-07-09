@@ -1494,6 +1494,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  word_rush: {
+    id: 'word_rush',
+    label: 'Word Rush',
+    tagline: 'Name words that start and end with the letters',
+    headerEmoji: '🔤⚡',
+    card: {
+      accent: '#f97316',
+      accentSoft: 'rgba(249, 115, 22, 0.15)',
+      emoji: '🔤',
+      players: '2–20 players',
+      vibe: 'Letter rush',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '✓',
+        label: 'Correct',
+        color: '#22c55e',
+        leaderboardLabel: 'Words scored',
+        activeClass: 'bg-emerald-500/20 text-emerald-100 border-emerald-400',
+        borderClass: 'border-emerald-500/50 bg-emerald-500/10',
+        textColor: '#86efac',
+      },
+      marry: {
+        emoji: '🔤',
+        label: 'Prompt',
+        color: '#f97316',
+        leaderboardLabel: 'Prompts cleared',
+        activeClass: 'bg-orange-500/20 text-orange-100 border-orange-400',
+        borderClass: 'border-orange-500/50 bg-orange-500/10',
+        textColor: '#fdba74',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Winner',
+        color: '#fbbf24',
+        leaderboardLabel: 'Winner',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
   scrabble: {
     id: 'scrabble',
     label: 'Scrabble',
@@ -1624,6 +1667,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'word_hunt',
   'chess',
   'describe_it',
+  'word_rush',
   'scrabble',
   'snake_and_ladder',
   'crazy_eights',
@@ -1651,6 +1695,7 @@ const PINNED_GAME_TYPES: GameType[] = [
   'scrabble',
   'word_hunt',
   'describe_it',
+  'word_rush',
   'i_call_on',
   'smash_marry_kill',
   'bingo',
@@ -1696,6 +1741,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'word_hunt') return 'word_hunt'
   if (raw === 'chess') return 'chess'
   if (raw === 'describe_it' || raw === 'text-charades') return 'describe_it'
+  if (raw === 'word_rush' || raw === 'word-rush') return 'word_rush'
   if (raw === 'scrabble') return 'scrabble'
   if (raw === 'snake_and_ladder' || raw === 'snakes-and-ladders') return 'snake_and_ladder'
   if (raw === 'crazy_eights' || raw === 'crazy-eights') return 'crazy_eights'
@@ -1793,6 +1839,8 @@ export function gameHowItWorks(
       return 'Players join with their name (5 to 16 players). Each player is secretly assigned a role: Villager, Mafia, Doctor, or Detective. The game alternates between Night (when the Mafia kills, the Doctor heals, and the Detective investigates) and Day (when the village discusses and votes to eliminate a suspect). Eliminate the Mafia to win, or parity wins for the Mafia.'
     case 'describe_it':
       return 'Players join with their name and split into teams (you pick how many). Each round, one team is on the clock — a describer sees a secret word and types clues without saying it, while teammates race to type the word. Every correct guess scores a point. Most words across all rounds wins.'
+    case 'word_rush':
+      return 'Players join with their name. Race to name valid words that start and end with the given letters — team mode races the clock for as many words as possible, individual mode scores everyone each round.'
     case 'i_call_on':
       return "Players join with their name. Set a game timer (or play all 26 letters). Each letter cycle someone calls A–Z, everyone fills Name, Animal, Place, Thing, and Food, then marks the next player's sheet. Duplicates score 5 automatically; unique valid answers score 10. Everyone sees all marks live."
     case 'most_likely_to':
@@ -2051,6 +2099,7 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   word_hunt: true,
   chess: true,
   describe_it: true,
+  word_rush: true,
   scrabble: true,
   snake_and_ladder: true,
   crazy_eights: true,
@@ -2090,6 +2139,7 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   word_hunt: false,
   chess: false,
   describe_it: false,
+  word_rush: false,
   scrabble: false,
   snake_and_ladder: false,
   crazy_eights: false,
@@ -2211,6 +2261,10 @@ export function isMafiaGame(gameType: GameType | string | undefined): boolean {
 
 export function isDescribeItGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'describe_it'
+}
+
+export function isWordRushGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'word_rush'
 }
 
 export function isScrabbleGame(gameType: GameType | string | undefined): boolean {

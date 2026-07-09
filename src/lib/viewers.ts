@@ -15,6 +15,7 @@ import {
   isCheckersGame,
   isScrabbleGame,
   isDescribeItGame,
+  isWordRushGame,
   isWordHuntGame,
   isMostLikelyTo,
   isNeverHaveIEver,
@@ -71,6 +72,7 @@ export function clampLateJoinPolicyForGameType(policy: LateJoinPolicy, gameType:
  */
 export function defaultLateJoinPolicyForGameType(gameType: GameType): LateJoinPolicy {
   if (isDescribeItGame(gameType)) return 'viewers_and_players'
+  if (isWordRushGame(gameType)) return 'viewers_and_players'
   return 'viewers_only'
 }
 
@@ -102,6 +104,7 @@ export function gameOffersLateJoinChoice(gameType: GameType): boolean {
     isTriviaGame(gameType) ||
     isCodewordsGame(gameType) ||
     isDescribeItGame(gameType) ||
+    isWordRushGame(gameType) ||
     isBingoGame(gameType) ||
     isWordHuntGame(gameType) ||
     isWouldYouRather(gameType) ||

@@ -14,6 +14,7 @@ import {
   isChessGame,
   isCheckersGame,
   isDescribeItGame,
+  isWordRushGame,
   isScrabbleGame,
   isMahjongGame,
   isICallOnGame,
@@ -42,6 +43,8 @@ import { clearMafiaSessionData } from '@/lib/mafia'
 import { clearTriviaSessionData } from '@/lib/trivia'
 import { clearTwoTruthsSessionData } from '@/lib/two-truths'
 import { clearQuiplashSessionData } from '@/lib/quiplash'
+import { canWordRushPlayAgain } from '@/lib/word-rush'
+import { clearWordRushSessionData } from '@/lib/word-rush-server'
 import {
   applyCustomQuestionsUpdate,
   applyParticipantListUpdate,
@@ -88,6 +91,7 @@ type ClearableSessionGameType = Extract<
   | 'chess'
   | 'checkers'
   | 'describe_it'
+  | 'word_rush'
   | 'scrabble'
   | 'tic_tac_toe'
   | 'i_call_on'
@@ -118,6 +122,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   chess: clearChessSessionData,
   checkers: clearCheckersSessionData,
   describe_it: clearDescribeItSessionData,
+  word_rush: clearWordRushSessionData,
   scrabble: clearScrabbleSessionData,
   tic_tac_toe: clearTicTacToeSessionData,
   i_call_on: clearNpatSessionData,
@@ -157,6 +162,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   const describeItCanReplay = isDescribeItGame(gameType)
     ? await canDescribeItPlayAgain(supabase, gameId, game.status)
     : false
+  const wordRushCanReplay = isWordRushGame(gameType) ? canWordRushPlayAgain(game) : false
   const scrabbleCanReplay = isScrabbleGame(gameType) ? await canScrabblePlayAgain(supabase, gameId, game.status) : false
   const mahjongCanReplay = isMahjongGame(gameType) ? await canMahjongPlayAgain(supabase, gameId, game.status) : false
   const canReturnToLobby =
@@ -166,6 +172,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     chessCanReplay ||
     checkersCanReplay ||
     describeItCanReplay ||
+    wordRushCanReplay ||
     scrabbleCanReplay ||
     mahjongCanReplay ||
     (isCodewordsGame(gameType) && game.status === 'active') ||

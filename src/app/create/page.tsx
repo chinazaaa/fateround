@@ -67,6 +67,7 @@ import {
   isCheckersGame,
   isScrabbleGame,
   isDescribeItGame,
+  isWordRushGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
@@ -212,6 +213,18 @@ import {
   DESCRIBE_IT_TEAM_OPTIONS,
   DESCRIBE_IT_TURN_OPTIONS,
 } from '@/lib/describe-it'
+import {
+  WORD_RUSH_DEFAULT_MAX_PLAYERS,
+  WORD_RUSH_DEFAULT_ROUNDS,
+  WORD_RUSH_DEFAULT_TURN_SECONDS,
+  WORD_RUSH_MAX_PLAYER_OPTIONS,
+  WORD_RUSH_MIN_PLAYERS,
+  WORD_RUSH_MIN_PLAYERS_INDIVIDUAL,
+  WORD_RUSH_ROUND_OPTIONS,
+  WORD_RUSH_TEAM_OPTIONS,
+  WORD_RUSH_TURN_OPTIONS,
+  formatWordRushTurnTimer,
+} from '@/lib/word-rush'
 import { parseDescribeItWords, parseExcelDescribeItWords } from '@/lib/describe-it-words'
 import { getCodeDefaultLimits, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import { TriviaTimerPicker } from '@/components/trivia/TriviaTimerPicker'
@@ -243,6 +256,9 @@ function CreateGameInner() {
     isPublic: false,
     describe_it_num_teams: 2,
     describe_it_mode: 'team',
+    word_rush_num_teams: 2,
+    word_rush_mode: 'team',
+    word_rush_prompt_mode: 'automatic',
   })
   const [describeItWords, setDescribeItWords] = useState('')
   const [describeItUploadError, setDescribeItUploadError] = useState<string | null>(null)
@@ -319,6 +335,7 @@ function CreateGameInner() {
   const [sudokuMaxPlayers, setSudokuMaxPlayers] = useState(20)
   const [sudokuGameDuration, setSudokuGameDuration] = useState(0)
   const [wordHuntMaxPlayers, setWordHuntMaxPlayers] = useState(WORD_HUNT_DEFAULT_MAX_PLAYERS)
+  const [wordRushMaxPlayers, setWordRushMaxPlayers] = useState(WORD_RUSH_DEFAULT_MAX_PLAYERS)
   const [wordHuntTimer, setWordHuntTimer] = useState(WORD_HUNT_DEFAULT_TIMER)
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
@@ -394,6 +411,7 @@ function CreateGameInner() {
     setLudoMaxPlayers((v) => clamp('ludo', v))
     setSnakeLadderMaxPlayers((v) => clamp('snake_and_ladder', v))
     setNpatMaxPlayers((v) => clamp('i_call_on', v))
+    setWordRushMaxPlayers((v) => clamp('word_rush', v))
   }, [lobbyLimits])
 
   useEffect(() => {
@@ -543,6 +561,17 @@ function CreateGameInner() {
               describe_it_mode: 'team' as const,
             }
           : {}),
+        ...(isWordRushGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: WORD_RUSH_DEFAULT_ROUNDS,
+              timer_seconds: WORD_RUSH_DEFAULT_TURN_SECONDS,
+              word_rush_num_teams: 2,
+              word_rush_mode: 'team' as const,
+              word_rush_prompt_mode: 'automatic' as const,
+            }
+          : {}),
         ...(isMafiaGame(type)
           ? {
               participant_mode: 'joiners' as const,
@@ -637,6 +666,7 @@ function CreateGameInner() {
   const isCheckers = isCheckersGame(settings.game_type)
   const isScrabble = isScrabbleGame(settings.game_type)
   const isDescribeIt = isDescribeItGame(settings.game_type)
+  const isWordRush = isWordRushGame(settings.game_type)
   const isMafia = isMafiaGame(settings.game_type)
   const isNpat = isICallOnGame(settings.game_type)
   const isSudoku = isSudokuGame(settings.game_type)
@@ -746,6 +776,7 @@ function CreateGameInner() {
     isChess ||
     isScrabble ||
     isDescribeIt ||
+    isWordRush ||
     isNpat ||
     isSudoku ||
     isWordHunt ||
@@ -1275,6 +1306,9 @@ function CreateGameInner() {
                 : null,
           trivia_category: isTrivia ? triviaCategory : undefined,
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
+          word_rush_mode: isWordRush ? settings.word_rush_mode : undefined,
+          word_rush_prompt_mode: isWordRush ? settings.word_rush_prompt_mode : undefined,
+          word_rush_num_teams: isWordRush ? settings.word_rush_num_teams : undefined,
           participants: isJoinersMode ? [] : participants,
           wst_quote_source: isWst ? wstQuoteSource : undefined,
           custom_slots: isCustom ? customSlots : null,
@@ -1311,9 +1345,11 @@ function CreateGameInner() {
                                       ? sudokuMaxPlayers
                                       : isWordHunt
                                         ? wordHuntMaxPlayers
-                                        : isMatchingPairs
-                                          ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
-                                          : undefined,
+                                        : isWordRush
+                                          ? wordRushMaxPlayers
+                                          : isMatchingPairs
+                                            ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
+                                            : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
@@ -2519,6 +2555,116 @@ function CreateGameInner() {
                   Add your own words to use those first (the built-in bank only tops up if you run out); leave it blank
                   for the built-in bank.
                 </p>
+              </SettingsGroup>
+            ) : isWordRush ? (
+              <SettingsGroup title="Word Rush room">
+                <p className="text-faint text-sm">
+                  {settings.word_rush_mode === 'individual'
+                    ? `Everyone races to name a valid word each round. ${WORD_RUSH_MIN_PLAYERS_INDIVIDUAL}+ players.`
+                    : `Teams race the clock to name as many valid words as possible. ${WORD_RUSH_MIN_PLAYERS}+ players.`}
+                </p>
+                <Field label="Player mode">
+                  <div className="grid grid-cols-2 gap-3">
+                    {(['team', 'individual'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setSettings({ ...settings, word_rush_mode: mode })}
+                        className={[
+                          'rounded-2xl border-2 px-4 py-4 text-left capitalize',
+                          settings.word_rush_mode === mode
+                            ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                            : 'border-[var(--border-strong)] text-muted',
+                        ].join(' ')}
+                      >
+                        <span className="font-bold block text-base">{mode}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                <Field label="Prompt mode">
+                  <div className="grid grid-cols-2 gap-3">
+                    {(['automatic', 'manual'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setSettings({ ...settings, word_rush_prompt_mode: mode })}
+                        className={[
+                          'rounded-2xl border-2 px-4 py-4 text-left capitalize',
+                          settings.word_rush_prompt_mode === mode
+                            ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                            : 'border-[var(--border-strong)] text-muted',
+                        ].join(' ')}
+                      >
+                        <span className="font-bold block text-base">{mode}</span>
+                        <span className="text-faint text-xs">
+                          {mode === 'automatic' ? 'System picks letters' : 'Players pick letters'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                {settings.word_rush_mode !== 'individual' && (
+                  <Field label="Teams">
+                    <select
+                      value={settings.word_rush_num_teams}
+                      onChange={(e) => setSettings({ ...settings, word_rush_num_teams: Number(e.target.value) })}
+                      className="input-field w-full"
+                    >
+                      {WORD_RUSH_TEAM_OPTIONS.map((n) => (
+                        <option key={n} value={n}>
+                          {n} teams
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+                <Field
+                  label={`Max players (${WORD_RUSH_MIN_PLAYERS_INDIVIDUAL}–${WORD_RUSH_MAX_PLAYER_OPTIONS.at(-1)})`}
+                >
+                  <select
+                    value={wordRushMaxPlayers}
+                    onChange={(e) => setWordRushMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {WORD_RUSH_MAX_PLAYER_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={settings.word_rush_mode === 'individual' ? 'Round length' : 'Team turn length'}>
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {WORD_RUSH_TURN_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {formatWordRushTurnTimer(n)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {settings.word_rush_mode === 'individual' && (
+                  <Field label="Rounds">
+                    <select
+                      value={settings.rounds_count}
+                      onChange={(e) => setSettings({ ...settings, rounds_count: Number(e.target.value) })}
+                      className="input-field w-full"
+                    >
+                      {WORD_RUSH_ROUND_OPTIONS.map((n) => (
+                        <option key={n} value={n}>
+                          {n} rounds
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+                <Field label="Late joiners">
+                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="word_rush" />
+                </Field>
               </SettingsGroup>
             ) : isNpat ? (
               <SettingsGroup title="I Call On room">

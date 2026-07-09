@@ -22,6 +22,7 @@ import {
   isTriviaGame,
   isTwoTruthsGame,
   isDescribeItGame,
+  isWordRushGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
@@ -94,6 +95,8 @@ import {
   DESCRIBE_IT_MIN_PLAYERS,
   DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
 } from '@/lib/describe-it'
+import { WORD_RUSH_MIN_PLAYERS, WORD_RUSH_MIN_PLAYERS_INDIVIDUAL } from '@/lib/word-rush'
+import { initializeWordRushGame } from '@/lib/word-rush-server'
 import { buildNpatInitialRound, NPAT_MIN_PLAYERS, shufflePlayerOrder as npatShufflePlayerOrder } from '@/lib/npat'
 import { buildSudokuRoundRow, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
@@ -409,6 +412,30 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     }
 
     const { error: initError, internal: initInternal } = await initializeDescribeItGame(
+      getSupabaseAdmin(),
+      code.toUpperCase(),
+      playingPlayers.map((p) => p.id)
+    )
+    if (initError) return NextResponse.json({ error: initError }, { status: initInternal ? 500 : 400 })
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({ status: 'active', session_started_at: sessionStartedAt, current_round_number: 1 })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isWordRushGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    const minPlayers = game.word_rush_mode === 'individual' ? WORD_RUSH_MIN_PLAYERS_INDIVIDUAL : WORD_RUSH_MIN_PLAYERS
+    if (playingPlayers.length < minPlayers) {
+      return NextResponse.json({ error: `Need at least ${minPlayers} players to start` }, { status: 400 })
+    }
+
+    const { error: initError, internal: initInternal } = await initializeWordRushGame(
       getSupabaseAdmin(),
       code.toUpperCase(),
       playingPlayers.map((p) => p.id)
