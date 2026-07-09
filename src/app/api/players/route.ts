@@ -21,7 +21,11 @@ import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
 import { createBingoCardForPlayer } from '@/lib/bingo'
 import { assignCodewordsLateJoinOperative, codewordsAllowsPlayerChanges, removeCodewordsPlayer } from '@/lib/codewords'
 import { assignDescribeItLateJoinTeam } from '@/lib/describe-it'
-import { assignWordRushLateJoinTeam } from '@/lib/word-rush-server'
+import {
+  assignWordRushLateJoinTeam,
+  revertWordRushRosterAfterFailedPlayerDelete,
+  syncWordRushAfterPlayerRemoved,
+} from '@/lib/word-rush-server'
 import {
   parseGameType,
   isNameOnlyPlayerJoin,
@@ -1644,12 +1648,28 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: true })
   }
 
+  let wordRushRollback: { roster: string[]; prompt_setter_player_id: string | null } | undefined
+  if (isWordRushGame(gameType)) {
+    const admin = getSupabaseAdmin()
+    const sync = await syncWordRushAfterPlayerRemoved(admin, id, playerId)
+    if (sync.error) {
+      return NextResponse.json({ error: sync.error }, { status: sync.internal ? 500 : 400 })
+    }
+    wordRushRollback = sync.rollback
+  }
+
   if (game!.participant_mode === 'joiners') {
     const { error } = await deleteJoinerPair(getSupabaseAdmin(), id, player)
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', { message: error }) }, { status: 500 })
+    if (error) {
+      if (wordRushRollback) await revertWordRushRosterAfterFailedPlayerDelete(getSupabaseAdmin(), id, wordRushRollback)
+      return NextResponse.json({ error: internalErrorMessage('players', { message: error }) }, { status: 500 })
+    }
   } else {
     const { error } = await getSupabaseAdmin().from('players').delete().eq('id', playerId)
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) {
+      if (wordRushRollback) await revertWordRushRosterAfterFailedPlayerDelete(getSupabaseAdmin(), id, wordRushRollback)
+      return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    }
   }
 
   if (isSudokuGame(gameType)) {
