@@ -13,6 +13,10 @@ export const WORD_RUSH_MAX_PLAYER_OPTIONS = [6, 8, 10, 12, 16, 20] as const
 
 export const WORD_RUSH_DEFAULT_TURN_SECONDS = 120
 export const WORD_RUSH_DEFAULT_ROUNDS = 5
+/** Individual mode: flat points before the speed bonus (Text Charades style). */
+export const WORD_RUSH_INDIVIDUAL_BASE_POINTS = 10
+/** Individual mode: extra points for an instant answer, decaying to 0 at time-up. */
+export const WORD_RUSH_INDIVIDUAL_SPEED_BONUS = 40
 export const WORD_RUSH_MIN_PER_TEAM = 1
 export const WORD_RUSH_BREAK_SECONDS = 6
 export const WORD_RUSH_ROUND_RESULTS_SECONDS = 8
@@ -65,6 +69,16 @@ export function clampWordRushRounds(value: unknown): number {
 export function clampWordRushTurnSeconds(value: unknown): number {
   const n = Number(value)
   return (WORD_RUSH_TURN_OPTIONS as readonly number[]).includes(n) ? n : WORD_RUSH_DEFAULT_TURN_SECONDS
+}
+
+/** Speed-scaled points for a correct individual-mode answer. */
+export function wordRushIndividualGuessPoints(turnDeadlineAt: string | null, turnSeconds: number): number {
+  if (!turnDeadlineAt) return WORD_RUSH_INDIVIDUAL_BASE_POINTS
+  const totalMs = Math.max(turnSeconds, 1) * 1000
+  const startMs = new Date(turnDeadlineAt).getTime() - totalMs
+  const elapsed = Math.max(0, Date.now() - startMs)
+  const ratio = Math.max(0, Math.min(1, 1 - elapsed / totalMs))
+  return WORD_RUSH_INDIVIDUAL_BASE_POINTS + Math.floor(WORD_RUSH_INDIVIDUAL_SPEED_BONUS * ratio)
 }
 
 export function formatWordRushTurnTimer(seconds: number): string {

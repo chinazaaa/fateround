@@ -145,6 +145,8 @@ export function WordRushPlayPanel({
     .slice(-5)
     .reverse()
   const nameById = new Map(players.map((p) => [p.id, p.name]))
+  const myAnswerThisRound = myPlayerId ? currentTurnAnswers.find((a) => a.player_id === myPlayerId) : undefined
+  const individualScoreLabel = (score: number) => `${score} ${score === 1 ? 'pt' : 'pts'}`
 
   if (session.phase === 'intermission') {
     return (
@@ -153,13 +155,21 @@ export function WordRushPlayPanel({
           <p className="text-lg font-bold">{session.status_message}</p>
           <p className="text-faint text-sm">Next up in {intermissionLeft}s…</p>
         </WordRushCard>
-        {isTeam ? <WordRushScoreboard scores={teamScores} /> : <WordRushPlayerScoreboard scores={playerScores} />}
+        {isTeam ? (
+          <WordRushScoreboard scores={teamScores} />
+        ) : (
+          <WordRushPlayerScoreboard scores={playerScores} scoreLabel={individualScoreLabel} />
+        )}
       </div>
     )
   }
 
   if (session.phase === 'finished') {
-    return isTeam ? <WordRushScoreboard scores={teamScores} /> : <WordRushPlayerScoreboard scores={playerScores} />
+    return isTeam ? (
+      <WordRushScoreboard scores={teamScores} />
+    ) : (
+      <WordRushPlayerScoreboard scores={playerScores} scoreLabel={individualScoreLabel} />
+    )
   }
 
   const timerClass = urgent ? 'text-red-400 animate-pulse' : 'text-[var(--foreground)]'
@@ -175,7 +185,11 @@ export function WordRushPlayPanel({
         <p className={`text-2xl font-black tabular-nums ${timerClass}`}>{Math.max(0, secondsLeft)}s</p>
       </div>
 
-      {isTeam ? <WordRushScoreboard scores={teamScores} /> : <WordRushPlayerScoreboard scores={playerScores} />}
+      {isTeam ? (
+        <WordRushScoreboard scores={teamScores} />
+      ) : (
+        <WordRushPlayerScoreboard scores={playerScores} scoreLabel={individualScoreLabel} />
+      )}
 
       <WordRushCard className="space-y-4">
         {session.status_message && <p className="text-center text-sm text-faint">{session.status_message}</p>}
@@ -191,16 +205,29 @@ export function WordRushPlayPanel({
         ) : (
           <>
             <WordRushPromptDisplay startLetter={session.start_letter} endLetter={session.end_letter} />
-            {!readOnly && ((!isTeam && !isPromptSetter) || (isTeam && onActiveTeam && !isPromptSetter)) && (
-              <AnswerInput
-                placeholder="Type a word…"
-                buttonLabel="Submit"
-                onSubmit={(t) => onSubmit?.(t)}
-                disabled={acting}
-              />
+            {!readOnly &&
+              !myAnswerThisRound &&
+              ((!isTeam && !isPromptSetter) || (isTeam && onActiveTeam && !isPromptSetter)) && (
+                <AnswerInput
+                  placeholder="Type a word…"
+                  buttonLabel="Submit"
+                  onSubmit={(t) => onSubmit?.(t)}
+                  disabled={acting}
+                />
+              )}
+            {!readOnly && myAnswerThisRound && (
+              <p className="text-center text-sm">
+                {myAnswerThisRound.correct ? (
+                  <span className="text-emerald-400 font-semibold">Correct — locked in for this round ✓</span>
+                ) : (
+                  <span className="text-muted">Submitted — not a valid word for this pair</span>
+                )}
+              </p>
             )}
             {readOnly && (
-              <p className="text-center text-faint text-sm">Watching — {teamLabel(session.active_team)} is playing</p>
+              <p className="text-center text-faint text-sm">
+                {isTeam ? `Watching — ${teamLabel(session.active_team)} is playing` : 'Watching — round in progress'}
+              </p>
             )}
             {!isTeam && isPromptSetter && (
               <p className="text-center text-faint text-sm">You set the letters this round — others are guessing</p>

@@ -161,7 +161,10 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
       })
       const data = await res.json()
       if (!res.ok) toastError(data.error ?? 'Action failed')
-      else await load()
+      else {
+        if (path.includes('/submit') && data.correct === false) toastError('Not a valid word for this pair')
+        await load()
+      }
     } finally {
       setActing(false)
     }
@@ -332,7 +335,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'finished' && game) {
     return (
-      <WordRushShell>
+      <WordRushShell compact>
         <WordRushFinishedResults
           game={game}
           session={session}
@@ -357,7 +360,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   return (
-    <WordRushShell>
+    <WordRushShell compact>
       {isViewer && <ViewerModeBanner />}
       {session && (
         <WordRushPlayPanel

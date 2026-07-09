@@ -18,6 +18,7 @@ import {
   letterPairKey,
   normalizeWordRushWord,
   promptSetterForIndividualRound,
+  wordRushIndividualGuessPoints,
   teamForTurnIndex,
   teamLabel,
   teamRoster,
@@ -254,7 +255,7 @@ export async function processWordRushSubmit(
   gameId: string,
   playerId: string,
   text: string
-): Promise<{ error?: string; correct?: boolean; internal?: boolean }> {
+): Promise<{ error?: string; correct?: boolean; points?: number; internal?: boolean }> {
   const { session, error, internal } = await loadSession(supabase, gameId)
   if (error) return { error, internal }
   if (!session || session.status === 'finished') return { error: 'Game not active' }
@@ -305,7 +306,9 @@ export async function processWordRushSubmit(
       correct,
     })
     if (correct) {
-      await supabase.rpc('word_rush_add_score', { p_game_id: gameId, p_player_id: playerId, p_delta: 1 })
+      const points = wordRushIndividualGuessPoints(session.turn_deadline_at, session.turn_seconds)
+      await supabase.rpc('word_rush_add_score', { p_game_id: gameId, p_player_id: playerId, p_delta: points })
+      return { correct, points }
     }
     return { correct }
   }

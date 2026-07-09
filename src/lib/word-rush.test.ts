@@ -11,6 +11,9 @@ import {
   wordRushLobbyReady,
   rebalanceWordRushTeams,
   shuffleWordRushTeams,
+  wordRushIndividualGuessPoints,
+  WORD_RUSH_INDIVIDUAL_BASE_POINTS,
+  WORD_RUSH_INDIVIDUAL_SPEED_BONUS,
 } from '@/lib/word-rush'
 
 describe('word-rush-dictionary', () => {
@@ -119,5 +122,13 @@ describe('word-rush helpers', () => {
       expect(team).toBeGreaterThanOrEqual(1)
       expect(team).toBeLessThanOrEqual(2)
     }
+  })
+
+  it('awards more points for faster individual answers', () => {
+    const fast = wordRushIndividualGuessPoints(new Date(Date.now() + 120_000).toISOString(), 120)
+    const slow = wordRushIndividualGuessPoints(new Date(Date.now() + 1_000).toISOString(), 120)
+    expect(fast).toBe(WORD_RUSH_INDIVIDUAL_BASE_POINTS + WORD_RUSH_INDIVIDUAL_SPEED_BONUS)
+    expect(slow).toBeGreaterThanOrEqual(WORD_RUSH_INDIVIDUAL_BASE_POINTS)
+    expect(fast).toBeGreaterThan(slow)
   })
 })

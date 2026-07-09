@@ -3,8 +3,18 @@
 import type { WordRushPlayerScore, WordRushTeamScore } from '@/lib/word-rush'
 import { TEAM_EMOJI, teamLabel } from '@/lib/word-rush'
 
-export function WordRushShell({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-dvh bg-[var(--background)] text-[var(--foreground)]">{children}</div>
+export function WordRushShell({ children, compact = false }: { children: React.ReactNode; compact?: boolean }) {
+  return (
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      <div
+        className={['page-wrap mx-auto w-full max-w-lg px-3 sm:px-4', compact ? 'py-3 sm:py-4' : 'py-6 sm:py-8'].join(
+          ' '
+        )}
+      >
+        <div className={compact ? 'space-y-4' : 'space-y-5 sm:space-y-6'}>{children}</div>
+      </div>
+    </div>
+  )
 }
 
 export function WordRushCard({ children, className = '' }: { children: React.ReactNode; className?: string }) {
@@ -129,7 +139,13 @@ export function WordRushScoreboard({ scores }: { scores: WordRushTeamScore[] }) 
   )
 }
 
-export function WordRushPlayerScoreboard({ scores }: { scores: WordRushPlayerScore[] }) {
+export function WordRushPlayerScoreboard({
+  scores,
+  scoreLabel = (score: number) => String(score),
+}: {
+  scores: WordRushPlayerScore[]
+  scoreLabel?: (score: number) => string
+}) {
   return (
     <div className="space-y-2">
       {scores.map((s, i) => (
@@ -137,7 +153,7 @@ export function WordRushPlayerScoreboard({ scores }: { scores: WordRushPlayerSco
           <span className="text-sm font-semibold truncate">
             {i + 1}. {s.name}
           </span>
-          <span className="text-lg font-black tabular-nums">{s.score}</span>
+          <span className="text-lg font-black tabular-nums">{scoreLabel(s.score)}</span>
         </div>
       ))}
     </div>

@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   if (auth.player.spectator) return NextResponse.json({ error: 'Spectators cannot submit answers' }, { status: 403 })
 
-  const { error, correct, internal } = await processWordRushSubmit(supabase, code, auth.player.id, text)
+  const { error, correct, points, internal } = await processWordRushSubmit(supabase, code, auth.player.id, text)
   if (error) return NextResponse.json({ error }, { status: internal ? 500 : 400 })
-  return NextResponse.json({ success: true, correct: !!correct })
+  return NextResponse.json({ success: true, correct: !!correct, points: points ?? 0 })
 }

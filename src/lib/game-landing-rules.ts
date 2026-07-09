@@ -1041,8 +1041,8 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Individual mode',
       points: [
-        'Each round shows one letter pair. Everyone submits one answer before the timer ends.',
-        'Correct answers score 1 point. Results show on the leaderboard, then the next round begins.',
+        'Each round shows one letter pair. Everyone gets one answer — fastest correct answers score the most points (like Text Charades).',
+        'Points decay as the timer runs down. Highest total on the leaderboard wins.',
         'In manual mode, a rotating player enters the letters each round.',
       ],
     },

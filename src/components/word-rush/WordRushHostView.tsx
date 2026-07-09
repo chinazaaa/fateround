@@ -404,6 +404,27 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
       </div>
     )
 
+  const submitWord = async (text: string) => {
+    if (!hostResumeToken) {
+      toastError('Join as a player first')
+      return
+    }
+    try {
+      const res = await fetch('/api/word-rush/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, text }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to submit')
+      if (data.correct === false) toastError('Not a valid word for this pair')
+      else if (data.points) success(`+${data.points} pts!`)
+      await load()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to submit')
+    }
+  }
+
   const interactivePlay = session ? (
     <WordRushPlayPanel
       session={session}
@@ -415,18 +436,7 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
       intermissionLeft={intermissionLeft}
       urgent={urgent}
       readOnly={!hostPlays}
-      onSubmit={
-        hostPlays
-          ? (text) => {
-              if (!hostResumeToken) return
-              void fetch('/api/word-rush/submit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, text }),
-              }).then(() => load())
-            }
-          : undefined
-      }
+      onSubmit={hostPlays ? (text) => void submitWord(text) : undefined}
       onPrompt={
         hostPlays
           ? (startLetter, endLetter) => {
