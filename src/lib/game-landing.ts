@@ -59,6 +59,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   chess: 'chess',
   checkers: 'checkers',
   describe_it: 'text-charades',
+  word_rush: 'word-rush',
   scrabble: 'scrabble',
   snake_and_ladder: 'snakes-and-ladders',
   mafia: 'mafia',
@@ -2244,6 +2245,53 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
           'Yes. Use the built-in word pool or upload your own list when you create the game — handy for themed rounds, inside jokes, or a work-friendly set. Great for tailoring the game to your group.',
       },
     ],
+  }),
+
+  word_rush: landing('word_rush', {
+    seoTitle: 'Word Rush — Online Letter Word Game',
+    seoDescription:
+      'Play Word Rush online with friends. Name words that start and end with given letters — team rush or individual rounds. Dictionary-validated. No sign-up.',
+    keywords: [
+      'word rush game',
+      'starts with ends with word game',
+      'letter word game online',
+      'word game with friends',
+      'play word rush online free',
+      'team word game online',
+    ],
+    heroSubtitle: 'Starts with M, ends with Y — how fast can you name a valid word?',
+    bodyParagraph:
+      'Word Rush is a fast letter-constraint word game. In team mode, each team gets a timed run to name as many dictionary-valid words as possible that start and end with the given letters — Monkey ✅, then instantly on to the next pair. In individual mode, everyone answers the same prompt each round and scores on the leaderboard. Choose automatic prompts from the system or manual mode where players pick the letters.',
+    highlights: ['2–20 players', 'Team or solo', 'Dictionary checked'],
+    features: [
+      {
+        title: 'Starts with / ends with',
+        description: 'Every prompt gives a start letter and end letter — first valid word wins in team rush mode.',
+        emoji: '🔤',
+      },
+      {
+        title: 'Four ways to play',
+        description: 'Team or individual, automatic or manual letter prompts — mix and match for your group.',
+        emoji: '⚡',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      {
+        title: 'Pick your mode',
+        description: 'Team rush (2-minute blitz per team) or individual rounds with a leaderboard.',
+      },
+      {
+        title: 'See the letters',
+        description: 'Automatic mode generates letter pairs; manual mode lets a player enter them.',
+      },
+      {
+        title: 'Race to answer',
+        description: 'Type a real word that fits — valid answers score instantly and the next prompt appears.',
+      },
+    ],
+    perfectFor: ['Parties', 'Classrooms', 'Word nerds', 'Quick icebreakers'],
   }),
 
   scrabble: landing('scrabble', {

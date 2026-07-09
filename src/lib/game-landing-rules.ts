@@ -1028,6 +1028,41 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     },
   ],
 
+  word_rush: [
+    {
+      title: 'Objective',
+      points: [
+        'Name valid English words that start with one letter and end with another.',
+        'Team mode: most correct words across all rounds wins. Individual mode: highest personal score wins.',
+      ],
+    },
+    {
+      title: 'Team mode',
+      points: [
+        'The host sets how many rounds (e.g. 3, 5, 7). Each round, every team gets one timed run (default 2 minutes).',
+        'Round 1: Team 1 plays, then Team 2, and so on. Round 2: same order again. Highest total correct words across all rounds wins.',
+        'Everyone on the active team can type answers. The first correct answer scores and the next letter pair appears immediately.',
+        'Automatic mode generates prompts; manual mode lets one teammate enter letter pairs while the timer runs — that caller rotates each round so different people pick letters.',
+      ],
+    },
+    {
+      title: 'Individual mode',
+      points: [
+        'Each round shows one letter pair. Guessers get one answer — fastest correct answers score the most points (10 base + up to 40 speed bonus, like Text Charades). Longer words earn extra bonus points (+2 per letter beyond 3).',
+        'In manual mode, a rotating player enters the letters each round and sits out while others guess — they earn mirror points from correct scores. Automatic mode picks letters for everyone each round.',
+        'When everyone has answered, the round ends immediately. Otherwise the timer ends the round. Different players can submit the same word — there is no duplicate-word penalty.',
+      ],
+    },
+    {
+      title: 'Valid words',
+      points: [
+        'Answers must be real dictionary words (3–12 letters), matching both the start and end letter. Words are checked against merged English Scrabble lists (ENABLE, Collins, TWL) plus our Word Hunt word bank.',
+        'In team mode, only the first correct answer on each letter pair counts — the pair advances immediately, so type fast.',
+        'In individual mode, every player answers the same pair and multiple players can use the same word.',
+      ],
+    },
+  ],
+
   scrabble: [
     {
       title: 'Objective',

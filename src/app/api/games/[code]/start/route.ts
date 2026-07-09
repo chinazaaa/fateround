@@ -22,6 +22,7 @@ import {
   isTriviaGame,
   isTwoTruthsGame,
   isDescribeItGame,
+  isWordRushGame,
   isICallOnGame,
   isSudokuGame,
   isWordHuntGame,
@@ -94,6 +95,8 @@ import {
   DESCRIBE_IT_MIN_PLAYERS,
   DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
 } from '@/lib/describe-it'
+import { WORD_RUSH_MIN_PLAYERS, WORD_RUSH_MIN_PLAYERS_INDIVIDUAL } from '@/lib/word-rush'
+import { initializeWordRushGame } from '@/lib/word-rush-server'
 import { buildNpatInitialRound, NPAT_MIN_PLAYERS, shufflePlayerOrder as npatShufflePlayerOrder } from '@/lib/npat'
 import { buildSudokuRoundRow, SUDOKU_MIN_PLAYERS } from '@/lib/sudoku'
 import { buildWordHuntRoundRow, WORD_HUNT_MIN_PLAYERS } from '@/lib/word-hunt'
@@ -425,6 +428,30 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     return NextResponse.json({ success: true })
   }
 
+  if (isWordRushGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+    const minPlayers = game.word_rush_mode === 'individual' ? WORD_RUSH_MIN_PLAYERS_INDIVIDUAL : WORD_RUSH_MIN_PLAYERS
+    if (playingPlayers.length < minPlayers) {
+      return NextResponse.json({ error: `Need at least ${minPlayers} players to start` }, { status: 400 })
+    }
+
+    const { error: initError, internal: initInternal } = await initializeWordRushGame(
+      getSupabaseAdmin(),
+      code.toUpperCase(),
+      playingPlayers.map((p) => p.id)
+    )
+    if (initError) return NextResponse.json({ error: initError }, { status: initInternal ? 500 : 400 })
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({ status: 'active', session_started_at: sessionStartedAt, current_round_number: 1 })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
   if (isCodewordsGame(gameType)) {
     if (playersData.length < CODEWORDS_MIN_PLAYERS) {
       return NextResponse.json({ error: `Need at least ${CODEWORDS_MIN_PLAYERS} players to start` }, { status: 400 })
@@ -699,25 +726,35 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     // Resolve grid size from game settings (stored in game_duration_seconds:
     // 0 = Standard/8 pairs, 16 = Large/16 pairs).
     const gridSizePairs: MatchingPairsGridSize = game.game_duration_seconds === 16 ? 16 : 8
-
-    const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff)
     const playerIds = playingPlayers.map((p: { id: string }) => p.id)
-    const metadata = buildMatchingPairsRoundMetadata(code.toUpperCase(), seed, gridSizePairs, playerIds)
-    const roundRow = buildMatchingPairsRoundRow(code.toUpperCase(), metadata)
+    const roundsCount = game.rounds_count ?? 1
 
-    const { data: insertedRound, error: roundError } = await getSupabaseAdmin()
-      .from('rounds')
-      .insert(roundRow)
-      .select('id')
-      .single()
-    if (roundError || !insertedRound) {
-      return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
+    // Create N round rows — round 1 active, rest pending.
+    let firstRoundId: string | null = null
+    for (let r = 1; r <= roundsCount; r++) {
+      const seed = Date.now() ^ Math.floor(Math.random() * 0xffffffff) ^ (r * 0x10000)
+      const metadata = buildMatchingPairsRoundMetadata(code.toUpperCase(), seed, gridSizePairs, playerIds)
+      const roundRow = buildMatchingPairsRoundRow(code.toUpperCase(), metadata, r)
+
+      const { data: insertedRound, error: roundError } = await getSupabaseAdmin()
+        .from('rounds')
+        .insert(roundRow)
+        .select('id')
+        .single()
+      if (roundError || !insertedRound) {
+        return NextResponse.json({ error: roundError?.message ?? 'Failed to create round' }, { status: 500 })
+      }
+      if (r === 1) firstRoundId = insertedRound.id
     }
 
-    // Seed per-player progress rows so realtime subscriptions can track from the start.
+    if (!firstRoundId) {
+      return NextResponse.json({ error: 'Failed to create initial round' }, { status: 500 })
+    }
+
+    // Seed per-player progress rows for round 1 so realtime tracks from the start.
     const progressRows = playerIds.map((playerId: string) => ({
       game_id: code.toUpperCase(),
-      round_id: insertedRound.id,
+      round_id: firstRoundId,
       player_id: playerId,
       pairs_matched: 0,
       wrong_attempts: 0,
@@ -733,7 +770,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         status: 'active',
         session_started_at: sessionStartedAt,
         current_round_number: 1,
-        rounds_count: 1,
+        rounds_count: roundsCount,
       })
       .eq('id', code.toUpperCase())
 
