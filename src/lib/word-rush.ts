@@ -24,7 +24,7 @@ export const WORD_RUSH_BREAK_SECONDS = 6
 export const WORD_RUSH_ROUND_RESULTS_SECONDS = 8
 
 export const WORD_RUSH_MIN_WORD_LENGTH = WORD_HUNT_MIN_WORD_LENGTH
-export const WORD_RUSH_MAX_WORD_LENGTH = 12
+export const WORD_RUSH_MAX_WORD_LENGTH = 20
 
 export const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3', 'Team 4'] as const
 export const TEAM_EMOJI = ['🟦', '🟥', '🟩', '🟨'] as const

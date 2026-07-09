@@ -1056,7 +1056,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Valid words',
       points: [
-        'Answers must be real dictionary words (3–12 letters), matching both the start and end letter. Words are checked against merged English Scrabble lists (ENABLE, Collins, TWL) plus our Word Hunt word bank.',
+        'Answers must be real dictionary words (3–20 letters), matching both the start and end letter. Words are checked against merged English Scrabble lists (ENABLE, Collins, TWL) plus our Word Hunt word bank.',
         'In team mode, only the first correct answer on each letter pair counts — the pair advances immediately, so type fast.',
         'In individual mode, every player answers the same pair and multiple players can use the same word.',
       ],
