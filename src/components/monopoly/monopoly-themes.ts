@@ -524,8 +524,7 @@ const NAIJA_EDITION: MonopolyThemeEdition = {
     39: 'Eko Hotels',
   },
   spaceLines: {
-    0: ['OSHODI BUS', 'TERMINAL'],
-    1: ['OSHODI', 'MARKET'],
+    1: ['OSHODI BUS', 'TERMINAL'],
     2: ['ESUSU', 'FUND'],
     3: ['SABON', 'GARI'],
     4: ['MARKET', 'LEVY'],
@@ -660,6 +659,10 @@ export function formatThemedText(text: string | null | undefined, themeId?: stri
       formatted = formatted.replace(pattern, themed)
     }
   }
+
+  formatted = formatted.replace(/\bUK board\b/g, `${edition.editionName} board`)
+  formatted = formatted.replace(/\bUK Edition\b/g, `${edition.editionName} Edition`)
+  formatted = formatted.replace(/\bUK edition\b/g, `${edition.editionName} edition`)
 
   if (edition.themeId === 'naija') {
     formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, (_, numStr) => {

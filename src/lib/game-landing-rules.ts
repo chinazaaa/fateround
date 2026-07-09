@@ -469,6 +469,12 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
 
   monopoly: [
     {
+      title: 'Note on Editions & Themes',
+      points: [
+        'The detailed rules below use classic UK theme terminology and currency (£) as reference examples, but apply identically to all customizable Monopoly variations (including Naija Edition and others) where space names and currency units adapt to the selected theme.',
+      ],
+    },
+    {
       title: 'Objective',
       points: [
         'Buy, rent, and sell properties to grow your wealth until every opponent is bankrupt.',
