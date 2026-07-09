@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { isRoomLobbyPath } from '@/lib/room-routes'
 import { useTheme } from './ThemeProvider'
@@ -12,7 +13,13 @@ type ThemeToggleProps = {
 export function ThemeToggle({ variant = 'fixed', className = '' }: ThemeToggleProps) {
   const pathname = usePathname()
   const { theme, toggle } = useTheme()
-  const isDark = theme === 'dark'
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const isDark = mounted ? theme === 'dark' : false
 
   const onGamePlayerPage = /^\/game\/[^/]+/.test(pathname ?? '')
   const onRoomPage = isRoomLobbyPath(pathname)

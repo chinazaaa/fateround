@@ -520,6 +520,7 @@ function resolveSpaceLanding(
   let pendingSpace: number | null = null
   let statusSuffix = ''
   let auctionState: MonopolyAuctionState | null | undefined
+  let pendingDebt: MonopolyPendingDebt | undefined
 
   if (landed.type === 'go_to_jail') {
     return {
@@ -635,12 +636,32 @@ function resolveSpaceLanding(
           phase = 'pay_rent'
           pendingSpace = landed.index
           statusSuffix = ` You owe ${formatMonopolyMoney(rent)} rent on ${landed.name}.`
+          pendingDebt = {
+            player_id: ctx.playerId,
+            creditor_player_id: ownerId,
+            amount: rent,
+            reason: `Owe ${formatMonopolyMoney(rent)} rent on ${landed.name}`,
+            debt_type: 'rent',
+            space_index: landed.index,
+          }
         }
       }
     }
   }
 
-  return { cash, position, inJail, jailTurns, getOutCards, phase, pendingSpace, extraTurn, statusSuffix, auctionState }
+  return {
+    cash,
+    position,
+    inJail,
+    jailTurns,
+    getOutCards,
+    phase,
+    pendingSpace,
+    extraTurn,
+    statusSuffix,
+    auctionState,
+    pendingDebt,
+  }
 }
 
 /**
@@ -1677,7 +1698,10 @@ export async function processMonopolyPayRent(
   const ownerId = owners[String(spaceIndex)]
   if (!ownerId || ownerId === playerId) return { error: 'Invalid rent state' }
 
-  const rent = computeRent(space, owners, ownerId, board.last_dice?.total ?? 2, buildings, mortgaged)
+  const rent =
+    board.pending_debt?.debt_type === 'rent' && board.pending_debt?.amount != null
+      ? board.pending_debt.amount
+      : computeRent(space, owners, ownerId, board.last_dice?.total ?? 2, buildings, mortgaged)
 
   const { data: state } = await supabase
     .from('monopoly_player_state')
@@ -1807,6 +1831,10 @@ export async function processMonopolyBuild(
   const { data: boardRaw } = await supabase.from('monopoly_boards').select('*').eq('game_id', gameId).maybeSingle()
   if (!boardRaw) return { error: 'Board not found' }
   const board = boardRaw as MonopolyBoard
+
+  if (board.phase === 'pay_rent' || board.phase === 'raise_funds') {
+    return { error: 'Cannot buy or sell houses while rent or debt payment is pending' }
+  }
 
   const space = spaceAt(spaceIndex)
   const owners = parsePropertyOwners(board.property_owners)
