@@ -19,6 +19,10 @@ import {
   letterPairKey,
   normalizeWordRushWord,
   promptSetterForIndividualRound,
+  promptSetterForTeamRound,
+  teamRoundIndexFromTurn,
+  currentTeamRoundNumber,
+  wordRushTotalTeamTurns,
   wordRushIndividualGuessPoints,
   wordRushIndividualGuessPointsAt,
   teamForTurnIndex,
@@ -62,17 +66,20 @@ function nextAutoPrompt(usedPairs: string[]): { start: string; end: string; key:
 function buildTeamTurnStart(opts: {
   turnIndex: number
   numTeams: number
+  totalRounds: number
   turnSeconds: number
   promptMode: WordRushPromptMode
   promptSetterId: string | null
   usedPairs: string[]
 }): Partial<WordRushSession> {
   const activeTeam = teamForTurnIndex(opts.turnIndex, opts.numTeams)
+  const currentRound = currentTeamRoundNumber(opts.turnIndex, opts.numTeams)
   const auto = opts.promptMode === 'automatic' ? nextAutoPrompt(opts.usedPairs) : null
   const awaiting = opts.promptMode === 'manual' && !auto
   return {
     phase: awaiting ? 'awaiting_prompt' : 'playing',
     turn_index: opts.turnIndex,
+    current_round: currentRound,
     active_team: activeTeam,
     prompt_setter_player_id: opts.promptSetterId,
     start_letter: auto?.start ?? null,
@@ -81,8 +88,8 @@ function buildTeamTurnStart(opts: {
     turn_deadline_at: deadline(opts.turnSeconds),
     intermission_deadline_at: null,
     status_message: awaiting
-      ? `${teamLabel(activeTeam)} — enter the first letter pair`
-      : `${teamLabel(activeTeam)} — Starts with ${auto!.start.toUpperCase()}, Ends with ${auto!.end.toUpperCase()}`,
+      ? `Round ${currentRound} — ${teamLabel(activeTeam)} enter the first letter pair`
+      : `Round ${currentRound} — ${teamLabel(activeTeam)} — Starts with ${auto!.start.toUpperCase()}, Ends with ${auto!.end.toUpperCase()}`,
     used_pairs: auto ? [...opts.usedPairs, auto.key] : opts.usedPairs,
   }
 }
@@ -169,7 +176,7 @@ export async function initializeWordRushGame(
 
   const teamPromptSetter =
     mode === 'team' && promptMode === 'manual'
-      ? (teamRoster(await loadTeamRows(supabase, gameId)).get(1)?.[0] ?? null)
+      ? promptSetterForTeamRound(teamRoster(await loadTeamRows(supabase, gameId)).get(1) ?? [], 0)
       : null
 
   const startPartial =
@@ -185,6 +192,7 @@ export async function initializeWordRushGame(
       : buildTeamTurnStart({
           turnIndex: 0,
           numTeams,
+          totalRounds,
           turnSeconds,
           promptMode,
           promptSetterId: teamPromptSetter,
@@ -267,6 +275,8 @@ export async function processWordRushSubmit(
   const mine = teamRows.find((r) => r.player_id === playerId)
   if (!mine) return { error: 'You are not in this game' }
 
+  let priorIndividualAnswer: { id: string; correct: boolean } | null = null
+
   if (session.mode === 'team') {
     if (mine.team !== session.active_team) return { error: "It's not your team's turn" }
     if (session.prompt_setter_player_id === playerId && session.prompt_mode === 'manual') {
@@ -283,12 +293,13 @@ export async function processWordRushSubmit(
     }
     const { data: existing } = await supabase
       .from('word_rush_answers')
-      .select('id')
+      .select('id, correct')
       .eq('game_id', gameId)
       .eq('turn_index', session.turn_index)
       .eq('player_id', playerId)
       .maybeSingle()
-    if (existing) return { error: 'You already submitted this round' }
+    priorIndividualAnswer = existing
+    if (existing?.correct) return { error: 'You already got this round right' }
   }
 
   const guess = text.trim()
@@ -298,7 +309,9 @@ export async function processWordRushSubmit(
   const correct = isValidWordRushWord(normalized, session.start_letter, session.end_letter)
 
   if (session.mode === 'individual') {
-    await supabase.from('word_rush_answers').insert({
+    if (!correct) return { correct: false }
+
+    const answerRow = {
       game_id: gameId,
       turn_index: session.turn_index,
       round: session.current_round,
@@ -309,32 +322,37 @@ export async function processWordRushSubmit(
       end_letter: session.end_letter,
       player_id: playerId,
       text: guess.slice(0, 80),
-      correct,
-    })
-    let points = 0
-    if (correct) {
-      points = wordRushIndividualGuessPoints(session.turn_deadline_at, session.turn_seconds)
-      await supabase.rpc('word_rush_add_score', { p_game_id: gameId, p_player_id: playerId, p_delta: points })
+      correct: true as const,
     }
+
+    if (priorIndividualAnswer) {
+      await supabase.from('word_rush_answers').update(answerRow).eq('id', priorIndividualAnswer.id)
+    } else {
+      await supabase.from('word_rush_answers').insert(answerRow)
+    }
+    const points = wordRushIndividualGuessPoints(session.turn_deadline_at, session.turn_seconds, normalized.length)
+    await supabase.rpc('word_rush_add_score', { p_game_id: gameId, p_player_id: playerId, p_delta: points })
 
     const { data: roundAnswers } = await supabase
       .from('word_rush_answers')
-      .select('player_id, turn_index')
+      .select('player_id, turn_index, correct')
       .eq('game_id', gameId)
       .eq('turn_index', session.turn_index)
 
     if (
       allWordRushIndividualPlayersSubmitted(
         session,
-        (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number }>
+        (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number; correct: boolean }>
       )
     ) {
       const endResult = await endIndividualRound(supabase, gameId, session)
       if (endResult.error) return endResult
     }
 
-    return correct ? { correct, points } : { correct }
+    return { correct: true, points }
   }
+
+  if (!correct) return { correct: false }
 
   await supabase.from('word_rush_answers').insert({
     game_id: gameId,
@@ -347,10 +365,8 @@ export async function processWordRushSubmit(
     end_letter: session.end_letter,
     player_id: playerId,
     text: guess.slice(0, 80),
-    correct,
+    correct: true,
   })
-
-  if (!correct) return { correct: false }
 
   const name = await playerName(supabase, gameId, playerId)
   const nextPromptIndex = session.prompt_index + 1
@@ -384,10 +400,10 @@ async function endTeamTurn(
   session: WordRushSession
 ): Promise<{ error?: string; internal?: boolean }> {
   const nextTurn = session.turn_index + 1
-  const totalTeamTurns = session.num_teams
+  const totalTeamTurns = wordRushTotalTeamTurns(session.num_teams, session.total_rounds)
 
   if (nextTurn >= totalTeamTurns) {
-    return finishWordRushGame(supabase, gameId, session, `${teamLabel(session.active_team)} time's up!`)
+    return finishWordRushGame(supabase, gameId, session, 'All rounds complete!')
   }
 
   const { count } = await supabase
@@ -399,24 +415,36 @@ async function endTeamTurn(
     .eq('correct', true)
 
   const teamScore = count ?? 0
+  const finishedRound = session.current_round
   const nextTeam = teamForTurnIndex(nextTurn, session.num_teams)
+  const nextRound = currentTeamRoundNumber(nextTurn, session.num_teams)
   const teamRows = await loadTeamRows(supabase, gameId)
-  const promptSetter = session.prompt_mode === 'manual' ? (teamRoster(teamRows).get(nextTeam)?.[0] ?? null) : null
+  const roundIndex = teamRoundIndexFromTurn(nextTurn, session.num_teams)
+  const promptSetter =
+    session.prompt_mode === 'manual'
+      ? promptSetterForTeamRound(teamRoster(teamRows).get(nextTeam) ?? [], roundIndex)
+      : null
 
   const nextStart = buildTeamTurnStart({
     turnIndex: nextTurn,
     numTeams: session.num_teams,
+    totalRounds: session.total_rounds,
     turnSeconds: session.turn_seconds,
     promptMode: session.prompt_mode,
     promptSetterId: promptSetter,
     usedPairs: session.used_pairs,
   })
 
+  const statusMessage =
+    nextRound > finishedRound
+      ? `Round ${finishedRound} complete — ${teamLabel(session.active_team)} scored ${teamScore}. Round ${nextRound} — ${teamLabel(nextTeam)} is up`
+      : `${teamLabel(session.active_team)} scored ${teamScore}! ${teamLabel(nextTeam)} is up next`
+
   const { error } = await supabase
     .from('word_rush_sessions')
     .update({
       ...nextStart,
-      status_message: `${teamLabel(session.active_team)} scored ${teamScore}! ${teamLabel(nextTeam)} is up next`,
+      status_message: statusMessage,
       intermission_deadline_at: deadline(WORD_RUSH_BREAK_SECONDS),
       phase: 'intermission',
       updated_at: new Date().toISOString(),
@@ -434,7 +462,7 @@ async function endIndividualRound(
 ): Promise<{ error?: string; internal?: boolean }> {
   const { data: correctGuesses, error: guessesError } = await supabase
     .from('word_rush_answers')
-    .select('player_id, created_at')
+    .select('player_id, created_at, text')
     .eq('game_id', gameId)
     .eq('turn_index', session.turn_index)
     .eq('correct', true)
@@ -449,7 +477,8 @@ async function endIndividualRound(
     mirrorPoints += wordRushIndividualGuessPointsAt(
       session.turn_deadline_at,
       session.turn_seconds,
-      new Date(guess.created_at).getTime()
+      new Date(guess.created_at).getTime(),
+      normalizeWordRushWord(guess.text).length
     )
   }
 

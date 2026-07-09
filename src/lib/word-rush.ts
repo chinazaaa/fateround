@@ -17,6 +17,8 @@ export const WORD_RUSH_DEFAULT_ROUNDS = 5
 export const WORD_RUSH_INDIVIDUAL_BASE_POINTS = 10
 /** Individual mode: extra points for an instant answer, decaying to 0 at time-up. */
 export const WORD_RUSH_INDIVIDUAL_SPEED_BONUS = 40
+/** Individual mode: bonus per letter beyond the minimum word length. */
+export const WORD_RUSH_INDIVIDUAL_LENGTH_BONUS_PER_LETTER = 2
 export const WORD_RUSH_MIN_PER_TEAM = 1
 export const WORD_RUSH_BREAK_SECONDS = 6
 export const WORD_RUSH_ROUND_RESULTS_SECONDS = 8
@@ -71,23 +73,38 @@ export function clampWordRushTurnSeconds(value: unknown): number {
   return (WORD_RUSH_TURN_OPTIONS as readonly number[]).includes(n) ? n : WORD_RUSH_DEFAULT_TURN_SECONDS
 }
 
+/** Bonus for longer valid words in individual mode (beyond the 3-letter minimum). */
+export function wordRushIndividualLengthBonus(wordLength: number): number {
+  const len = Math.min(Math.max(wordLength, 0), WORD_RUSH_MAX_WORD_LENGTH)
+  const extra = Math.max(0, len - WORD_RUSH_MIN_WORD_LENGTH)
+  return extra * WORD_RUSH_INDIVIDUAL_LENGTH_BONUS_PER_LETTER
+}
+
 /** Speed-scaled points for a correct individual-mode answer at a given moment. */
 export function wordRushIndividualGuessPointsAt(
   turnDeadlineAt: string | null,
   turnSeconds: number,
-  atMs: number
+  atMs: number,
+  wordLength: number
 ): number {
-  if (!turnDeadlineAt) return WORD_RUSH_INDIVIDUAL_BASE_POINTS
-  const totalMs = Math.max(turnSeconds, 1) * 1000
-  const startMs = new Date(turnDeadlineAt).getTime() - totalMs
-  const elapsed = Math.max(0, atMs - startMs)
-  const ratio = Math.max(0, Math.min(1, 1 - elapsed / totalMs))
-  return WORD_RUSH_INDIVIDUAL_BASE_POINTS + Math.floor(WORD_RUSH_INDIVIDUAL_SPEED_BONUS * ratio)
+  let speedPoints = WORD_RUSH_INDIVIDUAL_BASE_POINTS
+  if (turnDeadlineAt) {
+    const totalMs = Math.max(turnSeconds, 1) * 1000
+    const startMs = new Date(turnDeadlineAt).getTime() - totalMs
+    const elapsed = Math.max(0, atMs - startMs)
+    const ratio = Math.max(0, Math.min(1, 1 - elapsed / totalMs))
+    speedPoints = WORD_RUSH_INDIVIDUAL_BASE_POINTS + Math.floor(WORD_RUSH_INDIVIDUAL_SPEED_BONUS * ratio)
+  }
+  return speedPoints + wordRushIndividualLengthBonus(wordLength)
 }
 
 /** Speed-scaled points for a correct individual-mode answer (uses current time). */
-export function wordRushIndividualGuessPoints(turnDeadlineAt: string | null, turnSeconds: number): number {
-  return wordRushIndividualGuessPointsAt(turnDeadlineAt, turnSeconds, Date.now())
+export function wordRushIndividualGuessPoints(
+  turnDeadlineAt: string | null,
+  turnSeconds: number,
+  wordLength: number
+): number {
+  return wordRushIndividualGuessPointsAt(turnDeadlineAt, turnSeconds, Date.now(), wordLength)
 }
 
 export function formatWordRushTurnTimer(seconds: number): string {
@@ -120,6 +137,25 @@ export function teamRoster(rows: Array<{ player_id: string; team: number }>): Ma
 
 export function teamForTurnIndex(turnIndex: number, numTeams: number): number {
   return (turnIndex % numTeams) + 1
+}
+
+/** 0-based round index for team mode (each round = every team plays once). */
+export function teamRoundIndexFromTurn(turnIndex: number, numTeams: number): number {
+  return Math.floor(turnIndex / numTeams)
+}
+
+export function currentTeamRoundNumber(turnIndex: number, numTeams: number): number {
+  return teamRoundIndexFromTurn(turnIndex, numTeams) + 1
+}
+
+export function wordRushTotalTeamTurns(numTeams: number, totalRounds: number): number {
+  return numTeams * totalRounds
+}
+
+export function promptSetterForTeamRound(members: string[], roundIndex: number): string | null {
+  if (members.length === 0) return null
+  const sorted = [...members].sort()
+  return sorted[roundIndex % sorted.length] ?? null
 }
 
 export function promptSetterForIndividualRound(roster: string[], roundIndex: number): string | null {
@@ -162,11 +198,13 @@ export function computeWordRushPlayerScores(
 
 export function allWordRushIndividualPlayersSubmitted(
   session: Pick<WordRushSession, 'roster' | 'prompt_setter_player_id' | 'turn_index'>,
-  answers: Pick<WordRushAnswer, 'player_id' | 'turn_index'>[]
+  answers: Pick<WordRushAnswer, 'player_id' | 'turn_index' | 'correct'>[]
 ): boolean {
   const eligible = wordRushIndividualAnswerers(session)
   if (eligible.length === 0) return false
-  const submitted = new Set(answers.filter((a) => a.turn_index === session.turn_index).map((a) => a.player_id))
+  const submitted = new Set(
+    answers.filter((a) => a.turn_index === session.turn_index && a.correct).map((a) => a.player_id)
+  )
   return eligible.every((id) => submitted.has(id))
 }
 

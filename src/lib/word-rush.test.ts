@@ -6,12 +6,17 @@ import {
   computeWordRushTeamScores,
   normalizeWordRushWord,
   promptSetterForIndividualRound,
+  promptSetterForTeamRound,
+  teamRoundIndexFromTurn,
+  currentTeamRoundNumber,
+  wordRushTotalTeamTurns,
   teamForTurnIndex,
   wordMatchesLetters,
   wordRushLobbyReady,
   rebalanceWordRushTeams,
   shuffleWordRushTeams,
   wordRushIndividualGuessPoints,
+  wordRushIndividualGuessPointsAt,
   allWordRushIndividualPlayersSubmitted,
   wordRushIndividualAnswerers,
   isWordRushResultsPhase,
@@ -83,6 +88,23 @@ describe('word-rush helpers', () => {
     expect(teamForTurnIndex(0, 2)).toBe(1)
     expect(teamForTurnIndex(1, 2)).toBe(2)
     expect(teamForTurnIndex(2, 2)).toBe(1)
+    expect(teamForTurnIndex(3, 2)).toBe(2)
+  })
+
+  it('maps team turns to rounds across multiple rounds', () => {
+    expect(currentTeamRoundNumber(0, 2)).toBe(1)
+    expect(currentTeamRoundNumber(1, 2)).toBe(1)
+    expect(currentTeamRoundNumber(2, 2)).toBe(2)
+    expect(wordRushTotalTeamTurns(2, 3)).toBe(6)
+    expect(teamRoundIndexFromTurn(4, 2)).toBe(2)
+  })
+
+  it('rotates manual prompt setter per team round', () => {
+    const members = ['z', 'a', 'm']
+    expect(promptSetterForTeamRound(members, 0)).toBe('a')
+    expect(promptSetterForTeamRound(members, 1)).toBe('m')
+    expect(promptSetterForTeamRound(members, 2)).toBe('z')
+    expect(promptSetterForTeamRound(members, 3)).toBe('a')
   })
 
   it('lobby ready requires players on each team', () => {
@@ -128,11 +150,20 @@ describe('word-rush helpers', () => {
   })
 
   it('awards more points for faster individual answers', () => {
-    const fast = wordRushIndividualGuessPoints(new Date(Date.now() + 120_000).toISOString(), 120)
-    const slow = wordRushIndividualGuessPoints(new Date(Date.now() + 2_000).toISOString(), 120)
+    const fast = wordRushIndividualGuessPoints(new Date(Date.now() + 120_000).toISOString(), 120, 3)
+    const slow = wordRushIndividualGuessPoints(new Date(Date.now() + 2_000).toISOString(), 120, 3)
     expect(fast).toBeGreaterThanOrEqual(WORD_RUSH_INDIVIDUAL_BASE_POINTS + WORD_RUSH_INDIVIDUAL_SPEED_BONUS - 1)
     expect(slow).toBeGreaterThanOrEqual(WORD_RUSH_INDIVIDUAL_BASE_POINTS)
     expect(fast).toBeGreaterThan(slow)
+  })
+
+  it('awards more points for longer individual words', () => {
+    const deadline = new Date(Date.now() + 60_000).toISOString()
+    const at = Date.now()
+    const short = wordRushIndividualGuessPointsAt(deadline, 120, at, 3)
+    const long = wordRushIndividualGuessPointsAt(deadline, 120, at, 8)
+    expect(long).toBeGreaterThan(short)
+    expect(long - short).toBe(10)
   })
 
   it('detects when every individual player has answered', () => {
@@ -141,13 +172,21 @@ describe('word-rush helpers', () => {
       prompt_setter_player_id: 'a',
       turn_index: 0,
     }
-    expect(allWordRushIndividualPlayersSubmitted(session, [{ player_id: 'b', turn_index: 0 }])).toBe(false)
+    expect(allWordRushIndividualPlayersSubmitted(session, [{ player_id: 'b', turn_index: 0, correct: true }])).toBe(
+      false
+    )
     expect(
       allWordRushIndividualPlayersSubmitted(session, [
-        { player_id: 'b', turn_index: 0 },
-        { player_id: 'c', turn_index: 0 },
+        { player_id: 'b', turn_index: 0, correct: true },
+        { player_id: 'c', turn_index: 0, correct: true },
       ])
     ).toBe(true)
+    expect(
+      allWordRushIndividualPlayersSubmitted(session, [
+        { player_id: 'b', turn_index: 0, correct: false },
+        { player_id: 'c', turn_index: 0, correct: true },
+      ])
+    ).toBe(false)
     expect(wordRushIndividualAnswerers({ roster: ['a', 'b', 'c'], prompt_setter_player_id: 'a' })).toEqual(['b', 'c'])
   })
 

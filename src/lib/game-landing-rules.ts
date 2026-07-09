@@ -1027,22 +1027,23 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'Objective',
       points: [
         'Name valid English words that start with one letter and end with another.',
-        'Team mode: most words in your timed run wins. Individual mode: most correct answers across rounds wins.',
+        'Team mode: most correct words across all rounds wins. Individual mode: highest personal score wins.',
       ],
     },
     {
       title: 'Team mode',
       points: [
-        'Each team gets one timed run (default 2 minutes). Everyone on the active team can type answers.',
-        'The first correct answer scores and the next letter pair appears immediately.',
-        'Automatic mode generates prompts; manual mode lets a teammate enter the next pair while the timer runs.',
+        'The host sets how many rounds (e.g. 3, 5, 7). Each round, every team gets one timed run (default 2 minutes).',
+        'Round 1: Team 1 plays, then Team 2, and so on. Round 2: same order again. Highest total correct words across all rounds wins.',
+        'Everyone on the active team can type answers. The first correct answer scores and the next letter pair appears immediately.',
+        'Automatic mode generates prompts; manual mode lets one teammate enter letter pairs while the timer runs — that caller rotates each round so different people pick letters.',
       ],
     },
     {
       title: 'Individual mode',
       points: [
-        'Each round shows one letter pair. Guessers get one answer — fastest correct answers score the most points (10 base + up to 40 speed bonus, like Text Charades).',
-        'A rotating round host sits out each round. In manual mode they enter the letters; in automatic mode letters are random. They earn mirror points — the sum of every correct guesser’s points that round.',
+        'Each round shows one letter pair. Guessers get one answer — fastest correct answers score the most points (10 base + up to 40 speed bonus, like Text Charades). Longer words earn extra bonus points (+2 per letter beyond 3).',
+        'In manual mode, a rotating player enters the letters each round and sits out while others guess — they earn mirror points from correct scores. Automatic mode picks letters for everyone; no setter message is shown.',
         'When everyone has answered, the round ends immediately. Otherwise the timer ends the round.',
       ],
     },
