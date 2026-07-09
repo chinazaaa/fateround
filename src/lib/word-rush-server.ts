@@ -1,4 +1,4 @@
-import 'server-only'
+// Server-only Word Rush game logic (Supabase + dictionary). Import from API routes only.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalFailure } from '@/lib/api-errors'

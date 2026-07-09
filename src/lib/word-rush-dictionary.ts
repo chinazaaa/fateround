@@ -1,4 +1,4 @@
-import 'server-only'
+// Server-only dictionary: loads word-hunt-words.txt via fs — must not be imported from client code.
 
 import fs from 'fs'
 import path from 'path'
