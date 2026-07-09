@@ -3,6 +3,7 @@ import { promotePlayerSchema } from '@/lib/validation'
 import { parseGameType, isBingoGame, isCodewordsGame } from '@/lib/game-types'
 import { createBingoCardForPlayer } from '@/lib/bingo'
 import { assignCodewordsLateJoinOperative } from '@/lib/codewords'
+import { assertLobbyPlayerSeatAvailable } from '@/lib/game-limits'
 import { allowLatePlayers, playerIsViewer } from '@/lib/viewers'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
@@ -55,6 +56,11 @@ export async function POST(req: NextRequest) {
 
   if (!playerIsViewer(player, game)) {
     return NextResponse.json({ error: 'You are already playing' }, { status: 400 })
+  }
+
+  const seat = await assertLobbyPlayerSeatAvailable(supabase, game, authPlayerId)
+  if (!seat.ok) {
+    return NextResponse.json({ error: seat.error }, { status: 400 })
   }
 
   const { data: updated, error: updateError } = await supabase

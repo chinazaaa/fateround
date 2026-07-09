@@ -33,6 +33,7 @@ import {
   MATCHING_PAIRS_MAX_PLAYERS,
   MATCHING_PAIRS_DEFAULT_MAX_PLAYERS,
 } from '@/lib/memory-match'
+import { QUIPLASH_MIN_PLAYERS, QUIPLASH_MAX_PLAYERS, QUIPLASH_DEFAULT_MAX_PLAYERS } from '@/lib/quiplash'
 
 export const LOBBY_LIMIT_GAME_TYPES = [
   'anonymous_messages',
@@ -57,6 +58,7 @@ export const LOBBY_LIMIT_GAME_TYPES = [
   'snake_and_ladder',
   'mafia',
   'matching_pairs',
+  'quiplash',
 ] as const
 
 export type LobbyLimitGameType = (typeof LOBBY_LIMIT_GAME_TYPES)[number]
@@ -97,6 +99,11 @@ export const GAME_LIMIT_CODE_DEFAULTS: GamePlayerLimitsMap = {
     min: TTL_MIN_PLAYERS,
     max: TTL_MAX_PLAYERS,
     default: TTL_DEFAULT_MAX_PLAYERS,
+  },
+  quiplash: {
+    min: QUIPLASH_MIN_PLAYERS,
+    max: QUIPLASH_MAX_PLAYERS,
+    default: QUIPLASH_DEFAULT_MAX_PLAYERS,
   },
   monopoly: {
     min: MONOPOLY_MIN_PLAYERS,
@@ -196,6 +203,7 @@ export function getCodeDefaultLimits(): GamePlayerLimitsMap {
     codewords: { ...GAME_LIMIT_CODE_DEFAULTS.codewords },
     trivia: { ...GAME_LIMIT_CODE_DEFAULTS.trivia },
     two_truths: { ...GAME_LIMIT_CODE_DEFAULTS.two_truths },
+    quiplash: { ...GAME_LIMIT_CODE_DEFAULTS.quiplash },
     monopoly: { ...GAME_LIMIT_CODE_DEFAULTS.monopoly },
     yahtzee: { ...GAME_LIMIT_CODE_DEFAULTS.yahtzee },
     whot: { ...GAME_LIMIT_CODE_DEFAULTS.whot },
@@ -279,4 +287,52 @@ export function lobbyDefaultMaxPlayers(gameType: LobbyLimitGameType, limits: Gam
 
 export function playerCountOptions(min: number, max: number): number[] {
   return Array.from({ length: max - min + 1 }, (_, i) => i + min)
+}
+
+export function seatedParticipantCount(players: ReadonlyArray<{ spectator?: boolean | null }>): number {
+  return players.filter((p) => p.spectator !== true).length
+}
+
+/** Client-side max seats when DB limits aren't loaded (uses code defaults). */
+export function lobbyMaxPlayersFromGameClient(
+  gameType: string,
+  game: { max_players?: number | null }
+): number | null {
+  if (!isLobbyLimitGameType(gameType)) return null
+  const typed = gameType as LobbyLimitGameType
+  return lobbyMaxPlayersFromGame(typed, game, GAME_LIMIT_CODE_DEFAULTS)
+}
+
+export function lobbyHasOpenPlayerSeat(
+  game: { game_type: string; max_players?: number | null },
+  players: ReadonlyArray<{ spectator?: boolean | null }>
+): boolean {
+  const max = lobbyMaxPlayersFromGameClient(game.game_type, game)
+  if (max == null) return true
+  return seatedParticipantCount(players) < max
+}
+
+export async function assertLobbyPlayerSeatAvailable(
+  supabase: SupabaseClient,
+  game: { id: string; game_type: string; max_players?: number | null },
+  excludePlayerId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!isLobbyLimitGameType(game.game_type)) return { ok: true }
+
+  const limits = await fetchGamePlayerLimits(supabase)
+  const maxPlayers = lobbyMaxPlayersFromGame(game.game_type as LobbyLimitGameType, game, limits)
+  const { count: seatedCount } = await supabase
+    .from('players')
+    .select('id', { count: 'exact', head: true })
+    .eq('game_id', game.id.toUpperCase())
+    .eq('spectator', false)
+    .neq('id', excludePlayerId)
+
+  if ((seatedCount ?? 0) >= maxPlayers) {
+    return {
+      ok: false,
+      error: `This game is full (${maxPlayers} players max) — you can keep watching`,
+    }
+  }
+  return { ok: true }
 }

@@ -41,6 +41,7 @@ import { clearWordHuntSessionData } from '@/lib/word-hunt'
 import { clearMafiaSessionData } from '@/lib/mafia'
 import { clearTriviaSessionData } from '@/lib/trivia'
 import { clearTwoTruthsSessionData } from '@/lib/two-truths'
+import { clearQuiplashSessionData } from '@/lib/quiplash'
 import {
   applyCustomQuestionsUpdate,
   applyParticipantListUpdate,
@@ -76,6 +77,7 @@ type ClearableSessionGameType = Extract<
   | 'bingo'
   | 'codewords'
   | 'two_truths'
+  | 'quiplash'
   | 'monopoly'
   | 'yahtzee'
   | 'whot'
@@ -105,6 +107,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   bingo: clearBingoSessionData,
   codewords: clearCodewordsRoundData,
   two_truths: clearTwoTruthsSessionData,
+  quiplash: clearQuiplashSessionData,
   monopoly: clearMonopolySessionData,
   yahtzee: clearYahtzeeSessionData,
   whot: clearWhotSessionData,
