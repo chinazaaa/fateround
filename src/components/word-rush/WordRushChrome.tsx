@@ -100,9 +100,7 @@ export function WordRushTeamRoster({
                 disabled={picking || mine}
                 className={[
                   'w-full rounded-lg border py-1.5 text-xs font-bold transition-colors',
-                  mine
-                    ? 'border-[var(--border)] text-faint'
-                    : 'border-[var(--border-strong)] hover:bg-orange-500/10',
+                  mine ? 'border-[var(--border)] text-faint' : 'border-[var(--border-strong)] hover:bg-orange-500/10',
                 ].join(' ')}
               >
                 {mine ? 'Your team' : 'Join'}

@@ -1348,8 +1348,8 @@ function CreateGameInner() {
                                         : isWordRush
                                           ? wordRushMaxPlayers
                                           : isMatchingPairs
-                                          ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
-                                          : undefined,
+                                            ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
+                                            : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
@@ -2619,7 +2619,9 @@ function CreateGameInner() {
                     </select>
                   </Field>
                 )}
-                <Field label={`Max players (${WORD_RUSH_MIN_PLAYERS_INDIVIDUAL}–${WORD_RUSH_MAX_PLAYER_OPTIONS.at(-1)})`}>
+                <Field
+                  label={`Max players (${WORD_RUSH_MIN_PLAYERS_INDIVIDUAL}–${WORD_RUSH_MAX_PLAYER_OPTIONS.at(-1)})`}
+                >
                   <select
                     value={wordRushMaxPlayers}
                     onChange={(e) => setWordRushMaxPlayers(Number(e.target.value))}
