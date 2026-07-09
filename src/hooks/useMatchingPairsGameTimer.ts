@@ -7,11 +7,13 @@ import type { Game } from '@/types'
 
 export function useMatchingPairsGameTimer(
   gameCode: string,
-  game: Pick<Game, 'status' | 'session_started_at' | 'timer_seconds'> | null
+  game: Pick<Game, 'status' | 'session_started_at' | 'timer_seconds'> | null,
+  roundStartedAt?: string | null
 ) {
   const duration = game?.timer_seconds ?? 0
   const active = game?.status === 'active' && duration > 0
-  const secondsLeft = useDeadlineCountdown(game?.session_started_at, duration, active)
+  const anchor = roundStartedAt || game?.session_started_at
+  const secondsLeft = useDeadlineCountdown(anchor, duration, active)
 
   useEffect(() => {
     if (!active || secondsLeft > 0) return

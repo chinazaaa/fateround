@@ -6,11 +6,13 @@ import type { Game } from '@/types'
 export function MatchingPairsGameTimerBar({
   gameCode,
   game,
+  roundStartedAt,
 }: {
   gameCode: string
   game: Pick<Game, 'status' | 'session_started_at' | 'timer_seconds'> | null
+  roundStartedAt?: string | null
 }) {
-  const { active, label, secondsLeft, durationSeconds } = useMatchingPairsGameTimer(gameCode, game)
+  const { active, label, secondsLeft, durationSeconds } = useMatchingPairsGameTimer(gameCode, game, roundStartedAt)
   if (!active) return null
 
   const urgent = secondsLeft <= 60

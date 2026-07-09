@@ -40,8 +40,8 @@ export const MATCHING_PAIRS_GAME_DURATION_OPTIONS = [0, 30, 45, 60, 120, 180, 30
 
 export function formatMatchingPairsGameDuration(seconds: number): string {
   if (!seconds) return 'No limit'
+  if (seconds < 60) return `${seconds}s`
   const minutes = Math.round(seconds / 60)
-  if (minutes === 0) return `${seconds}s`
   return `${minutes} minute${minutes === 1 ? '' : 's'}`
 }
 

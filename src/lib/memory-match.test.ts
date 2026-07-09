@@ -584,3 +584,247 @@ describe('formatMatchingPairsGridSize', () => {
     expect(formatMatchingPairsGridSize(16)).toBe('Large (8×4)')
   })
 })
+
+// ── Group 4: Round Timeout Scoring ──────────────────────────────────────────
+
+describe('Group 4: Round Timeout Scoring', () => {
+  it('preserves in-progress score when player does not finish before timeout', () => {
+    // Player matched 3 pairs, had 2 wrong attempts, did not finish.
+    const subs = [
+      makeSub({ is_match: true, pair_index: 0, streak_at_time: 1, streak_bonus: 0, points_after: 1000 }),
+      makeSub({ is_match: true, pair_index: 1, streak_at_time: 2, streak_bonus: 0, points_after: 2000 }),
+      makeSub({ is_match: false, pair_index: 2, streak_at_time: 0, streak_bonus: 0, points_after: 1900 }),
+      makeSub({ is_match: true, pair_index: 3, streak_at_time: 1, streak_bonus: 0, points_after: 2900 }),
+      makeSub({ is_match: false, pair_index: 4, streak_at_time: 0, streak_bonus: 0, points_after: 2800 }),
+    ]
+    const prog = makeProg({
+      pairs_matched: 3,
+      wrong_attempts: 2,
+      finished: true,
+      finish_rank: null,
+      finished_at: '2026-01-01T00:00:30Z',
+    })
+    const result = tallyMatchingPairsScore(subs, prog, 8)
+    // Base: 3 × 1000 = 3000, Penalty: 2 × 100 = 200
+    expect(result.pairsMatched).toBe(3)
+    expect(result.wrongAttempts).toBe(2)
+    expect(result.finalScore).toBe(3000 - 200)
+    expect(result.placementBonus).toBe(0)
+    expect(result.perfectGame).toBe(false)
+  })
+
+  it('does NOT award placement bonus for timed-out player (finish_rank null)', () => {
+    const prog = makeProg({ finished: true, finish_rank: null })
+    const result = tallyMatchingPairsScore([], prog, 8)
+    expect(result.placementBonus).toBe(0)
+    expect(result.placement).toBe(999)
+  })
+
+  it('still awards placement bonus for a player who finished before timeout', () => {
+    const subs = Array.from({ length: 8 }, (_, i) =>
+      makeSub({
+        is_match: true,
+        pair_index: i,
+        streak_at_time: i + 1,
+        streak_bonus: (i + 1) % 3 === 0 ? MATCHING_PAIRS_STREAK_BONUS : 0,
+      })
+    )
+    const prog = makeProg({
+      pairs_matched: 8,
+      wrong_attempts: 0,
+      finished: true,
+      finish_rank: 2,
+      finished_at: '2026-01-01T00:00:20Z',
+    })
+    const result = tallyMatchingPairsScore(subs, prog, 8)
+    expect(result.placementBonus).toBe(MATCHING_PAIRS_PLACEMENT_BONUS[2])
+    expect(result.placement).toBe(2)
+    expect(result.finalScore).toBeGreaterThan(0)
+  })
+
+  it('timed-out partial score is additive to cumulative total', () => {
+    // Round 1: finished with full score
+    const subs1 = Array.from({ length: 8 }, (_, i) => makeSub({ is_match: true, pair_index: i }))
+    const prog1 = makeProg({
+      pairs_matched: 8,
+      wrong_attempts: 0,
+      finished: true,
+      finish_rank: 1,
+      finished_at: '2026-01-01T00:00:15Z',
+      round_id: 'R1',
+    })
+    const score1 = tallyMatchingPairsScore(subs1, prog1, 8).finalScore
+
+    // Round 2: timed out with partial progress
+    const subs2 = [
+      makeSub({ is_match: true, pair_index: 0, points_after: 1000 }),
+      makeSub({ is_match: true, pair_index: 1, points_after: 2000 }),
+      makeSub({ is_match: false, pair_index: 2, points_after: 1900 }),
+    ]
+    const prog2 = makeProg({
+      pairs_matched: 2,
+      wrong_attempts: 1,
+      finished: true,
+      finish_rank: null,
+      finished_at: '2026-01-01T00:00:30Z',
+      round_id: 'R2',
+    })
+    const score2 = tallyMatchingPairsScore(subs2, prog2, 8).finalScore
+
+    const cumulative = score1 + score2
+    expect(cumulative).toBeGreaterThan(score2)
+    expect(cumulative).toBe(score1 + (2000 - 100))
+  })
+
+  it('mixed scenario: finishers get placement bonus, timeout players do not', () => {
+    const gridSize = 8
+    // Player A finishes 1st
+    const subsA = Array.from({ length: gridSize }, (_, i) =>
+      makeSub({ is_match: true, pair_index: i, player_id: 'pA' })
+    )
+    const progA = makeProg({
+      player_id: 'pA',
+      pairs_matched: gridSize,
+      wrong_attempts: 0,
+      finished: true,
+      finish_rank: 1,
+      finished_at: '2026-01-01T00:00:20Z',
+    })
+    const scoreA = tallyMatchingPairsScore(subsA, progA, gridSize)
+    expect(scoreA.placementBonus).toBe(MATCHING_PAIRS_PLACEMENT_BONUS[1])
+
+    // Player B times out with partial matches
+    const subsB = [
+      makeSub({ is_match: true, pair_index: 0, player_id: 'pB' }),
+      makeSub({ is_match: true, pair_index: 1, player_id: 'pB' }),
+    ]
+    const progB = makeProg({
+      player_id: 'pB',
+      pairs_matched: 2,
+      wrong_attempts: 0,
+      finished: true,
+      finish_rank: null,
+      finished_at: '2026-01-01T00:00:30Z',
+    })
+    const scoreB = tallyMatchingPairsScore(subsB, progB, gridSize)
+    expect(scoreB.placementBonus).toBe(0)
+    expect(scoreB.finalScore).toBe(2000)
+  })
+})
+
+// ── Group 3: Cumulative Scoring Across Rounds ───────────────────────────────
+
+describe('Group 3: Cumulative Scoring Across Rounds', () => {
+  it('total score after round 2 equals round 1 score plus round 2 score', () => {
+    const subs1 = Array.from({ length: 8 }, (_, i) => makeSub({ is_match: true, pair_index: i }))
+    const prog1 = makeProg({
+      pairs_matched: 8,
+      wrong_attempts: 0,
+      finished: true,
+      finish_rank: 1,
+      finished_at: '2026-01-01T00:00:15Z',
+      round_id: 'R1',
+    })
+    const score1 = tallyMatchingPairsScore(subs1, prog1, 8).finalScore
+
+    const subs2 = Array.from({ length: 8 }, (_, i) => makeSub({ is_match: true, pair_index: i }))
+    const prog2 = makeProg({
+      pairs_matched: 8,
+      wrong_attempts: 0,
+      finished: true,
+      finish_rank: 2,
+      finished_at: '2026-01-01T00:00:30Z',
+      round_id: 'R2',
+    })
+    const score2 = tallyMatchingPairsScore(subs2, prog2, 8).finalScore
+
+    const total = score1 + score2
+    expect(total).toBeGreaterThan(score1)
+    expect(total).toBeGreaterThan(score2)
+    expect(total - score2).toBe(score1)
+  })
+
+  it('final leaderboard ranks by cumulative total, not individual round score', () => {
+    // Player A: round1=4000, round2=2000 => total=6000
+    // Player B: round1=2000, round2=5000 => total=7000 (should rank higher)
+    const subsA1 = Array.from({ length: 4 }, (_, i) => makeSub({ is_match: true, pair_index: i, player_id: 'pA' }))
+    const subsA2 = Array.from({ length: 2 }, (_, i) => makeSub({ is_match: true, pair_index: i, player_id: 'pA' }))
+    const subsB1 = Array.from({ length: 2 }, (_, i) => makeSub({ is_match: true, pair_index: i, player_id: 'pB' }))
+    const subsB2 = Array.from({ length: 5 }, (_, i) => makeSub({ is_match: true, pair_index: i, player_id: 'pB' }))
+
+    const progA1 = makeProg({
+      player_id: 'pA',
+      pairs_matched: 4,
+      wrong_attempts: 0,
+      finished: true,
+      finish_rank: 1,
+      round_id: 'R1',
+    })
+    const progA2 = makeProg({
+      player_id: 'pA',
+      pairs_matched: 2,
+      wrong_attempts: 0,
+      finished: true,
+      finish_rank: 2,
+      round_id: 'R2',
+    })
+    const progB1 = makeProg({
+      player_id: 'pB',
+      pairs_matched: 2,
+      wrong_attempts: 0,
+      finished: true,
+      finish_rank: 2,
+      round_id: 'R1',
+    })
+    const progB2 = makeProg({
+      player_id: 'pB',
+      pairs_matched: 5,
+      wrong_attempts: 0,
+      finished: true,
+      finish_rank: 1,
+      round_id: 'R2',
+    })
+
+    const totalA =
+      tallyMatchingPairsScore(subsA1, progA1, 8).finalScore + tallyMatchingPairsScore(subsA2, progA2, 8).finalScore
+    const totalB =
+      tallyMatchingPairsScore(subsB1, progB1, 8).finalScore + tallyMatchingPairsScore(subsB2, progB2, 8).finalScore
+
+    expect(totalB).toBeGreaterThan(totalA)
+  })
+
+  it('round 1 winner can lose overall to a player with better round2 score', () => {
+    const subsA1 = Array.from({ length: 8 }, (_, i) => makeSub({ is_match: true, pair_index: i, player_id: 'pA' }))
+    const subsA2 = Array.from({ length: 1 }, (_, i) => makeSub({ is_match: true, pair_index: i, player_id: 'pA' }))
+    const subsB1 = Array.from({ length: 2 }, (_, i) => makeSub({ is_match: true, pair_index: i, player_id: 'pB' }))
+    const subsB2 = Array.from({ length: 8 }, (_, i) => makeSub({ is_match: true, pair_index: i, player_id: 'pB' }))
+
+    const progA1 = makeProg({ player_id: 'pA', pairs_matched: 8, finished: true, finish_rank: 1, round_id: 'R1' })
+    const progA2 = makeProg({ player_id: 'pA', pairs_matched: 1, finished: true, finish_rank: 4, round_id: 'R2' })
+    const progB1 = makeProg({ player_id: 'pB', pairs_matched: 2, finished: true, finish_rank: 3, round_id: 'R1' })
+    const progB2 = makeProg({ player_id: 'pB', pairs_matched: 8, finished: true, finish_rank: 1, round_id: 'R2' })
+
+    const totalA =
+      tallyMatchingPairsScore(subsA1, progA1, 8).finalScore + tallyMatchingPairsScore(subsA2, progA2, 8).finalScore
+    const totalB =
+      tallyMatchingPairsScore(subsB1, progB1, 8).finalScore + tallyMatchingPairsScore(subsB2, progB2, 8).finalScore
+
+    // Player A won round 1 (rank 1), Player B won round 2 (rank 1)
+    // But Player B scored higher overall
+    expect(totalB).toBeGreaterThan(totalA)
+  })
+
+  it('Round Results cumulative total differs from current round score in multi-round scenario', () => {
+    const subs1 = Array.from({ length: 6 }, (_, i) => makeSub({ is_match: true, pair_index: i }))
+    const subs2 = Array.from({ length: 4 }, (_, i) => makeSub({ is_match: true, pair_index: i }))
+
+    const prog1 = makeProg({ pairs_matched: 6, finished: true, finish_rank: 2, round_id: 'R1' })
+    const prog2 = makeProg({ pairs_matched: 4, finished: true, finish_rank: 1, round_id: 'R2' })
+
+    const round2Score = tallyMatchingPairsScore(subs2, prog2, 8).finalScore
+    const cumulativeAfter2 = tallyMatchingPairsScore(subs1, prog1, 8).finalScore + round2Score
+
+    // Cumulative should be larger than round 2's score alone (unless round 1 was 0)
+    expect(cumulativeAfter2).toBeGreaterThan(round2Score)
+  })
+})

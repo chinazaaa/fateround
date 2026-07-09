@@ -64,6 +64,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [roundId, setRoundId] = useState<string | null>(null)
+  const [roundStartedAt, setRoundStartedAt] = useState<string | null>(null)
   const [submissions, setSubmissions] = useState<MatchingPairsSubmission[]>([])
   const [progressRows, setProgressRows] = useState<MatchingPairsProgress[]>([])
   const [gridSizePairs, setGridSizePairs] = useState<8 | 16>(8)
@@ -100,6 +101,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         .maybeSingle()
       if (roundData) {
         setRoundId(roundData.id)
+        setRoundStartedAt(roundData.started_at)
         setRoundEnded(roundData.status === 'finished')
         const meta = parseMatchingPairsMetadata(roundData.memory_match_metadata)
         if (meta) setGridSizePairs(meta.gridSizePairs)
@@ -505,7 +507,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
 
   const watchBoard = (
     <section className="space-y-4" style={{ padding: '0 0 16px' }}>
-      <MatchingPairsGameTimerBar gameCode={gameCode} game={game} />
+      <MatchingPairsGameTimerBar gameCode={gameCode} game={game} roundStartedAt={roundStartedAt} />
       {roundIndicator}
       <p style={{ color: 'var(--text-faint)', fontSize: 13, marginBottom: 8 }}>
         Live progress — {formatMatchingPairsGridSize(gridSizePairs)}

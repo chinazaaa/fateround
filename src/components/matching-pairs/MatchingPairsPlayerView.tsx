@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -31,6 +31,8 @@ import {
   type MatchingPairsMetadata,
   type MatchingPairsSubmission,
   type MatchingPairsProgress,
+  type MatchingPairsPlayerScore,
+  type MatchingPairsGridSize,
 } from '@/lib/memory-match'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { ROUND_SELECT, MEMORY_MATCH_SUBMISSION_SELECT, MEMORY_MATCH_PROGRESS_SELECT } from '@/lib/supabase-selects'
@@ -102,6 +104,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // Game data
   const [roundId, setRoundId] = useState<string | null>(null)
+  const [roundStartedAt, setRoundStartedAt] = useState<string | null>(null)
   const [meta, setMeta] = useState<MatchingPairsMetadata | null>(null)
   const [mySubmissions, setMySubmissions] = useState<MatchingPairsSubmission[]>([])
   const [allSubmissions, setAllSubmissions] = useState<MatchingPairsSubmission[]>([])
@@ -140,6 +143,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     async (gameData: Game, playerId: string | null): Promise<MatchingPairsGameState> => {
       if (!playerId) {
         setRoundId(null)
+        setRoundStartedAt(null)
         setMeta(null)
         setMySubmissions([])
         setAllSubmissions([])
@@ -167,18 +171,21 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         if (roundData && parsedMeta) {
           const roundFinished = roundData.status === 'finished'
           setRoundId(roundData.id as string)
+          setRoundStartedAt(roundData.started_at as string)
 
           const [{ data: subData }, { data: progData }] = await Promise.all([
             supabase
               .from('memory_match_submissions')
               .select(MEMORY_MATCH_SUBMISSION_SELECT)
-              .eq('round_id', roundData.id)
+              .eq('game_id', gameCode)
               .order('submitted_at', { ascending: true }),
-            supabase.from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT).eq('round_id', roundData.id),
+            supabase.from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT).eq('game_id', gameCode),
           ])
 
           const allSubs = (subData ?? []) as MatchingPairsSubmission[]
-          const subs = allSubs.filter((s) => s.player_id === playerId)
+          // Board reconstruction uses current round's submissions only.
+          const currentRoundSubs = allSubs.filter((s) => s.round_id === roundData.id)
+          const subs = currentRoundSubs.filter((s) => s.player_id === playerId)
           setAllSubmissions(allSubs)
           setMySubmissions(subs)
           setAllProgress((progData ?? []) as MatchingPairsProgress[])
@@ -211,10 +218,11 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
               setCurrentStreak(0)
             }
 
-            // Check if already finished
-            const myProg = (progData ?? []).find((p: { player_id: string }) => p.player_id === playerId) as
-              | MatchingPairsProgress
-              | undefined
+            // Check if already finished (only within the current round's progress)
+            const currentProgs = (progData ?? []).filter(
+              (p: { round_id: string }) => p.round_id === roundData.id
+            ) as MatchingPairsProgress[]
+            const myProg = currentProgs.find((p) => p.player_id === playerId)
             const ownFinished = myProg?.finished === true
             setFinished(ownFinished)
             setFinishRank(myProg?.finish_rank ?? null)
@@ -228,6 +236,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           }
         } else {
           setRoundId(null)
+          setRoundStartedAt(null)
           setMeta(null)
           setMySubmissions([])
           setAllSubmissions([])
@@ -239,6 +248,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         }
       } else {
         setRoundId(null)
+        setRoundStartedAt(null)
         setMeta(null)
         setMySubmissions([])
         setAllSubmissions([])
@@ -323,7 +333,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         (payload) => {
           const updated = payload.new as MatchingPairsProgress
           setAllProgress((prev) => {
-            const idx = prev.findIndex((p) => p.player_id === updated.player_id)
+            const idx = prev.findIndex((p) => p.player_id === updated.player_id && p.round_id === updated.round_id)
             if (idx >= 0) {
               // Reject stale updates — an older payload arriving after a newer one
               // (due to network timing) must not regress the displayed state.
@@ -620,25 +630,37 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const pairsMatched = mySubmissions.filter((s) => s.is_match).length
   const wrongAttempts = mySubmissions.filter((s) => !s.is_match).length
 
-  // Leaderboard for finished screen.
-  // Ranked by final score descending (primary), then finish rank as tiebreaker.
-  const leaderboard: MatchingPairsLeaderboardRow[] = meta
-    ? allProgress
-        .map((prog) => {
-          const subs = allSubmissions.filter((s) => s.player_id === prog.player_id)
-          return {
-            ...tallyMatchingPairsScore(subs, prog, meta.gridSizePairs, game?.session_started_at),
-            name: playerMap.get(prog.player_id) ?? 'Unknown',
-          }
-        })
-        .sort((a, b) => {
-          if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
-          const rankA = a.placement ?? 999
-          const rankB = b.placement ?? 999
-          if (rankA !== rankB) return rankA - rankB
-          return (a.wrongAttempts ?? 0) - (b.wrongAttempts ?? 0)
-        })
-    : []
+  // Leaderboard showing cumulative scores across all completed rounds.
+  // Groups submissions by round_id per player, sums each round's score.
+  const leaderboard: MatchingPairsLeaderboardRow[] = buildCumulativeLeaderboard(
+    allSubmissions,
+    allProgress,
+    playerMap,
+    meta?.gridSizePairs ?? 8,
+    game?.session_started_at ?? null
+  )
+
+  // Per-round leaderboard for the round_results screen — uses tallyMatchingPairsScore
+  // directly (not the cumulative builder) so per-round stats (streak, penalty, placement
+  // bonus) display correctly in the stat accordion.
+  const roundLeaderboard: MatchingPairsPlayerScore[] = useMemo(() => {
+    if (!meta || !roundId) return []
+    const roundSubs = allSubmissions.filter((s) => s.round_id === roundId)
+    const roundProgs = allProgress.filter((p) => p.round_id === roundId)
+    if (!roundProgs.length) return []
+    return roundProgs
+      .map((prog) => {
+        const playerSubs = roundSubs.filter((s) => s.player_id === prog.player_id)
+        return tallyMatchingPairsScore(playerSubs, prog, meta.gridSizePairs, game?.session_started_at)
+      })
+      .sort((a, b) => {
+        if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
+        const rankA = a.placement ?? 999
+        const rankB = b.placement ?? 999
+        if (rankA !== rankB) return rankA - rankB
+        return (a.wrongAttempts ?? 0) - (b.wrongAttempts ?? 0)
+      })
+  }, [meta, roundId, allSubmissions, allProgress, game?.session_started_at])
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -783,6 +805,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     const totalRounds = game?.rounds_count ?? 1
     const currentRoundNumber = game?.current_round_number ?? 1
     const isLastRound = currentRoundNumber >= totalRounds
+    const me = players.find((p) => p.id === myPlayerId)
+    const myCumulative = leaderboard.find((r) => r.playerId === myPlayerId)
     return (
       <MatchingPairsPlayShell>
         <div className="glass-card-strong p-8 text-center space-y-2">
@@ -790,12 +814,39 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           <p className="text-xl font-black">
             Round {currentRoundNumber}/{totalRounds} complete!
           </p>
+          {myCumulative && (
+            <p className="text-sm text-muted">
+              Your total: <strong>{myCumulative.finalScore.toLocaleString()} pts</strong>
+            </p>
+          )}
         </div>
+        {roundLeaderboard.length > 0 && (
+          <PaginatedLeaderboard
+            title="Round standings"
+            rows={roundLeaderboard.map((row, i) => ({
+              id: row.playerId,
+              rank: i + 1,
+              name: row.name,
+              score: row.finalScore,
+              correctCount: row.pairsMatched,
+              expandDetails: (
+                <MatchingPairsStatDetails
+                  score={row as MatchingPairsPlayerScore}
+                  gridSizePairs={meta?.gridSizePairs ?? 8}
+                />
+              ),
+            }))}
+            totalQuestions={meta?.gridSizePairs}
+            highlightId={myPlayerId ?? undefined}
+            scoreLabel={(n) => `${n} pts`}
+            emphasizeLeader
+          />
+        )}
         <div style={{ padding: '8px 0', fontSize: 12, color: 'var(--text-faint)', textAlign: 'center' }}>
           {isLastRound ? (
-            <span>Final results coming up...</span>
+            <span>⏳ Final results coming up...</span>
           ) : (
-            <span>⏳ Waiting for host to start the next round...</span>
+            <span>⏳ Starting round {currentRoundNumber + 1} shortly…</span>
           )}
         </div>
       </MatchingPairsPlayShell>
@@ -814,6 +865,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           totalPoints={totalPoints}
           wrongAttempts={wrongAttempts}
           currentStreak={currentStreak}
+          roundId={roundId}
         />
       </MatchingPairsPlayShell>
     )
@@ -825,7 +877,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       {isViewer && (
         <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={me} onPromoted={load} />
       )}
-      <MatchingPairsGameTimerBar gameCode={gameCode} game={game} />
+      <MatchingPairsGameTimerBar gameCode={gameCode} game={game} roundStartedAt={roundStartedAt} />
 
       {game && (game.rounds_count ?? 1) > 1 && (
         <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-faint)', marginBottom: 4 }}>
@@ -946,6 +998,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           myPlayerId={myPlayerId}
           playerMap={playerMap}
           gridSizePairs={meta.gridSizePairs}
+          roundId={roundId}
         />
       )}
 
@@ -961,6 +1014,77 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       `}</style>
     </MatchingPairsPlayShell>
   )
+}
+
+// ── Cumulative leaderboard helper ─────────────────────────────────────────────
+
+function buildCumulativeLeaderboard(
+  allSubmissions: MatchingPairsSubmission[],
+  allProgress: MatchingPairsProgress[],
+  playerMap: Map<string, string>,
+  gridSizePairs: MatchingPairsGridSize,
+  sessionStartedAt: string | null
+): MatchingPairsLeaderboardRow[] {
+  const playerIds = new Set(allProgress.map((p) => p.player_id))
+  const rows: MatchingPairsLeaderboardRow[] = []
+
+  for (const playerId of playerIds) {
+    const playerSubs = allSubmissions.filter((s) => s.player_id === playerId)
+    const playerProgs = allProgress.filter((p) => p.player_id === playerId)
+
+    // Group submissions and progress by round_id, compute per-round scores, then sum.
+    const roundIds = new Set(playerSubs.map((s) => s.round_id))
+    for (const prog of playerProgs) roundIds.add(prog.round_id)
+
+    let cumulativeScore = 0
+    let cumulativePairs = 0
+    let cumulativeWrong = 0
+    let placement = 999
+    let finalProg = null as MatchingPairsProgress | null
+
+    for (const rid of roundIds) {
+      const roundSubs = playerSubs.filter((s) => s.round_id === rid)
+      const roundProg = playerProgs.find((p) => p.round_id === rid)
+      if (!roundProg) continue
+      const score = tallyMatchingPairsScore(roundSubs, roundProg, gridSizePairs, sessionStartedAt)
+      cumulativeScore += score.finalScore
+      cumulativePairs += score.pairsMatched
+      cumulativeWrong += score.wrongAttempts
+      // Track the most recent round's progress for tiebreaker display
+      finalProg = roundProg
+      if (roundProg.finish_rank !== null && roundProg.finish_rank < placement) {
+        placement = roundProg.finish_rank
+      }
+    }
+
+    // If no rounds at all, skip
+    if (!finalProg) continue
+
+    rows.push({
+      playerId,
+      pairsMatched: cumulativePairs,
+      wrongAttempts: cumulativeWrong,
+      streakBonusTotal: 0,
+      longestStreak: 0,
+      perfectGame: false,
+      placement,
+      placementBonus: 0,
+      wrongPenaltyTotal: cumulativeWrong * 100,
+      cleanStreakMultiplierBonus: 0,
+      speedParBonus: 0,
+      finalScore: cumulativeScore,
+      timeTakenMs: null,
+      name: playerMap.get(playerId) ?? 'Unknown',
+    })
+  }
+
+  return rows.sort((a, b) => {
+    if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
+    const rankA = a.placement ?? 999
+    const rankB = b.placement ?? 999
+    if (rankA !== rankB) return rankA - rankB
+    return (a.wrongAttempts ?? 0) - (b.wrongAttempts ?? 0)
+  })
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -1100,13 +1224,16 @@ function OpponentProgressStrip({
   myPlayerId,
   playerMap,
   gridSizePairs,
+  roundId,
 }: {
   allProgress: MatchingPairsProgress[]
   myPlayerId: string | null
   playerMap: Map<string, string>
   gridSizePairs: number
+  roundId: string | null
 }) {
-  const others = allProgress.filter((p) => p.player_id !== myPlayerId)
+  const roundProgress = roundId ? allProgress.filter((p) => p.round_id === roundId) : allProgress
+  const others = roundProgress.filter((p) => p.player_id !== myPlayerId)
   if (others.length === 0) return null
   return (
     <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
@@ -1180,6 +1307,7 @@ function MatchingPairsWaitingForOthers({
   totalPoints,
   wrongAttempts,
   currentStreak,
+  roundId,
 }: {
   pairsMatched: number
   gridSizePairs: number
@@ -1189,8 +1317,10 @@ function MatchingPairsWaitingForOthers({
   totalPoints: number
   wrongAttempts: number
   currentStreak: number
+  roundId: string | null
 }) {
-  const stillPlaying = allProgress.filter((p) => !p.finished).length
+  const roundProgress = roundId ? allProgress.filter((p) => p.round_id === roundId) : allProgress
+  const stillPlaying = roundProgress.filter((p) => !p.finished).length
   const placementLabel =
     finishRank === 1 ? '1st 🥇' : finishRank === 2 ? '2nd 🥈' : finishRank === 3 ? '3rd 🥉' : `${finishRank}th`
 
@@ -1245,9 +1375,9 @@ function MatchingPairsWaitingForOthers({
         </div>
       )}
 
-      {/* Live opponent progress */}
+      {/* Live opponent progress (current round only) */}
       <div style={{ maxWidth: 340, margin: '0 auto', textAlign: 'left' }}>
-        {allProgress
+        {roundProgress
           .sort((a, b) => b.pairs_matched - a.pairs_matched)
           .map((prog) => {
             const name = playerMap.get(prog.player_id) ?? 'Unknown'
