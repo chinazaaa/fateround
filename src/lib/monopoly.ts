@@ -1832,8 +1832,9 @@ export async function processMonopolyBuild(
   if (!boardRaw) return { error: 'Board not found' }
   const board = boardRaw as MonopolyBoard
 
-  if (board.phase === 'pay_rent' || board.phase === 'raise_funds') {
-    return { error: 'Cannot buy or sell houses while rent or debt payment is pending' }
+  const isBuying = action === 'buy_house' || action === 'buy_hotel'
+  if (isBuying && (board.phase === 'pay_rent' || board.phase === 'raise_funds')) {
+    return { error: 'Cannot buy houses or hotels while rent or debt payment is pending' }
   }
 
   const space = spaceAt(spaceIndex)
