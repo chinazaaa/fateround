@@ -173,7 +173,9 @@ export function WordRushPlayPanel({
     .slice(-5)
     .reverse()
   const nameById = new Map(players.map((p) => [p.id, p.name]))
-  const myAnswerThisRound = myPlayerId ? currentTurnAnswers.find((a) => a.player_id === myPlayerId) : undefined
+  const myCorrectAnswerThisRound =
+    !isTeam && myPlayerId ? currentTurnAnswers.find((a) => a.player_id === myPlayerId && a.correct) : undefined
+  const showRecentCorrect = isTeam && recentCorrect.length > 0
   const individualScoreLabel = (score: number) => `${score} ${score === 1 ? 'pt' : 'pts'}`
   const timerClass = urgent ? 'text-red-400 animate-pulse' : 'text-[var(--foreground)]'
 
@@ -257,39 +259,20 @@ export function WordRushPlayPanel({
           <>
             <WordRushPromptDisplay startLetter={session.start_letter} endLetter={session.end_letter} />
             {!readOnly &&
-              !myAnswerThisRound &&
+              !myCorrectAnswerThisRound &&
               ((!isTeam && !isPromptSetter) || (isTeam && onActiveTeam && !isPromptSetter)) && (
                 <AnswerInput
                   placeholder="Type a word…"
                   buttonLabel="Submit"
                   onSubmit={(t) => onSubmit?.(t) ?? undefined}
                   disabled={acting}
-                  allowRetry={isTeam}
+                  allowRetry
                 />
               )}
-            {!readOnly && myAnswerThisRound && (
-              <div
-                className={[
-                  'rounded-xl border p-3 text-center space-y-1',
-                  myAnswerThisRound.correct
-                    ? 'border-emerald-400/40 bg-emerald-500/10'
-                    : 'border-red-400/40 bg-red-500/10',
-                ].join(' ')}
-              >
-                {myAnswerThisRound.correct ? (
-                  <>
-                    <p className="text-emerald-400 font-bold">Correct — locked in for this round ✓</p>
-                    <p className="text-sm text-muted">Waiting for other players…</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-red-400 font-bold">Not a valid word</p>
-                    <p className="text-sm text-muted">
-                      &ldquo;{myAnswerThisRound.text}&rdquo; doesn&apos;t match {session.start_letter?.toUpperCase()}…
-                      {session.end_letter?.toUpperCase()}
-                    </p>
-                  </>
-                )}
+            {!readOnly && myCorrectAnswerThisRound && (
+              <div className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 p-3 text-center space-y-1">
+                <p className="text-emerald-400 font-bold">Correct — locked in for this round ✓</p>
+                <p className="text-sm text-muted">Waiting for other players…</p>
               </div>
             )}
             {readOnly && (
@@ -297,18 +280,16 @@ export function WordRushPlayPanel({
                 {isTeam ? `Watching — ${teamLabel(session.active_team)} is playing` : 'Watching — round in progress'}
               </p>
             )}
-            {!isTeam && isPromptSetter && (
+            {!isTeam && isPromptSetter && session.prompt_mode === 'manual' && (
               <p className="text-center text-faint text-sm">
-                {session.prompt_mode === 'manual'
-                  ? 'You set the letters this round — others are guessing. You earn mirror points from their scores.'
-                  : 'You are hosting this round — others are guessing. You earn mirror points from their scores.'}
+                You set the letters this round — others are guessing. You earn mirror points from their scores.
               </p>
             )}
           </>
         )}
       </WordRushCard>
 
-      {recentCorrect.length > 0 && (
+      {showRecentCorrect && (
         <WordRushCard>
           <p className="text-xs text-faint mb-2">Recent correct</p>
           <div className="space-y-1">

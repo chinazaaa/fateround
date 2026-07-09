@@ -1041,8 +1041,8 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Individual mode',
       points: [
-        'Each round shows one letter pair. Guessers get one answer — fastest correct answers score the most points (10 base + up to 40 speed bonus, like Text Charades).',
-        'A rotating round host sits out each round. In manual mode they enter the letters; in automatic mode letters are random. They earn mirror points — the sum of every correct guesser’s points that round.',
+        'Each round shows one letter pair. Guessers get one answer — fastest correct answers score the most points (10 base + up to 40 speed bonus, like Text Charades). Longer words earn extra bonus points (+2 per letter beyond 3).',
+        'In manual mode, a rotating player enters the letters each round and sits out while others guess — they earn mirror points from correct scores. Automatic mode picks letters for everyone; no setter message is shown.',
         'When everyone has answered, the round ends immediately. Otherwise the timer ends the round.',
       ],
     },

@@ -12,6 +12,7 @@ import {
   rebalanceWordRushTeams,
   shuffleWordRushTeams,
   wordRushIndividualGuessPoints,
+  wordRushIndividualGuessPointsAt,
   allWordRushIndividualPlayersSubmitted,
   wordRushIndividualAnswerers,
   isWordRushResultsPhase,
@@ -128,11 +129,20 @@ describe('word-rush helpers', () => {
   })
 
   it('awards more points for faster individual answers', () => {
-    const fast = wordRushIndividualGuessPoints(new Date(Date.now() + 120_000).toISOString(), 120)
-    const slow = wordRushIndividualGuessPoints(new Date(Date.now() + 2_000).toISOString(), 120)
+    const fast = wordRushIndividualGuessPoints(new Date(Date.now() + 120_000).toISOString(), 120, 3)
+    const slow = wordRushIndividualGuessPoints(new Date(Date.now() + 2_000).toISOString(), 120, 3)
     expect(fast).toBeGreaterThanOrEqual(WORD_RUSH_INDIVIDUAL_BASE_POINTS + WORD_RUSH_INDIVIDUAL_SPEED_BONUS - 1)
     expect(slow).toBeGreaterThanOrEqual(WORD_RUSH_INDIVIDUAL_BASE_POINTS)
     expect(fast).toBeGreaterThan(slow)
+  })
+
+  it('awards more points for longer individual words', () => {
+    const deadline = new Date(Date.now() + 60_000).toISOString()
+    const at = Date.now()
+    const short = wordRushIndividualGuessPointsAt(deadline, 120, at, 3)
+    const long = wordRushIndividualGuessPointsAt(deadline, 120, at, 8)
+    expect(long).toBeGreaterThan(short)
+    expect(long - short).toBe(10)
   })
 
   it('detects when every individual player has answered', () => {
@@ -141,13 +151,21 @@ describe('word-rush helpers', () => {
       prompt_setter_player_id: 'a',
       turn_index: 0,
     }
-    expect(allWordRushIndividualPlayersSubmitted(session, [{ player_id: 'b', turn_index: 0 }])).toBe(false)
+    expect(allWordRushIndividualPlayersSubmitted(session, [{ player_id: 'b', turn_index: 0, correct: true }])).toBe(
+      false
+    )
     expect(
       allWordRushIndividualPlayersSubmitted(session, [
-        { player_id: 'b', turn_index: 0 },
-        { player_id: 'c', turn_index: 0 },
+        { player_id: 'b', turn_index: 0, correct: true },
+        { player_id: 'c', turn_index: 0, correct: true },
       ])
     ).toBe(true)
+    expect(
+      allWordRushIndividualPlayersSubmitted(session, [
+        { player_id: 'b', turn_index: 0, correct: false },
+        { player_id: 'c', turn_index: 0, correct: true },
+      ])
+    ).toBe(false)
     expect(wordRushIndividualAnswerers({ roster: ['a', 'b', 'c'], prompt_setter_player_id: 'a' })).toEqual(['b', 'c'])
   })
 

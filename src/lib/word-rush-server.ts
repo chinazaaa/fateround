@@ -267,6 +267,8 @@ export async function processWordRushSubmit(
   const mine = teamRows.find((r) => r.player_id === playerId)
   if (!mine) return { error: 'You are not in this game' }
 
+  let priorIndividualAnswer: { id: string; correct: boolean } | null = null
+
   if (session.mode === 'team') {
     if (mine.team !== session.active_team) return { error: "It's not your team's turn" }
     if (session.prompt_setter_player_id === playerId && session.prompt_mode === 'manual') {
@@ -283,12 +285,13 @@ export async function processWordRushSubmit(
     }
     const { data: existing } = await supabase
       .from('word_rush_answers')
-      .select('id')
+      .select('id, correct')
       .eq('game_id', gameId)
       .eq('turn_index', session.turn_index)
       .eq('player_id', playerId)
       .maybeSingle()
-    if (existing) return { error: 'You already submitted this round' }
+    priorIndividualAnswer = existing
+    if (existing?.correct) return { error: 'You already got this round right' }
   }
 
   const guess = text.trim()
@@ -298,7 +301,9 @@ export async function processWordRushSubmit(
   const correct = isValidWordRushWord(normalized, session.start_letter, session.end_letter)
 
   if (session.mode === 'individual') {
-    await supabase.from('word_rush_answers').insert({
+    if (!correct) return { correct: false }
+
+    const answerRow = {
       game_id: gameId,
       turn_index: session.turn_index,
       round: session.current_round,
@@ -309,32 +314,37 @@ export async function processWordRushSubmit(
       end_letter: session.end_letter,
       player_id: playerId,
       text: guess.slice(0, 80),
-      correct,
-    })
-    let points = 0
-    if (correct) {
-      points = wordRushIndividualGuessPoints(session.turn_deadline_at, session.turn_seconds)
-      await supabase.rpc('word_rush_add_score', { p_game_id: gameId, p_player_id: playerId, p_delta: points })
+      correct: true as const,
     }
+
+    if (priorIndividualAnswer) {
+      await supabase.from('word_rush_answers').update(answerRow).eq('id', priorIndividualAnswer.id)
+    } else {
+      await supabase.from('word_rush_answers').insert(answerRow)
+    }
+    const points = wordRushIndividualGuessPoints(session.turn_deadline_at, session.turn_seconds, normalized.length)
+    await supabase.rpc('word_rush_add_score', { p_game_id: gameId, p_player_id: playerId, p_delta: points })
 
     const { data: roundAnswers } = await supabase
       .from('word_rush_answers')
-      .select('player_id, turn_index')
+      .select('player_id, turn_index, correct')
       .eq('game_id', gameId)
       .eq('turn_index', session.turn_index)
 
     if (
       allWordRushIndividualPlayersSubmitted(
         session,
-        (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number }>
+        (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number; correct: boolean }>
       )
     ) {
       const endResult = await endIndividualRound(supabase, gameId, session)
       if (endResult.error) return endResult
     }
 
-    return correct ? { correct, points } : { correct }
+    return { correct: true, points }
   }
+
+  if (!correct) return { correct: false }
 
   await supabase.from('word_rush_answers').insert({
     game_id: gameId,
@@ -347,10 +357,8 @@ export async function processWordRushSubmit(
     end_letter: session.end_letter,
     player_id: playerId,
     text: guess.slice(0, 80),
-    correct,
+    correct: true,
   })
-
-  if (!correct) return { correct: false }
 
   const name = await playerName(supabase, gameId, playerId)
   const nextPromptIndex = session.prompt_index + 1
@@ -434,7 +442,7 @@ async function endIndividualRound(
 ): Promise<{ error?: string; internal?: boolean }> {
   const { data: correctGuesses, error: guessesError } = await supabase
     .from('word_rush_answers')
-    .select('player_id, created_at')
+    .select('player_id, created_at, text')
     .eq('game_id', gameId)
     .eq('turn_index', session.turn_index)
     .eq('correct', true)
@@ -449,7 +457,8 @@ async function endIndividualRound(
     mirrorPoints += wordRushIndividualGuessPointsAt(
       session.turn_deadline_at,
       session.turn_seconds,
-      new Date(guess.created_at).getTime()
+      new Date(guess.created_at).getTime(),
+      normalizeWordRushWord(guess.text).length
     )
   }
 
