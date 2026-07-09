@@ -42,6 +42,22 @@ export function wordMatchesLetters(word: string, startLetter: string, endLetter:
   return normalized[0] === startLetter.toLowerCase() && normalized[normalized.length - 1] === endLetter.toLowerCase()
 }
 
+/** Why a word fails length/letter checks before dictionary lookup. */
+export function wordRushWordFormatRejectReason(word: string, startLetter: string, endLetter: string): string | null {
+  const normalized = normalizeWordRushWord(word)
+  if (!normalized) return 'Enter a word'
+  if (normalized.length < WORD_RUSH_MIN_WORD_LENGTH) {
+    return `Too short — minimum is ${WORD_RUSH_MIN_WORD_LENGTH} letters`
+  }
+  if (normalized.length > WORD_RUSH_MAX_WORD_LENGTH) {
+    return `Too long — maximum is ${WORD_RUSH_MAX_WORD_LENGTH} letters`
+  }
+  if (!wordMatchesLetters(normalized, startLetter, endLetter)) {
+    return `Must start with ${startLetter.toUpperCase()} and end with ${endLetter.toUpperCase()}`
+  }
+  return null
+}
+
 export function letterPairKey(start: string, end: string): string {
   return `${start.toLowerCase()}-${end.toLowerCase()}`
 }

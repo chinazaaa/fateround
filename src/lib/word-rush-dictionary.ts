@@ -11,6 +11,7 @@ import {
   letterPairKey,
   normalizeWordRushWord,
   wordMatchesLetters,
+  wordRushWordFormatRejectReason,
 } from '@/lib/word-rush'
 
 export { letterPairKey, normalizeWordRushWord, wordMatchesLetters }
@@ -70,9 +71,17 @@ function loadValidPairs(): string[] {
 }
 
 export function isValidWordRushWord(word: string, startLetter: string, endLetter: string): boolean {
+  return wordRushWordRejectReason(word, startLetter, endLetter) === null
+}
+
+export function wordRushWordRejectReason(word: string, startLetter: string, endLetter: string): string | null {
+  const formatReason = wordRushWordFormatRejectReason(word, startLetter, endLetter)
+  if (formatReason) return formatReason
   const normalized = normalizeWordRushWord(word)
-  if (!wordMatchesLetters(normalized, startLetter, endLetter)) return false
-  return loadWordSet().has(normalized)
+  if (!loadWordSet().has(normalized)) {
+    return 'Not in the dictionary for this letter pair'
+  }
+  return null
 }
 
 export function validLetterPairCount(): number {

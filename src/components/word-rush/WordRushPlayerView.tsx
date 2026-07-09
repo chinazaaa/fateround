@@ -167,7 +167,11 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
       }
       await load()
       if (path.includes('/submit')) {
-        return { correct: data.correct as boolean | undefined, points: data.points as number | undefined }
+        return {
+          correct: data.correct as boolean | undefined,
+          points: data.points as number | undefined,
+          message: data.message as string | undefined,
+        }
       }
       return {}
     } finally {

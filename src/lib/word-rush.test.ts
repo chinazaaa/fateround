@@ -4,6 +4,7 @@ import {
   pickRandomLetterPair,
   countWordsForPair,
   validLetterPairCount,
+  wordRushWordRejectReason,
 } from '@/lib/word-rush-dictionary'
 import {
   clampWordRushMode,
@@ -31,6 +32,8 @@ import {
   mergeWordRushUsedPairs,
   readWordRushUsedPairsFromPoolUsage,
   wordRushPriorUsedPairsForNewGame,
+  wordRushWordFormatRejectReason,
+  WORD_RUSH_MAX_WORD_LENGTH,
   WORD_RUSH_POOL_USAGE_KEY,
 } from '@/lib/word-rush'
 
@@ -49,6 +52,16 @@ describe('word-rush-dictionary', () => {
   it('uses a broad merged English dictionary', () => {
     expect(validLetterPairCount()).toBeGreaterThan(500)
     expect(countWordsForPair('i', 'n')).toBeGreaterThan(100)
+  })
+
+  it('explains why a word was rejected', () => {
+    expect(wordRushWordRejectReason('reconstruction', 'r', 'n')).toBeNull()
+    expect(wordRushWordFormatRejectReason(`${'r'.repeat(20)}n`, 'r', 'n')).toBe(
+      `Too long — maximum is ${WORD_RUSH_MAX_WORD_LENGTH} letters`
+    )
+    expect(wordRushWordRejectReason('notaword', 'n', 'd')).toBe('Not in the dictionary for this letter pair')
+    expect(wordRushWordFormatRejectReason('ab', 'a', 'b')).toBe('Too short — minimum is 3 letters')
+    expect(wordRushWordFormatRejectReason('monkey', 'b', 't')).toBe('Must start with B and end with T')
   })
 
   it('normalizes input', () => {
