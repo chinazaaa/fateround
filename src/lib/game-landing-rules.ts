@@ -1044,14 +1044,15 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'Each round shows one letter pair. Guessers get one answer — fastest correct answers score the most points (10 base + up to 40 speed bonus, like Text Charades). Longer words earn extra bonus points (+2 per letter beyond 3).',
         'In manual mode, a rotating player enters the letters each round and sits out while others guess — they earn mirror points from correct scores. Automatic mode picks letters for everyone each round.',
-        'When everyone has answered, the round ends immediately. Otherwise the timer ends the round.',
+        'When everyone has answered, the round ends immediately. Otherwise the timer ends the round. Different players can submit the same word — there is no duplicate-word penalty.',
       ],
     },
     {
       title: 'Valid words',
       points: [
-        'Answers must be real dictionary words (3+ letters), matching both the start and end letter.',
-        'Only the first correct answer counts in team rush mode when multiple teammates answer at once.',
+        'Answers must be real dictionary words (3–12 letters), matching both the start and end letter. Words are checked against merged English Scrabble lists (ENABLE, Collins, TWL) plus our Word Hunt word bank.',
+        'In team mode, only the first correct answer on each letter pair counts — the pair advances immediately, so type fast.',
+        'In individual mode, every player answers the same pair and multiple players can use the same word.',
       ],
     },
   ],
