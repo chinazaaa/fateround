@@ -277,6 +277,14 @@ export async function processWordRushSubmit(
   const { session, error, internal } = await loadSession(supabase, gameId)
   if (error) return { error, internal }
   if (!session || session.status === 'finished') return { error: 'Game not active' }
+  if (session.phase === 'intermission') {
+    return {
+      error:
+        session.mode === 'individual'
+          ? 'This round has ended — wait for the next one'
+          : 'This run has ended — wait for the next team',
+    }
+  }
   if (session.phase !== 'playing') return { error: 'Not accepting answers right now' }
   if (!session.start_letter || !session.end_letter) return { error: 'No active prompt' }
 
@@ -358,20 +366,6 @@ export async function processWordRushSubmit(
 
   if (!correct) return { correct: false }
 
-  await supabase.from('word_rush_answers').insert({
-    game_id: gameId,
-    turn_index: session.turn_index,
-    round: session.current_round,
-    team: mine.team,
-    team_turn_index: session.turn_index,
-    prompt_index: session.prompt_index,
-    start_letter: session.start_letter,
-    end_letter: session.end_letter,
-    player_id: playerId,
-    text: guess.slice(0, 80),
-    correct: true,
-  })
-
   const name = await playerName(supabase, gameId, playerId)
   const nextPromptIndex = session.prompt_index + 1
   const auto = session.prompt_mode === 'automatic' ? nextAutoPrompt(session.used_pairs) : null
@@ -394,7 +388,24 @@ export async function processWordRushSubmit(
     .eq('prompt_index', session.prompt_index)
     .select('id')
 
-  if (!claimed?.length) return { correct: true }
+  if (!claimed?.length) {
+    return { error: 'Your team already solved this pair — check the new letters' }
+  }
+
+  await supabase.from('word_rush_answers').insert({
+    game_id: gameId,
+    turn_index: session.turn_index,
+    round: session.current_round,
+    team: mine.team,
+    team_turn_index: session.turn_index,
+    prompt_index: session.prompt_index,
+    start_letter: session.start_letter,
+    end_letter: session.end_letter,
+    player_id: playerId,
+    text: guess.slice(0, 80),
+    correct: true,
+  })
+
   return { correct: true }
 }
 
