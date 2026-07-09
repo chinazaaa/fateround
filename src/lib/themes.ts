@@ -206,7 +206,7 @@ export const THEMES: ThemeConfig[] = [
     id: 'naija',
     label: 'Naija',
     emoji: '🇳🇬',
-    preview: { bg: '#0B1F16', accent: '#D9A441', text: '#EDE3D3' },
+    preview: { bg: '#008751', accent: '#EDE3D3', text: '#008751' },
     cssVars: {},
   },
   {

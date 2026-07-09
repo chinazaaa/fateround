@@ -37,7 +37,7 @@ function readDomTheme(): Theme {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(readDomTheme)
+  const [theme, setTheme] = useState<Theme>('light')
 
   useEffect(() => {
     const stored = readStoredTheme()
