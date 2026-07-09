@@ -32,8 +32,9 @@ export const WORD_RUSH_ROUND_RESULTS_SECONDS = 8
 
 export const WORD_RUSH_MIN_WORD_LENGTH = WORD_HUNT_MIN_WORD_LENGTH
 export const WORD_RUSH_MAX_WORD_LENGTH = 20
-/** Hard mode: add this many letters to the minimum each round after the first. */
-export const WORD_RUSH_HARD_LENGTH_STEP = 2
+/** Hard mode: minimum word length rises by 1 each round until this cap (3 → 4 → 5 → 6). */
+export const WORD_RUSH_HARD_MAX_MIN_LENGTH = 6
+export const WORD_RUSH_HARD_LENGTH_STEP = 1
 
 export const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3', 'Team 4'] as const
 export const TEAM_EMOJI = ['🟦', '🟥', '🟩', '🟨'] as const
@@ -98,7 +99,7 @@ export function wordRushMinLengthForRound(round: number, difficulty: WordRushDif
   if (difficulty !== 'hard') return WORD_RUSH_MIN_WORD_LENGTH
   const safeRound = Math.max(1, Math.round(round))
   const min = WORD_RUSH_MIN_WORD_LENGTH + (safeRound - 1) * WORD_RUSH_HARD_LENGTH_STEP
-  return Math.min(WORD_RUSH_MAX_WORD_LENGTH, min)
+  return Math.min(WORD_RUSH_HARD_MAX_MIN_LENGTH, min)
 }
 
 export function clampWordRushManualMinLength(requested: unknown, floor: number): number {

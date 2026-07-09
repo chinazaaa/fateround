@@ -1056,7 +1056,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Hard mode',
       points: [
-        'Optional difficulty where the minimum word length increases each round (round 1: 3 letters, round 2: 5, round 3: 7, and so on, up to 20).',
+        'Optional difficulty where the minimum word length increases each round (round 1: 3 letters, round 2: 4, round 3: 5, round 4+: 6).',
         'Works in both team and individual modes. Automatic prompt mode uses the round minimum; in manual mode the letter-setter can raise the minimum for that pair (but not go below the round floor).',
       ],
     },
