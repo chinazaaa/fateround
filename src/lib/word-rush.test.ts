@@ -22,6 +22,11 @@ import {
   isWordRushResultsPhase,
   WORD_RUSH_INDIVIDUAL_BASE_POINTS,
   WORD_RUSH_INDIVIDUAL_SPEED_BONUS,
+  dedupeLetterPairKeys,
+  mergeWordRushUsedPairs,
+  readWordRushUsedPairsFromPoolUsage,
+  wordRushPriorUsedPairsForNewGame,
+  WORD_RUSH_POOL_USAGE_KEY,
 } from '@/lib/word-rush'
 
 describe('word-rush-dictionary', () => {
@@ -224,6 +229,30 @@ describe('word-rush helpers', () => {
         { player_id: 'c', turn_index: 0, correct: true },
       ])
     ).toBe(true)
+  })
+
+  it('reuses letter pairs only after the room pool is exhausted', () => {
+    const first = pickRandomLetterPair()!
+    const key = `${first.start}-${first.end}`
+    const second = pickRandomLetterPair([key])
+    expect(second).not.toBeNull()
+    expect(`${second!.start}-${second!.end}`).not.toBe(key)
+
+    const allKeys = Array.from({ length: 500 }, (_, i) => `a-${String.fromCharCode(97 + (i % 26))}`)
+    const fallback = pickRandomLetterPair(allKeys)
+    expect(fallback).not.toBeNull()
+  })
+
+  it('carries automatic letter pairs across play again via pool_usage', () => {
+    const pool = { [WORD_RUSH_POOL_USAGE_KEY]: ['a-z', 'b-y'] }
+    expect(readWordRushUsedPairsFromPoolUsage(pool)).toEqual(['a-z', 'b-y'])
+    expect(readWordRushUsedPairsFromPoolUsage(null)).toEqual([])
+
+    expect(mergeWordRushUsedPairs(['a-z'], ['b-y', 'a-z'])).toEqual(['a-z', 'b-y'])
+    expect(dedupeLetterPairKeys(['A-Z', 'a-z', 'b-y'])).toEqual(['a-z', 'b-y'])
+
+    expect(wordRushPriorUsedPairsForNewGame(['a-z', 'b-y'], 2)).toEqual([])
+    expect(wordRushPriorUsedPairsForNewGame(['a-z'], 100)).toEqual(['a-z'])
   })
 
   it('shows results when the game is finished', () => {

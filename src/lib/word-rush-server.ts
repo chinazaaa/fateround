@@ -3,7 +3,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalFailure } from '@/lib/api-errors'
 import { markGameFinished } from '@/lib/game-finish'
-import { isValidWordRushWord, pickRandomLetterPair } from '@/lib/word-rush-dictionary'
+import { isValidWordRushWord, pickRandomLetterPair, validLetterPairCount } from '@/lib/word-rush-dictionary'
 import {
   WORD_RUSH_BREAK_SECONDS,
   WORD_RUSH_MIN_PLAYERS,
@@ -17,9 +17,13 @@ import {
   clampWordRushTeams,
   clampWordRushTurnSeconds,
   letterPairKey,
+  mergeWordRushUsedPairs,
   normalizeWordRushWord,
   promptSetterForIndividualRound,
   promptSetterForTeamRound,
+  readWordRushUsedPairsFromPoolUsage,
+  wordRushPriorUsedPairsForNewGame,
+  WORD_RUSH_POOL_USAGE_KEY,
   teamRoundIndexFromTurn,
   currentTeamRoundNumber,
   wordRushTotalTeamTurns,
@@ -129,7 +133,7 @@ export async function initializeWordRushGame(
 ): Promise<{ error?: string; internal?: boolean }> {
   const { data: game, error: gameError } = await supabase
     .from('games')
-    .select('word_rush_mode, word_rush_prompt_mode, word_rush_num_teams, rounds_count, timer_seconds')
+    .select('word_rush_mode, word_rush_prompt_mode, word_rush_num_teams, rounds_count, timer_seconds, pool_usage')
     .eq('id', gameId)
     .maybeSingle()
   if (gameError || !game) return internalFailure('word-rush:initialize:game', gameError)
@@ -139,6 +143,10 @@ export async function initializeWordRushGame(
   const numTeams = clampWordRushTeams(game.word_rush_num_teams)
   const totalRounds = clampWordRushRounds(game.rounds_count)
   const turnSeconds = clampWordRushTurnSeconds(game.timer_seconds)
+  const initialUsedPairs =
+    promptMode === 'automatic'
+      ? wordRushPriorUsedPairsForNewGame(readWordRushUsedPairsFromPoolUsage(game.pool_usage), validLetterPairCount())
+      : []
 
   const roster: string[] = playerIds
 
@@ -188,7 +196,7 @@ export async function initializeWordRushGame(
           turnSeconds,
           promptMode,
           promptSetterId,
-          usedPairs: [],
+          usedPairs: initialUsedPairs,
         })
       : buildTeamTurnStart({
           turnIndex: 0,
@@ -197,7 +205,7 @@ export async function initializeWordRushGame(
           turnSeconds,
           promptMode,
           promptSetterId: teamPromptSetter,
-          usedPairs: [],
+          usedPairs: initialUsedPairs,
         })
 
   const row = {
@@ -745,10 +753,27 @@ export async function persistWordRushTeamAssignment(
   return {}
 }
 
-export async function clearWordRushSessionData(supabase: SupabaseClient, gameId: string): Promise<{ error?: string }> {
+export async function clearWordRushSessionData(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error?: string; poolUsage?: Record<string, unknown> }> {
+  const { data: session } = await supabase
+    .from('word_rush_sessions')
+    .select('used_pairs')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  const usedThisGame = Array.isArray(session?.used_pairs) ? (session!.used_pairs as string[]) : []
+
+  let poolUsage: Record<string, unknown> | undefined
+  if (usedThisGame.length > 0) {
+    const { data: game } = await supabase.from('games').select('pool_usage').eq('id', gameId).maybeSingle()
+    const prior = readWordRushUsedPairsFromPoolUsage(game?.pool_usage)
+    poolUsage = { [WORD_RUSH_POOL_USAGE_KEY]: mergeWordRushUsedPairs(prior, usedThisGame) }
+  }
+
   await supabase.from('word_rush_answers').delete().eq('game_id', gameId)
   await supabase.from('word_rush_sessions').delete().eq('game_id', gameId)
   const { error } = await supabase.from('word_rush_players').update({ score: 0 }).eq('game_id', gameId)
   if (error) return { error: 'Could not reset scores' }
-  return {}
+  return poolUsage ? { poolUsage } : {}
 }

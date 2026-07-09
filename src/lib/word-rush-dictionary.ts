@@ -58,6 +58,10 @@ export function isValidWordRushWord(word: string, startLetter: string, endLetter
   return loadWordSet().has(normalized)
 }
 
+export function validLetterPairCount(): number {
+  return loadValidPairs().length
+}
+
 /** Pick a random start/end letter pair that has dictionary words. */
 export function pickRandomLetterPair(usedPairs: string[] = []): { start: string; end: string } | null {
   const used = new Set(usedPairs.map((p) => p.toLowerCase()))

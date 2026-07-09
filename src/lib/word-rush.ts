@@ -320,6 +320,38 @@ export function canWordRushPlayAgain(game: Pick<Game, 'status'>): boolean {
   return game.status === 'waiting' || game.status === 'finished'
 }
 
+/** `games.pool_usage` key — letter pairs already used in this room (automatic mode). */
+export const WORD_RUSH_POOL_USAGE_KEY = 'word_rush_used_pairs'
+
+export function readWordRushUsedPairsFromPoolUsage(poolUsage: unknown): string[] {
+  if (!poolUsage || typeof poolUsage !== 'object') return []
+  const arr = (poolUsage as Record<string, unknown>)[WORD_RUSH_POOL_USAGE_KEY]
+  return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : []
+}
+
+export function dedupeLetterPairKeys(pairs: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const pair of pairs) {
+    const key = pair.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(key)
+  }
+  return out
+}
+
+export function mergeWordRushUsedPairs(prior: string[], fromSession: string[]): string[] {
+  return dedupeLetterPairKeys([...prior, ...fromSession])
+}
+
+/** When every valid pair has been used in this room, start the avoidance list fresh. */
+export function wordRushPriorUsedPairsForNewGame(priorUsed: string[], totalValidPairs: number): string[] {
+  const normalized = dedupeLetterPairKeys(priorUsed)
+  if (totalValidPairs > 0 && normalized.length >= totalValidPairs) return []
+  return normalized
+}
+
 export function tallyWordRushScores(
   mode: WordRushMode,
   players: Array<{ id: string; name: string }>,
