@@ -57,6 +57,7 @@ type Screen =
   | 'waiting'
   | 'playing'
   | 'waiting_for_others' // finished own board, waiting for others to finish
+  | 'round_results' // round ended, showing round standings
   | 'finished'
 
 // ── Local board state ─────────────────────────────────────────────────────────
@@ -76,6 +77,7 @@ interface LocalBoard {
 type MatchingPairsGameState = {
   hasBoard: boolean
   ownFinished: boolean
+  roundFinished: boolean
 }
 
 type MatchingPairsLeaderboardRow = ReturnType<typeof tallyMatchingPairsScore> & {
@@ -131,7 +133,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   // ── Bootstrap ──────────────────────────────────────────────────────────────
 
   const loadGameState = useCallback(async (): Promise<{ state: MatchingPairsGameState; ok: boolean }> => {
-    return { state: { hasBoard: false, ownFinished: false }, ok: true }
+    return { state: { hasBoard: false, ownFinished: false, roundFinished: false }, ok: true }
   }, [])
 
   const afterResolve = useCallback(
@@ -145,15 +147,16 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         setBoard(null)
         setFinished(false)
         setFinishRank(null)
-        return { hasBoard: false, ownFinished: false }
+        return { hasBoard: false, ownFinished: false, roundFinished: false }
       }
 
       if (gameData.status === 'active' || gameData.status === 'finished') {
+        const currentRoundNumber = gameData.current_round_number ?? 1
         const { data: roundData } = await supabase
           .from('rounds')
           .select(ROUND_SELECT)
           .eq('game_id', gameCode)
-          .eq('round_number', 1)
+          .eq('round_number', currentRoundNumber)
           .maybeSingle()
 
         const parsedMeta = roundData
@@ -162,6 +165,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         setMeta(parsedMeta)
 
         if (roundData && parsedMeta) {
+          const roundFinished = roundData.status === 'finished'
           setRoundId(roundData.id as string)
 
           const [{ data: subData }, { data: progData }] = await Promise.all([
@@ -179,9 +183,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           setMySubmissions(subs)
           setAllProgress((progData ?? []) as MatchingPairsProgress[])
 
-          // Reconstruct local board from submissions
+          // Reconstruct local board from submissions (only if round is active)
           const cardOrder = getPlayerBoard(parsedMeta, playerId)
-          if (cardOrder) {
+          if (cardOrder && !roundFinished) {
             const boardState = buildInitialBoard(cardOrder)
             const matchedPairs = new Set(subs.filter((s) => s.is_match).map((s) => s.pair_index))
             for (let i = 0; i < boardState.cardStates.length; i++) {
@@ -191,7 +195,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             }
             setBoard(boardState)
 
-            // Start memorization phase for fresh games (no submissions yet)
+            // Start memorization phase for fresh rounds (no submissions yet)
             if (subs.length === 0 && gameData.status === 'active' && memorizeRoundRef.current !== roundData.id) {
               memorizeRoundRef.current = roundData.id
               setMemorizeCountdown(getMemorizeSeconds(parsedMeta.gridSizePairs))
@@ -214,12 +218,13 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             const ownFinished = myProg?.finished === true
             setFinished(ownFinished)
             setFinishRank(myProg?.finish_rank ?? null)
-            return { hasBoard: true, ownFinished }
+            return { hasBoard: true, ownFinished, roundFinished: false }
           } else {
+            // Round is finished or no card order — show round_results
             setBoard(null)
             setFinished(false)
             setFinishRank(null)
-            return { hasBoard: false, ownFinished: false }
+            return { hasBoard: false, ownFinished: false, roundFinished }
           }
         } else {
           setRoundId(null)
@@ -230,7 +235,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           setBoard(null)
           setFinished(false)
           setFinishRank(null)
-          return { hasBoard: false, ownFinished: false }
+          return { hasBoard: false, ownFinished: false, roundFinished: false }
         }
       } else {
         setRoundId(null)
@@ -241,7 +246,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         setBoard(null)
         setFinished(false)
         setFinishRank(null)
-        return { hasBoard: false, ownFinished: false }
+        return { hasBoard: false, ownFinished: false, roundFinished: false }
       }
     },
     [gameCode]
@@ -258,6 +263,10 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       }
       if (gameData.status === 'waiting') return 'waiting'
       if (gameData.status === 'finished') return 'finished'
+      // If the current round is finished (all players done), show round_results
+      // unless this is a single-round game (show finished screen via status check above).
+      if (state.roundFinished) return 'round_results'
+      // If this player is finished but others are still playing, wait.
       if (state.ownFinished) return 'waiting_for_others'
       return state.hasBoard ? 'playing' : 'waiting'
     },
@@ -359,6 +368,24 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       void supabase.removeChannel(channel)
     }
   }, [gameCode, load, setGame])
+
+  // Realtime: round transitions (round ended → round_results, new round → playing).
+  useEffect(() => {
+    if (!gameCode) return
+    const channel = supabase
+      .channel(`mp_rounds_${gameCode}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
+        () => {
+          void load()
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [gameCode, load])
 
   // ── Memorization countdown timer ────────────────────────────────────────────
 
@@ -748,6 +775,29 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
+  if (screen === 'round_results') {
+    const totalRounds = game?.rounds_count ?? 1
+    const currentRoundNumber = game?.current_round_number ?? 1
+    const isLastRound = currentRoundNumber >= totalRounds
+    return (
+      <MatchingPairsPlayShell>
+        <div className="glass-card-strong p-8 text-center space-y-2">
+          <p className="text-3xl">🏁</p>
+          <p className="text-xl font-black">
+            Round {currentRoundNumber}/{totalRounds} complete!
+          </p>
+        </div>
+        <div style={{ padding: '8px 0', fontSize: 12, color: 'var(--text-faint)', textAlign: 'center' }}>
+          {isLastRound ? (
+            <span>Final results coming up...</span>
+          ) : (
+            <span>⏳ Waiting for host to start the next round...</span>
+          )}
+        </div>
+      </MatchingPairsPlayShell>
+    )
+  }
+
   if (screen === 'waiting_for_others') {
     return (
       <MatchingPairsPlayShell>
@@ -772,6 +822,12 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         <ViewerModeBanner gameCode={gameCode} playerId={myPlayerId} game={game} player={me} onPromoted={load} />
       )}
       <MatchingPairsGameTimerBar gameCode={gameCode} game={game} />
+
+      {game && (game.rounds_count ?? 1) > 1 && (
+        <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-faint)', marginBottom: 4 }}>
+          Round {game.current_round_number ?? 1}/{game.rounds_count}
+        </div>
+      )}
 
       {/* Score header */}
       <div

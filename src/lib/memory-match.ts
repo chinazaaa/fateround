@@ -431,15 +431,19 @@ function simpleHash(s: string): number {
 
 /**
  * Build the round row for insertion into `rounds`.
+ * @param roundNumber - 1-indexed round number (default 1). Round 1 is active, rest are pending.
  */
-export function buildMatchingPairsRoundRow(gameCode: string, metadata: MatchingPairsMetadata): Record<string, unknown> {
+export function buildMatchingPairsRoundRow(
+  gameCode: string,
+  metadata: MatchingPairsMetadata,
+  roundNumber = 1
+): Record<string, unknown> {
   return {
     game_id: gameCode,
-    round_number: 1,
-    status: 'active',
-    started_at: new Date().toISOString(),
+    round_number: roundNumber,
+    status: roundNumber === 1 ? 'active' : 'pending',
+    started_at: roundNumber === 1 ? new Date().toISOString() : null,
     memory_match_metadata: metadata,
-    // fields not used by this game type:
     participant_ids: [],
   }
 }
@@ -545,4 +549,43 @@ export async function finishMatchingPairsIfAllDone(
 
   const { error: finishError } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
   return { finished: !finishError, error: finishError?.message ?? null }
+}
+
+/**
+ * Called from the flip route when a player finishes their board.
+ * If all players are done with this round, ends the round.
+ * If this was the final round, also ends the game.
+ * For non-final rounds the game stays active so the next round can start.
+ */
+export async function finishMatchingPairsRoundIfAllDone(
+  supabase: SupabaseClient,
+  gameId: string,
+  roundId: string,
+  roundNumber: number,
+  totalRounds: number,
+  totalPairs: number
+): Promise<{ roundEnded: boolean; gameEnded: boolean; error: string | null }> {
+  const { data: game } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
+  if (game?.status !== 'active') return { roundEnded: false, gameEnded: false, error: null }
+
+  const { allDone, error } = await checkAllMatchingPairsPlayersDone(supabase, gameId, roundId, totalPairs)
+  if (error) return { roundEnded: false, gameEnded: false, error }
+  if (!allDone) return { roundEnded: false, gameEnded: false, error: null }
+
+  // End the current round
+  const now = new Date().toISOString()
+  const { error: roundUpdateError } = await supabase
+    .from('rounds')
+    .update({ status: 'finished', ended_at: now })
+    .eq('id', roundId)
+  if (roundUpdateError) return { roundEnded: false, gameEnded: false, error: roundUpdateError.message }
+
+  if (roundNumber >= totalRounds) {
+    // Last round — end the game
+    const { error: finishError } = await markGameFinished(supabase, gameId, now, { onlyIfActive: true })
+    return { roundEnded: true, gameEnded: !finishError, error: finishError?.message ?? null }
+  }
+
+  // Non-final round — game stays active for the next round
+  return { roundEnded: true, gameEnded: false, error: null }
 }
