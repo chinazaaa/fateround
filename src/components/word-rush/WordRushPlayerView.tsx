@@ -99,8 +99,9 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
         return 'join'
       }
       if (gameData.status === 'waiting') return 'lobby'
-      if (isWordRushResultsPhase(sessionData)) return 'finished'
+      if (isWordRushResultsPhase(gameData.status, sessionData)) return 'finished'
       if (gameData.status === 'active') return 'active'
+      if (gameData.status === 'finished') return 'finished'
       return 'lobby'
     },
     []

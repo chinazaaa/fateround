@@ -14,6 +14,7 @@ import {
   wordRushIndividualGuessPoints,
   allWordRushIndividualPlayersSubmitted,
   wordRushIndividualAnswerers,
+  isWordRushResultsPhase,
   WORD_RUSH_INDIVIDUAL_BASE_POINTS,
   WORD_RUSH_INDIVIDUAL_SPEED_BONUS,
 } from '@/lib/word-rush'
@@ -137,26 +138,25 @@ describe('word-rush helpers', () => {
   it('detects when every individual player has answered', () => {
     const session = {
       roster: ['a', 'b', 'c'],
-      prompt_mode: 'automatic' as const,
-      prompt_setter_player_id: null,
+      prompt_setter_player_id: 'a',
       turn_index: 0,
     }
     expect(
-      allWordRushIndividualPlayersSubmitted(session, [
-        { player_id: 'a', turn_index: 0 },
-        { player_id: 'b', turn_index: 0 },
-      ])
+      allWordRushIndividualPlayersSubmitted(session, [{ player_id: 'b', turn_index: 0 }])
     ).toBe(false)
     expect(
       allWordRushIndividualPlayersSubmitted(session, [
-        { player_id: 'a', turn_index: 0 },
         { player_id: 'b', turn_index: 0 },
         { player_id: 'c', turn_index: 0 },
       ])
     ).toBe(true)
-    expect(wordRushIndividualAnswerers({ ...session, prompt_mode: 'manual', prompt_setter_player_id: 'a' })).toEqual([
-      'b',
-      'c',
-    ])
+    expect(wordRushIndividualAnswerers({ roster: ['a', 'b', 'c'], prompt_setter_player_id: 'a' })).toEqual(['b', 'c'])
+  })
+
+  it('shows results when the game is finished', () => {
+    expect(isWordRushResultsPhase('finished', { status: 'active', phase: 'playing' })).toBe(true)
+    expect(isWordRushResultsPhase('active', { status: 'finished', phase: 'finished' })).toBe(true)
+    expect(isWordRushResultsPhase('waiting', { status: 'finished', phase: 'finished' })).toBe(false)
+    expect(isWordRushResultsPhase('active', { status: 'active', phase: 'playing' })).toBe(false)
   })
 })

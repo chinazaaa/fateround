@@ -71,14 +71,23 @@ export function clampWordRushTurnSeconds(value: unknown): number {
   return (WORD_RUSH_TURN_OPTIONS as readonly number[]).includes(n) ? n : WORD_RUSH_DEFAULT_TURN_SECONDS
 }
 
-/** Speed-scaled points for a correct individual-mode answer. */
-export function wordRushIndividualGuessPoints(turnDeadlineAt: string | null, turnSeconds: number): number {
+/** Speed-scaled points for a correct individual-mode answer at a given moment. */
+export function wordRushIndividualGuessPointsAt(
+  turnDeadlineAt: string | null,
+  turnSeconds: number,
+  atMs: number
+): number {
   if (!turnDeadlineAt) return WORD_RUSH_INDIVIDUAL_BASE_POINTS
   const totalMs = Math.max(turnSeconds, 1) * 1000
   const startMs = new Date(turnDeadlineAt).getTime() - totalMs
-  const elapsed = Math.max(0, Date.now() - startMs)
+  const elapsed = Math.max(0, atMs - startMs)
   const ratio = Math.max(0, Math.min(1, 1 - elapsed / totalMs))
   return WORD_RUSH_INDIVIDUAL_BASE_POINTS + Math.floor(WORD_RUSH_INDIVIDUAL_SPEED_BONUS * ratio)
+}
+
+/** Speed-scaled points for a correct individual-mode answer (uses current time). */
+export function wordRushIndividualGuessPoints(turnDeadlineAt: string | null, turnSeconds: number): number {
+  return wordRushIndividualGuessPointsAt(turnDeadlineAt, turnSeconds, Date.now())
 }
 
 export function formatWordRushTurnTimer(seconds: number): string {
@@ -118,8 +127,14 @@ export function promptSetterForIndividualRound(roster: string[], roundIndex: num
   return roster[roundIndex % roster.length] ?? null
 }
 
-export function isWordRushResultsPhase(session: Pick<WordRushSession, 'phase' | 'status'> | null): boolean {
-  return session?.status === 'finished' || session?.phase === 'finished'
+export function isWordRushResultsPhase(
+  gameStatus: string | undefined,
+  session: Pick<WordRushSession, 'phase' | 'status'> | null | undefined
+): boolean {
+  if (!gameStatus || gameStatus === 'waiting') return false
+  if (gameStatus === 'finished') return true
+  if (!session) return false
+  return session.status === 'finished' || session.phase === 'finished'
 }
 
 export function computeWordRushTeamScores(
@@ -158,10 +173,10 @@ export function allWordRushIndividualPlayersSubmitted(
 }
 
 export function wordRushIndividualAnswerers(
-  session: Pick<WordRushSession, 'roster' | 'prompt_mode' | 'prompt_setter_player_id'>
+  session: Pick<WordRushSession, 'roster' | 'prompt_setter_player_id'>
 ): string[] {
   const roster = session.roster ?? []
-  if (session.prompt_mode === 'manual' && session.prompt_setter_player_id) {
+  if (session.prompt_setter_player_id) {
     return roster.filter((id) => id !== session.prompt_setter_player_id)
   }
   return roster

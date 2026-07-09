@@ -298,7 +298,11 @@ export function WordRushPlayPanel({
               </p>
             )}
             {!isTeam && isPromptSetter && (
-              <p className="text-center text-faint text-sm">You set the letters this round — others are guessing</p>
+              <p className="text-center text-faint text-sm">
+                {session.prompt_mode === 'manual'
+                  ? 'You set the letters this round — others are guessing. You earn mirror points from their scores.'
+                  : 'You are hosting this round — others are guessing. You earn mirror points from their scores.'}
+              </p>
             )}
           </>
         )}
