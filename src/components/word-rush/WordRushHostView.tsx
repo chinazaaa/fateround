@@ -82,6 +82,7 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
   const [moving, setMoving] = useState(false)
   const [balancing, setBalancing] = useState(false)
   const [shuffling, setShuffling] = useState(false)
+  const [endingRound, setEndingRound] = useState(false)
 
   const load = useCallback(async (): Promise<boolean> => {
     const [gameRes, plrsRes, sessionRes, teamRes, answerRes] = await Promise.all([
@@ -394,6 +395,8 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
         intermissionLeft={intermissionLeft}
         urgent={urgent}
         readOnly
+        onEndRoundEarly={() => void endRoundEarly()}
+        endingRound={endingRound}
       />
     ) : (
       <div className="glass-card p-6 text-center space-y-2">
@@ -407,7 +410,7 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
   const submitWord = async (text: string) => {
     if (!hostResumeToken) {
       toastError('Join as a player first')
-      return
+      return { error: 'Join as a player first' }
     }
     try {
       const res = await fetch('/api/word-rush/submit', {
@@ -416,12 +419,34 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
         body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, text }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to submit')
-      if (data.correct === false) toastError('Not a valid word for this pair')
-      else if (data.points) success(`+${data.points} pts!`)
+      if (!res.ok) {
+        toastError(data.error ?? 'Failed to submit')
+        return { error: data.error ?? 'Failed to submit' }
+      }
+      if (data.correct && data.points) success(`+${data.points} pts!`)
       await load()
+      return { correct: data.correct as boolean | undefined }
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to submit')
+      return { error: err instanceof Error ? err.message : 'Failed to submit' }
+    }
+  }
+
+  const endRoundEarly = async () => {
+    setEndingRound(true)
+    try {
+      const res = await fetch('/api/word-rush/end-round', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: gameCode, hostToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to end round')
+      await load()
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to end round')
+    } finally {
+      setEndingRound(false)
     }
   }
 
@@ -436,7 +461,9 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
       intermissionLeft={intermissionLeft}
       urgent={urgent}
       readOnly={!hostPlays}
-      onSubmit={hostPlays ? (text) => void submitWord(text) : undefined}
+      onSubmit={hostPlays ? (text) => submitWord(text) : undefined}
+      onEndRoundEarly={() => void endRoundEarly()}
+      endingRound={endingRound}
       onPrompt={
         hostPlays
           ? (startLetter, endLetter) => {
@@ -630,6 +657,16 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
       {game.status === 'active' && (
         <div className="glass-card p-5 space-y-3">
           <p className="label-caps">Game controls</p>
+          {(session?.phase === 'playing' || session?.phase === 'awaiting_prompt') && (
+            <button
+              type="button"
+              disabled={endingRound}
+              onClick={() => void endRoundEarly()}
+              className="btn-secondary w-full py-2.5 text-sm font-bold disabled:opacity-60"
+            >
+              {endingRound ? 'Ending round…' : 'End round early'}
+            </button>
+          )}
           <HostEndGameButton
             gameCode={gameCode}
             hostToken={hostToken}

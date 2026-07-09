@@ -10,6 +10,7 @@ import {
   WORD_RUSH_MIN_PLAYERS_INDIVIDUAL,
   WORD_RUSH_ROUND_RESULTS_SECONDS,
   balanceWordRushTeams,
+  allWordRushIndividualPlayersSubmitted,
   clampWordRushMode,
   clampWordRushPromptMode,
   clampWordRushRounds,
@@ -305,12 +306,26 @@ export async function processWordRushSubmit(
       text: guess.slice(0, 80),
       correct,
     })
+    let points = 0
     if (correct) {
-      const points = wordRushIndividualGuessPoints(session.turn_deadline_at, session.turn_seconds)
+      points = wordRushIndividualGuessPoints(session.turn_deadline_at, session.turn_seconds)
       await supabase.rpc('word_rush_add_score', { p_game_id: gameId, p_player_id: playerId, p_delta: points })
-      return { correct, points }
     }
-    return { correct }
+
+    const { data: roundAnswers } = await supabase
+      .from('word_rush_answers')
+      .select('player_id, turn_index')
+      .eq('game_id', gameId)
+      .eq('turn_index', session.turn_index)
+
+    if (
+      allWordRushIndividualPlayersSubmitted(session, (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number }>)
+    ) {
+      const endResult = await endIndividualRound(supabase, gameId, session)
+      if (endResult.error) return endResult
+    }
+
+    return correct ? { correct, points } : { correct }
   }
 
   await supabase.from('word_rush_answers').insert({
@@ -461,6 +476,27 @@ async function finishWordRushGame(
   if (error) return internalFailure('word-rush:finish', error)
   await markGameFinished(supabase, gameId)
   return {}
+}
+
+export async function processWordRushEndRoundEarly(
+  supabase: SupabaseClient,
+  gameId: string,
+  hostToken: string
+): Promise<{ error?: string; internal?: boolean }> {
+  const { data: game } = await supabase.from('games').select('host_token, status').eq('id', gameId).maybeSingle()
+  if (!game) return { error: 'Game not found' }
+  if (game.host_token !== hostToken) return { error: 'Invalid host token' }
+  if (game.status !== 'active') return { error: 'Game not active' }
+
+  const { session, error, internal } = await loadSession(supabase, gameId)
+  if (error) return { error, internal }
+  if (!session || session.status === 'finished') return { error: 'Game not active' }
+  if (session.phase !== 'playing' && session.phase !== 'awaiting_prompt') {
+    return { error: 'Round already ended' }
+  }
+
+  if (session.mode === 'team') return endTeamTurn(supabase, gameId, session)
+  return endIndividualRound(supabase, gameId, session)
 }
 
 export async function processWordRushExpireTurn(

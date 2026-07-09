@@ -2,54 +2,78 @@
 
 import { useState } from 'react'
 import type { WordRushAnswer, WordRushSession, Player } from '@/types'
-import {
-  WordRushCard,
-  WordRushPlayerScoreboard,
-  WordRushPromptDisplay,
-  WordRushScoreboard,
-  WordRushTeamBadge,
-} from '@/components/word-rush/WordRushChrome'
+import { LiveLeaderboardLayout } from '@/components/LiveLeaderboardLayout'
+import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
+import { WordRushCard, WordRushPromptDisplay, WordRushTeamBadge } from '@/components/word-rush/WordRushChrome'
 import { computeWordRushPlayerScores, computeWordRushTeamScores, teamLabel } from '@/lib/word-rush'
+
+type SubmitResult = { correct?: boolean; error?: string }
 
 function AnswerInput({
   placeholder,
   buttonLabel,
   onSubmit,
   disabled,
+  allowRetry,
 }: {
   placeholder: string
   buttonLabel: string
-  onSubmit: (text: string) => void
+  onSubmit: (text: string) => void | Promise<SubmitResult | void>
   disabled?: boolean
+  allowRetry?: boolean
 }) {
   const [value, setValue] = useState('')
-  const submit = () => {
+  const [wrongMessage, setWrongMessage] = useState<string | null>(null)
+
+  const submit = async () => {
     const text = value.trim()
     if (!text || disabled) return
-    onSubmit(text)
+    setWrongMessage(null)
+    const result = await onSubmit(text)
+    if (result?.error) {
+      setWrongMessage(result.error)
+      return
+    }
+    if (result?.correct === false) {
+      setWrongMessage(`"${text}" isn't a valid dictionary word for this letter pair`)
+      if (!allowRetry) setValue('')
+      return
+    }
     setValue('')
+    setWrongMessage(null)
   }
+
   return (
-    <div className="flex items-center gap-2">
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && submit()}
-        placeholder={placeholder}
-        disabled={disabled}
-        maxLength={80}
-        className="input-field flex-1"
-        autoComplete="off"
-      />
-      <button
-        type="button"
-        onClick={submit}
-        disabled={disabled || !value.trim()}
-        className="btn-primary btn-fit shrink-0 px-4 py-2.5 text-sm whitespace-nowrap"
-      >
-        {buttonLabel}
-      </button>
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value)
+            if (wrongMessage) setWrongMessage(null)
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && void submit()}
+          placeholder={placeholder}
+          disabled={disabled}
+          maxLength={80}
+          className={['input-field flex-1', wrongMessage ? 'border-red-400/60 ring-1 ring-red-400/30' : ''].join(' ')}
+          autoComplete="off"
+        />
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={disabled || !value.trim()}
+          className="btn-primary btn-fit shrink-0 px-4 py-2.5 text-sm whitespace-nowrap"
+        >
+          {buttonLabel}
+        </button>
+      </div>
+      {wrongMessage && (
+        <p className="text-center text-sm text-red-400 font-medium" role="alert">
+          {wrongMessage}
+        </p>
+      )}
     </div>
   )
 }
@@ -111,6 +135,8 @@ export function WordRushPlayPanel({
   urgent,
   onSubmit,
   onPrompt,
+  onEndRoundEarly,
+  endingRound,
   acting,
   readOnly,
 }: {
@@ -122,8 +148,10 @@ export function WordRushPlayPanel({
   secondsLeft: number
   intermissionLeft: number
   urgent: boolean
-  onSubmit?: (text: string) => void
+  onSubmit?: (text: string) => void | Promise<SubmitResult | void>
   onPrompt?: (start: string, end: string) => void
+  onEndRoundEarly?: () => void
+  endingRound?: boolean
   acting?: boolean
   readOnly?: boolean
 }) {
@@ -147,49 +175,72 @@ export function WordRushPlayPanel({
   const nameById = new Map(players.map((p) => [p.id, p.name]))
   const myAnswerThisRound = myPlayerId ? currentTurnAnswers.find((a) => a.player_id === myPlayerId) : undefined
   const individualScoreLabel = (score: number) => `${score} ${score === 1 ? 'pt' : 'pts'}`
+  const timerClass = urgent ? 'text-red-400 animate-pulse' : 'text-[var(--foreground)]'
+
+  const liveLeaderboard = isTeam ? (
+    <PaginatedLeaderboard
+      title="Team scores"
+      rows={teamScores.map((s, i) => ({
+        id: String(s.team),
+        name: teamLabel(s.team),
+        score: s.score,
+        rank: i + 1,
+      }))}
+      scoreLabel={(n) => `${n} ${n === 1 ? 'word' : 'words'}`}
+    />
+  ) : (
+    <PaginatedLeaderboard
+      title="Leaderboard"
+      rows={playerScores.map((row, i) => ({ ...row, rank: i + 1 }))}
+      highlightId={myPlayerId}
+      scoreLabel={individualScoreLabel}
+      totalQuestions={session.total_rounds}
+    />
+  )
+
+  const roundHeader = (
+    <div className="flex items-center justify-between gap-3">
+      {isTeam ? (
+        <WordRushTeamBadge team={session.active_team} />
+      ) : (
+        <p className="font-bold">
+          Round {session.current_round} of {session.total_rounds}
+        </p>
+      )}
+      <div className="flex items-center gap-2">
+        {onEndRoundEarly && (session.phase === 'playing' || session.phase === 'awaiting_prompt') && (
+          <button
+            type="button"
+            onClick={onEndRoundEarly}
+            disabled={endingRound}
+            className="text-xs font-bold rounded-lg border border-[var(--border-strong)] px-2.5 py-1.5 hover:bg-orange-500/10 disabled:opacity-50"
+          >
+            {endingRound ? 'Ending…' : 'End round'}
+          </button>
+        )}
+        <p className={`text-2xl font-black tabular-nums ${timerClass}`}>{Math.max(0, secondsLeft)}s</p>
+      </div>
+    </div>
+  )
 
   if (session.phase === 'intermission') {
     return (
-      <div className="space-y-4">
+      <LiveLeaderboardLayout sidebar={liveLeaderboard}>
         <WordRushCard className="text-center space-y-2">
           <p className="text-lg font-bold">{session.status_message}</p>
           <p className="text-faint text-sm">Next up in {intermissionLeft}s…</p>
         </WordRushCard>
-        {isTeam ? (
-          <WordRushScoreboard scores={teamScores} />
-        ) : (
-          <WordRushPlayerScoreboard scores={playerScores} scoreLabel={individualScoreLabel} />
-        )}
-      </div>
+      </LiveLeaderboardLayout>
     )
   }
 
   if (session.phase === 'finished') {
-    return isTeam ? (
-      <WordRushScoreboard scores={teamScores} />
-    ) : (
-      <WordRushPlayerScoreboard scores={playerScores} scoreLabel={individualScoreLabel} />
-    )
+    return <LiveLeaderboardLayout sidebar={liveLeaderboard}>{null}</LiveLeaderboardLayout>
   }
 
-  const timerClass = urgent ? 'text-red-400 animate-pulse' : 'text-[var(--foreground)]'
-
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        {isTeam ? (
-          <WordRushTeamBadge team={session.active_team} />
-        ) : (
-          <p className="font-bold">Round {session.current_round}</p>
-        )}
-        <p className={`text-2xl font-black tabular-nums ${timerClass}`}>{Math.max(0, secondsLeft)}s</p>
-      </div>
-
-      {isTeam ? (
-        <WordRushScoreboard scores={teamScores} />
-      ) : (
-        <WordRushPlayerScoreboard scores={playerScores} scoreLabel={individualScoreLabel} />
-      )}
+    <LiveLeaderboardLayout sidebar={liveLeaderboard}>
+      {roundHeader}
 
       <WordRushCard className="space-y-4">
         {session.status_message && <p className="text-center text-sm text-faint">{session.status_message}</p>}
@@ -211,18 +262,35 @@ export function WordRushPlayPanel({
                 <AnswerInput
                   placeholder="Type a word…"
                   buttonLabel="Submit"
-                  onSubmit={(t) => onSubmit?.(t)}
+                  onSubmit={(t) => onSubmit?.(t) ?? undefined}
                   disabled={acting}
+                  allowRetry={isTeam}
                 />
               )}
             {!readOnly && myAnswerThisRound && (
-              <p className="text-center text-sm">
+              <div
+                className={[
+                  'rounded-xl border p-3 text-center space-y-1',
+                  myAnswerThisRound.correct
+                    ? 'border-emerald-400/40 bg-emerald-500/10'
+                    : 'border-red-400/40 bg-red-500/10',
+                ].join(' ')}
+              >
                 {myAnswerThisRound.correct ? (
-                  <span className="text-emerald-400 font-semibold">Correct — locked in for this round ✓</span>
+                  <>
+                    <p className="text-emerald-400 font-bold">Correct — locked in for this round ✓</p>
+                    <p className="text-sm text-muted">Waiting for other players…</p>
+                  </>
                 ) : (
-                  <span className="text-muted">Submitted — not a valid word for this pair</span>
+                  <>
+                    <p className="text-red-400 font-bold">Not a valid word</p>
+                    <p className="text-sm text-muted">
+                      &ldquo;{myAnswerThisRound.text}&rdquo; doesn&apos;t match {session.start_letter?.toUpperCase()}…
+                      {session.end_letter?.toUpperCase()}
+                    </p>
+                  </>
                 )}
-              </p>
+              </div>
             )}
             {readOnly && (
               <p className="text-center text-faint text-sm">
@@ -249,6 +317,6 @@ export function WordRushPlayPanel({
           </div>
         </WordRushCard>
       )}
-    </div>
+    </LiveLeaderboardLayout>
   )
 }

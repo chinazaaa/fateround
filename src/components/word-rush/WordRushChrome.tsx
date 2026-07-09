@@ -3,13 +3,23 @@
 import type { WordRushPlayerScore, WordRushTeamScore } from '@/lib/word-rush'
 import { TEAM_EMOJI, teamLabel } from '@/lib/word-rush'
 
-export function WordRushShell({ children, compact = false }: { children: React.ReactNode; compact?: boolean }) {
+export function WordRushShell({
+  children,
+  compact = false,
+  wide = false,
+}: {
+  children: React.ReactNode
+  compact?: boolean
+  wide?: boolean
+}) {
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <div
-        className={['page-wrap mx-auto w-full max-w-lg px-3 sm:px-4', compact ? 'py-3 sm:py-4' : 'py-6 sm:py-8'].join(
-          ' '
-        )}
+        className={[
+          'page-wrap mx-auto w-full px-3 sm:px-4',
+          wide ? 'max-w-3xl' : 'max-w-lg',
+          compact ? 'py-3 sm:py-4' : 'py-6 sm:py-8',
+        ].join(' ')}
       >
         <div className={compact ? 'space-y-4' : 'space-y-5 sm:space-y-6'}>{children}</div>
       </div>

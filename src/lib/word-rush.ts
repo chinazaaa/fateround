@@ -145,6 +145,28 @@ export function computeWordRushPlayerScores(
     .sort((a, b) => b.score - a.score)
 }
 
+export function allWordRushIndividualPlayersSubmitted(
+  session: Pick<WordRushSession, 'roster' | 'prompt_mode' | 'prompt_setter_player_id' | 'turn_index'>,
+  answers: Pick<WordRushAnswer, 'player_id' | 'turn_index'>[]
+): boolean {
+  const eligible = wordRushIndividualAnswerers(session)
+  if (eligible.length === 0) return false
+  const submitted = new Set(
+    answers.filter((a) => a.turn_index === session.turn_index).map((a) => a.player_id)
+  )
+  return eligible.every((id) => submitted.has(id))
+}
+
+export function wordRushIndividualAnswerers(
+  session: Pick<WordRushSession, 'roster' | 'prompt_mode' | 'prompt_setter_player_id'>
+): string[] {
+  const roster = session.roster ?? []
+  if (session.prompt_mode === 'manual' && session.prompt_setter_player_id) {
+    return roster.filter((id) => id !== session.prompt_setter_player_id)
+  }
+  return roster
+}
+
 export function wordRushLobbyReady(
   teamRows: Array<{ player_id: string; team: number }>,
   numTeams: number,

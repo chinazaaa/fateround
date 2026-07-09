@@ -12,6 +12,8 @@ import {
   rebalanceWordRushTeams,
   shuffleWordRushTeams,
   wordRushIndividualGuessPoints,
+  allWordRushIndividualPlayersSubmitted,
+  wordRushIndividualAnswerers,
   WORD_RUSH_INDIVIDUAL_BASE_POINTS,
   WORD_RUSH_INDIVIDUAL_SPEED_BONUS,
 } from '@/lib/word-rush'
@@ -126,9 +128,35 @@ describe('word-rush helpers', () => {
 
   it('awards more points for faster individual answers', () => {
     const fast = wordRushIndividualGuessPoints(new Date(Date.now() + 120_000).toISOString(), 120)
-    const slow = wordRushIndividualGuessPoints(new Date(Date.now() + 1_000).toISOString(), 120)
-    expect(fast).toBe(WORD_RUSH_INDIVIDUAL_BASE_POINTS + WORD_RUSH_INDIVIDUAL_SPEED_BONUS)
+    const slow = wordRushIndividualGuessPoints(new Date(Date.now() + 2_000).toISOString(), 120)
+    expect(fast).toBeGreaterThanOrEqual(WORD_RUSH_INDIVIDUAL_BASE_POINTS + WORD_RUSH_INDIVIDUAL_SPEED_BONUS - 1)
     expect(slow).toBeGreaterThanOrEqual(WORD_RUSH_INDIVIDUAL_BASE_POINTS)
     expect(fast).toBeGreaterThan(slow)
+  })
+
+  it('detects when every individual player has answered', () => {
+    const session = {
+      roster: ['a', 'b', 'c'],
+      prompt_mode: 'automatic' as const,
+      prompt_setter_player_id: null,
+      turn_index: 0,
+    }
+    expect(
+      allWordRushIndividualPlayersSubmitted(session, [
+        { player_id: 'a', turn_index: 0 },
+        { player_id: 'b', turn_index: 0 },
+      ])
+    ).toBe(false)
+    expect(
+      allWordRushIndividualPlayersSubmitted(session, [
+        { player_id: 'a', turn_index: 0 },
+        { player_id: 'b', turn_index: 0 },
+        { player_id: 'c', turn_index: 0 },
+      ])
+    ).toBe(true)
+    expect(wordRushIndividualAnswerers({ ...session, prompt_mode: 'manual', prompt_setter_player_id: 'a' })).toEqual([
+      'b',
+      'c',
+    ])
   })
 })

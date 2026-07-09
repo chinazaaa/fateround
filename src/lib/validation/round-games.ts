@@ -269,6 +269,11 @@ export const wordRushGameSchema = z.object({
   gameId: gameCodeString(),
 })
 
+export const wordRushEndRoundSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: hostTokenString(),
+})
+
 export const wordRushAdvanceSchema = z.object({
   gameId: gameCodeString(),
   hostToken: z.string().min(1).optional(),
