@@ -106,7 +106,8 @@ export function pickRandomLetterPair(
   const used = new Set(usedPairs.map((p) => p.toLowerCase()))
   const eligible = (keys: string[]) => keys.filter((key) => !used.has(key) && pairSupportsMinLength(key, minLength))
   const candidates = eligible(loadValidPairs())
-  const pool = candidates.length > 0 ? candidates : loadValidPairs().filter((key) => pairSupportsMinLength(key, minLength))
+  const pool =
+    candidates.length > 0 ? candidates : loadValidPairs().filter((key) => pairSupportsMinLength(key, minLength))
   if (pool.length === 0) return null
   const key = pool[Math.floor(Math.random() * pool.length)]!
   const [start, end] = key.split('-')

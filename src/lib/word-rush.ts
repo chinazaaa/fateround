@@ -1,4 +1,11 @@
-import type { Game, WordRushAnswer, WordRushDifficulty, WordRushMode, WordRushPromptMode, WordRushSession } from '@/types'
+import type {
+  Game,
+  WordRushAnswer,
+  WordRushDifficulty,
+  WordRushMode,
+  WordRushPromptMode,
+  WordRushSession,
+} from '@/types'
 import { WORD_HUNT_MIN_WORD_LENGTH } from '@/lib/word-hunt'
 
 export const WORD_RUSH_MIN_PLAYERS = 4

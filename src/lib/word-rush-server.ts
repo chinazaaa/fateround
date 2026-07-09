@@ -3,7 +3,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalFailure } from '@/lib/api-errors'
 import { markGameFinished } from '@/lib/game-finish'
-import { pickRandomLetterPair, pairSupportsMinLengthForLetters, validLetterPairCount, wordRushWordRejectReason } from '@/lib/word-rush-dictionary'
+import {
+  pickRandomLetterPair,
+  pairSupportsMinLengthForLetters,
+  validLetterPairCount,
+  wordRushWordRejectReason,
+} from '@/lib/word-rush-dictionary'
 import {
   WORD_RUSH_BREAK_SECONDS,
   WORD_RUSH_MIN_PLAYERS,
