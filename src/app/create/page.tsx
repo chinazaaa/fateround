@@ -2626,7 +2626,7 @@ function CreateGameInner() {
                         <span className="text-faint text-xs">
                           {difficulty === 'standard'
                             ? '3–20 letter words every round'
-                            : 'Min length grows each round (3, 5, 7…)'}
+                            : 'Min length grows each round (3, 4, 5, 6 — then stays at 6)'}
                         </span>
                       </button>
                     ))}
