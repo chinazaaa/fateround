@@ -80,8 +80,10 @@ have, but **explicitly decide** spectators, late join, and max players.
 ### During game
 - [ ] `useGameTableSync` on all tables the UI reads
 - [ ] `HostModeSelector` if host can play or spectate
-- [ ] `HostRulesRow` → `/games/<slug>#rules`
+- [ ] `HostRulesRow` → `/games/<slug>#rules` (see §5)
 - [ ] `HostEndGameButton` if host can end early
+- [ ] **`HostLobbyWaitingFooter` with `game={game}`** — enables public/private toggle
+  (see §6). Board games put visibility in `HostBoardGameLobbyPanel` instead.
 
 ### Remove players
 - [ ] `useHostRemovePlayer()` → `DELETE /api/players`
@@ -195,23 +197,105 @@ Document in code comments if non-obvious. Quiplash pattern:
 
 ---
 
-## 5. Game rules & marketing pages
+## 5. Public marketing pages (`/games`, SEO, rules)
 
-Players expect **View game rules** in lobby to match actual behaviour.
+These are **game-type** pages (how Quiplash works in general), not individual
+room codes. They are mostly data-driven — wire the content once and the routes
+appear automatically.
+
+### `/games` — all games index
+- [ ] Game appears in `GAME_TYPE_OPTIONS` — `src/lib/game-types.ts`
+- [ ] `GAME_LANDING_CONTENT[gameType]` exists — `src/lib/game-landing.ts`
+- [ ] Page builds from `GAME_TYPE_DISPLAY_ORDER` — `src/app/games/page.tsx`
+- [ ] Optional: add to `PINNED_GAME_TYPES` (top of grid) or
+  `HOMEPAGE_FEATURED_GAMES` (home page “Popular games”) — `src/lib/game-types.ts`
+
+### `/games/<slug>` — per-game landing page
+Auto-generated when slug + content exist (`generateStaticParams` uses
+`ALL_GAME_LANDING_SLUGS`).
+
+- [ ] `GAME_TYPE_TO_SLUG[gameType]` — e.g. `quiplash: 'quiplash'` —
+  `src/lib/game-landing.ts`
+- [ ] `GAME_LANDING_CONTENT[gameType]` — `landing()` call with:
+  - [ ] `seoTitle`, `seoDescription`, `keywords`
+  - [ ] `heroSubtitle`, `highlights`, `features`, `steps`, `perfectFor`
+  - [ ] `rules` is wired automatically from `GAME_LANDING_RULES[gameType]`
+- [ ] Optional `bodyParagraph` for extra SEO copy
+- [ ] Optional `extraFaqs` for landing-page FAQ block
+- [ ] Optional OG image — `public/og/<slug>.png` (used by `gameLandingOgPath` in
+  `src/lib/seo.ts`)
+- [ ] “Play free” CTA links to `/create?type=<gameTypeCreateParam>`
+
+### Game rules (public + in-lobby link)
+Two surfaces, **one source of truth**:
+
+| Surface | URL / component | Data |
+|---------|-----------------|------|
+| Public rules section | `/games/<slug>#rules` | `GAME_LANDING_RULES` |
+| In-game link | `GameRulesLink` in lobby | `gameRulesHref()` → same `#rules` anchor |
 
 - [ ] `GAME_LANDING_RULES[gameType]` — `src/lib/game-landing-rules.ts`
   - Objective, how it works, tips
-  - Max players, timers, spectator/late-join behaviour if relevant
+  - Max players, timers, spectator/late-join behaviour
   - Edge cases (ties, solo round, battle caps)
-- [ ] `GAME_LANDING_CONTENT[gameType]` — `src/lib/game-landing.ts` (SEO, hero, steps)
-- [ ] `GAME_TYPE_TO_SLUG` entry
-- [ ] Optional OG image — `public/og/<slug>.png`
+- [ ] `GameRulesLink gameType="…"` in player lobby — `QuiplashPlayerView`
+- [ ] `HostRulesRow gameType="…"` on host manage/lobby
 
-Update rules when you change caps, phases, or spectator behaviour.
+Update rules when you change caps, phases, or spectator behaviour — the public
+page and lobby link stay in sync.
+
+### SEO & discovery
+- [ ] Sitemap entry — automatic via `ALL_GAME_LANDING_SLUGS` in
+  `src/app/sitemap.ts` (`/games/<slug>`, priority 0.85)
+- [ ] `llms.txt` lists all games — `src/app/llms.txt/route.ts` (uses
+  `GAME_TYPE_DISPLAY_ORDER`)
+- [ ] `game-type-coverage.test.ts` asserts slug + content + rules exist
+- [ ] Site nav/footer link to `/games` — `MarketingHeader`, `SiteFooter`
+
+**Reference:** Quiplash entries in `game-landing.ts`, `game-landing-rules.ts`,
+live page at `/games/quiplash`.
 
 ---
 
-## 6. Community leaderboard
+## 6. Public vs private lobbies (Browse)
+
+This is **per game instance** (a specific room code), separate from the
+marketing pages above.
+
+| Setting | Meaning |
+|---------|---------|
+| **Public** (`is_public: true`) | Listed on `/browse` for anyone to find and join |
+| **Private** (`is_public: false`, default) | Invite-only via share link / code |
+
+### Create flow
+- [ ] Host picks Public or Private on `/create` — `settings.isPublic` in
+  `src/app/create/page.tsx` (`src/app/create/types.ts`)
+- [ ] Passed to `POST /api/games` as `isPublic` → stored as `games.is_public` —
+  `src/app/api/games/route.ts`
+
+### Host lobby (change after create)
+- [ ] **`HostVisibilityToggle`** — `src/components/host-lobby/HostVisibilityToggle.tsx`
+  - Label: “Public game — list in Browse…”
+  - PATCH `is_public` via `PATCH /api/games/[code]` (also editable live during
+    active games — `LIVE_EDITABLE_SETTING_KEYS` in same route)
+- [ ] Surface the toggle in host lobby:
+  - **Most lobby games:** pass `game={game}` to `HostLobbyWaitingFooter` (includes
+    toggle) — `QuiplashHostView`
+  - **Board games:** toggle inside `HostBoardGameLobbyPanel` (don’t duplicate in
+    footer)
+  - **Manage-panel games:** e.g. Trivia/Codewords host manage tab
+- [ ] Optional: also accept `is_public` in `lobby-settings` route for games that
+  PATCH settings there — `src/app/api/games/[code]/lobby-settings/route.ts`
+
+### Browse page
+- [ ] No per-game code needed — `GET /api/games` filters `.eq('is_public', true)`
+- [ ] UI: `src/app/browse/page.tsx` → `BrowseGamesPage`
+
+Private games are never listed; players need the direct `/game/<code>` link.
+
+---
+
+## 7. Community leaderboard
 
 - [ ] Migration: `INSERT INTO community_games (...)` with matching `game_type`
 - [ ] `PostWinToCommunity` on finished screen — **winner only** (gate `iWon`)
@@ -226,7 +310,7 @@ Role-based games (Codewords): achievement keys via `src/lib/community-achievemen
 
 ---
 
-## 7. API routes & advance logic
+## 8. API routes & advance logic
 
 ### Typical layout
 ```
@@ -254,7 +338,7 @@ src/hooks/use<Game>Advance.ts                    # client advance polling
 
 ---
 
-## 8. Error handling & edge cases
+## 9. Error handling & edge cases
 
 | Scenario | Where | What to do |
 |----------|-------|------------|
@@ -270,7 +354,7 @@ src/hooks/use<Game>Advance.ts                    # client advance polling
 
 ---
 
-## 9. Finished screen & sharing
+## 10. Finished screen & sharing
 
 - [ ] Score tally helper — `tallyMyGameScores()` in `src/lib/<game>.ts`
 - [ ] `FinishedWinnerHero` + `PaginatedLeaderboard`
@@ -280,16 +364,18 @@ src/hooks/use<Game>Advance.ts                    # client advance polling
 
 ---
 
-## 10. Create flow
+## 11. Create flow
 
 - [ ] Game type on `/create` page — fields for your timers, rounds, max players
+- [ ] **Public vs private** toggle (`isPublic`) — see §6
 - [ ] Defaults from `DEFAULT_*` constants
 - [ ] Late join policy default from `defaultLateJoinPolicyForGameType()`
+- [ ] `participant_mode: 'joiners'` for lobby games — `src/app/create/page.tsx`
 - [ ] `POST /api/games` creates row + initial rounds if needed
 
 ---
 
-## 11. Tests
+## 12. Tests
 
 - [ ] `src/lib/<game>.test.ts` — scoring, pairing, phase helpers, visibility rules
 - [ ] `game-type-coverage.test.ts` passes (automatic)
@@ -297,7 +383,7 @@ src/hooks/use<Game>Advance.ts                    # client advance polling
 
 ---
 
-## 12. Lessons from Quiplash (common misses)
+## 13. Lessons from Quiplash (common misses)
 
 These were all found in playtesting — use as a final sanity pass:
 
@@ -309,8 +395,10 @@ These were all found in playtesting — use as a final sanity pass:
 6. **`onReadyError`** on `GameLobbyWaitingPanel` — or “game is full” is silent
 7. **Community leaderboard** — migration + `PostWinToCommunity` + stable `roundKey`
 8. **Lobby settings** — max players / timers editable before start
-9. **Game rules page** — update for 3–6 players, battle caps, spectators
-10. **Copy** — avoid jargon (“match” → “battle”); explain what watchers see
+9. **Game rules page** — update `GAME_LANDING_RULES` for caps, spectators, battles
+10. **Public pages** — slug, landing content, rules; verify `/games/<slug>` loads
+11. **Public/private lobby** — `HostLobbyWaitingFooter` passes `game` for visibility toggle
+12. **Copy** — avoid jargon (“match” → “battle”); explain what watchers see
 
 ---
 
@@ -344,6 +432,11 @@ src/app/api/games/[code]/start/route.ts
 src/app/api/games/[code]/play-again/route.ts
 src/app/api/games/[code]/lobby-settings/route.ts
 src/app/create/page.tsx
+src/app/games/page.tsx                 # auto-lists if content exists
+src/app/games/[slug]/page.tsx          # auto-generates from slug
+src/app/sitemap.ts
+public/og/<slug>.png                   # optional
+src/components/host-lobby/HostLobbyWaitingFooter.tsx   # public/private toggle
 supabase/migrations/*_<game>.sql
 supabase/migrations/*_<game>_community_leaderboard.sql
 ```
@@ -372,4 +465,7 @@ rg 'PostWinToCommunity' src/components
 rg 'gameOffersLateJoinChoice' src
 rg 'onReadyError' src/components
 rg 'ViewerModeBanner' src/components
+rg 'GAME_LANDING_CONTENT' src/lib/game-landing.ts
+rg 'GAME_LANDING_RULES' src/lib/game-landing-rules.ts
+rg 'HostVisibilityToggle|is_public' src
 ```
