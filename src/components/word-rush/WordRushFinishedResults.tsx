@@ -60,7 +60,7 @@ export function WordRushFinishedResults({
             title="Final leaderboard"
             rows={playerLeaderboard.map((row, i) => ({ id: row.id, name: row.name, score: row.score, rank: i + 1 }))}
             highlightId={highlightPlayerId ?? undefined}
-            scoreLabel={(score) => `${score} correct`}
+            scoreLabel={(score) => `${score} ${score === 1 ? 'pt' : 'pts'}`}
             emphasizeLeader
           />
         </div>

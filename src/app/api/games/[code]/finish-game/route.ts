@@ -4,6 +4,7 @@ import { finishMonopolyGameEarly } from '@/lib/monopoly'
 import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anonymous-messages'
 import { finishCodewordsGame } from '@/lib/codewords'
 import { finishScrabbleGameEarly } from '@/lib/scrabble'
+import { finishWordRushGameEarly } from '@/lib/word-rush-server'
 import { markGameFinished } from '@/lib/game-finish'
 import { awardTournamentPlacements } from '@/lib/tournament-scoring'
 import {
@@ -13,6 +14,7 @@ import {
   isCodewordsGame,
   isMonopolyGame,
   isScrabbleGame,
+  isWordRushGame,
 } from '@/lib/game-types'
 import { hostActionSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -79,6 +81,11 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     const { error } = await finishScrabbleGameEarly(admin, gameId)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
+  }
+
+  if (isWordRushGame(gameType) && !inLobby) {
+    const { error } = await finishWordRushGameEarly(admin, gameId)
+    if (error) return NextResponse.json({ error }, { status: 500 })
   }
 
   // Save snapshot for rematch history
