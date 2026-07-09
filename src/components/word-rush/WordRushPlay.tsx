@@ -159,6 +159,7 @@ export function WordRushPlayPanel({
   const myTeam = teamRows.find((r) => r.player_id === myPlayerId)?.team ?? null
   const onActiveTeam = isTeam && myTeam === session.active_team
   const isPromptSetter = !!myPlayerId && session.prompt_setter_player_id === myPlayerId
+  const isIndividualManualSetter = !isTeam && isPromptSetter && session.prompt_mode === 'manual'
   const teamScores = computeWordRushTeamScores(answers, session.num_teams)
   const playerScores = computeWordRushPlayerScores(
     players,
@@ -265,7 +266,7 @@ export function WordRushPlayPanel({
             <WordRushPromptDisplay startLetter={session.start_letter} endLetter={session.end_letter} />
             {!readOnly &&
               !myCorrectAnswerThisRound &&
-              ((!isTeam && !isPromptSetter) || (isTeam && onActiveTeam && !isPromptSetter)) && (
+              ((!isTeam && !isIndividualManualSetter) || (isTeam && onActiveTeam && !isPromptSetter)) && (
                 <AnswerInput
                   placeholder="Type a word…"
                   buttonLabel="Submit"
