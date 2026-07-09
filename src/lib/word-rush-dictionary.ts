@@ -1,7 +1,6 @@
-// Server-only dictionary: loads word-hunt-words.txt via fs — must not be imported from client code.
+// Server-only dictionary: ENABLE word list (same as Scrabble default). Must not be imported from client code.
 
-import fs from 'fs'
-import path from 'path'
+import { SCRABBLE_WORDS_RAW } from '@/lib/data/scrabble-words'
 import {
   WORD_RUSH_MAX_WORD_LENGTH,
   WORD_RUSH_MIN_WORD_LENGTH,
@@ -18,11 +17,8 @@ let validPairs: string[] | null = null
 
 function loadWordSet(): Set<string> {
   if (wordSet) return wordSet
-  const filePath = path.join(process.cwd(), 'src/data/word-hunt-words.txt')
-  const content = fs.readFileSync(filePath, 'utf8')
   wordSet = new Set(
-    content
-      .split(/\r?\n/)
+    SCRABBLE_WORDS_RAW.split('\n')
       .map((line) => line.trim().toLowerCase())
       .filter(
         (line) =>

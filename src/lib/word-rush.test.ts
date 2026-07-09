@@ -33,6 +33,7 @@ describe('word-rush-dictionary', () => {
   it('validates dictionary words with letter constraints', () => {
     expect(isValidWordRushWord('monkey', 'm', 'y')).toBe(true)
     expect(isValidWordRushWord('boat', 'b', 't')).toBe(true)
+    expect(isValidWordRushWord('information', 'i', 'n')).toBe(true)
     expect(isValidWordRushWord('monkey', 'b', 't')).toBe(false)
     expect(isValidWordRushWord('notaword', 'n', 'd')).toBe(false)
   })
