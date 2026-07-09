@@ -1,6 +1,6 @@
 'use client'
 import { MEDALS } from '@/lib/medals'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ResultsPagination, usePagination, RESULTS_PAGE_SIZE } from '@/components/ui/ResultsPagination'
 
 export interface LeaderboardRow {
@@ -34,8 +34,8 @@ interface RowContentProps {
   highlightId?: string | null
   scoreLabel: (score: number) => string
   totalQuestions?: number
-  expandedId: string | null
-  setExpandedId: (id: string | null) => void
+  expandedIds: Set<string>
+  onToggleExpand: (id: string) => void
 }
 
 function RowContent({
@@ -45,14 +45,14 @@ function RowContent({
   highlightId,
   scoreLabel,
   totalQuestions,
-  expandedId,
-  setExpandedId,
+  expandedIds,
+  onToggleExpand,
 }: RowContentProps) {
   const rank = row.rank ?? start + i + 1
   const isLeader = rank === 1
   const isYou = row.id === highlightId
   const hasDetails = !!row.expandDetails
-  const isExpanded = expandedId === row.id
+  const isExpanded = expandedIds.has(row.id)
 
   return (
     <>
@@ -75,22 +75,23 @@ function RowContent({
           {isYou ? <span className="label-teal font-semibold"> (you)</span> : null}
         </span>
         <span className="ml-auto shrink-0 text-right flex items-center gap-2">
-          <span>
+          <span className="flex items-baseline gap-1.5 text-nowrap">
             <span className={`font-bold text-sm tabular-nums ${isLeader ? 'gradient-title' : 'text-muted'}`}>
               {scoreLabel(row.score)}
             </span>
             {row.correctCount !== undefined && totalQuestions !== undefined && (
-              <span className="block text-xs text-faint tabular-nums">
-                {row.correctCount}/{totalQuestions}
+              <span className="text-xs text-faint tabular-nums">
+                · {row.correctCount}/{totalQuestions}
               </span>
             )}
           </span>
           {hasDetails && (
             <button
               type="button"
-              onClick={() => setExpandedId(isExpanded ? null : row.id)}
+              onClick={() => onToggleExpand(row.id)}
               className="shrink-0 text-faint hover:text-body transition-colors p-1"
-              aria-label={isExpanded ? 'Collapse stats' : 'Expand stats'}
+              aria-label={isExpanded ? `Collapse stats for ${row.name}` : `Expand stats for ${row.name}`}
+              aria-expanded={isExpanded}
             >
               <svg
                 width="16"
@@ -111,7 +112,7 @@ function RowContent({
       </div>
       {isExpanded && hasDetails && (
         <div className="px-5 pb-3 -mt-1 animate-slide-down">
-          <div className="text-xs space-y-1.5 bg-[color-mix(in_srgb,var(--primary)_6%,var(--surface))] rounded-xl p-4 border border-[var(--border)] shadow-sm">
+          <div className="text-xs bg-[color-mix(in_srgb,var(--primary)_6%,var(--surface))] rounded-xl p-4 border border-[var(--border)] shadow-sm">
             {row.expandDetails}
           </div>
         </div>
@@ -135,7 +136,16 @@ export function PaginatedLeaderboard({
     reset()
   }, [rows.length, reset])
 
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
   if (rows.length === 0) return null
 
@@ -155,8 +165,8 @@ export function PaginatedLeaderboard({
                 highlightId={highlightId}
                 scoreLabel={scoreLabel}
                 totalQuestions={totalQuestions}
-                expandedId={expandedId}
-                setExpandedId={setExpandedId}
+                expandedIds={expandedIds}
+                onToggleExpand={toggleExpanded}
               />
             </div>
           ))}
@@ -177,55 +187,59 @@ export function PaginatedLeaderboard({
     <div className="glass-card p-5 space-y-3">
       <p className="text-muted text-xs uppercase tracking-wider">{title}</p>
       <div className="space-y-2">
-        {pageRows.map((row, i) => (
-          <div key={row.id} className="space-y-0">
-            <div className="flex items-center justify-between gap-2 text-sm">
-              <span className={row.id === highlightId ? 'label-teal font-semibold' : 'text-body'}>
-                {row.rank ?? start + i + 1}. {row.name}
-                {row.id === highlightId ? ' (you)' : ''}
-              </span>
-              <div className="text-right shrink-0 flex items-center gap-2">
-                <div>
-                  <div className="text-muted">{scoreLabel(row.score)}</div>
-                  {row.correctCount !== undefined && totalQuestions !== undefined && (
-                    <div className="text-xs text-faint tabular-nums">
-                      {row.correctCount}/{totalQuestions}
-                    </div>
+        {pageRows.map((row, i) => {
+          const isExpanded = expandedIds.has(row.id)
+          return (
+            <div key={row.id} className="space-y-0">
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className={row.id === highlightId ? 'label-teal font-semibold' : 'text-body'}>
+                  {row.rank ?? start + i + 1}. {row.name}
+                  {row.id === highlightId ? ' (you)' : ''}
+                </span>
+                <div className="text-right shrink-0 flex items-center gap-2">
+                  <div className="flex items-baseline gap-1.5 text-nowrap">
+                    <div className="text-muted">{scoreLabel(row.score)}</div>
+                    {row.correctCount !== undefined && totalQuestions !== undefined && (
+                      <div className="text-xs text-faint tabular-nums">
+                        · {row.correctCount}/{totalQuestions}
+                      </div>
+                    )}
+                  </div>
+                  {row.expandDetails && (
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(row.id)}
+                      className="shrink-0 text-faint hover:text-body transition-colors p-1"
+                      aria-label={isExpanded ? `Collapse stats for ${row.name}` : `Expand stats for ${row.name}`}
+                      aria-expanded={isExpanded}
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
                   )}
                 </div>
-                {row.expandDetails && (
-                  <button
-                    type="button"
-                    onClick={() => setExpandedId(expandedId === row.id ? null : row.id)}
-                    className="shrink-0 text-faint hover:text-body transition-colors p-1"
-                    aria-label={expandedId === row.id ? 'Collapse stats' : 'Expand stats'}
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className={`transition-transform ${expandedId === row.id ? 'rotate-180' : ''}`}
-                    >
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </button>
-                )}
               </div>
-            </div>
-            {expandedId === row.id && row.expandDetails && (
-              <div className="pt-2 pb-1 animate-slide-down">
-                <div className="text-xs space-y-1.5 bg-[color-mix(in_srgb,var(--primary)_6%,var(--surface))] rounded-xl p-4 border border-[var(--border)] shadow-sm">
-                  {row.expandDetails}
+              {isExpanded && row.expandDetails && (
+                <div className="pt-2 pb-1 animate-slide-down">
+                  <div className="text-xs bg-[color-mix(in_srgb,var(--primary)_6%,var(--surface))] rounded-xl p-4 border border-[var(--border)] shadow-sm">
+                    {row.expandDetails}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        ))}
+              )}
+            </div>
+          )
+        })}
       </div>
       <ResultsPagination
         page={page}

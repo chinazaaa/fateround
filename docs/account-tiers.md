@@ -1,232 +1,247 @@
 # Account Tiers — Guest, Account, Pro (+ Clubs)
 
-Status: **Proposal / discussion** · Companion to [`revenue-model.md`](./revenue-model.md)
+Status: **Revised (Jul 2026)** · Companion to [`revenue-model.md`](./revenue-model.md) ·
+[`trophies-and-streaks.md`](./trophies-and-streaks.md)
 
-This document defines the three tiers of FateRound identity and the Clubs layer that
-sits across them. It exists to answer one question: **if the game works without an
-account, why would anyone sign up?**
+This document defines the three tiers of FateRound identity and how tournaments, trophies,
+and clubs fit. It answers: **if the game works without an account, why would anyone sign up?**
 
 ---
 
 ## Core principles (non-negotiable)
 
-1. **Guest play stays pristine, forever.** Tap a link, type a name, you're in. Joining
-   *and* hosting work with no account. This is the network-effect engine — never gate it.
-2. **Every tier is strictly additive.** A higher tier only *adds* on top. We never make
-   the free/guest default worse to push upgrades.
-3. **Ask for signup at the moment of earned value, never at the door.** The prompt fires
-   right after the user did something they'd hate to lose (a win, a streak, a purchase).
-4. **Cosmetic-only money.** Nothing a paid tier unlocks gives a gameplay advantage. Pro
-   adds host *convenience and ceilings*; cosmetics add *self-expression*. Skill is free.
-5. **Accessibility is never premium.** Language editions, themes-for-readability, etc.
-   stay free.
+1. **Guest play stays pristine, forever.** Tap a link, type a name, you're in. Joining,
+   hosting, and tournaments work with no account.
+2. **Every tier is strictly additive.** We never make the free/guest default worse to push upgrades.
+3. **Ask for signup at the moment of earned value, never at the door.** Win a trophy, break
+   a streak, finish a tournament, or tap "buy" — not at lobby join.
+4. **Cosmetic-only money.** Pro adds host *convenience*; cosmetics add *self-expression*.
+   Trophies and streaks are *earned*, never bought.
+5. **Accessibility is never premium.** Language editions, readable themes, etc. stay free.
 
 ---
 
 ## The three tiers at a glance
 
-| Capability | **Guest** (no signup) | **Account** (free signup) | **Pro** (paid, host unlock) |
+| Capability | **Guest** | **Account** (free) | **Pro** (paid host) |
 |---|:---:|:---:|:---:|
-| Join any room by code | ✅ | ✅ | ✅ |
-| Host public/private rooms, all games | ✅ | ✅ | ✅ |
-| Play + Watch (spectate) | ✅ | ✅ | ✅ |
+| Join any room or tournament by code | ✅ | ✅ | ✅ |
+| Host public/private rooms & tournaments | ✅ | ✅ | ✅ |
+| Play + spectate | ✅ | ✅ | ✅ |
 | Late-join / resume mid-game | ✅ | ✅ | ✅ |
 | Voice chat | ✅ | ✅ | ✅ |
 | Custom questions in lobby | ✅ | ✅ | ✅ |
-| Built-in room themes (free set) | ✅ | ✅ | ✅ |
+| **Free room themes** (Default + 2–3) | ✅ | ✅ | ✅ |
 | Share results / QR | ✅ | ✅ | ✅ |
+| Earn trophies & streaks (on-device) | 🔸 local | ✅ synced | ✅ synced |
 | **Persistent profile** (name, avatar, bio) | — | ✅ | ✅ |
-| **Stats & game history** | — | ✅ | ✅ |
+| **Stats, game & tournament history** | — | ✅ | ✅ |
 | **Daily challenge + streaks** 🔥 | — | ✅ | ✅ |
 | **XP / level / achievements** | — | ✅ | ✅ |
-| **Buy & own cosmetics** (themes, skins) | — | ✅ | ✅ |
+| **Buy & own cosmetics** | — | ✅ | ✅ |
 | **Friends list + rematch** | — | ✅ | ✅ |
-| **Join & create Clubs** | — | ✅ | ✅ |
+| **Join & create Clubs** (≤20) | — | ✅ | ✅ |
 | **Cross-device + claim guest history** | — | ✅ | ✅ |
-| **Return notifications** (streak nudge, etc.) | — | ✅ | ✅ |
+| **Return notifications** | — | ✅ | ✅ |
 | Raised player caps | — | — | ✅ |
-| Multiple concurrent rooms (1 → 3) | — | — | ✅ |
+| 2 concurrent rooms / tournaments | — | — | ✅ |
 | Monopoly add-time / Scrabble time-extend | — | — | ✅ |
+| Tournament: unlimited playlist + custom points | — | — | ✅ |
 | Higher round / team counts | — | — | ✅ |
-| Unlock all room themes | — | — | ✅ |
+| Custom timers, vanity codes, larger imports | — | — | ✅ (Phase 2+) |
 | **Pro badge** | — | — | ✅ |
-| Custom timers | — | — | ✅ |
-| Vanity room codes | — | — | ✅ |
-| Larger CSV imports | — | — | ✅ |
-| Save & reuse question packs | — | — | ✅ |
-| Spectator slots | — | — | ✅ |
 
-> **Pro requires an Account.** You can't own a $2 unlock (or a cosmetic) as a ghost — it
-> has to attach to *you*, not a browser cookie. So the hierarchy is literally
+> **Pro requires an Account.** You can't own a ₦1,000 unlock or a cosmetic as a ghost.
 > **Guest ⊂ Account ⊂ Pro.**
+
+> **Premium room themes, skins, frames, and seasonal drops are NOT Pro perks.** Any account
+> can buy them. See [Cosmetics ≠ Pro](#cosmetics--pro-important) below.
 
 ---
 
-## Tier 1 — Guest (no signup)
+## Tier 1 — Guest (anonymous)
 
-**Who:** anyone who taps a room link, or a one-off host setting up a single game night.
+**Who:** anyone who taps a room link, joins a tournament, or hosts a one-off game night.
 
-**What they get:** the entire core product. All 32 games, hosting, spectating, voice,
-late-join, custom questions, the free themes, share cards. They are never blocked from
-the thing FateRound exists to do.
+**What they get:** the entire core product — all game modes, tournaments, voice, spectating,
+free themes, custom questions. Trophies and streaks accrue **on-device** via Supabase
+anonymous auth (see [`trophies-and-streaks.md`](./trophies-and-streaks.md)).
 
-**What they don't get:** anything that requires *remembering who they are* between
-sessions — no streak, no saved stats, no owned cosmetics, no friends, no Pro.
+**What they don't get:** cross-device persistence, owned cosmetics, friends, clubs, Pro.
 
-**Why this tier matters:** it's the moat. Zero friction is why FateRound spreads in a
-WhatsApp group. Guests are not "unconverted users" — they're the top of the funnel and a
-permanently valid way to use the product.
+**Why this tier matters:** zero friction is why FateRound spreads in WhatsApp groups. Guests
+are not "unconverted users" — they're the top of the funnel.
 
 ---
 
 ## Tier 2 — Account (free signup)
 
-The free account exists for one reason: **to keep things.** People don't sign up to
-play — they sign up to *not lose* what they did.
+People sign up to **not lose things**, not to play.
 
-**What only an account can give (impossible for a guest):**
+**What only an account gives:**
 
-- **A self that persists.** Profile, avatar, bio, and a running record: games played,
-  win-rate, longest comeback, favourite game. Identity is what people get attached to.
-- **The streak.** 🔥 A streak *cannot exist* without an account — it's the single
-  strongest reason-to-return we'll have. **Any game played today keeps the streak alive**
-  (not Daily-only); the Daily is just the guaranteed *solo* way to keep it when no friends
-  are around.
-- **XP, levels, achievements.** Progression that compounds across sessions
-  (`achievements.ts` already exists — accounts make it mean something).
-- **Owning cosmetics.** Buy a Chess board skin or a Detty December theme → it lives on
-  your account and follows you everywhere. (Cosmetics are sold to *any* account — see
-  note below; you do **not** need Pro to buy them.)
-- **Friends + rematch.** "Play again with the same crew" requires the system to know who
-  the crew is.
-- **Clubs.** Create or join persistent groups (see Clubs section).
-- **Claim your guest history.** Guest sessions are device-tagged; on signup we retro-
-  actively attach them — "Welcome, we saved your last 6 games and your 3-day streak."
-  Signup feels like *claiming*, not *starting over*.
-- **Come-back notifications.** Streak-about-to-break, "your club is playing now,"
-  seasonal drop live.
+- **A self that persists** — profile, avatar, stats, game + tournament history.
+- **Trophies & Trophy Level** — synced across devices. Full spec:
+  [`trophies-and-streaks.md`](./trophies-and-streaks.md).
+- **The streak** 🔥 — any game or Daily Challenge today keeps it alive (not Daily-only).
+- **XP, levels, achievements** — `achievements.ts` per-game badges + account progression.
+- **Owning cosmetics** — themes, skins, frames. **No Pro required.**
+- **Friends + rematch** — "play again with the same crew."
+- **Clubs** — persistent teams (see below).
+- **Claim guest history** — 30-day window; signup feels like *claiming*, not starting over.
+- **Come-back notifications** — streak nudge, new Daily, seasonal drop live.
 
-**Signup prompts (moment-of-value triggers):**
+**Signup prompts (moment-of-value):**
 
 | Trigger | Prompt |
-|---|---|
-| Wins a game | "Nice win 🏆 Save it to your profile — keep your stats & streak." |
-| Finishes first Daily | "Come back tomorrow. Sign in to keep your streak alive." |
-| Goes to buy a cosmetic / Pro | (signup is inherent — can't sell to a ghost) |
-| Repeat host finishes a great night | "Save this roster & questions so next time takes 10 seconds?" |
-| Added to a Club by a friend | "Join the club to keep your spot and team history." |
+|---------|--------|
+| Earns a trophy | "🥉 Save this to your profile — don't lose it." |
+| Wins a game | "Nice win 🏆 Save your stats & streak." |
+| Finishes a tournament | "You placed #2 — save your standing." |
+| Streak day 2+ | "Come back tomorrow. Sign in to keep your 🔥 alive." |
+| Goes to buy cosmetic / Pro | (signup inherent) |
+| Repeat host ends a great night | "Save this roster for next time?" |
+| Added to a Club | "Join to keep your spot and team history." |
+
+**Login = signup.** One door: email + 6-digit code. Never label it "Sign up" at the door.
+See [`trophies-and-streaks.md`](./trophies-and-streaks.md) §2.
 
 ---
 
 ## Tier 3 — Pro (paid, host-focused)
 
-**Pro is a host account.** A one-time **$2 (₦1,500 via Paystack)** unlock that gives a
-host more powers, ceilings, and convenience — forever. Per `revenue-model.md`, playing
-stays free; only hosts ever *need* to pay, which preserves the network effect.
+**Pro is host utility — not cosmetics, not trophies, not tournament entry.**
 
-**What Pro adds (Phase 1 launch set):**
+One-time **₦1,000** (Nigeria) / **$2** (international). Forever. Per
+[`revenue-model.md`](./revenue-model.md).
 
-- Raised player caps
-- Multiple concurrent rooms (1 → 3)
-- **Monopoly add-time / Scrabble time-extend** — the mid-game "don't let the fun die"
-  moments; the strongest conversion triggers
-- Higher round / team counts (Trivia 3→25, Describe It 2→4 teams, etc.)
-- Unlock all room themes
-- Pro badge on profile
+**Phase 1 launch set:**
 
-**Phase 2 fast-follows:** custom timers, vanity room codes, larger CSV imports,
-save & reuse question packs, spectator slots.
+- Monopoly add-time + Scrabble time-extension (mid-game conversion moments)
+- Raised player caps (where `max` > `default`)
+- 2 concurrent rooms or tournaments
+- Tournament: unlimited playlist games + custom placement points
+- Higher round/team counts (Trivia, Describe It)
+- Pro badge
 
-**Phase 3 (long-term):** Monopoly house rules, full kick/skip controls, AI-generated
-questions, custom voting categories, early access to new games, priority support.
+**Phase 2+:** vanity codes, spectator slots, custom timers, larger imports, saved question
+packs, tournament history on profile.
 
-(Full feature split, pricing by region, and guardrails live in `revenue-model.md`.)
+**Explicitly not Pro:** premium themes, skins, seasonal drops, profile frames, extra streak
+freezes, early access to game modes, priority support.
 
 ---
 
 ## Cosmetics ≠ Pro (important)
 
-Cosmetics are a **separate revenue line, sold to any Account** — not bundled into Pro.
+| | Pro (₦1,000) | Cosmetics (₦200–1,200 each) |
+|---|:---:|:---:|
+| Who can buy | Hosts only | **Any account** |
+| What it is | More power, longer games, bigger rooms | Look good — themes, skins, frames |
+| Repeatable? | No — buy once | **Yes** — many items, seasonal drops |
+| Required to play? | No | No |
 
-- A free Account can buy a theme or skin without ever buying Pro.
-- Cosmetics are **player-owned identity**, which is why they need an account, not Pro.
-- Rendering rule (from revenue doc): board/background art renders locally (you see your
-  own); tokens/pieces/crests sync globally (everyone sees yours).
-- This is the biggest long-term lever because it's sold to *players*, not just hosts —
-  and there are far more players than hosts.
+- Free accounts get **Default + 2–3 room themes**. Premium themes are shop items.
+- A player who never hosts can still buy a chess skin or Detty December theme.
+- **Room themes:** host picks; everyone in the room sees it. Host buys premium themes to
+  style game night.
+- **Component skins:** player-owned; board local, tokens synced (see revenue doc).
 
-So: **Pro = host powers. Cosmetics = anyone's self-expression.** Both require an account;
-neither requires the other.
+This is the biggest sustainability lever: **~8 players per room, 1 host.**
 
 ---
 
-## Clubs — the persistent-team & "off-WhatsApp" layer
+## Tournaments
 
-Clubs are named, persistent groups of accounts that play together over time. They're the
-answer to two problems: **team games have no continuity** (you rebuild teams every
-session), and **the community lives in WhatsApp, not in FateRound.**
+**Shipped** — brackets & head-to-head across competitive game types.
+
+| Capability | Guest | Account | Pro |
+|------------|:---:|:---:|:---:|
+| Join a tournament | ✅ | ✅ | ✅ |
+| Host a tournament (≤5 games in playlist) | ✅ | ✅ | ✅ |
+| Host unlimited playlist games | — | — | ✅ |
+| Custom placement-points array | — | — | ✅ |
+| Vanity tournament code | — | — | ✅ (Phase 2) |
+| Tournament history on profile | — | ✅ | ✅ |
+| Earn tournament trophies | 🔸 local | ✅ synced | ✅ synced |
+| Buy tournament podium / bracket cosmetics | — | ✅ | ✅ |
+
+Tournaments are **free to play.** Pro sells host convenience; the shop sells styling.
+Tournament wins and points are **never sold.**
+
+---
+
+## Trophies & streaks
+
+Full build spec: [`trophies-and-streaks.md`](./trophies-and-streaks.md).
+
+| Rule | Detail |
+|------|--------|
+| Earned, not bought | Trophies and streak progress come from playing |
+| Guest can earn | On-device via anonymous auth; account saves & syncs |
+| Feeds revenue indirectly | Trophy unlock → signup prompt → cosmetic shop |
+| Cosmetic tie-in | Profile frames, trophy showcase borders — optional flair |
+| Streak freezes | Base forgiveness **free**; extra freeze = optional ₦300 cosmetic later |
+
+**Division of labour:**
+
+| System | Rewards | Cadence |
+|--------|---------|---------|
+| Trophies | Depth within a game + platform milestones | Per session |
+| Streak | Coming back at all | Daily |
+| `achievements.ts` | Fun one-off callouts in a finished game | Per round |
+
+---
+
+## Clubs — persistent teams
+
+Named groups for recurring crews. Moves community off WhatsApp.
 
 **What a Club is:**
 
-- A named group with a **crest/avatar** and a member roster (accounts).
-- Built for the **team games**: Codewords, Describe It / text charades, team Trivia,
-  Bingo nights, tournaments — anything where the same people form recurring teams.
-- **Pre-set teams.** Start a Codewords or charades game and pull teams straight from club
-  membership instead of assigning by hand every time.
-- **Club leaderboard & seasons.** Recurring standings reset on a cadence — this is a
-  liveliness engine (a reason to show up *this week*).
-- **Club game history + chat.** The group's shared record lives in-app, not in a WhatsApp
-  scroll.
-- **Club tournaments / leagues.** Scheduled recurring competition between members or
-  between clubs.
-
-**Tier placement (proposed — open for decision):**
+- Named group with crest/avatar and member roster
+- Pre-set teams for Codewords, Describe It, team Trivia, Bingo nights
+- Club leaderboard & seasons (recurring standings)
+- Club game history
+- Club tournaments / leagues
 
 | Club capability | Tier |
-|---|---|
-| Join a club | Account (free) |
-| Create a club (≤ 20 members) | Account (free) |
-| Club crest / banner cosmetics | Cosmetic purchase (any account) |
-| Rosters > 20, club vanity code, seasons/leagues | Pro or a future "Club+" |
+|-----------------|------|
+| Join a club | Free account |
+| Create a club (≤ 20 members) | Free account |
+| Club crest / banner | Cosmetic purchase |
+| Rosters > 20, vanity code, seasons/leagues | Pro or Club+ (later) |
 
-**Why Clubs matter strategically:** they convert one-off team game nights into a
-*standing rivalry with a scoreboard*, they give team games the continuity they currently
-lack, and they're the vehicle that moves your community from a WhatsApp group into
-FateRound itself. They also open a fresh cosmetics surface (crests, banners, club themes).
+**Decision:** clubs are **free until sticky.** Monetize crests and seasons later — retention
+first.
 
 ---
 
 ## How a session upgrades through the tiers
 
 ```text
-Guest plays a few games  ──win/streak──▶  Account (claims guest history)
-        │                                        │
-        │                                   buys a skin ──▶ owns cosmetics
-        │                                        │
-        │                                   joins/creates a Club
-        │                                        │
-        └──── hosts a lot ───────────────▶  Pro ($2 host unlock)
+Guest plays / hosts / joins tournament
+        │
+        ├── earns trophy / streak ──▶ Account (claims guest history)
+        │                                      │
+        │                                 buys a skin ──▶ cosmetics
+        │                                      │
+        │                                 joins Club
+        │
+        └── hosts a lot, hits a wall ──▶ Pro (₦1,000)
 ```
 
-Nobody is forced up a tier. Each step is opt-in, triggered the moment the user has
-something worth keeping.
+Nobody is forced up a tier. Each step is opt-in at the moment of earned value.
 
 ---
 
 ## Decisions (locked)
 
-1. **Free club size cap = 20 members.** Covers any normal friend group, office squad, or
-   crew without ever feeling stingy. Past 20 you're running a community/league — that's the
-   serious use case worth a Club+/Pro upgrade.
-2. **Hosting is identical to Guest until Pro.** A free Account gets no host upgrade — it
-   only adds identity, history, and the social/cosmetic layer. Account = identity,
-   Pro = power. No muddy middle tier.
-3. **Streak = any game played today.** Not Daily-only. Punishing someone who played three
-   games with friends but skipped the Daily is the fastest way to make streaks feel unfair
-   and break them. The Daily remains the guaranteed *solo* way to keep a streak alive.
-4. **Guest-history claim window = 30 days.** Long enough that someone who drifts back after
-   a couple of weeks still gets the "we saved your stuff" moment; short enough to bound
-   storage and stay clean on privacy.
-5. **Clubs are free now; monetize crests/seasons later.** Retention first — clubs are too
-   important to growth to tax early. Cosmetics (crests, banners, club themes) and
-   seasons/leagues layer on top once clubs are sticky.
+1. **Free club size cap = 20 members.**
+2. **Hosting is identical for Guest and Account until Pro.** Account = identity; Pro = power.
+3. **Streak = any game played today** (not Daily-only).
+4. **Guest-history claim window = 30 days.**
+5. **Clubs free now; monetize crests/seasons later.**
+6. **Premium themes are cosmetics, not Pro.** Free tier keeps 2–3 good themes.
+7. **Tournaments free to play; Pro = host power only.**
+8. **Trophies and streaks never sold.**

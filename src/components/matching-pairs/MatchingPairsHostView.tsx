@@ -264,6 +264,21 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       }
       setTab('manage')
       await load()
+      // Use a fresh roster query (instead of the stale `players` closure state
+      // that hasn't been re-rendered after load()) to check whether the host's
+      // stored player still exists in the game.
+      const stored = getPlayerSession(gameCode)
+      const { data: freshPlayers } = await supabase.from('players').select('id, name').eq('game_id', gameCode)
+      if (stored && freshPlayers && !freshPlayers.some((p) => p.id === stored.playerId)) {
+        const matchingPlayer = (freshPlayers as { id: string; name: string }[]).find(
+          (p) => p.name === stored.playerName
+        )
+        if (matchingPlayer) {
+          setPlayerSession(gameCode, matchingPlayer.id, stored.playerName, 'both', stored.resumeToken)
+          setHostPlayerId(matchingPlayer.id)
+          setHostPlayerName(stored.playerName)
+        }
+      }
     } finally {
       setPlayingAgain(false)
     }
@@ -290,6 +305,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   }
 
   // Compute per-player leaderboard from submissions + progress.
+  // Ranked by final score descending (primary), then finish rank as tiebreaker.
   const leaderboard = useMemo<MatchingPairsPlayerScore[]>(() => {
     if (!progressRows.length) return []
     return progressRows
@@ -298,16 +314,11 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         return tallyMatchingPairsScore(playerSubs, prog, gridSizePairs, game?.session_started_at)
       })
       .sort((a, b) => {
-        // Bug #5 fix: sort by finish_rank FIRST (the authoritative server-assigned
-        // order) so the first finisher always ranks #1 regardless of score ties.
-        // finish_rank 999 = didn't finish (used in tallyMatchingPairsScore).
+        if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
         const rankA = a.placement ?? 999
         const rankB = b.placement ?? 999
         if (rankA !== rankB) return rankA - rankB
-        // Among players with the same rank (e.g. non-finishers), fall back to score.
-        if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
-        if (a.wrongAttempts !== b.wrongAttempts) return a.wrongAttempts - b.wrongAttempts
-        return (a.timeTakenMs ?? Infinity) - (b.timeTakenMs ?? Infinity)
+        return (a.wrongAttempts ?? 0) - (b.wrongAttempts ?? 0)
       })
   }, [submissions, progressRows, gridSizePairs, game?.session_started_at])
 

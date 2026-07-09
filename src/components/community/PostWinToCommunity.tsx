@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 // Shown on a game's end screen to the WINNER only (the caller gates on "did I
 // win this game" — works for both a winning player and a host who plays).
@@ -39,9 +39,6 @@ export function PostWinToCommunity({
   const [retry, setRetry] = useState(0)
 
   const postedKey = `community_posted_${gameCode}_${roundKey ?? 'default'}`
-  // Guards against double-posting from a re-render/StrictMode within one mount;
-  // localStorage guards across reloads; the server dedups as the backstop.
-  const attemptedRef = useRef(false)
 
   // Already posted this round on this device? Show the confirmed state up front.
   useEffect(() => {
@@ -52,10 +49,22 @@ export function PostWinToCommunity({
     }
   }, [postedKey])
 
+  // If a fetch finished after a remount (or roundKey shifted), pick up the stored flag.
+  useEffect(() => {
+    if (status !== 'idle') return
+    const id = window.setInterval(() => {
+      try {
+        if (localStorage.getItem(postedKey) === '1') setStatus('posted')
+      } catch {
+        /* ignore */
+      }
+    }, 400)
+    return () => window.clearInterval(id)
+  }, [status, postedKey])
+
   // Auto-post the win as soon as we have a winner name.
   useEffect(() => {
     if (!winnerName.trim()) return
-    if (attemptedRef.current) return
     // Already posted this round on this device — confirm and skip re-posting.
     try {
       if (localStorage.getItem(postedKey) === '1') {
@@ -65,18 +74,8 @@ export function PostWinToCommunity({
     } catch {
       /* ignore */
     }
-    attemptedRef.current = true
 
-    let cancelled = false
-    const markPosted = () => {
-      if (cancelled) return
-      setStatus('posted')
-      try {
-        localStorage.setItem(postedKey, '1')
-      } catch {
-        /* ignore */
-      }
-    }
+    let alive = true
 
     fetch('/api/community/post-win', {
       method: 'POST',
@@ -89,12 +88,18 @@ export function PostWinToCommunity({
       }),
     })
       .then((res) => {
-        if (cancelled) return
-        // 409 = already recorded (e.g. posted from another device) — treat as done.
         if (res.ok || res.status === 409) {
-          markPosted()
+          // Persist even if this screen unmounted (e.g. host started play again) so
+          // a remount or the next visit still shows the confirmation.
+          try {
+            localStorage.setItem(postedKey, '1')
+          } catch {
+            /* ignore */
+          }
+          if (alive) setStatus('posted')
           return
         }
+        if (!alive) return
         // 404 = this game isn't on the community leaderboard — silently render nothing.
         if (res.status === 404) {
           setStatus('untracked')
@@ -103,11 +108,11 @@ export function PostWinToCommunity({
         setStatus('error')
       })
       .catch(() => {
-        if (!cancelled) setStatus('error')
+        if (alive) setStatus('error')
       })
 
     return () => {
-      cancelled = true
+      alive = false
     }
   }, [winnerName, retry, postedKey, gameCode, roundKey, gameType])
 
@@ -121,7 +126,6 @@ export function PostWinToCommunity({
         <button
           type="button"
           onClick={() => {
-            attemptedRef.current = false
             setStatus('idle')
             setRetry((n) => n + 1)
           }}
@@ -149,7 +153,8 @@ export function PostWinToCommunity({
     )
   }
 
-  // idle / posting — render nothing until the post resolves, so games that aren't
-  // tracked never flash a message.
-  return null
+  // Posting — show feedback so winners know it's happening (untracked games hide after 404).
+  return (
+    <div className="glass-card p-4 text-center text-sm text-muted">Adding your win to the community leaderboard…</div>
+  )
 }

@@ -27,7 +27,16 @@ export const MATCHING_PAIRS_PLACEMENT_BONUS = [0, 1500, 1000, 500] as const // [
 /** Flat bonus for zero wrong attempts on a completed board. */
 export const MATCHING_PAIRS_PERFECT_GAME_BONUS = 2000
 
-export const MATCHING_PAIRS_GAME_DURATION_OPTIONS = [0, 60, 120, 180, 300, 600] as const
+/** Points deducted for each wrong (mismatched) flip attempt. */
+export const MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY = 100
+
+/** Multiplier applied to placement bonus when the player has zero wrong attempts (clean streak). */
+export const MATCHING_PAIRS_CLEAN_STREAK_MULTIPLIER = 2
+
+/** Bonus for finishing under the speed par (if set by host), in points per full minute under par. */
+export const MATCHING_PAIRS_SPEED_PAR_BONUS_PER_MINUTE = 200
+
+export const MATCHING_PAIRS_GAME_DURATION_OPTIONS = [0, 30, 45, 60, 120, 180, 300, 600] as const
 
 export function formatMatchingPairsGameDuration(seconds: number): string {
   if (!seconds) return 'No limit'
@@ -231,6 +240,9 @@ export interface MatchingPairsPlayerScore {
   perfectGame: boolean
   placement: number
   placementBonus: number
+  wrongPenaltyTotal: number
+  cleanStreakMultiplierBonus: number
+  speedParBonus: number
   finalScore: number
   timeTakenMs: number | null
 }
@@ -273,9 +285,42 @@ export function tallyMatchingPairsScore(
   const placement = progress.finish_rank ?? 999
   const placementBonus = matchingPairsPlacementBonus(placement)
 
+  // Wrong attempt penalty
+  const wrongPenaltyTotal = wrongAttempts * MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY
+
+  // Clean streak multiplier: if zero wrong attempts on a completed board, double the placement bonus
+  const cleanStreakMultiplierBonus =
+    progress.finished && wrongAttempts === 0 && pairsMatched === gridSizePairs
+      ? placementBonus * (MATCHING_PAIRS_CLEAN_STREAK_MULTIPLIER - 1)
+      : 0
+
+  // Speed-under-par bonus: if session_started_at is set, compute bonus for finishing fast relative to a par
+  // Par is 15s per pair (rough expected pace). Full pairs cleared earns a bonus.
+  let speedParBonus = 0
+  if (progress.finished && progress.finished_at && sessionStartedAt) {
+    const memorizedMs = (gridSizePairs >= 16 ? 5 : 3) * 1000
+    const startMs = new Date(sessionStartedAt).getTime() + memorizedMs
+    const elapsedMs = new Date(progress.finished_at).getTime() - startMs
+    if (elapsedMs > 0) {
+      // Par = 15 seconds per pair
+      const parMs = gridSizePairs * 15 * 1000
+      const underParMs = Math.max(0, parMs - elapsedMs)
+      const underParMinutes = Math.floor(underParMs / 60000)
+      speedParBonus = underParMinutes * MATCHING_PAIRS_SPEED_PAR_BONUS_PER_MINUTE
+    }
+  }
+
   const baseScore = pairsMatched * MATCHING_PAIRS_POINTS_PER_PAIR
-  const finalScore =
-    baseScore + streakBonusTotal + placementBonus + (perfectGame ? MATCHING_PAIRS_PERFECT_GAME_BONUS : 0)
+  let finalScore =
+    baseScore +
+    streakBonusTotal +
+    placementBonus +
+    cleanStreakMultiplierBonus +
+    speedParBonus +
+    (perfectGame ? MATCHING_PAIRS_PERFECT_GAME_BONUS : 0) -
+    wrongPenaltyTotal
+  // Floor at 0 — unlucky starts should never produce a negative total.
+  if (finalScore < 0) finalScore = 0
 
   let timeTakenMs: number | null = null
   if (progress.finished_at) {
@@ -297,6 +342,9 @@ export function tallyMatchingPairsScore(
     perfectGame,
     placement,
     placementBonus,
+    wrongPenaltyTotal,
+    cleanStreakMultiplierBonus,
+    speedParBonus,
     finalScore,
     timeTakenMs,
   }

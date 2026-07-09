@@ -72,6 +72,7 @@ import {
   isWordHuntGame,
   isMafiaGame,
   isMatchingPairsGame,
+  isQuiplashGame,
 } from '@/lib/game-types'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
@@ -147,6 +148,17 @@ import {
   CODEWORDS_TIMER_OPTIONS,
 } from '@/lib/codewords'
 import { TRIVIA_DEFAULT_MAX_PLAYERS, TRIVIA_DEFAULT_ROUNDS, TRIVIA_DEFAULT_TIMER } from '@/lib/trivia'
+import {
+  QUIPLASH_DEFAULT_MAX_PLAYERS,
+  QUIPLASH_DEFAULT_ROUNDS,
+  QUIPLASH_DEFAULT_SUBMIT_TIMER,
+  QUIPLASH_DEFAULT_VOTE_TIMER,
+  QUIPLASH_SUBMIT_TIMER_OPTIONS,
+  QUIPLASH_VOTE_TIMER_OPTIONS,
+  QUIPLASH_MIN_ROUNDS,
+  QUIPLASH_MAX_ROUNDS,
+  clampQuiplashRounds,
+} from '@/lib/quiplash'
 import { TTL_DEFAULT_MAX_PLAYERS, TTL_DEFAULT_TIMER, TTL_TIMER_OPTIONS } from '@/lib/two-truths'
 import {
   MONOPOLY_DEFAULT_MAX_PLAYERS,
@@ -190,6 +202,7 @@ import {
 } from '@/lib/npat'
 import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_DEFAULT_TIMER, WORD_HUNT_TIMER_OPTIONS } from '@/lib/word-hunt'
 import { formatSudokuGameDuration, SUDOKU_GAME_DURATION_OPTIONS } from '@/lib/sudoku'
+import { MATCHING_PAIRS_GAME_DURATION_OPTIONS, formatMatchingPairsGameDuration } from '@/lib/memory-match'
 import {
   DESCRIBE_IT_DEFAULT_ROUNDS,
   DESCRIBE_IT_DEFAULT_TURN_SECONDS,
@@ -272,6 +285,8 @@ function CreateGameInner() {
   const codewordsFileRef = useRef<HTMLInputElement>(null)
   const [triviaCategory, setTriviaCategory] = useState<TriviaCategory>('general')
   const [triviaMaxPlayers, setTriviaMaxPlayers] = useState(TRIVIA_DEFAULT_MAX_PLAYERS)
+  const [quiplashMaxPlayers, setQuiplashMaxPlayers] = useState(QUIPLASH_DEFAULT_MAX_PLAYERS)
+  const [quiplashVoteTimer, setQuiplashVoteTimer] = useState(QUIPLASH_DEFAULT_VOTE_TIMER)
   const [ttlMaxPlayers, setTtlMaxPlayers] = useState(TTL_DEFAULT_MAX_PLAYERS)
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
@@ -371,6 +386,7 @@ function CreateGameInner() {
     setCodewordsMaxPlayers((v) => clamp('codewords', v))
     setTriviaMaxPlayers((v) => clamp('trivia', v))
     setTtlMaxPlayers((v) => clamp('two_truths', v))
+    setQuiplashMaxPlayers((v) => clamp('quiplash', v))
     setMonopolyMaxPlayers((v) => clamp('monopoly', v))
     setYahtzeeMaxPlayers((v) => clamp('yahtzee', v))
     setWhotMaxPlayers((v) => clamp('whot', v))
@@ -421,6 +437,14 @@ function CreateGameInner() {
               anonymous: true,
               rounds_count: TRIVIA_DEFAULT_ROUNDS,
               timer_seconds: TRIVIA_DEFAULT_TIMER,
+            }
+          : {}),
+        ...(isQuiplashGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: QUIPLASH_DEFAULT_ROUNDS,
+              timer_seconds: QUIPLASH_DEFAULT_SUBMIT_TIMER,
             }
           : {}),
         ...(isTwoTruthsGame(type)
@@ -535,6 +559,7 @@ function CreateGameInner() {
               participant_mode: 'joiners' as const,
               anonymous: true,
               rounds_count: 1,
+              game_duration_seconds: 0,
             }
           : {}),
         ...(isWhoSaidThis(type)
@@ -596,6 +621,7 @@ function CreateGameInner() {
   const isBinaryLobby = isWyr || isTot || isNhie
   const isMlt = isMostLikelyTo(settings.game_type)
   const isTrivia = isTriviaGame(settings.game_type)
+  const isQuiplash = isQuiplashGame(settings.game_type)
   const isTwoTruths = isTwoTruthsGame(settings.game_type)
   const isMonopoly = isMonopolyGame(settings.game_type)
   const isYahtzee = isYahtzeeGame(settings.game_type)
@@ -640,7 +666,7 @@ function CreateGameInner() {
   const canCreateImport =
     participants.length >= minPool && hasEnoughForRounds(participants, settings.game_type, participantOpts)
   const canCreateJoiners = !!settings.title.trim()
-  const isLobbyQuestions = isBinaryLobby || isMlt || isTrivia || isPan
+  const isLobbyQuestions = isBinaryLobby || isMlt || isTrivia || isPan || isQuiplash
   const isPeoplePoll = isPeoplePollGame(settings.game_type)
   const isPeoplePollVoters = isPeoplePoll && settings.participant_mode === 'voters'
   const isPlayerSubmissions = (isLobbyQuestions && !isTrivia) || isPeoplePollVoters
@@ -781,6 +807,14 @@ function CreateGameInner() {
             anonymous: true,
             rounds_count: TRIVIA_DEFAULT_ROUNDS,
             timer_seconds: TRIVIA_DEFAULT_TIMER,
+          }
+        : {}),
+      ...(isQuiplashGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: QUIPLASH_DEFAULT_ROUNDS,
+            timer_seconds: QUIPLASH_DEFAULT_SUBMIT_TIMER,
           }
         : {}),
       ...(isTwoTruthsGame(type)
@@ -1235,7 +1269,9 @@ function CreateGameInner() {
                   ? customWyrQuestions
                   : isTrivia
                     ? customTriviaQuestions
-                    : customMltQuestions
+                    : isQuiplash
+                      ? customMltQuestions
+                      : customMltQuestions
                 : null,
           trivia_category: isTrivia ? triviaCategory : undefined,
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
@@ -1253,30 +1289,38 @@ function CreateGameInner() {
                 ? codewordsMaxPlayers
                 : isTrivia
                   ? triviaMaxPlayers
-                  : isTwoTruths
-                    ? ttlMaxPlayers
-                    : isMonopoly
-                      ? monopolyMaxPlayers
-                      : isYahtzee
-                        ? yahtzeeMaxPlayers
-                        : isWhot
-                          ? whotMaxPlayers
-                          : isCrazy8
-                            ? crazy8MaxPlayers
-                            : isLudo
-                              ? ludoMaxPlayers
-                              : isSnakeLadder
-                                ? snakeLadderMaxPlayers
-                                : isNpat
-                                  ? npatMaxPlayers
-                                  : isSudoku
-                                    ? sudokuMaxPlayers
-                                    : isWordHunt
-                                      ? wordHuntMaxPlayers
-                                      : isMatchingPairs
-                                        ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
-                                        : undefined,
-          operative_timer_seconds: isCodewords ? codewordsOperativeTimer : isNpat ? npatMarkingTimer : undefined,
+                  : isQuiplash
+                    ? quiplashMaxPlayers
+                    : isTwoTruths
+                      ? ttlMaxPlayers
+                      : isMonopoly
+                        ? monopolyMaxPlayers
+                        : isYahtzee
+                          ? yahtzeeMaxPlayers
+                          : isWhot
+                            ? whotMaxPlayers
+                            : isCrazy8
+                              ? crazy8MaxPlayers
+                              : isLudo
+                                ? ludoMaxPlayers
+                                : isSnakeLadder
+                                  ? snakeLadderMaxPlayers
+                                  : isNpat
+                                    ? npatMaxPlayers
+                                    : isSudoku
+                                      ? sudokuMaxPlayers
+                                      : isWordHunt
+                                        ? wordHuntMaxPlayers
+                                        : isMatchingPairs
+                                          ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
+                                          : undefined,
+          operative_timer_seconds: isCodewords
+            ? codewordsOperativeTimer
+            : isNpat
+              ? npatMarkingTimer
+              : isQuiplash
+                ? quiplashVoteTimer
+                : undefined,
           codewords_player_picks: isCodewords ? codewordsPlayerPicks : undefined,
           codewords_late_join: isCodewords ? lateJoinPolicy === 'viewers_and_players' : undefined,
           codewords_randomize_teams: isCodewords ? codewordsRandomizeTeams : undefined,
@@ -1568,6 +1612,74 @@ function CreateGameInner() {
                   {bingoCallMode === 'auto'
                     ? ' Numbers are called automatically — no tapping required from the host.'
                     : ' You call numbers B1–O75 from the host panel.'}
+                </p>
+              </SettingsGroup>
+            ) : isQuiplash ? (
+              <SettingsGroup title="Quiplash">
+                <Field label={`Max players (${effectiveLimits.quiplash.min}–${effectiveLimits.quiplash.max})`}>
+                  <select
+                    value={quiplashMaxPlayers}
+                    onChange={(e) => setQuiplashMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(effectiveLimits.quiplash.min, effectiveLimits.quiplash.max).map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Rounds">
+                  <ChipGrid>
+                    {Array.from(
+                      { length: QUIPLASH_MAX_ROUNDS - QUIPLASH_MIN_ROUNDS + 1 },
+                      (_, i) => i + QUIPLASH_MIN_ROUNDS
+                    ).map((n) => (
+                      <Chip
+                        key={n}
+                        active={settings.rounds_count === n}
+                        onClick={() => setSettings((prev) => ({ ...prev, rounds_count: clampQuiplashRounds(n) }))}
+                        className="!px-0 w-full"
+                      >
+                        {n}
+                      </Chip>
+                    ))}
+                  </ChipGrid>
+                </Field>
+                <Field label="Answer timer">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {QUIPLASH_SUBMIT_TIMER_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s} seconds
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Vote timer (per battle)">
+                  <select
+                    value={quiplashVoteTimer}
+                    onChange={(e) => setQuiplashVoteTimer(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {QUIPLASH_VOTE_TIMER_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s} seconds
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {showViewerToggle && (
+                  <Field label="Late joiners">
+                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
+                  </Field>
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  Everyone writes a funny answer to the same prompt. Answers battle head-to-head and the group votes for
+                  the funniest — you earn one point per vote.
                 </p>
               </SettingsGroup>
             ) : isTwoTruths ? (
@@ -2887,6 +2999,33 @@ function CreateGameInner() {
                       )
                     )}
                   </select>
+                </Field>
+                <Field label="Time limit">
+                  <select
+                    value={settings.timer_seconds ?? 0}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {MATCHING_PAIRS_GAME_DURATION_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {formatMatchingPairsGameDuration(s)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Rounds">
+                  <select
+                    value={settings.rounds_count ?? 1}
+                    onChange={(e) => setSettings({ ...settings, rounds_count: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {[1, 2, 3, 5, 10].map((n) => (
+                      <option key={n} value={n}>
+                        {n} round{n === 1 ? '' : 's'}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-faint text-xs mt-1">Scores accumulate across all rounds.</p>
                 </Field>
                 <Field label="Grid size">
                   <div className="grid grid-cols-2 gap-3">

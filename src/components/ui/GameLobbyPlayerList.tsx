@@ -51,7 +51,10 @@ export function GameLobbyPlayerList({
                 <span
                   className={`text-sm flex-1 min-w-0 truncate ${notReady ? 'text-faint' : isMe ? 'text-[var(--primary)] font-semibold' : 'text-body-muted'}`}
                 >
-                  {player.name}
+                  <span className="hidden sm:inline">{player.name}</span>
+                  <span className="sm:hidden">
+                    {player.name.length > 12 ? `${player.name.slice(0, 11)}…` : player.name}
+                  </span>
                   {isMe ? ' (you)' : ''}
                   {notReady ? <span className="text-faint text-xs"> · not ready</span> : null}
                 </span>

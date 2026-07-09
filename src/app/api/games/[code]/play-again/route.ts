@@ -38,8 +38,10 @@ import { clearScrabbleSessionData, canScrabblePlayAgain } from '@/lib/scrabble'
 import { clearNpatSessionData } from '@/lib/npat'
 import { clearSudokuSessionData } from '@/lib/sudoku'
 import { clearWordHuntSessionData } from '@/lib/word-hunt'
+import { clearMafiaSessionData } from '@/lib/mafia'
 import { clearTriviaSessionData } from '@/lib/trivia'
 import { clearTwoTruthsSessionData } from '@/lib/two-truths'
+import { clearQuiplashSessionData } from '@/lib/quiplash'
 import {
   applyCustomQuestionsUpdate,
   applyParticipantListUpdate,
@@ -75,6 +77,7 @@ type ClearableSessionGameType = Extract<
   | 'bingo'
   | 'codewords'
   | 'two_truths'
+  | 'quiplash'
   | 'monopoly'
   | 'yahtzee'
   | 'whot'
@@ -90,6 +93,7 @@ type ClearableSessionGameType = Extract<
   | 'i_call_on'
   | 'sudoku'
   | 'word_hunt'
+  | 'mafia'
 >
 
 /**
@@ -103,6 +107,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   bingo: clearBingoSessionData,
   codewords: clearCodewordsRoundData,
   two_truths: clearTwoTruthsSessionData,
+  quiplash: clearQuiplashSessionData,
   monopoly: clearMonopolySessionData,
   yahtzee: clearYahtzeeSessionData,
   whot: clearWhotSessionData,
@@ -118,6 +123,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   i_call_on: clearNpatSessionData,
   sudoku: clearSudokuSessionData,
   word_hunt: clearWordHuntSessionData,
+  mafia: clearMafiaSessionData,
 }
 
 async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {

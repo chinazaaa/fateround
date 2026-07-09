@@ -14,6 +14,7 @@ import {
   isSudokuGame,
   isMatchingPairsGame,
   isMafiaGame,
+  isQuiplashGame,
   parseGameType,
 } from '@/lib/game-types'
 import { clampBoardGameTurnTimer, type BoardGameLobbyType } from '@/lib/board-game-lobby-settings'
@@ -24,6 +25,7 @@ import { clampWordHuntTimer } from '@/lib/word-hunt'
 import { parseMahjongRuleOptions, parseMahjongRuleset } from '@/lib/mahjong-rulesets'
 import { clampSudokuGameDuration } from '@/lib/sudoku'
 import { MATCHING_PAIRS_GAME_DURATION_OPTIONS } from '@/lib/memory-match'
+import { clampQuiplashRounds, clampQuiplashSubmitTimer, clampQuiplashVoteTimer } from '@/lib/quiplash'
 import { clampLobbyMaxPlayers, fetchGamePlayerLimits, type LobbyLimitGameType } from '@/lib/game-limits'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
@@ -70,6 +72,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     max_players,
     timer_seconds,
     game_duration_seconds,
+    rounds_count,
     whot_pick3_enabled,
     whot_cards_enabled,
     whot_number_calls_enabled,
@@ -83,6 +86,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_doctor_enabled,
     mafia_detective_enabled,
     mafia_anonymous_votes,
+    operative_timer_seconds,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -91,6 +95,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     max_players === undefined &&
     timer_seconds === undefined &&
     game_duration_seconds === undefined &&
+    rounds_count === undefined &&
     whot_pick3_enabled === undefined &&
     whot_cards_enabled === undefined &&
     whot_number_calls_enabled === undefined &&
@@ -103,7 +108,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mahjong_rule_options === undefined &&
     mafia_doctor_enabled === undefined &&
     mafia_detective_enabled === undefined &&
-    mafia_anonymous_votes === undefined
+    mafia_anonymous_votes === undefined &&
+    operative_timer_seconds === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -121,12 +127,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const boardLobbyType = boardGameLobbyType(game.game_type)
   const timedLobbyType = timedLobbyLimitType(game.game_type)
   const limitOnlyType = limitOnlyLobbyType(game.game_type)
-  if (!boardLobbyType && !timedLobbyType && !limitOnlyType) {
+  const quiplashLobby = isQuiplashGame(parseGameType(game.game_type))
+  if (!boardLobbyType && !timedLobbyType && !limitOnlyType && !quiplashLobby) {
     return NextResponse.json({ error: 'This game type does not support lobby settings here' }, { status: 400 })
   }
 
   const lobbyLimits = await fetchGamePlayerLimits(supabase)
-  const limitKey = (timedLobbyType ?? limitOnlyType ?? boardLobbyType) as LobbyLimitGameType
+  const limitKey = (
+    quiplashLobby ? 'quiplash' : (timedLobbyType ?? limitOnlyType ?? boardLobbyType)
+  ) as LobbyLimitGameType
   const gameUpdate: Record<string, unknown> = {}
 
   // Public/private visibility — controls whether the game shows up in Browse. Not
@@ -151,7 +160,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   if (timer_seconds !== undefined) {
-    if (timedLobbyType === 'word_hunt') {
+    if (quiplashLobby) {
+      gameUpdate.timer_seconds = clampQuiplashSubmitTimer(timer_seconds)
+    } else if (timedLobbyType === 'word_hunt') {
       gameUpdate.timer_seconds = clampWordHuntTimer(timer_seconds)
     } else if (timedLobbyType === 'mafia') {
       gameUpdate.timer_seconds = [30, 45, 60, 90, 120, 180].includes(timer_seconds) ? timer_seconds : 60
@@ -165,6 +176,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       // Limit-only games (sudoku) have no timer — an update here would otherwise
       // fall through silently and hit the DB with an empty patch.
       return NextResponse.json({ error: 'This game type does not support timer settings' }, { status: 400 })
+    }
+  }
+
+  if (limitOnlyType === 'matching_pairs') {
+    if (rounds_count !== undefined) {
+      gameUpdate.rounds_count = Math.max(1, Math.min(100, Math.round(rounds_count)))
+    }
+  } else if (quiplashLobby) {
+    if (rounds_count !== undefined) {
+      gameUpdate.rounds_count = clampQuiplashRounds(rounds_count)
+    }
+  } else if (rounds_count !== undefined) {
+    return NextResponse.json(
+      { error: 'Rounds count only applies to Matching Pairs and Quiplash games' },
+      { status: 400 }
+    )
+  }
+
+  if (operative_timer_seconds !== undefined) {
+    if (quiplashLobby) {
+      gameUpdate.operative_timer_seconds = clampQuiplashVoteTimer(operative_timer_seconds)
+    } else {
+      return NextResponse.json({ error: 'Vote timer only applies to Quiplash games' }, { status: 400 })
     }
   }
 

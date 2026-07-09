@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "vapid:generate": "web-push generate-vapid-keys"
+    "vapid:generate": "web-push generate-vapid-keys",
+    "indexnow:submit": "node scripts/submit-indexnow.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",
