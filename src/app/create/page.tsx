@@ -214,13 +214,16 @@ import {
   DESCRIBE_IT_TURN_OPTIONS,
 } from '@/lib/describe-it'
 import {
+  WORD_RUSH_DEFAULT_MAX_PLAYERS,
   WORD_RUSH_DEFAULT_ROUNDS,
   WORD_RUSH_DEFAULT_TURN_SECONDS,
+  WORD_RUSH_MAX_PLAYER_OPTIONS,
   WORD_RUSH_MIN_PLAYERS,
   WORD_RUSH_MIN_PLAYERS_INDIVIDUAL,
   WORD_RUSH_ROUND_OPTIONS,
   WORD_RUSH_TEAM_OPTIONS,
   WORD_RUSH_TURN_OPTIONS,
+  formatWordRushTurnTimer,
 } from '@/lib/word-rush'
 import { parseDescribeItWords, parseExcelDescribeItWords } from '@/lib/describe-it-words'
 import { getCodeDefaultLimits, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
@@ -332,6 +335,7 @@ function CreateGameInner() {
   const [sudokuMaxPlayers, setSudokuMaxPlayers] = useState(20)
   const [sudokuGameDuration, setSudokuGameDuration] = useState(0)
   const [wordHuntMaxPlayers, setWordHuntMaxPlayers] = useState(WORD_HUNT_DEFAULT_MAX_PLAYERS)
+  const [wordRushMaxPlayers, setWordRushMaxPlayers] = useState(WORD_RUSH_DEFAULT_MAX_PLAYERS)
   const [wordHuntTimer, setWordHuntTimer] = useState(WORD_HUNT_DEFAULT_TIMER)
   const [npatGameDuration, setNpatGameDuration] = useState(NPAT_DEFAULT_GAME_DURATION)
   const [npatMarkingTimer, setNpatMarkingTimer] = useState(NPAT_DEFAULT_MARKING_TIMER)
@@ -407,6 +411,7 @@ function CreateGameInner() {
     setLudoMaxPlayers((v) => clamp('ludo', v))
     setSnakeLadderMaxPlayers((v) => clamp('snake_and_ladder', v))
     setNpatMaxPlayers((v) => clamp('i_call_on', v))
+    setWordRushMaxPlayers((v) => clamp('word_rush', v))
   }, [lobbyLimits])
 
   useEffect(() => {
@@ -1340,9 +1345,11 @@ function CreateGameInner() {
                                       ? sudokuMaxPlayers
                                       : isWordHunt
                                         ? wordHuntMaxPlayers
-                                        : isMatchingPairs
-                                          ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
-                                          : undefined,
+                                        : isWordRush
+                                          ? wordRushMaxPlayers
+                                          : isMatchingPairs
+                                            ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
+                                            : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
@@ -2612,6 +2619,21 @@ function CreateGameInner() {
                     </select>
                   </Field>
                 )}
+                <Field
+                  label={`Max players (${WORD_RUSH_MIN_PLAYERS_INDIVIDUAL}–${WORD_RUSH_MAX_PLAYER_OPTIONS.at(-1)})`}
+                >
+                  <select
+                    value={wordRushMaxPlayers}
+                    onChange={(e) => setWordRushMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {WORD_RUSH_MAX_PLAYER_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
                 <Field label={settings.word_rush_mode === 'individual' ? 'Round length' : 'Team turn length'}>
                   <select
                     value={settings.timer_seconds}
@@ -2620,7 +2642,7 @@ function CreateGameInner() {
                   >
                     {WORD_RUSH_TURN_OPTIONS.map((n) => (
                       <option key={n} value={n}>
-                        {n}s
+                        {formatWordRushTurnTimer(n)}
                       </option>
                     ))}
                   </select>

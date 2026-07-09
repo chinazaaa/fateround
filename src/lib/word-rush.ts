@@ -67,6 +67,15 @@ export function clampWordRushTurnSeconds(value: unknown): number {
   return (WORD_RUSH_TURN_OPTIONS as readonly number[]).includes(n) ? n : WORD_RUSH_DEFAULT_TURN_SECONDS
 }
 
+export function formatWordRushTurnTimer(seconds: number): string {
+  if (seconds === 60) return '1 min'
+  if (seconds === 90) return '1.5 min'
+  if (seconds === 120) return '2 min'
+  if (seconds === 180) return '3 min'
+  if (seconds % 60 === 0) return `${seconds / 60} min`
+  return `${seconds}s`
+}
+
 export function clampWordRushMaxPlayers(value: unknown): number {
   const n = Math.round(Number(value))
   if (!Number.isFinite(n)) return WORD_RUSH_DEFAULT_MAX_PLAYERS
@@ -156,6 +165,67 @@ export function balanceWordRushTeams(
     assignment.set(id, minTeam)
     counts[minTeam - 1] += 1
   }
+  return assignment
+}
+
+function shuffleIds<T>(items: T[]): T[] {
+  const out = [...items]
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[out[i], out[j]] = [out[j]!, out[i]!]
+  }
+  return out
+}
+
+/** Even out teams in the lobby — same approach as Text Charades. */
+export function rebalanceWordRushTeams(
+  playerIds: string[],
+  existing: Array<{ player_id: string; team: number }>,
+  numTeams: number
+): Map<string, number> {
+  const assignment = new Map<string, number>()
+  const counts = new Array(numTeams + 1).fill(0)
+  const members: string[][] = Array.from({ length: numTeams + 1 }, () => [])
+  for (const row of existing) {
+    if (row.team >= 1 && row.team <= numTeams && playerIds.includes(row.player_id)) {
+      assignment.set(row.player_id, row.team)
+      counts[row.team] += 1
+      members[row.team]!.push(row.player_id)
+    }
+  }
+  for (const id of playerIds) {
+    if (assignment.has(id)) continue
+    let smallest = 1
+    for (let t = 2; t <= numTeams; t += 1) if (counts[t]! < counts[smallest]!) smallest = t
+    assignment.set(id, smallest)
+    counts[smallest] += 1
+    members[smallest]!.push(id)
+  }
+  for (let guard = 0; guard < playerIds.length; guard += 1) {
+    let big = 1
+    let small = 1
+    for (let t = 2; t <= numTeams; t += 1) {
+      if (counts[t]! > counts[big]!) big = t
+      if (counts[t]! < counts[small]!) small = t
+    }
+    if (counts[big]! - counts[small]! <= 1) break
+    const mover = members[big]!.pop()
+    if (mover == null) break
+    assignment.set(mover, small)
+    counts[big] -= 1
+    counts[small] += 1
+    members[small]!.push(mover)
+  }
+  return assignment
+}
+
+/** Randomly assign every player to a team (Codewords-style shuffle). */
+export function shuffleWordRushTeams(playerIds: string[], numTeams: number): Map<string, number> {
+  const shuffled = shuffleIds(playerIds)
+  const assignment = new Map<string, number>()
+  shuffled.forEach((id, index) => {
+    assignment.set(id, (index % numTeams) + 1)
+  })
   return assignment
 }
 

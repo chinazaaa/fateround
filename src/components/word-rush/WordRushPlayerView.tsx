@@ -6,7 +6,7 @@ import {
   WordRushCard,
   WordRushLoadingScreen,
   WordRushShell,
-  WordRushTeamBadge,
+  WordRushTeamRoster,
 } from '@/components/word-rush/WordRushChrome'
 import { WordRushPlayPanel } from '@/components/word-rush/WordRushPlay'
 import { WordRushFinishedResults } from '@/components/word-rush/WordRushFinishedResults'
@@ -17,7 +17,6 @@ import {
   isWordRushResultsPhase,
   WORD_RUSH_MIN_PLAYERS,
   WORD_RUSH_MIN_PLAYERS_INDIVIDUAL,
-  WORD_RUSH_TEAM_OPTIONS,
   teamLabel,
 } from '@/lib/word-rush'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -307,29 +306,16 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
             isTeam ? (
               <WordRushCard className="p-4 space-y-2">
                 <p className="text-center text-sm font-bold">Pick your team</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {WORD_RUSH_TEAM_OPTIONS.filter((t) => t <= numTeams).map((team) => {
-                    const mine = teamRows.find((r) => r.player_id === myPlayerId)?.team
-                    return (
-                      <button
-                        key={team}
-                        type="button"
-                        disabled={picking}
-                        onClick={() => void pickTeam(team)}
-                        className={[
-                          'rounded-xl border-2 px-3 py-3 text-sm font-bold',
-                          mine === team
-                            ? 'border-orange-400 bg-orange-500/15'
-                            : 'border-[var(--border-strong)] hover:border-orange-400/50',
-                        ].join(' ')}
-                      >
-                        <WordRushTeamBadge team={team} />
-                      </button>
-                    )
-                  })}
-                </div>
+                <WordRushTeamRoster
+                  numTeams={numTeams}
+                  teamRows={teamPlain}
+                  players={players}
+                  myPlayerId={myPlayerId}
+                  onPick={(team) => void pickTeam(team)}
+                  picking={picking}
+                />
                 <p className="text-faint text-xs text-center">
-                  {teamLabel(1)} vs {teamLabel(2)} — race the clock!
+                  {Array.from({ length: numTeams }, (_, i) => teamLabel(i + 1)).join(' vs ')} — race the clock!
                 </p>
               </WordRushCard>
             ) : (

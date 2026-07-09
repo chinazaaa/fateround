@@ -9,6 +9,8 @@ import {
   teamForTurnIndex,
   wordMatchesLetters,
   wordRushLobbyReady,
+  rebalanceWordRushTeams,
+  shuffleWordRushTeams,
 } from '@/lib/word-rush'
 
 describe('word-rush-dictionary', () => {
@@ -90,5 +92,32 @@ describe('word-rush helpers', () => {
       ).ok
     ).toBe(true)
     expect(wordRushLobbyReady([], 2, 'individual').ok).toBe(true)
+  })
+
+  it('rebalances uneven teams', () => {
+    const assignment = rebalanceWordRushTeams(
+      ['a', 'b', 'c', 'd', 'e'],
+      [
+        { player_id: 'a', team: 1 },
+        { player_id: 'b', team: 1 },
+        { player_id: 'c', team: 1 },
+        { player_id: 'd', team: 2 },
+        { player_id: 'e', team: 2 },
+      ],
+      2
+    )
+    const counts = [0, 0]
+    for (const team of assignment.values()) counts[team - 1] += 1
+    expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1)
+    expect(assignment.size).toBe(5)
+  })
+
+  it('shuffles every player onto a team', () => {
+    const assignment = shuffleWordRushTeams(['a', 'b', 'c', 'd'], 2)
+    expect(assignment.size).toBe(4)
+    for (const team of assignment.values()) {
+      expect(team).toBeGreaterThanOrEqual(1)
+      expect(team).toBeLessThanOrEqual(2)
+    }
   })
 })

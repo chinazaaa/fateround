@@ -531,16 +531,51 @@ export async function assignWordRushLateJoinTeam(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string
-): Promise<void> {
+): Promise<{ error?: string }> {
   const rows = await loadTeamRows(supabase, gameId)
-  if (rows.some((r) => r.player_id === playerId)) return
-  const { data: game } = await supabase.from('games').select('word_rush_num_teams').eq('id', gameId).maybeSingle()
-  const numTeams = clampWordRushTeams(game?.word_rush_num_teams)
+  if (rows.some((r) => r.player_id === playerId)) return {}
+
+  const { data: game } = await supabase
+    .from('games')
+    .select('word_rush_mode, word_rush_num_teams')
+    .eq('id', gameId)
+    .maybeSingle()
+  if (!game) return { error: 'Game not found' }
+
+  const mode = clampWordRushMode(game.word_rush_mode)
+  if (mode === 'individual') {
+    const { error } = await supabase
+      .from('word_rush_players')
+      .upsert({ game_id: gameId, player_id: playerId, team: 1, score: 0 }, { onConflict: 'game_id,player_id' })
+    if (error) return internalFailure('word-rush:late-join-individual', error)
+    return {}
+  }
+
+  const numTeams = clampWordRushTeams(game.word_rush_num_teams)
   const assignment = balanceWordRushTeams([playerId], rows, numTeams)
   const team = assignment.get(playerId) ?? 1
-  await supabase
+  const { error } = await supabase
     .from('word_rush_players')
     .upsert({ game_id: gameId, player_id: playerId, team, score: 0 }, { onConflict: 'game_id,player_id' })
+  if (error) return internalFailure('word-rush:late-join-team', error)
+  return {}
+}
+
+export async function persistWordRushTeamAssignment(
+  supabase: SupabaseClient,
+  gameId: string,
+  assignment: Map<string, number>
+): Promise<{ error?: string; internal?: boolean }> {
+  const rows = [...assignment.entries()].map(([player_id, team]) => ({
+    game_id: gameId,
+    player_id,
+    team,
+    score: 0,
+  }))
+  if (rows.length === 0) return {}
+  const { error } = await supabase.from('word_rush_players').upsert(rows, { onConflict: 'game_id,player_id' })
+  if (error) return internalFailure('word-rush:teams', error)
+  return {}
 }
 
 export async function clearWordRushSessionData(supabase: SupabaseClient, gameId: string): Promise<{ error?: string }> {
