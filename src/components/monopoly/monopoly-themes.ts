@@ -667,7 +667,7 @@ export function formatThemedText(text: string | null | undefined, themeId?: stri
   if (edition.themeId === 'naija') {
     formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, (_, numStr) => {
       const num = parseFloat(numStr.replace(/,/g, ''))
-      return `${edition.currencySymbol}${(num * 1000).toLocaleString('en-GB')}`
+      return `${edition.currencySymbol}${canonicalToDisplayMoney(num, themeId).toLocaleString('en-GB')}`
     })
   } else {
     formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, `${edition.currencySymbol}$1`)
