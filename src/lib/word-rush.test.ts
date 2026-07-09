@@ -277,6 +277,37 @@ describe('word-rush helpers', () => {
     ).toBe(true)
   })
 
+  it('treats a removed player as out of the answer pool once roster is updated', () => {
+    const answers = [
+      { player_id: 'a', turn_index: 0, correct: true },
+      { player_id: 'b', turn_index: 0, correct: true },
+    ]
+    const beforeRemoval = {
+      roster: ['a', 'b', 'c'],
+      prompt_mode: 'automatic' as const,
+      prompt_setter_player_id: null,
+      turn_index: 0,
+    }
+    expect(allWordRushIndividualPlayersSubmitted(beforeRemoval, answers)).toBe(false)
+    expect(allWordRushIndividualPlayersSubmitted({ ...beforeRemoval, roster: ['a', 'b'] }, answers)).toBe(true)
+  })
+
+  it('has no individual answerers when the roster is empty', () => {
+    expect(
+      wordRushIndividualAnswerers({
+        roster: [],
+        prompt_mode: 'automatic',
+        prompt_setter_player_id: null,
+      })
+    ).toEqual([])
+    expect(
+      allWordRushIndividualPlayersSubmitted(
+        { roster: [], prompt_mode: 'manual', prompt_setter_player_id: 'a', turn_index: 0 },
+        []
+      )
+    ).toBe(false)
+  })
+
   it('reuses letter pairs only after the room pool is exhausted', () => {
     const first = pickRandomLetterPair()!
     const key = `${first.start}-${first.end}`
