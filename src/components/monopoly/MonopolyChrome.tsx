@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import { GameTypeBadge } from '@/components/GameTypeBadge'
 import { gameTypeConfig } from '@/lib/game-types'
-import { formatThemedMoney, formatThemedText } from '@/components/monopoly/monopoly-themes'
+import { formatThemedMoney, formatThemedText, getMonopolyEdition } from '@/components/monopoly/monopoly-themes'
 
 export function MonopolyPageHeader({ title, children }: { title?: string; children?: ReactNode }) {
   const cfg = gameTypeConfig('monopoly')
@@ -190,7 +190,7 @@ export function MonopolyCashBadge({
             ].join(' ')}
             aria-hidden
           >
-            £
+            {getMonopolyEdition(themeId).currencySymbol}
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-[9px] font-semibold uppercase tracking-widest text-muted leading-none">{displayLabel}</p>

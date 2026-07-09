@@ -19,7 +19,7 @@ import { Avatar } from './components/Avatar'
 import { rememberHostToken } from '@/lib/host-session'
 import { THEMES } from '@/lib/themes'
 import { ThemePreviewCard, ThemePreviewModal } from '@/components/ThemePreviewModal'
-import { MONOPOLY_EDITIONS } from '@/components/monopoly/monopoly-themes'
+import { MONOPOLY_EDITIONS, formatThemedText } from '@/components/monopoly/monopoly-themes'
 import {
   type ParticipantInput,
   parseParticipantsForGame,
@@ -1801,9 +1801,10 @@ function CreateGameInner() {
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="monopoly" />
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
-                  Players join with their name and start on GO with £1,500. Take turns rolling dice, buying properties,
-                  paying rent, and drawing cards. Last player standing wins! If someone stalls, their turn
-                  auto-resolves. Set a game length to end automatically — the richest player wins when time runs out.
+                  {formatThemedText(
+                    'Players join with their name and start on GO with £1,500. Take turns rolling dice, buying properties, paying rent, and drawing cards. Last player standing wins! If someone stalls, their turn auto-resolves. Set a game length to end automatically — the richest player wins when time runs out.',
+                    settings.theme
+                  )}
                 </p>
               </SettingsGroup>
             ) : isYahtzee ? (
@@ -3998,7 +3999,7 @@ function CreateGameInner() {
               <p className="text-faint text-sm leading-relaxed">
                 {isDescribeIt && settings.describe_it_mode === 'individual'
                   ? 'Players join with their name — no teams. Each round, every player takes a turn describing a secret word by typing clues (without saying it) while everyone else races to type the word. Guessers score more the faster they guess; the describer scores for each player who gets it. Highest total on the leaderboard wins.'
-                  : gameHowItWorks(settings.game_type, settings.participant_mode)}
+                  : formatThemedText(gameHowItWorks(settings.game_type, settings.participant_mode), settings.theme)}
               </p>
             </SettingsGroup>
           </div>
