@@ -140,9 +140,8 @@ export function QuickDrawGuessPlayPanel({
   const inRoster = isIndividual
     ? !!myPlayerId && teamRows.some((r) => r.player_id === myPlayerId)
     : !!myPlayerId && session.roster.includes(myPlayerId)
-  const myGuessedThisTurn = guesses.some(
-    (g) => g.turn_index === session.turn_index && g.player_id === myPlayerId && g.correct
-  )
+  const myGuessedThisTurn =
+    isIndividual && guesses.some((g) => g.turn_index === session.turn_index && g.player_id === myPlayerId && g.correct)
   const drawerName = players.find((p) => p.id === session.drawer_player_id)?.name ?? 'Someone'
   const canGuess = isIndividual ? inRoster && !isDrawer : onActiveTeam && !isDrawer
 
@@ -236,14 +235,24 @@ export function QuickDrawGuessPlayPanel({
       {session.phase === 'turn' && (
         <>
           {isDrawer ? (
-            <LiveDrawingCanvas
-              prompt={session.current_word ?? ''}
-              readOnly={false}
-              onStrokeChange={syncStrokes}
-              onSkip={!isIndividual ? onSkip : undefined}
-              skipDisabled={acting}
-              resetKey={`${session.turn_index}-${session.current_word}`}
-            />
+            <div className="space-y-2">
+              <LiveDrawingCanvas
+                prompt={session.current_word ?? ''}
+                readOnly={false}
+                onStrokeChange={syncStrokes}
+                resetKey={`${session.turn_index}-${session.current_word}`}
+              />
+              {!isIndividual && onSkip && (
+                <button
+                  type="button"
+                  onClick={onSkip}
+                  disabled={acting}
+                  className="block w-full text-center text-sm font-semibold text-muted hover:text-[var(--foreground)] underline disabled:opacity-50"
+                >
+                  Skip this word
+                </button>
+              )}
+            </div>
           ) : (
             <div className="space-y-3">
               <p className="text-center text-sm text-faint">
@@ -251,11 +260,11 @@ export function QuickDrawGuessPlayPanel({
                   <>
                     <span className="font-medium text-bright">{drawerName}</span> is drawing — guess the word!
                   </>
-                ) : onActiveTeam ? (
-                  <>Your teammate is drawing — guess the word!</>
                 ) : (
                   <>
-                    <TeamBadge team={activeTeam} /> is drawing…
+                    <span className="font-medium text-bright">{drawerName}</span> is drawing for{' '}
+                    <TeamBadge team={activeTeam} />
+                    {onActiveTeam ? ' — guess the word!' : '…'}
                   </>
                 )}
               </p>
