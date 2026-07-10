@@ -837,6 +837,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
                 sessionStartedAt={game?.session_started_at ?? null}
                 roundStartedAtMap={roundStartedAtMap}
                 totalRounds={game?.rounds_count ?? 1}
+                timerSeconds={game?.timer_seconds ?? null}
               />
             ),
           }))}

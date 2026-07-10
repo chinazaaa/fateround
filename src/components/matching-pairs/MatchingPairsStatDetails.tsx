@@ -34,7 +34,8 @@ interface MatchingPairsStatDetailsProps {
 }
 
 export function MatchingPairsStatDetails({ score, gridSizePairs }: MatchingPairsStatDetailsProps) {
-  const timeSecs = score.timeTakenMs != null ? Math.max(0, Math.floor(score.timeTakenMs / 1000)) : null
+  const timeSecs =
+    score.timeTakenMs != null && score.timeTakenMs >= 0 ? Math.max(0, Math.floor(score.timeTakenMs / 1000)) : null
 
   return (
     <div className="space-y-2">
@@ -47,7 +48,7 @@ export function MatchingPairsStatDetails({ score, gridSizePairs }: MatchingPairs
         {timeSecs !== null ? (
           <StatChip>⏱️ {formatMinutesSeconds(timeSecs)}</StatChip>
         ) : score.timeTakenMs === -1 ? (
-          <StatChip variant="red">Unfinished</StatChip>
+          <StatChip variant="red">⏱️ Unfinished</StatChip>
         ) : null}
         <StatChip>🔥 {score.longestStreak}</StatChip>
       </div>
@@ -85,6 +86,7 @@ export function MatchingPairsFinalBreakdown({
   sessionStartedAt,
   roundStartedAtMap,
   totalRounds,
+  timerSeconds,
 }: {
   playerId: string
   allSubmissions: MatchingPairsSubmission[]
@@ -93,6 +95,7 @@ export function MatchingPairsFinalBreakdown({
   sessionStartedAt: string | null
   roundStartedAtMap?: Map<string, string>
   totalRounds: number
+  timerSeconds?: number | null
 }) {
   const playerSubs = allSubmissions.filter((s) => s.player_id === playerId)
   const playerProgs = allProgress.filter((p) => p.player_id === playerId)
@@ -112,7 +115,7 @@ export function MatchingPairsFinalBreakdown({
   if (totalRounds <= 1) {
     const prog = playerProgs[0]
     if (!prog) return null
-    const score = tallyMatchingPairsScore(playerSubs, prog, gridSizePairs, sessionStartedAt)
+    const score = tallyMatchingPairsScore(playerSubs, prog, gridSizePairs, sessionStartedAt, undefined, timerSeconds)
     return <MatchingPairsStatDetails score={score} gridSizePairs={gridSizePairs} />
   }
 
@@ -124,7 +127,14 @@ export function MatchingPairsFinalBreakdown({
         const roundProg = playerProgs.find((p) => p.round_id === rid)
         if (!roundProg) return null
         const roundStart = roundStartedAtMap?.get(rid) ?? sessionStartedAt
-        const score = tallyMatchingPairsScore(roundSubs, roundProg, gridSizePairs, sessionStartedAt, roundStart)
+        const score = tallyMatchingPairsScore(
+          roundSubs,
+          roundProg,
+          gridSizePairs,
+          sessionStartedAt,
+          roundStart,
+          timerSeconds
+        )
         return (
           <div key={rid}>
             <p className="text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">Round {i + 1}</p>

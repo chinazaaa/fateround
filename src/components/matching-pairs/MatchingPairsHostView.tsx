@@ -802,6 +802,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
                   sessionStartedAt={game?.session_started_at ?? null}
                   roundStartedAtMap={roundStartedAtMap}
                   totalRounds={totalRounds}
+                  timerSeconds={game?.timer_seconds ?? null}
                 />
               ),
             }))}
