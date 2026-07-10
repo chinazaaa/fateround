@@ -2,7 +2,7 @@
 
 import { useRef, type ReactNode } from 'react'
 import type { Game, Player, AyoSession } from '@/types'
-import { ayoResultDetail, ayoScores, isAyoChampion } from '@/lib/ayo'
+import { ayoHouseScores, ayoResultDetail, ayoScores, isAyoChampion, parseAyoVariant } from '@/lib/ayo'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
@@ -34,10 +34,28 @@ export function AyoFinalResultsShareBlock({
   const winnerPlayerId = session?.winner_player_id ?? null
   const displayWinner =
     winnerName ?? (winnerPlayerId ? players.find((p) => p.id === winnerPlayerId)?.name : null) ?? null
+  const variant = parseAyoVariant(game.ayo_variant)
   const isDraw = session?.is_draw === true
   const endedEarly = game.status === 'finished' && !displayWinner && !isDraw
-  const resultDetail = ayoResultDetail(session?.result_reason)
-  const scores = session ? ayoScores(session) : { a: 0, b: 0 }
+  const resultDetail = ayoResultDetail(session?.result_reason, variant)
+  const scores = session ? ayoScores(session, variant) : { a: 0, b: 0 }
+  const houses = session ? ayoHouseScores(session) : { a: 0, b: 0 }
+  const standings = session
+    ? [
+        {
+          player: playerA,
+          score: variant === 'traditional' ? houses.a : scores.a,
+          label: variant === 'traditional' ? 'houses' : 'seeds',
+          winStreak: session.a_win_streak,
+        },
+        {
+          player: playerB,
+          score: variant === 'traditional' ? houses.b : scores.b,
+          label: variant === 'traditional' ? 'houses' : 'seeds',
+          winStreak: session.b_win_streak,
+        },
+      ].sort((a, b) => b.score - a.score)
+    : []
 
   return (
     <div className="space-y-4">
@@ -48,7 +66,15 @@ export function AyoFinalResultsShareBlock({
             game={game}
             emoji="🤝"
             headline="It's a draw!"
-            subtitle={resultDetail ? <span className="capitalize">{resultDetail}</span> : '24 seeds each'}
+            subtitle={
+              resultDetail ? (
+                <span className="capitalize">{resultDetail}</span>
+              ) : variant === 'traditional' ? (
+                'Equal houses'
+              ) : (
+                '24 seeds each'
+              )
+            }
           />
         ) : endedEarly ? (
           <FinishedWinnerHero game={game} emoji="🏁" headline="Game ended early" />
@@ -65,24 +91,23 @@ export function AyoFinalResultsShareBlock({
             }
           />
         )}
+        {session && variant === 'traditional' && (
+          <p className="text-center text-xs text-faint">Round {session.match_round}</p>
+        )}
         {session && (
           <div className="space-y-2 text-sm px-1">
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-bold truncate">
-                🌰 {playerA?.name ?? 'Player A'}
-                {playerA?.id === highlightPlayerId ? ' (you)' : ''}
-                {isAyoChampion(session.a_win_streak) ? ' · Ọta champion' : ''}
-              </span>
-              <span className="tabular-nums font-black">{scores.a}</span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-bold truncate">
-                🌰 {playerB?.name ?? 'Player B'}
-                {playerB?.id === highlightPlayerId ? ' (you)' : ''}
-                {isAyoChampion(session.b_win_streak) ? ' · Ọta champion' : ''}
-              </span>
-              <span className="tabular-nums font-black">{scores.b}</span>
-            </div>
+            {standings.map(({ player, score, label, winStreak }) => (
+              <div key={player?.id ?? `${score}-${label}`} className="flex items-center justify-between gap-3">
+                <span className="font-bold truncate">
+                  🌰 {player?.name ?? 'Player'}
+                  {player?.id === highlightPlayerId ? ' (you)' : ''}
+                  {isAyoChampion(winStreak) ? ' · Ọta champion' : ''}
+                </span>
+                <span className="tabular-nums font-black">
+                  {score} {label}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>
