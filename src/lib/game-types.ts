@@ -1495,6 +1495,49 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       },
     },
   },
+  ayo: {
+    id: 'ayo',
+    label: 'Ayo',
+    tagline: 'Yoruba seed game — sow, capture twos and threes, crown Ọta',
+    headerEmoji: '🌰🎯',
+    card: {
+      accent: '#b45309',
+      accentSoft: 'rgba(180, 83, 9, 0.15)',
+      emoji: '🌰',
+      players: '2 players',
+      vibe: 'Sow & capture',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🌰',
+        label: 'Player A',
+        color: '#d97706',
+        leaderboardLabel: 'Ọta',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      marry: {
+        emoji: '🎯',
+        label: 'Player B',
+        color: '#92400e',
+        leaderboardLabel: 'Ọpẹ',
+        activeClass: 'bg-orange-900/30 text-orange-100 border-orange-700',
+        borderClass: 'border-orange-800/50 bg-orange-900/20',
+        textColor: '#fdba74',
+      },
+      kill: {
+        emoji: '🏆',
+        label: 'Ọta champion',
+        color: '#fbbf24',
+        leaderboardLabel: 'Champion',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+    },
+  },
   describe_it: {
     id: 'describe_it',
     label: 'Text Charades',
@@ -1720,6 +1763,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'matching_pairs',
   'quiplash',
   'quick_draw',
+  'ayo',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -1796,6 +1840,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'matching_pairs') return 'matching_pairs'
   if (raw === 'quiplash') return 'quiplash'
   if (raw === 'quick_draw' || raw === 'quick-draw') return 'quick_draw'
+  if (raw === 'ayo' || raw === 'awale' || raw === 'ayo-olopon') return 'ayo'
   return 'smash_marry_kill'
 }
 
@@ -1883,7 +1928,9 @@ export function gameHowItWorks(
     case 'chess':
       return 'Two players join with their name. The host can play too. One player is White, the other Black — White moves first. Move pieces by the standard rules; checkmate your opponent to win. Optional chess clock — each player gets their own time bank that only ticks on their turn, and the first to run out loses.'
     case 'checkers':
-      return 'Two players join with their name. The host can play too. One player is Black (and moves first), the other Red. Move diagonally forward one square; jump an adjacent opponent piece to capture it — and if a jump is available you must take it, chaining multiple jumps in one turn. Reach the far row to crown a king that moves both ways. Capture all your opponent’s pieces, or leave them with no move, to win. Optional clock — each player has their own time bank that only ticks on their turn.'
+      return 'Two players join with their name. The host can play too. American 8×8 checkers on dark squares only — 12 pieces each. Black moves first. Men move diagonally forward one square; jump an adjacent opponent to capture — captures are forced, and you must keep jumping with the same piece while more jumps are available. Crown a king on the far row (moves one square any direction). Win by capturing all enemy pieces or blocking every legal move. Draws: threefold repetition or the 40-move rule. Optional per-player clock.'
+    case 'ayo':
+      return 'Two players join with their name. The host can play too. Classic Ayo Olopon — 12 houses, 4 seeds each, sow anti-clockwise (skipping the house you picked up). Capture when your last seed lands in an opponent house with 2 or 3 seeds, including linked houses. If their row is empty, you must feed them when you can. When they cannot move, you sweep the board. Most captured seeds wins; winner is Ọta, loser is Ọpẹ. Three straight wins makes an Ọta champion. Optional per-player clock — casual (untimed) or ranked (30s–10min each).'
     case 'mafia':
       return 'Players join with their name (5 to 16 players). Each player is secretly assigned a role: Villager, Mafia, Doctor, or Detective. The game alternates between Night (when the Mafia kills, the Doctor heals, and the Detective investigates) and Day (when the village discusses and votes to eliminate a suspect). Eliminate the Mafia to win, or parity wins for the Mafia.'
     case 'describe_it':
@@ -2156,6 +2203,7 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   matching_pairs: true,
   quiplash: true,
   quick_draw: true,
+  ayo: true,
   mafia: false,
 }
 
@@ -2197,6 +2245,7 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   matching_pairs: false,
   quiplash: false,
   quick_draw: false,
+  ayo: false,
   mafia: false,
 }
 
@@ -2304,6 +2353,10 @@ export function isChessGame(gameType: GameType | string | undefined): boolean {
 
 export function isCheckersGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'checkers'
+}
+
+export function isAyoGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'ayo'
 }
 
 export function isMafiaGame(gameType: GameType | string | undefined): boolean {

@@ -294,6 +294,24 @@ export const checkersResignSchema = z.object({
 
 export type CheckersMoveInput = z.infer<typeof checkersMoveSchema>
 
+// Ayo (pit index 0–11)
+export const ayoMoveSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  pitIndex: z.coerce.number().int().min(0).max(11),
+})
+
+export const ayoExpireSchema = z.object({
+  gameId: gameCodeString(),
+})
+
+export const ayoResignSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+})
+
+export type AyoMoveInput = z.infer<typeof ayoMoveSchema>
+
 // Scrabble (POST /api/scrabble/*)
 
 export const scrabbleActionSchema = z.object({

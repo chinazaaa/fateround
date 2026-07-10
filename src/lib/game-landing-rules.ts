@@ -963,33 +963,115 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
     {
       title: 'Objective',
       points: [
-        'Capture all of your opponent’s pieces — or leave them with no legal move — to win.',
-        'A game where neither side can make progress can end in a draw (threefold repetition or the 40-move rule).',
+        'American Checkers (8×8 draughts) — capture all of your opponent’s pieces, or leave them with no legal move, to win.',
+        'Forced jumps and king promotion are enforced automatically. Optional per-player clocks are available.',
       ],
     },
     {
-      title: 'Setup',
+      title: 'Board & setup',
       points: [
-        'Exactly 2 players join a room. The host can play too.',
-        'One player is randomly assigned Black, the other Red. Black always moves first.',
-        'Optional clock — each player gets their own time bank (e.g. 10 minutes) that only counts down on their turn. Run out and you lose on time.',
+        'The board is 8×8, like chess — but only the 32 dark squares are used. Light squares are never occupied.',
+        'Each player starts with 12 pieces: Black on the top three rows, Red on the bottom three (middle two rows empty).',
+        'Exactly 2 players join a room. The host can play too. Colors are assigned at random; Black always moves first.',
+        'Optional clock — each player gets their own time bank (3, 5, or 10 minutes) that only counts down on their turn.',
       ],
     },
     {
-      title: 'Taking a turn',
+      title: 'Men (regular pieces)',
       points: [
-        'On your turn, tap one of your pieces to see its legal moves, then tap a highlighted square to move there.',
-        'Men move one square diagonally forward; jump an adjacent opponent piece into the empty square beyond to capture it.',
-        'Captures are forced — if any jump is available you must take it, and you must keep jumping with the same piece while more captures are on offer.',
-        'A man that reaches the far row is crowned a king, which can move and capture both forward and backward.',
+        'Move one square diagonally forward to an empty dark square.',
+        'Capture by jumping diagonally over an adjacent opponent piece into the empty square beyond — the jumped piece is removed.',
+        'Men can only move and capture forward — not backward.',
+      ],
+    },
+    {
+      title: 'Kings',
+      points: [
+        'When a man reaches the opponent’s back row (the “crownhead”), it is crowned a king automatically.',
+        'Kings move and capture one square diagonally in any direction — forward or backward.',
+        'American kings are “short” — they slide only one square at a time (not flying kings).',
+        'If a man is crowned during a jump, the turn ends — it does not keep jumping as a king.',
+      ],
+    },
+    {
+      title: 'Captures & multi-jumps',
+      points: [
+        'Mandatory capture: if any jump is available anywhere on the board, you must capture — you cannot make a normal move instead.',
+        'When multiple capture options exist, you may choose which one (American rules do not require the longest capture).',
+        'Multiple jumps: if the same piece can jump again after landing, you must keep going in the same turn — you cannot stop halfway.',
+        'Tap a piece, then its destination. During a chain, only the jumping piece can move.',
+      ],
+    },
+    {
+      title: 'Winning & draws',
+      points: [
+        'Win by capturing every enemy piece, or by blocking all of the opponent’s legal moves.',
+        'You can also win if your opponent resigns or runs out of time on the clock.',
+        'Draw — threefold repetition: the same board position (with the same side to move) occurs three times.',
+        'Draw — 40-move rule: 40 consecutive moves by each player with no capture and no man move.',
+        'Play again starts a fresh game — colors swap so the previous Red player opens as Black.',
+      ],
+    },
+    {
+      title: 'Rules that trip up beginners',
+      points: [
+        'Flying kings (sliding any distance diagonally) are International Draughts — not used here.',
+        'Men cannot capture backward — only kings can move and jump in reverse.',
+        'You do not have to take the capture that removes the most pieces — any legal capture is fine.',
+        'Huffing (removing a piece for missing a jump) is an old rule — not used. You simply must take the jump.',
+      ],
+    },
+    {
+      title: 'Quick strategy',
+      points: [
+        'Control the center — pieces there have more movement options.',
+        'Keep men on your back row as long as you can — they cannot be jumped from behind.',
+        'A king is worth roughly 2–3 men — don’t trade two men for one unless it gains position.',
+        'Edge pieces have fewer escape squares — try to force your opponent toward the sides.',
+        'Watch for traps: bait a piece forward, then jump it with two of yours for a 2-for-1.',
+      ],
+    },
+  ],
+
+  ayo: [
+    {
+      title: 'Objective',
+      points: [
+        'Capture more seeds than your opponent by sowing strategically around the board.',
+        'The winner is traditionally called Ọta; the loser is Ọpẹ. Three straight wins makes an Ọta champion.',
+      ],
+    },
+    {
+      title: 'Board & setup',
+      points: [
+        '12 houses in two rows of six — one row per player, four seeds in each house (48 total).',
+        'Exactly 2 players. The host can play. Player A opens on the first game; colors swap on rematch.',
+        'Optional per-player clock — Casual (untimed), Ranked (30s), or 3/5/10 minutes each.',
+      ],
+    },
+    {
+      title: 'How a turn works',
+      points: [
+        'Pick up all seeds from one of your own houses that has seeds.',
+        "Sow anti-clockwise — drop one seed per house, skipping the house you picked up, including into your opponent's row.",
+        "Capture: if your last seed lands in an opponent's house with 2 or 3 seeds, capture those and any linked opponent houses ahead that also have 2 or 3.",
+        'Feeding: if your opponent has no seeds on their row, you must choose a move that sows into their row when one exists.',
+        'Players alternate until a player cannot move — the other player sweeps all seeds still on the board.',
       ],
     },
     {
       title: 'Winning',
       points: [
-        'Capture every enemy piece, or block their last legal move, to win. You can also win if your opponent resigns or runs out of time.',
-        'The game is drawn if the same position repeats three times, or after 40 moves with no capture or man advance.',
-        'Play again starts a fresh game — colors swap so the previous Red player opens as Black.',
+        'When your opponent cannot move, you sweep every seed still on the board. Most total captured seeds wins.',
+        'You can also win if your opponent resigns, leaves, or runs out of time.',
+        'A tie is possible if both players finish with 24 seeds each.',
+      ],
+    },
+    {
+      title: 'Spectators',
+      points: [
+        'Late joiners can watch the match in read-only mode — Ayo is traditionally played with commentary and banter.',
+        'The host can spectate from the Watch tab while managing the room.',
       ],
     },
   ],
