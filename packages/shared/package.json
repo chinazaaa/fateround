@@ -1,0 +1,17 @@
+{
+  "name": "@fateround/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./tokens": "./src/tokens.ts",
+    "./tic-tac-toe": "./src/tic-tac-toe.ts",
+    "./checkers": "./src/checkers.ts",
+    "./ayo": "./src/ayo.ts",
+    "./trivia": "./src/trivia.ts",
+    "./poll-games": "./src/poll-games.ts"
+  }
+}
