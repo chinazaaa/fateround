@@ -2,14 +2,17 @@
 
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import {
+  ayoHouseScores,
   ayoResultDetail,
   ayoScores,
+  boardConfigFromSession,
   currentTurnPlayerId,
   isAyoChampion,
+  isPitActive,
   legalMovesForSide,
   sideForPlayer,
 } from '@/lib/ayo'
-import type { AyoSession, AyoSide, Player } from '@/types'
+import type { AyoSession, AyoSide, AyoVariant, Player } from '@/types'
 import { AyoCard, AyoTurnBar } from '@/components/ayo/AyoChrome'
 import { useAyoTurnSound } from '@/hooks/useAyoTurnSound'
 
@@ -62,13 +65,19 @@ function ScoreTray({
   name,
   score,
   captured,
+  houses,
+  variant,
   champion,
+  rowSize,
   clock,
 }: {
   name: string
   score: number
   captured: number
+  houses: number
+  variant: AyoVariant
   champion?: boolean
+  rowSize: number
   clock?: ReactNode
 }) {
   return (
@@ -78,7 +87,15 @@ function ScoreTray({
         {champion ? <span className="ml-1 text-amber-400">Ọta champion</span> : null}
       </span>
       <span className="text-xs text-faint">
-        · {score} seeds ({captured} captured)
+        {variant === 'traditional' ? (
+          <>
+            · {houses} houses · {rowSize} pits left
+          </>
+        ) : (
+          <>
+            · {score} seeds ({captured} captured)
+          </>
+        )}
       </span>
       {clock}
     </div>
@@ -91,6 +108,7 @@ function PitButton({
   interactive,
   selected,
   highlighted,
+  disabled,
   onClick,
 }: {
   index: number
@@ -98,8 +116,19 @@ function PitButton({
   interactive: boolean
   selected: boolean
   highlighted: boolean
+  disabled?: boolean
   onClick: () => void
 }) {
+  if (disabled) {
+    return (
+      <div
+        className="relative aspect-[4/5] rounded-full flex items-center justify-center border-2 border-dashed opacity-30"
+        style={{ backgroundColor: '#3d2812', borderColor: PIT_RING }}
+        aria-hidden
+      />
+    )
+  }
+
   return (
     <button
       type="button"
@@ -126,6 +155,7 @@ export function AyoGamePanel({
   myPlayerId,
   isMyTurn,
   timeControlSeconds,
+  variant: variantProp,
   onMove,
   onResign,
   acting,
@@ -135,10 +165,13 @@ export function AyoGamePanel({
   myPlayerId: string | null
   isMyTurn: boolean
   timeControlSeconds?: number
+  variant?: AyoVariant
   onMove?: (pitIndex: number) => void
   onResign?: () => void
   acting?: boolean
 }) {
+  const variant = variantProp ?? 'traditional'
+  const config = boardConfigFromSession(session, variant)
   const [selected, setSelected] = useState<number | null>(null)
 
   useAyoTurnSound(session, myPlayerId, true)
@@ -150,10 +183,11 @@ export function AyoGamePanel({
 
   const legal = useMemo(() => {
     if (!interactive || !mySide) return new Set<number>()
-    return new Set(legalMovesForSide(session.pits, mySide))
-  }, [session.pits, interactive, mySide])
+    return new Set(legalMovesForSide(session.pits, mySide, config))
+  }, [session.pits, interactive, mySide, config])
 
-  const scores = ayoScores(session)
+  const scores = ayoScores(session, variant)
+  const houseScores = ayoHouseScores(session)
   const playerA = players.find((p) => p.id === session.player_a_id)
   const playerB = players.find((p) => p.id === session.player_b_id)
   const turnPlayer = players.find((p) => p.id === currentTurnPlayerId(session))
@@ -169,6 +203,8 @@ export function AyoGamePanel({
     name: (side === 'a' ? playerA : playerB)?.name ?? (side === 'a' ? 'Player A' : 'Player B'),
     score: side === 'a' ? scores.a : scores.b,
     captured: side === 'a' ? session.captured_a : session.captured_b,
+    houses: side === 'a' ? houseScores.a : houseScores.b,
+    rowSize: side === 'a' ? session.a_row_size : session.b_row_size,
     champion: isAyoChampion(side === 'a' ? session.a_win_streak : session.b_win_streak),
   })
 
@@ -185,13 +221,14 @@ export function AyoGamePanel({
     setSelected(null)
   }
 
-  const renderRow = (indices: number[], side: AyoSide) => (
+  const renderRow = (indices: number[], _side: AyoSide) => (
     <div className="grid grid-cols-6 gap-2 sm:gap-3">
       {indices.map((pitIndex) => (
         <PitButton
           key={pitIndex}
           index={pitIndex}
           count={session.pits[pitIndex]}
+          disabled={!isPitActive(pitIndex, config)}
           interactive={interactive && legal.has(pitIndex)}
           selected={selected === pitIndex}
           highlighted={session.last_pit === pitIndex}
@@ -218,6 +255,10 @@ export function AyoGamePanel({
         </p>
       ) : null}
 
+      {variant === 'traditional' && session.status === 'active' && (
+        <p className="text-center text-faint text-xs -mt-2">Round {session.match_round}</p>
+      )}
+
       {finished && (
         <AyoCard className="p-4 text-center space-y-1">
           <p className="text-2xl">{session.is_draw ? '🤝' : '🏆'}</p>
@@ -225,8 +266,8 @@ export function AyoGamePanel({
             {session.is_draw ? "It's a draw!" : winnerName ? `${winnerName} is Ọta!` : 'Game over'}
           </p>
           {!session.is_draw && winnerName && <p className="text-xs text-amber-300/90 italic">Mo ki ota, mo ki ope o</p>}
-          {ayoResultDetail(session.result_reason) && (
-            <p className="text-xs text-faint capitalize">{ayoResultDetail(session.result_reason)}</p>
+          {ayoResultDetail(session.result_reason, variant) && (
+            <p className="text-xs text-faint capitalize">{ayoResultDetail(session.result_reason, variant)}</p>
           )}
         </AyoCard>
       )}
@@ -235,17 +276,22 @@ export function AyoGamePanel({
         className="max-w-lg mx-auto w-full space-y-2 rounded-2xl p-3 sm:p-4 border-2 border-[var(--border-strong)] shadow-lg"
         style={{ backgroundColor: BOARD_WOOD }}
       >
-        <ScoreTray {...trayFor(topSide)} clock={<AyoClockChip session={session} side={topSide} />} />
+        <ScoreTray {...trayFor(topSide)} variant={variant} clock={<AyoClockChip session={session} side={topSide} />} />
         {renderRow(topIndices, topSide)}
         <div className="h-2" />
         {renderRow(bottomIndices, bottomSide)}
-        <ScoreTray {...trayFor(bottomSide)} clock={<AyoClockChip session={session} side={bottomSide} />} />
+        <ScoreTray
+          {...trayFor(bottomSide)}
+          variant={variant}
+          clock={<AyoClockChip session={session} side={bottomSide} />}
+        />
       </div>
 
       {mySide && session.status === 'active' && (
         <div className="space-y-2">
           <p className="text-center text-faint text-xs">
             You play the {flip ? 'top' : 'bottom'} row · tap one of your houses to sow anti-clockwise
+            {variant === 'traditional' ? ' · complete fours to win houses' : ''}
             {isMyTurn ? '' : ' · waiting for your opponent'}
           </p>
           {onResign && (

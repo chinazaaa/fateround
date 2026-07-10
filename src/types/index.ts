@@ -328,6 +328,8 @@ export interface Game {
   crazy8_pick2_stacking?: boolean
   /** Ludo — 'modern' (start + mid-arm safe stars) or 'traditional' (no track safe squares). */
   ludo_variant?: LudoVariant
+  /** Ayo — 'traditional' (capture on 4, houses, match rounds) or 'oware' (2/3 seeds). */
+  ayo_variant?: AyoVariant
   /** Mahjong — ruleset selected before the table starts. */
   mahjong_ruleset?: MahjongRuleset | null
   /** Mahjong — house rules and match-settlement options. */
@@ -572,6 +574,8 @@ export type LudoColor = 'red' | 'green' | 'yellow' | 'blue'
 export type LudoPieceZone = 'base' | 'track' | 'home' | 'finished'
 export type LudoPhase = 'roll' | 'move' | 'finished'
 export type LudoVariant = 'modern' | 'traditional'
+
+export type AyoVariant = 'traditional' | 'oware'
 
 export interface LudoDiceRoll {
   d1: number
@@ -909,6 +913,14 @@ export interface AyoSession {
   pits: number[]
   captured_a: number
   captured_b: number
+  /** Houses won in the current deal (traditional mode). */
+  houses_a: number
+  houses_b: number
+  /** Match round number (traditional multi-round play). */
+  match_round: number
+  /** Active houses per side (0–6); shrinks when the opponent wins a round. */
+  a_row_size: number
+  b_row_size: number
   current_turn: AyoSide
   a_win_streak: number
   b_win_streak: number

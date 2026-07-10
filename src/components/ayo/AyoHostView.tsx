@@ -6,9 +6,10 @@ import { HostGameLayout } from '@/components/host/HostGameLayout'
 import { HostManageSection } from '@/components/host/HostManageSection'
 import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
+import { HostAyoLobbyPanel } from '@/components/host-lobby/HostAyoLobbyPanel'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
-import { currentTurnPlayerId, AYO_MIN_PLAYERS, isAyoResultsPhase } from '@/lib/ayo'
+import { currentTurnPlayerId, AYO_MIN_PLAYERS, isAyoResultsPhase, parseAyoVariant } from '@/lib/ayo'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, AYO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -343,6 +344,7 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
         myPlayerId={hostPlayerId}
         isMyTurn={isHostTurn}
         timeControlSeconds={game?.timer_seconds ?? 0}
+        variant={parseAyoVariant(game?.ayo_variant)}
         onMove={sowPit}
         onResign={resign}
         acting={hostActing}
@@ -358,6 +360,7 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
         myPlayerId={hostPlayerId}
         isMyTurn={false}
         timeControlSeconds={game?.timer_seconds ?? 0}
+        variant={parseAyoVariant(game?.ayo_variant)}
       />
     </div>
   ) : (
@@ -388,13 +391,16 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
           />
         ) : undefined
       }
+      settings={
+        game.status === 'waiting' ? (
+          <HostAyoLobbyPanel gameCode={gameCode} hostToken={hostToken} game={game} onGameUpdate={setGame} />
+        ) : undefined
+      }
       footer={
         game.status === 'waiting' ? (
           <HostLobbyWaitingFooter
             gameCode={gameCode}
             hostToken={hostToken}
-            game={game ?? undefined}
-            onGameUpdate={setGame}
             onStart={startGame}
             onEnded={load}
             canStart={canStart}
