@@ -7,7 +7,7 @@ import { AyoFinalResultsShareBlock } from '@/components/ayo/AyoFinalResultsShare
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { AyoGamePanel } from '@/components/ayo/AyoBoard'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentTurnPlayerId, isAyoResultsPhase, AYO_MIN_PLAYERS } from '@/lib/ayo'
+import { currentTurnPlayerId, isAyoResultsPhase, AYO_MIN_PLAYERS, parseAyoVariant } from '@/lib/ayo'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
 import { AYO_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -391,6 +391,7 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
           myPlayerId={myPlayerId}
           isMyTurn={isMyTurn && !isViewer}
           timeControlSeconds={game?.timer_seconds ?? 0}
+          variant={parseAyoVariant(game?.ayo_variant)}
           onMove={isMyTurn && !isViewer ? sowPit : undefined}
           onResign={!isViewer ? resign : undefined}
           acting={acting}

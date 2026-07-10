@@ -10,6 +10,7 @@ import type {
   TriviaCategory,
   TriviaQuestion,
   LudoVariant,
+  AyoVariant,
 } from '@/types'
 import type { Settings, Step, ParticipantTab, QuestionTab } from './types'
 import { LIBRARY_GAME_TYPE_MAP } from './constants'
@@ -362,6 +363,7 @@ function CreateGameInner() {
   const [crazy8Pick2Stacking, setCrazy8Pick2Stacking] = useState(true)
   const [ludoMaxPlayers, setLudoMaxPlayers] = useState(LUDO_DEFAULT_MAX_PLAYERS)
   const [ludoVariant, setLudoVariant] = useState<LudoVariant>('modern')
+  const [ayoVariant, setAyoVariant] = useState<AyoVariant>('traditional')
   const [snakeLadderMaxPlayers, setSnakeLadderMaxPlayers] = useState(SNAKE_LADDER_DEFAULT_MAX_PLAYERS)
   const [npatMaxPlayers, setNpatMaxPlayers] = useState(NPAT_DEFAULT_MAX_PLAYERS)
   const [sudokuMaxPlayers, setSudokuMaxPlayers] = useState(20)
@@ -1498,6 +1500,7 @@ function CreateGameInner() {
           crazy8_jokers: isCrazy8 ? crazy8Jokers : undefined,
           crazy8_pick2_stacking: isCrazy8 ? crazy8Pick2Stacking : undefined,
           ludo_variant: isLudo ? ludoVariant : undefined,
+          ayo_variant: isAyo ? ayoVariant : undefined,
           scrabble_dictionary_id: isScrabble ? scrabbleDictionary : undefined,
           scrabble_clock_mode: isScrabble ? scrabbleClockMode : undefined,
           scrabble_clock_seconds: isScrabble && scrabbleClockMode === 'chess' ? scrabbleClockSeconds : undefined,
@@ -2638,6 +2641,16 @@ function CreateGameInner() {
             ) : isAyo ? (
               <SettingsGroup title="Ayo room">
                 <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
+                <Field label="Rules">
+                  <select
+                    value={ayoVariant}
+                    onChange={(e) => setAyoVariant(e.target.value as AyoVariant)}
+                    className="input-field w-full"
+                  >
+                    <option value="traditional">Traditional — complete fours to win houses, multi-round match</option>
+                    <option value="oware">Oware — capture 2s and 3s with linkage, seed scoring</option>
+                  </select>
+                </Field>
                 <Field label="Time per player">
                   <select
                     value={settings.timer_seconds}
@@ -2655,9 +2668,9 @@ function CreateGameInner() {
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ayo" />
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
-                  Ayo Olopon — sow seeds anti-clockwise (skip the house you picked up), capture 2s and 3s with linkage,
-                  and feed your opponent when their row is empty. Most captured seeds wins; the winner is Ọta. Three
-                  straight wins makes an Ọta champion.
+                  {ayoVariant === 'traditional'
+                    ? 'Traditional Ayo Olopon — sow anti-clockwise and complete fours on your own houses to win them. If you complete a four on your opponent’s house with your last seed, you win it; if you still have seeds left to sow, they win it instead. Most houses wins the round; each round win takes one of their houses. Play until all opponent houses are gone. Winner is Ọta; three straight round wins makes an Ọta champion.'
+                    : 'Oware rules — sow anti-clockwise (skip the house you picked up), capture 2s and 3s with linkage, and feed your opponent when their row is empty. Most captured seeds wins the deal; the winner is Ọta.'}
                 </p>
               </SettingsGroup>
             ) : isScrabble ? (

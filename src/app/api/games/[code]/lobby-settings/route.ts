@@ -16,8 +16,10 @@ import {
   isMafiaGame,
   isQuiplashGame,
   isQuickDrawGame,
+  isAyoGame,
   parseGameType,
 } from '@/lib/game-types'
+import { clampAyoTimer, parseAyoVariant } from '@/lib/ayo'
 import { clampBoardGameTurnTimer, type BoardGameLobbyType } from '@/lib/board-game-lobby-settings'
 import { clampMonopolyGameDuration } from '@/lib/monopoly'
 import { clampWhotGameDuration } from '@/lib/whot'
@@ -57,6 +59,10 @@ function timedLobbyLimitType(gameType: string): LobbyLimitGameType | null {
   if (isWordHuntGame(parsed)) return 'word_hunt'
   if (isMafiaGame(parsed)) return 'mafia'
   return null
+}
+
+function ayoLobbyType(gameType: string): boolean {
+  return isAyoGame(parseGameType(gameType))
 }
 
 /** Games with only a max-players lobby setting — no timer or house rules. */
@@ -99,6 +105,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     quick_draw_variant,
     quick_draw_play_mode,
     quick_draw_num_teams,
+    ayo_variant,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -124,7 +131,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     operative_timer_seconds === undefined &&
     quick_draw_variant === undefined &&
     quick_draw_play_mode === undefined &&
-    quick_draw_num_teams === undefined
+    quick_draw_num_teams === undefined &&
+    ayo_variant === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -144,7 +152,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const limitOnlyType = limitOnlyLobbyType(game.game_type)
   const quiplashLobby = isQuiplashGame(parseGameType(game.game_type))
   const quickDrawLobby = isQuickDrawGame(parseGameType(game.game_type))
-  if (!boardLobbyType && !timedLobbyType && !limitOnlyType && !quiplashLobby && !quickDrawLobby) {
+  const ayoLobby = ayoLobbyType(game.game_type)
+  if (!boardLobbyType && !timedLobbyType && !limitOnlyType && !quiplashLobby && !quickDrawLobby && !ayoLobby) {
     return NextResponse.json({ error: 'This game type does not support lobby settings here' }, { status: 400 })
   }
 
@@ -186,6 +195,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       gameUpdate.timer_seconds = [30, 45, 60, 90, 120, 180].includes(timer_seconds) ? timer_seconds : 60
     } else if (boardLobbyType) {
       gameUpdate.timer_seconds = clampBoardGameTurnTimer(timer_seconds, boardLobbyType)
+    } else if (ayoLobby) {
+      gameUpdate.timer_seconds = clampAyoTimer(timer_seconds)
     } else if (limitOnlyType === 'matching_pairs') {
       // Matching Pairs game time limit (0 = no limit)
       const maxOption = MATCHING_PAIRS_GAME_DURATION_OPTIONS[MATCHING_PAIRS_GAME_DURATION_OPTIONS.length - 1]
@@ -278,6 +289,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     if (ludo_variant !== undefined) gameUpdate.ludo_variant = ludo_variant
   } else if (ludo_variant !== undefined) {
     return NextResponse.json({ error: 'The Ludo variant only applies to Ludo games' }, { status: 400 })
+  }
+
+  if (ayoLobby) {
+    if (ayo_variant !== undefined) gameUpdate.ayo_variant = parseAyoVariant(ayo_variant)
+  } else if (ayo_variant !== undefined) {
+    return NextResponse.json({ error: 'The Ayo variant only applies to Ayo games' }, { status: 400 })
   }
 
   if (boardLobbyType === 'mahjong') {

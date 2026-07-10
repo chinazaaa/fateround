@@ -1,7 +1,7 @@
 import { internalErrorMessage } from '@/lib/api-errors'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { markGameFinished } from '@/lib/game-finish'
-import type { AyoSession, AyoSide } from '@/types'
+import type { AyoSession, AyoSide, AyoVariant } from '@/types'
 
 export const AYO_MIN_PLAYERS = 2
 export const AYO_MAX_PLAYERS = 2
@@ -11,6 +11,18 @@ export const AYO_PIT_COUNT = 12
 export const AYO_PITS_PER_SIDE = 6
 export const AYO_STARTING_SEEDS = 4
 export const AYO_TOTAL_SEEDS = 48
+
+export const AYO_DEFAULT_VARIANT: AyoVariant = 'traditional'
+
+export function parseAyoVariant(raw: unknown): AyoVariant {
+  return raw === 'oware' ? 'oware' : 'traditional'
+}
+
+export type AyoBoardConfig = {
+  variant: AyoVariant
+  aRowSize: number
+  bRowSize: number
+}
 
 /** Per-player total clock options, in seconds (0 = untimed). */
 export const AYO_TIME_OPTIONS = [0, 30, 180, 300, 600] as const
@@ -31,8 +43,28 @@ export function ayoIsTimed(session: Pick<AyoSession, 'a_time_ms' | 'b_time_ms'>)
 // Pure board helpers (no DB) — exported for unit testing.
 // ---------------------------------------------------------------------------
 
-export function startingPits(): number[] {
-  return Array(AYO_PIT_COUNT).fill(AYO_STARTING_SEEDS)
+export function startingPits(aRowSize = AYO_PITS_PER_SIDE, bRowSize = AYO_PITS_PER_SIDE): number[] {
+  const pits = Array(AYO_PIT_COUNT).fill(0)
+  for (let i = 0; i < aRowSize; i += 1) pits[i] = AYO_STARTING_SEEDS
+  for (let i = 0; i < bRowSize; i += 1) pits[AYO_PITS_PER_SIDE + i] = AYO_STARTING_SEEDS
+  return pits
+}
+
+export function rowSizeForSide(side: AyoSide, config: Pick<AyoBoardConfig, 'aRowSize' | 'bRowSize'>): number {
+  return side === 'a' ? config.aRowSize : config.bRowSize
+}
+
+export function isPitActive(pit: number, config: Pick<AyoBoardConfig, 'aRowSize' | 'bRowSize'>): boolean {
+  const side = sideOfPit(pit)
+  const rowSize = rowSizeForSide(side, config)
+  const { start } = rowRange(side)
+  return pit >= start && pit < start + rowSize
+}
+
+export function activePitIndices(side: AyoSide, config: Pick<AyoBoardConfig, 'aRowSize' | 'bRowSize'>): number[] {
+  const { start } = rowRange(side)
+  const rowSize = rowSizeForSide(side, config)
+  return Array.from({ length: rowSize }, (_, i) => start + i)
 }
 
 export function sideOfPit(pit: number): AyoSide {
@@ -53,22 +85,25 @@ function rowRange(side: AyoSide): { start: number; end: number } {
   return { start, end: start + AYO_PITS_PER_SIDE - 1 }
 }
 
-function isCaptureCount(count: number): boolean {
+function isOwareCaptureCount(count: number): boolean {
   return count === 2 || count === 3
 }
 
-/** Non-empty pits on `side`'s row (ignores feeding). */
-export function legalMoves(pits: number[], side: AyoSide): number[] {
-  const { start, end } = rowRange(side)
-  const moves: number[] = []
-  for (let i = start; i <= end; i += 1) {
-    if (pits[i] > 0) moves.push(i)
-  }
-  return moves
+/** Non-empty pits on `side`'s active row (ignores feeding). */
+export function legalMoves(
+  pits: number[],
+  side: AyoSide,
+  config: Pick<AyoBoardConfig, 'aRowSize' | 'bRowSize'> = { aRowSize: AYO_PITS_PER_SIDE, bRowSize: AYO_PITS_PER_SIDE }
+): number[] {
+  return activePitIndices(side, config).filter((pit) => pits[pit] > 0)
 }
 
-/** True if sowing from `pitIndex` drops at least one seed on the opponent's row. */
-export function moveFeedsOpponent(pits: number[], pitIndex: number): boolean {
+/** True if sowing from `pitIndex` drops at least one seed on the opponent's active row. */
+export function moveFeedsOpponent(
+  pits: number[],
+  pitIndex: number,
+  config: Pick<AyoBoardConfig, 'aRowSize' | 'bRowSize'> = { aRowSize: AYO_PITS_PER_SIDE, bRowSize: AYO_PITS_PER_SIDE }
+): boolean {
   const moverSide = sideOfPit(pitIndex)
   const opponent = opponentSide(moverSide)
   let seeds = pits[pitIndex]
@@ -77,34 +112,40 @@ export function moveFeedsOpponent(pits: number[], pitIndex: number): boolean {
   while (seeds > 0) {
     current = nextPit(current)
     if (current === pitIndex) continue
-    if (sideOfPit(current) === opponent) return true
+    if (sideOfPit(current) === opponent && isPitActive(current, config)) return true
     seeds -= 1
   }
   return false
 }
 
 /**
- * Legal moves for `side`, including the feeding rule: when the opponent's row is
+ * Legal moves for `side`, including the feeding rule (oware only): when the opponent's row is
  * empty, you must sow into their row if any of your moves can do so.
  */
-export function legalMovesForSide(pits: number[], side: AyoSide): number[] {
-  const base = legalMoves(pits, side)
-  if (!hasSeedsOnSide(pits, opponentSide(side))) {
-    const feeding = base.filter((pit) => moveFeedsOpponent(pits, pit))
+export function legalMovesForSide(pits: number[], side: AyoSide, config: AyoBoardConfig): number[] {
+  const base = legalMoves(pits, side, config)
+  if (config.variant !== 'oware') return base
+  if (!hasSeedsOnSide(pits, opponentSide(side), config)) {
+    const feeding = base.filter((pit) => moveFeedsOpponent(pits, pit, config))
     if (feeding.length > 0) return feeding
   }
   return base
 }
 
-export function hasSeedsOnSide(pits: number[], side: AyoSide): boolean {
-  return legalMoves(pits, side).length > 0
+export function hasSeedsOnSide(
+  pits: number[],
+  side: AyoSide,
+  config: Pick<AyoBoardConfig, 'aRowSize' | 'bRowSize'> = { aRowSize: AYO_PITS_PER_SIDE, bRowSize: AYO_PITS_PER_SIDE }
+): boolean {
+  return legalMoves(pits, side, config).length > 0
 }
 
-export function totalSeedsOnSide(pits: number[], side: AyoSide): number {
-  const start = side === 'a' ? 0 : AYO_PITS_PER_SIDE
-  let sum = 0
-  for (let i = start; i < start + AYO_PITS_PER_SIDE; i += 1) sum += pits[i]
-  return sum
+export function totalSeedsOnSide(
+  pits: number[],
+  side: AyoSide,
+  config: Pick<AyoBoardConfig, 'aRowSize' | 'bRowSize'> = { aRowSize: AYO_PITS_PER_SIDE, bRowSize: AYO_PITS_PER_SIDE }
+): number {
+  return activePitIndices(side, config).reduce((sum, pit) => sum + pits[pit], 0)
 }
 
 export function seedsOnBoard(pits: number[]): number {
@@ -115,48 +156,135 @@ export function opponentSide(side: AyoSide): AyoSide {
   return side === 'a' ? 'b' : 'a'
 }
 
-/** Capture pits on the opponent's row via linkage (2 or 3 seeds each). */
-export function captureFromLanding(
+function nextActivePit(pit: number, config: Pick<AyoBoardConfig, 'aRowSize' | 'bRowSize'>): number {
+  let current = pit
+  for (let step = 0; step < AYO_PIT_COUNT; step += 1) {
+    current = nextPit(current)
+    if (isPitActive(current, config)) return current
+  }
+  throw new Error('No active pits')
+}
+
+/** Oware: capture linked opponent houses with 2 or 3 seeds. */
+export function captureOwareFromLanding(
   pits: number[],
   landingPit: number,
-  moverSide: AyoSide
+  moverSide: AyoSide,
+  config: Pick<AyoBoardConfig, 'aRowSize' | 'bRowSize'>
 ): { pits: number[]; capture: number } {
   const next = [...pits]
   const opponent = opponentSide(moverSide)
-  if (sideOfPit(landingPit) !== opponent || !isCaptureCount(next[landingPit])) {
+  if (sideOfPit(landingPit) !== opponent || !isOwareCaptureCount(next[landingPit])) {
     return { pits: next, capture: 0 }
   }
 
   const { start } = rowRange(opponent)
+  const end = start + rowSizeForSide(opponent, config) - 1
   let capture = 0
   for (let i = landingPit; i >= start; i -= 1) {
-    if (!isCaptureCount(next[i])) break
+    if (i > end || !isOwareCaptureCount(next[i])) break
     capture += next[i]
     next[i] = 0
   }
   return { pits: next, capture }
 }
 
-/**
- * Sow seeds from `pitIndex` anti-clockwise, skipping the starting house.
- * Classic Ayo / Oware capture: last seed lands in opponent house with 2 or 3 → linkage.
- */
-export function sowFromPit(pits: number[], pitIndex: number): { pits: number[]; capture: number; landingPit: number } {
+/** Traditional: completing four (3 + last seed) wins the house — owner depends on pit side and seeds left. */
+export function resolveTraditionalHouseWin(
+  landingPit: number,
+  moverSide: AyoSide,
+  seedsRemaining: number
+): { winnerSide: AyoSide; turnEnds: boolean } {
+  const landingSide = sideOfPit(landingPit)
+  if (landingSide === moverSide) {
+    return { winnerSide: moverSide, turnEnds: true }
+  }
+  if (seedsRemaining > 0) {
+    return { winnerSide: landingSide, turnEnds: false }
+  }
+  return { winnerSide: moverSide, turnEnds: true }
+}
+
+/** Clears a pit that completed four and returns captured seed count. */
+export function captureTraditionalFromLanding(
+  pits: number[],
+  landingPit: number
+): { pits: number[]; capture: number; houses: number } {
+  const next = [...pits]
+  if (next[landingPit] !== 4) return { pits: next, capture: 0, houses: 0 }
+  const capture = 4
+  next[landingPit] = 0
+  return { pits: next, capture, houses: 1 }
+}
+
+function sowTraditionalRelay(
+  pits: number[],
+  pitIndex: number,
+  config: AyoBoardConfig
+): { pits: number[]; capture: number; housesA: number; housesB: number; landingPit: number } {
+  const moverSide = sideOfPit(pitIndex)
+  let next = [...pits]
+  let seeds = next[pitIndex]
+  next[pitIndex] = 0
+  let current = pitIndex
+  let capture = 0
+  let housesA = 0
+  let housesB = 0
+  let landingPit = pitIndex
+
+  while (seeds > 0) {
+    current = nextActivePit(current, config)
+    const before = next[current]
+    next[current] += 1
+    seeds -= 1
+    landingPit = current
+
+    if (next[current] === 4 && before === 3) {
+      const { winnerSide, turnEnds } = resolveTraditionalHouseWin(current, moverSide, seeds)
+      next[current] = 0
+      capture += 4
+      if (winnerSide === 'a') housesA += 1
+      else housesB += 1
+      if (turnEnds) break
+      continue
+    }
+
+    if (seeds === 0) {
+      if (before === 0) break
+      seeds = next[current]
+      next[current] = 0
+    }
+  }
+
+  return { pits: next, capture, housesA, housesB, landingPit }
+}
+
+export function sowFromPit(
+  pits: number[],
+  pitIndex: number,
+  config: AyoBoardConfig
+): { pits: number[]; capture: number; housesA: number; housesB: number; landingPit: number } {
+  const moverSide = sideOfPit(pitIndex)
+
+  if (config.variant === 'traditional') {
+    return sowTraditionalRelay(pits, pitIndex, config)
+  }
+
   let seeds = pits[pitIndex]
   const next = [...pits]
   next[pitIndex] = 0
   let current = pitIndex
-  const moverSide = sideOfPit(pitIndex)
 
   while (seeds > 0) {
     current = nextPit(current)
     if (current === pitIndex) continue
+    if (!isPitActive(current, config)) continue
     next[current] += 1
     seeds -= 1
   }
 
-  const { pits: afterCapture, capture } = captureFromLanding(next, current, moverSide)
-  return { pits: afterCapture, capture, landingPit: current }
+  const { pits: afterCapture, capture } = captureOwareFromLanding(next, current, moverSide, config)
+  return { pits: afterCapture, capture, housesA: 0, housesB: 0, landingPit: current }
 }
 
 export function collectRemainingSeeds(
@@ -188,10 +316,16 @@ export function sweepBoardToWinner(
   }
 }
 
-/** Game ends when `sideToMove` has no legal move (after feeding rules). */
-export function shouldEndGameForSide(pits: number[], sideToMove: AyoSide): boolean {
+/** Game ends when `sideToMove` has no legal move (oware feeding applies). */
+export function shouldEndGameForSide(pits: number[], sideToMove: AyoSide, config: AyoBoardConfig): boolean {
   if (seedsOnBoard(pits) === 0) return true
-  return legalMovesForSide(pits, sideToMove).length === 0
+  return legalMovesForSide(pits, sideToMove, config).length === 0
+}
+
+/** Traditional deals end when the board is empty. */
+export function shouldEndTraditionalDeal(pits: number[], config: AyoBoardConfig): boolean {
+  if (seedsOnBoard(pits) === 0) return true
+  return !hasSeedsOnSide(pits, 'a', config) && !hasSeedsOnSide(pits, 'b', config)
 }
 
 /** @deprecated Use shouldEndGameForSide — kept for tests migrating off the old rule. */
@@ -199,24 +333,54 @@ export function shouldEndGame(pits: number[]): boolean {
   return seedsOnBoard(pits) === 0
 }
 
-/** Next player is always the opponent in classic Ayo. */
+/** Next player is always the opponent. */
 export function resolveNextTurn(mover: AyoSide): AyoSide {
   return opponentSide(mover)
 }
 
-export function totalScore(capturedA: number, capturedB: number, side: AyoSide): number {
-  return side === 'a' ? capturedA : capturedB
+export function dealWinnerFromHouses(
+  housesA: number,
+  housesB: number,
+  capturedA: number,
+  capturedB: number
+): { draw: boolean; winnerSide: AyoSide | null } {
+  if (housesA !== housesB) {
+    return { draw: false, winnerSide: housesA > housesB ? 'a' : 'b' }
+  }
+  if (capturedA !== capturedB) {
+    return { draw: false, winnerSide: capturedA > capturedB ? 'a' : 'b' }
+  }
+  return { draw: true, winnerSide: null }
+}
+
+export function applyRoundHouseTransfer(
+  winnerSide: AyoSide,
+  aRowSize: number,
+  bRowSize: number
+): { aRowSize: number; bRowSize: number; matchFinished: boolean } {
+  if (winnerSide === 'a') {
+    const nextB = Math.max(0, bRowSize - 1)
+    return { aRowSize, bRowSize: nextB, matchFinished: nextB <= 0 }
+  }
+  const nextA = Math.max(0, aRowSize - 1)
+  return { aRowSize: nextA, bRowSize, matchFinished: nextA <= 0 }
 }
 
 export type AyoMoveResult = {
   pits: number[]
   capturedA: number
   capturedB: number
+  housesA: number
+  housesB: number
+  aRowSize: number
+  bRowSize: number
   nextTurn: AyoSide
   finished: boolean
   draw: boolean
   winnerSide: AyoSide | null
   lastPit: number
+  resultReason: 'most_seeds' | 'most_houses' | 'match_won' | null
+  matchFinished: boolean
 }
 
 /** Apply a move for `side` from `pitIndex`. Pure — no DB. */
@@ -224,49 +388,103 @@ export function applyAyoMove(
   pits: number[],
   capturedA: number,
   capturedB: number,
+  housesA: number,
+  housesB: number,
   side: AyoSide,
-  pitIndex: number
+  pitIndex: number,
+  config: AyoBoardConfig
 ): AyoMoveResult {
-  if (!pitBelongsToSide(pitIndex, side)) {
+  if (!pitBelongsToSide(pitIndex, side) || !isPitActive(pitIndex, config)) {
     throw new Error('Illegal pit')
   }
   if (pits[pitIndex] <= 0) {
     throw new Error('Empty pit')
   }
 
-  const { pits: sown, capture, landingPit } = sowFromPit(pits, pitIndex)
+  const { pits: sown, capture, housesA: wonA, housesB: wonB, landingPit } = sowFromPit(pits, pitIndex, config)
   const nextCapturedA = side === 'a' ? capturedA + capture : capturedA
   const nextCapturedB = side === 'b' ? capturedB + capture : capturedB
-
+  const nextHousesA = housesA + wonA
+  const nextHousesB = housesB + wonB
   const nextTurn = resolveNextTurn(side)
 
-  if (shouldEndGameForSide(sown, nextTurn)) {
-    const swept = sweepBoardToWinner(sown, nextCapturedA, nextCapturedB, side)
-    const scoreA = swept.capturedA
-    const scoreB = swept.capturedB
-    const draw = scoreA === scoreB
-    const winnerSide: AyoSide | null = draw ? null : scoreA > scoreB ? 'a' : 'b'
+  const endDeal =
+    config.variant === 'traditional'
+      ? shouldEndTraditionalDeal(sown, config)
+      : shouldEndGameForSide(sown, nextTurn, config)
+
+  if (!endDeal) {
     return {
-      pits: swept.pits,
-      capturedA: scoreA,
-      capturedB: scoreB,
+      pits: sown,
+      capturedA: nextCapturedA,
+      capturedB: nextCapturedB,
+      housesA: nextHousesA,
+      housesB: nextHousesB,
+      aRowSize: config.aRowSize,
+      bRowSize: config.bRowSize,
+      nextTurn,
+      finished: false,
+      draw: false,
+      winnerSide: null,
+      lastPit: landingPit,
+      resultReason: null,
+      matchFinished: false,
+    }
+  }
+
+  if (config.variant === 'traditional') {
+    const { draw, winnerSide } = dealWinnerFromHouses(nextHousesA, nextHousesB, nextCapturedA, nextCapturedB)
+    let aRowSize = config.aRowSize
+    let bRowSize = config.bRowSize
+    let matchFinished = false
+    let resultReason: AyoMoveResult['resultReason'] = 'most_houses'
+
+    if (!draw && winnerSide) {
+      const transfer = applyRoundHouseTransfer(winnerSide, aRowSize, bRowSize)
+      aRowSize = transfer.aRowSize
+      bRowSize = transfer.bRowSize
+      matchFinished = transfer.matchFinished
+      if (matchFinished) resultReason = 'match_won'
+    }
+
+    return {
+      pits: sown,
+      capturedA: nextCapturedA,
+      capturedB: nextCapturedB,
+      housesA: nextHousesA,
+      housesB: nextHousesB,
+      aRowSize,
+      bRowSize,
       nextTurn,
       finished: true,
       draw,
       winnerSide,
       lastPit: landingPit,
+      resultReason,
+      matchFinished,
     }
   }
 
+  const swept = sweepBoardToWinner(sown, nextCapturedA, nextCapturedB, side)
+  const scoreA = swept.capturedA
+  const scoreB = swept.capturedB
+  const draw = scoreA === scoreB
+  const winnerSide: AyoSide | null = draw ? null : scoreA > scoreB ? 'a' : 'b'
   return {
-    pits: sown,
-    capturedA: nextCapturedA,
-    capturedB: nextCapturedB,
+    pits: swept.pits,
+    capturedA: scoreA,
+    capturedB: scoreB,
+    housesA: nextHousesA,
+    housesB: nextHousesB,
+    aRowSize: config.aRowSize,
+    bRowSize: config.bRowSize,
     nextTurn,
-    finished: false,
-    draw: false,
-    winnerSide: null,
+    finished: true,
+    draw,
+    winnerSide,
     lastPit: landingPit,
+    resultReason: 'most_seeds',
+    matchFinished: false,
   }
 }
 
@@ -297,26 +515,38 @@ export function playerIdForSide(session: AyoSession, side: AyoSide): string {
   return side === 'a' ? session.player_a_id : session.player_b_id
 }
 
-export function ayoScores(session: Pick<AyoSession, 'pits' | 'captured_a' | 'captured_b'>): {
-  a: number
-  b: number
-} {
+export function boardConfigFromSession(
+  session: Pick<AyoSession, 'a_row_size' | 'b_row_size'>,
+  variant: AyoVariant
+): AyoBoardConfig {
   return {
-    a: session.captured_a + totalSeedsOnSide(session.pits, 'a'),
-    b: session.captured_b + totalSeedsOnSide(session.pits, 'b'),
+    variant,
+    aRowSize: session.a_row_size ?? AYO_PITS_PER_SIDE,
+    bRowSize: session.b_row_size ?? AYO_PITS_PER_SIDE,
   }
 }
 
-export async function canAyoPlayAgain(supabase: SupabaseClient, gameId: string, gameStatus: string): Promise<boolean> {
-  if (gameStatus === 'waiting' || gameStatus === 'finished') return true
-  if (gameStatus !== 'active') return false
-
-  const { data: session } = await supabase.from('ayo_sessions').select('status').eq('game_id', gameId).maybeSingle()
-  return session?.status === 'finished'
+export function ayoScores(
+  session: Pick<AyoSession, 'pits' | 'captured_a' | 'captured_b' | 'a_row_size' | 'b_row_size'>,
+  variant: AyoVariant = 'oware'
+): { a: number; b: number } {
+  const config = boardConfigFromSession(session, variant)
+  return {
+    a: session.captured_a + totalSeedsOnSide(session.pits, 'a', config),
+    b: session.captured_b + totalSeedsOnSide(session.pits, 'b', config),
+  }
 }
 
-export function ayoResultDetail(reason: string | null | undefined): string {
+export function ayoHouseScores(session: Pick<AyoSession, 'houses_a' | 'houses_b'>): { a: number; b: number } {
+  return { a: session.houses_a ?? 0, b: session.houses_b ?? 0 }
+}
+
+export function ayoResultDetail(reason: string | null | undefined, variant: AyoVariant = 'traditional'): string {
   switch (reason) {
+    case 'most_houses':
+      return 'with the most houses won'
+    case 'match_won':
+      return variant === 'traditional' ? 'match won — all opponent houses taken' : 'match won'
     case 'most_seeds':
       return 'with the most captured seeds'
     case 'timeout':
@@ -326,6 +556,14 @@ export function ayoResultDetail(reason: string | null | undefined): string {
     default:
       return ''
   }
+}
+
+export async function canAyoPlayAgain(supabase: SupabaseClient, gameId: string, gameStatus: string): Promise<boolean> {
+  if (gameStatus === 'waiting' || gameStatus === 'finished') return true
+  if (gameStatus !== 'active') return false
+
+  const { data: session } = await supabase.from('ayo_sessions').select('status').eq('game_id', gameId).maybeSingle()
+  return session?.status === 'finished'
 }
 
 export function isAyoChampion(streak: number): boolean {
@@ -349,7 +587,7 @@ async function loadPlayerNames(supabase: SupabaseClient, gameId: string): Promis
   return names
 }
 
-function turnMessage(name: string, side: AyoSide): string {
+function turnMessage(name: string, _side: AyoSide): string {
   return `${name}'s turn`
 }
 
@@ -368,7 +606,7 @@ export async function initializeAyoGame(
 
   const { data: existing } = await supabase
     .from('ayo_sessions')
-    .select('player_a_id, player_b_id, a_win_streak, b_win_streak')
+    .select('player_a_id, player_b_id, a_win_streak, b_win_streak, a_row_size, b_row_size, match_round, result_reason')
     .eq('game_id', gameId)
     .maybeSingle()
 
@@ -376,16 +614,30 @@ export async function initializeAyoGame(
   let bId: string
   let aStreak = 0
   let bStreak = 0
+  let aRowSize = AYO_PITS_PER_SIDE
+  let bRowSize = AYO_PITS_PER_SIDE
+  let matchRound = 1
 
   if (existing) {
     bId = existing.player_a_id
     aId = existing.player_b_id
     aStreak = existing.b_win_streak ?? 0
     bStreak = existing.a_win_streak ?? 0
+    aRowSize = existing.a_row_size ?? AYO_PITS_PER_SIDE
+    bRowSize = existing.b_row_size ?? AYO_PITS_PER_SIDE
+    matchRound = (existing.match_round ?? 1) + 1
+    if (existing.result_reason === 'match_won' || aRowSize <= 0 || bRowSize <= 0) {
+      aRowSize = AYO_PITS_PER_SIDE
+      bRowSize = AYO_PITS_PER_SIDE
+      matchRound = 1
+    }
     if (!playerIds.includes(aId) || !playerIds.includes(bId)) {
       ;[aId, bId] = shuffle(playerIds)
       aStreak = 0
       bStreak = 0
+      aRowSize = AYO_PITS_PER_SIDE
+      bRowSize = AYO_PITS_PER_SIDE
+      matchRound = 1
     }
   } else {
     ;[aId, bId] = shuffle(playerIds)
@@ -403,9 +655,14 @@ export async function initializeAyoGame(
   const sessionRow = {
     player_a_id: aId,
     player_b_id: bId,
-    pits: startingPits(),
+    pits: startingPits(aRowSize, bRowSize),
     captured_a: 0,
     captured_b: 0,
+    houses_a: 0,
+    houses_b: 0,
+    match_round: matchRound,
+    a_row_size: aRowSize,
+    b_row_size: bRowSize,
     current_turn: 'a' as const,
     a_time_ms: initialMs,
     b_time_ms: initialMs,
@@ -436,11 +693,27 @@ async function loadSession(
   const { data, error } = await supabase.from('ayo_sessions').select('*').eq('game_id', gameId).maybeSingle()
   if (error) return { session: null, error: internalErrorMessage('ayo', error) }
   if (!data) return { session: null }
-  const session = data as AyoSession
+  const session = normalizeAyoSession(data as AyoSession)
   if (!Array.isArray(session.pits) || session.pits.length !== AYO_PIT_COUNT) {
     return { session: null, error: 'Invalid board state' }
   }
   return { session }
+}
+
+function normalizeAyoSession(session: AyoSession): AyoSession {
+  return {
+    ...session,
+    houses_a: session.houses_a ?? 0,
+    houses_b: session.houses_b ?? 0,
+    match_round: session.match_round ?? 1,
+    a_row_size: session.a_row_size ?? AYO_PITS_PER_SIDE,
+    b_row_size: session.b_row_size ?? AYO_PITS_PER_SIDE,
+  }
+}
+
+async function loadAyoVariant(supabase: SupabaseClient, gameId: string): Promise<AyoVariant> {
+  const { data } = await supabase.from('games').select('ayo_variant').eq('id', gameId).maybeSingle()
+  return parseAyoVariant(data?.ayo_variant)
 }
 
 async function persistSession(
@@ -487,17 +760,29 @@ export async function processAyoMove(
   if (!side) return { error: 'You are not in this game' }
   if (session.current_turn !== side) return { error: "It's not your turn" }
 
+  const variant = await loadAyoVariant(supabase, gameId)
+  const config = boardConfigFromSession(session, variant)
+
   const pitIndex = move.pitIndex
   if (!Number.isInteger(pitIndex) || pitIndex < 0 || pitIndex >= AYO_PIT_COUNT) {
     return { error: 'Illegal pit' }
   }
-  if (!legalMovesForSide(session.pits, side).includes(pitIndex)) {
+  if (!legalMovesForSide(session.pits, side, config).includes(pitIndex)) {
     return { error: 'Illegal move' }
   }
 
   let result: AyoMoveResult
   try {
-    result = applyAyoMove(session.pits, session.captured_a, session.captured_b, side, pitIndex)
+    result = applyAyoMove(
+      session.pits,
+      session.captured_a,
+      session.captured_b,
+      session.houses_a,
+      session.houses_b,
+      side,
+      pitIndex,
+      config
+    )
   } catch {
     return { error: 'Illegal move' }
   }
@@ -508,9 +793,10 @@ export async function processAyoMove(
   let bMs = session.b_time_ms
   let finished = result.finished
   let draw = result.draw
-  let reason: string | null = finished ? 'most_seeds' : null
+  let reason: string | null = finished ? result.resultReason : null
   let winnerSide = result.winnerSide
-
+  const aRowSize = result.aRowSize
+  const bRowSize = result.bRowSize
   if (timed) {
     const startedAt = session.turn_started_at ? new Date(session.turn_started_at).getTime() : now
     const elapsed = Math.max(0, now - startedAt)
@@ -537,8 +823,14 @@ export async function processAyoMove(
     ? reason === 'timeout'
       ? `${moverName} ran out of time — ${names.get(winnerPlayerId!) ?? 'Opponent'} is Ọta!`
       : draw
-        ? "It's a draw — 24 seeds each!"
-        : `${names.get(winnerPlayerId!) ?? 'Winner'} is Ọta! Mo ki ota, mo ki ope o.`
+        ? variant === 'traditional'
+          ? "It's a draw — equal houses!"
+          : "It's a draw — 24 seeds each!"
+        : reason === 'match_won'
+          ? `${names.get(winnerPlayerId!) ?? 'Winner'} wins the match! Ọta!`
+          : variant === 'traditional'
+            ? `Round ${session.match_round}: ${names.get(winnerPlayerId!) ?? 'Winner'} wins the deal!`
+            : `${names.get(winnerPlayerId!) ?? 'Winner'} is Ọta! Mo ki ota, mo ki ope o.`
     : turnMessage(nextName, result.nextTurn)
 
   const nextRemaining = result.nextTurn === 'a' ? aMs : bMs
@@ -551,6 +843,10 @@ export async function processAyoMove(
       pits: result.pits,
       captured_a: result.capturedA,
       captured_b: result.capturedB,
+      houses_a: result.housesA,
+      houses_b: result.housesB,
+      a_row_size: aRowSize,
+      b_row_size: bRowSize,
       current_turn: result.nextTurn,
       a_time_ms: aMs,
       b_time_ms: bMs,
