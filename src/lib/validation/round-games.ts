@@ -301,6 +301,12 @@ export const describeItSettingsSchema = z.object({
   words: z.string().max(8000).optional(),
 })
 
+export const quickDrawSettingsSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: z.string().min(1),
+  words: z.string().max(8000).optional(),
+})
+
 export const describeItAdvanceSchema = z.object({
   gameId: gameCodeString(),
   hostToken: z.string().min(1).optional(),
