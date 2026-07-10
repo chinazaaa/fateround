@@ -46,6 +46,7 @@ export type GameType =
   | 'matching_pairs'
   | 'quiplash'
   | 'word_rush'
+  | 'quick_draw'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -283,6 +284,12 @@ export interface Game {
   describe_it_num_teams?: number
   /** Describe It — 'team' (teams race) or 'individual' (skribbl-style solo scoring). */
   describe_it_mode?: DescribeItMode
+  /** Quick Draw — 'lie' (Drawful) or 'guess' (draw & guess charades). */
+  quick_draw_variant?: QuickDrawVariant
+  /** Quick Draw guess mode — team vs individual. */
+  quick_draw_play_mode?: QuickDrawPlayMode
+  /** Quick Draw guess mode — number of teams (2-4). */
+  quick_draw_num_teams?: number
   /** Word Rush — 'team' (teams race the clock) or 'individual' (everyone answers each round). */
   word_rush_mode?: WordRushMode
   /** Word Rush — 'automatic' (system picks letters) or 'manual' (player/host picks letters). */
@@ -1195,6 +1202,136 @@ export interface QuiplashVote {
   voted_at: string
 }
 
+export interface QuickDrawMetadata {
+  round_number: number
+}
+
+export type QuickDrawPhase = 'drawing' | 'titling' | 'voting' | 'reveal' | 'finished'
+
+export interface QuickDrawSession {
+  id: string
+  game_id: string
+  phase: QuickDrawPhase
+  drawing_index: number
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface QuickDrawAssignment {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  prompt: string
+  created_at: string
+}
+
+export interface QuickDrawStroke {
+  color: string
+  width: number
+  points: [number, number][]
+  /** Omit for pen strokes; eraser uses destination-out when replayed. */
+  tool?: 'pen' | 'eraser'
+}
+
+export interface QuickDrawDrawingStrokeData {
+  width: number
+  height: number
+  strokes: QuickDrawStroke[]
+}
+
+export interface QuickDrawDrawing {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  stroke_data: QuickDrawDrawingStrokeData
+  submitted_at: string
+}
+
+export interface QuickDrawTitle {
+  id: string
+  game_id: string
+  drawing_id: string
+  player_id: string | null
+  text: string
+  is_real: boolean
+  submitted_at: string
+}
+
+export interface QuickDrawVote {
+  id: string
+  game_id: string
+  drawing_id: string
+  player_id: string
+  chosen_title_id: string
+  voted_at: string
+}
+
+export type QuickDrawVariant = 'lie' | 'guess'
+export type QuickDrawPlayMode = 'team' | 'individual'
+
+export type QuickDrawGuessPhase = 'turn' | 'break' | 'finished'
+
+export interface QuickDrawGuessSession {
+  id: string
+  game_id: string
+  mode: QuickDrawPlayMode
+  num_teams: number
+  total_rounds: number
+  turn_seconds: number
+  roster: string[]
+  phase: QuickDrawGuessPhase
+  turn_index: number
+  current_round: number
+  active_team: number
+  drawer_player_id: string | null
+  current_word: string | null
+  current_stroke_data: QuickDrawDrawingStrokeData
+  used_words: string[]
+  turn_deadline_at: string | null
+  break_deadline_at: string | null
+  status: 'active' | 'finished'
+  status_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface QuickDrawGuessPlayer {
+  id: string
+  game_id: string
+  player_id: string
+  team: number
+  score: number
+  created_at: string
+}
+
+export interface QuickDrawGuessWord {
+  id: string
+  game_id: string
+  turn_index: number
+  round: number
+  team: number
+  drawer_player_id: string | null
+  word: string
+  status: 'guessed' | 'skipped'
+  guesser_player_id: string | null
+  created_at: string
+}
+
+export interface QuickDrawGuessGuess {
+  id: string
+  game_id: string
+  turn_index: number
+  player_id: string
+  team: number
+  text: string
+  correct: boolean
+  points: number
+  created_at: string
+}
+
 export interface Participant {
   id: string
   game_id: string
@@ -1254,6 +1391,7 @@ export interface Round {
   ttl_metadata?: TtlMetadata | null
   npat_metadata?: NpatMetadata | null
   quiplash_metadata?: QuiplashMetadata | null
+  quick_draw_metadata?: QuickDrawMetadata | null
 }
 
 export type PairFlag = 'kiss' | 'kill'

@@ -28,6 +28,7 @@ import {
   isWordHuntGame,
   isMatchingPairsGame,
   isQuiplashGame,
+  isQuickDrawGame,
 } from '@/lib/game-types'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { getCustomSlotCount } from '@/lib/custom-game'
@@ -114,6 +115,23 @@ import {
   quiplashUsageFromPrompts,
 } from '@/lib/quiplash'
 import { pickCustomQuiplashPrompts, pickQuiplashPrompts } from '@/lib/quiplash-prompts'
+import {
+  buildQuickDrawAssignmentRows,
+  buildQuickDrawRoundRows,
+  clampQuickDrawDrawTimer,
+  quickDrawUsageFromPrompts,
+  QUICK_DRAW_MIN_PLAYERS,
+  isQuickDrawGuessVariant,
+  clampQuickDrawVariant,
+} from '@/lib/quick-draw'
+import {
+  QUICK_DRAW_GUESS_MIN_PLAYERS_INDIVIDUAL,
+  QUICK_DRAW_GUESS_MIN_PLAYERS_TEAM,
+  clampQuickDrawNumTeams,
+  clampQuickDrawPlayMode,
+  initializeQuickDrawGuessGame,
+} from '@/lib/quick-draw-guess'
+import { pickCustomQuickDrawPrompts, pickQuickDrawPrompts } from '@/lib/quick-draw-prompts'
 import { appearanceCountsForParticipants, mergeUsageMaps, parsePoolUsage, poolUsageToMap } from '@/lib/pool-usage'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
@@ -832,6 +850,122 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       quiplash: {
         ...(poolUsage.quiplash ?? {}),
         ...quiplashUsageFromPrompts(prompts),
+      },
+    }
+
+    const { error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({
+        status: 'active',
+        session_started_at: sessionStartedAt,
+        current_round_number: 1,
+        rounds_count: roundRows.length,
+        pool_usage: updatedPoolUsage,
+      })
+      .eq('id', code.toUpperCase())
+
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+
+    return NextResponse.json({ success: true })
+  }
+
+  if (isQuickDrawGame(gameType)) {
+    const playingPlayers = playersData.filter((p) => p.spectator !== true)
+
+    if (isQuickDrawGuessVariant(game.quick_draw_variant)) {
+      const minPlayers =
+        game.quick_draw_play_mode === 'individual'
+          ? QUICK_DRAW_GUESS_MIN_PLAYERS_INDIVIDUAL
+          : QUICK_DRAW_GUESS_MIN_PLAYERS_TEAM
+      if (playingPlayers.length < minPlayers) {
+        return NextResponse.json({ error: `Need at least ${minPlayers} players to start` }, { status: 400 })
+      }
+
+      const { error: initError, internal: initInternal } = await initializeQuickDrawGuessGame(
+        getSupabaseAdmin(),
+        code.toUpperCase(),
+        playingPlayers.map((p) => p.id)
+      )
+      if (initError) return NextResponse.json({ error: initError }, { status: initInternal ? 500 : 400 })
+
+      const { error: gameError } = await getSupabaseAdmin()
+        .from('games')
+        .update({ status: 'active', session_started_at: sessionStartedAt, current_round_number: 1 })
+        .eq('id', code.toUpperCase())
+      if (gameError)
+        return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+      return NextResponse.json({ success: true })
+    }
+
+    if (playingPlayers.length < QUICK_DRAW_MIN_PLAYERS) {
+      return NextResponse.json({ error: `Need at least ${QUICK_DRAW_MIN_PLAYERS} players to start` }, { status: 400 })
+    }
+
+    const questionSource = parseQuestionSource(game.question_source, gameType)
+    const customPool = parseStoredMltQuestions(game.custom_questions)
+    const useCustom = questionSource === 'custom'
+    const promptsNeeded = game.rounds_count * playingPlayers.length
+
+    if (useCustom && customPool.length < promptsNeeded) {
+      return NextResponse.json(
+        { error: `Need at least ${promptsNeeded} custom prompts for this player count and round count` },
+        { status: 400 }
+      )
+    }
+
+    const quickDrawUsage = poolUsageToMap(poolUsage.quick_draw as Record<string, number> | undefined)
+    const prompts = useCustom
+      ? pickCustomQuickDrawPrompts(customPool, promptsNeeded, quickDrawUsage)
+      : pickQuickDrawPrompts(promptsNeeded, quickDrawUsage)
+
+    if (prompts.length < promptsNeeded) {
+      return NextResponse.json({ error: 'Not enough prompts available' }, { status: 400 })
+    }
+
+    const roundRows = buildQuickDrawRoundRows({
+      gameId: code.toUpperCase(),
+      roundCount: game.rounds_count,
+      now,
+    })
+
+    const { data: insertedRounds, error: roundError } = await getSupabaseAdmin()
+      .from('rounds')
+      .insert(roundRows)
+      .select('id, round_number')
+    if (roundError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', roundError) }, { status: 500 })
+
+    const assignmentRows = buildQuickDrawAssignmentRows({
+      gameId: code.toUpperCase(),
+      rounds: (insertedRounds ?? []).map((r) => ({ id: r.id, round_number: r.round_number })),
+      playerIds: playingPlayers.map((p) => p.id),
+      prompts,
+    })
+
+    if (assignmentRows.length > 0) {
+      const { error: assignmentError } = await getSupabaseAdmin().from('quick_draw_assignments').insert(assignmentRows)
+      if (assignmentError)
+        return NextResponse.json({ error: internalErrorMessage('games/code/start', assignmentError) }, { status: 500 })
+    }
+
+    const drawTimer = clampQuickDrawDrawTimer(game.timer_seconds)
+    const drawingDeadline = new Date(Date.now() + drawTimer * 1000).toISOString()
+
+    const { error: sessionError } = await getSupabaseAdmin().from('quick_draw_sessions').insert({
+      game_id: code.toUpperCase(),
+      phase: 'drawing',
+      drawing_index: 0,
+      turn_deadline_at: drawingDeadline,
+    })
+    if (sessionError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/start', sessionError) }, { status: 500 })
+
+    const updatedPoolUsage = {
+      ...poolUsage,
+      quick_draw: {
+        ...(poolUsage.quick_draw ?? {}),
+        ...quickDrawUsageFromPrompts(prompts),
       },
     }
 

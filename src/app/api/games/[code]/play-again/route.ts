@@ -43,6 +43,7 @@ import { clearMafiaSessionData } from '@/lib/mafia'
 import { clearTriviaSessionData } from '@/lib/trivia'
 import { clearTwoTruthsSessionData } from '@/lib/two-truths'
 import { clearQuiplashSessionData } from '@/lib/quiplash'
+import { clearQuickDrawSessionData } from '@/lib/quick-draw'
 import { canWordRushPlayAgain } from '@/lib/word-rush'
 import { clearWordRushSessionData } from '@/lib/word-rush-server'
 import {
@@ -81,6 +82,7 @@ type ClearableSessionGameType = Extract<
   | 'codewords'
   | 'two_truths'
   | 'quiplash'
+  | 'quick_draw'
   | 'monopoly'
   | 'yahtzee'
   | 'whot'
@@ -112,6 +114,7 @@ const SESSION_CLEARERS: Record<ClearableSessionGameType, SessionClearer> = {
   codewords: clearCodewordsRoundData,
   two_truths: clearTwoTruthsSessionData,
   quiplash: clearQuiplashSessionData,
+  quick_draw: clearQuickDrawSessionData,
   monopoly: clearMonopolySessionData,
   yahtzee: clearYahtzeeSessionData,
   whot: clearWhotSessionData,

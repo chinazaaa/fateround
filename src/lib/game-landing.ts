@@ -65,6 +65,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   mafia: 'mafia',
   matching_pairs: 'matching-pairs',
   quiplash: 'quiplash',
+  quick_draw: 'quick-draw',
 }
 
 const SLUG_TO_GAME_TYPE = Object.fromEntries(
@@ -2605,6 +2606,38 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       { title: 'Battle it out', description: 'Submit answers, vote on battles, and climb the leaderboard.' },
     ],
     perfectFor: ['Party nights', 'Discord calls', 'Icebreakers', 'Remote teams'],
+  }),
+
+  quick_draw: landing('quick_draw', {
+    seoTitle: 'Quick Draw Online — Free Drawing Party Game',
+    seoDescription:
+      'Play Quick Draw online with friends. Lie mode: Drawful-style fake titles and voting. Guess mode: draw secret words while teammates race to guess. Free, no sign-up.',
+    keywords: [
+      'quick draw game online',
+      'drawful alternative free',
+      'drawing party game browser',
+      'pictionary online with friends',
+      'fake title drawing game',
+      'jackbox drawing game alternative',
+      'draw and guess game online',
+    ],
+    heroSubtitle: 'Draw on your phone — fool everyone with fake titles, or race to guess what the drawer is sketching.',
+    highlights: ['3–8 players', 'Lie or guess modes', '~15 minute games'],
+    features: [
+      {
+        title: 'Two ways to play',
+        description: 'Lie mode tricks the room with fake captions; Guess mode is Pictionary-style speed drawing.',
+        emoji: '🎨',
+      },
+      SHARED_FEATURES.realtime,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Create a room', description: 'Pick Lie or Guess mode, rounds, and timers.' },
+      { title: 'Share the code', description: 'Friends join from their phones with a nickname.' },
+      { title: 'Draw & score', description: 'Fool the room or guess fast — most points wins.' },
+    ],
+    perfectFor: ['Party nights', 'Creative groups', 'Remote teams', 'Jackbox fans'],
   }),
 }
 

@@ -16,6 +16,7 @@ export interface PoolUsageState {
   trivia?: Record<string, number>
   /** Quiplash prompt keys → times used */
   quiplash?: Record<string, number>
+  quick_draw?: Record<string, number>
   /** Codewords board word keys → times used on a board */
   codewords?: Record<string, number>
 }
@@ -55,6 +56,7 @@ export function parsePoolUsage(raw: unknown): PoolUsageState {
     hotSeat: section(o.hotSeat),
     trivia: section(o.trivia),
     quiplash: section(o.quiplash),
+    quick_draw: section(o.quick_draw),
     codewords: section(o.codewords),
   }
 }
@@ -133,6 +135,7 @@ export function mergePoolUsageState(existing: PoolUsageState, fromRounds: PoolUs
     hotSeat: mergeUsageRecords(existing.hotSeat, poolUsageToMap(fromRounds.hotSeat)),
     trivia: mergeUsageRecords(existing.trivia, poolUsageToMap(fromRounds.trivia)),
     quiplash: mergeUsageRecords(existing.quiplash, poolUsageToMap(fromRounds.quiplash)),
+    quick_draw: mergeUsageRecords(existing.quick_draw, poolUsageToMap(fromRounds.quick_draw)),
     codewords: mergeUsageRecords(existing.codewords, poolUsageToMap(fromRounds.codewords)),
   }
 }
