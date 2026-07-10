@@ -38,6 +38,12 @@
     "./batch-6-games": "./src/batch-6-games.ts",
     "./mafia": "./src/mafia.ts",
     "./codewords": "./src/codewords.ts",
-    "./batch-7-games": "./src/batch-7-games.ts"
+    "./batch-7-games": "./src/batch-7-games.ts",
+    "./batch-8-games": "./src/batch-8-games.ts",
+    "./monopoly": "./src/monopoly.ts",
+    "./monopoly-board": "./src/monopoly-board.ts",
+    "./monopoly-tokens": "./src/monopoly-tokens.ts",
+    "./mahjong": "./src/mahjong.ts",
+    "./quick-draw-guess": "./src/quick-draw-guess.ts"
   }
 }

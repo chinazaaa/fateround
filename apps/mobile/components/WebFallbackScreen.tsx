@@ -6,18 +6,23 @@ import { gameLabel } from '@/lib/mobile-registry'
 type Props = {
   gameCode: string
   gameType: GameType
+  debugReason?: string
 }
 
-export function WebFallbackScreen({ gameCode, gameType }: Props) {
+export function WebFallbackScreen({ gameCode, gameType, debugReason }: Props) {
   const url = gameWebUrl(gameCode)
+  const label = gameType ? gameLabel(gameType) : 'This game'
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Play in browser</Text>
       <Text style={styles.body}>
-        {gameLabel(gameType)} is not in the native app yet. You can still join the same room on the web —
+        {label} is not in the native app yet. You can still join the same room on the web —
         web and mobile players can play together.
       </Text>
+      {__DEV__ && debugReason ? (
+        <Text style={styles.debug}>Dev: {debugReason}</Text>
+      ) : null}
       <Pressable style={styles.button} onPress={() => void Linking.openURL(url)}>
         <Text style={styles.buttonText}>Open {gameCode} on web</Text>
       </Pressable>
@@ -42,6 +47,11 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     fontSize: 16,
     lineHeight: 24,
+  },
+  debug: {
+    color: '#fbbf24',
+    fontSize: 12,
+    fontFamily: 'Menlo',
   },
   button: {
     backgroundColor: '#f43f5e',

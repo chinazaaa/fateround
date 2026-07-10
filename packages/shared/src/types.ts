@@ -93,6 +93,12 @@ export interface Game {
   mafia_doctor_enabled?: boolean | null
   mafia_detective_enabled?: boolean | null
   mafia_anonymous_votes?: boolean | null
+  quick_draw_variant?: QuickDrawVariant | null
+  quick_draw_play_mode?: QuickDrawPlayMode | null
+  quick_draw_num_teams?: number | null
+  mahjong_ruleset?: MahjongRuleset | null
+  mahjong_rule_options?: MahjongRuleOptions | null
+  question_source?: string | null
 }
 
 export interface Player {
@@ -103,6 +109,7 @@ export interface Player {
   joined_at: string
   spectator?: boolean
   is_eliminated?: boolean
+  monopoly_token?: string | null
 }
 
 export type TicTacToeMark = 'X' | 'O'
@@ -918,6 +925,220 @@ export interface MafiaMyState {
   detectiveResult: { targetName: string; alignment: MafiaTeam } | null
   mafiaTeammates: string[]
   mafiaChatMessages?: MafiaChatMessage[]
+}
+
+export type MonopolyPhase = 'roll' | 'buy' | 'jail' | 'pay_rent' | 'auction' | 'raise_funds' | 'finished'
+
+export interface MonopolyPendingDebt {
+  player_id: string
+  creditor_player_id: string | null
+  amount: number
+  reason: string
+  debt_type: 'rent' | 'tax' | 'card' | 'jail' | 'other'
+  space_index?: number | null
+}
+
+export interface MonopolyAuctionState {
+  space_index: number
+  high_bid: number
+  high_bidder_id: string | null
+  current_bidder_id: string
+  passed: string[]
+  eligible: string[]
+  initiator_id: string
+}
+
+export interface MonopolyLastCardEvent {
+  seq: number
+  kind: 'chance' | 'community'
+  drawn_by_player_id: string
+  card_message: string
+  effect: string
+  amount?: number
+  other_player_count?: number
+}
+
+export interface MonopolyBoard {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  phase: MonopolyPhase
+  last_dice: { d1: number; d2: number; total: number; doubles: boolean } | null
+  consecutive_doubles: number
+  property_owners: Record<string, string>
+  property_buildings: Record<string, number>
+  mortgaged_properties: Record<string, boolean>
+  houses_in_bank: number
+  hotels_in_bank: number
+  chance_deck: number[]
+  community_deck: number[]
+  chance_discard: number[]
+  community_discard: number[]
+  auction_state: MonopolyAuctionState | null
+  pending_trade: unknown | null
+  pending_debt: MonopolyPendingDebt | null
+  pending_space: number | null
+  status_message: string | null
+  last_card_event: MonopolyLastCardEvent | null
+  last_rent_event: unknown | null
+  last_cash_event: unknown | null
+  last_trade_event: unknown | null
+  turn_deadline_at: string | null
+  winner_player_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MonopolyPlayerState {
+  id: string
+  game_id: string
+  player_id: string
+  position: number
+  cash: number
+  in_jail: boolean
+  jail_turns: number
+  get_out_of_jail_free: number
+  bankrupt: boolean
+  passed_go_once: boolean
+  player_order: number
+  created_at: string
+}
+
+export type MahjongSeat = 'east' | 'south' | 'west' | 'north'
+export type MahjongPhase = 'draw' | 'discard' | 'claim' | 'finished'
+export type MahjongMeldType = 'chow' | 'pung' | 'kong'
+export type MahjongClaimType = 'mahjong' | MahjongMeldType
+export type MahjongRuleset = 'fate_round' | 'hong_kong' | 'riichi' | 'mcr'
+
+export interface MahjongRuleOptions {
+  redFives?: boolean
+  [key: string]: unknown
+}
+
+export interface MahjongDiscard {
+  tile: string
+  player_id: string
+  discard_index: number
+}
+
+export interface MahjongLastDiscard {
+  tile: string
+  player_id: string
+  discard_index: number
+}
+
+export interface MahjongMeld {
+  type: MahjongMeldType
+  tiles: string[]
+  claimed_tile?: string | null
+  from_player_id?: string | null
+  concealed?: boolean
+  added?: boolean
+}
+
+export interface MahjongSession {
+  id: string
+  game_id: string
+  ruleset: MahjongRuleset
+  turn_order: string[]
+  dealer_index: number
+  current_turn_index: number
+  phase: MahjongPhase
+  wall: string[]
+  discard_pile: MahjongDiscard[]
+  last_discard: MahjongLastDiscard | null
+  claim_passes: string[]
+  status_message: string | null
+  winner_player_id: string | null
+  winning_tile: string | null
+  win_type: 'self_draw' | 'discard' | null
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MahjongPlayerState {
+  id: string
+  game_id: string
+  player_id: string
+  seat: MahjongSeat
+  hand: string[]
+  hand_count?: number
+  last_drawn_tile?: string | null
+  riichi_declared?: boolean
+  melds: MahjongMeld[]
+  discarded: string[]
+  player_order: number
+  created_at: string
+}
+
+export type QuickDrawVariant = 'lie' | 'guess'
+export type QuickDrawPlayMode = 'team' | 'individual'
+export type QuickDrawGuessPhase = 'turn' | 'break' | 'finished'
+
+export interface QuickDrawDrawingStrokeData {
+  width: number
+  height: number
+  strokes: unknown[]
+}
+
+export interface QuickDrawGuessSession {
+  id: string
+  game_id: string
+  mode: QuickDrawPlayMode
+  num_teams: number
+  total_rounds: number
+  turn_seconds: number
+  roster: string[]
+  phase: QuickDrawGuessPhase
+  turn_index: number
+  current_round: number
+  active_team: number
+  drawer_player_id: string | null
+  current_word: string | null
+  current_stroke_data: QuickDrawDrawingStrokeData
+  used_words: string[]
+  turn_deadline_at: string | null
+  break_deadline_at: string | null
+  status: 'active' | 'finished'
+  status_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface QuickDrawGuessPlayer {
+  id: string
+  game_id: string
+  player_id: string
+  team: number
+  score: number
+  created_at: string
+}
+
+export interface QuickDrawGuessWord {
+  id: string
+  game_id: string
+  turn_index: number
+  round: number
+  team: number
+  drawer_player_id: string | null
+  word: string
+  status: 'guessed' | 'skipped'
+  guesser_player_id: string | null
+  created_at: string
+}
+
+export interface QuickDrawGuessGuess {
+  id: string
+  game_id: string
+  turn_index: number
+  player_id: string
+  team: number
+  text: string
+  correct: boolean
+  points: number
+  created_at: string
 }
 
 export type MobileConfig = {

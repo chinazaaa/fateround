@@ -21,6 +21,7 @@ export async function joinGame(input: {
   playerName: string
   resumeToken?: string | null
   joinAsViewer?: boolean
+  monopolyToken?: string | null
 }): Promise<JoinPlayerResponse> {
   const res = await fetch(apiUrl('/api/players'), {
     method: 'POST',
@@ -31,6 +32,7 @@ export async function joinGame(input: {
       gender: 'both',
       resumeToken: input.resumeToken ?? undefined,
       joinAsViewer: input.joinAsViewer,
+      monopolyToken: input.monopolyToken ?? undefined,
     }),
   })
   const data = (await res.json()) as JoinPlayerResponse & { error?: string }

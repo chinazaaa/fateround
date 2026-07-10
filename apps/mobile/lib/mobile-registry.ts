@@ -27,6 +27,7 @@ export const GAME_LABELS: Partial<Record<GameType, string>> = {
   i_call_on: 'I Call On',
   mafia: 'Mafia',
   codewords: 'Codewords',
+  mahjong: 'Mahjong',
 }
 
 export { MOBILE_SUPPORTED_GAMES }

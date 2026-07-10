@@ -32,6 +32,8 @@ const BATCH_6_GAMES: GameType[] = ['chess', 'scrabble']
 
 const BATCH_7_GAMES: GameType[] = ['mafia', 'codewords']
 
+const BATCH_8_GAMES: GameType[] = ['monopoly', 'mahjong', 'quick_draw']
+
 /**
  * Server-driven mobile feature flags. Flip `mobileSupportedGames` when a native
  * screen is ready — no app store review required.
@@ -47,6 +49,7 @@ export async function GET() {
       ...BATCH_5_GAMES,
       ...BATCH_6_GAMES,
       ...BATCH_7_GAMES,
+      ...BATCH_8_GAMES,
     ],
     maintenanceMessage: null,
     forceWebFallbackFor: [] as GameType[],

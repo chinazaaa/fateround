@@ -1,27 +1,18 @@
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
-import { GameRouter, hasMobilePlayerView } from '@/components/games/GameRouter'
+import { GameRouter, resolveMobilePlayerView } from '@/components/games/GameRouter'
 import { WebFallbackScreen } from '@/components/WebFallbackScreen'
-import { fetchMobileConfig } from '@/lib/api'
-import type { MobileConfig } from '@fateround/shared'
 import { getSupabase, GAME_SELECT } from '@/lib/supabase'
-import type { Game } from '@fateround/shared'
+import type { Game, GameType } from '@fateround/shared'
 import { normalizeGameCode } from '@fateround/shared'
 
 export default function GameScreen() {
   const { code } = useLocalSearchParams<{ code: string }>()
   const gameCode = typeof code === 'string' ? normalizeGameCode(code) : ''
-  const [mobileConfig, setMobileConfig] = useState<MobileConfig | null>(null)
   const [game, setGame] = useState<Game | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
-
-  useEffect(() => {
-    void fetchMobileConfig()
-      .then(setMobileConfig)
-      .catch(() => setMobileConfig(null))
-  }, [])
 
   useEffect(() => {
     if (!gameCode) {
@@ -38,7 +29,11 @@ export default function GameScreen() {
         setNotFound(true)
         setGame(null)
       } else {
-        setGame(res.data as Game)
+        const row = res.data as Game
+        if (__DEV__ && !row.game_type) {
+          console.warn('[GameScreen] loaded game without game_type', gameCode, row)
+        }
+        setGame(row)
         setNotFound(false)
       }
       setLoading(false)
@@ -85,12 +80,19 @@ export default function GameScreen() {
     )
   }
 
-  const forceWebFallback = mobileConfig?.forceWebFallbackFor.includes(game.game_type) ?? false
-  if (forceWebFallback || !hasMobilePlayerView(game.game_type)) {
-    return <WebFallbackScreen gameCode={gameCode} gameType={game.game_type} />
+  const gameType = game.game_type as GameType
+  const NativeView = resolveMobilePlayerView(gameType)
+  if (!NativeView) {
+    return (
+      <WebFallbackScreen
+        gameCode={gameCode}
+        gameType={gameType}
+        debugReason={`no native view for ${JSON.stringify(gameType)}`}
+      />
+    )
   }
 
-  return <GameRouter gameCode={gameCode} gameType={game.game_type} />
+  return <GameRouter gameCode={gameCode} gameType={gameType} />
 }
 
 const styles = StyleSheet.create({

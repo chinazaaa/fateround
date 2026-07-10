@@ -4,6 +4,7 @@ import { BATCH_4_GAMES } from '@fateround/shared/batch-4-games'
 import { BATCH_5_GAMES } from '@fateround/shared/batch-5-games'
 import { BATCH_6_GAMES } from '@fateround/shared/batch-6-games'
 import { BATCH_7_GAMES } from '@fateround/shared/batch-7-games'
+import { BATCH_8_GAMES } from '@fateround/shared/batch-8-games'
 import { BATCH_2_POLL_GAMES } from '@fateround/shared/poll-games'
 import { AyoPlayerView } from '@/components/games/AyoPlayerView'
 import { BingoPlayerView } from '@/components/games/BingoPlayerView'
@@ -15,8 +16,11 @@ import { DescribeItPlayerView } from '@/components/games/DescribeItPlayerView'
 import { ICallOnPlayerView } from '@/components/games/ICallOnPlayerView'
 import { LudoPlayerView } from '@/components/games/LudoPlayerView'
 import { MafiaPlayerView } from '@/components/games/MafiaPlayerView'
+import { MahjongPlayerView } from '@/components/games/MahjongPlayerView'
+import { MonopolyPlayerView } from '@/components/games/MonopolyPlayerView'
 import { MatchingPairsPlayerView } from '@/components/games/MatchingPairsPlayerView'
 import { PollPlayerView } from '@/components/games/PollPlayerView'
+import { QuickDrawPlayerView } from '@/components/games/QuickDrawPlayerView'
 import { QuiplashPlayerView } from '@/components/games/QuiplashPlayerView'
 import { ScrabblePlayerView } from '@/components/games/ScrabblePlayerView'
 import { SnakeLadderPlayerView } from '@/components/games/SnakeLadderPlayerView'
@@ -65,6 +69,12 @@ const BATCH_7_VIEWS = {
   codewords: CodewordsPlayerView,
 } as const satisfies Partial<Record<GameType, React.ComponentType<{ gameCode: string }>>>
 
+const BATCH_8_VIEWS = {
+  monopoly: MonopolyPlayerView,
+  mahjong: MahjongPlayerView,
+  quick_draw: QuickDrawPlayerView,
+} as const satisfies Partial<Record<GameType, React.ComponentType<{ gameCode: string }>>>
+
 const MOBILE_PLAYER_VIEWS: Partial<Record<GameType, React.ComponentType<{ gameCode: string }>>> = {
   ayo: AyoPlayerView,
   tic_tac_toe: TicTacToePlayerView,
@@ -77,14 +87,19 @@ const MOBILE_PLAYER_VIEWS: Partial<Record<GameType, React.ComponentType<{ gameCo
   ...BATCH_5_VIEWS,
   ...BATCH_6_VIEWS,
   ...BATCH_7_VIEWS,
+  ...BATCH_8_VIEWS,
 }
 
 export function hasMobilePlayerView(gameType: GameType): boolean {
-  return gameType in MOBILE_PLAYER_VIEWS
+  return resolveMobilePlayerView(gameType) != null
+}
+
+export function resolveMobilePlayerView(gameType: GameType) {
+  return MOBILE_PLAYER_VIEWS[gameType] ?? null
 }
 
 export function GameRouter({ gameCode, gameType }: { gameCode: string; gameType: GameType }) {
-  const View = MOBILE_PLAYER_VIEWS[gameType]
+  const View = resolveMobilePlayerView(gameType)
   if (!View) return null
   return <View gameCode={gameCode} />
 }
@@ -99,7 +114,7 @@ export const BATCH_1_GAMES: GameType[] = [
 
 export const BATCH_2_GAMES: GameType[] = BATCH_2_POLL_GAMES
 
-export { BATCH_3_GAMES, BATCH_4_GAMES, BATCH_5_GAMES, BATCH_6_GAMES, BATCH_7_GAMES }
+export { BATCH_3_GAMES, BATCH_4_GAMES, BATCH_5_GAMES, BATCH_6_GAMES, BATCH_7_GAMES, BATCH_8_GAMES }
 
 export const MOBILE_SUPPORTED_GAMES: GameType[] = [
   ...BATCH_1_GAMES,
@@ -109,4 +124,5 @@ export const MOBILE_SUPPORTED_GAMES: GameType[] = [
   ...BATCH_5_GAMES,
   ...BATCH_6_GAMES,
   ...BATCH_7_GAMES,
+  ...BATCH_8_GAMES,
 ]

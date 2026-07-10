@@ -1,5 +1,6 @@
 import { apiUrl } from '@/lib/config'
 import type { MafiaStateResponse } from '@fateround/shared/mafia'
+import type { MahjongStateResponse } from '@fateround/shared/mahjong'
 
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(apiUrl(path), {
@@ -375,4 +376,94 @@ export function postCodewordsExpireTurn(gameId: string) {
   return postJson<{ success: boolean; board?: unknown; skipped?: boolean }>('/api/codewords/expire-turn', {
     gameId,
   })
+}
+
+export function postMonopolyRoll(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/monopoly/roll', { gameId, resumeToken })
+}
+
+export function postMonopolyBuy(
+  gameId: string,
+  resumeToken: string,
+  decision: 'buy' | 'auction' | 'pass'
+) {
+  return postJson<{ success: boolean }>('/api/monopoly/buy', { gameId, resumeToken, decision })
+}
+
+export function postMonopolyRent(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/monopoly/rent', { gameId, resumeToken })
+}
+
+export function postMonopolyJail(gameId: string, resumeToken: string, method: 'pay' | 'card') {
+  return postJson<{ success: boolean }>('/api/monopoly/jail', { gameId, resumeToken, method })
+}
+
+export function postMonopolyAuction(
+  gameId: string,
+  resumeToken: string,
+  action: 'pass' | 'bid',
+  amount?: number
+) {
+  return postJson<{ success: boolean }>('/api/monopoly/auction', { gameId, resumeToken, action, amount })
+}
+
+export function postMonopolySettleDebt(gameId: string, resumeToken: string, action: 'pay') {
+  return postJson<{ success: boolean }>('/api/monopoly/settle-debt', { gameId, resumeToken, action })
+}
+
+export function postMonopolyForfeit(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/monopoly/forfeit', { gameId, resumeToken })
+}
+
+export async function getMahjongState(
+  gameId: string,
+  playerId: string,
+  resumeToken?: string | null
+): Promise<MahjongStateResponse> {
+  const params = new URLSearchParams({ gameId: gameId.toUpperCase(), playerId })
+  if (resumeToken) params.set('resumeToken', resumeToken)
+  const res = await fetch(apiUrl(`/api/mahjong/state?${params}`), { cache: 'no-store' })
+  const data = (await res.json()) as MahjongStateResponse & { error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'Request failed')
+  return data
+}
+
+export function postMahjongDiscard(gameId: string, playerId: string, resumeToken: string, tile: string) {
+  return postJson<{ success: boolean }>('/api/mahjong/discard', { gameId, playerId, resumeToken, tile })
+}
+
+export function postMahjongClaim(
+  gameId: string,
+  playerId: string,
+  resumeToken: string,
+  claimType: 'mahjong' | 'chow' | 'pung' | 'kong',
+  tiles?: string[]
+) {
+  return postJson<{ success: boolean }>('/api/mahjong/claim', {
+    gameId,
+    playerId,
+    resumeToken,
+    claimType,
+    tiles,
+  })
+}
+
+export function postMahjongPass(gameId: string, playerId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/mahjong/pass', { gameId, playerId, resumeToken })
+}
+
+export function postMahjongRiichi(gameId: string, playerId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/mahjong/riichi', { gameId, playerId, resumeToken })
+}
+
+export function postQuickDrawGuess(gameId: string, resumeToken: string, text: string) {
+  return postJson<{ success: boolean }>('/api/quick-draw/guess', { gameId, resumeToken, text })
+}
+
+export function postQuickDrawGuessSkip(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/quick-draw/guess-skip', { gameId, resumeToken })
+}
+
+export function postQuickDrawGuessTeam(gameId: string, resumeToken: string, team: number) {
+  return postJson<{ success: boolean }>('/api/quick-draw/guess-team', { gameId, resumeToken, team })
 }

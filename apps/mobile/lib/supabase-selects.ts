@@ -1,7 +1,7 @@
 export const GAME_SELECT =
-  'id,title,game_type,status,current_round_number,timer_seconds,max_players,allow_viewers,allow_late_players,ayo_variant,participant_mode,pair_vote_mode,custom_questions,ludo_variant,rounds_count,question_source,describe_it_num_teams,describe_it_mode,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,word_rush_mode,word_rush_num_teams,word_rush_prompt_mode,word_rush_difficulty,session_started_at,game_duration_seconds,chess_board_theme,chess_piece_set,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,operative_timer_seconds,codewords_player_picks,codewords_late_join,codewords_randomize_teams,mafia_doctor_enabled,mafia_detective_enabled,mafia_anonymous_votes'
+  'id,title,game_type,status,current_round_number,timer_seconds,max_players,allow_viewers,allow_late_players,ayo_variant,participant_mode,pair_vote_mode,custom_questions,ludo_variant,rounds_count,question_source,describe_it_num_teams,describe_it_mode,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,word_rush_mode,word_rush_num_teams,word_rush_prompt_mode,word_rush_difficulty,session_started_at,game_duration_seconds,chess_board_theme,chess_piece_set,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,operative_timer_seconds,codewords_player_picks,codewords_late_join,codewords_randomize_teams,mafia_doctor_enabled,mafia_detective_enabled,mafia_anonymous_votes,quick_draw_variant,quick_draw_play_mode,quick_draw_num_teams,mahjong_ruleset,mahjong_rule_options'
 
-export const PLAYER_SELECT = 'id,game_id,name,gender,joined_at,spectator,is_eliminated'
+export const PLAYER_SELECT = 'id,game_id,name,gender,joined_at,spectator,is_eliminated,monopoly_token'
 
 export const PARTICIPANT_SELECT =
   'id,game_id,name,gender,photo_url,description,display_order,in_mlt_poll,submitted_by_player_id'
@@ -120,3 +120,19 @@ export const CODEWORDS_GUESS_SELECT =
   'id,game_id,board_id,player_id,cell_index,word,cell_type,clue_word,clue_number,team,created_at'
 
 export const CODEWORDS_MESSAGE_SELECT = 'id,game_id,player_id,team,text,created_at'
+
+export const MONOPOLY_BOARD_SELECT =
+  'id,game_id,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,chance_deck,community_deck,chance_discard,community_discard,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,turn_deadline_at,winner_player_id,created_at,updated_at'
+
+export const MONOPOLY_PLAYER_STATE_SELECT =
+  'id,game_id,player_id,position,cash,in_jail,jail_turns,get_out_of_jail_free,bankrupt,passed_go_once,player_order,created_at'
+
+export const QUICK_DRAW_GUESS_SESSION_SELECT =
+  'id,game_id,mode,num_teams,total_rounds,turn_seconds,roster,phase,turn_index,current_round,active_team,drawer_player_id,current_word,current_stroke_data,used_words,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
+
+export const QUICK_DRAW_GUESS_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_at'
+
+export const QUICK_DRAW_GUESS_WORD_SELECT =
+  'id,game_id,turn_index,round,team,drawer_player_id,word,status,guesser_player_id,created_at'
+
+export const QUICK_DRAW_GUESS_GUESS_SELECT = 'id,game_id,turn_index,player_id,team,text,correct,points,created_at'
