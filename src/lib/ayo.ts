@@ -217,15 +217,55 @@ export function captureTraditionalFromLanding(
   return { pits: next, capture, houses: 1 }
 }
 
-function sowTraditionalRelay(
+export type AyoSowStep =
+  | { type: 'pickup'; pitIndex: number; seedsTaken: number; pitsAfter: number[] }
+  | {
+      type: 'drop'
+      pitIndex: number
+      countBefore: number
+      countAfter: number
+      seedsInHand: number
+      pitsAfter: number[]
+    }
+  | {
+      type: 'relay'
+      pitIndex: number
+      seedsPickedUp: number
+      pitsAfter: number[]
+    }
+  | {
+      type: 'house_win'
+      pitIndex: number
+      winnerSide: AyoSide
+      turnEnds: boolean
+      pitsAfter: number[]
+    }
+  | { type: 'end'; pitIndex: number; pitsAfter: number[] }
+
+export type AyoSowTrace = {
+  pits: number[]
+  capture: number
+  housesA: number
+  housesB: number
+  landingPit: number
+  steps: AyoSowStep[]
+}
+
+function runTraditionalSow(
   pits: number[],
   pitIndex: number,
-  config: AyoBoardConfig
-): { pits: number[]; capture: number; housesA: number; housesB: number; landingPit: number } {
+  config: AyoBoardConfig,
+  recordSteps: boolean
+): AyoSowTrace {
   const moverSide = sideOfPit(pitIndex)
   const next = [...pits]
+  const steps: AyoSowStep[] = []
   let seeds = next[pitIndex]
   next[pitIndex] = 0
+  if (recordSteps) {
+    steps.push({ type: 'pickup', pitIndex, seedsTaken: seeds, pitsAfter: [...next] })
+  }
+
   let current = pitIndex
   let capture = 0
   let housesA = 0
@@ -238,25 +278,126 @@ function sowTraditionalRelay(
     next[current] += 1
     seeds -= 1
     landingPit = current
+    const after = next[current]
 
-    if (next[current] === 4 && before === 3) {
+    if (recordSteps) {
+      steps.push({
+        type: 'drop',
+        pitIndex: current,
+        countBefore: before,
+        countAfter: after,
+        seedsInHand: seeds,
+        pitsAfter: [...next],
+      })
+    }
+
+    if (after === 4 && before === 3) {
       const { winnerSide, turnEnds } = resolveTraditionalHouseWin(current, moverSide, seeds)
       next[current] = 0
       capture += 4
       if (winnerSide === 'a') housesA += 1
       else housesB += 1
+      if (recordSteps) {
+        steps.push({
+          type: 'house_win',
+          pitIndex: current,
+          winnerSide,
+          turnEnds,
+          pitsAfter: [...next],
+        })
+      }
       if (turnEnds) break
       continue
     }
 
     if (seeds === 0) {
       if (before === 0) break
-      seeds = next[current]
+      const pickedUp = next[current]
       next[current] = 0
+      seeds = pickedUp
+      if (recordSteps) {
+        steps.push({
+          type: 'relay',
+          pitIndex: current,
+          seedsPickedUp: pickedUp,
+          pitsAfter: [...next],
+        })
+      }
     }
   }
 
-  return { pits: next, capture, housesA, housesB, landingPit }
+  if (recordSteps) {
+    steps.push({ type: 'end', pitIndex: landingPit, pitsAfter: [...next] })
+  }
+
+  return { pits: next, capture, housesA, housesB, landingPit, steps }
+}
+
+/** Step-by-step trace of a traditional sow (for board animation). */
+export function traceTraditionalSow(pits: number[], pitIndex: number, config: AyoBoardConfig): AyoSowTrace {
+  return runTraditionalSow(pits, pitIndex, config, true)
+}
+
+function traceOwareSow(pits: number[], pitIndex: number, config: AyoBoardConfig): AyoSowTrace {
+  const moverSide = sideOfPit(pitIndex)
+  const steps: AyoSowStep[] = []
+  let seeds = pits[pitIndex]
+  const next = [...pits]
+  next[pitIndex] = 0
+  steps.push({ type: 'pickup', pitIndex, seedsTaken: seeds, pitsAfter: [...next] })
+
+  let current = pitIndex
+  while (seeds > 0) {
+    current = nextPit(current)
+    if (current === pitIndex) continue
+    if (!isPitActive(current, config)) continue
+    const before = next[current]
+    next[current] += 1
+    seeds -= 1
+    steps.push({
+      type: 'drop',
+      pitIndex: current,
+      countBefore: before,
+      countAfter: next[current],
+      seedsInHand: seeds,
+      pitsAfter: [...next],
+    })
+  }
+
+  const { pits: afterCapture, capture } = captureOwareFromLanding(next, current, moverSide, config)
+  if (capture > 0) {
+    steps.push({
+      type: 'house_win',
+      pitIndex: current,
+      winnerSide: moverSide,
+      turnEnds: true,
+      pitsAfter: [...afterCapture],
+    })
+  }
+  steps.push({ type: 'end', pitIndex: current, pitsAfter: [...afterCapture] })
+
+  return {
+    pits: afterCapture,
+    capture,
+    housesA: 0,
+    housesB: 0,
+    landingPit: current,
+    steps,
+  }
+}
+
+export function traceSowFromPit(pits: number[], pitIndex: number, config: AyoBoardConfig): AyoSowTrace {
+  if (config.variant === 'traditional') return traceTraditionalSow(pits, pitIndex, config)
+  return traceOwareSow(pits, pitIndex, config)
+}
+
+function sowTraditionalRelay(
+  pits: number[],
+  pitIndex: number,
+  config: AyoBoardConfig
+): { pits: number[]; capture: number; housesA: number; housesB: number; landingPit: number } {
+  const { pits: sown, capture, housesA, housesB, landingPit } = runTraditionalSow(pits, pitIndex, config, false)
+  return { pits: sown, capture, housesA, housesB, landingPit }
 }
 
 export function sowFromPit(

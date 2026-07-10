@@ -7,7 +7,14 @@ import { AyoFinalResultsShareBlock } from '@/components/ayo/AyoFinalResultsShare
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { AyoGamePanel } from '@/components/ayo/AyoBoard'
 import { gameTypeConfig } from '@/lib/game-types'
-import { currentTurnPlayerId, isAyoResultsPhase, AYO_MIN_PLAYERS, parseAyoVariant } from '@/lib/ayo'
+import {
+  currentTurnPlayerId,
+  isAyoResultsPhase,
+  AYO_MIN_PLAYERS,
+  parseAyoVariant,
+  boardConfigFromSession,
+} from '@/lib/ayo'
+import { useAyoSowAnimation } from '@/hooks/useAyoSowAnimation'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
 import { AYO_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -46,6 +53,7 @@ type Screen =
 export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
+  const { animation: sowAnimation, playSowAnimation } = useAyoSowAnimation()
   const { confirm } = useConfirm()
   const [session, setSession] = useState<AyoSession | null>(null)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
@@ -162,13 +170,16 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
       toastError('Your player session expired — rejoin to continue')
       return
     }
+    const config = boardConfigFromSession(session, parseAyoVariant(game?.ayo_variant))
     setActing(true)
     try {
-      const res = await fetch('/api/ayo/move', {
+      const animPromise = playSowAnimation(session.pits, pitIndex, config)
+      const apiPromise = fetch('/api/ayo/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, pitIndex }),
       })
+      const [res] = await Promise.all([apiPromise, animPromise])
       const data = await res.json()
       if (!res.ok) {
         toastError(data.error ?? 'Move failed')
@@ -395,6 +406,7 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
           onMove={isMyTurn && !isViewer ? sowPit : undefined}
           onResign={!isViewer ? resign : undefined}
           acting={acting}
+          sowAnimation={sowAnimation.animating ? sowAnimation : null}
         />
       )}
       {myPlayerId && myName && (
