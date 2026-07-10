@@ -24,14 +24,7 @@ import { playVoteSubmittedSound } from '@/lib/sounds'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, Player, QuiplashAnswer, QuiplashBattle, QuiplashSession, QuiplashVote, Round } from '@/types'
 
-type PlayScreen =
-  | 'waiting'
-  | 'writing'
-  | 'writing_locked'
-  | 'writing_watch'
-  | 'voting'
-  | 'reveal'
-  | 'finished'
+type PlayScreen = 'waiting' | 'writing' | 'writing_locked' | 'writing_watch' | 'voting' | 'reveal' | 'finished'
 
 export function QuiplashActiveRound({
   gameCode,
@@ -368,7 +361,9 @@ export function QuiplashActiveRound({
           <p className="text-2xl">✅</p>
           <p className="font-semibold">Answer locked in</p>
           <p className="text-muted text-sm">&ldquo;{myAnswer?.text}&rdquo;</p>
-          <p className="text-faint text-xs">Everyone votes once when writing finishes — you can&apos;t pick your own.</p>
+          <p className="text-faint text-xs">
+            Everyone votes once when writing finishes — you can&apos;t pick your own.
+          </p>
         </div>
       )}
 
@@ -404,7 +399,9 @@ export function QuiplashActiveRound({
             })}
           </div>
           {myAnswer && (
-            <p className="text-center text-sm text-muted">Your answer isn&apos;t listed — you can&apos;t vote for your own.</p>
+            <p className="text-center text-sm text-muted">
+              Your answer isn&apos;t listed — you can&apos;t vote for your own.
+            </p>
           )}
         </div>
       )}

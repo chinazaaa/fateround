@@ -147,6 +147,15 @@ describe('round voting', () => {
     expect(
       quiplashRoundVotingHint({ canVote: true, hasVoted: false, cannotParticipate: false, answerCount: 3 })
     ).toMatch(/funniest/)
+    expect(
+      quiplashRoundVotingHint({ canVote: false, hasVoted: false, cannotParticipate: true, answerCount: 3 })
+    ).toMatch(/Watch the room vote/)
+    expect(
+      quiplashRoundVotingHint({ canVote: false, hasVoted: true, cannotParticipate: false, answerCount: 3 })
+    ).toMatch(/locked in/)
+    expect(
+      quiplashRoundVotingHint({ canVote: false, hasVoted: false, cannotParticipate: false, answerCount: 1 })
+    ).toMatch(/Waiting for results/)
   })
 })
 

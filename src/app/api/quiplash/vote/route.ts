@@ -21,16 +21,17 @@ export async function POST(req: NextRequest) {
   }
   if (game.status !== 'active') return NextResponse.json({ error: 'Game not active' }, { status: 400 })
 
-  const { data: session } = await supabase
-    .from('quiplash_sessions')
-    .select('phase')
-    .eq('game_id', code)
-    .maybeSingle()
+  const { data: session } = await supabase.from('quiplash_sessions').select('phase').eq('game_id', code).maybeSingle()
   if (!session || session.phase !== 'voting') {
     return NextResponse.json({ error: 'This round is not open for voting' }, { status: 400 })
   }
 
-  const { data: round } = await supabase.from('rounds').select('id, status').eq('id', roundId).eq('game_id', code).maybeSingle()
+  const { data: round } = await supabase
+    .from('rounds')
+    .select('id, status')
+    .eq('id', roundId)
+    .eq('game_id', code)
+    .maybeSingle()
   if (!round || round.status !== 'active') {
     return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
   }

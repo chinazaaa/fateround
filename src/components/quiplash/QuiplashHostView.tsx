@@ -323,7 +323,8 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
     )
 
   const readyPlayers = players.filter((p) => p.spectator !== true)
-  const canStart = readyPlayers.length >= QUIPLASH_MIN_PLAYERS
+  const hostMustJoinFirst = hostMode === 'player' && !hostPlayerId
+  const canStart = readyPlayers.length >= QUIPLASH_MIN_PLAYERS && !hostMustJoinFirst
 
   const manage = (
     <div className="space-y-4 sm:space-y-5 animate-stagger">
@@ -392,9 +393,11 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
           canStart={canStart}
           starting={starting}
           startDisabledHint={
-            canStart
-              ? null
-              : `Need at least ${QUIPLASH_MIN_PLAYERS} players to start (${readyPlayers.length}/${QUIPLASH_MIN_PLAYERS})`
+            hostMustJoinFirst
+              ? 'Join with your name first (Host + play mode)'
+              : canStart
+                ? null
+                : `Need at least ${QUIPLASH_MIN_PLAYERS} players to start (${readyPlayers.length}/${QUIPLASH_MIN_PLAYERS})`
           }
         />
       )}

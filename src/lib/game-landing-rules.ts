@@ -1265,7 +1265,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         '3–6 players join with their name.',
         'Step 1 — Write: everyone submits one answer (default 60 seconds). Answers stay secret.',
-        'Step 2 — Vote: all answers appear at once — tap the funniest one. You can\'t vote for your own.',
+        "Step 2 — Vote: all answers appear at once — tap the funniest one. You can't vote for your own.",
         'Step 3 — Results: see who wrote what and how many votes each answer got.',
         'Three to five rounds, then the leaderboard crowns a winner.',
       ],

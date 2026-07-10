@@ -32,7 +32,10 @@ export function QuiplashFinishedResults({
   lobbyNote?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
-  const leaderboard = useMemo(() => tallyQuiplashScores(battles, answers, players, votes), [battles, answers, players, votes])
+  const leaderboard = useMemo(
+    () => tallyQuiplashScores(battles, answers, players, votes),
+    [battles, answers, players, votes]
+  )
   const myRow = highlightPlayerId ? leaderboard.find((row) => row.id === highlightPlayerId) : undefined
   const topScore = leaderboard[0]?.score ?? 0
   const iWon = Boolean(
