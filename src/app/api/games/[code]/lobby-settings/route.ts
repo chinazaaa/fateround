@@ -333,11 +333,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: internalErrorMessage('games/code/lobby-settings', error) }, { status: 500 })
 
   if (quickDrawLobby && quick_draw_num_teams !== undefined) {
-    await getSupabaseAdmin()
+    const { error: cleanupError } = await getSupabaseAdmin()
       .from('quick_draw_guess_players')
       .delete()
       .eq('game_id', gameCode)
       .gt('team', clampQuickDrawNumTeams(quick_draw_num_teams))
+    if (cleanupError) {
+      return NextResponse.json(
+        { error: internalErrorMessage('games/code/lobby-settings', cleanupError) },
+        { status: 500 }
+      )
+    }
   }
 
   return NextResponse.json({ success: true, game: updated })
