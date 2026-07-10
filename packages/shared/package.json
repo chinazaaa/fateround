@@ -44,6 +44,10 @@
     "./monopoly-board": "./src/monopoly-board.ts",
     "./monopoly-tokens": "./src/monopoly-tokens.ts",
     "./mahjong": "./src/mahjong.ts",
-    "./quick-draw-guess": "./src/quick-draw-guess.ts"
+    "./quick-draw-guess": "./src/quick-draw-guess.ts",
+    "./batch-9-games": "./src/batch-9-games.ts",
+    "./anonymous-messages": "./src/anonymous-messages.ts",
+    "./hot-seat": "./src/hot-seat.ts",
+    "./custom-game": "./src/custom-game.ts"
   }
 }

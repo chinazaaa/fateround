@@ -5,8 +5,12 @@ import { BATCH_5_GAMES } from '@fateround/shared/batch-5-games'
 import { BATCH_6_GAMES } from '@fateround/shared/batch-6-games'
 import { BATCH_7_GAMES } from '@fateround/shared/batch-7-games'
 import { BATCH_8_GAMES } from '@fateround/shared/batch-8-games'
+import { BATCH_9_GAMES } from '@fateround/shared/batch-9-games'
 import { BATCH_2_POLL_GAMES } from '@fateround/shared/poll-games'
+import { AnonymousMessagesPlayerView } from '@/components/games/AnonymousMessagesPlayerView'
 import { AyoPlayerView } from '@/components/games/AyoPlayerView'
+import { CustomPlayerView } from '@/components/games/CustomPlayerView'
+import { HotSeatPlayerView } from '@/components/games/HotSeatPlayerView'
 import { BingoPlayerView } from '@/components/games/BingoPlayerView'
 import { CheckersPlayerView } from '@/components/games/CheckersPlayerView'
 import { ChessPlayerView } from '@/components/games/ChessPlayerView'
@@ -22,6 +26,7 @@ import { MatchingPairsPlayerView } from '@/components/games/MatchingPairsPlayerV
 import { PollPlayerView } from '@/components/games/PollPlayerView'
 import { QuickDrawPlayerView } from '@/components/games/QuickDrawPlayerView'
 import { QuiplashPlayerView } from '@/components/games/QuiplashPlayerView'
+import { SecretMessagePlayerView } from '@/components/games/SecretMessagePlayerView'
 import { ScrabblePlayerView } from '@/components/games/ScrabblePlayerView'
 import { SnakeLadderPlayerView } from '@/components/games/SnakeLadderPlayerView'
 import { SudokuPlayerView } from '@/components/games/SudokuPlayerView'
@@ -75,6 +80,13 @@ const BATCH_8_VIEWS = {
   quick_draw: QuickDrawPlayerView,
 } as const satisfies Partial<Record<GameType, React.ComponentType<{ gameCode: string }>>>
 
+const BATCH_9_VIEWS = {
+  secret_message: SecretMessagePlayerView,
+  hot_seat: HotSeatPlayerView,
+  custom: CustomPlayerView,
+  anonymous_messages: AnonymousMessagesPlayerView,
+} as const satisfies Partial<Record<GameType, React.ComponentType<{ gameCode: string }>>>
+
 const MOBILE_PLAYER_VIEWS: Partial<Record<GameType, React.ComponentType<{ gameCode: string }>>> = {
   ayo: AyoPlayerView,
   tic_tac_toe: TicTacToePlayerView,
@@ -88,6 +100,7 @@ const MOBILE_PLAYER_VIEWS: Partial<Record<GameType, React.ComponentType<{ gameCo
   ...BATCH_6_VIEWS,
   ...BATCH_7_VIEWS,
   ...BATCH_8_VIEWS,
+  ...BATCH_9_VIEWS,
 }
 
 export function hasMobilePlayerView(gameType: GameType): boolean {
@@ -114,7 +127,7 @@ export const BATCH_1_GAMES: GameType[] = [
 
 export const BATCH_2_GAMES: GameType[] = BATCH_2_POLL_GAMES
 
-export { BATCH_3_GAMES, BATCH_4_GAMES, BATCH_5_GAMES, BATCH_6_GAMES, BATCH_7_GAMES, BATCH_8_GAMES }
+export { BATCH_3_GAMES, BATCH_4_GAMES, BATCH_5_GAMES, BATCH_6_GAMES, BATCH_7_GAMES, BATCH_8_GAMES, BATCH_9_GAMES }
 
 export const MOBILE_SUPPORTED_GAMES: GameType[] = [
   ...BATCH_1_GAMES,
@@ -125,4 +138,5 @@ export const MOBILE_SUPPORTED_GAMES: GameType[] = [
   ...BATCH_6_GAMES,
   ...BATCH_7_GAMES,
   ...BATCH_8_GAMES,
+  ...BATCH_9_GAMES,
 ]

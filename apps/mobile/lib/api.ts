@@ -7,7 +7,22 @@ export type JoinPlayerResponse = {
   playerName: string
   resumeToken?: string
   playerGender?: PlayerGender
+  canChat?: boolean
   error?: string
+}
+
+export async function autoJoinGame(gameCode: string, resumeToken?: string | null): Promise<JoinPlayerResponse> {
+  const res = await fetch(apiUrl('/api/players'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      gameCode: gameCode.toUpperCase(),
+      resumeToken: resumeToken ?? undefined,
+    }),
+  })
+  const data = (await res.json()) as JoinPlayerResponse & { error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'Failed to join')
+  return data
 }
 
 export async function fetchMobileConfig(): Promise<MobileConfig> {

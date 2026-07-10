@@ -65,6 +65,9 @@ export interface Game {
   pair_vote_mode?: PairVoteMode | string | null
   ludo_variant?: string | null
   custom_questions?: unknown[] | null
+  gender_based?: boolean | null
+  custom_slots?: CustomSlotsConfig | null
+  anonymous_messages_trimmed_at?: string | null
   crazy8_action_cards?: boolean | null
   crazy8_jokers?: boolean | null
   crazy8_pick2_stacking?: boolean | null
@@ -110,6 +113,7 @@ export interface Player {
   spectator?: boolean
   is_eliminated?: boolean
   monopoly_token?: string | null
+  participant_id?: string | null
 }
 
 export type TicTacToeMark = 'X' | 'O'
@@ -1146,4 +1150,38 @@ export type MobileConfig = {
   mobileSupportedGames: GameType[]
   maintenanceMessage: string | null
   forceWebFallbackFor: GameType[]
+}
+
+export interface CustomSlot {
+  key: string
+  label: string
+  emoji: string
+  color: string
+}
+
+export interface CustomSlotsConfig {
+  slots: CustomSlot[]
+  title: string
+  gender_based?: boolean
+}
+
+export interface AnonymousMessage {
+  id: string
+  game_id: string
+  player_id: string
+  player_name?: string
+  text: string
+  created_at: string
+  reply_to_id?: string | null
+  reply_to_text?: string | null
+  message_type?: 'text' | 'gif'
+  media_url?: string | null
+}
+
+export interface AnonymousRoomBan {
+  id: string
+  game_id: string
+  player_id: string
+  banned_until: string
+  created_at: string
 }

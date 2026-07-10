@@ -467,3 +467,42 @@ export function postQuickDrawGuessSkip(gameId: string, resumeToken: string) {
 export function postQuickDrawGuessTeam(gameId: string, resumeToken: string, team: number) {
   return postJson<{ success: boolean }>('/api/quick-draw/guess-team', { gameId, resumeToken, team })
 }
+
+export function postAnonymousMessage(
+  gameId: string,
+  playerId: string,
+  text: string,
+  replyToId?: string | null
+) {
+  return postJson<{ success: boolean }>('/api/anonymous-messages', {
+    gameId,
+    playerId,
+    text,
+    messageType: 'text',
+    replyToId: replyToId ?? undefined,
+  })
+}
+
+export function postHotSeat(
+  gameId: string,
+  roundId: string,
+  resumeToken: string,
+  text: string,
+  submissionType: 'compliment' | 'roast' | 'observation'
+) {
+  return postJson<{ success: boolean }>('/api/hot-seat', {
+    gameId,
+    roundId,
+    resumeToken,
+    text,
+    submissionType,
+  })
+}
+
+export async function getHotSeatSubmissions(gameId: string, roundId: string) {
+  const params = new URLSearchParams({ gameId: gameId.toUpperCase(), roundId })
+  const res = await fetch(apiUrl(`/api/hot-seat?${params}`), { cache: 'no-store' })
+  const data = (await res.json()) as { submissions?: unknown[]; error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'Request failed')
+  return data
+}
