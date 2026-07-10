@@ -240,7 +240,23 @@ export async function POST(req: NextRequest) {
         .eq('game_id', gameId)
         .eq('resume_token', token)
         .maybeSingle()
-      if (existing) return jsonPlayerJoin(roomMemberId, existing, gameRow as Game)
+      if (existing) {
+        const reclaimType = parseGameType(gameRow.game_type)
+        if (
+          isQuickDrawGame(reclaimType) &&
+          gameRow.status === 'active' &&
+          existing.spectator !== true &&
+          existing.is_eliminated !== true
+        ) {
+          const { error: assignError } = await registerQuickDrawLateJoinPlayer(
+            getSupabaseAdmin(),
+            gameId,
+            existing.id
+          )
+          if (assignError) return NextResponse.json({ error: assignError }, { status: 500 })
+        }
+        return jsonPlayerJoin(roomMemberId, existing, gameRow as Game)
+      }
     }
   }
 
