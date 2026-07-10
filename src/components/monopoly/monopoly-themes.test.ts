@@ -13,9 +13,12 @@ describe('monopoly-themes formatting', () => {
     expect(result).toBe('Players join with their name and start on Oshodi Bus Terminal with ₦1,500,000.')
   })
 
-  it('returns correct themed space names and lines for space index 0 across editions', () => {
+  it('returns correct themed space names and lines for space index 0 and 1 across editions', () => {
     expect(themedSpaceName('GO', 0, 'naija')).toBe('Oshodi Bus Terminal')
     expect(themedSpaceLines('GO', 'go', 0, 'naija')).toEqual(['OSHODI BUS', 'TERMINAL'])
+
+    expect(themedSpaceName('Old Kent Road', 1, 'naija')).toBe('Oshodi Market')
+    expect(themedSpaceLines('Old Kent Road', 'property', 1, 'naija')).toEqual(['OSHODI', 'MARKET'])
 
     expect(themedSpaceName('GO', 0, 'pirate')).toBe('Port Royale')
     expect(themedSpaceLines('GO', 'go', 0, 'pirate')).toEqual(['Port', 'Royale'])
