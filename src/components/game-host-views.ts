@@ -25,6 +25,7 @@ import { WordHuntHostView } from '@/components/word-hunt/WordHuntHostView'
 import { MafiaHostView } from '@/components/mafia/MafiaHostView'
 import { MatchingPairsHostView } from '@/components/matching-pairs/MatchingPairsHostView'
 import { QuiplashHostView } from '@/components/quiplash/QuiplashHostView'
+import { QuickDrawHostView } from '@/components/quick-draw/QuickDrawHostView'
 import { WordRushHostView } from '@/components/word-rush/WordRushHostView'
 
 export type GameHostView = ComponentType<{ gameCode: string; hostToken: string }>
@@ -61,5 +62,6 @@ export const HOST_VIEW_REGISTRY: Partial<Record<GameType, GameHostView>> = {
   anonymous_messages: AnonymousMessagesHostView,
   mafia: MafiaHostView,
   quiplash: QuiplashHostView,
+  quick_draw: QuickDrawHostView,
   word_rush: WordRushHostView,
 }

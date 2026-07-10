@@ -51,7 +51,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   const currentPhase = session.phase
-  const phaseOrder: MafiaPhase[] = ['role_reveal', 'night', 'day_report', 'discussion', 'voting', 'elimination']
+  const phaseOrder: MafiaPhase[] = ['role_reveal', 'night', 'day_report', 'day', 'elimination']
   let targetPhase: MafiaPhase
   if (typeof nextPhase === 'string') {
     if (!phaseOrder.includes(nextPhase as MafiaPhase)) {
@@ -80,10 +80,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     durationSeconds = game.timer_seconds || 45
   } else if (targetPhase === 'day_report') {
     durationSeconds = 8
-  } else if (targetPhase === 'discussion') {
-    durationSeconds = game.timer_seconds || 120
-  } else if (targetPhase === 'voting') {
-    durationSeconds = 45
+  } else if (targetPhase === 'day') {
+    durationSeconds = game.timer_seconds ? game.timer_seconds * 2 : 120
   } else if (targetPhase === 'elimination') {
     durationSeconds = 8
   }
@@ -130,7 +128,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       updateFields.phase_deadline = null
       await markGameFinished(admin, gameId)
     }
-  } else if (currentPhase === 'voting' && targetPhase === 'elimination') {
+  } else if (currentPhase === 'day' && targetPhase === 'elimination') {
     // Resolve Voting
     const votedPlayerId = resolveMafiaDayVote(playerStates)
     updateFields.vote_result_player_id = votedPlayerId

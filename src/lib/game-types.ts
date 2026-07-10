@@ -1322,6 +1322,50 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
     },
   },
 
+  quick_draw: {
+    id: 'quick_draw',
+    label: 'Quick Draw',
+    tagline: 'Draw weird prompts — fool everyone or race to guess',
+    headerEmoji: '🎨😂',
+    card: {
+      accent: '#8b5cf6',
+      accentSoft: 'rgba(139, 92, 246, 0.15)',
+      emoji: '🎨',
+      players: '3–10 players',
+      vibe: 'Drawing chaos',
+      featured: true,
+    },
+    slots: {
+      kiss: {
+        emoji: '🏆',
+        label: 'Points',
+        color: '#f59e0b',
+        leaderboardLabel: 'Total points',
+        activeClass: 'bg-amber-500/20 text-amber-100 border-amber-400',
+        borderClass: 'border-amber-500/50 bg-amber-500/10',
+        textColor: '#fcd34d',
+      },
+      marry: {
+        emoji: '😈',
+        label: 'Fooled',
+        color: '#8b5cf6',
+        leaderboardLabel: 'Players fooled',
+        activeClass: 'bg-violet-500/20 text-violet-100 border-violet-400',
+        borderClass: 'border-violet-500/50 bg-violet-500/10',
+        textColor: '#c4b5fd',
+      },
+      kill: {
+        emoji: '🎨',
+        label: 'Drawings',
+        color: '#ec4899',
+        leaderboardLabel: 'Drawings submitted',
+        activeClass: 'bg-pink-500/20 text-pink-100 border-pink-400',
+        borderClass: 'border-pink-500/50 bg-pink-500/10',
+        textColor: '#f9a8d4',
+      },
+    },
+  },
+
   word_hunt: {
     id: 'word_hunt',
     label: 'Word Hunt',
@@ -1675,6 +1719,7 @@ export const GAME_TYPE_OPTIONS: GameType[] = [
   'mafia',
   'matching_pairs',
   'quiplash',
+  'quick_draw',
 ]
 
 // Games pinned to the top of the picker / games list, in this exact order.
@@ -1704,6 +1749,7 @@ const PINNED_GAME_TYPES: GameType[] = [
   'mafia',
   'matching_pairs',
   'quiplash',
+  'quick_draw',
 ]
 
 // Display order: pinned games first, then the remaining games in their default order.
@@ -1749,6 +1795,7 @@ export function parseGameType(raw: unknown): GameType {
   if (raw === 'mafia' || raw === 'werewolf') return 'mafia'
   if (raw === 'matching_pairs') return 'matching_pairs'
   if (raw === 'quiplash') return 'quiplash'
+  if (raw === 'quick_draw' || raw === 'quick-draw') return 'quick_draw'
   return 'smash_marry_kill'
 }
 
@@ -1757,7 +1804,7 @@ export function parseGameType(raw: unknown): GameType {
  * slug so the URL reads `text-charades` instead of the internal `describe_it`.
  */
 export function gameTypeCreateParam(gameType: GameType): string {
-  return gameType === 'describe_it' ? 'text-charades' : gameType
+  return gameType === 'describe_it' ? 'text-charades' : gameType === 'quick_draw' ? 'quick-draw' : gameType
 }
 
 export function gameTypeConfig(gameType: GameType | string | undefined): GameTypeConfig {
@@ -1831,6 +1878,8 @@ export function gameHowItWorks(
       return 'Players join with their name. Everyone gets their own board with the same set of icons — flip two cards per turn; a match keeps them face-up and scores +1000 pts. Hit 3 in a row with no miss for a +500 streak bonus. Match every pair with zero misses for a +2000 perfect-game bonus. Fastest to finish scores a placement bonus. Most points when everyone is done wins.'
     case 'quiplash':
       return 'Players join with their name. Each round shows a fill-in-the-blank prompt — everyone writes one funny answer. Answers are paired head-to-head and the group votes for the funniest. You earn one point per vote your answer gets. Most points after all rounds wins.'
+    case 'quick_draw':
+      return 'Players join with their name. Lie mode: draw a weird prompt, others write fake titles, vote on the real one. Guess mode: take turns drawing a secret word while teammates or the room race to guess. Most points wins.'
     case 'chess':
       return 'Two players join with their name. The host can play too. One player is White, the other Black — White moves first. Move pieces by the standard rules; checkmate your opponent to win. Optional chess clock — each player gets their own time bank that only ticks on their turn, and the first to run out loses.'
     case 'checkers':
@@ -2106,6 +2155,7 @@ const NAME_ONLY_PLAYER_JOIN_GAMES: Record<GameType, boolean> = {
   checkers: true,
   matching_pairs: true,
   quiplash: true,
+  quick_draw: true,
   mafia: false,
 }
 
@@ -2146,6 +2196,7 @@ const LOBBY_GAMES: Record<GameType, boolean> = {
   checkers: false,
   matching_pairs: false,
   quiplash: false,
+  quick_draw: false,
   mafia: false,
 }
 
@@ -2293,6 +2344,10 @@ export function isMatchingPairsGame(gameType: GameType | string | undefined): bo
 
 export function isQuiplashGame(gameType: GameType | string | undefined): boolean {
   return parseGameType(gameType) === 'quiplash'
+}
+
+export function isQuickDrawGame(gameType: GameType | string | undefined): boolean {
+  return parseGameType(gameType) === 'quick_draw'
 }
 
 /** Anonymous room or host-only secret message inbox — shared message storage. */

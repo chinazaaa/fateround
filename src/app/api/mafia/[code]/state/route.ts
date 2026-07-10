@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
-import type { MafiaPlayerState, MafiaSession, MafiaRole, MafiaTeam, MafiaPublicPlayer, MafiaMyState } from '@/types'
+import type {
+  MafiaPlayerState,
+  MafiaSession,
+  MafiaTeam,
+  MafiaPublicPlayer,
+  MafiaMyState,
+  MafiaPhase,
+  MafiaChatMessage,
+} from '@/types'
 import { checkMafiaWinCondition } from '@/lib/mafia'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -103,10 +111,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       mafiaTeammates = playersData?.filter((p) => mafiaIds.includes(p.id)).map((p) => p.name) ?? []
     }
 
-    // Detective result — use the session-level resolved target (persists across day cycles)
-    // rather than the player's live action target which is cleared at the start of each night
+    // Detective result — available during night so detective sees result while choosing next target
     let detectiveResult: MafiaMyState['detectiveResult'] = null
-    if (role === 'detective' && session.detect_target_player_id && session.phase !== 'night') {
+    if (role === 'detective' && session.detect_target_player_id) {
       const targetState = playerStates.find((p) => p.player_id === session.detect_target_player_id)
       const targetPlayer = playersData?.find((p) => p.id === session.detect_target_player_id)
       if (targetState && targetPlayer) {
@@ -117,16 +124,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       }
     }
 
-    // Mafia night chat — only for alive Mafia members during the night phase
+    // Mafia secret chat — persistent across all phases for alive Mafia members
     let mafiaChatMessages: MafiaMyState['mafiaChatMessages'] = undefined
-    if (role === 'mafia' && myPlayerState.is_alive && session.phase === 'night') {
+    if (role === 'mafia' && myPlayerState.is_alive) {
       const { data: messages } = await admin
         .from('mafia_chat_messages')
         .select('*')
         .eq('game_id', gameId)
         .eq('scope', 'night')
         .order('created_at', { ascending: true })
-        .limit(50)
+        .limit(100)
       if (messages) {
         mafiaChatMessages = messages.map((m) => ({
           id: m.id,
@@ -150,9 +157,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     }
   }
 
-  // Fetch day chat messages (public to all players)
-  let dayChatMessages: any[] = []
-  if (session.phase !== 'role_reveal') {
+  // Fetch day chat messages (public to all players during daytime phases)
+  let dayChatMessages: MafiaChatMessage[] = []
+  const dayPhases: MafiaPhase[] = ['day_report', 'day', 'elimination', 'game_over']
+  if (dayPhases.includes(session.phase)) {
     const { data: messages } = await admin
       .from('mafia_chat_messages')
       .select('*')
@@ -162,6 +170,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       .limit(100)
     if (messages) {
       dayChatMessages = messages.map((m) => ({
+        id: m.id,
+        game_id: m.game_id,
+        sender_player_id: m.sender_player_id,
+        sender_name: m.sender_name,
+        message: m.message,
+        created_at: m.created_at,
+      }))
+    }
+  }
+
+  // Ghost chat — only for eliminated players
+  let ghostChatMessages: MafiaChatMessage[] | undefined = undefined
+  const myStateForGhost = myPlayerState
+  if (myStateForGhost && !myStateForGhost.is_alive) {
+    const { data: ghostMessages } = await admin
+      .from('mafia_chat_messages')
+      .select('*')
+      .eq('game_id', gameId)
+      .eq('scope', 'ghost')
+      .order('created_at', { ascending: true })
+      .limit(100)
+    if (ghostMessages) {
+      ghostChatMessages = ghostMessages.map((m) => ({
         id: m.id,
         game_id: m.game_id,
         sender_player_id: m.sender_player_id,
@@ -196,8 +227,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     lastNightKillPlayerId: session.night_kill_player_id,
     lastNightMafiaHadTarget: session.mafia_target_player_id != null,
     lastVoteResultPlayerId: session.vote_result_player_id,
-    voteTallies: session.anonymous_votes && session.phase === 'voting' ? {} : voteTallies,
+    voteTallies: session.anonymous_votes && session.phase === 'day' ? {} : voteTallies,
     dayChatMessages,
+    ghostChatMessages,
 
     // Private state
     myState,
