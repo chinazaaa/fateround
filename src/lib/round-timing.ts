@@ -1,7 +1,7 @@
 import { isHotSeat } from '@/lib/game-types'
 
 /** Seconds to wait on round results before auto-starting the next round. */
-export const ROUND_RESULTS_AUTO_ADVANCE_SECONDS = 30
+export const ROUND_RESULTS_AUTO_ADVANCE_SECONDS = 4
 
 /** Seconds to wait after the final round before auto-showing the leaderboard. */
 export const FINAL_RESULTS_AUTO_REVEAL_SECONDS = 8
