@@ -1256,7 +1256,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'Each round shows a fill-in-the-blank prompt.',
         'Everyone writes one funny answer.',
-        'Answers are paired head-to-head — the group votes for the funnier one.',
+        'Two anonymous answers face off — the group picks the funnier one.',
         'You earn one point per vote your answer receives. Most points after all rounds wins.',
       ],
     },
@@ -1264,17 +1264,17 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'How it works',
       points: [
         '3–6 players join with their name.',
-        'Writing phase: everyone submits one answer (default 60 seconds).',
-        'Battle phase: two answers face off at a time — everyone else votes (default 15 seconds per battle).',
-        'With 6 players, battles are capped so every answer still gets voted on without the round dragging.',
-        'Repeat battles until the round’s matchups are done, then move to the next prompt.',
+        'Step 1 — Write: everyone submits one answer (default 60 seconds). Answers stay secret.',
+        'Step 2 — Vote: two answers appear as A vs B. Tap the funnier one. You skip any match that includes your own answer.',
+        'Step 3 — Results: vote counts show after each match; who wrote what is revealed when the round finishes.',
+        'Bigger groups play several matches per round — you’ll see “Match 2 of 5” style progress.',
       ],
     },
     {
       title: 'Tips',
       points: [
-        'You cannot vote for your own answer.',
-        'With 6 players, vote time shortens slightly so battles keep moving.',
+        'You cannot vote on a match that includes your answer.',
+        'Authors stay anonymous until the round wraps up.',
         'Ties award no points — convince the room to pick a side!',
       ],
     },

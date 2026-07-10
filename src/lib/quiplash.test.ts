@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   battleVoteOptions,
+  battlesForRound,
   canPlayerVoteInBattle,
   countVotesForBattle,
   effectiveQuiplashVoteTimer,
@@ -9,7 +10,9 @@ import {
   isSoloRoundBattle,
   maxBattlesPerRound,
   partitionBattles,
+  quiplashMatchupLabel,
   quiplashPairCount,
+  quiplashVotingHint,
   roundAnswersVisibleToPlayer,
   soloRoundPoints,
   tallyQuiplashScores,
@@ -302,5 +305,55 @@ describe('battleVoteOptions and roundAnswersVisibleToPlayer', () => {
   it('shows every other submitter to a player and everyone to spectators', () => {
     expect(roundAnswersVisibleToPlayer(roundAnswers, { playerId: 'p1' })).toHaveLength(2)
     expect(roundAnswersVisibleToPlayer(roundAnswers, { playerId: 'p1', spectator: true })).toHaveLength(3)
+  })
+})
+
+describe('battlesForRound and matchup copy', () => {
+  const roundId = 'round-1'
+  const battles: QuiplashBattle[] = [
+    {
+      id: 'battle-1',
+      game_id: 'GAME',
+      round_id: roundId,
+      battle_number: 2,
+      answer_a_id: 'ans-a',
+      answer_b_id: 'ans-b',
+      winner_answer_id: null,
+      points_awarded: 0,
+      status: 'active',
+      started_at: null,
+      ended_at: null,
+    },
+    {
+      id: 'battle-2',
+      game_id: 'GAME',
+      round_id: roundId,
+      battle_number: 1,
+      answer_a_id: 'ans-c',
+      answer_b_id: 'ans-d',
+      winner_answer_id: null,
+      points_awarded: 0,
+      status: 'finished',
+      started_at: null,
+      ended_at: null,
+    },
+  ]
+
+  it('sorts round battles by battle number', () => {
+    expect(battlesForRound(battles, roundId).map((b) => b.battle_number)).toEqual([1, 2])
+  })
+
+  it('labels matchups for multi-battle rounds', () => {
+    expect(quiplashMatchupLabel(battles[0]!, battles)).toBe('Match 2 of 2 — pick the funnier answer')
+    expect(quiplashMatchupLabel(battles[1]!, [battles[1]!])).toBe('Pick the funnier answer')
+  })
+
+  it('explains why someone cannot vote yet', () => {
+    expect(quiplashVotingHint({ canVote: true, hasVoted: false, isContestant: false, cannotParticipate: false })).toMatch(
+      /Tap A or B/
+    )
+    expect(quiplashVotingHint({ canVote: false, hasVoted: false, isContestant: true, cannotParticipate: false })).toMatch(
+      /One of these is yours/
+    )
   })
 })

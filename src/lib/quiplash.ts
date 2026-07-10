@@ -223,6 +223,30 @@ export function answerOptionLabel(index: number): string {
   return String.fromCharCode(65 + index)
 }
 
+export function battlesForRound(battles: QuiplashBattle[], roundId: string): QuiplashBattle[] {
+  return battles.filter((b) => b.round_id === roundId).sort((a, b) => a.battle_number - b.battle_number)
+}
+
+/** Jackbox-style progress label during the vote phase. */
+export function quiplashMatchupLabel(battle: QuiplashBattle, roundBattles: QuiplashBattle[]): string {
+  const total = roundBattles.length
+  if (total <= 1) return 'Pick the funnier answer'
+  return `Match ${battle.battle_number} of ${total} — pick the funnier answer`
+}
+
+export function quiplashVotingHint(opts: {
+  canVote: boolean
+  hasVoted: boolean
+  isContestant: boolean
+  cannotParticipate: boolean
+}): string {
+  if (opts.cannotParticipate) return 'Watch the room vote — answers stay anonymous until results.'
+  if (opts.isContestant) return 'One of these is yours — sit this match out, then vote on the next one.'
+  if (opts.hasVoted) return 'Vote locked in — waiting for everyone else…'
+  if (opts.canVote) return 'Tap A or B — you won’t see who wrote what until results.'
+  return 'Waiting for this match…'
+}
+
 /** The two answers competing in the active battle (deduped). */
 export function battleVoteOptions(battle: QuiplashBattle, answers: QuiplashAnswer[]): QuiplashAnswer[] {
   const byId = new Map(answers.map((a) => [a.id, a]))
