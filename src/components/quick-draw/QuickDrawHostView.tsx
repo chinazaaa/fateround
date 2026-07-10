@@ -63,11 +63,7 @@ export function QuickDrawHostView({ gameCode, hostToken }: { gameCode: string; h
   const [guessMode, setGuessMode] = useState<boolean | null>(null)
 
   const syncVariant = useCallback(async () => {
-    const { data } = await supabase
-      .from('games')
-      .select('quick_draw_variant')
-      .eq('id', gameCode)
-      .maybeSingle()
+    const { data } = await supabase.from('games').select('quick_draw_variant').eq('id', gameCode).maybeSingle()
     setGuessMode(isQuickDrawGuessVariant(data?.quick_draw_variant))
   }, [gameCode])
 

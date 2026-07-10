@@ -20,11 +20,7 @@ import {
   isQuickDrawGuessVariant,
   type QuickDrawVariant,
 } from '@/lib/quick-draw'
-import {
-  QUICK_DRAW_GUESS_TEAM_OPTIONS,
-  clampQuickDrawNumTeams,
-  clampQuickDrawPlayMode,
-} from '@/lib/quick-draw-guess'
+import { QUICK_DRAW_GUESS_TEAM_OPTIONS, clampQuickDrawNumTeams, clampQuickDrawPlayMode } from '@/lib/quick-draw-guess'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
@@ -233,10 +229,7 @@ export function HostQuickDrawLobbyPanel({ gameCode, hostToken, game, playerCount
     []
   )
 
-  const teamOptions = useMemo(
-    () => QUICK_DRAW_GUESS_TEAM_OPTIONS.map((n) => ({ value: n, label: String(n) })),
-    []
-  )
+  const teamOptions = useMemo(() => QUICK_DRAW_GUESS_TEAM_OPTIONS.map((n) => ({ value: n, label: String(n) })), [])
 
   const drawTimerOptions = useMemo(() => QUICK_DRAW_DRAW_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s}s` })), [])
   const titleTimerOptions = useMemo(() => QUICK_DRAW_TITLE_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s}s` })), [])

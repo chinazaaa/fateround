@@ -43,11 +43,11 @@ export function QuickDrawGuessFinishedResults({
   const topScore = leaderboard[0]?.score ?? 0
   const iWon = Boolean(
     isIndividual &&
-      myRow &&
-      leaderboard[0] != null &&
-      myRow.score === topScore &&
-      topScore > 0 &&
-      leaderboard.length > 1
+    myRow &&
+    leaderboard[0] != null &&
+    myRow.score === topScore &&
+    topScore > 0 &&
+    leaderboard.length > 1
   )
 
   return (
