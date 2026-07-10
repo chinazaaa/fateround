@@ -524,7 +524,8 @@ const NAIJA_EDITION: MonopolyThemeEdition = {
     39: 'Eko Hotels',
   },
   spaceLines: {
-    1: ['OSHODI BUS', 'TERMINAL'],
+    0: ['OSHODI BUS', 'TERMINAL'],
+    1: ['OSHODI', 'MARKET'],
     2: ['ESUSU', 'FUND'],
     3: ['SABON', 'GARI'],
     4: ['MARKET', 'LEVY'],

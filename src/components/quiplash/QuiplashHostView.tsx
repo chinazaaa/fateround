@@ -13,6 +13,7 @@ import { HostQuiplashLobbyPanel } from '@/components/host-lobby/HostQuiplashLobb
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { gameTypeConfig } from '@/lib/game-types'
 import { getQuiplashHostMode, setQuiplashHostMode, type QuiplashHostMode, QUIPLASH_MIN_PLAYERS } from '@/lib/quiplash'
+import { playerIsViewer } from '@/lib/viewers'
 import { supabase } from '@/lib/supabase'
 import {
   GAME_SELECT,
@@ -176,6 +177,10 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
 
   const startGame = async () => {
     if (starting) return
+    if (hostMode === 'player' && !hostPlayerId) {
+      toastError('Join with your name before starting (Host + play mode)')
+      return
+    }
     const count = players.filter((p) => p.spectator !== true).length
     if (count < QUIPLASH_MIN_PLAYERS) {
       toastError(`Need at least ${QUIPLASH_MIN_PLAYERS} players`)
@@ -255,45 +260,71 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
     )
   }
 
+  const hostPlayer = hostPlayerId ? (players.find((p) => p.id === hostPlayerId) ?? null) : null
+  const hostReadOnly = hostPlayer ? playerIsViewer(hostPlayer, game) : true
   const hostPlays = hostMode === 'player' && !!hostPlayerId
   const showTabs = game.status !== 'finished'
   const gameStarted = game.status === 'active'
   const primaryKind: 'play' | 'watch' = hostPlays ? 'play' : 'watch'
   const playerLink = `${appOrigin()}/game/${gameCode}`
 
+  const quiplashRound = (opts: { playerId: string; resumeToken: string | null; readOnly: boolean }) => (
+    <QuiplashActiveRound
+      gameCode={gameCode}
+      game={game}
+      players={players}
+      rounds={rounds}
+      session={session}
+      answers={answers}
+      battles={battles}
+      votes={votes}
+      myPlayerId={opts.playerId}
+      myResumeToken={opts.resumeToken}
+      playerName={opts.playerId === hostPlayerId ? hostPlayerName : ''}
+      onReload={load}
+      skipGameSync
+      readOnly={opts.readOnly}
+    />
+  )
+
   const interactivePlay =
     hostPlayerId &&
     (game.status === 'active' || game.status === 'finished' ? (
-      <QuiplashActiveRound
-        gameCode={gameCode}
-        game={game}
-        players={players}
-        rounds={rounds}
-        session={session}
-        answers={answers}
-        battles={battles}
-        votes={votes}
-        myPlayerId={hostPlayerId}
-        myResumeToken={hostResumeToken}
-        playerName={hostPlayerName}
-        onReload={load}
-        skipGameSync
-      />
+      quiplashRound({ playerId: hostPlayerId, resumeToken: hostResumeToken, readOnly: hostReadOnly })
     ) : (
       <div className="glass-card p-6 text-center text-muted text-sm">Start the game to play from this tab.</div>
     ))
 
-  const watchRound = (
-    <div className="glass-card p-6 text-center space-y-2">
-      <p className="font-bold">Watch mode</p>
-      <p className="text-muted text-sm">
-        Open {playerLink} on your phone to follow along, or switch to Play mode before starting.
-      </p>
-    </div>
-  )
+  const watchRound =
+    game.status === 'active' || game.status === 'finished' ? (
+      <div className="space-y-4">
+        {!hostPlayerId && (
+          <div className="glass-card p-5 text-center space-y-2">
+            <p className="font-bold">You&apos;re watching as host</p>
+            <p className="text-muted text-sm">
+              Switch to <strong className="text-body">Host + play</strong> in Manage and join with your name before the
+              next game to write answers and vote.
+            </p>
+          </div>
+        )}
+        {quiplashRound({
+          playerId: hostPlayerId ?? '',
+          resumeToken: hostResumeToken,
+          readOnly: true,
+        })}
+      </div>
+    ) : (
+      <div className="glass-card p-6 text-center space-y-2">
+        <p className="font-bold">Watch mode</p>
+        <p className="text-muted text-sm">
+          Open {playerLink} on your phone to follow along, or switch to Host + play in Manage and join before you start.
+        </p>
+      </div>
+    )
 
   const readyPlayers = players.filter((p) => p.spectator !== true)
-  const canStart = readyPlayers.length >= QUIPLASH_MIN_PLAYERS
+  const hostMustJoinFirst = hostMode === 'player' && !hostPlayerId
+  const canStart = readyPlayers.length >= QUIPLASH_MIN_PLAYERS && !hostMustJoinFirst
 
   const manage = (
     <div className="space-y-4 sm:space-y-5 animate-stagger">
@@ -310,8 +341,8 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
           spectatorHint="Watch battles from the Watch tab"
           playingNote={
             <p className="text-sm text-muted">
-              Playing as <strong className="text-body">{hostPlayerName}</strong> — write answers from the Play tab once
-              you start.
+              Playing as <strong className="text-body">{hostPlayerName}</strong> — write answers and vote from the Play
+              tab once you start.
             </p>
           }
         />
@@ -362,9 +393,11 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
           canStart={canStart}
           starting={starting}
           startDisabledHint={
-            canStart
-              ? null
-              : `Need at least ${QUIPLASH_MIN_PLAYERS} players to start (${readyPlayers.length}/${QUIPLASH_MIN_PLAYERS})`
+            hostMustJoinFirst
+              ? 'Join with your name first (Host + play mode)'
+              : canStart
+                ? null
+                : `Need at least ${QUIPLASH_MIN_PLAYERS} players to start (${readyPlayers.length}/${QUIPLASH_MIN_PLAYERS})`
           }
         />
       )}
