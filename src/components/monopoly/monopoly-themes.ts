@@ -661,10 +661,14 @@ export function formatThemedText(text: string | null | undefined, themeId?: stri
     }
   }
 
+  formatted = formatted.replace(/\bUK board\b/g, `${edition.editionName} board`)
+  formatted = formatted.replace(/\bUK Edition\b/g, `${edition.editionName} Edition`)
+  formatted = formatted.replace(/\bUK edition\b/g, `${edition.editionName} edition`)
+
   if (edition.themeId === 'naija') {
     formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, (_, numStr) => {
       const num = parseFloat(numStr.replace(/,/g, ''))
-      return `${edition.currencySymbol}${(num * 1000).toLocaleString('en-GB')}`
+      return `${edition.currencySymbol}${canonicalToDisplayMoney(num, themeId).toLocaleString('en-GB')}`
     })
   } else {
     formatted = formatted.replace(/£(\d+(?:,\d+)*(?:\.\d+)?)/g, `${edition.currencySymbol}$1`)

@@ -4,6 +4,7 @@ import {
   pickRandomLetterPair,
   countWordsForPair,
   validLetterPairCount,
+  wordRushWordRejectReason,
 } from '@/lib/word-rush-dictionary'
 import {
   clampWordRushMode,
@@ -31,6 +32,12 @@ import {
   mergeWordRushUsedPairs,
   readWordRushUsedPairsFromPoolUsage,
   wordRushPriorUsedPairsForNewGame,
+  wordRushWordFormatRejectReason,
+  wordRushMinLengthForRound,
+  clampWordRushManualMinLength,
+  wordRushMinLengthHint,
+  WORD_RUSH_MIN_WORD_LENGTH,
+  WORD_RUSH_MAX_WORD_LENGTH,
   WORD_RUSH_POOL_USAGE_KEY,
 } from '@/lib/word-rush'
 
@@ -39,6 +46,8 @@ describe('word-rush-dictionary', () => {
     expect(isValidWordRushWord('monkey', 'm', 'y')).toBe(true)
     expect(isValidWordRushWord('boat', 'b', 't')).toBe(true)
     expect(isValidWordRushWord('information', 'i', 'n')).toBe(true)
+    expect(isValidWordRushWord('reconstruction', 'r', 'n')).toBe(true)
+    expect(isValidWordRushWord('irreplaceable', 'i', 'e')).toBe(true)
     expect(isValidWordRushWord('jinx', 'j', 'x')).toBe(true)
     expect(isValidWordRushWord('monkey', 'b', 't')).toBe(false)
     expect(isValidWordRushWord('notaword', 'n', 'd')).toBe(false)
@@ -47,6 +56,31 @@ describe('word-rush-dictionary', () => {
   it('uses a broad merged English dictionary', () => {
     expect(validLetterPairCount()).toBeGreaterThan(500)
     expect(countWordsForPair('i', 'n')).toBeGreaterThan(100)
+  })
+
+  it('explains why a word was rejected', () => {
+    expect(wordRushWordRejectReason('reconstruction', 'r', 'n')).toBeNull()
+    expect(wordRushWordFormatRejectReason(`${'r'.repeat(20)}n`, 'r', 'n')).toBe(
+      `Too long — maximum is ${WORD_RUSH_MAX_WORD_LENGTH} letters`
+    )
+    expect(wordRushWordRejectReason('notaword', 'n', 'd')).toBe('Not in the dictionary for this letter pair')
+    expect(wordRushWordFormatRejectReason('ab', 'a', 'b')).toBe('Too short — minimum is 3 letters')
+    expect(wordRushWordFormatRejectReason('abcd', 'a', 'd', 5)).toBe('Too short — need at least 5 letters this round')
+    expect(wordRushWordFormatRejectReason('monkey', 'b', 't')).toBe('Must start with B and end with T')
+  })
+
+  it('escalates minimum length in hard mode', () => {
+    expect(wordRushMinLengthForRound(1, 'standard')).toBe(WORD_RUSH_MIN_WORD_LENGTH)
+    expect(wordRushMinLengthForRound(2, 'standard')).toBe(WORD_RUSH_MIN_WORD_LENGTH)
+    expect(wordRushMinLengthForRound(1, 'hard')).toBe(3)
+    expect(wordRushMinLengthForRound(2, 'hard')).toBe(4)
+    expect(wordRushMinLengthForRound(3, 'hard')).toBe(5)
+    expect(wordRushMinLengthForRound(4, 'hard')).toBe(6)
+    expect(wordRushMinLengthForRound(10, 'hard')).toBe(6)
+    expect(clampWordRushManualMinLength(4, 5)).toBe(5)
+    expect(clampWordRushManualMinLength(8, 5)).toBe(8)
+    expect(wordRushMinLengthHint(5)).toBe(' · Min 5 letters')
+    expect(wordRushMinLengthHint(3)).toBe('')
   })
 
   it('normalizes input', () => {
@@ -241,6 +275,37 @@ describe('word-rush helpers', () => {
         { player_id: 'c', turn_index: 0, correct: true },
       ])
     ).toBe(true)
+  })
+
+  it('treats a removed player as out of the answer pool once roster is updated', () => {
+    const answers = [
+      { player_id: 'a', turn_index: 0, correct: true },
+      { player_id: 'b', turn_index: 0, correct: true },
+    ]
+    const beforeRemoval = {
+      roster: ['a', 'b', 'c'],
+      prompt_mode: 'automatic' as const,
+      prompt_setter_player_id: null,
+      turn_index: 0,
+    }
+    expect(allWordRushIndividualPlayersSubmitted(beforeRemoval, answers)).toBe(false)
+    expect(allWordRushIndividualPlayersSubmitted({ ...beforeRemoval, roster: ['a', 'b'] }, answers)).toBe(true)
+  })
+
+  it('has no individual answerers when the roster is empty', () => {
+    expect(
+      wordRushIndividualAnswerers({
+        roster: [],
+        prompt_mode: 'automatic',
+        prompt_setter_player_id: null,
+      })
+    ).toEqual([])
+    expect(
+      allWordRushIndividualPlayersSubmitted(
+        { roster: [], prompt_mode: 'manual', prompt_setter_player_id: 'a', turn_index: 0 },
+        []
+      )
+    ).toBe(false)
   })
 
   it('reuses letter pairs only after the room pool is exhausted', () => {

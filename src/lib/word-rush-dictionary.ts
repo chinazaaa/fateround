@@ -11,6 +11,7 @@ import {
   letterPairKey,
   normalizeWordRushWord,
   wordMatchesLetters,
+  wordRushWordFormatRejectReason,
 } from '@/lib/word-rush'
 
 export { letterPairKey, normalizeWordRushWord, wordMatchesLetters }
@@ -70,25 +71,52 @@ function loadValidPairs(): string[] {
 }
 
 export function isValidWordRushWord(word: string, startLetter: string, endLetter: string): boolean {
+  return wordRushWordRejectReason(word, startLetter, endLetter) === null
+}
+
+export function wordRushWordRejectReason(
+  word: string,
+  startLetter: string,
+  endLetter: string,
+  minLength: number = WORD_RUSH_MIN_WORD_LENGTH
+): string | null {
+  const formatReason = wordRushWordFormatRejectReason(word, startLetter, endLetter, minLength)
+  if (formatReason) return formatReason
   const normalized = normalizeWordRushWord(word)
-  if (!wordMatchesLetters(normalized, startLetter, endLetter)) return false
-  return loadWordSet().has(normalized)
+  if (!loadWordSet().has(normalized)) {
+    return 'Not in the dictionary for this letter pair'
+  }
+  return null
 }
 
 export function validLetterPairCount(): number {
   return loadValidPairs().length
 }
 
-/** Pick a random start/end letter pair that has dictionary words. */
-export function pickRandomLetterPair(usedPairs: string[] = []): { start: string; end: string } | null {
+function pairSupportsMinLength(key: string, minLength: number): boolean {
+  const words = buildPairIndex().get(key) ?? []
+  return words.some((word) => word.length >= minLength)
+}
+
+/** Pick a random start/end letter pair that has dictionary words at least minLength long. */
+export function pickRandomLetterPair(
+  usedPairs: string[] = [],
+  minLength: number = WORD_RUSH_MIN_WORD_LENGTH
+): { start: string; end: string } | null {
   const used = new Set(usedPairs.map((p) => p.toLowerCase()))
-  const candidates = loadValidPairs().filter((key) => !used.has(key))
-  const pool = candidates.length > 0 ? candidates : loadValidPairs()
+  const eligible = (keys: string[]) => keys.filter((key) => !used.has(key) && pairSupportsMinLength(key, minLength))
+  const candidates = eligible(loadValidPairs())
+  const pool =
+    candidates.length > 0 ? candidates : loadValidPairs().filter((key) => pairSupportsMinLength(key, minLength))
   if (pool.length === 0) return null
   const key = pool[Math.floor(Math.random() * pool.length)]!
   const [start, end] = key.split('-')
   if (!start || !end) return null
   return { start, end }
+}
+
+export function pairSupportsMinLengthForLetters(start: string, end: string, minLength: number): boolean {
+  return pairSupportsMinLength(letterPairKey(start, end), minLength)
 }
 
 /** Count how many dictionary words match a letter pair (for sanity checks). */

@@ -167,7 +167,11 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
       }
       await load()
       if (path.includes('/submit')) {
-        return { correct: data.correct as boolean | undefined, points: data.points as number | undefined }
+        return {
+          correct: data.correct as boolean | undefined,
+          points: data.points as number | undefined,
+          message: data.message as string | undefined,
+        }
       }
       return {}
     } finally {
@@ -381,7 +385,12 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           onPrompt={
             isViewer
               ? undefined
-              : (startLetter, endLetter) => void sendAction('/api/word-rush/prompt', { startLetter, endLetter })
+              : (startLetter, endLetter, minWordLength) =>
+                  void sendAction('/api/word-rush/prompt', {
+                    startLetter,
+                    endLetter,
+                    ...(minWordLength !== undefined ? { minWordLength } : {}),
+                  })
           }
           acting={acting}
           readOnly={isViewer}

@@ -17,6 +17,7 @@ import { MonopolyFinalResultsShareBlock } from '@/components/monopoly/MonopolyFi
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { buildMonopolyStandings, MONOPOLY_MIN_PLAYERS, MONOPOLY_STARTING_CASH } from '@/lib/monopoly'
+import { formatThemedMoney } from '@/components/monopoly/monopoly-themes'
 import { supabase } from '@/lib/supabase'
 import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession, isFetchNetworkError, messageFromFetchActionError } from '@/lib/utils'
@@ -296,7 +297,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         <p className="text-faint text-xs leading-relaxed text-center">
           {joiningAsViewer
             ? 'This game is in progress — you will join as a viewer and watch live (read-only).'
-            : `${MONOPOLY_MIN_PLAYERS}–6 players · £${MONOPOLY_STARTING_CASH.toLocaleString('en-GB')} starting cash.`}
+            : `${MONOPOLY_MIN_PLAYERS}–6 players · ${formatThemedMoney(MONOPOLY_STARTING_CASH, game?.theme)} starting cash.`}
         </p>
       </GameJoinLobbyShell>
     )
@@ -351,8 +352,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
                 </p>
                 <h2 className="text-xl sm:text-2xl font-black">You&apos;re in, {displayName}!</h2>
                 <p className="text-muted text-sm leading-relaxed">
-                  Waiting for the host to start. You&apos;ll begin with £
-                  {MONOPOLY_STARTING_CASH.toLocaleString('en-GB')} when the game begins.
+                  Waiting for the host to start. You&apos;ll begin with{' '}
+                  {formatThemedMoney(MONOPOLY_STARTING_CASH, game?.theme)} when the game begins.
                 </p>
               </>
             )}

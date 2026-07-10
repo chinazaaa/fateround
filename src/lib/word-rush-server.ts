@@ -3,7 +3,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalFailure } from '@/lib/api-errors'
 import { markGameFinished } from '@/lib/game-finish'
-import { isValidWordRushWord, pickRandomLetterPair, validLetterPairCount } from '@/lib/word-rush-dictionary'
+import {
+  pickRandomLetterPair,
+  pairSupportsMinLengthForLetters,
+  validLetterPairCount,
+  wordRushWordRejectReason,
+} from '@/lib/word-rush-dictionary'
 import {
   WORD_RUSH_BREAK_SECONDS,
   WORD_RUSH_MIN_PLAYERS,
@@ -11,6 +16,8 @@ import {
   WORD_RUSH_ROUND_RESULTS_SECONDS,
   balanceWordRushTeams,
   allWordRushIndividualPlayersSubmitted,
+  clampWordRushDifficulty,
+  clampWordRushManualMinLength,
   clampWordRushMode,
   clampWordRushPromptMode,
   clampWordRushRounds,
@@ -22,6 +29,8 @@ import {
   promptSetterForIndividualRound,
   promptSetterForTeamRound,
   readWordRushUsedPairsFromPoolUsage,
+  wordRushMinLengthForRound,
+  wordRushMinLengthHint,
   wordRushPriorUsedPairsForNewGame,
   WORD_RUSH_POOL_USAGE_KEY,
   teamRoundIndexFromTurn,
@@ -29,12 +38,13 @@ import {
   wordRushTotalTeamTurns,
   wordRushIndividualGuessPoints,
   wordRushIndividualGuessPointsAt,
+  wordRushIndividualAnswerers,
   teamForTurnIndex,
   teamLabel,
   teamRoster,
   wordRushLobbyReady,
 } from '@/lib/word-rush'
-import type { WordRushPhase, WordRushPromptMode, WordRushSession } from '@/types'
+import type { WordRushDifficulty, WordRushPhase, WordRushPromptMode, WordRushSession } from '@/types'
 
 function deadline(secondsFromNow: number): string {
   return new Date(Date.now() + secondsFromNow * 1000).toISOString()
@@ -61,8 +71,11 @@ async function playerName(supabase: SupabaseClient, gameId: string, playerId: st
   return data?.name ?? 'Someone'
 }
 
-function nextAutoPrompt(usedPairs: string[]): { start: string; end: string; key: string } | null {
-  const pair = pickRandomLetterPair(usedPairs)
+function nextAutoPrompt(
+  usedPairs: string[],
+  minWordLength: number
+): { start: string; end: string; key: string } | null {
+  const pair = pickRandomLetterPair(usedPairs, minWordLength)
   if (!pair) return null
   return { ...pair, key: letterPairKey(pair.start, pair.end) }
 }
@@ -73,18 +86,23 @@ function buildTeamTurnStart(opts: {
   totalRounds: number
   turnSeconds: number
   promptMode: WordRushPromptMode
+  difficulty: WordRushDifficulty
   promptSetterId: string | null
   usedPairs: string[]
 }): Partial<WordRushSession> {
   const activeTeam = teamForTurnIndex(opts.turnIndex, opts.numTeams)
   const currentRound = currentTeamRoundNumber(opts.turnIndex, opts.numTeams)
-  const auto = opts.promptMode === 'automatic' ? nextAutoPrompt(opts.usedPairs) : null
+  const minWordLength = wordRushMinLengthForRound(currentRound, opts.difficulty)
+  const minHint = wordRushMinLengthHint(minWordLength)
+  const auto = opts.promptMode === 'automatic' ? nextAutoPrompt(opts.usedPairs, minWordLength) : null
   const awaiting = opts.promptMode === 'manual' && !auto
   return {
     phase: awaiting ? 'awaiting_prompt' : 'playing',
     turn_index: opts.turnIndex,
     current_round: currentRound,
     active_team: activeTeam,
+    difficulty: opts.difficulty,
+    min_word_length: minWordLength,
     prompt_setter_player_id: opts.promptSetterId,
     start_letter: auto?.start ?? null,
     end_letter: auto?.end ?? null,
@@ -92,8 +110,8 @@ function buildTeamTurnStart(opts: {
     turn_deadline_at: deadline(opts.turnSeconds),
     intermission_deadline_at: null,
     status_message: awaiting
-      ? `Round ${currentRound} — ${teamLabel(activeTeam)} enter the first letter pair`
-      : `Round ${currentRound} — ${teamLabel(activeTeam)} — Starts with ${auto!.start.toUpperCase()}, Ends with ${auto!.end.toUpperCase()}`,
+      ? `Round ${currentRound} — ${teamLabel(activeTeam)} enter the first letter pair${minHint}`
+      : `Round ${currentRound} — ${teamLabel(activeTeam)} — Starts with ${auto!.start.toUpperCase()}, Ends with ${auto!.end.toUpperCase()}${minHint}`,
     used_pairs: auto ? [...opts.usedPairs, auto.key] : opts.usedPairs,
   }
 }
@@ -103,16 +121,22 @@ function buildIndividualRoundStart(opts: {
   totalRounds: number
   turnSeconds: number
   promptMode: WordRushPromptMode
+  difficulty: WordRushDifficulty
   promptSetterId: string | null
   usedPairs: string[]
 }): Partial<WordRushSession> {
-  const auto = opts.promptMode === 'automatic' ? nextAutoPrompt(opts.usedPairs) : null
+  const currentRound = opts.roundIndex + 1
+  const minWordLength = wordRushMinLengthForRound(currentRound, opts.difficulty)
+  const minHint = wordRushMinLengthHint(minWordLength)
+  const auto = opts.promptMode === 'automatic' ? nextAutoPrompt(opts.usedPairs, minWordLength) : null
   const awaiting = opts.promptMode === 'manual' && !auto
   return {
     phase: awaiting ? 'awaiting_prompt' : 'playing',
     turn_index: opts.roundIndex,
-    current_round: opts.roundIndex + 1,
+    current_round: currentRound,
     active_team: 0,
+    difficulty: opts.difficulty,
+    min_word_length: minWordLength,
     prompt_setter_player_id: opts.promptSetterId,
     start_letter: auto?.start ?? null,
     end_letter: auto?.end ?? null,
@@ -120,8 +144,8 @@ function buildIndividualRoundStart(opts: {
     turn_deadline_at: deadline(opts.turnSeconds),
     intermission_deadline_at: null,
     status_message: awaiting
-      ? `Round ${opts.roundIndex + 1} — enter the letter pair`
-      : `Round ${opts.roundIndex + 1} — Starts with ${auto!.start.toUpperCase()}, Ends with ${auto!.end.toUpperCase()}`,
+      ? `Round ${currentRound} — enter the letter pair${minHint}`
+      : `Round ${currentRound} — Starts with ${auto!.start.toUpperCase()}, Ends with ${auto!.end.toUpperCase()}${minHint}`,
     used_pairs: auto ? [...opts.usedPairs, auto.key] : opts.usedPairs,
   }
 }
@@ -133,13 +157,16 @@ export async function initializeWordRushGame(
 ): Promise<{ error?: string; internal?: boolean }> {
   const { data: game, error: gameError } = await supabase
     .from('games')
-    .select('word_rush_mode, word_rush_prompt_mode, word_rush_num_teams, rounds_count, timer_seconds, pool_usage')
+    .select(
+      'word_rush_mode, word_rush_prompt_mode, word_rush_difficulty, word_rush_num_teams, rounds_count, timer_seconds, pool_usage'
+    )
     .eq('id', gameId)
     .maybeSingle()
   if (gameError || !game) return internalFailure('word-rush:initialize:game', gameError)
 
   const mode = clampWordRushMode(game.word_rush_mode)
   const promptMode = clampWordRushPromptMode(game.word_rush_prompt_mode)
+  const difficulty = clampWordRushDifficulty(game.word_rush_difficulty)
   const numTeams = clampWordRushTeams(game.word_rush_num_teams)
   const totalRounds = clampWordRushRounds(game.rounds_count)
   const turnSeconds = clampWordRushTurnSeconds(game.timer_seconds)
@@ -195,6 +222,7 @@ export async function initializeWordRushGame(
           totalRounds,
           turnSeconds,
           promptMode,
+          difficulty,
           promptSetterId,
           usedPairs: initialUsedPairs,
         })
@@ -204,6 +232,7 @@ export async function initializeWordRushGame(
           totalRounds,
           turnSeconds,
           promptMode,
+          difficulty,
           promptSetterId: teamPromptSetter,
           usedPairs: initialUsedPairs,
         })
@@ -233,7 +262,8 @@ export async function processWordRushPrompt(
   gameId: string,
   playerId: string,
   startLetter: string,
-  endLetter: string
+  endLetter: string,
+  requestedMinWordLength?: number
 ): Promise<{ error?: string; internal?: boolean }> {
   const { session, error, internal } = await loadSession(supabase, gameId)
   if (error) return { error, internal }
@@ -248,15 +278,25 @@ export async function processWordRushPrompt(
   }
   if (start === end) return { error: 'Start and end letters must be different' }
 
+  const floor = wordRushMinLengthForRound(session.current_round, session.difficulty)
+  const minWordLength = clampWordRushManualMinLength(requestedMinWordLength, floor)
+  if (!pairSupportsMinLengthForLetters(start, end, minWordLength)) {
+    return {
+      error: `No dictionary words of ${minWordLength}+ letters for ${start.toUpperCase()}…${end.toUpperCase()}`,
+    }
+  }
+
   const key = letterPairKey(start, end)
+  const minHint = wordRushMinLengthHint(minWordLength)
   const { data: claimed } = await supabase
     .from('word_rush_sessions')
     .update({
       phase: 'playing',
       start_letter: start,
       end_letter: end,
+      min_word_length: minWordLength,
       used_pairs: [...session.used_pairs, key],
-      status_message: `Starts with ${start.toUpperCase()}, Ends with ${end.toUpperCase()}`,
+      status_message: `Starts with ${start.toUpperCase()}, Ends with ${end.toUpperCase()}${minHint}`,
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
@@ -273,7 +313,7 @@ export async function processWordRushSubmit(
   gameId: string,
   playerId: string,
   text: string
-): Promise<{ error?: string; correct?: boolean; points?: number; internal?: boolean }> {
+): Promise<{ error?: string; correct?: boolean; points?: number; message?: string; internal?: boolean }> {
   const { session, error, internal } = await loadSession(supabase, gameId)
   if (error) return { error, internal }
   if (!session || session.status === 'finished') return { error: 'Game not active' }
@@ -318,11 +358,11 @@ export async function processWordRushSubmit(
   if (!guess) return { error: 'Answer is empty' }
 
   const normalized = normalizeWordRushWord(guess)
-  const correct = isValidWordRushWord(normalized, session.start_letter, session.end_letter)
+  const minWordLength = session.min_word_length ?? wordRushMinLengthForRound(session.current_round, session.difficulty)
+  const rejectReason = wordRushWordRejectReason(guess, session.start_letter, session.end_letter, minWordLength)
+  if (rejectReason) return { correct: false, message: rejectReason }
 
   if (session.mode === 'individual') {
-    if (!correct) return { correct: false }
-
     const answerRow = {
       game_id: gameId,
       turn_index: session.turn_index,
@@ -364,12 +404,11 @@ export async function processWordRushSubmit(
     return { correct: true, points }
   }
 
-  if (!correct) return { correct: false }
-
   const name = await playerName(supabase, gameId, playerId)
   const nextPromptIndex = session.prompt_index + 1
-  const auto = session.prompt_mode === 'automatic' ? nextAutoPrompt(session.used_pairs) : null
+  const auto = session.prompt_mode === 'automatic' ? nextAutoPrompt(session.used_pairs, session.min_word_length) : null
   const nextPhase: WordRushPhase = session.prompt_mode === 'manual' ? 'awaiting_prompt' : 'playing'
+  const minHint = wordRushMinLengthHint(session.min_word_length)
 
   const { data: claimed } = await supabase
     .from('word_rush_sessions')
@@ -379,7 +418,7 @@ export async function processWordRushSubmit(
       start_letter: auto?.start ?? null,
       end_letter: auto?.end ?? null,
       used_pairs: auto ? [...session.used_pairs, auto.key] : session.used_pairs,
-      status_message: `${name} got it! ${auto ? `Starts with ${auto.start.toUpperCase()}, Ends with ${auto.end.toUpperCase()}` : 'Next letters…'}`,
+      status_message: `${name} got it! ${auto ? `Starts with ${auto.start.toUpperCase()}, Ends with ${auto.end.toUpperCase()}${minHint}` : 'Next letters…'}`,
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
@@ -446,6 +485,7 @@ async function endTeamTurn(
     totalRounds: session.total_rounds,
     turnSeconds: session.turn_seconds,
     promptMode: session.prompt_mode,
+    difficulty: session.difficulty,
     promptSetterId: promptSetter,
     usedPairs: session.used_pairs,
   })
@@ -509,6 +549,7 @@ async function endIndividualRound(
         totalRounds: session.total_rounds,
         turnSeconds: session.turn_seconds,
         promptMode: session.prompt_mode,
+        difficulty: session.difficulty,
         promptSetterId: nextSetter,
         usedPairs: session.used_pairs,
       })
@@ -644,12 +685,13 @@ export async function processWordRushExpireTurn(
 }
 
 function individualPlayingStatusMessage(
-  session: Pick<WordRushSession, 'current_round' | 'start_letter' | 'end_letter'>
+  session: Pick<WordRushSession, 'current_round' | 'start_letter' | 'end_letter' | 'min_word_length'>
 ): string {
+  const minHint = wordRushMinLengthHint(session.min_word_length)
   if (session.start_letter && session.end_letter) {
-    return `Round ${session.current_round} — Starts with ${session.start_letter.toUpperCase()}, Ends with ${session.end_letter.toUpperCase()}`
+    return `Round ${session.current_round} — Starts with ${session.start_letter.toUpperCase()}, Ends with ${session.end_letter.toUpperCase()}${minHint}`
   }
-  return `Round ${session.current_round} — enter the letter pair`
+  return `Round ${session.current_round} — enter the letter pair${minHint}`
 }
 
 export async function processWordRushAdvance(
@@ -674,7 +716,7 @@ export async function processWordRushAdvance(
     session.mode === 'individual'
       ? individualPlayingStatusMessage(session)
       : nextPhase === 'playing' && session.start_letter && session.end_letter
-        ? `Round ${session.current_round} — ${teamLabel(session.active_team)} — Starts with ${session.start_letter.toUpperCase()}, Ends with ${session.end_letter.toUpperCase()}`
+        ? `Round ${session.current_round} — ${teamLabel(session.active_team)} — Starts with ${session.start_letter.toUpperCase()}, Ends with ${session.end_letter.toUpperCase()}${wordRushMinLengthHint(session.min_word_length)}`
         : session.status_message
 
   const { error: updateError } = await supabase
@@ -689,6 +731,88 @@ export async function processWordRushAdvance(
     .eq('phase', 'intermission')
   if (updateError) return internalFailure('word-rush:advance', updateError)
   return {}
+}
+
+export async function syncWordRushAfterPlayerRemoved(
+  supabase: SupabaseClient,
+  gameId: string,
+  removedPlayerId: string
+): Promise<{
+  error?: string
+  internal?: boolean
+  rollback?: { roster: string[]; prompt_setter_player_id: string | null }
+}> {
+  const { data: game } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
+  if (!game || game.status !== 'active') return {}
+
+  const { session, error, internal } = await loadSession(supabase, gameId)
+  if (error) return { error, internal }
+  if (!session || session.status === 'finished') return {}
+
+  const newRoster = session.roster.filter((id) => id !== removedPlayerId)
+  if (newRoster.length === session.roster.length) return {}
+
+  const rollback = { roster: session.roster, prompt_setter_player_id: session.prompt_setter_player_id }
+  const sessionPatch: Partial<WordRushSession> = { roster: newRoster }
+
+  // Only pick a new letter-setter before letters are live — during playing keep the
+  // removed setter id so mirror scoring and answerer eligibility stay consistent.
+  if (session.prompt_setter_player_id === removedPlayerId && session.phase === 'awaiting_prompt') {
+    if (session.mode === 'individual' && session.prompt_mode === 'manual') {
+      sessionPatch.prompt_setter_player_id = promptSetterForIndividualRound(newRoster, session.turn_index)
+    } else if (session.mode === 'team' && session.prompt_mode === 'manual') {
+      const teamRows = await loadTeamRows(supabase, gameId)
+      const members = (teamRoster(teamRows).get(session.active_team) ?? []).filter((id) => id !== removedPlayerId)
+      const roundIndex = teamRoundIndexFromTurn(session.turn_index, session.num_teams)
+      sessionPatch.prompt_setter_player_id = promptSetterForTeamRound(members, roundIndex)
+    } else {
+      sessionPatch.prompt_setter_player_id = null
+    }
+  }
+
+  const { error: updateError } = await supabase
+    .from('word_rush_sessions')
+    .update({ ...sessionPatch, updated_at: new Date().toISOString() })
+    .eq('game_id', gameId)
+  if (updateError) return internalFailure('word-rush:remove-player', updateError)
+
+  const updatedSession = { ...session, ...sessionPatch }
+
+  if (
+    updatedSession.mode === 'individual' &&
+    (updatedSession.phase === 'playing' || updatedSession.phase === 'awaiting_prompt')
+  ) {
+    const eligible = wordRushIndividualAnswerers(updatedSession)
+    const { data: roundAnswers } = await supabase
+      .from('word_rush_answers')
+      .select('player_id, turn_index, correct')
+      .eq('game_id', gameId)
+      .eq('turn_index', session.turn_index)
+
+    const answers = (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number; correct: boolean }>
+    if (eligible.length === 0 || allWordRushIndividualPlayersSubmitted(updatedSession, answers)) {
+      const endResult = await endIndividualRound(supabase, gameId, updatedSession)
+      if (endResult.error) return { ...endResult, rollback }
+      return { rollback }
+    }
+  }
+
+  return { rollback }
+}
+
+export async function revertWordRushRosterAfterFailedPlayerDelete(
+  supabase: SupabaseClient,
+  gameId: string,
+  snapshot: { roster: string[]; prompt_setter_player_id: string | null }
+): Promise<void> {
+  await supabase
+    .from('word_rush_sessions')
+    .update({
+      roster: snapshot.roster,
+      prompt_setter_player_id: snapshot.prompt_setter_player_id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('game_id', gameId)
 }
 
 export async function assignWordRushTeam(

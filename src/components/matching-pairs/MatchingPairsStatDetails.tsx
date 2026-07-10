@@ -1,4 +1,10 @@
-import type { MatchingPairsPlayerScore } from '@/lib/memory-match'
+import {
+  tallyMatchingPairsScore,
+  type MatchingPairsPlayerScore,
+  type MatchingPairsSubmission,
+  type MatchingPairsProgress,
+  type MatchingPairsGridSize,
+} from '@/lib/memory-match'
 import { formatMinutesSeconds } from '@/lib/timer-format'
 
 function StatChip({
@@ -28,7 +34,8 @@ interface MatchingPairsStatDetailsProps {
 }
 
 export function MatchingPairsStatDetails({ score, gridSizePairs }: MatchingPairsStatDetailsProps) {
-  const timeSecs = score.timeTakenMs != null ? Math.max(0, Math.floor(score.timeTakenMs / 1000)) : null
+  const timeSecs =
+    score.timeTakenMs != null && score.timeTakenMs >= 0 ? Math.max(0, Math.floor(score.timeTakenMs / 1000)) : null
 
   return (
     <div className="space-y-2">
@@ -38,7 +45,11 @@ export function MatchingPairsStatDetails({ score, gridSizePairs }: MatchingPairs
           Pairs {score.pairsMatched}/{gridSizePairs}
         </StatChip>
         <StatChip>Wrong {score.wrongAttempts}</StatChip>
-        {timeSecs !== null && <StatChip>⏱️ {formatMinutesSeconds(timeSecs)}</StatChip>}
+        {timeSecs !== null ? (
+          <StatChip>⏱️ {formatMinutesSeconds(timeSecs)}</StatChip>
+        ) : score.timeTakenMs === -1 ? (
+          <StatChip variant="red">⏱️ Unfinished</StatChip>
+        ) : null}
         <StatChip>🔥 {score.longestStreak}</StatChip>
       </div>
 
@@ -57,6 +68,80 @@ export function MatchingPairsStatDetails({ score, gridSizePairs }: MatchingPairs
 
       {/* Total */}
       <div className="text-xs font-bold text-body pt-0.5">Total {score.finalScore} pts</div>
+    </div>
+  )
+}
+
+/**
+ * Accordion content for the final leaderboard.
+ * For single-round games: renders the cumulative stats as a single block.
+ * For multi-round games: renders a per-round breakdown so each round's
+ * individual score components are visible.
+ */
+export function MatchingPairsFinalBreakdown({
+  playerId,
+  allSubmissions,
+  allProgress,
+  gridSizePairs,
+  sessionStartedAt,
+  roundStartedAtMap,
+  totalRounds,
+  timerSeconds,
+}: {
+  playerId: string
+  allSubmissions: MatchingPairsSubmission[]
+  allProgress: MatchingPairsProgress[]
+  gridSizePairs: MatchingPairsGridSize
+  sessionStartedAt: string | null
+  roundStartedAtMap?: Map<string, string>
+  totalRounds: number
+  timerSeconds?: number | null
+}) {
+  const playerSubs = allSubmissions.filter((s) => s.player_id === playerId)
+  const playerProgs = allProgress.filter((p) => p.player_id === playerId)
+
+  // Derive the global round order from ALL game progress records so that
+  // late joiners still see the correct round number (e.g. "Round 2" not "Round 1").
+  const allRoundIds = [...new Set(allProgress.map((p) => p.round_id))].sort((a, b) => {
+    const aTime = allProgress.find((p) => p.round_id === a)?.created_at ?? ''
+    const bTime = allProgress.find((p) => p.round_id === b)?.created_at ?? ''
+    return aTime.localeCompare(bTime)
+  })
+  // Keep only the rounds this player actually participated in.
+  const playerRoundSet = new Set([...playerSubs.map((s) => s.round_id), ...playerProgs.map((p) => p.round_id)])
+  const roundIds = allRoundIds.filter((rid) => playerRoundSet.has(rid))
+
+  // Single round — use the cumulative block just like before.
+  if (totalRounds <= 1) {
+    const prog = playerProgs[0]
+    if (!prog) return null
+    const score = tallyMatchingPairsScore(playerSubs, prog, gridSizePairs, sessionStartedAt, undefined, timerSeconds)
+    return <MatchingPairsStatDetails score={score} gridSizePairs={gridSizePairs} />
+  }
+
+  // Multi-round — render each round's stats independently.
+  return (
+    <div className="space-y-4">
+      {roundIds.map((rid, i) => {
+        const roundSubs = playerSubs.filter((s) => s.round_id === rid)
+        const roundProg = playerProgs.find((p) => p.round_id === rid)
+        if (!roundProg) return null
+        const roundStart = roundStartedAtMap?.get(rid) ?? sessionStartedAt
+        const score = tallyMatchingPairsScore(
+          roundSubs,
+          roundProg,
+          gridSizePairs,
+          sessionStartedAt,
+          roundStart,
+          timerSeconds
+        )
+        return (
+          <div key={rid}>
+            <p className="text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">Round {i + 1}</p>
+            <MatchingPairsStatDetails score={score} gridSizePairs={gridSizePairs} />
+          </div>
+        )
+      })}
     </div>
   )
 }

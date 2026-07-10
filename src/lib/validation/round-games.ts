@@ -93,7 +93,7 @@ export type QuiplashAnswerInput = z.infer<typeof quiplashAnswerSchema>
 export const quiplashVoteSchema = z.object({
   gameId: gameCodeString(),
   resumeToken: z.string().min(4),
-  battleId: uuidString('battleId'),
+  roundId: uuidString('roundId'),
   chosenAnswerId: uuidString('chosenAnswerId'),
 })
 
@@ -255,6 +255,7 @@ export const wordRushPromptSchema = z.object({
   resumeToken: z.string().min(4),
   startLetter: z.string().trim().min(1).max(1),
   endLetter: z.string().trim().min(1).max(1),
+  minWordLength: z.coerce.number().int().min(3).max(20).optional(),
 })
 
 export const wordRushTeamSchema = z.object({
@@ -284,6 +285,7 @@ export const wordRushSettingsSchema = z.object({
   hostToken: hostTokenString(),
   mode: z.enum(['team', 'individual']).optional(),
   promptMode: z.enum(['automatic', 'manual']).optional(),
+  difficulty: z.enum(['standard', 'hard']).optional(),
   numTeams: z.coerce.number().int().min(2).max(4).optional(),
   turnSeconds: z.coerce.number().int().optional(),
   rounds: z.coerce.number().int().optional(),

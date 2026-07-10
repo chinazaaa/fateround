@@ -469,6 +469,12 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
 
   monopoly: [
     {
+      title: 'Note on Editions & Themes',
+      points: [
+        'The detailed rules below use classic UK theme terminology and currency (£) as reference examples, but apply identically to all customizable Monopoly variations (including Naija Edition and others) where space names and currency units adapt to the selected theme.',
+      ],
+    },
+    {
       title: 'Objective',
       points: [
         'Buy, rent, and sell properties to grow your wealth until every opponent is bankrupt.',
@@ -1048,9 +1054,16 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
     {
+      title: 'Hard mode',
+      points: [
+        'Optional difficulty where the minimum word length increases each round (round 1: 3 letters, round 2: 4, round 3: 5, round 4+: 6).',
+        'Works in both team and individual modes. Automatic prompt mode uses the round minimum; in manual mode the letter-setter can raise the minimum for that pair (but not go below the round floor).',
+      ],
+    },
+    {
       title: 'Valid words',
       points: [
-        'Answers must be real dictionary words (3–12 letters), matching both the start and end letter. Words are checked against merged English Scrabble lists (ENABLE, Collins, TWL) plus our Word Hunt word bank.',
+        'Answers must be real dictionary words (3–20 letters), matching both the start and end letter. Words are checked against merged English Scrabble lists (ENABLE, Collins, TWL) plus our Word Hunt word bank.',
         'In team mode, only the first correct answer on each letter pair counts — the pair advances immediately, so type fast.',
         'In individual mode, every player answers the same pair and multiple players can use the same word.',
       ],
@@ -1243,7 +1256,7 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       points: [
         'Each round shows a fill-in-the-blank prompt.',
         'Everyone writes one funny answer.',
-        'Answers are paired head-to-head — the group votes for the funnier one.',
+        'Everyone votes once for the funniest answer (not your own).',
         'You earn one point per vote your answer receives. Most points after all rounds wins.',
       ],
     },
@@ -1251,18 +1264,18 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'How it works',
       points: [
         '3–6 players join with their name.',
-        'Writing phase: everyone submits one answer (default 60 seconds).',
-        'Battle phase: two answers face off at a time — everyone else votes (default 15 seconds per battle).',
-        'With 6 players, battles are capped so every answer still gets voted on without the round dragging.',
-        'Repeat battles until the round’s matchups are done, then move to the next prompt.',
+        'Step 1 — Write: everyone submits one answer (default 60 seconds). Answers stay secret.',
+        "Step 2 — Vote: all answers appear at once — tap the funniest one. You can't vote for your own.",
+        'Step 3 — Results: see who wrote what and how many votes each answer got.',
+        'Three to five rounds, then the leaderboard crowns a winner.',
       ],
     },
     {
       title: 'Tips',
       points: [
-        'You cannot vote for your own answer.',
-        'With 6 players, vote time shortens slightly so battles keep moving.',
-        'Ties award no points — convince the room to pick a side!',
+        'You only get one vote per round — make it count.',
+        'Authors stay anonymous until results.',
+        'If only one person submits, they still earn points from the room.',
       ],
     },
   ],

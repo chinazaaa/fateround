@@ -40,8 +40,8 @@ export const MATCHING_PAIRS_GAME_DURATION_OPTIONS = [0, 30, 45, 60, 120, 180, 30
 
 export function formatMatchingPairsGameDuration(seconds: number): string {
   if (!seconds) return 'No limit'
+  if (seconds < 60) return `${seconds}s`
   const minutes = Math.round(seconds / 60)
-  if (minutes === 0) return `${seconds}s`
   return `${minutes} minute${minutes === 1 ? '' : 's'}`
 }
 
@@ -263,7 +263,9 @@ export function tallyMatchingPairsScore(
   submissions: MatchingPairsSubmission[],
   progress: MatchingPairsProgress,
   gridSizePairs: MatchingPairsGridSize,
-  sessionStartedAt?: string | null
+  sessionStartedAt?: string | null,
+  roundStartedAt?: string | null,
+  timerSeconds?: number | null
 ): MatchingPairsPlayerScore {
   const pairsMatched = submissions.filter((s) => s.is_match).length
   const wrongAttempts = submissions.filter((s) => !s.is_match).length
@@ -294,19 +296,26 @@ export function tallyMatchingPairsScore(
       ? placementBonus * (MATCHING_PAIRS_CLEAN_STREAK_MULTIPLIER - 1)
       : 0
 
-  // Speed-under-par bonus: if session_started_at is set, compute bonus for finishing fast relative to a par
-  // Par is 15s per pair (rough expected pace). Full pairs cleared earns a bonus.
+  // Speed bonus: awarded per round only if the player matched ALL pairs and
+  // finished before the round's time limit. Uses the round's own start time
+  // (roundStartedAt) when available, falling back to session_started_at.
   let speedParBonus = 0
-  if (progress.finished && progress.finished_at && sessionStartedAt) {
-    const memorizedMs = (gridSizePairs >= 16 ? 5 : 3) * 1000
-    const startMs = new Date(sessionStartedAt).getTime() + memorizedMs
-    const elapsedMs = new Date(progress.finished_at).getTime() - startMs
-    if (elapsedMs > 0) {
-      // Par = 15 seconds per pair
-      const parMs = gridSizePairs * 15 * 1000
-      const underParMs = Math.max(0, parMs - elapsedMs)
-      const underParMinutes = Math.floor(underParMs / 60000)
-      speedParBonus = underParMinutes * MATCHING_PAIRS_SPEED_PAR_BONUS_PER_MINUTE
+  if (progress.finished && progress.finished_at && pairsMatched === gridSizePairs) {
+    const timerAnchor = roundStartedAt ?? sessionStartedAt
+    if (timerAnchor) {
+      const memorizedMs = (gridSizePairs >= 16 ? 5 : 3) * 1000
+      const memorizeSeconds = memorizedMs / 1000
+      const startMs = new Date(timerAnchor).getTime() + memorizedMs
+      const elapsedMs = new Date(progress.finished_at).getTime() - startMs
+      const playTimerSeconds = timerSeconds != null ? Math.max(0, timerSeconds - memorizeSeconds) : null
+      if (playTimerSeconds != null && playTimerSeconds > 0 && elapsedMs >= playTimerSeconds * 1000) {
+        // Finished after the time limit — no speed bonus.
+      } else if (elapsedMs > 0) {
+        const parMs = gridSizePairs * 15 * 1000
+        const underParMs = Math.max(0, parMs - elapsedMs)
+        const underParMinutes = Math.floor(underParMs / 60000)
+        speedParBonus = underParMinutes * MATCHING_PAIRS_SPEED_PAR_BONUS_PER_MINUTE
+      }
     }
   }
 
@@ -324,12 +333,26 @@ export function tallyMatchingPairsScore(
 
   let timeTakenMs: number | null = null
   if (progress.finished_at) {
-    if (sessionStartedAt) {
+    const timerAnchor = roundStartedAt ?? sessionStartedAt
+    if (timerAnchor) {
       const memorizeSeconds = gridSizePairs >= 16 ? 5 : 3
-      const startMs = new Date(sessionStartedAt).getTime() + memorizeSeconds * 1000
+      const startMs = new Date(timerAnchor).getTime() + memorizeSeconds * 1000
       timeTakenMs = new Date(progress.finished_at).getTime() - startMs
     } else if (progress.created_at) {
       timeTakenMs = new Date(progress.finished_at).getTime() - new Date(progress.created_at).getTime()
+    }
+    // Mark as unfinished if the player didn't match all pairs before the time limit.
+    // timerSeconds includes memorization, so subtract it for a play-time comparison.
+    const memorizeSeconds = gridSizePairs >= 16 ? 5 : 3
+    const playTimerLimit = timerSeconds != null ? Math.max(0, timerSeconds - memorizeSeconds) : null
+    if (
+      pairsMatched < gridSizePairs &&
+      playTimerLimit != null &&
+      playTimerLimit > 0 &&
+      timeTakenMs !== null &&
+      timeTakenMs >= playTimerLimit * 1000
+    ) {
+      timeTakenMs = -1
     }
   }
 
@@ -348,6 +371,93 @@ export function tallyMatchingPairsScore(
     finalScore,
     timeTakenMs,
   }
+}
+
+/**
+ * A leaderboard row with a player name attached — the shape returned by
+ * buildCumulativeLeaderboard.
+ */
+export type MatchingPairsLeaderboardRow = MatchingPairsPlayerScore & { name: string }
+
+/**
+ * Build a cumulative leaderboard across ALL completed rounds.
+ * Groups submissions and progress by (playerId, roundId), scores each round
+ * independently via tallyMatchingPairsScore, then sums finalScore across rounds.
+ */
+export function buildCumulativeLeaderboard(
+  allSubmissions: MatchingPairsSubmission[],
+  allProgress: MatchingPairsProgress[],
+  playerMap: Map<string, string>,
+  gridSizePairs: MatchingPairsGridSize,
+  sessionStartedAt: string | null,
+  roundStartedAtMap?: Map<string, string>,
+  timerSeconds?: number | null
+): MatchingPairsLeaderboardRow[] {
+  const playerIds = new Set(allProgress.map((p) => p.player_id))
+  const rows: MatchingPairsLeaderboardRow[] = []
+
+  for (const playerId of playerIds) {
+    const playerSubs = allSubmissions.filter((s) => s.player_id === playerId)
+    const playerProgs = allProgress.filter((p) => p.player_id === playerId)
+
+    const roundIds = new Set(playerSubs.map((s) => s.round_id))
+    for (const prog of playerProgs) roundIds.add(prog.round_id)
+
+    let cumulativeScore = 0
+    let cumulativePairs = 0
+    let cumulativeWrong = 0
+    let placement = 999
+    let finalProg: MatchingPairsProgress | null = null
+
+    for (const rid of roundIds) {
+      const roundSubs = playerSubs.filter((s) => s.round_id === rid)
+      const roundProg = playerProgs.find((p) => p.round_id === rid)
+      if (!roundProg) continue
+      const roundSt = roundStartedAtMap?.get(rid) ?? sessionStartedAt
+      const score = tallyMatchingPairsScore(
+        roundSubs,
+        roundProg,
+        gridSizePairs,
+        sessionStartedAt,
+        roundSt,
+        timerSeconds
+      )
+      cumulativeScore += score.finalScore
+      cumulativePairs += score.pairsMatched
+      cumulativeWrong += score.wrongAttempts
+      finalProg = roundProg
+      if (roundProg.finish_rank !== null && roundProg.finish_rank < placement) {
+        placement = roundProg.finish_rank
+      }
+    }
+
+    if (!finalProg) continue
+
+    rows.push({
+      playerId,
+      pairsMatched: cumulativePairs,
+      wrongAttempts: cumulativeWrong,
+      streakBonusTotal: 0,
+      longestStreak: 0,
+      perfectGame: false,
+      placement,
+      placementBonus: 0,
+      wrongPenaltyTotal: cumulativeWrong * MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY,
+      cleanStreakMultiplierBonus: 0,
+      speedParBonus: 0,
+      finalScore: cumulativeScore,
+      timeTakenMs: null,
+      name: playerMap.get(playerId) ?? 'Unknown',
+    })
+  }
+
+  return rows.sort((a, b) => {
+    if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
+    const rankA = a.placement ?? 999
+    const rankB = b.placement ?? 999
+    if (rankA !== rankB) return rankA - rankB
+    return (a.wrongAttempts ?? 0) - (b.wrongAttempts ?? 0)
+  })
 }
 
 // ── Randomization ─────────────────────────────────────────────────────────────

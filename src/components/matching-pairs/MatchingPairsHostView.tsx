@@ -4,7 +4,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { MatchingPairsPlayerView } from '@/components/matching-pairs/MatchingPairsPlayerView'
 import { MatchingPairsGameTimerBar } from '@/components/matching-pairs/MatchingPairsGameTimerBar'
-import { MatchingPairsStatDetails } from '@/components/matching-pairs/MatchingPairsStatDetails'
+import {
+  MatchingPairsStatDetails,
+  MatchingPairsFinalBreakdown,
+} from '@/components/matching-pairs/MatchingPairsStatDetails'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
@@ -20,6 +23,8 @@ import {
   parseMatchingPairsMetadata,
   tallyMatchingPairsScore,
   formatMatchingPairsGridSize,
+  buildCumulativeLeaderboard,
+  type MatchingPairsLeaderboardRow,
   MATCHING_PAIRS_MIN_PLAYERS,
   type MatchingPairsSubmission,
   type MatchingPairsProgress,
@@ -37,6 +42,7 @@ import {
 } from '@/lib/supabase-selects'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { formatMinutesSeconds } from '@/lib/timer-format'
+import { ROUND_RESULTS_AUTO_ADVANCE_SECONDS } from '@/lib/round-timing'
 import type { Game, Player } from '@/types'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -64,6 +70,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [roundId, setRoundId] = useState<string | null>(null)
+  const [roundStartedAt, setRoundStartedAt] = useState<string | null>(null)
   const [submissions, setSubmissions] = useState<MatchingPairsSubmission[]>([])
   const [progressRows, setProgressRows] = useState<MatchingPairsProgress[]>([])
   const [gridSizePairs, setGridSizePairs] = useState<8 | 16>(8)
@@ -76,7 +83,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
-  const [nowMs, setNowMs] = useState<number>(Date.now())
+  const [nowMs, setNowMs] = useState<number>(() => Date.now())
   const [roundEnded, setRoundEnded] = useState(false)
   const [startingNextRound, setStartingNextRound] = useState(false)
   const [autoAdvanceTick, setAutoAdvanceTick] = useState<number | null>(null)
@@ -100,13 +107,14 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         .maybeSingle()
       if (roundData) {
         setRoundId(roundData.id)
+        setRoundStartedAt(roundData.started_at)
         setRoundEnded(roundData.status === 'finished')
         const meta = parseMatchingPairsMetadata(roundData.memory_match_metadata)
         if (meta) setGridSizePairs(meta.gridSizePairs)
 
         const [{ data: subData }, { data: progData }] = await Promise.all([
-          supabase.from('memory_match_submissions').select(MEMORY_MATCH_SUBMISSION_SELECT).eq('round_id', roundData.id),
-          supabase.from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT).eq('round_id', roundData.id),
+          supabase.from('memory_match_submissions').select(MEMORY_MATCH_SUBMISSION_SELECT).eq('game_id', gameCode),
+          supabase.from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT).eq('game_id', gameCode),
         ])
         setSubmissions((subData ?? []) as MatchingPairsSubmission[])
         setProgressRows((progData ?? []) as MatchingPairsProgress[])
@@ -152,34 +160,40 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   useTurnNotifications({ status: game?.status })
 
   // Auto-advance countdown for the next round.
+  // Defer the initial setState via setTimeout(0) so it runs in a callback
+  // rather than synchronously in the effect body, satisfying the lint rule.
   useEffect(() => {
     if (!roundEnded || startingNextRound) return
     const totalRounds = game?.rounds_count ?? 1
     const currentRoundNumber = game?.current_round_number ?? 1
     if (currentRoundNumber >= totalRounds) return // last round — no auto-advance
-    setAutoAdvanceTick(30)
-    const t = setInterval(() => {
-      setAutoAdvanceTick((prev) => {
-        if (prev === null || prev <= 1) {
-          clearInterval(t)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-    return () => clearInterval(t)
-  }, [roundEnded, startingNextRound, game?.rounds_count, game?.current_round_number])
 
-  // Auto-advance trigger when countdown reaches 0.
-  useEffect(() => {
-    if (autoAdvanceTick !== 0) return
-    setAutoAdvanceTick(null)
-    if (game?.status !== 'active') return
-    const totalRounds = game?.rounds_count ?? 1
-    const currentRoundNumber = game?.current_round_number ?? 1
-    if (currentRoundNumber >= totalRounds) return
-    void handleStartNextRound()
-  }, [autoAdvanceTick, handleStartNextRound, game?.status, game?.rounds_count, game?.current_round_number])
+    let count = ROUND_RESULTS_AUTO_ADVANCE_SECONDS
+
+    const init = setTimeout(() => setAutoAdvanceTick(count), 0)
+    const t = setInterval(() => {
+      count--
+      if (count <= 0) {
+        clearInterval(t)
+        setAutoAdvanceTick(0)
+        if (game?.status === 'active') void handleStartNextRound()
+      } else {
+        setAutoAdvanceTick(count)
+      }
+    }, 1000)
+
+    return () => {
+      clearTimeout(init)
+      clearInterval(t)
+    }
+  }, [
+    roundEnded,
+    startingNextRound,
+    game?.rounds_count,
+    game?.current_round_number,
+    game?.status,
+    handleStartNextRound,
+  ])
 
   useEffect(() => {
     void load()
@@ -210,7 +224,9 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
           // Optimistic local update so the host's progress bar reacts instantly.
           const updated = payload.new as import('@/lib/memory-match').MatchingPairsProgress
           setProgressRows((prev) => {
-            const idx = prev.findIndex((p) => p.player_id === updated.player_id)
+            // Use composite key (round_id, player_id) so a later round's update
+            // cannot overwrite an earlier round's row when all rounds coexist.
+            const idx = prev.findIndex((p) => p.round_id === updated.round_id && p.player_id === updated.player_id)
             if (idx >= 0) {
               // Reject stale updates — an older payload arriving after a newer one
               // (due to network timing) must not regress the displayed state.
@@ -340,7 +356,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         return
       }
       // Save the stored session BEFORE clearing it (clearPlayerSession destroys it,
-      // so the post-load fixup below needs the original to re-match by name).
+      // so the post-load fixup below needs the original to re-match by name or ID).
       const storedSession = getPlayerSession(gameCode)
       if (!sameSettings) {
         clearPlayerSession(gameCode)
@@ -350,18 +366,32 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       }
       setTab('manage')
       await load()
-      // Use a fresh roster query (instead of the stale `players` closure state
-      // that hasn't been re-rendered after load()) to check whether the host's
-      // stored player still exists in the game.
+      // Re-check the fresh roster to restore the host's session if their player row
+      // still exists (preserved by resetSpectatorsForLobby on the server). Without
+      // this, "Return to lobby" would silently drop the host's seat.
       const { data: freshPlayers } = await supabase.from('players').select('id, name').eq('game_id', gameCode)
-      if (storedSession && freshPlayers && !freshPlayers.some((p) => p.id === storedSession.playerId)) {
-        const matchingPlayer = (freshPlayers as { id: string; name: string }[]).find(
-          (p) => p.name === storedSession.playerName
-        )
-        if (matchingPlayer) {
-          setPlayerSession(gameCode, matchingPlayer.id, storedSession.playerName, 'both', storedSession.resumeToken)
-          setHostPlayerId(matchingPlayer.id)
+      if (storedSession && freshPlayers) {
+        if (freshPlayers.some((p) => p.id === storedSession.playerId)) {
+          // Same player ID survived — restore the session.
+          setPlayerSession(
+            gameCode,
+            storedSession.playerId,
+            storedSession.playerName,
+            'both',
+            storedSession.resumeToken
+          )
+          setHostPlayerId(storedSession.playerId)
           setHostPlayerName(storedSession.playerName)
+        } else {
+          // Player row was recreated — match by name.
+          const matchingPlayer = (freshPlayers as { id: string; name: string }[]).find(
+            (p) => p.name === storedSession.playerName
+          )
+          if (matchingPlayer) {
+            setPlayerSession(gameCode, matchingPlayer.id, storedSession.playerName, 'both', storedSession.resumeToken)
+            setHostPlayerId(matchingPlayer.id)
+            setHostPlayerName(storedSession.playerName)
+          }
         }
       }
     } finally {
@@ -389,14 +419,24 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     if (ok) void resetGame(false)
   }
 
-  // Compute per-player leaderboard from submissions + progress.
+  // Per-round leaderboard from the current round's submissions + progress.
   // Ranked by final score descending (primary), then finish rank as tiebreaker.
   const leaderboard = useMemo<MatchingPairsPlayerScore[]>(() => {
-    if (!progressRows.length) return []
-    return progressRows
+    if (!roundId) return []
+    const roundProgress = progressRows.filter((p) => p.round_id === roundId)
+    if (!roundProgress.length) return []
+    const roundSubmissions = submissions.filter((s) => s.round_id === roundId)
+    return roundProgress
       .map((prog) => {
-        const playerSubs = submissions.filter((s) => s.player_id === prog.player_id)
-        return tallyMatchingPairsScore(playerSubs, prog, gridSizePairs, game?.session_started_at)
+        const playerSubs = roundSubmissions.filter((s) => s.player_id === prog.player_id)
+        return tallyMatchingPairsScore(
+          playerSubs,
+          prog,
+          gridSizePairs,
+          game?.session_started_at,
+          roundStartedAt,
+          game?.timer_seconds
+        )
       })
       .sort((a, b) => {
         if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
@@ -405,7 +445,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         if (rankA !== rankB) return rankA - rankB
         return (a.wrongAttempts ?? 0) - (b.wrongAttempts ?? 0)
       })
-  }, [submissions, progressRows, gridSizePairs, game?.session_started_at])
+  }, [submissions, progressRows, roundId, gridSizePairs, game?.session_started_at])
 
   const playerMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -413,10 +453,44 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     return m
   }, [players])
 
-  const hostWonMp =
-    leaderboard.length > 1 && leaderboard[0]?.playerId === hostPlayerId && leaderboard[0]?.finalScore > 0
+  // Build a map of round_id → started_at from progress rows so the cumulative
+  // leaderboard can pass per-round start times to tallyMatchingPairsScore.
+  const roundStartedAtMap = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of progressRows) {
+      if (p.created_at && !m.has(p.round_id)) m.set(p.round_id, p.created_at)
+    }
+    return m
+  }, [progressRows])
 
-  const winnerId = leaderboard[0]?.playerId
+  // Cumulative leaderboard across all completed rounds — determines final ranking.
+  const cumulativeLeaderboard = useMemo<MatchingPairsLeaderboardRow[]>(() => {
+    if (!submissions.length && !progressRows.length) return []
+    return buildCumulativeLeaderboard(
+      submissions,
+      progressRows,
+      playerMap,
+      gridSizePairs,
+      game?.session_started_at ?? null,
+      roundStartedAtMap,
+      game?.timer_seconds
+    )
+  }, [
+    submissions,
+    progressRows,
+    playerMap,
+    gridSizePairs,
+    game?.session_started_at,
+    roundStartedAtMap,
+    game?.timer_seconds,
+  ])
+
+  const hostWonMp =
+    cumulativeLeaderboard.length > 1 &&
+    cumulativeLeaderboard[0]?.playerId === hostPlayerId &&
+    cumulativeLeaderboard[0]?.finalScore > 0
+
+  const winnerId = cumulativeLeaderboard[0]?.playerId
   const isHostWinner = !!winnerId && winnerId === hostPlayerId
   const winnerName = isHostWinner ? hostPlayerName : winnerId ? (playerMap.get(winnerId) ?? winnerId) : 'Someone'
 
@@ -446,7 +520,34 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         <p className="text-xl font-black">
           Round {currentRoundNumber}/{totalRounds} complete!
         </p>
+        {!isLastRound && autoAdvanceTick !== null && autoAdvanceTick >= 0 && (
+          <p className="text-sm text-muted">
+            Next round starts in{' '}
+            <span className={`font-black tabular-nums text-body ${autoAdvanceTick > 0 ? 'animate-pulse' : ''}`}>
+              {autoAdvanceTick}
+            </span>
+            ...
+          </p>
+        )}
       </div>
+
+      {cumulativeLeaderboard.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-wider text-muted">Cumulative standings</p>
+          {cumulativeLeaderboard.map((row, i) => (
+            <div
+              key={row.playerId}
+              className="flex items-center justify-between gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--card-strong)] px-4 py-2.5 text-sm"
+            >
+              <span>
+                <strong>#{i + 1}</strong> {row.name}
+              </span>
+              <span className="font-bold tabular-nums">{row.finalScore.toLocaleString()} pts</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <PaginatedLeaderboard
         title="Round standings"
         rows={leaderboard.map((s, i) => ({
@@ -473,9 +574,6 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
           >
             {startingNextRound ? 'Starting...' : `→ Start Round ${currentRoundNumber + 1}`}
           </button>
-          {autoAdvanceTick !== null && autoAdvanceTick > 0 && (
-            <p className="text-xs text-muted">Auto-starting in {autoAdvanceTick}s…</p>
-          )}
         </div>
       )}
     </section>
@@ -505,13 +603,14 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
 
   const watchBoard = (
     <section className="space-y-4" style={{ padding: '0 0 16px' }}>
-      <MatchingPairsGameTimerBar gameCode={gameCode} game={game} />
+      <MatchingPairsGameTimerBar gameCode={gameCode} game={game} roundStartedAt={roundStartedAt} />
       {roundIndicator}
       <p style={{ color: 'var(--text-faint)', fontSize: 13, marginBottom: 8 }}>
         Live progress — {formatMatchingPairsGridSize(gridSizePairs)}
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {progressRows
+          .filter((p) => p.round_id === roundId)
           .sort((a, b) => b.pairs_matched - a.pairs_matched)
           .map((prog) => {
             const name = playerMap.get(prog.player_id) ?? 'Unknown'
@@ -681,22 +780,33 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
             }
             stats={[
               {
-                value: (leaderboard[0]?.finalScore ?? 0).toLocaleString(),
+                value: (cumulativeLeaderboard[0]?.finalScore ?? 0).toLocaleString(),
                 label: 'Points total',
               },
             ]}
           />
           <PaginatedLeaderboard
             title="Final leaderboard"
-            rows={leaderboard.map((s, i) => ({
-              id: s.playerId,
+            rows={cumulativeLeaderboard.map((row, i) => ({
+              id: row.playerId,
               rank: i + 1,
-              name: playerMap.get(s.playerId) ?? 'Unknown',
-              score: s.finalScore,
-              correctCount: s.pairsMatched,
-              expandDetails: <MatchingPairsStatDetails score={s} gridSizePairs={gridSizePairs} />,
+              name: row.name,
+              score: row.finalScore,
+              correctCount: row.pairsMatched,
+              expandDetails: (
+                <MatchingPairsFinalBreakdown
+                  playerId={row.playerId}
+                  allSubmissions={submissions}
+                  allProgress={progressRows}
+                  gridSizePairs={gridSizePairs}
+                  sessionStartedAt={game?.session_started_at ?? null}
+                  roundStartedAtMap={roundStartedAtMap}
+                  totalRounds={totalRounds}
+                  timerSeconds={game?.timer_seconds ?? null}
+                />
+              ),
             }))}
-            totalQuestions={gridSizePairs}
+            totalQuestions={gridSizePairs * totalRounds}
             scoreLabel={(n) => `${n} pts`}
             emphasizeLeader
           />

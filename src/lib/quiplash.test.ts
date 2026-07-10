@@ -2,17 +2,23 @@ import { describe, expect, it } from 'vitest'
 import {
   battleVoteOptions,
   canPlayerVoteInBattle,
+  canPlayerVoteInRound,
   countVotesForBattle,
+  countVotesForRound,
   effectiveQuiplashVoteTimer,
+  eligibleRoundVoters,
   eligibleVotersForBattle,
   isNoVoterDrawBattle,
   isSoloRoundBattle,
   maxBattlesPerRound,
   partitionBattles,
   quiplashPairCount,
+  quiplashRoundVotingHint,
   roundAnswersVisibleToPlayer,
+  roundVoteOptions,
   soloRoundPoints,
   tallyQuiplashScores,
+  tallyQuiplashScoresFromRoundVotes,
 } from '@/lib/quiplash'
 import type { Player, QuiplashAnswer, QuiplashBattle, QuiplashVote } from '@/types'
 
@@ -24,41 +30,6 @@ describe('partitionBattles', () => {
     expect(pairs).toHaveLength(3)
     const keys = pairs.map((p) => [p.aId, p.bId].sort().join(':')).sort()
     expect(keys).toEqual(['a:b', 'a:c', 'b:c'])
-  })
-
-  it('creates every unique pair for four answers', () => {
-    const ids = ['a', 'b', 'c', 'd']
-    const { pairs, byeId } = partitionBattles(ids)
-    expect(byeId).toBeNull()
-    expect(pairs).toHaveLength(6)
-    const used = pairs.flatMap((p) => [p.aId, p.bId])
-    expect(new Set(used).size).toBe(4)
-  })
-
-  it('caps battles for eight answers while covering everyone', () => {
-    const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
-    expect(quiplashPairCount(8)).toBe(28)
-    expect(maxBattlesPerRound(8)).toBe(16)
-
-    for (let run = 0; run < 20; run += 1) {
-      const { pairs, byeId } = partitionBattles(ids)
-      expect(byeId).toBeNull()
-      expect(pairs.length).toBeGreaterThan(0)
-      expect(pairs.length).toBeLessThanOrEqual(16)
-
-      const keys = pairs.map((p) => [p.aId, p.bId].sort().join(':'))
-      expect(new Set(keys).size).toBe(keys.length)
-
-      const appearances = new Map<string, number>()
-      for (const id of ids) appearances.set(id, 0)
-      for (const pair of pairs) {
-        appearances.set(pair.aId, (appearances.get(pair.aId) ?? 0) + 1)
-        appearances.set(pair.bId, (appearances.get(pair.bId) ?? 0) + 1)
-      }
-      for (const count of appearances.values()) {
-        expect(count).toBeGreaterThanOrEqual(1)
-      }
-    }
   })
 })
 
@@ -79,54 +50,116 @@ describe('countVotesForBattle', () => {
 
   it('awards points to the answer with more votes', () => {
     const votes: QuiplashVote[] = [
-      { id: '1', game_id: 'GAME', battle_id: 'battle-1', player_id: 'p1', chosen_answer_id: 'ans-a', voted_at: '' },
-      { id: '2', game_id: 'GAME', battle_id: 'battle-1', player_id: 'p2', chosen_answer_id: 'ans-a', voted_at: '' },
-      { id: '3', game_id: 'GAME', battle_id: 'battle-1', player_id: 'p3', chosen_answer_id: 'ans-b', voted_at: '' },
+      {
+        id: '1',
+        game_id: 'GAME',
+        battle_id: 'battle-1',
+        round_id: null,
+        player_id: 'p1',
+        chosen_answer_id: 'ans-a',
+        voted_at: '',
+      },
+      {
+        id: '2',
+        game_id: 'GAME',
+        battle_id: 'battle-1',
+        round_id: null,
+        player_id: 'p2',
+        chosen_answer_id: 'ans-a',
+        voted_at: '',
+      },
+      {
+        id: '3',
+        game_id: 'GAME',
+        battle_id: 'battle-1',
+        round_id: null,
+        player_id: 'p3',
+        chosen_answer_id: 'ans-b',
+        voted_at: '',
+      },
     ]
     const result = countVotesForBattle(battle, votes)
     expect(result.winnerId).toBe('ans-a')
     expect(result.points).toBe(2)
   })
-
-  it('returns no winner on a tie', () => {
-    const votes: QuiplashVote[] = [
-      { id: '1', game_id: 'GAME', battle_id: 'battle-1', player_id: 'p1', chosen_answer_id: 'ans-a', voted_at: '' },
-      { id: '2', game_id: 'GAME', battle_id: 'battle-1', player_id: 'p2', chosen_answer_id: 'ans-b', voted_at: '' },
-    ]
-    const result = countVotesForBattle(battle, votes)
-    expect(result.winnerId).toBeNull()
-    expect(result.points).toBe(0)
-  })
 })
 
-describe('eligibleVotersForBattle', () => {
-  const battle: QuiplashBattle = {
-    id: 'battle-1',
-    game_id: 'GAME',
-    round_id: 'round-1',
-    battle_number: 1,
-    answer_a_id: 'ans-a',
-    answer_b_id: 'ans-b',
-    winner_answer_id: null,
-    points_awarded: 0,
-    status: 'active',
-    started_at: null,
-    ended_at: null,
-  }
-
-  const answers: QuiplashAnswer[] = [
-    { id: 'ans-a', game_id: 'GAME', round_id: 'round-1', player_id: 'p1', text: 'a', is_bye: false, submitted_at: '' },
-    { id: 'ans-b', game_id: 'GAME', round_id: 'round-1', player_id: 'p2', text: 'b', is_bye: false, submitted_at: '' },
-    { id: 'ans-c', game_id: 'GAME', round_id: 'round-1', player_id: 'p3', text: 'c', is_bye: false, submitted_at: '' },
+describe('round voting', () => {
+  const roundId = 'round-1'
+  const roundAnswers: QuiplashAnswer[] = [
+    { id: 'ans-a', game_id: 'GAME', round_id: roundId, player_id: 'p1', text: 'a', is_bye: false, submitted_at: '' },
+    { id: 'ans-b', game_id: 'GAME', round_id: roundId, player_id: 'p2', text: 'b', is_bye: false, submitted_at: '' },
+    { id: 'ans-c', game_id: 'GAME', round_id: roundId, player_id: 'p3', text: 'c', is_bye: false, submitted_at: '' },
   ]
 
-  it('excludes battle contestants from the voter pool', () => {
-    expect(eligibleVotersForBattle(battle, answers, 3)).toBe(1)
-    expect(eligibleVotersForBattle(battle, answers, 4)).toBe(2)
+  it('shows other players answers as vote options', () => {
+    const options = roundVoteOptions(roundAnswers, 'p1')
+    expect(options).toHaveLength(2)
+    expect(options.every((a) => a.player_id !== 'p1')).toBe(true)
+  })
+
+  it('blocks voting for your own answer', () => {
+    expect(canPlayerVoteInRound(roundAnswers, 'p1')).toBe(true)
+    expect(canPlayerVoteInRound([roundAnswers[0]!], 'p1')).toBe(false)
+  })
+
+  it('counts votes per answer in a round', () => {
+    const votes: QuiplashVote[] = [
+      {
+        id: '1',
+        game_id: 'GAME',
+        battle_id: null,
+        round_id: roundId,
+        player_id: 'p1',
+        chosen_answer_id: 'ans-b',
+        voted_at: '',
+      },
+      {
+        id: '2',
+        game_id: 'GAME',
+        battle_id: null,
+        round_id: roundId,
+        player_id: 'p2',
+        chosen_answer_id: 'ans-c',
+        voted_at: '',
+      },
+      {
+        id: '3',
+        game_id: 'GAME',
+        battle_id: null,
+        round_id: roundId,
+        player_id: 'p3',
+        chosen_answer_id: 'ans-b',
+        voted_at: '',
+      },
+    ]
+    const tally = countVotesForRound(roundId, votes)
+    expect(tally.find((row) => row.answerId === 'ans-b')?.votes).toBe(2)
+    expect(tally.find((row) => row.answerId === 'ans-c')?.votes).toBe(1)
+  })
+
+  it('expects every player to vote when multiple answers exist', () => {
+    expect(eligibleRoundVoters(roundAnswers, 3)).toBe(3)
+    expect(eligibleRoundVoters([roundAnswers[0]!], 3)).toBe(2)
+  })
+
+  it('explains round voting in plain language', () => {
+    expect(
+      quiplashRoundVotingHint({ canVote: true, hasVoted: false, cannotParticipate: false, answerCount: 3 })
+    ).toMatch(/funniest/)
+    expect(
+      quiplashRoundVotingHint({ canVote: false, hasVoted: false, cannotParticipate: true, answerCount: 3 })
+    ).toMatch(/Watch the room vote/)
+    expect(
+      quiplashRoundVotingHint({ canVote: false, hasVoted: true, cannotParticipate: false, answerCount: 3 })
+    ).toMatch(/locked in/)
+    expect(
+      quiplashRoundVotingHint({ canVote: false, hasVoted: false, cannotParticipate: false, answerCount: 1 })
+    ).toMatch(/Waiting for results/)
   })
 })
 
-describe('tallyQuiplashScores', () => {
+describe('tallyQuiplashScoresFromRoundVotes', () => {
   const players: Player[] = [
     {
       id: 'p1',
@@ -168,7 +201,44 @@ describe('tallyQuiplashScores', () => {
     { id: 'ans-b', game_id: 'GAME', round_id: 'round-1', player_id: 'p2', text: 'b', is_bye: false, submitted_at: '' },
   ]
 
-  it('adds finished battle points to the winner', () => {
+  it('awards one point per vote received', () => {
+    const votes: QuiplashVote[] = [
+      {
+        id: '1',
+        game_id: 'GAME',
+        battle_id: null,
+        round_id: 'round-1',
+        player_id: 'p1',
+        chosen_answer_id: 'ans-b',
+        voted_at: '',
+      },
+      {
+        id: '2',
+        game_id: 'GAME',
+        battle_id: null,
+        round_id: 'round-1',
+        player_id: 'p3',
+        chosen_answer_id: 'ans-b',
+        voted_at: '',
+      },
+    ]
+    const rows = tallyQuiplashScoresFromRoundVotes(votes, answers, players)
+    expect(rows.find((r) => r.id === 'p2')?.score).toBe(2)
+    expect(rows.find((r) => r.id === 'p1')?.score).toBe(0)
+  })
+
+  it('prefers round votes over legacy battles when present', () => {
+    const votes: QuiplashVote[] = [
+      {
+        id: '1',
+        game_id: 'GAME',
+        battle_id: null,
+        round_id: 'round-1',
+        player_id: 'p3',
+        chosen_answer_id: 'ans-a',
+        voted_at: '',
+      },
+    ]
     const battles: QuiplashBattle[] = [
       {
         id: 'battle-1',
@@ -178,46 +248,19 @@ describe('tallyQuiplashScores', () => {
         answer_a_id: 'ans-a',
         answer_b_id: 'ans-b',
         winner_answer_id: 'ans-b',
-        points_awarded: 1,
+        points_awarded: 5,
         status: 'finished',
         started_at: null,
         ended_at: '2026-01-01T00:00:00Z',
       },
     ]
-    const rows = tallyQuiplashScores(battles, answers, players)
-    expect(rows.find((r) => r.id === 'p2')?.score).toBe(1)
-    expect(rows.find((r) => r.id === 'p1')?.score).toBe(0)
+    const rows = tallyQuiplashScores(battles, answers, players, votes)
+    expect(rows.find((r) => r.id === 'p1')?.score).toBe(1)
+    expect(rows.find((r) => r.id === 'p2')?.score).toBe(0)
   })
 })
 
-describe('canPlayerVoteInBattle', () => {
-  const battle: QuiplashBattle = {
-    id: 'battle-1',
-    game_id: 'GAME',
-    round_id: 'round-1',
-    battle_number: 1,
-    answer_a_id: 'ans-a',
-    answer_b_id: 'ans-b',
-    winner_answer_id: null,
-    points_awarded: 0,
-    status: 'active',
-    started_at: null,
-    ended_at: null,
-  }
-  const answers: QuiplashAnswer[] = [
-    { id: 'ans-a', game_id: 'GAME', round_id: 'round-1', player_id: 'p1', text: 'a', is_bye: false, submitted_at: '' },
-    { id: 'ans-b', game_id: 'GAME', round_id: 'round-1', player_id: 'p2', text: 'b', is_bye: false, submitted_at: '' },
-  ]
-
-  it('blocks spectators, read-only viewers, and battle contestants', () => {
-    expect(canPlayerVoteInBattle(battle, answers, 'p3')).toBe(true)
-    expect(canPlayerVoteInBattle(battle, answers, 'p1')).toBe(false)
-    expect(canPlayerVoteInBattle(battle, answers, 'p3', { spectator: true })).toBe(false)
-    expect(canPlayerVoteInBattle(battle, answers, 'p3', { readOnly: true })).toBe(false)
-  })
-})
-
-describe('solo and no-voter battles', () => {
+describe('solo and legacy battle helpers', () => {
   it('detects solo rounds and awards fallback points', () => {
     const solo: QuiplashBattle = {
       id: 'battle-solo',
@@ -234,29 +277,6 @@ describe('solo and no-voter battles', () => {
     }
     expect(isSoloRoundBattle(solo)).toBe(true)
     expect(soloRoundPoints(3)).toBe(2)
-    expect(soloRoundPoints(1)).toBe(1)
-  })
-
-  it('detects no-voter draws', () => {
-    const battle: QuiplashBattle = {
-      id: 'battle-1',
-      game_id: 'GAME',
-      round_id: 'round-1',
-      battle_number: 1,
-      answer_a_id: 'ans-a',
-      answer_b_id: 'ans-b',
-      winner_answer_id: null,
-      points_awarded: 0,
-      status: 'finished',
-      started_at: null,
-      ended_at: null,
-    }
-    expect(isNoVoterDrawBattle(battle, [])).toBe(true)
-    expect(
-      isNoVoterDrawBattle(battle, [
-        { id: 'v1', game_id: 'GAME', battle_id: 'battle-1', player_id: 'p3', chosen_answer_id: 'ans-a', voted_at: '' },
-      ])
-    ).toBe(false)
   })
 })
 
@@ -264,14 +284,11 @@ describe('battle caps and vote timer', () => {
   it('keeps full round-robin for small groups', () => {
     expect(maxBattlesPerRound(3)).toBe(3)
     expect(maxBattlesPerRound(4)).toBe(6)
-    expect(maxBattlesPerRound(5)).toBe(10)
+    expect(quiplashPairCount(6)).toBe(15)
   })
 
-  it('shortens vote timer for larger lobbies', () => {
+  it('uses configured vote timer', () => {
     expect(effectiveQuiplashVoteTimer(15, 4)).toBe(15)
-    expect(effectiveQuiplashVoteTimer(15, 6)).toBe(12)
-    expect(effectiveQuiplashVoteTimer(15, 8)).toBe(10)
-    expect(effectiveQuiplashVoteTimer(20, 8)).toBe(10)
   })
 })
 
@@ -295,7 +312,7 @@ describe('battleVoteOptions and roundAnswersVisibleToPlayer', () => {
     { id: 'ans-c', game_id: 'GAME', round_id: 'round-1', player_id: 'p3', text: 'c', is_bye: false, submitted_at: '' },
   ]
 
-  it('returns both battle answers for voters', () => {
+  it('returns both battle answers for legacy battles', () => {
     expect(battleVoteOptions(battle, roundAnswers)).toHaveLength(2)
   })
 

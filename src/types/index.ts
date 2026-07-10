@@ -289,6 +289,8 @@ export interface Game {
   word_rush_prompt_mode?: WordRushPromptMode
   /** Word Rush — number of teams (2-4). */
   word_rush_num_teams?: number
+  /** Word Rush — standard (min 3 always) or hard (min length rises each round). */
+  word_rush_difficulty?: WordRushDifficulty
   /** Cumulative usage across play-again sessions — unused pool items are prioritized next game. */
   pool_usage?: Record<string, unknown> | null
   /** Trivia — platform pool category when question_source is platform. */
@@ -963,12 +965,15 @@ export interface DescribeItGuess {
 export type WordRushPhase = 'playing' | 'awaiting_prompt' | 'intermission' | 'finished'
 export type WordRushMode = 'team' | 'individual'
 export type WordRushPromptMode = 'automatic' | 'manual'
+export type WordRushDifficulty = 'standard' | 'hard'
 
 export interface WordRushSession {
   id: string
   game_id: string
   mode: WordRushMode
   prompt_mode: WordRushPromptMode
+  difficulty: WordRushDifficulty
+  min_word_length: number
   num_teams: number
   total_rounds: number
   turn_seconds: number
@@ -1183,7 +1188,8 @@ export interface QuiplashBattle {
 export interface QuiplashVote {
   id: string
   game_id: string
-  battle_id: string
+  battle_id: string | null
+  round_id: string | null
   player_id: string
   chosen_answer_id: string
   voted_at: string

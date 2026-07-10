@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { parseGameType, isWordRushGame } from '@/lib/game-types'
 import {
   clampWordRushMaxPlayers,
+  clampWordRushDifficulty,
   clampWordRushMode,
   clampWordRushPromptMode,
   clampWordRushRounds,
@@ -15,7 +16,7 @@ import { parseJsonBody } from '@/lib/parse-body'
 export async function POST(req: NextRequest) {
   const { data, error: bodyError } = await parseJsonBody(req, wordRushSettingsSchema)
   if (bodyError) return bodyError
-  const { gameId, hostToken, mode, promptMode, numTeams, turnSeconds, rounds, maxPlayers } = data
+  const { gameId, hostToken, mode, promptMode, difficulty, numTeams, turnSeconds, rounds, maxPlayers } = data
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
   const update: Record<string, unknown> = {}
   if (mode !== undefined) update.word_rush_mode = clampWordRushMode(mode)
   if (promptMode !== undefined) update.word_rush_prompt_mode = clampWordRushPromptMode(promptMode)
+  if (difficulty !== undefined) update.word_rush_difficulty = clampWordRushDifficulty(difficulty)
   if (numTeams !== undefined) update.word_rush_num_teams = clampWordRushTeams(numTeams)
   if (turnSeconds !== undefined) update.timer_seconds = clampWordRushTurnSeconds(turnSeconds)
   if (rounds !== undefined) update.rounds_count = clampWordRushRounds(rounds)
