@@ -140,9 +140,8 @@ export function QuickDrawGuessPlayPanel({
   const inRoster = isIndividual
     ? !!myPlayerId && teamRows.some((r) => r.player_id === myPlayerId)
     : !!myPlayerId && session.roster.includes(myPlayerId)
-  const myGuessedThisTurn = guesses.some(
-    (g) => g.turn_index === session.turn_index && g.player_id === myPlayerId && g.correct
-  )
+  const myGuessedThisTurn =
+    isIndividual && guesses.some((g) => g.turn_index === session.turn_index && g.player_id === myPlayerId && g.correct)
   const drawerName = players.find((p) => p.id === session.drawer_player_id)?.name ?? 'Someone'
   const canGuess = isIndividual ? inRoster && !isDrawer : onActiveTeam && !isDrawer
 
@@ -251,11 +250,11 @@ export function QuickDrawGuessPlayPanel({
                   <>
                     <span className="font-medium text-bright">{drawerName}</span> is drawing — guess the word!
                   </>
-                ) : onActiveTeam ? (
-                  <>Your teammate is drawing — guess the word!</>
                 ) : (
                   <>
-                    <TeamBadge team={activeTeam} /> is drawing…
+                    <span className="font-medium text-bright">{drawerName}</span> is drawing for{' '}
+                    <TeamBadge team={activeTeam} />
+                    {onActiveTeam ? ' — guess the word!' : '…'}
                   </>
                 )}
               </p>
