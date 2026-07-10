@@ -834,7 +834,7 @@ describe('Group 7: Reconnect / Refresh Mid-Round', () => {
   it('reconnecting during Round Results shows round_results screen, not stale board', () => {
     // Simulate: player reconnects while screen is round_results
     const roundFinished = true
-    const gameStatus = 'active'
+    const gameStatus: string = 'active'
 
     let screen: string
     if (gameStatus === 'finished') {

@@ -19,6 +19,7 @@ import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { LateJoinChoice } from '@/components/LateJoinChoice'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { ROUND_RESULTS_AUTO_ADVANCE_SECONDS } from '@/lib/round-timing'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
   parseMatchingPairsMetadata,
@@ -107,6 +108,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const [roundId, setRoundId] = useState<string | null>(null)
   const [roundStartedAt, setRoundStartedAt] = useState<string | null>(null)
   const [meta, setMeta] = useState<MatchingPairsMetadata | null>(null)
+  const [nextRoundCountdown, setNextRoundCountdown] = useState<number>(-1)
   const [mySubmissions, setMySubmissions] = useState<MatchingPairsSubmission[]>([])
   const [allSubmissions, setAllSubmissions] = useState<MatchingPairsSubmission[]>([])
   const [allProgress, setAllProgress] = useState<MatchingPairsProgress[]>([])
@@ -402,6 +404,32 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     }
   }, [gameCode, load])
 
+  // ── Between-round countdown ──────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (screen !== 'round_results') {
+      setNextRoundCountdown(-1)
+      return
+    }
+    const totalRounds = game?.rounds_count ?? 1
+    const currentRoundNumber = game?.current_round_number ?? 1
+    if (currentRoundNumber >= totalRounds) {
+      setNextRoundCountdown(-1)
+      return
+    }
+    setNextRoundCountdown(ROUND_RESULTS_AUTO_ADVANCE_SECONDS)
+    const t = setInterval(() => {
+      setNextRoundCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(t)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(t)
+  }, [screen, game?.rounds_count, game?.current_round_number])
+
   // ── Memorization countdown timer ────────────────────────────────────────────
 
   useEffect(() => {
@@ -633,12 +661,22 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // Leaderboard showing cumulative scores across all completed rounds.
   // Groups submissions by round_id per player, sums each round's score.
+  const roundStartedAtMap = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of allProgress) {
+      if (p.created_at && !m.has(p.round_id)) m.set(p.round_id, p.created_at)
+    }
+    return m
+  }, [allProgress])
+
   const leaderboard: MatchingPairsLeaderboardRow[] = buildCumulativeLeaderboard(
     allSubmissions,
     allProgress,
     playerMap,
     meta?.gridSizePairs ?? 8,
-    game?.session_started_at ?? null
+    game?.session_started_at ?? null,
+    roundStartedAtMap,
+    game?.timer_seconds
   )
 
   // Per-round leaderboard for the round_results screen — uses tallyMatchingPairsScore
@@ -652,7 +690,14 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     return roundProgs
       .map((prog) => {
         const playerSubs = roundSubs.filter((s) => s.player_id === prog.player_id)
-        return tallyMatchingPairsScore(playerSubs, prog, meta.gridSizePairs, game?.session_started_at)
+        return tallyMatchingPairsScore(
+          playerSubs,
+          prog,
+          meta.gridSizePairs,
+          game?.session_started_at,
+          roundStartedAt,
+          game?.timer_seconds
+        )
       })
       .sort((a, b) => {
         if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
@@ -829,6 +874,15 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
               Your total: <strong>{myCumulative.finalScore.toLocaleString()} pts</strong>
             </p>
           )}
+          {!isLastRound && nextRoundCountdown >= 0 && (
+            <p className="text-sm text-muted">
+              Next round starts in{' '}
+              <span className={`font-black tabular-nums text-body ${nextRoundCountdown > 0 ? 'animate-pulse' : ''}`}>
+                {nextRoundCountdown}
+              </span>
+              ...
+            </p>
+          )}
         </div>
         {roundLeaderboard.length > 0 && (
           <PaginatedLeaderboard
@@ -852,13 +906,6 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             emphasizeLeader
           />
         )}
-        <div style={{ padding: '8px 0', fontSize: 12, color: 'var(--text-faint)', textAlign: 'center' }}>
-          {isLastRound ? (
-            <span>⏳ Final results coming up...</span>
-          ) : (
-            <span>⏳ Starting round {currentRoundNumber + 1} shortly…</span>
-          )}
-        </div>
       </MatchingPairsPlayShell>
     )
   }

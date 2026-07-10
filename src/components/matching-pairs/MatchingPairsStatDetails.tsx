@@ -44,7 +44,11 @@ export function MatchingPairsStatDetails({ score, gridSizePairs }: MatchingPairs
           Pairs {score.pairsMatched}/{gridSizePairs}
         </StatChip>
         <StatChip>Wrong {score.wrongAttempts}</StatChip>
-        {timeSecs !== null && <StatChip>⏱️ {formatMinutesSeconds(timeSecs)}</StatChip>}
+        {timeSecs !== null ? (
+          <StatChip>⏱️ {formatMinutesSeconds(timeSecs)}</StatChip>
+        ) : score.timeTakenMs === -1 ? (
+          <StatChip variant="red">Unfinished</StatChip>
+        ) : null}
         <StatChip>🔥 {score.longestStreak}</StatChip>
       </div>
 

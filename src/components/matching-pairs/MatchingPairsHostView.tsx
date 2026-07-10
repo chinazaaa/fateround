@@ -421,7 +421,14 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     return roundProgress
       .map((prog) => {
         const playerSubs = roundSubmissions.filter((s) => s.player_id === prog.player_id)
-        return tallyMatchingPairsScore(playerSubs, prog, gridSizePairs, game?.session_started_at)
+        return tallyMatchingPairsScore(
+          playerSubs,
+          prog,
+          gridSizePairs,
+          game?.session_started_at,
+          roundStartedAt,
+          game?.timer_seconds
+        )
       })
       .sort((a, b) => {
         if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
@@ -438,6 +445,16 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     return m
   }, [players])
 
+  // Build a map of round_id → started_at from progress rows so the cumulative
+  // leaderboard can pass per-round start times to tallyMatchingPairsScore.
+  const roundStartedAtMap = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of progressRows) {
+      if (p.created_at && !m.has(p.round_id)) m.set(p.round_id, p.created_at)
+    }
+    return m
+  }, [progressRows])
+
   // Cumulative leaderboard across all completed rounds — determines final ranking.
   const cumulativeLeaderboard = useMemo<MatchingPairsLeaderboardRow[]>(() => {
     if (!submissions.length && !progressRows.length) return []
@@ -446,9 +463,19 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       progressRows,
       playerMap,
       gridSizePairs,
-      game?.session_started_at ?? null
+      game?.session_started_at ?? null,
+      roundStartedAtMap,
+      game?.timer_seconds
     )
-  }, [submissions, progressRows, playerMap, gridSizePairs, game?.session_started_at])
+  }, [
+    submissions,
+    progressRows,
+    playerMap,
+    gridSizePairs,
+    game?.session_started_at,
+    roundStartedAtMap,
+    game?.timer_seconds,
+  ])
 
   const hostWonMp =
     cumulativeLeaderboard.length > 1 &&
@@ -485,6 +512,15 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         <p className="text-xl font-black">
           Round {currentRoundNumber}/{totalRounds} complete!
         </p>
+        {!isLastRound && autoAdvanceTick !== null && autoAdvanceTick >= 0 && (
+          <p className="text-sm text-muted">
+            Next round starts in{' '}
+            <span className={`font-black tabular-nums text-body ${autoAdvanceTick > 0 ? 'animate-pulse' : ''}`}>
+              {autoAdvanceTick}
+            </span>
+            ...
+          </p>
+        )}
       </div>
 
       {cumulativeLeaderboard.length > 0 && (
@@ -530,9 +566,6 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
           >
             {startingNextRound ? 'Starting...' : `→ Start Round ${currentRoundNumber + 1}`}
           </button>
-          {autoAdvanceTick !== null && autoAdvanceTick > 0 && (
-            <p className="text-xs text-muted">Auto-starting in {autoAdvanceTick}s…</p>
-          )}
         </div>
       )}
     </section>
