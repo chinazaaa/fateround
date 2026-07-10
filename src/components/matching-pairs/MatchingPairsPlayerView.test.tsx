@@ -744,14 +744,8 @@ describe('Group 6: Auto-Advance Transition', () => {
 
   it("auto-advance fires past round_results to next round's playing screen", () => {
     // Simulate the round_results → playing transition sequence
-    let screen = 'round_results'
-    let roundId = 'R1'
-    let status = 'active'
-
-    // Auto-advance: next round starts (simulates realtime event updating rounds)
-    roundId = 'R2'
-    status = 'active'
-    screen = 'playing' // afterResolve would set hasBoard=true for new round
+    const screen = 'playing'
+    const roundId = 'R2'
 
     expect(screen).toBe('playing')
     expect(roundId).toBe('R2')
@@ -759,13 +753,10 @@ describe('Group 6: Auto-Advance Transition', () => {
 
   it('auto-advance does NOT fire after the final round (game ends instead)', () => {
     // Simulate the final round ending
-    let screen = 'round_results'
-    let status = 'active'
-
     // For the final round, auto-advance should NOT fire
     // Instead, finishMatchingPairsRoundIfAllDone marks game as finished
-    status = 'finished'
-    screen = 'finished'
+    const screen = 'finished'
+    const status = 'finished'
 
     expect(screen).toBe('finished')
     expect(status).toBe('finished')
@@ -850,12 +841,8 @@ describe('Group 7: Reconnect / Refresh Mid-Round', () => {
 
   it('reconnecting as auto-advance transitions lands in new round, not stuck on old', () => {
     // Simulate: player reconnects right when round transitions from 1 to 2
-    let roundId = 'R1'
-    let hasBoard = false
-
-    // afterResolve detects new round
-    roundId = 'R2'
-    hasBoard = true
+    const roundId = 'R2'
+    const hasBoard = true
 
     expect(roundId).toBe('R2')
     expect(hasBoard).toBe(true)

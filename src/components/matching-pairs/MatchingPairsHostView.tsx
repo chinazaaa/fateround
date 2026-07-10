@@ -182,8 +182,18 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       }
     }, 1000)
 
-    return () => { clearTimeout(init); clearInterval(t) }
-  }, [roundEnded, startingNextRound, game?.rounds_count, game?.current_round_number, game?.status, handleStartNextRound])
+    return () => {
+      clearTimeout(init)
+      clearInterval(t)
+    }
+  }, [
+    roundEnded,
+    startingNextRound,
+    game?.rounds_count,
+    game?.current_round_number,
+    game?.status,
+    handleStartNextRound,
+  ])
 
   useEffect(() => {
     void load()

@@ -97,19 +97,11 @@ export function MatchingPairsFinalBreakdown({
   const playerSubs = allSubmissions.filter((s) => s.player_id === playerId)
   const playerProgs = allProgress.filter((p) => p.player_id === playerId)
 
-  // Derive the global round order from ALL game records so that late joiners
-  // still see the correct round number (e.g. "Round 2" not "Round 1").
-  const allRoundIds = [
-    ...new Set([...allSubmissions.map((s) => s.round_id), ...allProgress.map((p) => p.round_id)]),
-  ].sort((a, b) => {
-    const aTime =
-      allProgress.find((p) => p.round_id === a)?.created_at ??
-      allSubmissions.find((s) => s.round_id === a)?.created_at ??
-      ''
-    const bTime =
-      allProgress.find((p) => p.round_id === b)?.created_at ??
-      allSubmissions.find((s) => s.round_id === b)?.created_at ??
-      ''
+  // Derive the global round order from ALL game progress records so that
+  // late joiners still see the correct round number (e.g. "Round 2" not "Round 1").
+  const allRoundIds = [...new Set(allProgress.map((p) => p.round_id))].sort((a, b) => {
+    const aTime = allProgress.find((p) => p.round_id === a)?.created_at ?? ''
+    const bTime = allProgress.find((p) => p.round_id === b)?.created_at ?? ''
     return aTime.localeCompare(bTime)
   })
   // Keep only the rounds this player actually participated in.
