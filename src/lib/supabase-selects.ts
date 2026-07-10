@@ -135,7 +135,7 @@ export const QUIPLASH_ANSWER_SELECT = 'id,game_id,round_id,player_id,text,is_bye
 export const QUIPLASH_BATTLE_SELECT =
   'id,game_id,round_id,battle_number,answer_a_id,answer_b_id,winner_answer_id,points_awarded,status,started_at,ended_at'
 
-export const QUIPLASH_VOTE_SELECT = 'id,game_id,battle_id,player_id,chosen_answer_id,voted_at'
+export const QUIPLASH_VOTE_SELECT = 'id,game_id,battle_id,round_id,player_id,chosen_answer_id,voted_at'
 
 export const NPAT_ANSWER_SELECT =
   'id,game_id,round_id,player_id,name,animal,place,thing,food,submitted_at,score_name,score_animal,score_place,score_thing,score_food'

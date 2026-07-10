@@ -1188,7 +1188,8 @@ export interface QuiplashBattle {
 export interface QuiplashVote {
   id: string
   game_id: string
-  battle_id: string
+  battle_id: string | null
+  round_id: string | null
   player_id: string
   chosen_answer_id: string
   voted_at: string

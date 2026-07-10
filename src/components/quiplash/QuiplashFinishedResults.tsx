@@ -8,13 +8,14 @@ import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { tallyQuiplashScores } from '@/lib/quiplash'
-import type { Game, Player, QuiplashAnswer, QuiplashBattle } from '@/types'
+import type { Game, Player, QuiplashAnswer, QuiplashBattle, QuiplashVote } from '@/types'
 
 export function QuiplashFinishedResults({
   game,
   players,
   battles,
   answers,
+  votes = [],
   highlightPlayerId,
   playAgainButton,
   returnToLobbyButton,
@@ -24,13 +25,14 @@ export function QuiplashFinishedResults({
   players: Player[]
   battles: QuiplashBattle[]
   answers: QuiplashAnswer[]
+  votes?: QuiplashVote[]
   highlightPlayerId?: string | null
   playAgainButton?: ReactNode
   returnToLobbyButton?: ReactNode
   lobbyNote?: ReactNode
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
-  const leaderboard = useMemo(() => tallyQuiplashScores(battles, answers, players), [battles, answers, players])
+  const leaderboard = useMemo(() => tallyQuiplashScores(battles, answers, players, votes), [battles, answers, players, votes])
   const myRow = highlightPlayerId ? leaderboard.find((row) => row.id === highlightPlayerId) : undefined
   const topScore = leaderboard[0]?.score ?? 0
   const iWon = Boolean(

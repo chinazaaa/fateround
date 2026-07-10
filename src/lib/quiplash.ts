@@ -128,8 +128,14 @@ export interface QuiplashPlayerScore {
 export function tallyQuiplashScores(
   battles: QuiplashBattle[],
   answers: QuiplashAnswer[],
-  players: Player[]
+  players: Player[],
+  votes: QuiplashVote[] = []
 ): QuiplashPlayerScore[] {
+  const roundVotes = votes.filter((v) => v.round_id)
+  if (roundVotes.length > 0) {
+    return tallyQuiplashScoresFromRoundVotes(roundVotes, answers, players)
+  }
+
   const answerToPlayer = new Map(answers.map((a) => [a.id, a.player_id]))
   const activePlayers = players.filter((p) => p.spectator !== true)
   const totals = new Map<string, { score: number; wins: number }>()
@@ -145,6 +151,47 @@ export function tallyQuiplashScores(
     if (!row) continue
     row.score += battle.points_awarded > 0 ? battle.points_awarded : 0
     row.wins += 1
+  }
+
+  return activePlayers
+    .map((p) => {
+      const row = totals.get(p.id) ?? { score: 0, wins: 0 }
+      return { id: p.id, name: p.name, score: row.score, battleWins: row.wins }
+    })
+    .sort((a, b) => b.score - a.score || b.battleWins - a.battleWins || a.name.localeCompare(b.name))
+}
+
+/** Each vote in a round awards one point to the answer's author. */
+export function tallyQuiplashScoresFromRoundVotes(
+  votes: QuiplashVote[],
+  answers: QuiplashAnswer[],
+  players: Player[]
+): QuiplashPlayerScore[] {
+  const answerToPlayer = new Map(answers.map((a) => [a.id, a.player_id]))
+  const activePlayers = players.filter((p) => p.spectator !== true)
+  const totals = new Map<string, { score: number; wins: number }>()
+  for (const p of activePlayers) {
+    totals.set(p.id, { score: 0, wins: 0 })
+  }
+
+  const votesByAnswer = new Map<string, number>()
+  for (const vote of votes) {
+    if (!vote.round_id) continue
+    votesByAnswer.set(vote.chosen_answer_id, (votesByAnswer.get(vote.chosen_answer_id) ?? 0) + 1)
+  }
+
+  let maxVotes = 0
+  for (const count of votesByAnswer.values()) {
+    maxVotes = Math.max(maxVotes, count)
+  }
+
+  for (const [answerId, count] of votesByAnswer) {
+    const authorId = answerToPlayer.get(answerId)
+    if (!authorId) continue
+    const row = totals.get(authorId)
+    if (!row) continue
+    row.score += count
+    if (count > 0 && count === maxVotes) row.wins += 1
   }
 
   return activePlayers
@@ -227,24 +274,60 @@ export function battlesForRound(battles: QuiplashBattle[], roundId: string): Qui
   return battles.filter((b) => b.round_id === roundId).sort((a, b) => a.battle_number - b.battle_number)
 }
 
-/** Jackbox-style progress label during the vote phase. */
-export function quiplashMatchupLabel(battle: QuiplashBattle, roundBattles: QuiplashBattle[]): string {
-  const total = roundBattles.length
-  if (total <= 1) return 'Pick the funnier answer'
-  return `Match ${battle.battle_number} of ${total} — pick the funnier answer`
+/** Answers a player may vote for — everyone else's submissions, shuffled for anonymity. */
+export function roundVoteOptions(roundAnswers: QuiplashAnswer[], playerId: string): QuiplashAnswer[] {
+  const others = roundAnswers.filter((a) => a.player_id !== playerId)
+  return shuffle(others)
 }
 
-export function quiplashVotingHint(opts: {
+export function playerHasRoundVoteOption(roundAnswers: QuiplashAnswer[], playerId: string): boolean {
+  return roundAnswers.some((a) => a.player_id !== playerId)
+}
+
+export function canPlayerVoteInRound(
+  roundAnswers: QuiplashAnswer[],
+  playerId: string,
+  opts?: { spectator?: boolean; readOnly?: boolean }
+): boolean {
+  if (opts?.spectator || opts?.readOnly) return false
+  return playerHasRoundVoteOption(roundAnswers, playerId)
+}
+
+/** Players expected to cast a round vote (submitters with only their own answer sit out). */
+export function eligibleRoundVoters(roundAnswers: QuiplashAnswer[], participantCount: number): number {
+  if (roundAnswers.length === 0) return 0
+  if (roundAnswers.length === 1) return Math.max(0, participantCount - 1)
+  return participantCount
+}
+
+export function quiplashRoundVotingHint(opts: {
   canVote: boolean
   hasVoted: boolean
-  isContestant: boolean
   cannotParticipate: boolean
+  answerCount: number
 }): string {
   if (opts.cannotParticipate) return 'Watch the room vote — answers stay anonymous until results.'
-  if (opts.isContestant) return 'One of these is yours — sit this match out, then vote on the next one.'
+  if (opts.answerCount < 2) return 'Waiting for results…'
   if (opts.hasVoted) return 'Vote locked in — waiting for everyone else…'
-  if (opts.canVote) return 'Tap A or B — you won’t see who wrote what until results.'
-  return 'Waiting for this match…'
+  if (opts.canVote) return 'Tap the funniest answer — you won’t see who wrote what until results.'
+  return 'Waiting for voting…'
+}
+
+export interface QuiplashRoundVoteTally {
+  answerId: string
+  votes: number
+}
+
+/** Vote counts per answer for a round. */
+export function countVotesForRound(roundId: string, votes: QuiplashVote[]): QuiplashRoundVoteTally[] {
+  const counts = new Map<string, number>()
+  for (const vote of votes) {
+    if (vote.round_id !== roundId) continue
+    counts.set(vote.chosen_answer_id, (counts.get(vote.chosen_answer_id) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .map(([answerId, voteCount]) => ({ answerId, votes: voteCount }))
+    .sort((a, b) => b.votes - a.votes || a.answerId.localeCompare(b.answerId))
 }
 
 /** The two answers competing in the active battle (deduped). */

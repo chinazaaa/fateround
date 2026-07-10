@@ -7,19 +7,15 @@ import { QuiplashFinishedResults } from '@/components/quiplash/QuiplashFinishedR
 import {
   answerAuthorName,
   answerOptionLabel,
-  quiplashMatchupLabel,
-  quiplashVotingHint,
-  battlesForRound,
-  battleVoteOptions,
-  canPlayerVoteInBattle,
-  countVotesForBattle,
-  isNoVoterDrawBattle,
-  isSoloRoundBattle,
+  canPlayerVoteInRound,
+  countVotesForRound,
   parseQuiplashMetadata,
   phaseDeadlineCountdown,
-  playerIsBattleContestant,
+  quiplashRoundVotingHint,
   QUIPLASH_MAX_ANSWER_LENGTH,
   QUIPLASH_REVEAL_SECONDS,
+  roundVoteOptions,
+  soloRoundPoints,
   tallyQuiplashScores,
 } from '@/lib/quiplash'
 import { playerIsViewer } from '@/lib/viewers'
@@ -33,7 +29,7 @@ type PlayScreen =
   | 'writing'
   | 'writing_locked'
   | 'writing_watch'
-  | 'matchup'
+  | 'voting'
   | 'reveal'
   | 'finished'
 
@@ -100,51 +96,47 @@ export function QuiplashActiveRound({
     [roundAnswers, myPlayerId]
   )
 
-  const activeBattle = useMemo(() => {
-    if (!session?.active_battle_id) return null
-    return battles.find((b) => b.id === session.active_battle_id) ?? null
-  }, [battles, session?.active_battle_id])
-
-  const battleAnswerA = activeBattle ? (answers.find((a) => a.id === activeBattle.answer_a_id) ?? null) : null
-  const battleAnswerB = activeBattle ? (answers.find((a) => a.id === activeBattle.answer_b_id) ?? null) : null
+  const roundVotes = useMemo(() => {
+    if (!currentRound) return []
+    return votes.filter((v) => v.round_id === currentRound.id)
+  }, [votes, currentRound])
 
   const myVote = useMemo(() => {
-    if (!activeBattle) return null
-    return votes.find((v) => v.battle_id === activeBattle.id && v.player_id === myPlayerId) ?? null
-  }, [votes, activeBattle, myPlayerId])
+    if (!currentRound) return null
+    return roundVotes.find((v) => v.player_id === myPlayerId) ?? null
+  }, [roundVotes, currentRound, myPlayerId])
 
-  const isBattleContestant = useMemo(() => {
-    if (!activeBattle) return false
-    return playerIsBattleContestant(activeBattle, answers, myPlayerId)
-  }, [activeBattle, answers, myPlayerId])
+  const voteOptions = useMemo(() => {
+    if (!myPlayerId) return roundAnswers
+    return roundVoteOptions(roundAnswers, myPlayerId)
+  }, [roundAnswers, myPlayerId])
 
-  const canVoteInBattle = useMemo(() => {
-    if (!activeBattle || session?.phase !== 'voting') return false
-    return canPlayerVoteInBattle(activeBattle, answers, myPlayerId, { readOnly: cannotParticipate })
-  }, [activeBattle, answers, myPlayerId, cannotParticipate, session?.phase])
+  const canVoteInRound = useMemo(() => {
+    if (session?.phase !== 'voting' || !currentRound) return false
+    return canPlayerVoteInRound(roundAnswers, myPlayerId, { readOnly: cannotParticipate })
+  }, [session?.phase, currentRound, roundAnswers, myPlayerId, cannotParticipate])
 
-  const battleVotes = useMemo(() => {
-    if (!activeBattle) return []
-    return votes.filter((v) => v.battle_id === activeBattle.id)
-  }, [votes, activeBattle])
+  const revealTally = useMemo(() => {
+    if (!currentRound) return []
+    return countVotesForRound(currentRound.id, roundVotes)
+  }, [currentRound, roundVotes])
 
   const revealAnswers = useMemo(() => {
-    if (!battleAnswerA || !battleAnswerB) return []
-    if (battleAnswerA.id === battleAnswerB.id) return [battleAnswerA]
-    return [battleAnswerA, battleAnswerB]
-  }, [battleAnswerA, battleAnswerB])
+    if (!currentRound) return []
+    const byVotes = new Map(revealTally.map((row) => [row.answerId, row.votes]))
+    return [...roundAnswers].sort(
+      (a, b) => (byVotes.get(b.id) ?? 0) - (byVotes.get(a.id) ?? 0) || a.text.localeCompare(b.text)
+    )
+  }, [currentRound, roundAnswers, revealTally])
 
-  const roundBattles = useMemo(
-    () => (currentRound ? battlesForRound(battles, currentRound.id) : []),
-    [battles, currentRound]
+  const topVoteCount = revealTally[0]?.votes ?? 0
+  const soloRound = roundAnswers.length === 1
+  const soloWinnerIsMe = soloRound && myAnswer?.id === roundAnswers[0]?.id
+
+  const leaderboard = useMemo(
+    () => tallyQuiplashScores(battles, answers, players, votes),
+    [battles, answers, players, votes]
   )
-
-  const activeBattleVoteOptions = useMemo(() => {
-    if (!activeBattle) return []
-    return battleVoteOptions(activeBattle, answers)
-  }, [activeBattle, answers])
-
-  const leaderboard = useMemo(() => tallyQuiplashScores(battles, answers, players), [battles, answers, players])
 
   const canSubmitAnswer = !cannotParticipate
 
@@ -155,7 +147,7 @@ export function QuiplashActiveRound({
       if (!canSubmitAnswer) return 'writing_watch'
       return myAnswer ? 'writing_locked' : 'writing'
     }
-    if (session.phase === 'voting') return 'matchup'
+    if (session.phase === 'voting') return 'voting'
     if (session.phase === 'reveal') return 'reveal'
     return 'waiting'
   }, [game.status, session, currentRound, myAnswer, canSubmitAnswer])
@@ -182,7 +174,6 @@ export function QuiplashActiveRound({
     onAdvanced: onReload,
   })
 
-  // Nudge the server as soon as a phase timer hits zero — don't wait for the next poll tick.
   useEffect(() => {
     if (skipGameSync || game.status !== 'active' || !session?.turn_deadline_at || countdown > 0) return
     const key = `${session.phase}:${session.turn_deadline_at}`
@@ -230,7 +221,7 @@ export function QuiplashActiveRound({
   }
 
   const submitVote = async (chosenAnswerId: string) => {
-    if (!activeBattle || !canVoteInBattle || cannotParticipate || voting || myVote) return
+    if (!currentRound || !canVoteInRound || cannotParticipate || voting || myVote) return
     if (!myResumeToken) {
       toastError('Your player session expired — rejoin to continue')
       return
@@ -243,7 +234,7 @@ export function QuiplashActiveRound({
         body: JSON.stringify({
           gameId: gameCode,
           resumeToken: myResumeToken,
-          battleId: activeBattle.id,
+          roundId: currentRound.id,
           chosenAnswerId,
         }),
       })
@@ -265,6 +256,7 @@ export function QuiplashActiveRound({
         players={players}
         battles={battles}
         answers={answers}
+        votes={votes}
         highlightPlayerId={myPlayerId}
       />
     )
@@ -282,18 +274,12 @@ export function QuiplashActiveRound({
 
   if (!metadata || !currentRound || !session) return null
 
-  const revealTally = activeBattle && screen === 'reveal' ? countVotesForBattle(activeBattle, battleVotes) : null
-  const soloRound = activeBattle ? isSoloRoundBattle(activeBattle) : false
-  const noVoterDraw = activeBattle ? isNoVoterDrawBattle(activeBattle, battleVotes) : false
-  const soloWinnerIsMe = soloRound && myAnswer?.id === activeBattle?.winner_answer_id
-  const isLastMatchOfRound =
-    !!activeBattle && roundBattles.length > 0 && activeBattle.battle_number === roundBattles.length
-  const canTapVote = canVoteInBattle && !myVote && !voting
-  const votingHint = quiplashVotingHint({
+  const canTapVote = canVoteInRound && !myVote && !voting
+  const votingHint = quiplashRoundVotingHint({
     canVote: canTapVote,
     hasVoted: !!myVote,
-    isContestant: isBattleContestant,
     cannotParticipate,
+    answerCount: roundAnswers.length,
   })
 
   return (
@@ -317,17 +303,15 @@ export function QuiplashActiveRound({
             <p className="text-xl font-black leading-snug">{metadata.prompt}</p>
             {!canSubmitAnswer && <p className="text-sm font-semibold text-muted">Watching this round</p>}
             {canSubmitAnswer && !myAnswer && (
-              <p className="text-sm text-muted">Everyone writes one funny answer — yours stays secret until voting.</p>
+              <p className="text-sm text-muted">Everyone writes one funny answer — yours stays secret until results.</p>
             )}
           </>
         )}
-        {session.phase === 'voting' && activeBattle && (
+        {session.phase === 'voting' && (
           <>
             <p className="text-xs font-bold uppercase tracking-wide text-[var(--primary-strong)]">Step 2 · Vote</p>
             <p className="text-lg font-black leading-snug">{metadata.prompt}</p>
-            <p className="text-sm font-semibold text-[var(--primary-strong)]">
-              {quiplashMatchupLabel(activeBattle, roundBattles)}
-            </p>
+            <p className="text-sm font-semibold text-[var(--primary-strong)]">Pick the funniest answer</p>
             <p className="text-sm text-muted">{votingHint}</p>
           </>
         )}
@@ -335,23 +319,14 @@ export function QuiplashActiveRound({
           <>
             <p className="text-xs font-bold uppercase tracking-wide text-[var(--primary-strong)]">Step 3 · Results</p>
             <p className="text-lg font-black leading-snug">{metadata.prompt}</p>
-            {activeBattle && roundBattles.length > 1 && (
-              <p className="text-sm font-semibold text-muted">
-                Match {activeBattle.battle_number} of {roundBattles.length}
-              </p>
-            )}
-            <p className="text-sm text-muted">
-              {isLastMatchOfRound
-                ? 'Round complete — see who wrote what below.'
-                : 'Vote counts only for now — authors stay hidden until this round wraps up.'}
-            </p>
+            <p className="text-sm text-muted">Who wrote what — points go to every vote your answer received.</p>
           </>
         )}
         {countdown > 0 && session.phase !== 'reveal' && (
           <p className="text-sm font-bold tabular-nums text-[var(--primary-strong)]">{countdown}s left</p>
         )}
         {session.phase === 'reveal' && countdown > 0 && (
-          <p className="text-sm text-muted">Next match in {countdown}s…</p>
+          <p className="text-sm text-muted">Next round in {countdown}s…</p>
         )}
       </div>
 
@@ -384,7 +359,7 @@ export function QuiplashActiveRound({
         <div className="glass-card p-6 text-center space-y-2">
           <p className="text-3xl">👀</p>
           <p className="font-semibold">You&apos;re watching</p>
-          <p className="text-muted text-sm">Spectators can&apos;t submit answers — follow along until battles begin.</p>
+          <p className="text-muted text-sm">Spectators can&apos;t submit answers — voting comes next.</p>
         </div>
       )}
 
@@ -393,14 +368,14 @@ export function QuiplashActiveRound({
           <p className="text-2xl">✅</p>
           <p className="font-semibold">Answer locked in</p>
           <p className="text-muted text-sm">&ldquo;{myAnswer?.text}&rdquo;</p>
-          <p className="text-faint text-xs">Next up: anonymous head-to-head voting when everyone finishes.</p>
+          <p className="text-faint text-xs">Everyone votes once when writing finishes — you can&apos;t pick your own.</p>
         </div>
       )}
 
-      {screen === 'matchup' && activeBattle && activeBattleVoteOptions.length > 0 && (
+      {screen === 'voting' && voteOptions.length > 0 && (
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
-            {activeBattleVoteOptions.map((answer, index) => {
+            {voteOptions.map((answer, index) => {
               const label = answerOptionLabel(index)
               const isPicked = myVote?.chosen_answer_id === answer.id
               return (
@@ -410,11 +385,13 @@ export function QuiplashActiveRound({
                   disabled={!canTapVote}
                   onClick={() => void submitVote(answer.id)}
                   className={[
-                    'relative min-h-[9rem] rounded-2xl border-2 p-4 text-left transition-all',
+                    'relative min-h-[8rem] rounded-2xl border-2 p-4 text-left transition-all',
                     isPicked
                       ? 'border-[var(--primary)] bg-[var(--primary)]/10 shadow-[var(--card-shadow-glow)]'
                       : 'border-[var(--border-strong)] bg-[var(--card-strong)]',
-                    canTapVote ? 'cursor-pointer hover:border-[var(--primary)]/50 hover:bg-[var(--card-hover)]' : 'cursor-default opacity-95',
+                    canTapVote
+                      ? 'cursor-pointer hover:border-[var(--primary)]/50 hover:bg-[var(--card-hover)]'
+                      : 'cursor-default opacity-95',
                   ].join(' ')}
                 >
                   <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary)] text-lg font-black text-white">
@@ -426,41 +403,34 @@ export function QuiplashActiveRound({
               )
             })}
           </div>
+          {myAnswer && (
+            <p className="text-center text-sm text-muted">Your answer isn&apos;t listed — you can&apos;t vote for your own.</p>
+          )}
         </div>
       )}
 
-      {screen === 'reveal' && activeBattle && revealTally && revealAnswers.length > 0 && (
+      {screen === 'reveal' && (
         <div className="space-y-3">
           {soloRound && (
             <div className="glass-card p-4 text-center space-y-1 border-2 border-emerald-500/40 bg-emerald-500/5">
               <p className="font-semibold">
                 {soloWinnerIsMe
-                  ? `No one else submitted — you got ${activeBattle.points_awarded} pts for this round!`
+                  ? `No one else submitted — you got ${soloRoundPoints(players.filter((p) => p.spectator !== true).length)} pts!`
                   : 'No one else submitted this round.'}
-              </p>
-            </div>
-          )}
-          {noVoterDraw && (
-            <div className="glass-card p-4 text-center space-y-1 border-2 border-[var(--border-strong)]">
-              <p className="font-semibold">It&apos;s a draw</p>
-              <p className="text-muted text-sm">
-                {isBattleContestant
-                  ? 'Only two people answered and no one else could vote on this match.'
-                  : 'Only two people answered — there was no one available to vote.'}
               </p>
             </div>
           )}
           {revealAnswers.map((answer, index) => {
             const label = answerOptionLabel(index)
-            const votesFor = answer.id === activeBattle.answer_a_id ? revealTally.votesA : revealTally.votesB
-            const isWinner = revealTally.winnerId === answer.id
+            const votesFor = revealTally.find((row) => row.answerId === answer.id)?.votes ?? 0
+            const isTop = votesFor > 0 && votesFor === topVoteCount
             const author = answerAuthorName(answer.id, answers, players)
             return (
               <div
                 key={answer.id}
                 className={[
                   'glass-card p-4 border-2',
-                  isWinner ? 'border-emerald-500/60 bg-emerald-500/10' : 'border-[var(--border-strong)] opacity-80',
+                  isTop ? 'border-emerald-500/60 bg-emerald-500/10' : 'border-[var(--border-strong)] opacity-90',
                 ].join(' ')}
               >
                 <div className="flex items-start gap-3">
@@ -471,64 +441,18 @@ export function QuiplashActiveRound({
                     <p className="font-semibold leading-snug">{answer.text}</p>
                     {!soloRound && (
                       <p className="text-faint text-xs mt-1">
-                        {votesFor} vote{votesFor === 1 ? '' : 's'}
-                        {isLastMatchOfRound && (
-                          <>
-                            {' '}
-                            · Written by <span className="font-semibold text-body">{author}</span>
-                          </>
-                        )}
+                        Written by <span className="font-semibold text-body">{author}</span> · {votesFor} vote
+                        {votesFor === 1 ? '' : 's'}
                       </p>
                     )}
-                    {isWinner && revealTally.points > 0 && (
-                      <p className="text-emerald-600 dark:text-emerald-300 text-xs font-bold mt-1">
-                        Winner! +{revealTally.points} pts
-                      </p>
-                    )}
-                    {!soloRound && !revealTally.winnerId && !noVoterDraw && (
-                      <p className="text-muted text-xs mt-1">Tie — no points this match</p>
+                    {votesFor > 0 && (
+                      <p className="text-emerald-600 dark:text-emerald-300 text-xs font-bold mt-1">+{votesFor} pts</p>
                     )}
                   </div>
                 </div>
               </div>
             )
           })}
-
-          {isLastMatchOfRound && roundBattles.length > 1 && (
-            <div className="glass-card p-4 space-y-3 border-2 border-[var(--border-strong)]">
-              <p className="font-bold text-center">Round {currentRound.round_number} recap</p>
-              <div className="space-y-2">
-                {roundBattles
-                  .filter((battle) => battle.status === 'finished')
-                  .map((battle) => {
-                    const options = battleVoteOptions(battle, answers)
-                    const battleVotes = votes.filter((v) => v.battle_id === battle.id)
-                    const tally = countVotesForBattle(battle, battleVotes)
-                    const winnerText = options.find((o) => o.id === tally.winnerId)?.text
-                    const winnerAuthor =
-                      tally.winnerId != null ? answerAuthorName(tally.winnerId, answers, players) : null
-                    return (
-                      <div
-                        key={battle.id}
-                        className="rounded-xl border border-[var(--border-strong)] bg-[var(--surface-inset-bg)] px-3 py-2 text-sm"
-                      >
-                        <p className="text-faint text-xs font-semibold uppercase tracking-wide">
-                          Match {battle.battle_number}
-                        </p>
-                        {winnerText && winnerAuthor ? (
-                          <p className="mt-1">
-                            <span className="font-semibold">{winnerAuthor}</span> won with &ldquo;{winnerText}&rdquo;
-                            {tally.points > 0 ? ` (+${tally.points} pts)` : ''}
-                          </p>
-                        ) : (
-                          <p className="mt-1 text-muted">Tie — no points</p>
-                        )}
-                      </div>
-                    )
-                  })}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </LiveLeaderboardLayout>

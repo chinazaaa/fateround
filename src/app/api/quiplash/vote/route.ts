@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, quiplashVoteSchema)
   if (bodyError) return bodyError
 
-  const { gameId, resumeToken, battleId, chosenAnswerId } = body
+  const { gameId, resumeToken, roundId, chosenAnswerId } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
@@ -23,19 +23,25 @@ export async function POST(req: NextRequest) {
 
   const { data: session } = await supabase
     .from('quiplash_sessions')
-    .select('phase, active_battle_id')
+    .select('phase')
     .eq('game_id', code)
     .maybeSingle()
-  if (!session || session.phase !== 'voting' || session.active_battle_id !== battleId) {
-    return NextResponse.json({ error: 'This battle is not open for voting' }, { status: 400 })
+  if (!session || session.phase !== 'voting') {
+    return NextResponse.json({ error: 'This round is not open for voting' }, { status: 400 })
   }
 
-  const { data: battle } = await supabase.from('quiplash_battles').select('*').eq('id', battleId).maybeSingle()
-  if (!battle || battle.status !== 'active') {
-    return NextResponse.json({ error: 'Battle is not active' }, { status: 400 })
+  const { data: round } = await supabase.from('rounds').select('id, status').eq('id', roundId).eq('game_id', code).maybeSingle()
+  if (!round || round.status !== 'active') {
+    return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
   }
 
-  if (chosenAnswerId !== battle.answer_a_id && chosenAnswerId !== battle.answer_b_id) {
+  const { data: chosenAnswer } = await supabase
+    .from('quiplash_answers')
+    .select('id, player_id, round_id')
+    .eq('id', chosenAnswerId)
+    .eq('round_id', roundId)
+    .maybeSingle()
+  if (!chosenAnswer) {
     return NextResponse.json({ error: 'Invalid answer choice' }, { status: 400 })
   }
 
@@ -47,26 +53,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Spectators cannot vote' }, { status: 403 })
   }
 
-  const { data: answers } = await supabase
-    .from('quiplash_answers')
-    .select('id, player_id')
-    .in('id', [battle.answer_a_id, battle.answer_b_id])
-  const ownAnswer = (answers ?? []).find((a) => a.player_id === playerId)
-  if (ownAnswer) {
-    return NextResponse.json({ error: 'You cannot vote in a battle that includes your answer' }, { status: 400 })
+  if (chosenAnswer.player_id === playerId) {
+    return NextResponse.json({ error: 'You cannot vote for your own answer' }, { status: 400 })
   }
 
   const { data: existing } = await supabase
     .from('quiplash_votes')
     .select('id')
     .eq('player_id', playerId)
-    .eq('battle_id', battleId)
+    .eq('round_id', roundId)
     .maybeSingle()
-  if (existing) return NextResponse.json({ error: 'Already voted on this battle' }, { status: 400 })
+  if (existing) return NextResponse.json({ error: 'Already voted this round' }, { status: 400 })
 
   const { error } = await supabase.from('quiplash_votes').insert({
     game_id: code,
-    battle_id: battleId,
+    round_id: roundId,
+    battle_id: null,
     player_id: playerId,
     chosen_answer_id: chosenAnswerId,
   })
