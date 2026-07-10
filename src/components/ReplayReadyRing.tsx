@@ -46,10 +46,7 @@ export function ReplayReadyRing({
   /** Player leaves the room (uses `meId` as the player id). */
   onLeft?: () => void
 }) {
-  const { removePlayer, removingPlayerId } = useHostRemovePlayer(
-    gameCode ?? '',
-    hostToken ?? ''
-  )
+  const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode ?? '', hostToken ?? '')
   const canRemovePlayers = isHost && !!gameCode && !!hostToken
   const total = players.length
   const readyCount = players.filter((p) => p.spectator !== true).length
@@ -140,11 +137,7 @@ export function ReplayReadyRing({
                     aria-label={`Remove ${p.name}`}
                     className="rounded-lg p-1 text-faint transition-colors hover:bg-[color-mix(in_srgb,#ef4444_8%,transparent)] hover:text-red-500 disabled:opacity-50"
                   >
-                    {removingPlayerId === p.id ? (
-                      <span className="px-0.5 text-xs">…</span>
-                    ) : (
-                      <TrashIcon size={15} />
-                    )}
+                    {removingPlayerId === p.id ? <span className="px-0.5 text-xs">…</span> : <TrashIcon size={15} />}
                   </button>
                 ) : null}
               </div>
