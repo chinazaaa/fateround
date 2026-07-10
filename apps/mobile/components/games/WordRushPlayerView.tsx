@@ -3,9 +3,11 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { type Game, type Player, type WordRushAnswer, type WordRushPlayer, type WordRushSession } from '@fateround/shared'
 import { batch5GameLabel } from '@fateround/shared/batch-5-games'
 import {
-  TEAM_EMOJI,
   clampWordRushMode,
   clampWordRushTeams,
+  computeWordRushPlayerScores,
+  computeWordRushTeamScores,
+  currentTeamRoundNumber,
   isWordRushResultsPhase,
   tallyWordRushScores,
   teamLabel,
@@ -13,11 +15,22 @@ import {
 } from '@fateround/shared/word-rush'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { ActivityFeed } from '@/components/party/ActivityFeed'
+import { RoundBreakCard } from '@/components/party/RoundBreakCard'
+import { TeamBadge } from '@/components/party/TeamBadge'
+import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
+import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
+import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
+import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postWordRushPrompt, postWordRushSubmit, postWordRushTeam } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { WORD_RUSH_ANSWER_SELECT, WORD_RUSH_PLAYER_SELECT, WORD_RUSH_SESSION_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -74,6 +87,7 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -110,6 +124,52 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     return counts
   }, [teamRows, numTeams])
 
+  const teamMembers = useMemo(() => {
+    const map = new Map<number, string[]>()
+    const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
+    for (const row of teamRows) {
+      if (row.team < 1) continue
+      const list = map.get(row.team) ?? []
+      list.push(nameById.get(row.player_id) ?? 'Player')
+      map.set(row.team, list)
+    }
+    return map
+  }, [teamRows, bootstrap.players])
+
+  const liveTeamScores = useMemo(
+    () => computeWordRushTeamScores(answers, numTeams),
+    [answers, numTeams]
+  )
+
+  const livePlayerScores = useMemo(
+    () => computeWordRushPlayerScores(bootstrap.players, teamRows),
+    [bootstrap.players, teamRows]
+  )
+
+  const recentCorrect = useMemo(() => {
+    const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
+    return answers
+      .filter((a) => a.correct)
+      .slice(0, 10)
+      .map((a) => ({
+        id: a.id,
+        primary: a.text,
+        secondary:
+          mode === 'team'
+            ? `${teamLabel(a.team)} · ${nameById.get(a.player_id) ?? 'Player'}`
+            : (nameById.get(a.player_id) ?? 'Player'),
+      }))
+  }, [answers, bootstrap.players, mode])
+
+  const turnSecondsLeft = useAbsoluteDeadline(
+    session?.turn_deadline_at,
+    session?.phase === 'playing'
+  )
+  const intermissionSecondsLeft = useAbsoluteDeadline(
+    session?.intermission_deadline_at,
+    session?.phase === 'intermission'
+  )
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
@@ -125,26 +185,21 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
     if (mode === 'individual') {
-      return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+      return <LobbyView {...lobbyProps!} onLeft={onLeft} />
     }
     return (
-      <GameShell title={batch5GameLabel('word_rush')} subtitle="Pick your team">
-        <View style={styles.teamGrid}>
-          {Array.from({ length: numTeams }, (_, i) => i + 1).map((team) => (
-            <Pressable
-              key={team}
-              style={[styles.teamBtn, myTeamRow?.team === team && styles.teamBtnActive]}
-              disabled={acting}
-              onPress={() => act(() => postWordRushTeam(bootstrap.code, bootstrap.myResumeToken!, team))}
-            >
-              <Text style={styles.teamEmoji}>{TEAM_EMOJI[team - 1] ?? '⬜'}</Text>
-              <Text style={styles.teamText}>{teamLabel(team)}</Text>
-              <Text style={styles.teamCount}>{teamCounts[team] ?? 0} players</Text>
-            </Pressable>
-          ))}
-        </View>
+      <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_rush')} subtitle="Pick your team">
+        <TeamPickerGrid
+          numTeams={numTeams}
+          myTeam={myTeamRow?.team}
+          teamCounts={teamCounts}
+          teamMembers={teamMembers}
+          onPickTeam={(team) => void act(() => postWordRushTeam(bootstrap.code, bootstrap.myResumeToken!, team))}
+          acting={acting}
+          help="Choose a team before the host starts."
+        />
       </GameShell>
     )
   }
@@ -157,8 +212,20 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     const detail =
       top && 'name' in top ? `${top.name} — ${top.score} pts` : top ? `${teamLabel(top.team)} wins` : undefined
     return (
-      <GameShell title={batch5GameLabel('word_rush')} subtitle={bootstrap.code}>
-        <FinishedPanel title="Final results" detail={detail} />
+      <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_rush')} subtitle={bootstrap.code}>
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title="Final results"
+          subtitle="Final standings"
+          detail={detail}
+          leaderboard={scoreListLeaderboard(
+            board.map((row) =>
+              'name' in row
+                ? { name: row.name, score: row.score }
+                : { name: teamLabel(row.team), score: row.score }
+            )
+          )}
+        />
       </GameShell>
     )
   }
@@ -196,18 +263,70 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
     setEndLetter('')
   }
 
+  const teamRound =
+    mode === 'team' && session ? currentTeamRoundNumber(session.turn_index, numTeams) : session.current_round
+
   return (
-    <GameShell title={batch5GameLabel('word_rush')} subtitle={session.status_message ?? bootstrap.code}>
+    <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_rush')} subtitle={session.status_message ?? bootstrap.code}>
       <TurnBanner
         text={
           session.phase === 'intermission'
             ? 'Round break…'
             : session.phase === 'awaiting_prompt'
               ? 'Waiting for letter pair…'
-              : `${session.start_letter?.toUpperCase() ?? '?'} → ${session.end_letter?.toUpperCase() ?? '?'}`
+              : mode === 'team' && !onMyTeam
+                ? `${teamLabel(session.active_team)} is playing`
+                : `${session.start_letter?.toUpperCase() ?? '?'} → ${session.end_letter?.toUpperCase() ?? '?'}`
         }
         isMyTurn={onMyTeam && session.phase === 'playing'}
       />
+
+      {mode === 'team' && myTeamRow?.team ? (
+        <View style={styles.teamRow}>
+          <Text style={styles.teamRowLabel}>You're on</Text>
+          <TeamBadge team={myTeamRow.team} />
+        </View>
+      ) : null}
+
+      {turnSecondsLeft > 0 && session.phase === 'playing' ? <TimerBadge seconds={turnSecondsLeft} /> : null}
+
+      {mode === 'team' ? (
+        <TeamScoreGrid
+          scores={liveTeamScores}
+          activeTeam={session.phase === 'playing' ? session.active_team : null}
+          myTeam={myTeamRow?.team}
+          round={teamRound}
+          totalRounds={session.total_rounds}
+        />
+      ) : (
+        <LeaderboardPanel
+          title="Leaderboard"
+          rows={livePlayerScores.map((row) => ({
+            id: row.id,
+            name: row.name,
+            score: row.score,
+            highlight: row.id === bootstrap.myPlayerId,
+          }))}
+          highlightId={bootstrap.myPlayerId}
+        />
+      )}
+
+      {session.phase === 'intermission' ? (
+        <RoundBreakCard
+          title="Round break"
+          message={session.status_message ?? 'Next round starting soon…'}
+          secondsLeft={intermissionSecondsLeft}
+          detail={mode === 'team' ? `Up next: ${teamLabel(session.active_team)}` : undefined}
+        />
+      ) : null}
+
+      {session.phase !== 'intermission' && session.start_letter && session.end_letter ? (
+        <View style={styles.promptDisplay}>
+          <Text style={styles.promptLetter}>{session.start_letter.toUpperCase()}</Text>
+          <Text style={styles.promptArrow}>→</Text>
+          <Text style={styles.promptLetter}>{session.end_letter.toUpperCase()}</Text>
+        </View>
+      ) : null}
 
       {session.phase === 'awaiting_prompt' && isPromptSetter ? (
         <View style={styles.panel}>
@@ -255,27 +374,29 @@ export function WordRushPlayerView({ gameCode }: { gameCode: string }) {
           </Pressable>
           {lastMessage ? <Text style={styles.feedback}>{lastMessage}</Text> : null}
         </View>
-      ) : (
+      ) : session.phase === 'playing' ? (
         <Text style={styles.waiting}>Watch and wait for your turn…</Text>
-      )}
+      ) : null}
+
+      {mode === 'team' && session.phase === 'playing' ? (
+        <ActivityFeed title="Recent correct" items={recentCorrect} emptyText="No correct words yet" />
+      ) : null}
     </GameShell>
   )
 }
 
 const styles = StyleSheet.create({
-  teamGrid: { gap: 10 },
-  teamBtn: {
-    backgroundColor: '#17171d',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#2a2a35',
-    gap: 4,
+  teamRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  teamRowLabel: { color: '#9ca3af', fontSize: 14 },
+  promptDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    paddingVertical: 12,
   },
-  teamBtnActive: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
-  teamEmoji: { fontSize: 22 },
-  teamText: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  teamCount: { color: '#9ca3af', fontSize: 14 },
+  promptLetter: { color: '#fff', fontSize: 40, fontWeight: '900' },
+  promptArrow: { color: '#fda4af', fontSize: 28, fontWeight: '700' },
   waiting: { color: '#9ca3af', fontSize: 16, textAlign: 'center', marginTop: 24 },
   panel: { backgroundColor: '#17171d', borderRadius: 12, padding: 16, gap: 10 },
   label: { color: '#fff', fontSize: 16, fontWeight: '600' },

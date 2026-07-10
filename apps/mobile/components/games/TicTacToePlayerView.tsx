@@ -10,17 +10,15 @@ import { currentTurnPlayerId } from '@fateround/shared/tic-tac-toe'
 import type { Game, Player, TicTacToeMark, TicTacToeSession } from '@fateround/shared'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import {
-  FinishedPanel,
-  GameLoading,
-  GameNotFound,
-  GameShell,
-  TurnBanner,
-} from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { postTicTacToeMove } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { TIC_TAC_TOE_SESSION_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
 
@@ -66,6 +64,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -73,6 +72,16 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
     () => bootstrap.load(),
     !!bootstrap.game
   )
+
+  const activeSessionEarly = session ?? bootstrap.gameState
+  const turnPlayerIdEarly = activeSessionEarly ? currentTurnPlayerId(activeSessionEarly) : null
+  const isMyTurnEarly = bootstrap.myPlayerId != null && turnPlayerIdEarly === bootstrap.myPlayerId
+
+  useTurnNotifications({
+    status: bootstrap.game?.status,
+    isMyTurn: isMyTurnEarly,
+    enabled: bootstrap.screen === 'active',
+  })
 
   const move = async (cellIndex: number) => {
     if (!bootstrap.myResumeToken) return
@@ -101,8 +110,8 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
 
   const activeSession = session ?? bootstrap.gameState
@@ -110,6 +119,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
 
   const turnPlayerId = currentTurnPlayerId(activeSession)
   const isMyTurn = bootstrap.myPlayerId === turnPlayerId
+
   const myMark = bootstrap.myPlayerId ? markForPlayer(activeSession, bootstrap.myPlayerId) : null
   const turnPlayer = bootstrap.players.find((p) => p.id === turnPlayerId)
 
@@ -117,8 +127,8 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
     const winner = bootstrap.players.find((p) => p.id === activeSession.winner_player_id)
     const title = activeSession.is_draw ? 'Draw!' : winner ? `${winner.name} wins!` : 'Game over'
     return (
-      <GameShell title="Tic Tac Toe" subtitle={bootstrap.code}>
-        <FinishedPanel title={title} detail={activeSession.status_message} />
+      <GameShell bootstrap={bootstrap} title="Tic Tac Toe" subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={activeSession.status_message} leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} />
       </GameShell>
     )
   }
@@ -127,7 +137,7 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
   const winLine = new Set(overallWin?.line ?? [])
 
   return (
-    <GameShell title="Tic Tac Toe" subtitle={`Code ${bootstrap.code}`}>
+    <GameShell bootstrap={bootstrap} title="Tic Tac Toe" subtitle={`Code ${bootstrap.code}`}>
       <TurnBanner
         text={isMyTurn ? 'Your turn' : `${turnPlayer?.name ?? 'Opponent'}'s turn`}
         isMyTurn={isMyTurn}

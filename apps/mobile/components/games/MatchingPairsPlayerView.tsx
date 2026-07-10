@@ -21,7 +21,8 @@ import {
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postMatchingPairsFlip } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -30,6 +31,7 @@ import {
   MEMORY_MATCH_SUBMISSION_SELECT,
   ROUND_SELECT,
 } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 type CardState = 'hidden' | 'flipped' | 'matched'
@@ -151,6 +153,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       setStreak(currentStreak)
     },
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -235,21 +238,21 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game) return <GameLoading />
 
   if (bootstrap.screen === 'finished') {
     return (
-      <GameShell title={batch3GameLabel('matching_pairs')} subtitle={bootstrap.code}>
-        <FinishedPanel title="Game over" detail={`Your score: ${points}`} />
+      <GameShell bootstrap={bootstrap} title={batch3GameLabel('matching_pairs')} subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title="Game over" detail={`Your score: ${points}`} />
       </GameShell>
     )
   }
 
   return (
-    <GameShell title={batch3GameLabel('matching_pairs')} subtitle={`Score ${points} · Streak ${streak}`}>
+    <GameShell bootstrap={bootstrap} title={batch3GameLabel('matching_pairs')} subtitle={`Score ${points} · Streak ${streak}`}>
       {!board || !meta ? (
         <Text style={styles.waiting}>Loading board…</Text>
       ) : finished ? (

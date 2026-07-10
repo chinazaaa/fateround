@@ -1,4 +1,11 @@
-import type { MahjongPlayerState, MahjongSession, Player } from './types'
+import type { MahjongPlayerState, MahjongSeat, MahjongSession, Player } from './types'
+
+export const MAHJONG_SEAT_LABELS: Record<MahjongSeat, string> = {
+  east: 'East',
+  south: 'South',
+  west: 'West',
+  north: 'North',
+}
 
 export interface MahjongStateResponse {
   session: MahjongSession | null

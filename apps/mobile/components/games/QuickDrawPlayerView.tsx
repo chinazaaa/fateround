@@ -1,13 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
-import {
-  type Game,
-  type Player,
-  type QuickDrawGuessGuess,
-  type QuickDrawGuessPlayer,
-  type QuickDrawGuessSession,
-  type QuickDrawGuessWord,
-} from '@fateround/shared'
+import { type Game, type Player, type QuickDrawGuessGuess, type QuickDrawGuessPlayer, type QuickDrawGuessSession, type QuickDrawGuessWord } from '@fateround/shared'
 import { batch8GameLabel } from '@fateround/shared/batch-8-games'
 import {
   clampQuickDrawNumTeams,
@@ -17,12 +10,20 @@ import {
   isQuickDrawGuessVariant,
   quickDrawGuessIndividualLeaderboard,
   quickDrawGuessWinningTeams,
-  TEAM_EMOJI,
   teamLabel,
 } from '@fateround/shared/quick-draw-guess'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell, TurnBanner, WaitingPanel } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner, WaitingPanel } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { ActivityFeed } from '@/components/party/ActivityFeed'
+import { RoundBreakCard } from '@/components/party/RoundBreakCard'
+import { TeamBadge } from '@/components/party/TeamBadge'
+import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
+import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
+import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
+import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postQuickDrawGuess, postQuickDrawGuessSkip, postQuickDrawGuessTeam } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -32,6 +33,8 @@ import {
   QUICK_DRAW_GUESS_SESSION_SELECT,
   QUICK_DRAW_GUESS_WORD_SELECT,
 } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { scoreListLeaderboard, toLeaderboardRows } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -97,6 +100,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
       return 'waiting'
     },
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -140,12 +144,52 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
     return counts
   }, [teamRows, numTeams])
 
+  const teamMembers = useMemo(() => {
+    const map = new Map<number, string[]>()
+    const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
+    for (const row of teamRows) {
+      if (row.team < 1) continue
+      const list = map.get(row.team) ?? []
+      list.push(nameById.get(row.player_id) ?? 'Player')
+      map.set(row.team, list)
+    }
+    return map
+  }, [teamRows, bootstrap.players])
+
+  const liveTeamScores = useMemo(
+    () => computeQuickDrawGuessScores(words, numTeams),
+    [words, numTeams]
+  )
+
+  const liveIndividualScores = useMemo(
+    () => quickDrawGuessIndividualLeaderboard(teamRows, bootstrap.players),
+    [teamRows, bootstrap.players]
+  )
+
+  const guessFeed = useMemo(() => {
+    const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
+    return guesses.slice(0, 12).map((g) => ({
+      id: g.id,
+      primary: g.text,
+      secondary: `${nameById.get(g.player_id) ?? 'Player'}${g.correct ? ` · +${g.points}` : ''}`,
+    }))
+  }, [guesses, bootstrap.players])
+
+  const turnSecondsLeft = useAbsoluteDeadline(
+    session?.turn_deadline_at,
+    session?.phase === 'turn'
+  )
+  const breakSecondsLeft = useAbsoluteDeadline(
+    session?.break_deadline_at,
+    session?.phase === 'break'
+  )
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
 
   if (!isGuessMode && bootstrap.game) {
     return (
-      <GameShell title={batch8GameLabel('quick_draw')} subtitle="Drawful mode">
+      <GameShell bootstrap={bootstrap} title={batch8GameLabel('quick_draw')} subtitle="Drawful mode">
         <WaitingPanel message="Drawful (lie) mode needs the web app for canvas drawing. Open this game in your browser to play that variant." />
       </GameShell>
     )
@@ -164,27 +208,21 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
     if (mode === 'individual') {
-      return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+      return <LobbyView {...lobbyProps!} onLeft={onLeft} />
     }
     return (
-      <GameShell title={batch8GameLabel('quick_draw')} subtitle="Pick your team">
-        <Text style={styles.help}>Choose a team before the host starts.</Text>
-        <View style={styles.teamGrid}>
-          {Array.from({ length: numTeams }, (_, i) => i + 1).map((team) => (
-            <Pressable
-              key={team}
-              style={[styles.teamBtn, myTeamRow?.team === team && styles.teamBtnActive]}
-              disabled={acting}
-              onPress={() => void act(() => postQuickDrawGuessTeam(bootstrap.code, bootstrap.myResumeToken!, team))}
-            >
-              <Text style={styles.teamEmoji}>{TEAM_EMOJI[team - 1] ?? '⬜'}</Text>
-              <Text style={styles.teamText}>{teamLabel(team)}</Text>
-              <Text style={styles.teamCount}>{teamCounts[team] ?? 0} players</Text>
-            </Pressable>
-          ))}
-        </View>
+      <GameShell bootstrap={bootstrap} title={batch8GameLabel('quick_draw')} subtitle="Pick your team">
+        <TeamPickerGrid
+          numTeams={numTeams}
+          myTeam={myTeamRow?.team}
+          teamCounts={teamCounts}
+          teamMembers={teamMembers}
+          onPickTeam={(team) => void act(() => postQuickDrawGuessTeam(bootstrap.code, bootstrap.myResumeToken!, team))}
+          acting={acting}
+          help="Choose a team before the host starts."
+        />
       </GameShell>
     )
   }
@@ -194,14 +232,14 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
       const board = quickDrawGuessIndividualLeaderboard(teamRows, bootstrap.players)
       const top = board[0]
       return (
-        <FinishedPanel title="Final results" detail={top ? `${top.name} — ${top.score} pts` : undefined} />
+        <GameFinishPanel bootstrap={bootstrap} title="Final results" subtitle="Final standings" detail={top ? `${top.name} — ${top.score} pts` : undefined} leaderboard={scoreListLeaderboard(board)} />
       )
     }
     const scores = computeQuickDrawGuessScores(words, numTeams)
     const winners = quickDrawGuessWinningTeams(scores)
     const winnerLabel = winners.map((t) => teamLabel(t)).join(' & ')
     return (
-      <FinishedPanel title="Final results" detail={winnerLabel ? `${winnerLabel} wins` : undefined} />
+      <GameFinishPanel bootstrap={bootstrap} title="Final results" subtitle="Team scores" detail={winnerLabel ? `${winnerLabel} wins` : undefined} leaderboard={toLeaderboardRows(scores.map((row) => ({ name: teamLabel(row.team), score: row.score })))} />
     )
   }
 
@@ -218,17 +256,57 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
           : `${drawerName} is drawing`
 
   return (
-    <GameShell title={batch8GameLabel('quick_draw')} subtitle={mode === 'team' ? teamLabel(session.active_team) : 'Individual'}>
+    <GameShell bootstrap={bootstrap} title={batch8GameLabel('quick_draw')} subtitle={mode === 'team' ? teamLabel(session.active_team) : 'Individual'}>
       <ScrollView contentContainerStyle={styles.content}>
         <TurnBanner text={statusText} isMyTurn={isDrawer || canGuess} />
 
-        {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
+        {mode === 'team' && myTeamRow?.team ? (
+          <View style={styles.teamRow}>
+            <Text style={styles.teamRowLabel}>You're on</Text>
+            <TeamBadge team={myTeamRow.team} />
+          </View>
+        ) : null}
+
+        {turnSecondsLeft > 0 && session.phase === 'turn' ? <TimerBadge seconds={turnSecondsLeft} /> : null}
+
+        {mode === 'team' ? (
+          <TeamScoreGrid
+            scores={liveTeamScores}
+            activeTeam={session.phase === 'turn' ? session.active_team : null}
+            myTeam={myTeamRow?.team}
+            round={session.current_round}
+            totalRounds={session.total_rounds}
+          />
+        ) : (
+          <LeaderboardPanel
+            title="Leaderboard"
+            rows={liveIndividualScores.map((row) => ({
+              id: row.id,
+              name: row.name,
+              score: row.score,
+              highlight: row.id === bootstrap.myPlayerId,
+            }))}
+            highlightId={bootstrap.myPlayerId}
+          />
+        )}
+
+        {session.phase === 'break' ? (
+          <RoundBreakCard
+            title="Round break"
+            message={session.status_message ?? 'Next turn starting soon…'}
+            secondsLeft={breakSecondsLeft}
+          />
+        ) : null}
+
+        {session.status_message && session.phase !== 'break' ? (
+          <Text style={styles.status}>{session.status_message}</Text>
+        ) : null}
 
         {isDrawer && session.current_word ? (
           <View style={styles.wordBox}>
             <Text style={styles.wordLabel}>Your word</Text>
             <Text style={styles.word}>{session.current_word}</Text>
-            <Text style={styles.wordHint}>Draw on paper or describe without saying the word.</Text>
+            <Text style={styles.wordHint}>Sketch on paper or describe without saying the word.</Text>
             <Pressable
               style={[styles.secondaryBtn, acting && styles.btnDisabled]}
               disabled={acting}
@@ -260,41 +338,15 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : null}
 
-        {guesses.length > 0 ? (
-          <>
-            <Text style={styles.section}>Recent guesses</Text>
-            {guesses.slice(0, 8).map((g) => {
-              const name = bootstrap.players.find((p) => p.id === g.player_id)?.name ?? 'Player'
-              return (
-                <Text key={g.id} style={[styles.guessLine, g.correct && styles.guessCorrect]}>
-                  {name}: {g.text} {g.correct ? `+${g.points}` : ''}
-                </Text>
-              )
-            })}
-          </>
-        ) : null}
+        <ActivityFeed title="Recent guesses" items={guessFeed} emptyText="No guesses yet" />
       </ScrollView>
     </GameShell>
   )
 }
 
 const styles = StyleSheet.create({
-  help: { color: '#9ca3af', fontSize: 15, marginBottom: 12 },
-  teamGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  teamBtn: {
-    width: '47%',
-    backgroundColor: '#17171d',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#2a2a35',
-    padding: 14,
-    alignItems: 'center',
-    gap: 4,
-  },
-  teamBtnActive: { borderColor: '#f43f5e' },
-  teamEmoji: { fontSize: 22 },
-  teamText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  teamCount: { color: '#9ca3af', fontSize: 12 },
+  teamRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  teamRowLabel: { color: '#9ca3af', fontSize: 14 },
   content: { paddingBottom: 32, gap: 12 },
   status: { color: '#d1d5db', fontSize: 14 },
   wordBox: { backgroundColor: '#17171d', borderRadius: 12, padding: 16, gap: 8, alignItems: 'center' },
@@ -328,7 +380,4 @@ const styles = StyleSheet.create({
   },
   secondaryBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   btnDisabled: { opacity: 0.5 },
-  section: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  guessLine: { color: '#d1d5db', fontSize: 14 },
-  guessCorrect: { color: '#86efac' },
 })

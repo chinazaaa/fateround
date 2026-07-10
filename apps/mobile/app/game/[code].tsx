@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { GameRouter, resolveMobilePlayerView } from '@/components/games/GameRouter'
+import { PlayerSessionShell } from '@/components/session/PlayerSessionShell'
+import { GamePushSetup } from '@/components/push/GamePushSetup'
 import { WebFallbackScreen } from '@/components/WebFallbackScreen'
 import { getSupabase, GAME_SELECT } from '@/lib/supabase'
 import type { Game, GameType } from '@fateround/shared'
@@ -92,7 +94,12 @@ export default function GameScreen() {
     )
   }
 
-  return <GameRouter gameCode={gameCode} gameType={gameType} />
+  return (
+    <PlayerSessionShell gameCode={gameCode} game={game}>
+      <GamePushSetup gameCode={gameCode} />
+      <GameRouter gameCode={gameCode} gameType={gameType} />
+    </PlayerSessionShell>
+  )
 }
 
 const styles = StyleSheet.create({

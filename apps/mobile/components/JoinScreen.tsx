@@ -1,4 +1,6 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput } from 'react-native'
+import { ShareGameCard } from '@/components/session/ShareGameCard'
+import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 
 type Props = {
   gameCode: string
@@ -11,7 +13,7 @@ type Props = {
 
 export function JoinScreen({ gameCode, joinName, joining, error, onChangeName, onJoin }: Props) {
   return (
-    <View style={styles.container}>
+    <KeyboardFormScreen contentContainerStyle={styles.container}>
       <Text style={styles.kicker}>Join game</Text>
       <Text style={styles.code}>{gameCode}</Text>
       <Text style={styles.hint}>No account needed — enter a display name and play.</Text>
@@ -32,7 +34,9 @@ export function JoinScreen({ gameCode, joinName, joining, error, onChangeName, o
       <Pressable style={[styles.button, joining && styles.buttonDisabled]} onPress={onJoin} disabled={joining}>
         {joining ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Join game</Text>}
       </Pressable>
-    </View>
+
+      <ShareGameCard gameCode={gameCode} />
+    </KeyboardFormScreen>
   )
 }
 

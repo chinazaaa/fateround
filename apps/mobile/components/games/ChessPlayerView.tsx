@@ -12,17 +12,14 @@ import {
 } from '@fateround/shared/chess'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import {
-  FinishedPanel,
-  GameLoading,
-  GameNotFound,
-  GameShell,
-  TurnBanner,
-} from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postChessExpireTurn, postChessMove, postChessResign } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { CHESS_SESSION_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
 type Promotion = 'q' | 'r' | 'b' | 'n'
@@ -80,6 +77,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -112,6 +110,19 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       return new Set<string>()
     }
   }, [chess, selected, isMyTurn])
+
+  const inCheckSquare = useMemo(() => {
+    if (!chess || !activeSession?.in_check) return null
+    const turn = activeSession.current_turn
+    for (const file of FILES) {
+      for (const rank of RANKS) {
+        const square = `${file}${rank}`
+        const piece = chess.get(square as Square)
+        if (piece?.type === 'k' && piece.color === turn) return square
+      }
+    }
+    return null
+  }, [chess, activeSession?.in_check, activeSession?.current_turn])
 
   const timed = activeSession ? chessIsTimed(activeSession) : false
 
@@ -207,8 +218,8 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game || !activeSession || !chess) return <GameLoading />
 
@@ -222,8 +233,8 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
       .join(' · ')
     const title = activeSession.is_draw ? 'Draw!' : winner ? `${winner.name} wins!` : 'Game over'
     return (
-      <GameShell title="Chess" subtitle={bootstrap.code}>
-        <FinishedPanel title={title} detail={detail || undefined} />
+      <GameShell bootstrap={bootstrap} title="Chess" subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={detail || undefined} leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} />
       </GameShell>
     )
   }
@@ -234,7 +245,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   void clockTick
 
   return (
-    <GameShell title="Chess" subtitle={`Code ${bootstrap.code}`}>
+    <GameShell bootstrap={bootstrap} title="Chess" subtitle={`Code ${bootstrap.code}`}>
       <TurnBanner
         text={
           activeSession.in_check && isMyTurn
@@ -274,6 +285,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
               const isTarget = legalTargets.has(square)
               const isLastFrom = activeSession.last_move_from === square
               const isLastTo = activeSession.last_move_to === square
+              const isKingInCheck = square === inCheckSquare
               const glyph = piece
                 ? piece.color === 'w'
                   ? WHITE_GLYPHS[piece.type]
@@ -288,6 +300,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
                     isSelected && styles.selectedSquare,
                     isTarget && styles.targetSquare,
                     (isLastFrom || isLastTo) && styles.lastMoveSquare,
+                    isKingInCheck && styles.checkSquare,
                   ]}
                   disabled={acting || !isMyTurn}
                   onPress={() => onSquarePress(square)}
@@ -351,6 +364,7 @@ const styles = StyleSheet.create({
   selectedSquare: { borderWidth: 2, borderColor: '#f43f5e' },
   targetSquare: { backgroundColor: 'rgba(34,197,94,0.35)' },
   lastMoveSquare: { backgroundColor: 'rgba(250,204,21,0.35)' },
+  checkSquare: { backgroundColor: 'rgba(220,38,38,0.45)' },
   piece: { fontSize: 28, fontWeight: '800' },
   whitePiece: { color: '#fafafa' },
   blackPiece: { color: '#171717' },

@@ -10,7 +10,6 @@ import {
 } from '@fateround/shared'
 import { batch4GameLabel } from '@fateround/shared/batch-4-games'
 import {
-  TEAM_EMOJI,
   clampDescribeItMode,
   clampDescribeItTeams,
   computeDescribeItScores,
@@ -21,7 +20,16 @@ import {
 } from '@fateround/shared/describe-it'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { ActivityFeed } from '@/components/party/ActivityFeed'
+import { RoundBreakCard } from '@/components/party/RoundBreakCard'
+import { TeamBadge } from '@/components/party/TeamBadge'
+import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
+import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
+import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
+import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
   postDescribeItClue,
@@ -36,6 +44,8 @@ import {
   DESCRIBE_IT_SESSION_SELECT,
   DESCRIBE_IT_WORD_SELECT,
 } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { scoreListLeaderboard, toLeaderboardRows } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -99,6 +109,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -161,6 +172,46 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     return counts
   }, [teamRows, numTeams])
 
+  const teamMembers = useMemo(() => {
+    const map = new Map<number, string[]>()
+    const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
+    for (const row of teamRows) {
+      if (row.team < 1) continue
+      const list = map.get(row.team) ?? []
+      list.push(nameById.get(row.player_id) ?? 'Player')
+      map.set(row.team, list)
+    }
+    return map
+  }, [teamRows, bootstrap.players])
+
+  const liveTeamScores = useMemo(
+    () => computeDescribeItScores(words, numTeams),
+    [words, numTeams]
+  )
+
+  const liveIndividualScores = useMemo(
+    () => describeItIndividualLeaderboard(teamRows, bootstrap.players),
+    [teamRows, bootstrap.players]
+  )
+
+  const guessFeed = useMemo(() => {
+    const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
+    return guesses.slice(0, 12).map((g) => ({
+      id: g.id,
+      primary: g.text,
+      secondary: `${nameById.get(g.player_id) ?? 'Player'}${g.correct ? ' · correct!' : ''}`,
+    }))
+  }, [guesses, bootstrap.players])
+
+  const turnSecondsLeft = useAbsoluteDeadline(
+    session?.turn_deadline_at,
+    session?.phase === 'turn'
+  )
+  const breakSecondsLeft = useAbsoluteDeadline(
+    session?.break_deadline_at,
+    session?.phase === 'break'
+  )
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
@@ -176,27 +227,23 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
     if (mode === 'individual') {
-      return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+      return (
+        <LobbyView {...lobbyProps!} onLeft={onLeft} />
+      )
     }
     return (
-      <GameShell title={batch4GameLabel('describe_it')} subtitle="Pick your team">
-        <Text style={styles.help}>Choose a team before the host starts.</Text>
-        <View style={styles.teamGrid}>
-          {Array.from({ length: numTeams }, (_, i) => i + 1).map((team) => (
-            <Pressable
-              key={team}
-              style={[styles.teamBtn, myTeamRow?.team === team && styles.teamBtnActive]}
-              disabled={acting}
-              onPress={() => void pickTeam(team)}
-            >
-              <Text style={styles.teamEmoji}>{TEAM_EMOJI[team - 1] ?? '⬜'}</Text>
-              <Text style={styles.teamText}>{teamLabel(team)}</Text>
-              <Text style={styles.teamCount}>{teamCounts[team] ?? 0} players</Text>
-            </Pressable>
-          ))}
-        </View>
+      <GameShell bootstrap={bootstrap} title={batch4GameLabel('describe_it')} subtitle="Pick your team">
+        <TeamPickerGrid
+          numTeams={numTeams}
+          myTeam={myTeamRow?.team}
+          teamCounts={teamCounts}
+          teamMembers={teamMembers}
+          onPickTeam={(team) => void pickTeam(team)}
+          acting={acting}
+          help="Choose a team before the host starts."
+        />
       </GameShell>
     )
   }
@@ -208,8 +255,8 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
       const board = describeItIndividualLeaderboard(teamRows, bootstrap.players)
       const top = board[0]
       return (
-        <GameShell title={batch4GameLabel('describe_it')} subtitle={bootstrap.code}>
-          <FinishedPanel title="Final results" detail={top ? `${top.name} — ${top.score} pts` : undefined} />
+        <GameShell bootstrap={bootstrap} title={batch4GameLabel('describe_it')} subtitle={bootstrap.code}>
+          <GameFinishPanel bootstrap={bootstrap} title="Final results" subtitle="Final standings" detail={top ? `${top.name} — ${top.score} pts` : undefined} leaderboard={scoreListLeaderboard(board)} />
         </GameShell>
       )
     }
@@ -217,8 +264,8 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     const winners = describeItWinningTeams(scores)
     const winnerLabel = winners.map((t) => teamLabel(t)).join(', ')
     return (
-      <GameShell title={batch4GameLabel('describe_it')} subtitle={bootstrap.code}>
-        <FinishedPanel title="Final results" detail={winnerLabel ? `${winnerLabel} wins` : undefined} />
+      <GameShell bootstrap={bootstrap} title={batch4GameLabel('describe_it')} subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title="Final results" subtitle="Team scores" detail={winnerLabel ? `${winnerLabel} wins` : undefined} leaderboard={toLeaderboardRows(scores.map((row) => ({ name: teamLabel(row.team), score: row.score })))} />
       </GameShell>
     )
   }
@@ -237,11 +284,51 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     <GameShell
       title={batch4GameLabel('describe_it')}
       subtitle={`Round ${session.current_round} · turn ${session.turn_index + 1}`}
+      gameCode={bootstrap.code}
+      game={bootstrap.game}
+      players={bootstrap.players}
+      myPlayerId={bootstrap.myPlayerId}
+      onPromoted={() => bootstrap.load()}
     >
       <TurnBanner text={statusText} isMyTurn={isDescriber || canGuess} />
 
+      {mode === 'team' && myTeamRow?.team ? (
+        <View style={styles.teamRow}>
+          <Text style={styles.teamRowLabel}>You're on</Text>
+          <TeamBadge team={myTeamRow.team} />
+        </View>
+      ) : null}
+
+      {turnSecondsLeft > 0 && session.phase === 'turn' ? <TimerBadge seconds={turnSecondsLeft} /> : null}
+
+      {mode === 'team' ? (
+        <TeamScoreGrid
+          scores={liveTeamScores}
+          activeTeam={session.phase === 'turn' ? session.active_team : null}
+          myTeam={myTeamRow?.team}
+          round={session.current_round}
+          totalRounds={session.total_rounds}
+        />
+      ) : (
+        <LeaderboardPanel
+          title="Leaderboard"
+          rows={liveIndividualScores.map((row) => ({
+            id: row.id,
+            name: row.name,
+            score: row.score,
+            highlight: row.id === bootstrap.myPlayerId,
+          }))}
+          highlightId={bootstrap.myPlayerId}
+        />
+      )}
+
       {session.phase === 'break' ? (
-        <Text style={styles.waiting}>Break time — hang tight…</Text>
+        <RoundBreakCard
+          title="Round break"
+          message={session.status_message ?? 'Next turn starting soon…'}
+          secondsLeft={breakSecondsLeft}
+          detail={mode === 'team' ? `Up next: ${teamLabel(session.active_team)}` : undefined}
+        />
       ) : (
         <>
           {isDescriber ? (
@@ -305,6 +392,8 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
               {onMyTeam ? 'Watch and wait for your turn…' : 'Another team is playing…'}
             </Text>
           )}
+
+          <ActivityFeed title="Recent guesses" items={guessFeed} emptyText="No guesses yet" />
         </>
       )}
     </GameShell>
@@ -312,20 +401,8 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
 }
 
 const styles = StyleSheet.create({
-  help: { color: '#d1d5db', fontSize: 15, marginBottom: 8 },
-  teamGrid: { gap: 10 },
-  teamBtn: {
-    backgroundColor: '#17171d',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#2a2a35',
-    gap: 4,
-  },
-  teamBtnActive: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
-  teamEmoji: { fontSize: 22 },
-  teamText: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  teamCount: { color: '#9ca3af', fontSize: 14 },
+  teamRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  teamRowLabel: { color: '#9ca3af', fontSize: 14 },
   waiting: { color: '#9ca3af', fontSize: 16, textAlign: 'center', marginTop: 24 },
   panel: { backgroundColor: '#17171d', borderRadius: 12, padding: 16, gap: 12 },
   wordLabel: { color: '#9ca3af', fontSize: 13 },

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text } from 'react-native'
 import { type LudoPlayerState, type LudoSession } from '@fateround/shared'
-import { batch3GameLabel, pieceStatusLabel } from '@fateround/shared/batch-3-games'
+import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import {
   currentPlayerId,
   dedupeLudoMovesForUi,
@@ -9,13 +9,19 @@ import {
   resolveLudoMovesForTurn,
   resolveRemainingDice,
 } from '@fateround/shared/ludo'
+import { moveDestinationCell } from '@fateround/shared/ludo-board-layout'
+import { LudoBoard } from '@/components/games/ludo/LudoBoard'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { postLudoMove, postLudoRoll } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -53,6 +59,7 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
       return 'finished'
     },
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -63,6 +70,13 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
 
   const turnPlayerId = session ? currentPlayerId(session) : null
   const isMyTurn = turnPlayerId === bootstrap.myPlayerId
+
+  useTurnNotifications({
+    status: bootstrap.game?.status,
+    isMyTurn,
+    enabled: bootstrap.screen === 'playing',
+  })
+
   const myState = states.find((s) => s.player_id === bootstrap.myPlayerId)
   const variant = parseLudoVariant(bootstrap.game?.ludo_variant)
   const remainingDice = session ? resolveRemainingDice(session) : []
@@ -73,6 +87,16 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
       resolveLudoMovesForTurn(myState.color, myState.pieces, remainingDice, states, myState.player_id, variant)
     )
   }, [session, myState, isMyTurn, remainingDice, states, variant])
+
+  const highlightCells = useMemo(() => {
+    if (!myState || legalMoves.length === 0) return undefined
+    const cells = new Set<string>()
+    for (const move of legalMoves) {
+      const dest = moveDestinationCell(myState.color, move.to)
+      if (dest) cells.add(`${Math.round(dest.row)},${Math.round(dest.col)}`)
+    }
+    return cells
+  }, [legalMoves, myState])
 
   const roll = async () => {
     if (!bootstrap.myResumeToken || acting || !isMyTurn) return
@@ -110,16 +134,24 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return (
+      <LobbyView {...lobbyProps!} onLeft={onLeft} />
+    )
   }
   if (!bootstrap.game || !session) return <GameLoading />
 
   if (bootstrap.screen === 'finished') {
     const winner = bootstrap.players.find((p) => p.id === session.winner_player_id)
     return (
-      <GameShell title={batch3GameLabel('ludo')} subtitle={bootstrap.code}>
-        <FinishedPanel title="Game over" detail={winner ? `${winner.name} wins!` : undefined} />
+      <GameShell bootstrap={bootstrap} title={batch3GameLabel('ludo')} subtitle={bootstrap.code}>
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title="Game over"
+          subtitle="Final standings"
+          detail={winner ? `${winner.name} wins!` : undefined}
+          leaderboard={winnerLeaderboard(session.winner_player_id, bootstrap.players, bootstrap.myPlayerId)}
+        />
       </GameShell>
     )
   }
@@ -127,7 +159,15 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   const turnName = bootstrap.players.find((p) => p.id === turnPlayerId)?.name ?? 'Someone'
 
   return (
-    <GameShell title={batch3GameLabel('ludo')} subtitle={isMyTurn ? 'Your turn' : `${turnName}'s turn`}>
+    <GameShell
+      title={batch3GameLabel('ludo')}
+      subtitle={isMyTurn ? 'Your turn' : `${turnName}'s turn`}
+      gameCode={bootstrap.code}
+      game={bootstrap.game}
+      players={bootstrap.players}
+      myPlayerId={bootstrap.myPlayerId}
+      onPromoted={() => bootstrap.load()}
+    >
       <ScrollView contentContainerStyle={styles.scroll}>
         {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
 
@@ -135,43 +175,21 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
           <Text style={styles.dice}>Dice to play: {remainingDice.join(', ')}</Text>
         ) : null}
 
-        {myState ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Your pieces</Text>
-            {myState.pieces.map((piece) => (
-              <Text key={piece.id} style={styles.piece}>
-                Piece {piece.id + 1}: {pieceStatusLabel(piece)}
-              </Text>
-            ))}
-          </View>
-        ) : null}
+        <LudoBoard
+          states={states}
+          players={bootstrap.players}
+          legalMoves={legalMoves}
+          myPlayerId={bootstrap.myPlayerId}
+          isMyTurn={isMyTurn && session.phase === 'move'}
+          highlightCells={highlightCells}
+          onMovePiece={(pieceId, diceIndex) => void movePiece(pieceId, diceIndex)}
+          acting={acting}
+        />
 
         {isMyTurn && session.phase === 'roll' ? (
           <Pressable style={[styles.btn, acting && styles.btnDisabled]} disabled={acting} onPress={() => void roll()}>
             <Text style={styles.btnText}>{acting ? 'Rolling…' : 'Roll dice'}</Text>
           </Pressable>
-        ) : null}
-
-        {isMyTurn && session.phase === 'move' ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Legal moves</Text>
-            {legalMoves.length === 0 ? (
-              <Text style={styles.hint}>No moves — waiting for server…</Text>
-            ) : (
-              legalMoves.map((move) => (
-                <Pressable
-                  key={`${move.pieceId}-${move.diceIndex}-${move.to.zone}-${move.to.pos}`}
-                  style={styles.moveBtn}
-                  disabled={acting}
-                  onPress={() => void movePiece(move.pieceId, move.diceIndex)}
-                >
-                  <Text style={styles.moveText}>
-                    Piece {move.pieceId + 1} · die {move.diceValue} → {pieceStatusLabel(move.to)}
-                  </Text>
-                </Pressable>
-              ))
-            )}
-          </View>
         ) : null}
 
         {!isMyTurn ? <Text style={styles.hint}>Waiting for {turnName}…</Text> : null}
@@ -184,19 +202,8 @@ const styles = StyleSheet.create({
   scroll: { gap: 12, paddingBottom: 24 },
   status: { color: '#9ca3af', textAlign: 'center' },
   dice: { color: '#fcd34d', textAlign: 'center', fontWeight: '700' },
-  section: { gap: 8 },
-  sectionTitle: { color: '#fff', fontWeight: '800', fontSize: 16 },
-  piece: { color: '#d1d5db' },
   btn: { backgroundColor: '#f43f5e', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   btnDisabled: { opacity: 0.45 },
   btnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
-  moveBtn: {
-    backgroundColor: '#17171d',
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#2a2a35',
-  },
-  moveText: { color: '#fff' },
   hint: { color: '#9ca3af', textAlign: 'center' },
 })

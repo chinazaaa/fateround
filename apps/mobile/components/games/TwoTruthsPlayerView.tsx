@@ -12,11 +12,14 @@ import {
 } from '@fateround/shared/two-truths'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postTtlGuess, postTtlStatements } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, TTL_GUESS_SELECT, TTL_STATEMENT_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -63,6 +66,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -134,16 +138,16 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
     if (myStatement) {
       return (
-        <GameShell title={batch4GameLabel('two_truths')} subtitle={bootstrap.code}>
+        <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={bootstrap.code}>
           <Text style={styles.waiting}>Statements submitted — waiting for host to start…</Text>
         </GameShell>
       )
     }
     return (
-      <GameShell title={batch4GameLabel('two_truths')} subtitle="Submit your statements">
+      <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle="Submit your statements">
         <ScrollView contentContainerStyle={styles.form}>
           <Text style={styles.help}>Write two truths and one lie. Tap which one is the lie.</Text>
           {[0, 1, 2].map((index) => {
@@ -181,18 +185,15 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     const scores = tallyTtlScores(guesses, bootstrap.players, rounds)
     const top = scores[0]
     return (
-      <GameShell title={batch4GameLabel('two_truths')} subtitle={bootstrap.code}>
-        <FinishedPanel
-          title="Game over"
-          detail={top ? `${top.name} — ${top.score} pts` : undefined}
-        />
+      <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title="Game over" subtitle="Final standings" detail={top ? `${top.name} — ${top.score} pts` : undefined} leaderboard={scoreListLeaderboard(scores)} />
       </GameShell>
     )
   }
 
   if (!currentRound || currentRound.status === 'pending') {
     return (
-      <GameShell title={batch4GameLabel('two_truths')} subtitle={bootstrap.code}>
+      <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={bootstrap.code}>
         <Text style={styles.waiting}>Waiting for the next round…</Text>
       </GameShell>
     )
@@ -202,7 +203,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (currentRound.status === 'finished') {
     return (
-      <GameShell title={batch4GameLabel('two_truths')} subtitle={`Round ${currentRound.round_number}`}>
+      <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={`Round ${currentRound.round_number}`}>
         <Text style={styles.featured}>{featuredName}&apos;s round</Text>
         {metadata ? (
           <View style={styles.choices}>
@@ -226,7 +227,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (isFeatured) {
     return (
-      <GameShell title={batch4GameLabel('two_truths')} subtitle={`Round ${currentRound.round_number}`}>
+      <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={`Round ${currentRound.round_number}`}>
         <Text style={styles.featured}>Your turn — others are guessing your lie</Text>
         {metadata ? (
           <View style={styles.choices}>
@@ -243,7 +244,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   return (
-    <GameShell title={batch4GameLabel('two_truths')} subtitle={`Round ${currentRound.round_number}`}>
+    <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={`Round ${currentRound.round_number}`}>
       <Text style={styles.featured}>Which is {featuredName}&apos;s lie?</Text>
       {metadata ? (
         <View style={styles.choices}>

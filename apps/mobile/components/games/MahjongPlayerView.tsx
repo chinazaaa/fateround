@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { type Game, type MahjongPlayerState, type Player } from '@fateround/shared'
+import { type Game, type Player } from '@fateround/shared'
 import { batch8GameLabel } from '@fateround/shared/batch-8-games'
 import {
   currentMahjongPlayerId,
   mahjongPhaseLabel,
   mahjongSecondsLeft,
-  mahjongTileShortLabel,
   playerName,
   sortMahjongTiles,
   stateFor,
@@ -14,7 +13,11 @@ import {
 } from '@fateround/shared/mahjong'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { MahjongTableView } from '@/components/games/mahjong/MahjongTableView'
+import { MahjongTileFace } from '@/components/games/mahjong/MahjongTileFace'
+import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { getPlayerSession } from '@/lib/secure-session'
 import {
@@ -24,6 +27,8 @@ import {
   postMahjongPass,
   postMahjongRiichi,
 } from '@/lib/game-api'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -62,6 +67,7 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
       return 'waiting'
     },
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -127,13 +133,13 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (bootstrap.screen === 'finished' && bootstrap.game) {
     const winner = bootstrap.players.find((p) => p.id === session?.winner_player_id)
     return (
-      <FinishedPanel
+      <GameFinishPanel bootstrap={bootstrap}
         title={batch8GameLabel('mahjong')}
         detail={winner ? `${winner.name} wins` : session?.status_message ?? 'Hand over'}
       />
@@ -148,7 +154,7 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   const canClaim = inClaimWindow && !alreadyPassed && !isMyTurn
 
   return (
-    <GameShell title={batch8GameLabel('mahjong')} subtitle={mahjongPhaseLabel(session.phase)}>
+    <GameShell bootstrap={bootstrap} title={batch8GameLabel('mahjong')} subtitle={mahjongPhaseLabel(session.phase)}>
       <ScrollView contentContainerStyle={styles.content}>
         <TurnBanner
           isMyTurn={isMyTurn || canClaim}
@@ -163,26 +169,26 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
 
         {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
 
-        {session.last_discard ? (
-          <View style={styles.discardBox}>
-            <Text style={styles.discardLabel}>Last discard</Text>
-            <Text style={styles.discardTile}>{mahjongTileShortLabel(session.last_discard.tile)}</Text>
-            <Text style={styles.discardBy}>
-              by {playerName(bootstrap.players, session.last_discard.player_id)}
-            </Text>
-          </View>
-        ) : null}
+        {secondsLeft > 0 ? <TimerBadge seconds={secondsLeft} /> : null}
+
+        <MahjongTableView
+          states={states}
+          players={bootstrap.players}
+          turnPlayerId={turnPlayerId}
+          myPlayerId={bootstrap.myPlayerId}
+          lastDiscardTile={session.last_discard?.tile}
+          lastDiscardPlayerId={session.last_discard?.player_id}
+        />
 
         <Text style={styles.section}>Your hand ({sortedHand.length})</Text>
         <View style={styles.tileRow}>
           {sortedHand.map((tile) => (
             <Pressable
               key={tile}
-              style={[styles.tile, canDiscard && styles.tileActive]}
               disabled={!canDiscard || acting}
               onPress={() => discard(tile)}
             >
-              <Text style={styles.tileText}>{mahjongTileShortLabel(tile)}</Text>
+              <MahjongTileFace tile={tile} selected={canDiscard} />
             </Pressable>
           ))}
         </View>
@@ -191,9 +197,14 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
           <>
             <Text style={styles.section}>Melds</Text>
             {myState.melds.map((meld, index) => (
-              <Text key={`${meld.type}-${index}`} style={styles.meld}>
-                {meld.type.toUpperCase()}: {meld.tiles.map(mahjongTileShortLabel).join(' ')}
-              </Text>
+              <View key={`${meld.type}-${index}`} style={styles.meldRow}>
+                <Text style={styles.meldType}>{meld.type.toUpperCase()}</Text>
+                <View style={styles.meldTiles}>
+                  {meld.tiles.map((tile) => (
+                    <MahjongTileFace key={tile} tile={tile} compact />
+                  ))}
+                </View>
+              </View>
             ))}
           </>
         ) : null}
@@ -222,18 +233,6 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
           </Pressable>
         ) : null}
 
-        <Text style={styles.section}>Seats</Text>
-        {states.map((state: MahjongPlayerState) => (
-          <View key={state.id} style={[styles.seatRow, state.player_id === turnPlayerId && styles.seatActive]}>
-            <Text style={styles.seatName}>
-              {playerName(bootstrap.players, state.player_id)} ({state.seat})
-            </Text>
-            <Text style={styles.seatMeta}>
-              {state.hand_count ?? state.hand?.length ?? 0} tiles
-              {state.riichi_declared ? ' · Riichi' : ''}
-            </Text>
-          </View>
-        ))}
       </ScrollView>
     </GameShell>
   )
@@ -242,25 +241,11 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
 const styles = StyleSheet.create({
   content: { paddingBottom: 32, gap: 12 },
   status: { color: '#d1d5db', fontSize: 14 },
-  discardBox: { backgroundColor: '#17171d', borderRadius: 12, padding: 12, alignItems: 'center', gap: 4 },
-  discardLabel: { color: '#9ca3af', fontSize: 12, textTransform: 'uppercase' },
-  discardTile: { color: '#fff', fontSize: 28, fontWeight: '700' },
-  discardBy: { color: '#9ca3af', fontSize: 13 },
   section: { color: '#fff', fontSize: 16, fontWeight: '600', marginTop: 4 },
   tileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  tile: {
-    backgroundColor: '#17171d',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#2a2a35',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    minWidth: 44,
-    alignItems: 'center',
-  },
-  tileActive: { borderColor: '#f43f5e' },
-  tileText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  meld: { color: '#d1d5db', fontSize: 14 },
+  meldRow: { gap: 6, marginBottom: 8 },
+  meldType: { color: '#fda4af', fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  meldTiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   actionPanel: { backgroundColor: '#17171d', borderRadius: 12, padding: 14, gap: 10 },
   actionTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
   actionRow: { flexDirection: 'row', gap: 8 },
@@ -280,8 +265,4 @@ const styles = StyleSheet.create({
   },
   secondaryBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   btnDisabled: { opacity: 0.5 },
-  seatRow: { backgroundColor: '#17171d', borderRadius: 10, padding: 10 },
-  seatActive: { borderColor: '#f43f5e', borderWidth: 1 },
-  seatName: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  seatMeta: { color: '#9ca3af', fontSize: 13, marginTop: 2 },
 })

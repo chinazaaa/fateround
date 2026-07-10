@@ -4,17 +4,15 @@ import { ayoScores, legalMovesForSide, sideForPlayer, currentTurnPlayerId } from
 import type { AyoSession, Game, Player } from '@fateround/shared'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import {
-  FinishedPanel,
-  GameLoading,
-  GameNotFound,
-  GameShell,
-  TurnBanner,
-} from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { postAyoMove } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { AYO_SESSION_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
 
@@ -53,6 +51,7 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -64,6 +63,13 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   const activeSession = session ?? bootstrap.gameState
   const turnPlayerId = activeSession ? currentTurnPlayerId(activeSession) : null
   const isMyTurn = bootstrap.myPlayerId != null && turnPlayerId === bootstrap.myPlayerId
+
+  useTurnNotifications({
+    status: bootstrap.game?.status,
+    isMyTurn,
+    enabled: bootstrap.screen === 'active',
+  })
+
   const mySide = bootstrap.myPlayerId && activeSession ? sideForPlayer(activeSession, bootstrap.myPlayerId) : null
 
   const sow = async (pitIndex: number) => {
@@ -91,8 +97,8 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game || !activeSession) return <GameLoading />
 
@@ -100,8 +106,8 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
     const winner = bootstrap.players.find((p) => p.id === activeSession.winner_player_id)
     const title = activeSession.is_draw ? 'Draw!' : winner ? `${winner.name} wins!` : 'Game over'
     return (
-      <GameShell title="Ayo" subtitle={bootstrap.code}>
-        <FinishedPanel title={title} detail={activeSession.status_message} />
+      <GameShell bootstrap={bootstrap} title="Ayo" subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={activeSession.status_message} leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} />
       </GameShell>
     )
   }
@@ -114,7 +120,7 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   const turnPlayer = bootstrap.players.find((p) => p.id === turnPlayerId)
 
   return (
-    <GameShell title="Ayo" subtitle={`Code ${bootstrap.code}`}>
+    <GameShell bootstrap={bootstrap} title="Ayo" subtitle={`Code ${bootstrap.code}`}>
       <TurnBanner
         text={isMyTurn ? 'Your turn — tap a pit' : `${turnPlayer?.name ?? 'Opponent'}'s turn`}
         isMyTurn={isMyTurn}

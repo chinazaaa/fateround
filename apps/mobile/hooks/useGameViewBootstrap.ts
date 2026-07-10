@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Game, Player } from '@fateround/shared'
 import { normalizeGameCode } from '@fateround/shared'
 import { joinGame } from '@/lib/api'
+import { recordRecentGame } from '@/lib/recent-games'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 
@@ -74,6 +75,11 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         setMyPlayerId(session.playerId)
         setMyResumeToken(session.resumeToken)
         setJoinName(session.playerName)
+        void recordRecentGame({
+          code,
+          title: gameData.title,
+          gameType: gameData.game_type,
+        })
       } else {
         setMyPlayerId(null)
         setMyResumeToken(null)
@@ -88,9 +94,12 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   }, [afterResolve, code, computeScreen, loadGameState, notFoundScreen])
 
   const join = useCallback(
-    async (name?: string) => {
+    async (
+      name?: string,
+      options?: { joinAsViewer?: boolean; participantId?: string; gender?: import('@fateround/shared').PlayerGender }
+    ) => {
       const playerName = (name ?? joinName).trim()
-      if (!playerName) {
+      if (!playerName && !options?.participantId) {
         setError('Enter your name to join')
         return
       }
@@ -101,8 +110,11 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         const existing = await getPlayerSession(code)
         const data = await joinGame({
           gameCode: code,
-          playerName,
+          playerName: playerName || 'Player',
           resumeToken: existing?.resumeToken ?? undefined,
+          joinAsViewer: options?.joinAsViewer,
+          participantId: options?.participantId,
+          gender: options?.gender,
         })
 
         const gender = data.playerGender ?? 'both'

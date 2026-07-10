@@ -7,6 +7,7 @@ import { BATCH_7_GAMES } from '@fateround/shared/batch-7-games'
 import { BATCH_8_GAMES } from '@fateround/shared/batch-8-games'
 import { BATCH_9_GAMES } from '@fateround/shared/batch-9-games'
 import { BATCH_2_POLL_GAMES } from '@fateround/shared/poll-games'
+import { PlayerPreJoinGate } from '@/components/lifecycle/PlayerPreJoinGate'
 import { AnonymousMessagesPlayerView } from '@/components/games/AnonymousMessagesPlayerView'
 import { AyoPlayerView } from '@/components/games/AyoPlayerView'
 import { CustomPlayerView } from '@/components/games/CustomPlayerView'
@@ -114,7 +115,11 @@ export function resolveMobilePlayerView(gameType: GameType) {
 export function GameRouter({ gameCode, gameType }: { gameCode: string; gameType: GameType }) {
   const View = resolveMobilePlayerView(gameType)
   if (!View) return null
-  return <View gameCode={gameCode} />
+  return (
+    <PlayerPreJoinGate gameCode={gameCode}>
+      <View gameCode={gameCode} />
+    </PlayerPreJoinGate>
+  )
 }
 
 export const BATCH_1_GAMES: GameType[] = [

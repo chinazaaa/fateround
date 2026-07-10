@@ -26,7 +26,10 @@ import {
 } from '@fateround/shared/monopoly-tokens'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { MonopolyBoardView } from '@/components/games/monopoly/MonopolyBoardView'
+import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { joinGame } from '@/lib/api'
 import {
@@ -41,6 +44,8 @@ import {
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase } from '@/lib/supabase'
 import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -86,6 +91,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
       return 'waiting'
     },
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -207,10 +213,10 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
     return (
       <View style={styles.waitingWrap}>
-        <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+        <LobbyView {...lobbyProps!} onLeft={onLeft} />
         <View style={styles.tokenList}>
           <Text style={styles.lobbyHint}>Tokens in lobby:</Text>
           {bootstrap.players
@@ -228,7 +234,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'finished' && bootstrap.game) {
     const winner = bootstrap.players.find((p) => p.id === board?.winner_player_id)
     return (
-      <FinishedPanel
+      <GameFinishPanel bootstrap={bootstrap}
         title={batch8GameLabel('monopoly')}
         detail={winner ? `${winner.name} wins!` : 'Game over'}
       />
@@ -240,7 +246,7 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const turnName = bootstrap.players.find((p) => p.id === turnPlayerId)?.name ?? 'Player'
 
   return (
-    <GameShell title={batch8GameLabel('monopoly')} subtitle={monopolyPhaseLabel(board.phase)}>
+    <GameShell bootstrap={bootstrap} title={batch8GameLabel('monopoly')} subtitle={monopolyPhaseLabel(board.phase)}>
       <ScrollView contentContainerStyle={styles.playContent}>
         <TurnBanner
           isMyTurn={!!isMyTurn}
@@ -254,6 +260,16 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
         />
 
         {board.status_message ? <Text style={styles.status}>{board.status_message}</Text> : null}
+
+        <MonopolyBoardView
+          states={states}
+          players={bootstrap.players}
+          propertyOwners={board.property_owners}
+          pendingSpace={board.pending_space}
+          myPlayerId={bootstrap.myPlayerId}
+        />
+
+        {secondsLeft > 0 ? <TimerBadge seconds={secondsLeft} /> : null}
 
         {board.last_dice ? (
           <Text style={styles.dice}>

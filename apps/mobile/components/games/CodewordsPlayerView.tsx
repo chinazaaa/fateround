@@ -27,7 +27,8 @@ import {
 } from '@fateround/shared/codewords'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
   postCodewordsChat,
@@ -44,6 +45,7 @@ import {
   CODEWORDS_MESSAGE_SELECT,
   CODEWORDS_PLAYER_ROLE_SELECT,
 } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'pick_role' | 'playing' | 'finished' | 'not_found'
 
@@ -133,6 +135,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -204,7 +207,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'pick_role' && bootstrap.game) {
     return (
-      <GameShell title="Codewords" subtitle={`Pick your role · ${bootstrap.code}`}>
+      <GameShell bootstrap={bootstrap} title="Codewords" subtitle={`Pick your role · ${bootstrap.code}`}>
         <Text style={styles.pickHint}>Choose team and role before the host starts.</Text>
         <View style={styles.pickRow}>
           {(['red', 'blue'] as const).map((team) => (
@@ -235,9 +238,9 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
     return (
-      <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+      <LobbyView {...lobbyProps!} onLeft={onLeft} />
     )
   }
 
@@ -246,8 +249,8 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'finished' || board.winner) {
     const title = board.winner ? `${teamLabel(board.winner)} team wins!` : 'Game over'
     return (
-      <GameShell title={batch7GameLabel('codewords')} subtitle={bootstrap.code}>
-        <FinishedPanel title={title} />
+      <GameShell bootstrap={bootstrap} title={batch7GameLabel('codewords')} subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title={title} />
       </GameShell>
     )
   }
@@ -281,7 +284,7 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const blueRev = countRevealedTeamCells(board.key, board.revealed_indices, 'blue')
 
   return (
-    <GameShell title="Codewords" subtitle={`${teamLabel(myRole.team)} ${roleLabel(myRole.role)} · ${bootstrap.code}`}>
+    <GameShell bootstrap={bootstrap} title="Codewords" subtitle={`${teamLabel(myRole.team)} ${roleLabel(myRole.role)} · ${bootstrap.code}`}>
       <TurnBanner
         text={`${bannerText}${secondsLeft > 0 ? ` · ${secondsLeft}s` : ''}`}
         isMyTurn={canGiveClue || canGuess}

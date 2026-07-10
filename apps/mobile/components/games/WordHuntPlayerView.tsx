@@ -6,11 +6,14 @@ import { parseWordHuntMetadata, tallyWordHuntScores, wordFromPath, wordHuntPoint
 import { toggleWordHuntPath, validateWordHuntSubmissionClient, validWordsSetFromMetadata } from '@fateround/shared/word-hunt-client'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postWordHuntSubmit } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, WORD_HUNT_SUBMISSION_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -77,6 +80,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -141,8 +145,8 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game) return <GameLoading />
 
@@ -150,8 +154,8 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     const scores = tallyWordHuntScores(submissions, bootstrap.players)
     const top = scores[0]
     return (
-      <GameShell title={batch5GameLabel('word_hunt')} subtitle={bootstrap.code}>
-        <FinishedPanel
+      <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_hunt')} subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap}
           title="Game over"
           detail={top ? `${top.name} — ${top.points} pts (${top.word_count} words)` : undefined}
         />
@@ -161,14 +165,14 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
 
   if (!grid) {
     return (
-      <GameShell title={batch5GameLabel('word_hunt')} subtitle={bootstrap.code}>
+      <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_hunt')} subtitle={bootstrap.code}>
         <Text style={styles.waiting}>Waiting for the board…</Text>
       </GameShell>
     )
   }
 
   return (
-    <GameShell title={batch5GameLabel('word_hunt')} subtitle={`${mySubmissions.length} words found`}>
+    <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_hunt')} subtitle={`${mySubmissions.length} words found`}>
       <View style={styles.grid}>
         {grid.flatMap((row, rowIndex) =>
           row.map((letter, colIndex) => {

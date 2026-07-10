@@ -8,11 +8,14 @@ import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { buildSnakeLadderStandings, currentPlayerId } from '@fateround/shared/snake-and-ladder'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postSnakeLadderRoll } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { SNAKE_LADDER_PLAYER_STATE_SELECT, SNAKE_LADDER_SESSION_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -63,6 +66,7 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
       return 'finished'
     },
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -100,22 +104,22 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game || !session) return <GameLoading />
 
   if (bootstrap.screen === 'finished') {
     const winner = bootstrap.players.find((p) => p.id === session.winner_player_id)
     return (
-      <GameShell title={batch3GameLabel('snake_and_ladder')} subtitle={bootstrap.code}>
-        <FinishedPanel title="Game over" detail={winner ? `${winner.name} wins!` : undefined} />
+      <GameShell bootstrap={bootstrap} title={batch3GameLabel('snake_and_ladder')} subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title="Game over" subtitle="Final standings" detail={winner ? `${winner.name} wins!` : undefined} leaderboard={winnerLeaderboard(session.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} />
       </GameShell>
     )
   }
 
   return (
-    <GameShell title={batch3GameLabel('snake_and_ladder')} subtitle={session.status_message ?? bootstrap.code}>
+    <GameShell bootstrap={bootstrap} title={batch3GameLabel('snake_and_ladder')} subtitle={session.status_message ?? bootstrap.code}>
       <View style={styles.list}>
         {standings.map((row) => (
           <View key={row.playerId} style={styles.row}>

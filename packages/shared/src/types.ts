@@ -62,6 +62,7 @@ export interface Game {
   allow_late_players?: boolean | null
   ayo_variant?: string | null
   participant_mode?: ParticipantMode | string | null
+  participant_filter?: string | null
   pair_vote_mode?: PairVoteMode | string | null
   ludo_variant?: string | null
   custom_questions?: unknown[] | null
@@ -82,8 +83,11 @@ export interface Game {
   word_rush_prompt_mode?: string | null
   word_rush_difficulty?: string | null
   session_started_at?: string | null
+  finished_at?: string | null
   game_duration_seconds?: number | null
   rounds_count?: number | null
+  replay_pending?: boolean | null
+  tournament_id?: string | null
   chess_board_theme?: string | null
   chess_piece_set?: string | null
   scrabble_dictionary_id?: string | null
@@ -248,6 +252,7 @@ export interface Round {
   submitter_player_id?: string | null
   quote_text?: string | null
   quote_author_participant_id?: string | null
+  quote_submitted_at?: string | null
   status: RoundStatus
   started_at: string | null
   ended_at: string | null

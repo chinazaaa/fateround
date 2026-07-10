@@ -18,6 +18,7 @@
     "./yahtzee": "./src/yahtzee.ts",
     "./snake-and-ladder": "./src/snake-and-ladder.ts",
     "./ludo": "./src/ludo.ts",
+    "./ludo-board-layout": "./src/ludo-board-layout.ts",
     "./batch-3-games": "./src/batch-3-games.ts",
     "./crazy-eights": "./src/crazy-eights.ts",
     "./whot": "./src/whot.ts",
@@ -41,6 +42,7 @@
     "./batch-7-games": "./src/batch-7-games.ts",
     "./batch-8-games": "./src/batch-8-games.ts",
     "./monopoly": "./src/monopoly.ts",
+    "./monopoly-board-layout": "./src/monopoly-board-layout.ts",
     "./monopoly-board": "./src/monopoly-board.ts",
     "./monopoly-tokens": "./src/monopoly-tokens.ts",
     "./mahjong": "./src/mahjong.ts",
@@ -48,6 +50,13 @@
     "./batch-9-games": "./src/batch-9-games.ts",
     "./anonymous-messages": "./src/anonymous-messages.ts",
     "./hot-seat": "./src/hot-seat.ts",
-    "./custom-game": "./src/custom-game.ts"
+    "./custom-game": "./src/custom-game.ts",
+    "./viewers": "./src/viewers.ts",
+    "./game-type-checks": "./src/game-type-checks.ts",
+    "./game-limits-lite": "./src/game-limits-lite.ts",
+    "./participant-mode": "./src/participant-mode.ts",
+    "./round-timing": "./src/round-timing.ts",
+    "./bingo": "./src/bingo.ts",
+    "./vote-stats": "./src/vote-stats.ts"
   }
 }

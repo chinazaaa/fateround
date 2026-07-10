@@ -11,11 +11,13 @@ import {
 } from '@fateround/shared/custom-game'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postVote } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { PARTICIPANT_SELECT, ROUND_SELECT, VOTE_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -67,6 +69,7 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
       return 'playing'
     },
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -138,15 +141,15 @@ export function CustomPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (bootstrap.screen === 'finished' && bootstrap.game) {
-    return <FinishedPanel title="Game over" detail={`Thanks for playing ${getCustomTitle(bootstrap.game)}!`} />
+    return <GameFinishPanel bootstrap={bootstrap} title="Game over" detail={`Thanks for playing ${getCustomTitle(bootstrap.game)}!`} />
   }
   if (!bootstrap.game || !currentRound) {
     return (
-      <GameShell title={batch9GameLabel('custom')} subtitle="Waiting">
+      <GameShell bootstrap={bootstrap} title={batch9GameLabel('custom')} subtitle="Waiting">
         <Text style={styles.wait}>Waiting for the next round…</Text>
       </GameShell>
     )

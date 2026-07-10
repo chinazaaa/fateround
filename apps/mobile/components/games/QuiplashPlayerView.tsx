@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   type Game,
@@ -12,16 +12,25 @@ import { batch5GameLabel } from '@fateround/shared/batch-5-games'
 import {
   QUIPLASH_MAX_ANSWER_LENGTH,
   answerAuthorName,
+  answerOptionLabel,
   canPlayerVoteInRound,
   countVotesForRound,
   parseQuiplashMetadata,
   phaseDeadlineCountdown,
+  quiplashRoundVotingHint,
+  revealCountdownSeconds,
   roundVoteOptions,
+  soloRoundPoints,
   tallyQuiplashScores,
 } from '@fateround/shared/quiplash'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { PhaseStepper } from '@/components/party/PhaseStepper'
+import { RoundBreakCard } from '@/components/party/RoundBreakCard'
+import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postQuiplashAnswer, postQuiplashVote } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -31,6 +40,8 @@ import {
   QUIPLASH_VOTE_SELECT,
   ROUND_SELECT,
 } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -41,6 +52,8 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
   const [votes, setVotes] = useState<QuiplashVote[]>([])
   const [answerText, setAnswerText] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [countdown, setCountdown] = useState(0)
+  const [revealCountdown, setRevealCountdown] = useState(0)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: null; ok: boolean }> => {
@@ -77,6 +90,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -110,7 +124,54 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     !!bootstrap.myPlayerId &&
     canPlayerVoteInRound(roundAnswers, bootstrap.myPlayerId)
   const revealTally = currentRound ? countVotesForRound(currentRound.id, votes) : []
-  const countdown = session?.turn_deadline_at ? phaseDeadlineCountdown(session.turn_deadline_at) : 0
+  const topVoteCount = revealTally[0]?.votes ?? 0
+  const soloRound = roundAnswers.length === 1
+  const soloPoints = soloRound ? soloRoundPoints(bootstrap.players.length) : 0
+
+  const liveLeaderboard = useMemo(
+    () => tallyQuiplashScores([], answers, bootstrap.players, votes),
+    [answers, bootstrap.players, votes]
+  )
+
+  const revealAnswers = useMemo(() => {
+    if (!currentRound) return []
+    const byVotes = new Map(revealTally.map((row) => [row.answerId, row.votes]))
+    return [...roundAnswers].sort(
+      (a, b) => (byVotes.get(b.id) ?? 0) - (byVotes.get(a.id) ?? 0) || a.text.localeCompare(b.text)
+    )
+  }, [currentRound, roundAnswers, revealTally])
+
+  const phaseIndex =
+    session?.phase === 'writing' ? 0 : session?.phase === 'voting' ? 1 : session?.phase === 'reveal' ? 2 : 0
+
+  const votingHint = quiplashRoundVotingHint({
+    canVote,
+    hasVoted: !!myVote,
+    cannotParticipate: !bootstrap.myPlayerId,
+    answerCount: roundAnswers.length,
+  })
+
+  useEffect(() => {
+    if (!session?.turn_deadline_at) {
+      setCountdown(0)
+      return
+    }
+    const tick = () => setCountdown(phaseDeadlineCountdown(session.turn_deadline_at))
+    tick()
+    const id = setInterval(tick, 500)
+    return () => clearInterval(id)
+  }, [session?.turn_deadline_at, session?.phase])
+
+  useEffect(() => {
+    if (session?.phase !== 'reveal' || !currentRound?.ended_at) {
+      setRevealCountdown(0)
+      return
+    }
+    const tick = () => setRevealCountdown(revealCountdownSeconds(currentRound.ended_at))
+    tick()
+    const id = setInterval(tick, 500)
+    return () => clearInterval(id)
+  }, [session?.phase, currentRound?.ended_at])
 
   const submitAnswer = async () => {
     if (!bootstrap.myResumeToken || !currentRound || submitting || myAnswer) return
@@ -151,8 +212,8 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game) return <GameLoading />
 
@@ -160,28 +221,45 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
     const scores = tallyQuiplashScores([], answers, bootstrap.players, votes)
     const top = scores[0]
     return (
-      <GameShell title={batch5GameLabel('quiplash')} subtitle={bootstrap.code}>
-        <FinishedPanel title="Game over" detail={top ? `${top.name} — ${top.score} pts` : undefined} />
+      <GameShell bootstrap={bootstrap} title={batch5GameLabel('quiplash')} subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title="Game over" subtitle="Final standings" detail={top ? `${top.name} — ${top.score} pts` : undefined} leaderboard={scoreListLeaderboard(scores)} />
       </GameShell>
     )
   }
 
   if (!currentRound || !session) {
     return (
-      <GameShell title={batch5GameLabel('quiplash')} subtitle={bootstrap.code}>
+      <GameShell bootstrap={bootstrap} title={batch5GameLabel('quiplash')} subtitle={bootstrap.code}>
         <Text style={styles.waiting}>Waiting for the next round…</Text>
       </GameShell>
     )
   }
 
   return (
-    <GameShell title={batch5GameLabel('quiplash')} subtitle={`Round ${currentRound.round_number}`}>
+    <GameShell bootstrap={bootstrap} title={batch5GameLabel('quiplash')} subtitle={`Round ${currentRound.round_number}`}>
+      <PhaseStepper steps={['Write', 'Vote', 'Results']} activeIndex={phaseIndex} />
+
+      <LeaderboardPanel
+        title="Live scores"
+        rows={liveLeaderboard.map((row) => ({
+          id: row.id,
+          name: row.name,
+          score: row.score,
+          highlight: row.id === bootstrap.myPlayerId,
+        }))}
+        highlightId={bootstrap.myPlayerId}
+      />
+
       {metadata ? <Text style={styles.prompt}>{metadata.prompt}</Text> : null}
-      {countdown > 0 ? <Text style={styles.timer}>{countdown}s left</Text> : null}
+      {countdown > 0 ? <TimerBadge seconds={countdown} /> : null}
 
       {session.phase === 'writing' ? (
         myAnswer ? (
-          <Text style={styles.locked}>Answer submitted — waiting for voting…</Text>
+          <View style={styles.submittedCard}>
+            <Text style={styles.submittedLabel}>Your answer</Text>
+            <Text style={styles.submittedText}>{myAnswer.text}</Text>
+            <Text style={styles.locked}>Waiting for voting…</Text>
+          </View>
         ) : (
           <>
             <TextInput
@@ -202,7 +280,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
 
       {session.phase === 'voting' ? (
         <>
-          <Text style={styles.section}>Pick the funniest answer</Text>
+          <Text style={styles.section}>{votingHint}</Text>
           <View style={styles.choices}>
             {voteOptions.map((answer, index) => (
               <Pressable
@@ -211,7 +289,7 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
                 disabled={submitting || !!myVote || !canVote}
                 onPress={() => void submitVote(answer.id)}
               >
-                <Text style={styles.choiceBadge}>{String.fromCharCode(65 + index)}</Text>
+                <Text style={styles.choiceBadge}>{answerOptionLabel(index)}</Text>
                 <Text style={styles.choiceText}>{answer.text}</Text>
               </Pressable>
             ))}
@@ -221,19 +299,39 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
       ) : null}
 
       {session.phase === 'reveal' ? (
-        <ScrollView contentContainerStyle={styles.revealList}>
-          {roundAnswers.map((answer) => {
-            const tally = revealTally.find((t) => t.answerId === answer.id)
-            return (
-              <View key={answer.id} style={styles.revealRow}>
-                <Text style={styles.revealText}>{answer.text}</Text>
-                <Text style={styles.revealMeta}>
-                  {answerAuthorName(answer.id, roundAnswers, bootstrap.players)} · {tally?.votes ?? 0} votes
-                </Text>
-              </View>
-            )
-          })}
-        </ScrollView>
+        <>
+          {soloRound ? (
+            <View style={styles.soloBanner}>
+              <Text style={styles.soloText}>
+                Solo round — {soloPoints} pt{soloPoints === 1 ? '' : 's'} for the only answer
+              </Text>
+            </View>
+          ) : null}
+          <ScrollView contentContainerStyle={styles.revealList}>
+            {revealAnswers.map((answer) => {
+              const tally = revealTally.find((t) => t.answerId === answer.id)
+              const votes = tally?.votes ?? 0
+              const isTop = votes > 0 && votes === topVoteCount
+              return (
+                <View key={answer.id} style={[styles.revealRow, isTop && styles.revealRowTop]}>
+                  <Text style={styles.revealText}>{answer.text}</Text>
+                  <Text style={styles.revealMeta}>
+                    {answerAuthorName(answer.id, roundAnswers, bootstrap.players)} · {votes} vote
+                    {votes === 1 ? '' : 's'}
+                    {votes > 0 ? ` · +${votes} pts` : ''}
+                  </Text>
+                </View>
+              )
+            })}
+          </ScrollView>
+          {revealCountdown > 0 ? (
+            <RoundBreakCard
+              title="Round results"
+              message="Next round starting soon…"
+              secondsLeft={revealCountdown}
+            />
+          ) : null}
+        </>
       ) : null}
     </GameShell>
   )
@@ -242,8 +340,25 @@ export function QuiplashPlayerView({ gameCode }: { gameCode: string }) {
 const styles = StyleSheet.create({
   waiting: { color: '#9ca3af', fontSize: 16, textAlign: 'center', marginTop: 24 },
   prompt: { color: '#fff', fontSize: 20, fontWeight: '700', lineHeight: 28 },
-  timer: { color: '#fbbf24', fontSize: 14, marginTop: 4 },
   section: { color: '#fff', fontSize: 16, fontWeight: '600', marginTop: 8 },
+  submittedCard: {
+    backgroundColor: '#17171d',
+    borderRadius: 12,
+    padding: 14,
+    gap: 6,
+    marginTop: 8,
+  },
+  submittedLabel: { color: '#9ca3af', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  submittedText: { color: '#fff', fontSize: 16, lineHeight: 22 },
+  soloBanner: {
+    backgroundColor: '#422006',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#fbbf24',
+    marginTop: 8,
+  },
+  soloText: { color: '#fcd34d', fontWeight: '700', textAlign: 'center' },
   input: {
     backgroundColor: '#17171d',
     borderRadius: 10,
@@ -289,6 +404,7 @@ const styles = StyleSheet.create({
   locked: { color: '#9ca3af', textAlign: 'center', marginTop: 12 },
   revealList: { gap: 10, paddingVertical: 8 },
   revealRow: { backgroundColor: '#17171d', borderRadius: 10, padding: 12, gap: 4 },
+  revealRowTop: { borderWidth: 1, borderColor: '#fbbf24', backgroundColor: '#42200633' },
   revealText: { color: '#fff', fontSize: 16 },
   revealMeta: { color: '#9ca3af', fontSize: 13 },
 })

@@ -5,21 +5,30 @@ import { batch4GameLabel } from '@fateround/shared/batch-4-games'
 import {
   WHOT_SHAPE_LABELS,
   canPlayCard,
-  cardLabel,
   currentPlayerId,
   getActivePickPenalty,
   hasActiveWhotCall,
   hasPlayableCard,
   isDrawPileDepleted,
   parseWhotRules,
+  whotSecondsLeft,
 } from '@fateround/shared/whot'
+import { CardTableArea } from '@/components/games/cards/CardTableArea'
+import { PlayerTurnRail } from '@/components/games/cards/PlayerTurnRail'
+import { WhotCardFace } from '@/components/games/cards/WhotCardFace'
+import { WhotShapeIcon } from '@/components/games/cards/WhotShapeIcon'
+import { useTurnDeadlineSeconds } from '@/components/games/cards/useTurnDeadlineSeconds'
+import { TimerBadge } from '@/components/ui/TimerBadge'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postWhotChooseNumber, postWhotChooseShape, postWhotDraw, postWhotPlay } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -63,6 +72,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -82,6 +92,18 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
     if (!session || !myHand) return new Set<string>()
     return new Set(myHand.cards.filter((c) => canPlayCard(c, session, rules)).map((c) => c.id))
   }, [session, myHand, rules])
+
+  const timerSeconds = useTurnDeadlineSeconds(
+    whotSecondsLeft,
+    session?.turn_deadline_at,
+    !!session?.turn_deadline_at && session.phase === 'playing'
+  )
+
+  const handCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const hand of hands) counts[hand.player_id] = hand.cards.length
+    return counts
+  }, [hands])
 
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || acting) return
@@ -118,46 +140,64 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game || !session) return <GameLoading />
 
   if (bootstrap.screen === 'finished') {
     const winner = bootstrap.players.find((p) => p.id === session.winner_player_id)
     return (
-      <GameShell title={batch4GameLabel('whot')} subtitle={bootstrap.code}>
-        <FinishedPanel title="Game over" detail={winner ? `${winner.name} wins` : undefined} />
+      <GameShell bootstrap={bootstrap} title={batch4GameLabel('whot')} subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title="Game over" subtitle="Final standings" detail={winner ? `${winner.name} wins` : undefined} leaderboard={winnerLeaderboard(session.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} />
       </GameShell>
     )
   }
 
   const turnName = bootstrap.players.find((p) => p.id === turnPlayerId)?.name ?? 'Someone'
-  const topLabel = session.top_card ? cardLabel(session.top_card) : '—'
-  const canDraw =
-    isMyTurn &&
-    session.phase === 'playing' &&
-    !choosingWhot &&
-    (!myHand || !hasPlayableCard(myHand.cards, session, rules) || isDrawPileDepleted(session))
-
   const penaltyLabel =
     penalty?.type === 'pick2'
       ? `Pick 2 — play a 2 or draw ${penalty.count}`
       : penalty?.type === 'pick3'
         ? `Pick 3 — play a 5 or draw ${penalty.count}`
         : null
+  const tableHint = [
+    hasActiveWhotCall(session) && session.required_shape
+      ? `Must match ${WHOT_SHAPE_LABELS[session.required_shape]}`
+      : null,
+    penaltyLabel,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  const canDraw =
+    isMyTurn &&
+    session.phase === 'playing' &&
+    !choosingWhot &&
+    (!myHand || !hasPlayableCard(myHand.cards, session, rules) || isDrawPileDepleted(session))
 
   return (
-    <GameShell title={batch4GameLabel('whot')} subtitle={bootstrap.code}>
+    <GameShell bootstrap={bootstrap} title={batch4GameLabel('whot')} subtitle={bootstrap.code}>
       <TurnBanner text={session.status_message ?? `${turnName}'s turn`} isMyTurn={isMyTurn} />
-      <View style={styles.table}>
-        <Text style={styles.label}>Top card</Text>
-        <Text style={styles.topCard}>{topLabel}</Text>
-        {hasActiveWhotCall(session) && session.required_shape ? (
-          <Text style={styles.hint}>Must match {WHOT_SHAPE_LABELS[session.required_shape]}</Text>
-        ) : null}
-        {penaltyLabel ? <Text style={styles.hint}>{penaltyLabel}</Text> : null}
-      </View>
+      {timerSeconds > 0 ? <TimerBadge seconds={timerSeconds} /> : null}
+
+      <PlayerTurnRail
+        players={bootstrap.players}
+        turnPlayerId={turnPlayerId}
+        myPlayerId={bootstrap.myPlayerId}
+        handCounts={handCounts}
+      />
+
+      <CardTableArea
+        pileCount={session.draw_pile.length}
+        hint={tableHint || null}
+        topCard={
+          session.top_card ? (
+            <WhotCardFace card={session.top_card} />
+          ) : (
+            <Text style={styles.emptyTop}>—</Text>
+          )
+        }
+      />
 
       {choosingWhot && isMyTurn ? (
         <View style={styles.choosePanel}>
@@ -166,6 +206,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
           <View style={styles.shapeRow}>
             {WHOT_CALL_SHAPES.map((shape) => (
               <Pressable key={shape} style={styles.callBtn} disabled={acting} onPress={() => void chooseShape(shape)}>
+                <WhotShapeIcon shape={shape} size={22} />
                 <Text style={styles.callText}>{WHOT_SHAPE_LABELS[shape]}</Text>
               </Pressable>
             ))}
@@ -192,11 +233,10 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
           return (
             <Pressable
               key={card.id}
-              style={[styles.card, playable && isMyTurn && styles.cardPlayable]}
               disabled={acting || !isMyTurn || !playable || session.phase !== 'playing'}
-              onPress={() => playCard(card.id)}
+              onPress={() => void playCard(card.id)}
             >
-              <Text style={styles.cardText}>{cardLabel(card)}</Text>
+              <WhotCardFace card={card} playable={playable && isMyTurn} />
             </Pressable>
           )
         })}
@@ -212,30 +252,22 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 }
 
 const styles = StyleSheet.create({
-  table: { backgroundColor: '#17171d', borderRadius: 12, padding: 16, gap: 6 },
-  label: { color: '#9ca3af', fontSize: 13 },
-  topCard: { color: '#fff', fontSize: 24, fontWeight: '800' },
-  hint: { color: '#fbbf24', fontSize: 14 },
+  emptyTop: { color: '#fff', fontSize: 24, fontWeight: '800' },
   section: { color: '#fff', fontSize: 16, fontWeight: '600', marginTop: 4 },
   choosePanel: { gap: 8 },
   shapeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   shapeHint: { color: '#9ca3af', fontSize: 12 },
   numberRow: { gap: 6, paddingVertical: 4 },
-  callBtn: { backgroundColor: '#3f1d2b', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
-  callText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  hand: { gap: 8, paddingVertical: 8 },
-  card: {
-    backgroundColor: '#2a2a35',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 16,
-    borderWidth: 1,
-    borderColor: '#3f3f50',
-    minWidth: 80,
+  callBtn: {
+    backgroundColor: '#3f1d2b',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     alignItems: 'center',
+    gap: 4,
   },
-  cardPlayable: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
-  cardText: { color: '#fff', fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  callText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  hand: { gap: 8, paddingVertical: 8 },
   drawBtn: {
     backgroundColor: '#17171d',
     borderRadius: 10,

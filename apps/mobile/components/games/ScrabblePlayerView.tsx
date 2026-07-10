@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import type { Game, Player, ScrabblePlacedTile, ScrabblePlayerState, ScrabbleSession } from '@fateround/shared'
 import { batch6GameLabel } from '@fateround/shared/batch-6-games'
 import { SCRABBLE_BOARD_SIZE, scrabblePremiumAt } from '@fateround/shared/scrabble-constants'
@@ -7,7 +7,12 @@ import { currentTurnPlayerId, scorePlacement, withPlacedTiles } from '@fateround
 import { tileSetForDictionary } from '@fateround/shared/scrabble-rulesets'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { ScrabbleTile } from '@/components/games/scrabble/ScrabbleTile'
+import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { TimerBadge } from '@/components/ui/TimerBadge'
+import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
   postScrabbleExchange,
@@ -17,6 +22,8 @@ import {
 } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { SCRABBLE_PLAYER_STATE_SELECT, SCRABBLE_SESSION_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -68,6 +75,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -93,6 +101,27 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
     if (!activeSession || pending.length === 0) return null
     return scorePlacement(activeSession.board, pending, tileSet.values)
   }, [activeSession, pending, tileSet.values])
+
+  const { width } = useWindowDimensions()
+  const cellSize = Math.min(Math.floor((width - 32) / SCRABBLE_BOARD_SIZE), 24)
+  const turnSecondsLeft = useAbsoluteDeadline(
+    activeSession?.turn_deadline_at,
+    activeSession?.clock_mode === 'standard' && activeSession?.phase === 'playing'
+  )
+
+  const scoreRows = useMemo(
+    () =>
+      playerStates
+        .slice()
+        .sort((a, b) => b.score - a.score)
+        .map((s) => ({
+          id: s.player_id,
+          name: bootstrap.players.find((p) => p.id === s.player_id)?.name ?? 'Player',
+          score: s.score,
+          highlight: s.player_id === bootstrap.myPlayerId,
+        })),
+    [playerStates, bootstrap.players, bootstrap.myPlayerId]
+  )
 
   useEffect(() => {
     if (!activeSession || activeSession.phase !== 'playing') return
@@ -177,8 +206,8 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game || !activeSession || !previewBoard) return <GameLoading />
 
@@ -194,8 +223,8 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
       })
       .join(' · ')
     return (
-      <GameShell title={batch6GameLabel('scrabble')} subtitle={bootstrap.code}>
-        <FinishedPanel title={title} detail={scores || activeSession.status_message || undefined} />
+      <GameShell bootstrap={bootstrap} title={batch6GameLabel('scrabble')} subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={scores || activeSession.status_message || undefined} leaderboard={scoreListLeaderboard(playerStates.slice().sort((a, b) => b.score - a.score).map((s) => ({ name: bootstrap.players.find((p) => p.id === s.player_id)?.name ?? 'Player', score: s.score })))} />
       </GameShell>
     )
   }
@@ -204,7 +233,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   const canExchange = (activeSession.bag?.length ?? 0) >= 7
 
   return (
-    <GameShell title="Scrabble" subtitle={`Code ${bootstrap.code}`}>
+    <GameShell bootstrap={bootstrap} title="Scrabble" subtitle={`Code ${bootstrap.code}`}>
       <TurnBanner
         text={
           exchangeMode
@@ -220,6 +249,10 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
         isMyTurn={isMyTurn}
       />
 
+      {turnSecondsLeft > 0 ? <TimerBadge seconds={turnSecondsLeft} /> : null}
+
+      <LeaderboardPanel title="Scores" rows={scoreRows} highlightId={bootstrap.myPlayerId} />
+
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View style={styles.board}>
           {Array.from({ length: SCRABBLE_BOARD_SIZE }, (_, row) => (
@@ -229,24 +262,35 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
                 const cell = previewBoard[row][col]
                 const isPending = pending.some((t) => t.row === row && t.col === col)
                 const isLast = activeSession.last_move?.tiles.some((t) => t.row === row && t.col === col)
+                const letter = cell?.letter ?? null
+                const points =
+                  letter && letter !== '?'
+                    ? tileSet.values[letter.toUpperCase()] ?? tileSet.values[letter] ?? undefined
+                    : undefined
                 return (
                   <Pressable
                     key={col}
                     style={[
                       styles.cell,
+                      { width: cellSize, height: cellSize },
                       prem === 'TW' && styles.tw,
                       prem === 'DW' && styles.dw,
                       prem === 'TL' && styles.tl,
                       prem === 'DL' && styles.dl,
-                      isPending && styles.pendingCell,
                       isLast && styles.lastCell,
                     ]}
                     disabled={!isMyTurn || acting}
                     onPress={() => onCellPress(row, col)}
                   >
                     {!cell && prem ? <Text style={styles.premLabel}>{prem}</Text> : null}
-                    {cell ? (
-                      <Text style={styles.tileLetter}>{cell.letter}</Text>
+                    {letter ? (
+                      <ScrabbleTile
+                        letter={letter}
+                        points={points}
+                        size={Math.max(cellSize - 2, 14)}
+                        pending={isPending}
+                        onBoard
+                      />
                     ) : null}
                   </Pressable>
                 )
@@ -256,37 +300,25 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
         </View>
       </ScrollView>
 
-      <View style={styles.scoreRow}>
-        {playerStates.map((s) => {
-          const name = bootstrap.players.find((p) => p.id === s.player_id)?.name ?? '?'
-          const active = s.player_id === turnPlayerId
-          return (
-            <Text key={s.player_id} style={[styles.scoreChip, active && styles.scoreActive]}>
-              {name}: {s.score}
-              {s.timed_out ? ' (out)' : ''}
-            </Text>
-          )
-        })}
-      </View>
-
       <View style={styles.rack}>
         {myState?.rack.map((letter, index) => {
           const used = usedRackIndices.has(index)
           const selected = selectedRackIndex === index
           const exchanging = exchangeIndices.includes(index)
+          const points = letter !== '?' ? tileSet.values[letter] ?? undefined : undefined
           return (
             <Pressable
               key={index}
-              style={[
-                styles.rackTile,
-                used && styles.rackUsed,
-                selected && styles.rackSelected,
-                exchanging && styles.rackExchange,
-              ]}
               disabled={!isMyTurn || acting || (used && !exchangeMode)}
               onPress={() => onRackPress(index, letter)}
             >
-              <Text style={styles.rackLetter}>{letter === '?' ? '?' : letter}</Text>
+              <ScrabbleTile
+                letter={letter}
+                points={points}
+                size={40}
+                selected={selected}
+                pending={exchanging}
+              />
             </Pressable>
           )
         })}
@@ -377,14 +409,10 @@ function ActionBtn({
   )
 }
 
-const CELL = 22
-
 const styles = StyleSheet.create({
   board: { alignSelf: 'center', borderWidth: 2, borderColor: '#2a2a35', marginVertical: 8 },
   boardRow: { flexDirection: 'row' },
   cell: {
-    width: CELL,
-    height: CELL,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#c9b896',
@@ -395,28 +423,9 @@ const styles = StyleSheet.create({
   dw: { backgroundColor: '#f472b6' },
   tl: { backgroundColor: '#2563eb' },
   dl: { backgroundColor: '#38bdf8' },
-  pendingCell: { borderWidth: 2, borderColor: '#22c55e' },
   lastCell: { backgroundColor: '#fde68a' },
   premLabel: { fontSize: 7, fontWeight: '800', color: 'rgba(255,255,255,0.85)' },
-  tileLetter: { fontSize: 14, fontWeight: '900', color: '#171717' },
-  scoreRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
-  scoreChip: { color: '#a1a1aa', fontWeight: '600', fontSize: 13 },
-  scoreActive: { color: '#fafafa' },
   rack: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginVertical: 8 },
-  rackTile: {
-    width: 36,
-    height: 36,
-    borderRadius: 6,
-    backgroundColor: '#f5e6c8',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#8b7355',
-  },
-  rackUsed: { opacity: 0.35 },
-  rackSelected: { borderColor: '#f43f5e' },
-  rackExchange: { borderColor: '#38bdf8' },
-  rackLetter: { fontSize: 16, fontWeight: '900', color: '#171717' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
   actionBtn: {
     paddingHorizontal: 12,

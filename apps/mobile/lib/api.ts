@@ -37,6 +37,8 @@ export async function joinGame(input: {
   resumeToken?: string | null
   joinAsViewer?: boolean
   monopolyToken?: string | null
+  participantId?: string | null
+  gender?: PlayerGender
 }): Promise<JoinPlayerResponse> {
   const res = await fetch(apiUrl('/api/players'), {
     method: 'POST',
@@ -44,10 +46,11 @@ export async function joinGame(input: {
     body: JSON.stringify({
       gameCode: input.gameCode.toUpperCase(),
       playerName: input.playerName.trim(),
-      gender: 'both',
+      gender: input.gender ?? 'both',
       resumeToken: input.resumeToken ?? undefined,
       joinAsViewer: input.joinAsViewer,
       monopolyToken: input.monopolyToken ?? undefined,
+      participantId: input.participantId ?? undefined,
     }),
   })
   const data = (await res.json()) as JoinPlayerResponse & { error?: string }

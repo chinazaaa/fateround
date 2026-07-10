@@ -16,7 +16,8 @@ import {
   formatSessionCountdown,
   isPlayerBanned,
 } from '@fateround/shared/anonymous-messages'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell, WaitingPanel } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, WaitingPanel } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { autoJoinGame } from '@/lib/api'
 import { postAnonymousMessage } from '@/lib/game-api'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
@@ -207,8 +208,15 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     )
   }
 
-  if (screen === 'finished') {
-    return <FinishedPanel title="Session ended" detail="This anonymous room has closed." />
+  if (screen === 'finished' && game) {
+    return (
+      <GameFinishPanel
+        bootstrap={{ code, game, players, myPlayerId, load }}
+        title="Session ended"
+        detail="This anonymous room has closed."
+        showPlayAgain={false}
+      />
+    )
   }
 
   return (

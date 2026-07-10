@@ -1,4 +1,5 @@
 import { apiUrl } from '@/lib/config'
+import type { GameType } from '@fateround/shared'
 import type { MafiaStateResponse } from '@fateround/shared/mafia'
 import type { MahjongStateResponse } from '@fateround/shared/mahjong'
 
@@ -33,6 +34,13 @@ export function postBingoMark(gameId: string, resumeToken: string, cellIndex: nu
   })
 }
 
+export function postBingoClaim(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean; claim?: { player_id: string } }>('/api/bingo/claim', {
+    gameId,
+    resumeToken,
+  })
+}
+
 export function postTriviaAnswer(gameId: string, resumeToken: string, roundId: string, choiceIndex: number) {
   return postJson<{ success: boolean; isCorrect: boolean; points: number }>('/api/trivia/answer', {
     gameId,
@@ -44,6 +52,17 @@ export function postTriviaAnswer(gameId: string, resumeToken: string, roundId: s
 
 export function postPlayerReady(gameId: string, resumeToken: string, ready: boolean) {
   return postJson<{ success: boolean }>('/api/players/ready', { gameId, resumeToken, ready })
+}
+
+export function postPlayAgain(gameCode: string, hostToken: string, sameSettings = true) {
+  return postJson<{ success: boolean }>(`/api/games/${gameCode.toUpperCase()}/play-again`, {
+    hostToken,
+    same_settings: sameSettings,
+  })
+}
+
+export function postPlayerPromote(gameCode: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/players/promote', { gameCode: gameCode.toUpperCase(), resumeToken })
 }
 
 export function postVote(gameId: string, resumeToken: string, roundId: string, body: Record<string, unknown>) {
@@ -505,4 +524,73 @@ export async function getHotSeatSubmissions(gameId: string, roundId: string) {
   const data = (await res.json()) as { submissions?: unknown[]; error?: string }
   if (!res.ok) throw new Error(data.error ?? 'Request failed')
   return data
+}
+
+// ---- Host actions ---------------------------------------------------------
+// Host routes authorize by putting the host token in the POST body (the client
+// can no longer read games.host_token — migration 0122). See
+// src/app/api/games/[code]/{verify-host,start}/route.ts.
+
+export type VerifyHostResponse = { ok: boolean; notFound?: boolean }
+
+/** Early "are you the host?" gate. Returns 200 with { ok:false } on a bad token. */
+export function verifyHost(gameId: string, hostToken: string) {
+  return postJson<VerifyHostResponse>(`/api/games/${gameId.toUpperCase()}/verify-host`, { hostToken })
+}
+
+/**
+ * Start the game. The server generates rounds and flips status to active. It
+ * enforces per-game minimum-player rules and throws (via postJson) with the
+ * server's message when they aren't met — the caller surfaces that verbatim.
+ */
+export function startGame(gameId: string, hostToken: string) {
+  return postJson<{ ok?: boolean }>(`/api/games/${gameId.toUpperCase()}/start`, { hostToken })
+}
+
+export type CreateGameResponse = { gameCode: string; hostToken: string }
+
+/**
+ * Create a game and receive its code + host token. Only `title` is required by
+ * the server; everything else (rounds, timers, max players) defaults per game
+ * type. Native create is limited to lobby games that need no participant list
+ * or custom questions — see app/create.tsx.
+ */
+export function createGame(input: { title: string; gameType: GameType }) {
+  return postJson<CreateGameResponse>('/api/games', {
+    title: input.title,
+    game_type: input.gameType,
+  })
+}
+
+async function jsonRequest<T>(path: string, method: string, body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(apiUrl(path), {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = (await res.json()) as T & { error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'Request failed')
+  return data
+}
+
+export function patchPlayerName(
+  gameCode: string,
+  playerId: string,
+  playerName: string,
+  resumeToken: string
+) {
+  return jsonRequest<{ playerName: string }>('/api/players', 'PATCH', {
+    gameCode: gameCode.toUpperCase(),
+    playerId,
+    playerName,
+    resumeToken,
+  })
+}
+
+export function leaveGame(gameCode: string, playerId: string, resumeToken: string) {
+  return jsonRequest<{ success: boolean }>('/api/players', 'DELETE', {
+    gameCode: gameCode.toUpperCase(),
+    playerId,
+    resumeToken,
+  })
 }

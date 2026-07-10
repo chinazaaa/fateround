@@ -10,8 +10,8 @@ import {
 import { batch4GameLabel } from '@fateround/shared/batch-4-games'
 import {
   CRAZY8_SUIT_LABELS,
-  cardLabel,
   canPlayCard,
+  crazyEightsSecondsLeft,
   currentPlayerId,
   getNormalizedPenalties,
   hasActiveSuitCall,
@@ -19,13 +19,21 @@ import {
   isDrawPileDepleted,
   parseCrazyEightsRules,
 } from '@fateround/shared/crazy-eights'
+import { CardTableArea } from '@/components/games/cards/CardTableArea'
+import { PlayerTurnRail } from '@/components/games/cards/PlayerTurnRail'
+import { PlayingCardFace } from '@/components/games/cards/PlayingCardFace'
+import { useTurnDeadlineSeconds } from '@/components/games/cards/useTurnDeadlineSeconds'
+import { TimerBadge } from '@/components/ui/TimerBadge'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postCrazyEightsChoose, postCrazyEightsDraw, postCrazyEightsPlay } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { CRAZY8_PLAYER_HANDS_SELECT, CRAZY8_SESSION_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -72,6 +80,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -91,6 +100,18 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     if (!session || !myHand) return new Set<string>()
     return new Set(myHand.cards.filter((c) => canPlayCard(c, session, rules)).map((c) => c.id))
   }, [session, myHand, rules])
+
+  const timerSeconds = useTurnDeadlineSeconds(
+    crazyEightsSecondsLeft,
+    session?.turn_deadline_at,
+    !!session?.turn_deadline_at && session.phase === 'playing'
+  )
+
+  const handCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const hand of hands) counts[hand.player_id] = hand.cards.length
+    return counts
+  }, [hands])
 
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || acting) return
@@ -125,22 +146,30 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game || !session) return <GameLoading />
 
   if (bootstrap.screen === 'finished') {
     const winner = bootstrap.players.find((p) => p.id === session.winner_player_id)
     return (
-      <GameShell title={batch4GameLabel('crazy_eights')} subtitle={bootstrap.code}>
-        <FinishedPanel title="Game over" detail={winner ? `${winner.name} wins` : undefined} />
+      <GameShell bootstrap={bootstrap} title={batch4GameLabel('crazy_eights')} subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title="Game over" subtitle="Final standings" detail={winner ? `${winner.name} wins` : undefined} leaderboard={winnerLeaderboard(session.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} />
       </GameShell>
     )
   }
 
   const turnName = bootstrap.players.find((p) => p.id === turnPlayerId)?.name ?? 'Someone'
-  const topLabel = session.top_card ? cardLabel(session.top_card) : '—'
+  const tableHint = [
+    hasActiveSuitCall(session) && session.required_suit
+      ? `Must follow ${CRAZY8_SUIT_LABELS[session.required_suit]}`
+      : null,
+    penalties.pickTwo > 0 ? `Pick ${penalties.pickTwo} penalty` : null,
+    penalties.jokerPenalty > 0 ? `Joker penalty: draw ${penalties.jokerPenalty}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
   const canDraw =
     isMyTurn &&
     session.phase === 'playing' &&
@@ -148,17 +177,28 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
     (!myHand || !hasPlayableCard(myHand.cards, session, rules) || isDrawPileDepleted(session))
 
   return (
-    <GameShell title={batch4GameLabel('crazy_eights')} subtitle={bootstrap.code}>
+    <GameShell bootstrap={bootstrap} title={batch4GameLabel('crazy_eights')} subtitle={bootstrap.code}>
       <TurnBanner text={session.status_message ?? `${turnName}'s turn`} isMyTurn={isMyTurn} />
-      <View style={styles.table}>
-        <Text style={styles.label}>Top card</Text>
-        <Text style={styles.topCard}>{topLabel}</Text>
-        {hasActiveSuitCall(session) && session.required_suit ? (
-          <Text style={styles.hint}>Must follow {CRAZY8_SUIT_LABELS[session.required_suit]}</Text>
-        ) : null}
-        {penalties.pickTwo > 0 ? <Text style={styles.hint}>Pick {penalties.pickTwo} penalty</Text> : null}
-        {penalties.jokerPenalty > 0 ? <Text style={styles.hint}>Joker penalty: draw {penalties.jokerPenalty}</Text> : null}
-      </View>
+      {timerSeconds > 0 ? <TimerBadge seconds={timerSeconds} /> : null}
+
+      <PlayerTurnRail
+        players={bootstrap.players}
+        turnPlayerId={turnPlayerId}
+        myPlayerId={bootstrap.myPlayerId}
+        handCounts={handCounts}
+      />
+
+      <CardTableArea
+        pileCount={session.draw_pile.length}
+        hint={tableHint || null}
+        topCard={
+          session.top_card ? (
+            <PlayingCardFace card={session.top_card} />
+          ) : (
+            <Text style={styles.emptyTop}>—</Text>
+          )
+        }
+      />
 
       {choosingSuit ? (
         <View style={styles.suitRow}>
@@ -177,11 +217,10 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
           return (
             <Pressable
               key={card.id}
-              style={[styles.card, playable && isMyTurn && styles.cardPlayable]}
               disabled={acting || !isMyTurn || !playable || session.phase !== 'playing'}
               onPress={() => void playCard(card.id)}
             >
-              <Text style={styles.cardText}>{cardLabel(card)}</Text>
+              <PlayingCardFace card={card} playable={playable && isMyTurn} />
             </Pressable>
           )
         })}
@@ -197,24 +236,9 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
 }
 
 const styles = StyleSheet.create({
-  table: { backgroundColor: '#17171d', borderRadius: 12, padding: 16, gap: 6 },
-  label: { color: '#9ca3af', fontSize: 13 },
-  topCard: { color: '#fff', fontSize: 28, fontWeight: '800' },
-  hint: { color: '#fbbf24', fontSize: 14 },
+  emptyTop: { color: '#fff', fontSize: 28, fontWeight: '800' },
   section: { color: '#fff', fontSize: 16, fontWeight: '600', marginTop: 4 },
   hand: { gap: 8, paddingVertical: 8 },
-  card: {
-    backgroundColor: '#2a2a35',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 18,
-    borderWidth: 1,
-    borderColor: '#3f3f50',
-    minWidth: 72,
-    alignItems: 'center',
-  },
-  cardPlayable: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
-  cardText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   suitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   actionBtn: {
     backgroundColor: '#f43f5e',

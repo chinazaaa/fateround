@@ -11,9 +11,11 @@ Living doc for the React Native / Expo app in `apps/mobile/`.
 |------|--------|
 | **Game types with a native player screen** | **40 / 40** (Batches 1–9) |
 | **Production-ready mobile UX** | **No** — functional MVPs only |
-| **Host / create / lobby polish** | **Not started** |
-| **Push notifications** | **Not started** |
-| **Voice chat** | **Web only** (LiveKit) — not in mobile app |
+| **Host / create / lobby polish** | **Batch 11 MVP** — host lobby + web create link |
+| **Session shell (Batch 10)** | **Done** — header menu, rules links, keyboard forms, native create |
+| **Lifecycle & finish UX (Batch 12)** | **Done** — finish scoreboards, play-again flow, import claim join |
+| **Push notifications** | **Core done (Batch 13)** — Expo tokens, turn/game/round push; EAS project ID needed for device tokens |
+| **Game UI polish (Batch 15 P0)** | **Core done** — poll/trivia/bingo timers, results, bingo claim, poll photos |
 | **Web fallback** | Still used when `mobile-config` disables a type or no view is registered |
 
 Batches 1–9 were about **coverage**: every game type can open a native screen and perform core player actions.  
@@ -66,9 +68,41 @@ All types in `GameType` are registered in `MOBILE_SUPPORTED_GAMES` and `mobile-c
 
 **Cumulative: 40 games.**
 
+### Batch 10 — Session & navigation shell ✅
+
+- [x] `PlayerSessionShell` on every game screen (code, share, host link, back)
+- [x] Leave + rename + resume card (`PlayerSessionControls`, `patchPlayerName`, `leaveGame`)
+- [x] Recent games on home; web create link
+- [x] Toast provider; safe-area on game shell (top + bottom)
+- [x] All player views use `usePlayerSessionActions` + `bootstrap={bootstrap}` on `GameShell`
+- [x] Rules / how-to-play links from game screens
+- [x] ⋮ overflow menu (leave, rename) in session header
+- [x] Native create (`/create`) — title + game type, stores host token, routes to host lobby
+- [x] Web create link retained for advanced setup (participants, custom questions)
+
+### Batch 11 — Create & host (MVP)
+
+- [x] `HostLobbyScreen` + `/host/[code]` with deep-link host token capture
+- [x] `POST /api/games/[code]/start` from mobile
+- [ ] Native create flow (still web)
+
+### Batch 12 — Lifecycle & finish UX ✅
+
+- [x] Shared `@fateround/shared/viewers` (late join, spectator, pre-join screen logic)
+- [x] `PlayerPreJoinGate` in `GameRouter`: `GameEndedScreen`, `GameStartedWaitingScreen`, `LateJoinChoiceScreen`
+- [x] `ViewerModeBanner` + `POST /api/players/promote` (spectator → player)
+- [x] `ReplayReadyRing` in `LobbyView` when `replay_pending` (`postPlayerReady`)
+- [x] `GameFinishedScreen` / enhanced `FinishedPanel` (leaderboard rows)
+- [x] Wired lifecycle via `bootstrap={bootstrap}` on all player `GameShell`s + rich lobby everywhere
+- [x] Removed stale “native screen coming in a later batch” lobby copy
+- [x] `GameFinishPanel` + `PlayAgainFooter` on all native player views (scoreboards + “waiting for host” on finish)
+- [x] Per-game finish leaderboards (trivia, yahtzee, party/score games, board winners, MLT vote tally)
+- [x] Host play-again: `postPlayAgain` on `HostLobbyScreen` → players see ready ring → host starts next round
+- [x] Import claim join: `@fateround/shared/participant-mode`, `ParticipantClaimJoinScreen` (poll + hot seat)
+
 ### Shared package exports (high level)
 
-`batch-*-games`, game libs (`ayo`, `poll-games`, `chess`, `mafia`, `monopoly-board`, `mahjong`, `quick-draw-guess`, `anonymous-messages`, `hot-seat`, `custom-game`, …).
+`batch-*-games`, game libs (`ayo`, `poll-games`, `chess`, `mafia`, `monopoly-board`, `mahjong`, `quick-draw-guess`, `anonymous-messages`, `hot-seat`, `custom-game`, …), **`viewers`**, **`participant-mode`**, **`game-type-checks`**, **`game-limits-lite`**.
 
 ### API wrappers (`apps/mobile/lib/game-api.ts`)
 
@@ -82,30 +116,27 @@ These are why the app still feels rough even with 40 game screens.
 
 ### App shell & session
 
-- [ ] **Create game** — no native flow; host must use web
-- [ ] **Host mode** — no host views, no host lobby, no start/settings controls
-- [ ] **Leave game** — no “exit” that clears session and returns home
-- [ ] **Edit name** — no `PATCH /api/players` UI
-- [ ] **Recent games** — no resume list on home screen
-- [ ] **Share link / copy code** — no in-game share affordance
-- [ ] **Rules / how to play** — not linked from native screens
-- [ ] **Global header** — no consistent back, game code, player menu
-- [ ] **Safe area / keyboard** — inconsistent across views
-- [ ] **Error toasts** — mostly inline text; no shared toast system
+- [x] **Leave game** — clears session, returns home
+- [x] **Edit name** — inline rename in lobby
+- [x] **Recent games** — resume list on home
+- [x] **Share link / copy code** — share sheet from header + lobby + join
+- [ ] **Create game** — native flow; web create link on home for now
+- [ ] **Rules / how to play** — not linked from native screens yet
+- [ ] **Global header menu** — basic header only (no ⋮ menu yet)
 
 ### Lobby & lifecycle (web parity)
 
-- [ ] `LobbyView` still shows *“native screen coming in a later batch”* when game is active but player is waiting
-- [ ] **Late join / viewer mode** — largely web-only (`allow_late_players`, spectator flows)
-- [ ] **Game started waiting / game ended** pre-join screens — not ported
-- [ ] **Ready rings / replay / play again** — not on mobile
-- [ ] **Participant claim** (import-mode polls, hot seat names) — partial; many games use plain name join only
-- [ ] **Rich finish screens** — most games use a one-line `FinishedPanel`; no scoreboards, share cards, or recap UI matching web
+- [x] Late join / viewer mode (`PlayerPreJoinGate`, `ViewerModeBanner`, promote)
+- [x] Game started waiting / game ended pre-join screens
+- [x] Replay ready ring (`ReplayReadyRing` + `postPlayerReady`)
+- [x] Rich lobby (`LobbyView` ≈ `GameLobbyWaitingPanel`)
+- [ ] **Participant claim** (import-mode polls, hot seat names) — partial
+- [ ] **Rich finish screens per game** — Trivia has leaderboard; most games still minimal
 
 ### Notifications
 
-- [ ] **Push notifications** — not implemented (no Expo Notifications setup, no server push pipeline)
-- [ ] **In-app turn alerts** — web has hooks like `useTurnNotifications`; mobile has no equivalent
+- [x] **Push notifications** — Batch 13: Expo tokens, server turn/game/round push, foreground toasts
+- [x] **In-app turn alerts** — `useTurnNotifications` on key turn-based / trivia views
 - [ ] **Local reminders** — no turn timer vibration/sound
 
 ### Voice chat
@@ -121,13 +152,14 @@ These are why the app still feels rough even with 40 game screens.
 - **Gating:** Disabled for some contexts on web (e.g. tournament watch mode); see `src/app/game/[code]/page.tsx`
 - **Product:** Listed as a core feature in `docs/account-tiers.md` (all tiers)
 
-**Mobile (not started):** No LiveKit SDK, no mic permissions flow, no join/leave/mute UI, no presence polling.
+**Mobile (Batch 14 core done):** `@livekit/react-native` + fixed header `VoiceRail` in `PlayerSessionShell` / `HostLobbyScreen`.
 
-- Native player views have **no voice chrome** — party/social games (Mafia, polls, Describe It, etc.) are text/action-only on mobile
-- Host voice identity hooks exist on web (`useHostVoiceIdentity`) but nothing equivalent in `apps/mobile/`
-- **Dependency:** Batch 10 game shell (header / room chrome) is the natural mount point for a mobile voice rail
+- Reuses same token/presence APIs and room resolution as web
+- v1 games: mafia, whot, describe_it, codewords, anonymous_messages (`gameHasMobileVoice`)
+- Requires **Expo dev build** (native WebRTC — not Expo Go)
+- Host identity: `useHostVoiceIdentity` (SecureStore)
 
-**Launch candidates (mobile voice v1):** mafia, whot, describe_it, codewords, anonymous_messages — high social value; expand after SDK + shell proven.
+**Launch candidates (expand next):** chess, monopoly, mafia-adjacent social types, then broader rollout.
 
 ### Per-game UI quality (player views)
 
@@ -140,9 +172,10 @@ Player views are **logic-first MVPs**, not design-complete:
 - **Poll games** — single shared component; no photos, gender filters, or results animations
 - **Complex games** (scrabble board, chess board, ludo board, etc.) — playable but visually sparse vs web
 
-### Host token
+### Host mode
 
-`secure-session` can store a host token, but nothing in the UI reads it or routes to host APIs.
+- [x] Host token storage + `/host/[code]` lobby (start game, share code, player roster)
+- [ ] In-game host controls during active games (still web for most types)
 
 ### Testing & release
 
@@ -179,52 +212,76 @@ Prioritize **shell + host** before polishing every game board — otherwise each
 - Wire `POST /api/games/[code]/start` and basic lobby settings where APIs exist
 - Route: if `getHostToken(code)` → host stack, else player stack
 
-### Batch 12 — Lifecycle & finish UX
+### Batch 12 — Lifecycle & finish UX ✅
 
-**Goal:** Match web join/wait/finish flows.
+**Done (Jul 2026).** See “Batch 12” under What's done — finish scoreboards, play-again host + player flow, import claim join.
 
-- Port patterns from web: `GameStartedWaiting`, `GameEndedScreen`, `LateJoinChoice`, `ViewerModeBanner`
-- Rich **FinishedScreen** component: winner, scores, play again CTA (web fallback OK initially)
-- Per-game finish hooks (leaderboards for describe_it, quiplash, etc.)
-- `postPlayerReady` / ready rings where used
+### Batch 13 — Push & local notifications (core ✅)
 
-### Batch 13 — Push & local notifications
+- [x] `expo-notifications` + permission flow on join (`GamePushSetup`)
+- [x] `mobile_push_tokens` table + `POST /api/games/[code]/push/expo-subscribe|unsubscribe`
+- [x] Server push via Expo API + existing web push (`src/lib/push.ts`, `src/lib/expo-push.ts`)
+- [x] Turn notifications: ludo, tic-tac-toe, checkers, ayo (move + expire routes)
+- [x] Round started: trivia advance (`round_started` event)
+- [x] Game lifecycle push now includes native tokens (start / play-again / end)
+- [x] Foreground in-app banner (`useTurnNotifications` + push received listener)
+- [ ] Set real EAS `projectId` in `app.json` for physical-device push tokens
+- [ ] Roll turn alerts into more game types (chess, whot, scrabble, …)
+- [ ] Optional: settings toggle to disable notifications per game
 
-**Goal:** “Your turn” and “game started” on lock screen.
+### Batch 14 — Voice chat (core ✅)
 
-- Expo Notifications + permission flow
-- Device token registration API (new route or extend mobile-config)
-- Server events: turn start, game start, round end (start with 2–3 game types)
-- Foreground in-app banner when push disabled
-
-### Batch 14 — Voice chat
-
-**Goal:** Join the same LiveKit room as web players from the native app.
-
-**Prerequisites:** Batch 10 shell (shared header / room chrome where the rail lives).
-
-- Evaluate **LiveKit React Native** (`@livekit/react-native` + Expo config plugin) vs webview bridge (prefer native SDK)
-- Mic permission UX (iOS `NSMicrophoneUsageDescription`, Android runtime permission)
-- Reuse existing APIs: `POST /api/audio-token`, `POST /api/audio-presence` (same room naming / identity rules as web)
-- **Mobile voice rail component:** join / leave, mute, participant count, optional speaker list
-- Mount rail from game shell (all games) or opt-out set mirroring `gameHasHeaderVoice` over time
-- Host path: stable LiveKit identity when host is also a player (`useHostVoiceIdentity` parity)
-- Background / interruption handling (phone call, Bluetooth route)
-- QA: iOS + Android, echo, reconnect, multi-tab not applicable on mobile but resume-from-background
-- **v1 game set:** mafia, whot, describe_it — then roll out to remaining social types
-
-**Out of scope for v1:** Spotify sidecar, floating draggable pill (use fixed header rail only), per-game custom voice layouts.
+- [x] `@livekit/react-native` + Expo config plugins (dev build required — not Expo Go)
+- [x] Reuse `POST /api/audio-token`, `POST /api/audio-presence`, `GET /api/games/[code]/room`
+- [x] `VoiceRail` in `PlayerSessionShell` + `HostLobbyScreen` (join / mute / leave / participant list)
+- [x] Host voice identity via SecureStore (`useHostVoiceIdentity`)
+- [x] Mic permission flow (iOS plist + Android runtime)
+- [x] v1 games: mafia, whot, describe_it, codewords, anonymous_messages
+- [ ] Expand voice to more game types
+- [ ] Host+play stable display name sync (poll-based today)
+- [ ] Background / phone-call interruption QA on device
 
 ### Batch 15+ — Game UI polish (ongoing)
 
 Pick games by traffic / complexity, not all at once:
 
-| Priority | Games | Work |
-|----------|--------|------|
-| P0 | Poll suite, trivia, bingo | Results UI, photos, timers |
-| P1 | Board/card (ludo, checkers, chess, crazy8, whot) | Boards, hands, animations |
-| P2 | Party (describe_it, quiplash, word_rush) | Team UX, score recap |
-| P3 | Heavy (monopoly, scrabble, mahjong, quick_draw lie) | Full boards / canvas |
+| Priority | Games | Work | Status |
+|----------|--------|------|--------|
+| P0 | Poll suite, trivia, bingo | Results UI, photos, timers | **Core done** — see below |
+| P1 | Board/card (ludo, checkers, chess, crazy8, whot) | Boards, hands, animations | **Core done** — see below |
+| P2 | Party (describe_it, quiplash, word_rush) | Team UX, score recap | **Core done** — see below |
+| P3 | Heavy (monopoly, scrabble, mahjong, quick_draw lie) | Full boards / canvas | **Core done** — see below |
+
+#### Batch 15 P0 (Jul 2026)
+
+- [x] Shared `@fateround/shared/round-timing`, `vote-stats`, `bingo`; extended `trivia` helpers
+- [x] Mobile `useRoundTimer`, `useDeadlineCountdown`, `useAdvancePolling`, `TimerBadge`
+- [x] **Trivia:** `TriviaActiveRound` — per-question timer, locked/revealed states, correct-answer reveal, live leaderboard, advance polling
+- [x] **Poll suite:** round timer badge, `PollRoundResults` between rounds, countdown to next/final, MLT avatars, lobby `ParticipantPhotoCard` (`expo-image-picker`)
+- [x] **Bingo:** `BINGO!` claim (`postBingoClaim`), winner finish screen, latest-call highlight, `B-15` formatted numbers
+
+#### Batch 15 P1 (Jul 2026)
+
+- [x] Shared `@fateround/shared/checkers` legal-move helpers; `@fateround/shared/ludo-board-layout`
+- [x] **Checkers:** `CheckersBoard` — disc pieces, legal-move dots, board flip, last-move highlight
+- [x] **Ludo:** `LudoBoard` — 15×15 visual board, coloured tokens, destination highlights, tap-to-move
+- [x] **Chess:** king-in-check square highlight (existing board + clocks retained)
+- [x] **Crazy 8 / Whot:** `PlayingCardFace`, `WhotCardFace`, `WhotShapeIcon`, `CardTableArea`, `PlayerTurnRail`, turn `TimerBadge`
+
+#### Batch 15 P2 (Jul 2026)
+
+- [x] Shared party primitives: `TeamPickerGrid`, `TeamBadge`, `TeamScoreGrid`, `RoundBreakCard`, `PhaseStepper`, `ActivityFeed`, `useAbsoluteDeadline`
+- [x] **Describe It:** live team/individual scoreboards, team roster picker, turn timer, break countdown, guess feed, team badge
+- [x] **Word Rush:** live scores, team roster picker, letter-pair prompt display, intermission recap, recent-correct feed, turn timer
+- [x] **Quiplash:** live leaderboard, Write/Vote/Results stepper, reveal recap with vote pts + top highlight, solo-round banner, next-round countdown
+
+#### Batch 15 P3 (Jul 2026)
+
+- [x] Shared `@fateround/shared/monopoly-board-layout` (11×11 grid, color hex, short labels)
+- [x] **Monopoly:** `MonopolyBoardView` — visual board, token positions, property color bands, pending-space highlight, turn timer
+- [x] **Scrabble:** `ScrabbleTile` wood-style rack/board tiles, responsive board grid, live leaderboard, turn deadline badge
+- [x] **Mahjong:** `MahjongTableView` four-seat table + discard pond, `MahjongTileFace` colored tile faces, visual melds, turn timer
+- [x] **Quick Draw (guess / lie):** team roster picker, live team/individual scoreboards, turn + break timers, guess activity feed (Drawful canvas remains web-only)
 
 ---
 
@@ -242,6 +299,7 @@ Client check: `isGameMobileSupported()` in `apps/mobile/lib/api.ts`.
 | File | Purpose |
 |------|---------|
 | `apps/mobile/components/games/GameRouter.tsx` | View registry + batch lists |
+| `apps/mobile/components/lifecycle/*` | Pre-join, replay ready, viewer banner |
 | `apps/mobile/hooks/useGameViewBootstrap.ts` | Join, load, screen FSM |
 | `apps/mobile/lib/native-games.ts` | Fallback list when config unavailable |
 | `packages/shared/src/batch-*-games.ts` | Batch labels + game type arrays |

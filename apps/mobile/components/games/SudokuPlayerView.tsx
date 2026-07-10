@@ -9,11 +9,13 @@ import {
 } from '@fateround/shared/sudoku'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postSudokuSubmit } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -75,6 +77,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       setSubmissions((subs as SudokuSubmission[]) ?? [])
     },
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -121,8 +124,8 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game) return <GameLoading />
 
@@ -131,14 +134,14 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       .filter((s) => s.player_id === bootstrap.myPlayerId && s.is_correct)
       .reduce((sum, s) => sum + s.points_awarded, 0)
     return (
-      <GameShell title={batch3GameLabel('sudoku')} subtitle={bootstrap.code}>
-        <FinishedPanel title="Game over" detail={`Your score: ${myPoints}`} />
+      <GameShell bootstrap={bootstrap} title={batch3GameLabel('sudoku')} subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title="Game over" detail={`Your score: ${myPoints}`} />
       </GameShell>
     )
   }
 
   return (
-    <GameShell title={batch3GameLabel('sudoku')} subtitle={bootstrap.code}>
+    <GameShell bootstrap={bootstrap} title={batch3GameLabel('sudoku')} subtitle={bootstrap.code}>
       {!displayGrid ? (
         <Text style={styles.waiting}>Waiting for puzzle…</Text>
       ) : (

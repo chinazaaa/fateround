@@ -15,6 +15,9 @@ export const SUPABASE_ANON_KEY =
 
 export const APP_VERSION = Constants.expoConfig?.version ?? '0.1.0'
 
+/** LiveKit wss URL — same host as web (`NEXT_PUBLIC_LIVEKIT_URL`). */
+export const LIVEKIT_URL = process.env.EXPO_PUBLIC_LIVEKIT_URL?.replace(/\/$/, '') ?? ''
+
 export function gameWebUrl(gameCode: string): string {
   return `${WEB_BASE_URL}/game/${encodeURIComponent(gameCode.toUpperCase())}`
 }

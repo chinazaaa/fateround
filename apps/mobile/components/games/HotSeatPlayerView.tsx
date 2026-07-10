@@ -8,13 +8,17 @@ import {
   type HotSeatSubmission,
   type HotSeatSubmissionType,
 } from '@fateround/shared/hot-seat'
+import { isImportClaimMode } from '@fateround/shared/participant-mode'
 import { JoinScreen } from '@/components/JoinScreen'
+import { ParticipantClaimJoinScreen } from '@/components/join/ParticipantClaimJoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { getHotSeatSubmissions, postHotSeat } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { PARTICIPANT_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -63,6 +67,7 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
       return 'playing'
     },
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -117,6 +122,20 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
+    if (isImportClaimMode(bootstrap.game)) {
+      return (
+        <ParticipantClaimJoinScreen
+          gameCode={bootstrap.code}
+          game={bootstrap.game}
+          participants={state.participants}
+          players={bootstrap.players}
+          joining={bootstrap.joining}
+          error={bootstrap.error}
+          hint="Claim your name from the list — everyone takes a turn in the hot seat"
+          onJoin={(participantId, name) => void bootstrap.join(name, { participantId })}
+        />
+      )
+    }
     return (
       <JoinScreen
         gameCode={bootstrap.code}
@@ -128,15 +147,23 @@ export function HotSeatPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (bootstrap.screen === 'finished' && bootstrap.game) {
-    return <FinishedPanel title="Game over" detail="Thanks for playing Hot Seat!" />
+    return (
+      <GameShell bootstrap={bootstrap} title={batch9GameLabel('hot_seat')} subtitle={bootstrap.code}>
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title="Game over"
+          detail="Thanks for playing Hot Seat!"
+        />
+      </GameShell>
+    )
   }
   if (!bootstrap.game || !currentRound) {
     return (
-      <GameShell title={batch9GameLabel('hot_seat')} subtitle="Waiting">
+      <GameShell bootstrap={bootstrap} title={batch9GameLabel('hot_seat')} subtitle="Waiting">
         <Text style={styles.wait}>Waiting for the next round…</Text>
       </GameShell>
     )

@@ -15,11 +15,14 @@ import {
 } from '@fateround/shared/yahtzee'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postYahtzeeHold, postYahtzeeRoll, postYahtzeeScore } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { YAHTZEE_PLAYER_SCORES_SELECT, YAHTZEE_SESSION_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -60,6 +63,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
       return 'finished'
     },
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -117,8 +121,8 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game || !session) return <GameLoading />
 
@@ -130,8 +134,8 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
       }))
       .sort((a, b) => b.total - a.total)
     return (
-      <GameShell title={batch3GameLabel('yahtzee')} subtitle={bootstrap.code}>
-        <FinishedPanel title="Game over" detail={totals[0] ? `${totals[0].name} wins (${totals[0].total})` : undefined} />
+      <GameShell bootstrap={bootstrap} title={batch3GameLabel('yahtzee')} subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title="Game over" detail={totals[0] ? `${totals[0].name} wins (${totals[0].total})` : undefined} leaderboard={scoreListLeaderboard(totals.map((row) => ({ name: row.name, score: row.total })))} />
       </GameShell>
     )
   }
@@ -142,7 +146,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const turnName = bootstrap.players.find((p) => p.id === turnPlayerId)?.name ?? 'Someone'
 
   return (
-    <GameShell title={batch3GameLabel('yahtzee')} subtitle={isMyTurn ? 'Your turn' : `${turnName}'s turn`}>
+    <GameShell bootstrap={bootstrap} title={batch3GameLabel('yahtzee')} subtitle={isMyTurn ? 'Your turn' : `${turnName}'s turn`}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.diceRow}>
           {dice.map((value, index) => (

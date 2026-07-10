@@ -10,13 +10,8 @@ import {
 import { batch7GameLabel } from '@fateround/shared/batch-7-games'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import {
-  FinishedPanel,
-  GameLoading,
-  GameNotFound,
-  GameShell,
-  TurnBanner,
-} from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { getPlayerSession } from '@/lib/secure-session'
 import {
@@ -26,6 +21,7 @@ import {
   postMafiaState,
   postMafiaVote,
 } from '@/lib/game-api'
+import { usePlayerSessionActions } from '@/lib/player-session'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
 
@@ -76,6 +72,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -154,8 +151,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game || !state) return <GameLoading />
 
@@ -170,8 +167,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       .map((p) => `${p.name}: ${p.role ?? '?'}`)
       .join('\n')
     return (
-      <GameShell title={batch7GameLabel('mafia')} subtitle={bootstrap.code}>
-        <FinishedPanel title={winner} detail={roles} />
+      <GameShell bootstrap={bootstrap} title={batch7GameLabel('mafia')} subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title={winner} detail={roles} />
       </GameShell>
     )
   }
@@ -180,7 +177,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const phase = state.phase
 
   return (
-    <GameShell title="Mafia" subtitle={`Day ${state.dayNumber} · ${bootstrap.code}`}>
+    <GameShell bootstrap={bootstrap} title="Mafia" subtitle={`Day ${state.dayNumber} · ${bootstrap.code}`}>
       <TurnBanner
         text={`${mafiaPhaseLabel(phase)}${secondsLeft > 0 ? ` · ${secondsLeft}s` : ''}`}
         isMyTurn={phase === 'night' && amIAlive && !!myState && myState.role !== 'villager' && !myState.nightActionSubmitted}

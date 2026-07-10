@@ -1,20 +1,19 @@
 import { useCallback, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
-import { colorForPlayer, isDarkSquare, pieceAt, currentTurnPlayerId } from '@fateround/shared/checkers'
+import { Text } from 'react-native'
+import { colorForPlayer, currentTurnPlayerId, legalStepsFromSquare } from '@fateround/shared/checkers'
+import { CheckersBoard } from '@/components/games/checkers/CheckersBoard'
 import type { CheckersSession, Game, Player } from '@fateround/shared'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import {
-  FinishedPanel,
-  GameLoading,
-  GameNotFound,
-  GameShell,
-  TurnBanner,
-} from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { postCheckersMove } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { CHECKERS_SESSION_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { winnerLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
 
@@ -57,6 +56,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -68,23 +68,38 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
   const activeSession = session ?? bootstrap.gameState
   const turnPlayerId = activeSession ? currentTurnPlayerId(activeSession) : null
   const isMyTurn = bootstrap.myPlayerId != null && turnPlayerId === bootstrap.myPlayerId
+
+  useTurnNotifications({
+    status: bootstrap.game?.status,
+    isMyTurn,
+    enabled: bootstrap.screen === 'active',
+  })
+
   const myColor = bootstrap.myPlayerId && activeSession ? colorForPlayer(activeSession, bootstrap.myPlayerId) : null
 
   const onSquarePress = async (row: number, col: number) => {
-    if (!bootstrap.myResumeToken || !activeSession || !isMyTurn) return
+    if (!bootstrap.myResumeToken || !activeSession || !isMyTurn || !myColor) return
     const sq = `${row}${col}`
-    const piece = pieceAt(activeSession.board, row, col)
-    const pieceColor = piece === 'r' || piece === 'R' ? 'r' : piece === 'b' || piece === 'B' ? 'b' : null
+    const mustContinue = activeSession.must_continue_from
+    const legalTargets = new Set(
+      selected
+        ? legalStepsFromSquare(activeSession.board, myColor, selected, mustContinue).map((step) => step.to)
+        : []
+    )
 
     if (!selected) {
-      if (pieceColor === myColor) setSelected(sq)
+      const steps = legalStepsFromSquare(activeSession.board, myColor, sq, mustContinue)
+      if (steps.length > 0) setSelected(sq)
       return
     }
 
-    if (pieceColor === myColor && sq !== selected) {
-      setSelected(sq)
+    if (sq !== selected && !legalTargets.has(sq)) {
+      const steps = legalStepsFromSquare(activeSession.board, myColor, sq, mustContinue)
+      if (steps.length > 0) setSelected(sq)
       return
     }
+
+    if (!legalTargets.has(sq)) return
 
     setActing(true)
     try {
@@ -112,8 +127,8 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game || !activeSession) return <GameLoading />
 
@@ -121,8 +136,8 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
     const winner = bootstrap.players.find((p) => p.id === activeSession.winner_player_id)
     const title = activeSession.is_draw ? 'Draw!' : winner ? `${winner.name} wins!` : 'Game over'
     return (
-      <GameShell title="Checkers" subtitle={bootstrap.code}>
-        <FinishedPanel title={title} detail={activeSession.status_message} />
+      <GameShell bootstrap={bootstrap} title="Checkers" subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={activeSession.status_message} leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} />
       </GameShell>
     )
   }
@@ -130,7 +145,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
   const turnPlayer = bootstrap.players.find((p) => p.id === turnPlayerId)
 
   return (
-    <GameShell title="Checkers" subtitle={`Code ${bootstrap.code}`}>
+    <GameShell bootstrap={bootstrap} title="Checkers" subtitle={`Code ${bootstrap.code}`}>
       <TurnBanner
         text={
           selected
@@ -141,57 +156,17 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
         }
         isMyTurn={isMyTurn}
       />
-      <View style={styles.board}>
-        {Array.from({ length: 8 }, (_, row) => (
-          <View key={row} style={styles.row}>
-            {Array.from({ length: 8 }, (_, col) => {
-              const dark = isDarkSquare(row, col)
-              const piece = pieceAt(activeSession.board, row, col)
-              const sq = `${row}${col}`
-              const isSelected = selected === sq
-              return (
-                <Pressable
-                  key={col}
-                  style={[
-                    styles.square,
-                    dark ? styles.darkSquare : styles.lightSquare,
-                    isSelected && styles.selectedSquare,
-                  ]}
-                  disabled={!dark || acting || !isMyTurn}
-                  onPress={() => void onSquarePress(row, col)}
-                >
-                  {dark && piece !== '.' ? (
-                    <Text style={[styles.piece, pieceColorStyle(piece)]}>{pieceGlyph(piece)}</Text>
-                  ) : null}
-                </Pressable>
-              )
-            })}
-          </View>
-        ))}
-      </View>
+      <CheckersBoard
+        board={activeSession.board}
+        myColor={myColor}
+        isMyTurn={isMyTurn}
+        mustContinue={activeSession.must_continue_from}
+        selected={selected}
+        lastMoveFrom={null}
+        lastMoveTo={null}
+        acting={acting}
+        onSquarePress={(row, col) => void onSquarePress(row, col)}
+      />
     </GameShell>
   )
 }
-
-function pieceGlyph(piece: string): string {
-  if (piece === 'r' || piece === 'R') return piece === 'R' ? '♔' : '●'
-  if (piece === 'b' || piece === 'B') return piece === 'B' ? '♚' : '●'
-  return ''
-}
-
-function pieceColorStyle(piece: string) {
-  if (piece === 'r' || piece === 'R') return styles.redPiece
-  return styles.blackPiece
-}
-
-const styles = StyleSheet.create({
-  board: { alignSelf: 'center', borderWidth: 2, borderColor: '#2a2a35', borderRadius: 8, overflow: 'hidden' },
-  row: { flexDirection: 'row' },
-  square: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  lightSquare: { backgroundColor: '#f5e6c8' },
-  darkSquare: { backgroundColor: '#8b5e34' },
-  selectedSquare: { borderWidth: 2, borderColor: '#f43f5e' },
-  piece: { fontSize: 18, fontWeight: '800' },
-  redPiece: { color: '#dc2626' },
-  blackPiece: { color: '#111827' },
-})

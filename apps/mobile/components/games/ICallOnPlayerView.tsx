@@ -15,11 +15,14 @@ import {
 } from '@fateround/shared/npat'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postNpatCallerApprove, postNpatLetter, postNpatMark, postNpatSubmit } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { NPAT_ANSWER_SELECT, NPAT_MARK_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -72,6 +75,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -148,8 +152,8 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
   }
   if (!bootstrap.game) return <GameLoading />
 
@@ -157,15 +161,15 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     const scores = tallyNpatScores(answers, bootstrap.players)
     const top = scores[0]
     return (
-      <GameShell title={batch5GameLabel('i_call_on')} subtitle={bootstrap.code}>
-        <FinishedPanel title="Game over" detail={top ? `${top.name} — ${top.score} pts` : undefined} />
+      <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={bootstrap.code}>
+        <GameFinishPanel bootstrap={bootstrap} title="Game over" subtitle="Final standings" detail={top ? `${top.name} — ${top.score} pts` : undefined} leaderboard={scoreListLeaderboard(scores)} />
       </GameShell>
     )
   }
 
   if (!currentRound || !metadata) {
     return (
-      <GameShell title={batch5GameLabel('i_call_on')} subtitle={bootstrap.code}>
+      <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={bootstrap.code}>
         <Text style={styles.waiting}>Waiting for the next round…</Text>
       </GameShell>
     )
@@ -173,7 +177,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
 
   if (metadata.phase === 'letter_pick') {
     return (
-      <GameShell title={batch5GameLabel('i_call_on')} subtitle={`Round ${currentRound.round_number}`}>
+      <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Round ${currentRound.round_number}`}>
         {isCaller ? (
           <>
             <Text style={styles.section}>Pick a letter</Text>
@@ -194,7 +198,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
 
   if (metadata.phase === 'writing') {
     return (
-      <GameShell title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
+      <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
         {myAnswer?.submitted_at ? (
           <Text style={styles.locked}>Answers submitted — waiting for marking…</Text>
         ) : (
@@ -223,7 +227,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   if (metadata.phase === 'marking') {
     const targetName = bootstrap.players.find((p) => p.id === reviewTargetId)?.name ?? 'Player'
     return (
-      <GameShell title={batch5GameLabel('i_call_on')} subtitle={`Mark ${targetName}'s answers`}>
+      <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Mark ${targetName}'s answers`}>
         {!reviewTargetAnswer ? (
           <Text style={styles.waiting}>Waiting for assignment…</Text>
         ) : myMark?.marked_at ? (
@@ -265,7 +269,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
 
   if (metadata.phase === 'host_review') {
     return (
-      <GameShell title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
+      <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
         {isCaller ? (
           <Pressable style={styles.primaryBtn} disabled={acting} onPress={approveRound}>
             <Text style={styles.primaryText}>Approve round</Text>
@@ -278,7 +282,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   return (
-    <GameShell title={batch5GameLabel('i_call_on')} subtitle={`Round ${currentRound.round_number}`}>
+    <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Round ${currentRound.round_number}`}>
       <Text style={styles.waiting}>Reveal — next round starting soon…</Text>
     </GameShell>
   )

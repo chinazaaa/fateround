@@ -33,13 +33,30 @@ import {
   roundParticipants,
   smkSlotLabels,
 } from '@fateround/shared/poll-games'
+import { isImportClaimMode } from '@fateround/shared/participant-mode'
+import {
+  finalResultsAutoRevealSeconds,
+  ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
+  roundResultsWaitMessage,
+} from '@fateround/shared/round-timing'
+import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
+import { ParticipantClaimJoinScreen } from '@/components/join/ParticipantClaimJoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { FinishedPanel, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { ParticipantPhotoCard } from '@/components/games/poll/ParticipantPhotoCard'
+import { PollRoundResults } from '@/components/games/poll/PollRoundResults'
+import { ParticipantAvatar } from '@/components/ui/ParticipantAvatar'
+import { TimerBadge } from '@/components/ui/TimerBadge'
+import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
+import { useRoundTimer } from '@/hooks/useRoundTimer'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postVote } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { PARTICIPANT_SELECT, ROUND_SELECT, VOTE_SELECT } from '@/lib/supabase-selects'
+import { usePlayerSessionActions } from '@/lib/player-session'
+import { mltVoteLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -99,6 +116,7 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
     loadGameState,
     computeScreen,
   })
+  const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
   useGameTableSync(
     gameCode,
@@ -130,6 +148,51 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
     () => roundParticipants(roundIds, pollState.participants),
     [roundIds, pollState.participants]
   )
+
+  const me = bootstrap.myPlayerId
+    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
+    : undefined
+  const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
+
+  const showingRoundResults =
+    bootstrap.screen === 'playing' &&
+    bootstrap.game?.status === 'active' &&
+    currentRound?.status === 'finished'
+
+  const isLastRound =
+    !!currentRound &&
+    !!bootstrap.game &&
+    (currentRound.round_number ?? 0) >= (bootstrap.game.rounds_count ?? 0)
+
+  const nextRoundCountdown = useDeadlineCountdown(
+    currentRound?.ended_at,
+    isLastRound
+      ? finalResultsAutoRevealSeconds(bootstrap.game?.game_type)
+      : ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
+    showingRoundResults
+  )
+
+  const voteTimerActive =
+    bootstrap.screen === 'playing' &&
+    !isViewer &&
+    currentRound?.status === 'active' &&
+    !myVote
+
+  const timeLeft = useRoundTimer({
+    game: bootstrap.game,
+    currentRound: voteTimerActive ? currentRound : null,
+    active: voteTimerActive,
+    onExpire: () => {},
+  })
+
+  const updateParticipantPhoto = useCallback((participantId: string, photoUrl: string | null) => {
+    setPollState((prev) => ({
+      ...prev,
+      participants: prev.participants.map((p) =>
+        p.id === participantId ? { ...p, photo_url: photoUrl } : p
+      ),
+    }))
+  }, [])
 
   const pairMode = parsePairVoteMode(bootstrap.game?.pair_vote_mode)
   const pairLabel = pairLabels(gameType ?? 'would_you_rather')
@@ -237,6 +300,20 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
   if (bootstrap.screen === 'join' && bootstrap.game) {
+    if (isImportClaimMode(bootstrap.game)) {
+      return (
+        <ParticipantClaimJoinScreen
+          gameCode={bootstrap.code}
+          game={bootstrap.game}
+          participants={pollState.participants}
+          players={bootstrap.players}
+          joining={bootstrap.joining}
+          error={bootstrap.error}
+          hint="Select your name from the list"
+          onJoin={(participantId, name) => void bootstrap.join(name, { participantId })}
+        />
+      )
+    }
     return (
       <JoinScreen
         gameCode={bootstrap.code}
@@ -248,19 +325,50 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
       />
     )
   }
-  if (bootstrap.screen === 'waiting' && bootstrap.game) {
-    return <LobbyView game={bootstrap.game} players={bootstrap.players} myPlayerId={bootstrap.myPlayerId} />
+  if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
+    const myParticipant =
+      me?.participant_id != null
+        ? pollState.participants.find((p) => p.id === me.participant_id)
+        : null
+    return (
+      <LobbyView
+        {...lobbyProps!}
+        onLeft={onLeft}
+        activity={
+          me?.participant_id ? (
+            <ParticipantPhotoCard
+              gameCode={bootstrap.code}
+              participantId={me.participant_id}
+              participant={myParticipant}
+              onPhotoUpdated={updateParticipantPhoto}
+            />
+          ) : undefined
+        }
+      />
+    )
   }
   if (!bootstrap.game || !gameType) return <GameLoading />
 
   const title = pollGameLabel(gameType)
-  const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
-  const isViewer = !!me?.spectator
 
   if (bootstrap.screen === 'finished') {
+    const leaderboard = isMostLikelyTo(gameType)
+      ? mltVoteLeaderboard(pollState.votes, pollState.participants)
+      : undefined
+    const top = leaderboard?.[0]
     return (
-      <GameShell title={title} subtitle={bootstrap.code}>
-        <FinishedPanel title="Game over" detail="Thanks for playing!" />
+      <GameShell bootstrap={bootstrap} title={title} subtitle={bootstrap.code}>
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title="Game over"
+          subtitle="Final results"
+          detail={
+            top && top.score !== 0 && top.score !== '0'
+              ? `${top.name} — ${top.score} votes`
+              : 'Thanks for playing!'
+          }
+          leaderboard={leaderboard && leaderboard.length > 0 ? leaderboard : undefined}
+        />
       </GameShell>
     )
   }
@@ -269,9 +377,46 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
   const panUsed = panUsedNumbersFromVotes(pollState.votes, currentRound?.id)
   const panAvailable = panAvailableNumbers(panPool.length, panUsed)
 
+  if (showingRoundResults && currentRound && gameType) {
+    const waitMessage = roundResultsWaitMessage({
+      isLastRound,
+      autoReveal: true,
+      nextRoundSecondsLeft: isLastRound ? 0 : nextRoundCountdown,
+      finalRevealSecondsLeft: isLastRound ? nextRoundCountdown : undefined,
+    })
+    return (
+      <GameShell bootstrap={bootstrap} title={title} subtitle={`Round ${currentRound.round_number} results`}>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <PollRoundResults
+            game={bootstrap.game}
+            gameType={gameType}
+            round={currentRound}
+            participants={pollState.participants}
+            votes={pollState.votes}
+            players={bootstrap.players}
+          />
+          <Text style={styles.waiting}>{waitMessage}</Text>
+        </ScrollView>
+      </GameShell>
+    )
+  }
+
   return (
-    <GameShell title={title} subtitle={`Round ${currentRound?.round_number ?? '—'}`}>
+    <GameShell
+      title={title}
+      subtitle={`Round ${currentRound?.round_number ?? '—'}`}
+      gameCode={bootstrap.code}
+      game={bootstrap.game}
+      players={bootstrap.players}
+      myPlayerId={bootstrap.myPlayerId}
+      onPromoted={() => bootstrap.load()}
+    >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        {voteTimerActive && timeLeft > 0 ? (
+          <View style={styles.timerRow}>
+            <TimerBadge seconds={timeLeft} />
+          </View>
+        ) : null}
         {isViewer ? (
           <Text style={styles.waiting}>You are watching — voting is disabled.</Text>
         ) : !currentRound || currentRound.status !== 'active' ? (
@@ -308,15 +453,23 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
               <>
                 <Text style={styles.prompt}>{currentRound.mlt_question ?? 'Who is most likely to…?'}</Text>
                 <View style={styles.choices}>
-                  {mltVoteTargets(bootstrap.game, bootstrap.players, pollState.participants).map((target) => (
-                    <ChoiceButton
-                      key={target.id}
-                      label={target.name}
-                      selected={targetId === target.id}
-                      disabled={submitting}
-                      onPress={() => setTargetId(target.id)}
-                    />
-                  ))}
+                  {mltVoteTargets(bootstrap.game, bootstrap.players, pollState.participants).map((target) => {
+                    const photoUrl =
+                      target.kind === 'participant'
+                        ? pollState.participants.find((p) => p.id === target.id)?.photo_url
+                        : null
+                    return (
+                      <Pressable
+                        key={target.id}
+                        style={[styles.mltRow, targetId === target.id && styles.mltRowSelected]}
+                        disabled={submitting}
+                        onPress={() => setTargetId(target.id)}
+                      >
+                        <ParticipantAvatar name={target.name} photoUrl={photoUrl} size={36} />
+                        <Text style={styles.choiceText}>{target.name}</Text>
+                      </Pressable>
+                    )
+                  })}
                 </View>
               </>
             ) : null}
@@ -485,6 +638,7 @@ function ChoiceButton({
 
 const styles = StyleSheet.create({
   scroll: { paddingBottom: 32, gap: 12 },
+  timerRow: { alignItems: 'center', marginBottom: 4 },
   waiting: { color: '#9ca3af', fontSize: 16, textAlign: 'center', marginTop: 24 },
   locked: { color: '#86efac', fontSize: 16, textAlign: 'center', marginTop: 24 },
   prompt: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 26 },
@@ -500,6 +654,17 @@ const styles = StyleSheet.create({
   },
   choiceSelected: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
   choiceText: { color: '#fff', fontSize: 16 },
+  mltRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#17171d',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#2a2a35',
+  },
+  mltRowSelected: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
   personRow: { gap: 8, marginTop: 4 },
   personName: { color: '#fff', fontSize: 16, fontWeight: '600' },
   slotRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
