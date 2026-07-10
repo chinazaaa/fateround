@@ -30,14 +30,20 @@ export async function POST(req: NextRequest) {
   if (words === undefined) return NextResponse.json({ success: true })
 
   const parsedWords = parseDescribeItWords(words)
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from('games')
     .update({
       question_source: parsedWords.length > 0 ? 'custom' : 'platform',
       custom_questions: parsedWords.length > 0 ? parsedWords : null,
     })
     .eq('id', code)
+    .eq('status', 'waiting')
+    .select('id')
+    .maybeSingle()
   if (error) return NextResponse.json({ error: internalErrorMessage('quick-draw:settings', error) }, { status: 500 })
+  if (!updated) {
+    return NextResponse.json({ error: 'Settings are locked once the game starts' }, { status: 400 })
+  }
 
   return NextResponse.json({
     success: true,

@@ -1998,7 +1998,9 @@ function CreateGameInner() {
                         {settings.quick_draw_variant === 'guess' ? 'words' : 'prompts'} from this pack.
                       </p>
                     )}
-                    <p className="text-faint text-[11px] text-center">Includes Quick Draw and Text Charades word packs.</p>
+                    <p className="text-faint text-[11px] text-center">
+                      Includes Quick Draw and Text Charades word packs.
+                    </p>
                   </div>
                 )}
 

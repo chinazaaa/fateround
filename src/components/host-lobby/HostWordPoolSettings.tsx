@@ -32,11 +32,13 @@ export function HostWordPoolSettings({ gameCode, hostToken, game, noun, disabled
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const savedWordsText = parseStoredDescribeItWords(game.custom_questions).join('\n')
+  const savedSource = wordSourceFromGame(game)
 
   useEffect(() => {
-    setWordSource(wordSourceFromGame(game))
-    setWordsDraft(parseStoredDescribeItWords(game.custom_questions).join('\n'))
-  }, [game.custom_questions, game.question_source])
+    setWordSource(savedSource)
+    setWordsDraft(savedWordsText)
+  }, [savedSource, savedWordsText])
 
   const saveWords = async (text: string): Promise<boolean> => {
     setSaving(true)
