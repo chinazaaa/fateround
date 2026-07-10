@@ -32,9 +32,13 @@ describe('starting board', () => {
 
   it('offers only forward simple moves from the start (no captures)', () => {
     expect(hasAnyCapture(CHECKERS_STARTING_BOARD, 'r')).toBe(false)
+    expect(hasAnyCapture(CHECKERS_STARTING_BOARD, 'b')).toBe(false)
     // A red man on row 5 can step up to two empty row-4 dark squares.
-    const moves = legalStepsFromSquare(CHECKERS_STARTING_BOARD, 'r', '52', null)
-    expect(moves.map((m) => m.to).sort()).toEqual(['41', '43'])
+    const redMoves = legalStepsFromSquare(CHECKERS_STARTING_BOARD, 'r', '52', null)
+    expect(redMoves.map((m) => m.to).sort()).toEqual(['41', '43'])
+    // Black men on row 2 move down toward row 7.
+    const blackMoves = legalStepsFromSquare(CHECKERS_STARTING_BOARD, 'b', '21', null)
+    expect(blackMoves.map((m) => m.to).sort()).toEqual(['30', '32'])
   })
 })
 
@@ -47,6 +51,15 @@ describe('forced capture', () => {
     const all = legalMovesForColor(b, 'r')
     expect(all).toHaveLength(1)
     expect(all[0]).toMatchObject({ from: '52', to: '34', captured: '43' })
+  })
+
+  it('does not require the longest capture (American rules)', () => {
+    // 52 can capture once; 54 can capture via two different paths — all legal.
+    const b = board({ '52': 'r', '43': 'b', '54': 'r', '45': 'b' })
+    const all = legalMovesForColor(b, 'r')
+    expect(all.length).toBeGreaterThanOrEqual(2)
+    expect(new Set(all.map((m) => m.from))).toEqual(new Set(['52', '54']))
+    expect(all.filter((m) => m.from === '54')).toHaveLength(2)
   })
 })
 
@@ -61,6 +74,16 @@ describe('multi-jump chain', () => {
     expect(pieceAt(afterFirst, '43')).toBe('.') // captured piece removed
     const next = captureStepsFromForTest(afterFirst, '34')
     expect(next.map((m) => m.to)).toContain('12')
+  })
+
+  it('crowning on the back row ends the jump chain', () => {
+    // Red at 21 jumps black at 12 and lands on 03 (row 0) — crowned, no further jumps.
+    const b = board({ '21': 'r', '12': 'b' })
+    const step = legalStepsFromSquare(b, 'r', '21', null)[0]
+    const { board: after, crowned } = applyStep(b, step)
+    expect(crowned).toBe(true)
+    expect(pieceAt(after, '03')).toBe('R')
+    expect(captureStepsFromForTest(after, '03')).toHaveLength(0)
   })
 })
 

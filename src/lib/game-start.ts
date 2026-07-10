@@ -14,6 +14,7 @@ import {
 import { initializeTicTacToeGame, TIC_TAC_TOE_MIN_PLAYERS } from '@/lib/tic-tac-toe'
 import { initializeChessGame, CHESS_MIN_PLAYERS } from '@/lib/chess'
 import { initializeCheckersGame, CHECKERS_MIN_PLAYERS } from '@/lib/checkers'
+import { initializeAyoGame, AYO_MIN_PLAYERS } from '@/lib/ayo'
 import { initializeScrabbleGame, SCRABBLE_MIN_PLAYERS, SCRABBLE_MAX_PLAYERS } from '@/lib/scrabble'
 import { initializeMafiaGame, MAFIA_MIN_PLAYERS, MAFIA_MAX_PLAYERS } from '@/lib/mafia'
 
@@ -92,6 +93,11 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
     minPlayers: CHECKERS_MIN_PLAYERS,
     exact: true,
     initialize: (admin, code, ids) => initializeCheckersGame(admin, code, ids),
+  },
+  ayo: {
+    minPlayers: AYO_MIN_PLAYERS,
+    exact: true,
+    initialize: (admin, code, ids) => initializeAyoGame(admin, code, ids),
   },
   scrabble: {
     minPlayers: SCRABBLE_MIN_PLAYERS,

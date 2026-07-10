@@ -27,8 +27,9 @@ describe('startCountError', () => {
 })
 
 describe('GAME_START_SPECS', () => {
-  it('registers exactly the 12 uniform games', () => {
+  it('registers exactly the 13 uniform games', () => {
     expect(Object.keys(GAME_START_SPECS).sort()).toEqual([
+      'ayo',
       'checkers',
       'chess',
       'crazy_eights',
@@ -45,6 +46,7 @@ describe('GAME_START_SPECS', () => {
   })
 
   it('flags the exact-count and range games', () => {
+    expect(GAME_START_SPECS.ayo?.exact).toBe(true)
     expect(GAME_START_SPECS.chess?.exact).toBe(true)
     expect(GAME_START_SPECS.checkers?.exact).toBe(true)
     expect(GAME_START_SPECS.tic_tac_toe?.exact).toBe(true)

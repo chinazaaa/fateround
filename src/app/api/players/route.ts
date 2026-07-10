@@ -14,6 +14,7 @@ import { removeSnakeAndLadderPlayer } from '@/lib/snake-and-ladder'
 import { removeYahtzeePlayer } from '@/lib/yahtzee'
 import { removeChessPlayer } from '@/lib/chess'
 import { removeCheckersPlayer } from '@/lib/checkers'
+import { removeAyoPlayer } from '@/lib/ayo'
 import { removeTicTacToePlayer } from '@/lib/tic-tac-toe'
 import { isMonopolyTokenId } from '@/lib/monopoly-tokens'
 import { generateAnonymousDisplayName } from '@/lib/anonymous-names'
@@ -45,6 +46,7 @@ import {
   isTicTacToeGame,
   isChessGame,
   isCheckersGame,
+  isAyoGame,
   isScrabbleGame,
   isDescribeItGame,
   isWordRushGame,
@@ -665,6 +667,7 @@ export async function POST(req: NextRequest) {
     isTicTacToeGame(rowGameType) ||
     isChessGame(rowGameType) ||
     isCheckersGame(rowGameType) ||
+    isAyoGame(rowGameType) ||
     isScrabbleGame(rowGameType)
   ) {
     const joinCheck = canJoinGame(gameRow as Game)
@@ -680,9 +683,11 @@ export async function POST(req: NextRequest) {
       ? 'chess'
       : isCheckersGame(rowGameType)
         ? 'checkers'
-        : isScrabbleGame(rowGameType)
-          ? 'scrabble'
-          : 'tic_tac_toe'
+        : isAyoGame(rowGameType)
+          ? 'ayo'
+          : isScrabbleGame(rowGameType)
+            ? 'scrabble'
+            : 'tic_tac_toe'
     const maxPlayers = lobbyMaxPlayersFromGame(limitKey, gameRow, lobbyLimits)
     const { count: playerCount } = await supabase
       .from('players')
@@ -1658,6 +1663,12 @@ export async function DELETE(req: NextRequest) {
 
   if (isCheckersGame(gameType)) {
     const { error } = await removeCheckersPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (isAyoGame(gameType)) {
+    const { error } = await removeAyoPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
     return NextResponse.json({ success: true })
   }

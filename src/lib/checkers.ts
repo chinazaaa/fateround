@@ -11,8 +11,8 @@ export const CHECKERS_DEFAULT_MAX_PLAYERS = 2
 // (row 0 = top, col 0 = left). Only dark squares ((row + col) odd) are ever
 // occupied; light squares stay '.'. Pieces: 'r'/'b' = Red/Black man,
 // 'R'/'B' = Red/Black king, '.' = empty. Black starts on the top three rows,
-// Red on the bottom three. Red moves first (toward row 0); Black moves toward
-// row 7. A man reaching the far rank is crowned a king.
+// Red on the bottom three. Black moves first; Red advances toward row 0, Black
+// toward row 7. A man reaching the far rank is crowned a king.
 export const CHECKERS_STARTING_BOARD = '.b.b.b.bb.b.b.b..b.b.b.b................r.r.r.r..r.r.r.rr.r.r.r.'
 
 /** Draw after this many consecutive king-only, non-capture plies (40 per side). */

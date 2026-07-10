@@ -58,6 +58,7 @@ export const GAME_TYPE_TO_SLUG: Record<GameType, string> = {
   word_hunt: 'word-hunt',
   chess: 'chess',
   checkers: 'checkers',
+  ayo: 'ayo',
   describe_it: 'text-charades',
   word_rush: 'word-rush',
   scrabble: 'scrabble',
@@ -2128,7 +2129,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
     ],
     heroSubtitle: 'Classic checkers, head-to-head — jump your friend’s pieces and crown your kings.',
     bodyParagraph:
-      'Checkers on Fate Round is a clean two-player game of standard American (8×8) draughts. One player joins a room as Black, the other as Red, and Black moves first. Men slide one square diagonally forward; jump an adjacent opponent to capture it — and if a jump is on offer you must take it, chaining multiple jumps in a single turn. Reach the far row to crown a king that moves and captures both directions. Capture all of your opponent’s pieces, or leave them with no legal move, to win. Add an optional clock — each player gets their own time bank (3, 5, or 10 minutes) that only ticks on their turn, and the first to flag loses.',
+      'Checkers on Fate Round is standard American (8×8) draughts — the same rules most people play in the US. Two players, 12 pieces each on the dark squares only, Black moves first. Men slide one square diagonally forward; jump an adjacent opponent to capture it — and if any jump is available you must take it, chaining multiple jumps in a single turn. Reach the far row to crown a king that moves and captures one square in any direction. Capture all of your opponent’s pieces, or leave them with no legal move, to win. Draws are detected automatically (threefold repetition or the 40-move rule). Add an optional clock — each player gets their own time bank (3, 5, or 10 minutes) that only ticks on their turn.',
     highlights: ['2 players', 'Forced jumps', 'Real-time board'],
     features: [
       {
@@ -2160,12 +2161,27 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'Do I have to take a jump?',
         answer:
-          'Yes — checkers uses forced captures. If any of your pieces can jump, you must make a jump that turn, and if the same piece can keep jumping you must continue the chain until it can’t.',
+          'Yes — captures are mandatory. If any of your pieces can jump, you must make a jump that turn. If the same piece can keep jumping, you must continue the chain until it can’t. You can choose which capture to make when several are available — American rules do not require the longest capture.',
+      },
+      {
+        question: 'Can men capture backward?',
+        answer:
+          'No — regular pieces (men) can only move and capture forward. Only kings, crowned on the opponent’s back row, can move and jump in all four diagonal directions.',
+      },
+      {
+        question: 'Do kings slide across the board?',
+        answer:
+          'No — this is American Checkers, not International Draughts. Kings move and capture one square diagonally at a time. Flying kings that slide any distance are an International variant.',
       },
       {
         question: 'How does the clock work?',
         answer:
           'Each player has their own time bank that only counts down while it is their turn — making a move stops your clock and starts your opponent’s. The first player to run out of time loses. Pick 3, 5, or 10 minutes each, or leave it off for an untimed match.',
+      },
+      {
+        question: 'When is a game a draw?',
+        answer:
+          'A draw is declared automatically if the same position repeats three times, or after 40 consecutive moves by each player with no capture and no man move.',
       },
       {
         question: 'Can more than 2 people play?',
@@ -2175,12 +2191,69 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How do you play checkers?',
         answer:
-          'Each player has 12 pieces that move diagonally forward one square. You capture by jumping an adjacent enemy piece into the empty square beyond, and captures are forced — if you can jump, you must. Reach the far row and your piece becomes a king that can move and jump both directions. Win by capturing all your opponent’s pieces or leaving them with no legal move.',
+          'Each player has 12 pieces on the dark squares of an 8×8 board. Men move diagonally forward one square. You capture by jumping an adjacent enemy piece into the empty square beyond — captures are forced, and you must keep jumping with the same piece while more jumps are available. Reach the far row and your piece becomes a king (one square any direction). Win by capturing all your opponent’s pieces or leaving them with no legal move.',
       },
       {
         question: 'How do you get a king in checkers?',
         answer:
-          'Move one of your pieces all the way to the opponent’s back row. It’s crowned a king and can then move and capture both forwards and backwards, which makes it much stronger. Fate Round crowns kings automatically.',
+          'Move one of your pieces all the way to the opponent’s back row. It’s crowned a king and can then move and capture one square diagonally in any direction. Fate Round crowns kings automatically — crowning ends a multi-jump chain.',
+      },
+    ],
+  }),
+
+  ayo: landing('ayo', {
+    seoTitle: 'Ayo Online — Play Ayo Olopon with a Friend',
+    seoDescription:
+      'Play Ayo (Ayo Olopon) online — the classic Yoruba seed game. Sow anti-clockwise, capture 2s and 3s, crown Ọta. Two players, optional clock. Free, no sign-up.',
+    keywords: [
+      'ayo online',
+      'ayo olopon',
+      'play ayo with friends',
+      'awale online',
+      'mancala yoruba',
+      'ayo game rules',
+      'two player ayo online',
+      'ayo online free',
+    ],
+    heroSubtitle: 'Sow seeds, capture 2s and 3s, and crown Ọta — the Yoruba classic, head-to-head.',
+    bodyParagraph:
+      "Ayo on Fate Round follows traditional Ayo Olopon rules for two players online. Twelve houses, four seeds each, sow anti-clockwise around the board — skipping the house you picked up. When your last seed lands in an opponent's house with 2 or 3 seeds, you capture those seeds and any linked opponent houses ahead with 2 or 3. If their row is empty, you must sow into it when possible. When your opponent cannot move, you sweep every seed left on the board. Most captured seeds wins. The winner is Ọta; the loser is Ọpẹ. Three straight wins makes an Ọta champion.",
+    highlights: ['2 players', 'Classic capture', 'Ọta & Ọpẹ'],
+    features: [
+      {
+        title: 'Traditional sowing',
+        description: "Pick up all seeds from one house and sow anti-clockwise — into your opponent's row too.",
+        emoji: '🌰',
+      },
+      {
+        title: 'Capture 2s & 3s',
+        description: 'Land your last seed in an opponent house with 2 or 3 seeds — capture linked houses too.',
+        emoji: '🎯',
+      },
+      SHARED_FEATURES.mobile,
+      SHARED_FEATURES.noSignup,
+    ],
+    steps: [
+      { title: 'Join a room', description: 'Two players join with their name — the host can play too.' },
+      { title: 'Sow seeds', description: 'On your turn, tap one of your houses with seeds. Seeds sow anti-clockwise.' },
+      { title: 'Crown Ọta', description: 'Capture the most seeds to win. Mo ki ota, mo ki ope o!' },
+    ],
+    perfectFor: ['Cultural game nights', 'Quick strategy duels', 'Mancala fans'],
+    extraFaqs: [
+      {
+        question: 'What is Ọta?',
+        answer:
+          'In Yoruba tradition, the winner of an Ayo match is called Ọta. The loser is Ọpẹ. Three consecutive wins makes you an Ọta champion.',
+      },
+      {
+        question: 'How does capture work?',
+        answer:
+          "If your last sown seed lands in an opponent's house with 2 or 3 seeds, you capture those seeds plus any linked opponent houses ahead that also have 2 or 3. If their row is empty, you must feed them when you can.",
+      },
+      {
+        question: 'Can I play untimed?',
+        answer:
+          'Yes — choose Casual (no timer) when creating a room. For faster ranked play, pick 30 seconds per player or longer clocks.',
       },
     ],
   }),

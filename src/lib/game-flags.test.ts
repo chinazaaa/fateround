@@ -29,6 +29,7 @@ const NAME_ONLY_PLAYER_JOIN_EXPECTED = new Set<GameType>([
   'word_hunt',
   'chess',
   'checkers',
+  'ayo',
   'describe_it',
   'word_rush',
   // Board games that self-join by name like every other board game.
@@ -54,7 +55,7 @@ describe('game join-style flags (registry-backed, behaviour-preserving)', () => 
     // Exact count, not a floor: adding or removing a GameType must update this test + the
     // maps below in lockstep. (A swap is also caught per-game by the assertions below and by
     // the canonical-list guard in game-type-coverage.test.ts.)
-    expect(ALL_GAME_TYPES.length).toBe(38)
+    expect(ALL_GAME_TYPES.length).toBe(39)
   })
 
   it('isNameOnlyPlayerJoin matches the original OR-list for every game', () => {

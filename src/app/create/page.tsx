@@ -65,6 +65,7 @@ import {
   isTicTacToeGame,
   isChessGame,
   isCheckersGame,
+  isAyoGame,
   isScrabbleGame,
   isDescribeItGame,
   isWordRushGame,
@@ -590,6 +591,14 @@ function CreateGameInner() {
               timer_seconds: 600,
             }
           : {}),
+        ...(isAyoGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: 1,
+              timer_seconds: 0,
+            }
+          : {}),
         ...(isScrabbleGame(type)
           ? {
               participant_mode: 'joiners' as const,
@@ -719,6 +728,7 @@ function CreateGameInner() {
   const isTicTacToe = isTicTacToeGame(settings.game_type)
   const isChess = isChessGame(settings.game_type)
   const isCheckers = isCheckersGame(settings.game_type)
+  const isAyo = isAyoGame(settings.game_type)
   const isScrabble = isScrabbleGame(settings.game_type)
   const isDescribeIt = isDescribeItGame(settings.game_type)
   const isWordRush = isWordRushGame(settings.game_type)
@@ -986,6 +996,14 @@ function CreateGameInner() {
             rounds_count: 1,
             // Cumulative per-player clock, same as Chess. Default 10 minutes each.
             timer_seconds: 600,
+          }
+        : {}),
+      ...(isAyoGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 0,
           }
         : {}),
       ...(isICallOnGame(type)
@@ -2615,6 +2633,31 @@ function CreateGameInner() {
                   Classic checkers — Black moves first, jumps are forced, and reaching the far row crowns a king.
                   Capture all your opponent’s pieces to win. Each player gets their own clock that only ticks on their
                   turn.
+                </p>
+              </SettingsGroup>
+            ) : isAyo ? (
+              <SettingsGroup title="Ayo room">
+                <p className="text-faint text-sm">Exactly 2 players — the host can join as one of them.</p>
+                <Field label="Time per player">
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    <option value={0}>Casual — no timer</option>
+                    <option value={30}>Ranked — 30 seconds each</option>
+                    <option value={180}>3 minutes each</option>
+                    <option value={300}>5 minutes each</option>
+                    <option value={600}>10 minutes each</option>
+                  </select>
+                </Field>
+                <Field label="Late joiners">
+                  <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ayo" />
+                </Field>
+                <p className="text-faint text-sm leading-relaxed">
+                  Ayo Olopon — sow seeds anti-clockwise (skip the house you picked up), capture 2s and 3s with linkage,
+                  and feed your opponent when their row is empty. Most captured seeds wins; the winner is Ọta. Three
+                  straight wins makes an Ọta champion.
                 </p>
               </SettingsGroup>
             ) : isScrabble ? (
