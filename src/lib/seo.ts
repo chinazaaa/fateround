@@ -362,6 +362,13 @@ export const GAME_LANDING_OG_BY_SLUG: Record<string, string> = {
   'text-charades': '/og/text-charades.png',
   'snakes-and-ladders': '/og/snakes-and-ladders.png',
   mafia: '/og/mafia.png',
+  mahjong: '/og/mahjong.png',
+  checkers: '/og/checkers.png',
+  ayo: '/og/ayo.png',
+  'word-rush': '/og/word-rush.png',
+  'matching-pairs': '/og/matching-pairs.png',
+  quiplash: '/og/quiplash.png',
+  'quick-draw': '/og/quick-draw.png',
 }
 
 export function gameLandingOgPath(slug: string): string {
