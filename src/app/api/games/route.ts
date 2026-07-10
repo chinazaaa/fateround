@@ -922,21 +922,21 @@ export async function POST(req: NextRequest) {
             : isAyoGame(game_type)
               ? { ayo_variant: parseAyoVariant(rawAyoVariant) }
               : isMahjongGame(game_type)
-              ? {
-                  mahjong_ruleset: parseMahjongRuleset(rawMahjongRuleset),
-                  mahjong_rule_options: parseMahjongRuleOptions(rawMahjongRuleOptions),
-                }
-              : isMatchingPairsGame(game_type)
-                ? { game_duration_seconds: rawGameDurationSeconds ?? 0 }
-                : isSudokuGame(game_type)
-                  ? { game_duration_seconds: clampSudokuGameDuration(rawGameDurationSeconds ?? 0) }
-                  : isMafiaGame(game_type)
-                    ? {
-                        mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
-                        mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
-                        mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
-                      }
-                    : {}),
+                ? {
+                    mahjong_ruleset: parseMahjongRuleset(rawMahjongRuleset),
+                    mahjong_rule_options: parseMahjongRuleOptions(rawMahjongRuleOptions),
+                  }
+                : isMatchingPairsGame(game_type)
+                  ? { game_duration_seconds: rawGameDurationSeconds ?? 0 }
+                  : isSudokuGame(game_type)
+                    ? { game_duration_seconds: clampSudokuGameDuration(rawGameDurationSeconds ?? 0) }
+                    : isMafiaGame(game_type)
+                      ? {
+                          mafia_doctor_enabled: parsed.data.mafia_doctor_enabled !== false,
+                          mafia_detective_enabled: parsed.data.mafia_detective_enabled !== false,
+                          mafia_anonymous_votes: parsed.data.mafia_anonymous_votes === true,
+                        }
+                      : {}),
     ...(isCustomGame(game_type) && parsed.data.custom_slots
       ? {
           custom_slots: {

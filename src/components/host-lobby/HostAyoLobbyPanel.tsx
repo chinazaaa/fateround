@@ -40,17 +40,20 @@ function shortAyoTimerLabel(seconds: number): string {
 
 export function HostAyoLobbyPanel({ gameCode, hostToken, game, onGameUpdate }: Props) {
   const { error: toastError } = useToast()
-  const [isPublic, setIsPublic] = useState(false)
-  const [variant, setVariant] = useState<AyoVariant>('traditional')
-  const [turnTimer, setTurnTimer] = useState(0)
+  const [isPublic, setIsPublic] = useState(game.is_public === true)
+  const [variant, setVariant] = useState<AyoVariant>(() => parseAyoVariant(game.ayo_variant))
+  const [turnTimer, setTurnTimer] = useState(game.timer_seconds ?? 0)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     setIsPublic(game.is_public === true)
+  }, [game.is_public])
+
+  useEffect(() => {
     setVariant(parseAyoVariant(game.ayo_variant))
     setTurnTimer(game.timer_seconds ?? 0)
-  }, [game])
+  }, [game.ayo_variant, game.timer_seconds])
 
   useEffect(() => {
     return () => {

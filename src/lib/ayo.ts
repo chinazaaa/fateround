@@ -223,7 +223,7 @@ function sowTraditionalRelay(
   config: AyoBoardConfig
 ): { pits: number[]; capture: number; housesA: number; housesB: number; landingPit: number } {
   const moverSide = sideOfPit(pitIndex)
-  let next = [...pits]
+  const next = [...pits]
   let seeds = next[pitIndex]
   next[pitIndex] = 0
   let current = pitIndex
