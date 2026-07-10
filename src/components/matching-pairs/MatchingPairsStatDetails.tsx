@@ -1,4 +1,10 @@
-import { tallyMatchingPairsScore, type MatchingPairsPlayerScore, type MatchingPairsSubmission, type MatchingPairsProgress, type MatchingPairsGridSize } from '@/lib/memory-match'
+import {
+  tallyMatchingPairsScore,
+  type MatchingPairsPlayerScore,
+  type MatchingPairsSubmission,
+  type MatchingPairsProgress,
+  type MatchingPairsGridSize,
+} from '@/lib/memory-match'
 import { formatMinutesSeconds } from '@/lib/timer-format'
 
 function StatChip({
@@ -87,13 +93,13 @@ export function MatchingPairsFinalBreakdown({
 
   // Collect unique round IDs for this player, sorted by chronologically
   // (by the earliest record in each round).
-  const roundIds = [
-    ...new Set([...playerSubs.map((s) => s.round_id), ...playerProgs.map((p) => p.round_id)]),
-  ].sort((a, b) => {
-    const aTime = playerProgs.find((p) => p.round_id === a)?.created_at ?? ''
-    const bTime = playerProgs.find((p) => p.round_id === b)?.created_at ?? ''
-    return aTime.localeCompare(bTime)
-  })
+  const roundIds = [...new Set([...playerSubs.map((s) => s.round_id), ...playerProgs.map((p) => p.round_id)])].sort(
+    (a, b) => {
+      const aTime = playerProgs.find((p) => p.round_id === a)?.created_at ?? ''
+      const bTime = playerProgs.find((p) => p.round_id === b)?.created_at ?? ''
+      return aTime.localeCompare(bTime)
+    }
+  )
 
   // Single round — use the cumulative block just like before.
   if (totalRounds <= 1) {
@@ -113,9 +119,7 @@ export function MatchingPairsFinalBreakdown({
         const score = tallyMatchingPairsScore(roundSubs, roundProg, gridSizePairs, sessionStartedAt)
         return (
           <div key={rid}>
-            <p className="text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">
-              Round {i + 1}
-            </p>
+            <p className="text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">Round {i + 1}</p>
             <MatchingPairsStatDetails score={score} gridSizePairs={gridSizePairs} />
           </div>
         )

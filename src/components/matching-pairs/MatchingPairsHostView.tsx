@@ -4,7 +4,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { MatchingPairsPlayerView } from '@/components/matching-pairs/MatchingPairsPlayerView'
 import { MatchingPairsGameTimerBar } from '@/components/matching-pairs/MatchingPairsGameTimerBar'
-import { MatchingPairsStatDetails, MatchingPairsFinalBreakdown } from '@/components/matching-pairs/MatchingPairsStatDetails'
+import {
+  MatchingPairsStatDetails,
+  MatchingPairsFinalBreakdown,
+} from '@/components/matching-pairs/MatchingPairsStatDetails'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
@@ -39,6 +42,7 @@ import {
 } from '@/lib/supabase-selects'
 import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { formatMinutesSeconds } from '@/lib/timer-format'
+import { ROUND_RESULTS_AUTO_ADVANCE_SECONDS } from '@/lib/round-timing'
 import type { Game, Player } from '@/types'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -161,7 +165,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     const totalRounds = game?.rounds_count ?? 1
     const currentRoundNumber = game?.current_round_number ?? 1
     if (currentRoundNumber >= totalRounds) return // last round — no auto-advance
-    setAutoAdvanceTick(30)
+    setAutoAdvanceTick(ROUND_RESULTS_AUTO_ADVANCE_SECONDS)
     const t = setInterval(() => {
       setAutoAdvanceTick((prev) => {
         if (prev === null || prev <= 1) {
@@ -361,7 +365,13 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       if (storedSession && freshPlayers) {
         if (freshPlayers.some((p) => p.id === storedSession.playerId)) {
           // Same player ID survived — restore the session.
-          setPlayerSession(gameCode, storedSession.playerId, storedSession.playerName, 'both', storedSession.resumeToken)
+          setPlayerSession(
+            gameCode,
+            storedSession.playerId,
+            storedSession.playerName,
+            'both',
+            storedSession.resumeToken
+          )
           setHostPlayerId(storedSession.playerId)
           setHostPlayerName(storedSession.playerName)
         } else {
@@ -431,11 +441,19 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   // Cumulative leaderboard across all completed rounds — determines final ranking.
   const cumulativeLeaderboard = useMemo<MatchingPairsLeaderboardRow[]>(() => {
     if (!submissions.length && !progressRows.length) return []
-    return buildCumulativeLeaderboard(submissions, progressRows, playerMap, gridSizePairs, game?.session_started_at ?? null)
+    return buildCumulativeLeaderboard(
+      submissions,
+      progressRows,
+      playerMap,
+      gridSizePairs,
+      game?.session_started_at ?? null
+    )
   }, [submissions, progressRows, playerMap, gridSizePairs, game?.session_started_at])
 
   const hostWonMp =
-    cumulativeLeaderboard.length > 1 && cumulativeLeaderboard[0]?.playerId === hostPlayerId && cumulativeLeaderboard[0]?.finalScore > 0
+    cumulativeLeaderboard.length > 1 &&
+    cumulativeLeaderboard[0]?.playerId === hostPlayerId &&
+    cumulativeLeaderboard[0]?.finalScore > 0
 
   const winnerId = cumulativeLeaderboard[0]?.playerId
   const isHostWinner = !!winnerId && winnerId === hostPlayerId

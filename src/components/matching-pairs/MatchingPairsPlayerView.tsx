@@ -5,7 +5,10 @@ import { supabase } from '@/lib/supabase'
 import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { MatchingPairsStatDetails, MatchingPairsFinalBreakdown } from '@/components/matching-pairs/MatchingPairsStatDetails'
+import {
+  MatchingPairsStatDetails,
+  MatchingPairsFinalBreakdown,
+} from '@/components/matching-pairs/MatchingPairsStatDetails'
 import { MatchingPairsGameTimerBar } from '@/components/matching-pairs/MatchingPairsGameTimerBar'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
