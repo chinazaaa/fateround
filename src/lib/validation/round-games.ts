@@ -93,7 +93,7 @@ export type QuiplashAnswerInput = z.infer<typeof quiplashAnswerSchema>
 export const quiplashVoteSchema = z.object({
   gameId: gameCodeString(),
   resumeToken: z.string().min(4),
-  battleId: uuidString('battleId'),
+  roundId: uuidString('roundId'),
   chosenAnswerId: uuidString('chosenAnswerId'),
 })
 
