@@ -62,14 +62,35 @@ type HostTab = 'play' | 'manage'
 export function QuickDrawHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const [guessMode, setGuessMode] = useState<boolean | null>(null)
 
-  useEffect(() => {
-    void supabase
+  const syncVariant = useCallback(async () => {
+    const { data } = await supabase
       .from('games')
       .select('quick_draw_variant')
       .eq('id', gameCode)
       .maybeSingle()
-      .then(({ data }) => setGuessMode(isQuickDrawGuessVariant(data?.quick_draw_variant)))
+    setGuessMode(isQuickDrawGuessVariant(data?.quick_draw_variant))
   }, [gameCode])
+
+  useEffect(() => {
+    void syncVariant()
+  }, [syncVariant])
+
+  useGameTableSync(
+    gameCode,
+    [
+      {
+        table: 'games',
+        column: 'id',
+        apply: (row) => {
+          if ('quick_draw_variant' in row) {
+            setGuessMode(isQuickDrawGuessVariant(row.quick_draw_variant))
+          }
+        },
+      },
+    ],
+    syncVariant,
+    { channelKey: 'variant' }
+  )
 
   if (guessMode === null) return <DescribeItLoadingScreen />
   if (guessMode) return <QuickDrawGuessHostView gameCode={gameCode} hostToken={hostToken} />

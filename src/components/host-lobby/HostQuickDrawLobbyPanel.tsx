@@ -14,15 +14,24 @@ import {
   clampQuickDrawDrawTimer,
   clampQuickDrawRounds,
   clampQuickDrawTitleTimer,
+  clampQuickDrawVariant,
   clampQuickDrawVoteTimer,
+  formatQuickDrawTurnTimer,
+  isQuickDrawGuessVariant,
+  type QuickDrawVariant,
 } from '@/lib/quick-draw'
+import {
+  QUICK_DRAW_GUESS_TEAM_OPTIONS,
+  clampQuickDrawNumTeams,
+  clampQuickDrawPlayMode,
+} from '@/lib/quick-draw-guess'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
 import { gameSupportsViewerSetting } from '@/lib/viewers'
 import { useToast } from '@/components/ui/Toast'
-import type { Game } from '@/types'
+import type { Game, QuickDrawPlayMode } from '@/types'
 
 type Props = {
   gameCode: string
@@ -34,16 +43,33 @@ type Props = {
 
 type SaveState = 'idle' | 'saving' | 'saved'
 
+const VARIANT_OPTIONS: { value: QuickDrawVariant; label: string }[] = [
+  { value: 'lie', label: 'Lie' },
+  { value: 'guess', label: 'Guess' },
+]
+
+const PLAY_MODE_OPTIONS: { value: QuickDrawPlayMode; label: string }[] = [
+  { value: 'team', label: 'Teams' },
+  { value: 'individual', label: 'Individual' },
+]
+
 export function HostQuickDrawLobbyPanel({ gameCode, hostToken, game, playerCount, onGameUpdate }: Props) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
   const [maxPlayers, setMaxPlayers] = useState(8)
   const [roundsCount, setRoundsCount] = useState(3)
+  const [variant, setVariant] = useState<QuickDrawVariant>('lie')
+  const [playMode, setPlayMode] = useState<QuickDrawPlayMode>('team')
+  const [numTeams, setNumTeams] = useState(2)
   const [drawTimer, setDrawTimer] = useState(QUICK_DRAW_DEFAULT_DRAW_TIMER)
   const [titleTimer, setTitleTimer] = useState(QUICK_DRAW_DEFAULT_TITLE_TIMER)
   const [voteTimer, setVoteTimer] = useState(QUICK_DRAW_DEFAULT_VOTE_TIMER)
+  const [turnTimer, setTurnTimer] = useState(QUICK_DRAW_DEFAULT_DRAW_TIMER)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const isGuess = isQuickDrawGuessVariant(variant)
+  const isTeamGuess = isGuess && playMode !== 'individual'
 
   useEffect(() => {
     void fetch('/api/game-limits')
@@ -58,9 +84,13 @@ export function HostQuickDrawLobbyPanel({ gameCode, hostToken, game, playerCount
     if (!limits) return
     setMaxPlayers(lobbyMaxPlayersFromGame('quick_draw', game, limits))
     setRoundsCount(clampQuickDrawRounds(game.rounds_count))
+    setVariant(clampQuickDrawVariant(game.quick_draw_variant))
+    setPlayMode(clampQuickDrawPlayMode(game.quick_draw_play_mode))
+    setNumTeams(clampQuickDrawNumTeams(game.quick_draw_num_teams))
     setDrawTimer(clampQuickDrawDrawTimer(game.timer_seconds))
     setTitleTimer(clampQuickDrawTitleTimer(game.operative_timer_seconds))
     setVoteTimer(clampQuickDrawVoteTimer(game.game_duration_seconds))
+    setTurnTimer(clampQuickDrawDrawTimer(game.timer_seconds))
   }, [game, limits])
 
   useEffect(() => {
@@ -102,8 +132,10 @@ export function HostQuickDrawLobbyPanel({ gameCode, hostToken, game, playerCount
     [gameCode, hostToken, markSaved, onGameUpdate, toastError]
   )
 
+  const guardSaving = () => saveState === 'saving'
+
   const onMaxPlayersChange = (next: number) => {
-    if (saveState === 'saving') return
+    if (guardSaving()) return
     if (next < playerCount) {
       toastError(`Already have ${playerCount} players — remove someone first`)
       return
@@ -116,7 +148,7 @@ export function HostQuickDrawLobbyPanel({ gameCode, hostToken, game, playerCount
   }
 
   const onRoundsCountChange = (next: number) => {
-    if (saveState === 'saving') return
+    if (guardSaving()) return
     const previous = roundsCount
     setRoundsCount(next)
     void patchSettings({ rounds_count: next }).then((ok) => {
@@ -124,8 +156,35 @@ export function HostQuickDrawLobbyPanel({ gameCode, hostToken, game, playerCount
     })
   }
 
+  const onVariantChange = (next: QuickDrawVariant) => {
+    if (guardSaving() || next === variant) return
+    const previous = variant
+    setVariant(next)
+    void patchSettings({ quick_draw_variant: next }).then((ok) => {
+      if (!ok) setVariant(previous)
+    })
+  }
+
+  const onPlayModeChange = (next: QuickDrawPlayMode) => {
+    if (guardSaving() || next === playMode) return
+    const previous = playMode
+    setPlayMode(next)
+    void patchSettings({ quick_draw_play_mode: next }).then((ok) => {
+      if (!ok) setPlayMode(previous)
+    })
+  }
+
+  const onNumTeamsChange = (next: number) => {
+    if (guardSaving()) return
+    const previous = numTeams
+    setNumTeams(next)
+    void patchSettings({ quick_draw_num_teams: next }).then((ok) => {
+      if (!ok) setNumTeams(previous)
+    })
+  }
+
   const onDrawTimerChange = (next: number) => {
-    if (saveState === 'saving') return
+    if (guardSaving()) return
     const previous = drawTimer
     setDrawTimer(next)
     void patchSettings({ timer_seconds: next }).then((ok) => {
@@ -134,7 +193,7 @@ export function HostQuickDrawLobbyPanel({ gameCode, hostToken, game, playerCount
   }
 
   const onTitleTimerChange = (next: number) => {
-    if (saveState === 'saving') return
+    if (guardSaving()) return
     const previous = titleTimer
     setTitleTimer(next)
     void patchSettings({ operative_timer_seconds: next }).then((ok) => {
@@ -143,11 +202,20 @@ export function HostQuickDrawLobbyPanel({ gameCode, hostToken, game, playerCount
   }
 
   const onVoteTimerChange = (next: number) => {
-    if (saveState === 'saving') return
+    if (guardSaving()) return
     const previous = voteTimer
     setVoteTimer(next)
     void patchSettings({ game_duration_seconds: next }).then((ok) => {
       if (!ok) setVoteTimer(previous)
+    })
+  }
+
+  const onTurnTimerChange = (next: number) => {
+    if (guardSaving()) return
+    const previous = turnTimer
+    setTurnTimer(next)
+    void patchSettings({ timer_seconds: next }).then((ok) => {
+      if (!ok) setTurnTimer(previous)
     })
   }
 
@@ -165,17 +233,50 @@ export function HostQuickDrawLobbyPanel({ gameCode, hostToken, game, playerCount
     []
   )
 
+  const teamOptions = useMemo(
+    () => QUICK_DRAW_GUESS_TEAM_OPTIONS.map((n) => ({ value: n, label: String(n) })),
+    []
+  )
+
   const drawTimerOptions = useMemo(() => QUICK_DRAW_DRAW_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s}s` })), [])
   const titleTimerOptions = useMemo(() => QUICK_DRAW_TITLE_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s}s` })), [])
   const voteTimerOptions = useMemo(() => QUICK_DRAW_VOTE_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s}s` })), [])
+  const turnTimerOptions = useMemo(
+    () => QUICK_DRAW_DRAW_TIMER_OPTIONS.map((s) => ({ value: s, label: formatQuickDrawTurnTimer(s) })),
+    []
+  )
 
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
+  const summary = isGuess
+    ? `Guess · ${playMode === 'individual' ? 'solo' : `${numTeams} teams`} · ${maxPlayers} max · ${roundsCount} rounds · ${formatQuickDrawTurnTimer(turnTimer)} per turn`
+    : `${maxPlayers} max · ${roundsCount} rounds · ${drawTimer}s draw · ${titleTimer}s titles · ${voteTimer}s vote`
+
   return (
-    <HostLobbySettingsSection
-      status={statusLabel}
-      summary={`${maxPlayers} max · ${roundsCount} rounds · ${drawTimer}s draw · ${titleTimer}s titles · ${voteTimer}s vote`}
-    >
+    <HostLobbySettingsSection status={statusLabel} summary={summary}>
+      <HostLobbySettingBlock title="Game style">
+        <HostLobbyOptionChips value={variant} options={VARIANT_OPTIONS} onChange={onVariantChange} />
+        <p className="text-faint text-[11px] pt-1">
+          {isGuess
+            ? 'Draw a secret word — teammates or everyone races to guess.'
+            : 'Drawful-style — draw weird prompts, write fake titles, vote for the funniest.'}
+        </p>
+      </HostLobbySettingBlock>
+
+      {isGuess && (
+        <>
+          <HostLobbySettingBlock title="Mode">
+            <HostLobbyOptionChips value={playMode} options={PLAY_MODE_OPTIONS} onChange={onPlayModeChange} />
+          </HostLobbySettingBlock>
+
+          {isTeamGuess && (
+            <HostLobbySettingBlock title="Teams">
+              <HostLobbyOptionChips value={numTeams} options={teamOptions} onChange={onNumTeamsChange} />
+            </HostLobbySettingBlock>
+          )}
+        </>
+      )}
+
       <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
         <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
       </HostLobbySettingBlock>
@@ -184,17 +285,25 @@ export function HostQuickDrawLobbyPanel({ gameCode, hostToken, game, playerCount
         <HostLobbyOptionChips value={roundsCount} options={roundOptions} onChange={onRoundsCountChange} />
       </HostLobbySettingBlock>
 
-      <HostLobbySettingBlock title="Draw timer">
-        <HostLobbyOptionChips value={drawTimer} options={drawTimerOptions} onChange={onDrawTimerChange} />
-      </HostLobbySettingBlock>
+      {isGuess ? (
+        <HostLobbySettingBlock title="Turn timer">
+          <HostLobbyOptionChips value={turnTimer} options={turnTimerOptions} onChange={onTurnTimerChange} />
+        </HostLobbySettingBlock>
+      ) : (
+        <>
+          <HostLobbySettingBlock title="Draw timer">
+            <HostLobbyOptionChips value={drawTimer} options={drawTimerOptions} onChange={onDrawTimerChange} />
+          </HostLobbySettingBlock>
 
-      <HostLobbySettingBlock title="Title timer">
-        <HostLobbyOptionChips value={titleTimer} options={titleTimerOptions} onChange={onTitleTimerChange} />
-      </HostLobbySettingBlock>
+          <HostLobbySettingBlock title="Title timer">
+            <HostLobbyOptionChips value={titleTimer} options={titleTimerOptions} onChange={onTitleTimerChange} />
+          </HostLobbySettingBlock>
 
-      <HostLobbySettingBlock title="Vote timer">
-        <HostLobbyOptionChips value={voteTimer} options={voteTimerOptions} onChange={onVoteTimerChange} />
-      </HostLobbySettingBlock>
+          <HostLobbySettingBlock title="Vote timer">
+            <HostLobbyOptionChips value={voteTimer} options={voteTimerOptions} onChange={onVoteTimerChange} />
+          </HostLobbySettingBlock>
+        </>
+      )}
 
       {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
         <HostLobbySettingBlock title="Late joiners">

@@ -31,8 +31,10 @@ import {
   clampQuickDrawDrawTimer,
   clampQuickDrawRounds,
   clampQuickDrawTitleTimer,
+  clampQuickDrawVariant,
   clampQuickDrawVoteTimer,
 } from '@/lib/quick-draw'
+import { clampQuickDrawNumTeams, clampQuickDrawPlayMode } from '@/lib/quick-draw-guess'
 import { clampLobbyMaxPlayers, fetchGamePlayerLimits, type LobbyLimitGameType } from '@/lib/game-limits'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
@@ -94,6 +96,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_detective_enabled,
     mafia_anonymous_votes,
     operative_timer_seconds,
+    quick_draw_variant,
+    quick_draw_play_mode,
+    quick_draw_num_teams,
   } = parsed.data
   const gameCode = parsed.data.gameId.toUpperCase()
 
@@ -116,7 +121,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     mafia_doctor_enabled === undefined &&
     mafia_detective_enabled === undefined &&
     mafia_anonymous_votes === undefined &&
-    operative_timer_seconds === undefined
+    operative_timer_seconds === undefined &&
+    quick_draw_variant === undefined &&
+    quick_draw_play_mode === undefined &&
+    quick_draw_num_teams === undefined
   ) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -296,6 +304,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'Special rules only apply to Mafia games' }, { status: 400 })
   }
 
+  if (quickDrawLobby) {
+    if (quick_draw_variant !== undefined) {
+      gameUpdate.quick_draw_variant = clampQuickDrawVariant(quick_draw_variant)
+    }
+    if (quick_draw_play_mode !== undefined) {
+      gameUpdate.quick_draw_play_mode = clampQuickDrawPlayMode(quick_draw_play_mode)
+    }
+    if (quick_draw_num_teams !== undefined) {
+      gameUpdate.quick_draw_num_teams = clampQuickDrawNumTeams(quick_draw_num_teams)
+    }
+  } else if (
+    quick_draw_variant !== undefined ||
+    quick_draw_play_mode !== undefined ||
+    quick_draw_num_teams !== undefined
+  ) {
+    return NextResponse.json({ error: 'Quick Draw settings only apply to Quick Draw games' }, { status: 400 })
+  }
+
   const { data: updated, error } = await getSupabaseAdmin()
     .from('games')
     .update(gameUpdate)
@@ -305,5 +331,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   if (error)
     return NextResponse.json({ error: internalErrorMessage('games/code/lobby-settings', error) }, { status: 500 })
+
+  if (quickDrawLobby && quick_draw_num_teams !== undefined) {
+    await getSupabaseAdmin()
+      .from('quick_draw_guess_players')
+      .delete()
+      .eq('game_id', gameCode)
+      .gt('team', clampQuickDrawNumTeams(quick_draw_num_teams))
+  }
+
   return NextResponse.json({ success: true, game: updated })
 }
