@@ -235,14 +235,24 @@ export function QuickDrawGuessPlayPanel({
       {session.phase === 'turn' && (
         <>
           {isDrawer ? (
-            <LiveDrawingCanvas
-              prompt={session.current_word ?? ''}
-              readOnly={false}
-              onStrokeChange={syncStrokes}
-              onSkip={!isIndividual ? onSkip : undefined}
-              skipDisabled={acting}
-              resetKey={`${session.turn_index}-${session.current_word}`}
-            />
+            <div className="space-y-2">
+              <LiveDrawingCanvas
+                prompt={session.current_word ?? ''}
+                readOnly={false}
+                onStrokeChange={syncStrokes}
+                resetKey={`${session.turn_index}-${session.current_word}`}
+              />
+              {!isIndividual && onSkip && (
+                <button
+                  type="button"
+                  onClick={onSkip}
+                  disabled={acting}
+                  className="block w-full text-center text-sm font-semibold text-muted hover:text-[var(--foreground)] underline disabled:opacity-50"
+                >
+                  Skip this word
+                </button>
+              )}
+            </div>
           ) : (
             <div className="space-y-3">
               <p className="text-center text-sm text-faint">

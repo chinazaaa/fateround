@@ -490,6 +490,7 @@ export async function processQuickDrawGuessSkip(
       current_word: nextWord,
       current_stroke_data: emptyStrokeData(),
       used_words: [...session.used_words, nextWord],
+      status_message: 'Skipped — new word!',
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
