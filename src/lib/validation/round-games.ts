@@ -107,6 +107,83 @@ export const quiplashAdvanceSchema = z.object({
 
 export type QuiplashAdvanceInput = z.infer<typeof quiplashAdvanceSchema>
 
+const quickDrawTitleText = sanitizedString(1, 80)
+
+export const quickDrawDrawSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  roundId: uuidString('roundId'),
+  strokeData: z.record(z.string(), z.unknown()),
+})
+
+export type QuickDrawDrawInput = z.infer<typeof quickDrawDrawSchema>
+
+export const quickDrawTitleSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  drawingId: uuidString('drawingId'),
+  text: quickDrawTitleText,
+})
+
+export type QuickDrawTitleInput = z.infer<typeof quickDrawTitleSchema>
+
+export const quickDrawVoteSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  drawingId: uuidString('drawingId'),
+  chosenTitleId: uuidString('chosenTitleId'),
+})
+
+export type QuickDrawVoteInput = z.infer<typeof quickDrawVoteSchema>
+
+export const quickDrawAdvanceSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: z.string().min(1).optional(),
+  force: z.boolean().optional(),
+})
+
+export type QuickDrawAdvanceInput = z.infer<typeof quickDrawAdvanceSchema>
+
+export const quickDrawGuessSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  text: z.string().trim().min(1).max(80),
+})
+
+export type QuickDrawGuessInput = z.infer<typeof quickDrawGuessSchema>
+
+export const quickDrawGuessStrokesSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+  strokeData: z.unknown(),
+})
+
+export type QuickDrawGuessStrokesInput = z.infer<typeof quickDrawGuessStrokesSchema>
+
+export const quickDrawGuessAdvanceSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: z.string().min(1).optional(),
+})
+
+export type QuickDrawGuessAdvanceInput = z.infer<typeof quickDrawGuessAdvanceSchema>
+
+export const quickDrawGuessTeamSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4).optional(),
+  hostToken: z.string().min(1).optional(),
+  playerId: uuidString('playerId').optional(),
+  team: z.coerce.number().int().min(1).max(4),
+})
+
+export type QuickDrawGuessTeamInput = z.infer<typeof quickDrawGuessTeamSchema>
+
+export const quickDrawGuessSkipSchema = z.object({
+  gameId: gameCodeString(),
+  resumeToken: z.string().min(4),
+})
+
+export type QuickDrawGuessSkipInput = z.infer<typeof quickDrawGuessSkipSchema>
+
 export const npatSubmitSchema = z.object({
   gameId: gameCodeString(),
   // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
