@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { lobbyMaxPlayersFromGame, playerCountOptions, type GamePlayerLimitsMap } from '@/lib/game-limits'
 import {
   QUICK_DRAW_DEFAULT_DRAW_TIMER,
+  QUICK_DRAW_DEFAULT_MAX_PLAYERS,
   QUICK_DRAW_DEFAULT_TITLE_TIMER,
   QUICK_DRAW_DEFAULT_VOTE_TIMER,
   QUICK_DRAW_DRAW_TIMER_OPTIONS,
@@ -52,7 +53,7 @@ const PLAY_MODE_OPTIONS: { value: QuickDrawPlayMode; label: string }[] = [
 export function HostQuickDrawLobbyPanel({ gameCode, hostToken, game, playerCount, onGameUpdate }: Props) {
   const { error: toastError } = useToast()
   const [limits, setLimits] = useState<GamePlayerLimitsMap | null>(null)
-  const [maxPlayers, setMaxPlayers] = useState(8)
+  const [maxPlayers, setMaxPlayers] = useState(QUICK_DRAW_DEFAULT_MAX_PLAYERS)
   const [roundsCount, setRoundsCount] = useState(3)
   const [variant, setVariant] = useState<QuickDrawVariant>('lie')
   const [playMode, setPlayMode] = useState<QuickDrawPlayMode>('team')

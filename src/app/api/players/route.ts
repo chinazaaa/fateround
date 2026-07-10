@@ -21,6 +21,7 @@ import { anonymousPlayerCanChat } from '@/lib/anonymous-messages'
 import { createBingoCardForPlayer } from '@/lib/bingo'
 import { assignCodewordsLateJoinOperative, codewordsAllowsPlayerChanges, removeCodewordsPlayer } from '@/lib/codewords'
 import { assignDescribeItLateJoinTeam } from '@/lib/describe-it'
+import { registerQuickDrawLateJoinPlayer } from '@/lib/quick-draw'
 import {
   assignWordRushLateJoinTeam,
   revertWordRushRosterAfterFailedPlayerDelete,
@@ -47,6 +48,7 @@ import {
   isScrabbleGame,
   isDescribeItGame,
   isWordRushGame,
+  isQuickDrawGame,
   isSudokuGame,
   isTwoTruthsGame,
 } from '@/lib/game-types'
@@ -911,6 +913,14 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+
+    if (isQuickDrawGame(gameType) && game.status === 'active' && !joinSpectator) {
+      const { error: assignError } = await registerQuickDrawLateJoinPlayer(getSupabaseAdmin(), id, player.id)
+      if (assignError) {
+        await getSupabaseAdmin().from('players').delete().eq('id', player.id)
+        return NextResponse.json({ error: assignError }, { status: 500 })
+      }
+    }
 
     return jsonPlayerJoin(roomMemberId, player, game as Game)
   }
