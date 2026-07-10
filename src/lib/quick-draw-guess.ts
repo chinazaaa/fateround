@@ -692,10 +692,17 @@ export async function assignQuickDrawGuessLateJoinTeam(
 ): Promise<{ team: number; error?: string }> {
   const { data: game } = await supabase
     .from('games')
-    .select('quick_draw_num_teams, quick_draw_variant')
+    .select('quick_draw_num_teams, quick_draw_variant, quick_draw_play_mode')
     .eq('id', gameId)
     .maybeSingle()
   if (game?.quick_draw_variant !== 'guess') return { team: 1 }
+  if (clampQuickDrawPlayMode(game.quick_draw_play_mode) === 'individual') {
+    const { error } = await supabase
+      .from('quick_draw_guess_players')
+      .upsert({ game_id: gameId, player_id: playerId, team: 1, score: 0 }, { onConflict: 'game_id,player_id' })
+    if (error) return { team: 1, error: internalErrorMessage('quick-draw-guess:assignLateJoinIndividual', error) }
+    return { team: 1 }
+  }
   const numTeams = clampQuickDrawNumTeams(game.quick_draw_num_teams)
   const rows = await loadTeamRows(supabase, gameId)
   const counts = new Array(numTeams + 1).fill(0)

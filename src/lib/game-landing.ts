@@ -2622,7 +2622,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'draw and guess game online',
     ],
     heroSubtitle: 'Draw on your phone — fool everyone with fake titles, or race to guess what the drawer is sketching.',
-    highlights: ['3–8 players', 'Lie or guess modes', '~15 minute games'],
+    highlights: ['3–10 players', 'Lie or guess modes', '~15 minute games'],
     features: [
       {
         title: 'Two ways to play',
