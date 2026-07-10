@@ -22,6 +22,19 @@ export const QUICK_DRAW_DEFAULT_DRAW_TIMER = 90
 export const QUICK_DRAW_DEFAULT_TITLE_TIMER = 45
 export const QUICK_DRAW_DEFAULT_VOTE_TIMER = 20
 export const QUICK_DRAW_DRAW_TIMER_OPTIONS = [60, 75, 90, 120] as const
+
+/** Human label for guess-mode turn timer (stored as seconds). */
+export function formatQuickDrawTurnTimer(seconds: number): string {
+  if (seconds === 60) return '1 min'
+  if (seconds === 75) return '1.25 min'
+  if (seconds === 90) return '1.5 min'
+  if (seconds === 120) return '2 min'
+  if (seconds % 60 === 0) {
+    const mins = seconds / 60
+    return mins === 1 ? '1 min' : `${mins} min`
+  }
+  return `${seconds / 60} min`
+}
 export const QUICK_DRAW_TITLE_TIMER_OPTIONS = [30, 45, 60, 90] as const
 export const QUICK_DRAW_VOTE_TIMER_OPTIONS = [15, 20, 30, 45] as const
 export const QUICK_DRAW_REVEAL_SECONDS = 5

@@ -9,6 +9,7 @@ import {
   QUICK_DRAW_MIN_ROUNDS,
   clampQuickDrawDrawTimer,
   clampQuickDrawRounds,
+  formatQuickDrawTurnTimer,
 } from '@/lib/quick-draw'
 import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySettingsSection'
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
@@ -137,14 +138,17 @@ export function HostQuickDrawGuessLobbyPanel({ gameCode, hostToken, game, player
     []
   )
 
-  const turnTimerOptions = useMemo(() => QUICK_DRAW_DRAW_TIMER_OPTIONS.map((s) => ({ value: s, label: `${s}s` })), [])
+  const turnTimerOptions = useMemo(
+    () => QUICK_DRAW_DRAW_TIMER_OPTIONS.map((s) => ({ value: s, label: formatQuickDrawTurnTimer(s) })),
+    []
+  )
 
   const statusLabel = saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : null
 
   return (
     <HostLobbySettingsSection
       status={statusLabel}
-      summary={`${maxPlayers} max · ${roundsCount} rounds · ${turnTimer}s per turn`}
+      summary={`${maxPlayers} max · ${roundsCount} rounds · ${formatQuickDrawTurnTimer(turnTimer)} per turn`}
     >
       <HostLobbySettingBlock title={`Max players · ${playerCount} joined`}>
         <HostLobbyOptionChips value={maxPlayers} options={maxPlayerOptions} onChange={onMaxPlayersChange} />
