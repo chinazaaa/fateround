@@ -3117,38 +3117,29 @@ function CreateGameInner() {
                 </Field>
                 <Field label="Special Roles">
                   <div className="flex flex-col space-y-2 mt-2">
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.mafia_doctor_enabled !== false}
-                        onChange={(e) => setSettings({ ...settings, mafia_doctor_enabled: e.target.checked })}
-                        className="rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500"
-                      />
-                      <span className="text-sm text-slate-300">Include Doctor (protects one player each night)</span>
-                    </label>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.mafia_detective_enabled !== false}
-                        onChange={(e) => setSettings({ ...settings, mafia_detective_enabled: e.target.checked })}
-                        className="rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500"
-                      />
-                      <span className="text-sm text-slate-300">
-                        Include Detective (investigates one player each night)
-                      </span>
-                    </label>
+                    <Toggle
+                      label="Doctor"
+                      description="Protects one player each night"
+                      value={settings.mafia_doctor_enabled !== false}
+                      onChange={(v) => setSettings({ ...settings, mafia_doctor_enabled: v })}
+                    />
+                    <Toggle
+                      label="Detective"
+                      description="Investigates one player each night"
+                      value={settings.mafia_detective_enabled !== false}
+                      onChange={(v) => setSettings({ ...settings, mafia_detective_enabled: v })}
+                    />
                   </div>
                 </Field>
                 <Field label="Voting Rules">
-                  <label className="flex items-center space-x-2 cursor-pointer mt-2">
-                    <input
-                      type="checkbox"
-                      checked={settings.mafia_anonymous_votes !== false}
-                      onChange={(e) => setSettings({ ...settings, mafia_anonymous_votes: e.target.checked })}
-                      className="rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500"
+                  <div className="mt-2">
+                    <Toggle
+                      label="Anonymous Votes"
+                      description="Hide who voted for whom during the day phase"
+                      value={settings.mafia_anonymous_votes !== false}
+                      onChange={(v) => setSettings({ ...settings, mafia_anonymous_votes: v })}
                     />
-                    <span className="text-sm text-slate-300">Anonymous Votes (do not show who voted for whom)</span>
-                  </label>
+                  </div>
                 </Field>
                 {showViewerToggle && (
                   <Field label="Late joiners">
