@@ -2204,7 +2204,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
   ayo: landing('ayo', {
     seoTitle: 'Ayo Online — Play Ayo Olopon with a Friend',
     seoDescription:
-      'Play Ayo (Ayo Olopon) online — the classic Yoruba seed game. Sow anti-clockwise, capture fours, crown Ọta. Two players, optional clock. Free, no sign-up.',
+      'Play Ayo (Ayo Olopon) online — the classic Yoruba seed game. Sow anti-clockwise, capture 2s and 3s, crown Ọta. Two players, optional clock. Free, no sign-up.',
     keywords: [
       'ayo online',
       'ayo olopon',
@@ -2215,10 +2215,10 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       'two player ayo online',
       'ayo online free',
     ],
-    heroSubtitle: 'Sow seeds, capture fours, and crown Ọta — the Yoruba classic, head-to-head.',
+    heroSubtitle: 'Sow seeds, capture 2s and 3s, and crown Ọta — the Yoruba classic, head-to-head.',
     bodyParagraph:
-      "Ayo on Fate Round follows traditional Ayo Olopon rules adapted for two players online. Twelve houses, four seeds each, sow anti-clockwise around the board. When your last seed lands in an opponent's house with exactly four seeds, you capture them. Play until the board is exhausted — most captured seeds wins. The winner is Ọta; the loser is Ọpẹ. Three straight wins makes an Ọta champion.",
-    highlights: ['2 players', 'Capture on four', 'Ọta & Ọpẹ'],
+      "Ayo on Fate Round follows traditional Ayo Olopon rules for two players online. Twelve houses, four seeds each, sow anti-clockwise around the board — skipping the house you picked up. When your last seed lands in an opponent's house with 2 or 3 seeds, you capture those seeds and any linked opponent houses ahead with 2 or 3. If their row is empty, you must sow into it when possible. When your opponent cannot move, you sweep every seed left on the board. Most captured seeds wins. The winner is Ọta; the loser is Ọpẹ. Three straight wins makes an Ọta champion.",
+    highlights: ['2 players', 'Classic capture', 'Ọta & Ọpẹ'],
     features: [
       {
         title: 'Traditional sowing',
@@ -2226,8 +2226,8 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
         emoji: '🌰',
       },
       {
-        title: 'Capture fours',
-        description: 'Land your last seed in an opponent house with exactly four — capture those seeds.',
+        title: 'Capture 2s & 3s',
+        description: 'Land your last seed in an opponent house with 2 or 3 seeds — capture linked houses too.',
         emoji: '🎯',
       },
       SHARED_FEATURES.mobile,
@@ -2248,7 +2248,7 @@ export const GAME_LANDING_CONTENT: Record<GameType, GameLandingContent> = {
       {
         question: 'How does capture work?',
         answer:
-          "If your last sown seed lands in an opponent's house and that house now has exactly four seeds, you capture all four and add them to your score.",
+          "If your last sown seed lands in an opponent's house with 2 or 3 seeds, you capture those seeds plus any linked opponent houses ahead that also have 2 or 3. If their row is empty, you must feed them when you can.",
       },
       {
         question: 'Can I play untimed?',

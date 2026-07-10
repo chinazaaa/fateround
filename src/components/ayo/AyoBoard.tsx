@@ -1,7 +1,14 @@
 'use client'
 
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { ayoResultDetail, ayoScores, currentTurnPlayerId, isAyoChampion, legalMoves, sideForPlayer } from '@/lib/ayo'
+import {
+  ayoResultDetail,
+  ayoScores,
+  currentTurnPlayerId,
+  isAyoChampion,
+  legalMovesForSide,
+  sideForPlayer,
+} from '@/lib/ayo'
 import type { AyoSession, AyoSide, Player } from '@/types'
 import { AyoCard, AyoTurnBar } from '@/components/ayo/AyoChrome'
 import { useAyoTurnSound } from '@/hooks/useAyoTurnSound'
@@ -143,7 +150,7 @@ export function AyoGamePanel({
 
   const legal = useMemo(() => {
     if (!interactive || !mySide) return new Set<number>()
-    return new Set(legalMoves(session.pits, mySide))
+    return new Set(legalMovesForSide(session.pits, mySide))
   }, [session.pits, interactive, mySide])
 
   const scores = ayoScores(session)

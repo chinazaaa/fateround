@@ -2655,8 +2655,9 @@ function CreateGameInner() {
                   <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} gameType="ayo" />
                 </Field>
                 <p className="text-faint text-sm leading-relaxed">
-                  Ayo Olopon — sow seeds anti-clockwise, capture when you land on four in an opponent&apos;s house. Most
-                  captured seeds wins; the winner is Ọta. Three straight wins makes an Ọta champion.
+                  Ayo Olopon — sow seeds anti-clockwise (skip the house you picked up), capture 2s and 3s with linkage,
+                  and feed your opponent when their row is empty. Most captured seeds wins; the winner is Ọta. Three
+                  straight wins makes an Ọta champion.
                 </p>
               </SettingsGroup>
             ) : isScrabble ? (

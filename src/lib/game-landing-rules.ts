@@ -1053,15 +1053,16 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       title: 'How a turn works',
       points: [
         'Pick up all seeds from one of your own houses that has seeds.',
-        "Sow anti-clockwise — drop one seed per house, including into your opponent's row.",
-        "Capture: if your last seed lands in an opponent's house with exactly four seeds, capture those four.",
-        'Players alternate until seeds are exhausted or neither side has a legal move.',
+        "Sow anti-clockwise — drop one seed per house, skipping the house you picked up, including into your opponent's row.",
+        "Capture: if your last seed lands in an opponent's house with 2 or 3 seeds, capture those and any linked opponent houses ahead that also have 2 or 3.",
+        'Feeding: if your opponent has no seeds on their row, you must choose a move that sows into their row when one exists.',
+        'Players alternate until a player cannot move — the other player sweeps all seeds still on the board.',
       ],
     },
     {
       title: 'Winning',
       points: [
-        'When the game ends, remaining seeds on the board are collected. Most total seeds wins.',
+        'When your opponent cannot move, you sweep every seed still on the board. Most total captured seeds wins.',
         'You can also win if your opponent resigns, leaves, or runs out of time.',
         'A tie is possible if both players finish with 24 seeds each.',
       ],

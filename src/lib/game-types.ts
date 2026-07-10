@@ -1498,7 +1498,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
   ayo: {
     id: 'ayo',
     label: 'Ayo',
-    tagline: 'Yoruba seed game — sow, capture fours, crown Ọta',
+    tagline: 'Yoruba seed game — sow, capture twos and threes, crown Ọta',
     headerEmoji: '🌰🎯',
     card: {
       accent: '#b45309',
@@ -1930,7 +1930,7 @@ export function gameHowItWorks(
     case 'checkers':
       return 'Two players join with their name. The host can play too. American 8×8 checkers on dark squares only — 12 pieces each. Black moves first. Men move diagonally forward one square; jump an adjacent opponent to capture — captures are forced, and you must keep jumping with the same piece while more jumps are available. Crown a king on the far row (moves one square any direction). Win by capturing all enemy pieces or blocking every legal move. Draws: threefold repetition or the 40-move rule. Optional per-player clock.'
     case 'ayo':
-      return 'Two players join with their name. The host can play too. Classic Ayo Olopon — 12 houses, 4 seeds each, sow anti-clockwise. Capture when your last seed lands in an opponent house with exactly four seeds. Most captured seeds wins; winner is Ọta, loser is Ọpẹ. Three straight wins makes an Ọta champion. Optional per-player clock — casual (untimed) or ranked (30s–10min each).'
+      return 'Two players join with their name. The host can play too. Classic Ayo Olopon — 12 houses, 4 seeds each, sow anti-clockwise (skipping the house you picked up). Capture when your last seed lands in an opponent house with 2 or 3 seeds, including linked houses. If their row is empty, you must feed them when you can. When they cannot move, you sweep the board. Most captured seeds wins; winner is Ọta, loser is Ọpẹ. Three straight wins makes an Ọta champion. Optional per-player clock — casual (untimed) or ranked (30s–10min each).'
     case 'mafia':
       return 'Players join with their name (5 to 16 players). Each player is secretly assigned a role: Villager, Mafia, Doctor, or Detective. The game alternates between Night (when the Mafia kills, the Doctor heals, and the Detective investigates) and Day (when the village discusses and votes to eliminate a suspect). Eliminate the Mafia to win, or parity wins for the Mafia.'
     case 'describe_it':

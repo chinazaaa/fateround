@@ -47,13 +47,53 @@ export function nextPit(pit: number): number {
   return (pit + 1) % AYO_PIT_COUNT
 }
 
-export function legalMoves(pits: number[], side: AyoSide): number[] {
+/** Pits on `side`'s row, low index first (0–5 for A, 6–11 for B). */
+function rowRange(side: AyoSide): { start: number; end: number } {
   const start = side === 'a' ? 0 : AYO_PITS_PER_SIDE
+  return { start, end: start + AYO_PITS_PER_SIDE - 1 }
+}
+
+function isCaptureCount(count: number): boolean {
+  return count === 2 || count === 3
+}
+
+/** Non-empty pits on `side`'s row (ignores feeding). */
+export function legalMoves(pits: number[], side: AyoSide): number[] {
+  const { start, end } = rowRange(side)
   const moves: number[] = []
-  for (let i = start; i < start + AYO_PITS_PER_SIDE; i += 1) {
+  for (let i = start; i <= end; i += 1) {
     if (pits[i] > 0) moves.push(i)
   }
   return moves
+}
+
+/** True if sowing from `pitIndex` drops at least one seed on the opponent's row. */
+export function moveFeedsOpponent(pits: number[], pitIndex: number): boolean {
+  const moverSide = sideOfPit(pitIndex)
+  const opponent = opponentSide(moverSide)
+  let seeds = pits[pitIndex]
+  let current = pitIndex
+
+  while (seeds > 0) {
+    current = nextPit(current)
+    if (current === pitIndex) continue
+    if (sideOfPit(current) === opponent) return true
+    seeds -= 1
+  }
+  return false
+}
+
+/**
+ * Legal moves for `side`, including the feeding rule: when the opponent's row is
+ * empty, you must sow into their row if any of your moves can do so.
+ */
+export function legalMovesForSide(pits: number[], side: AyoSide): number[] {
+  const base = legalMoves(pits, side)
+  if (!hasSeedsOnSide(pits, opponentSide(side))) {
+    const feeding = base.filter((pit) => moveFeedsOpponent(pits, pit))
+    if (feeding.length > 0) return feeding
+  }
+  return base
 }
 
 export function hasSeedsOnSide(pits: number[], side: AyoSide): boolean {
@@ -75,7 +115,32 @@ export function opponentSide(side: AyoSide): AyoSide {
   return side === 'a' ? 'b' : 'a'
 }
 
-/** Sow seeds from `pitIndex` anti-clockwise; apply capture-on-four on opponent pits. */
+/** Capture pits on the opponent's row via linkage (2 or 3 seeds each). */
+export function captureFromLanding(
+  pits: number[],
+  landingPit: number,
+  moverSide: AyoSide
+): { pits: number[]; capture: number } {
+  const next = [...pits]
+  const opponent = opponentSide(moverSide)
+  if (sideOfPit(landingPit) !== opponent || !isCaptureCount(next[landingPit])) {
+    return { pits: next, capture: 0 }
+  }
+
+  const { start } = rowRange(opponent)
+  let capture = 0
+  for (let i = landingPit; i >= start; i -= 1) {
+    if (!isCaptureCount(next[i])) break
+    capture += next[i]
+    next[i] = 0
+  }
+  return { pits: next, capture }
+}
+
+/**
+ * Sow seeds from `pitIndex` anti-clockwise, skipping the starting house.
+ * Classic Ayo / Oware capture: last seed lands in opponent house with 2 or 3 → linkage.
+ */
 export function sowFromPit(pits: number[], pitIndex: number): { pits: number[]; capture: number; landingPit: number } {
   let seeds = pits[pitIndex]
   const next = [...pits]
@@ -85,17 +150,13 @@ export function sowFromPit(pits: number[], pitIndex: number): { pits: number[]; 
 
   while (seeds > 0) {
     current = nextPit(current)
+    if (current === pitIndex) continue
     next[current] += 1
     seeds -= 1
   }
 
-  let capture = 0
-  if (sideOfPit(current) !== moverSide && next[current] === 4) {
-    capture = 4
-    next[current] = 0
-  }
-
-  return { pits: next, capture, landingPit: current }
+  const { pits: afterCapture, capture } = captureFromLanding(next, current, moverSide)
+  return { pits: afterCapture, capture, landingPit: current }
 }
 
 export function collectRemainingSeeds(
@@ -112,18 +173,35 @@ export function collectRemainingSeeds(
   }
 }
 
-export function shouldEndGame(pits: number[]): boolean {
-  if (seedsOnBoard(pits) === 0) return true
-  // Game ends when either row is exhausted — remaining seeds are collected.
-  return !hasSeedsOnSide(pits, 'a') || !hasSeedsOnSide(pits, 'b')
+/** When `side` cannot move, the opponent sweeps every seed still on the board. */
+export function sweepBoardToWinner(
+  pits: number[],
+  capturedA: number,
+  capturedB: number,
+  winner: AyoSide
+): { pits: number[]; capturedA: number; capturedB: number } {
+  const boardTotal = seedsOnBoard(pits)
+  return {
+    pits: Array(AYO_PIT_COUNT).fill(0),
+    capturedA: capturedA + (winner === 'a' ? boardTotal : 0),
+    capturedB: capturedB + (winner === 'b' ? boardTotal : 0),
+  }
 }
 
-/** Who moves next after `mover` — opponent if they can, otherwise mover again, else mover (game ends). */
-export function resolveNextTurn(pits: number[], mover: AyoSide): AyoSide {
-  const other = opponentSide(mover)
-  if (hasSeedsOnSide(pits, other)) return other
-  if (hasSeedsOnSide(pits, mover)) return mover
-  return other
+/** Game ends when `sideToMove` has no legal move (after feeding rules). */
+export function shouldEndGameForSide(pits: number[], sideToMove: AyoSide): boolean {
+  if (seedsOnBoard(pits) === 0) return true
+  return legalMovesForSide(pits, sideToMove).length === 0
+}
+
+/** @deprecated Use shouldEndGameForSide — kept for tests migrating off the old rule. */
+export function shouldEndGame(pits: number[]): boolean {
+  return seedsOnBoard(pits) === 0
+}
+
+/** Next player is always the opponent in classic Ayo. */
+export function resolveNextTurn(mover: AyoSide): AyoSide {
+  return opponentSide(mover)
 }
 
 export function totalScore(capturedA: number, capturedB: number, side: AyoSide): number {
@@ -160,17 +238,19 @@ export function applyAyoMove(
   const nextCapturedA = side === 'a' ? capturedA + capture : capturedA
   const nextCapturedB = side === 'b' ? capturedB + capture : capturedB
 
-  if (shouldEndGame(sown)) {
-    const collected = collectRemainingSeeds(sown, nextCapturedA, nextCapturedB)
-    const scoreA = collected.capturedA
-    const scoreB = collected.capturedB
+  const nextTurn = resolveNextTurn(side)
+
+  if (shouldEndGameForSide(sown, nextTurn)) {
+    const swept = sweepBoardToWinner(sown, nextCapturedA, nextCapturedB, side)
+    const scoreA = swept.capturedA
+    const scoreB = swept.capturedB
     const draw = scoreA === scoreB
     const winnerSide: AyoSide | null = draw ? null : scoreA > scoreB ? 'a' : 'b'
     return {
-      pits: collected.pits,
+      pits: swept.pits,
       capturedA: scoreA,
       capturedB: scoreB,
-      nextTurn: side,
+      nextTurn,
       finished: true,
       draw,
       winnerSide,
@@ -178,7 +258,6 @@ export function applyAyoMove(
     }
   }
 
-  const nextTurn = resolveNextTurn(sown, side)
   return {
     pits: sown,
     capturedA: nextCapturedA,
@@ -412,7 +491,7 @@ export async function processAyoMove(
   if (!Number.isInteger(pitIndex) || pitIndex < 0 || pitIndex >= AYO_PIT_COUNT) {
     return { error: 'Illegal pit' }
   }
-  if (!legalMoves(session.pits, side).includes(pitIndex)) {
+  if (!legalMovesForSide(session.pits, side).includes(pitIndex)) {
     return { error: 'Illegal move' }
   }
 
