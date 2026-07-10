@@ -389,7 +389,14 @@ export function QuickDrawGuessPlayerView({ gameCode }: { gameCode: string }) {
   if (screen === 'finished' && game) {
     return (
       <div className="min-h-screen px-4 py-8 max-w-lg mx-auto space-y-4">
-        <QuickDrawGuessFinishedResults game={game} players={players} words={words} playerScores={teamPlain} />
+        <QuickDrawGuessFinishedResults
+          game={game}
+          players={players}
+          words={words}
+          playerScores={teamPlain}
+          highlightPlayerId={myPlayerId}
+          roundKey={session?.id}
+        />
         {myPlayerId && myName && (
           <PlayerSessionControls
             gameCode={gameCode}

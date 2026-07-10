@@ -9,7 +9,7 @@ import { HostModeSelector } from '@/components/host/HostModeSelector'
 import { HostRulesRow } from '@/components/host/HostRulesRow'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayersSection'
-import { HostQuickDrawGuessLobbyPanel } from '@/components/host-lobby/HostQuickDrawGuessLobbyPanel'
+import { HostQuickDrawLobbyPanel } from '@/components/host-lobby/HostQuickDrawLobbyPanel'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -386,7 +386,7 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
       )}
       {game.status !== 'finished' && <HostRulesRow gameType="quick_draw" />}
       {game.status === 'waiting' && (
-        <HostQuickDrawGuessLobbyPanel
+        <HostQuickDrawLobbyPanel
           gameCode={gameCode}
           hostToken={hostToken}
           game={game}
@@ -458,6 +458,8 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
         players={players}
         words={words}
         playerScores={teamPlain}
+        highlightPlayerId={hostPlayerId}
+        roundKey={session?.id}
         playAgainButton={
           <button
             type="button"

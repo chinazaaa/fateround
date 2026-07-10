@@ -419,6 +419,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             numTeams={numTeams}
             mode={isIndividual ? 'individual' : 'team'}
             playerScores={playerScores}
+            highlightPlayerId={myPlayerId}
           />
         )}
         {myPlayerId && (
