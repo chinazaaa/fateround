@@ -74,6 +74,7 @@ export function clampLateJoinPolicyForGameType(policy: LateJoinPolicy, gameType:
 export function defaultLateJoinPolicyForGameType(gameType: GameType): LateJoinPolicy {
   if (isDescribeItGame(gameType)) return 'viewers_and_players'
   if (isWordRushGame(gameType)) return 'viewers_and_players'
+  if (isQuickDrawGame(gameType)) return 'viewers_and_players'
   return 'viewers_only'
 }
 

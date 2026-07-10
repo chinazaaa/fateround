@@ -10,11 +10,22 @@ import type {
   Player,
   Round,
 } from '@/types'
-import { quickDrawPromptKey, quickDrawUsageFromPrompts, type QuickDrawPrompt } from '@/lib/quick-draw-prompts'
+import { internalErrorMessage } from '@/lib/api-errors'
+import { parseQuestionSource, parseStoredMltQuestions } from '@/lib/custom-questions'
+import { assignQuickDrawGuessLateJoinTeam } from '@/lib/quick-draw-guess'
+import {
+  pickCustomQuickDrawPrompts,
+  pickQuickDrawPrompts,
+  quickDrawPromptKey,
+  quickDrawUsageFromPrompts,
+  type QuickDrawPrompt,
+} from '@/lib/quick-draw-prompts'
+import { parseGameType } from '@/lib/game-types'
+import { parsePoolUsage, poolUsageToMap } from '@/lib/pool-usage'
 
 export const QUICK_DRAW_MIN_PLAYERS = 3
-export const QUICK_DRAW_MAX_PLAYERS = 8
-export const QUICK_DRAW_DEFAULT_MAX_PLAYERS = 8
+export const QUICK_DRAW_MAX_PLAYERS = 10
+export const QUICK_DRAW_DEFAULT_MAX_PLAYERS = 10
 export const QUICK_DRAW_DEFAULT_ROUNDS = 3
 export const QUICK_DRAW_MIN_ROUNDS = 2
 export const QUICK_DRAW_MAX_ROUNDS = 5
@@ -373,6 +384,92 @@ export function quickDrawVotingHint(opts: {
 
 export { quickDrawUsageFromPrompts, quickDrawPromptKey }
 export type { QuickDrawPrompt }
+
+/** Seed guess-mode roster rows or lie-mode prompts when someone joins mid-game as a player. */
+export async function registerQuickDrawLateJoinPlayer(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string
+): Promise<{ error?: string }> {
+  const { data: game } = await supabase.from('games').select('quick_draw_variant').eq('id', gameId).maybeSingle()
+  if (!game) return { error: 'Game not found' }
+
+  if (clampQuickDrawVariant(game.quick_draw_variant) === 'guess') {
+    const { error } = await assignQuickDrawGuessLateJoinTeam(supabase, gameId, playerId)
+    return error ? { error } : {}
+  }
+
+  return assignQuickDrawLieLateJoin(supabase, gameId, playerId)
+}
+
+export async function assignQuickDrawLieLateJoin(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string
+): Promise<{ error?: string }> {
+  const { data: game } = await supabase
+    .from('games')
+    .select('game_type, current_round_number, question_source, custom_questions, pool_usage, quick_draw_variant')
+    .eq('id', gameId)
+    .maybeSingle()
+  if (!game || clampQuickDrawVariant(game.quick_draw_variant) !== 'lie') return {}
+
+  const currentRoundNumber = Math.max(1, Number(game.current_round_number) || 1)
+  const { data: rounds } = await supabase
+    .from('rounds')
+    .select('id, round_number, status')
+    .eq('game_id', gameId)
+    .gte('round_number', currentRoundNumber)
+    .in('status', ['pending', 'active'])
+    .order('round_number')
+
+  if (!rounds?.length) return {}
+
+  const { data: existing } = await supabase
+    .from('quick_draw_assignments')
+    .select('round_id')
+    .eq('game_id', gameId)
+    .eq('player_id', playerId)
+  const assignedRoundIds = new Set((existing ?? []).map((row) => row.round_id))
+  const roundsToAssign = rounds.filter((round) => !assignedRoundIds.has(round.id))
+  if (roundsToAssign.length === 0) return {}
+
+  const gameType = parseGameType(game.game_type)
+  const questionSource = parseQuestionSource(game.question_source, gameType)
+  const customPool = parseStoredMltQuestions(game.custom_questions)
+  const poolUsage = parsePoolUsage(game.pool_usage)
+  const quickDrawUsage = poolUsageToMap(poolUsage.quick_draw)
+  const promptsNeeded = roundsToAssign.length
+  const prompts =
+    questionSource === 'custom'
+      ? pickCustomQuickDrawPrompts(customPool, promptsNeeded, quickDrawUsage)
+      : pickQuickDrawPrompts(promptsNeeded, quickDrawUsage)
+  if (prompts.length < promptsNeeded) {
+    return { error: 'Not enough prompts available for late join' }
+  }
+
+  const assignmentRows = roundsToAssign.map((round, index) => ({
+    game_id: gameId,
+    round_id: round.id,
+    player_id: playerId,
+    prompt: prompts[index]!.prompt,
+  }))
+
+  const { error: insertError } = await supabase.from('quick_draw_assignments').insert(assignmentRows)
+  if (insertError) return { error: internalErrorMessage('quick-draw:assignLieLateJoin', insertError) }
+
+  const updatedPoolUsage = {
+    ...poolUsage,
+    quick_draw: {
+      ...(poolUsage.quick_draw ?? {}),
+      ...quickDrawUsageFromPrompts(prompts),
+    },
+  }
+  const { error: poolError } = await supabase.from('games').update({ pool_usage: updatedPoolUsage }).eq('id', gameId)
+  if (poolError) return { error: internalErrorMessage('quick-draw:assignLieLateJoin:pool', poolError) }
+
+  return {}
+}
 
 export async function clearQuickDrawSessionData(
   supabase: SupabaseClient,

@@ -1331,7 +1331,7 @@ export const GAME_TYPE_CONFIG: Record<GameType, GameTypeConfig> = {
       accent: '#8b5cf6',
       accentSoft: 'rgba(139, 92, 246, 0.15)',
       emoji: '🎨',
-      players: '3–8 players',
+      players: '3–10 players',
       vibe: 'Drawing chaos',
       featured: true,
     },
