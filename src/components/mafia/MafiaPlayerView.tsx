@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -23,8 +23,15 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { gameTypeConfig } from '@/lib/game-types'
 import { MAFIA_MIN_PLAYERS } from '@/lib/mafia'
-import { clearPlayerSession } from '@/lib/utils'
-import type { Game, MafiaPublicPlayer, MafiaMyState, MafiaPhase, MafiaTeam, MafiaChatMessage } from '@/types'
+import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
+import { MafiaPhaseTimer } from './MafiaChat'
+import { MafiaDayChat } from './MafiaChat'
+import { MafiaGhostChat } from './MafiaChat'
+import { MafiaIdentityPanel } from './MafiaIdentityPanel'
+import { MafiaPhaseCard } from './MafiaPhaseCard'
+import { MafiaPlayersGrid } from './MafiaPlayersGrid'
+import type { MafiaStateResponse } from './mafia-types'
+import type { Game } from '@/types'
 
 type Screen =
   | 'loading'
@@ -36,25 +43,6 @@ type Screen =
   | 'finished'
   | 'not_found'
 
-interface MafiaStateResponse {
-  gameTitle: string
-  status: string
-  phase: MafiaPhase
-  dayNumber: number
-  phaseDeadline: string | null
-  doctorEnabled: boolean
-  detectiveEnabled: boolean
-  anonymousVotes: boolean
-  winningTeam: MafiaTeam | null
-  players: MafiaPublicPlayer[]
-  lastNightKillPlayerId: string | null
-  lastNightMafiaHadTarget: boolean
-  lastVoteResultPlayerId: string | null
-  voteTallies: Record<string, number>
-  dayChatMessages?: MafiaChatMessage[]
-  myState: MafiaMyState | null
-}
-
 export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError, success: toastSuccess } = useToast()
@@ -63,30 +51,16 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
-  // Custom fetch function to fetch secure Mafia state
   const loadGameState = useCallback(async (): Promise<{ state: MafiaStateResponse | null; ok: boolean }> => {
-    // Resolve myPlayerId and resumeToken from localStorage
-    const localSessionKey = `game_player_${gameCode.toUpperCase()}`
-    const localSessionRaw = localStorage.getItem(localSessionKey)
-    let resumeToken = null
-    if (localSessionRaw) {
-      try {
-        const parsed = JSON.parse(localSessionRaw)
-        resumeToken = parsed.resumeToken
-      } catch (e) {
-        // Ignore
-      }
-    }
-
+    const session = getPlayerSession(gameCode)
+    const resumeToken = session?.resumeToken ?? null
     try {
       const res = await fetch(`/api/mafia/${gameCode}/state`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resumeToken }),
       })
-      if (!res.ok) {
-        return { state: null, ok: false }
-      }
+      if (!res.ok) return { state: null, ok: false }
       const data = await res.json()
       setMafiaState(data)
       return { state: data, ok: true }
@@ -134,18 +108,17 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   })
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
-  useApplyGameTheme('mafia') // Force deep indigo mafia theme
+  useApplyGameTheme(game?.theme)
 
-  // Table sync triggers state reload
-  useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'mafia_sessions', 'mafia_player_states'], load)
-
-  // Polling fallback
+  useGameTableSync(
+    gameCode,
+    [{ table: 'games', column: 'id' }, 'mafia_sessions', 'mafia_player_states', 'mafia_chat_messages'],
+    load
+  )
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
-
   useLobbyOpenNotification(game?.status, () => {
     if (screen === 'finished' || screen === 'game_started_waiting') void load()
   })
-
   useRoomMemberAutoJoin({
     gameCode,
     displayName: roomDisplayName,
@@ -157,7 +130,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     onJoin: (name) => join({ name }),
   })
 
-  // Submit Night Action
+  // ── Actions ──────────────────────────────────────────────────────────────────
+
   const submitNightAction = async (targetId: string) => {
     if (!myResumeToken) return
     setActing(true)
@@ -168,20 +142,12 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         body: JSON.stringify({ resumeToken: myResumeToken, targetPlayerId: targetId }),
       })
       const data = await res.json()
-      if (!res.ok) {
-        toastError(data.error ?? 'Action failed')
-      } else {
-        toastSuccess('Night action submitted')
-        await load()
-      }
-    } catch {
-      toastError('Action failed')
-    } finally {
-      setActing(false)
-    }
+      if (!res.ok) toastError(data.error ?? 'Action failed')
+      else { toastSuccess('Night action submitted'); await load() }
+    } catch { toastError('Action failed') }
+    finally { setActing(false) }
   }
 
-  // Submit Day Vote
   const submitDayVote = async (targetId: string | null) => {
     if (!myResumeToken) return
     setActing(true)
@@ -192,20 +158,12 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         body: JSON.stringify({ resumeToken: myResumeToken, targetPlayerId: targetId }),
       })
       const data = await res.json()
-      if (!res.ok) {
-        toastError(data.error ?? 'Vote failed')
-      } else {
-        toastSuccess(targetId ? 'Vote submitted' : 'Vote cleared/skipped')
-        await load()
-      }
-    } catch {
-      toastError('Vote failed')
-    } finally {
-      setActing(false)
-    }
+      if (!res.ok) toastError(data.error ?? 'Vote failed')
+      else { toastSuccess(targetId ? 'Vote submitted' : 'Vote cleared/skipped'); await load() }
+    } catch { toastError('Vote failed') }
+    finally { setActing(false) }
   }
 
-  // Auto advance trigger on deadline expiration
   const triggerAutoAdvance = useCallback(async () => {
     try {
       await fetch(`/api/mafia/${gameCode}/advance`, {
@@ -214,19 +172,17 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         body: JSON.stringify({ isAuto: true }),
       })
       await load()
-    } catch {
-      // Ignore
-    }
+    } catch { /* ignore */ }
   }, [gameCode, load])
 
-  const sendMafiaMessage = useCallback(
-    async (msg: string) => {
+  const sendChat = useCallback(
+    async (msg: string, scope: 'night' | 'day' | 'ghost') => {
       if (!myResumeToken) return
       try {
         const res = await fetch(`/api/mafia/${gameCode}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ resumeToken: myResumeToken, message: msg }),
+          body: JSON.stringify({ resumeToken: myResumeToken, message: msg, scope }),
         })
         if (!res.ok) {
           const data = await res.json()
@@ -234,42 +190,19 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         } else {
           await load()
         }
-      } catch {
-        toastError('Failed to send message')
-      }
+      } catch { toastError('Failed to send message') }
     },
     [gameCode, myResumeToken, load, toastError]
   )
 
-  const sendDayMessage = useCallback(
-    async (msg: string) => {
-      if (!myResumeToken) return
-      try {
-        const res = await fetch(`/api/mafia/${gameCode}/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ resumeToken: myResumeToken, message: msg, scope: 'day' }),
-        })
-        if (!res.ok) {
-          const data = await res.json()
-          toastError(data.error ?? 'Failed to send message')
-        } else {
-          await load()
-        }
-      } catch {
-        toastError('Failed to send message')
-      }
-    },
-    [gameCode, myResumeToken, load, toastError]
-  )
+  const sendMafiaMessage = useCallback((msg: string) => sendChat(msg, 'night'), [sendChat])
+  const sendDayMessage = useCallback((msg: string) => sendChat(msg, 'day'), [sendChat])
+  const sendGhostMessage = useCallback((msg: string) => sendChat(msg, 'ghost'), [sendChat])
 
   const [replayReadyPending, setReplayReadyPending] = useState(false)
   const toggleReplayReady = useCallback(
     async (ready: boolean) => {
-      if (!myResumeToken) {
-        toastError('Your player session expired — rejoin to continue')
-        return
-      }
+      if (!myResumeToken) { toastError('Your player session expired — rejoin to continue'); return }
       setReplayReadyPending(true)
       try {
         const res = await fetch('/api/players/ready', {
@@ -282,9 +215,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         await load()
       } catch (err) {
         toastError(err instanceof Error ? err.message : 'Failed to update ready')
-      } finally {
-        setReplayReadyPending(false)
-      }
+      } finally { setReplayReadyPending(false) }
     },
     [gameCode, myResumeToken, load, toastError]
   )
@@ -292,11 +223,13 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))
 
+  // ── Screens ──────────────────────────────────────────────────────────────────
+
   if (screen === 'loading') {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-950 text-purple-200">
+      <div className="flex h-screen items-center justify-center bg-[var(--background)] text-[var(--foreground)]">
         <div className="flex flex-col items-center space-y-4">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-purple-500 border-t-transparent" />
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-[var(--primary)] border-t-transparent" />
           <p className="text-lg font-medium">Entering the village...</p>
         </div>
       </div>
@@ -305,14 +238,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'not_found') {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-950 text-slate-200">
+      <div className="flex h-screen items-center justify-center bg-[var(--background)] text-[var(--foreground)]">
         <div className="text-center space-y-4">
           <h1 className="text-3xl font-extrabold text-red-500">Room Not Found</h1>
-          <p>This game room does not exist or has expired.</p>
-          <button
-            onClick={() => router.push('/')}
-            className="px-6 py-2 bg-purple-600 hover:bg-purple-700 rounded-md font-semibold text-white transition"
-          >
+          <p className="text-[var(--muted)]">This game room does not exist or has expired.</p>
+          <button onClick={() => router.push('/')} className="btn-primary px-6 py-2 rounded-md font-semibold transition">
             Go Home
           </button>
         </div>
@@ -322,11 +252,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   const cfg = gameTypeConfig('mafia')
   const myName = players.find((p) => p.id === myPlayerId)?.name ?? ''
-  const handlePlayerLeft = () => {
-    clearPlayerSession(gameCode)
-    setMyPlayerId(null)
-    void load()
-  }
+  const handlePlayerLeft = () => { clearPlayerSession(gameCode); setMyPlayerId(null); void load() }
 
   if (screen === 'join') {
     const joiningAsViewer = game?.status === 'active'
@@ -404,7 +330,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  // Active game view
+  // ── Active game ───────────────────────────────────────────────────────────────
+
   if (screen === 'active' && mafiaState) {
     const {
       phase,
@@ -416,357 +343,97 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       lastNightMafiaHadTarget,
       lastVoteResultPlayerId,
       dayChatMessages,
+      ghostChatMessages,
+      voteTallies,
     } = mafiaState
 
     const me = publicPlayers.find((p) => p.id === myPlayerId)
     const amISpectator = !!myPlayerId && me == null
     const amIAlive = me != null && me.isAlive !== false
-    const myRole = myState?.role
-    const myTeam = myState?.team
-
-    // Get killed player name
     const killedPlayer = publicPlayers.find((p) => p.id === lastNightKillPlayerId)
     const votedPlayer = publicPlayers.find((p) => p.id === lastVoteResultPlayerId)
 
     return (
-      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col font-sans">
+      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col">
         {isViewer && <ViewerModeBanner />}
 
-        {/* Header */}
-        <header className="px-6 py-4 border-b border-[var(--border)] bg-[var(--card)] backdrop-blur flex justify-between items-center shadow-lg">
-          <div className="flex items-center space-x-3">
-            <span className="text-2xl">🐺</span>
+        <header className="px-4 py-3 border-b border-[var(--border)] bg-[var(--card)] flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <span className="text-xl">🐺</span>
             <div>
-              <h1 className="font-bold text-lg text-[var(--primary)]">Mafia</h1>
-              <p className="text-xs text-indigo-400 uppercase tracking-widest font-semibold">
-                {phase === 'role_reveal' ? 'Intro' : `Day ${dayNumber} — ${phase.replace('_', ' ')}`}
+              <h1 className="font-bold text-base text-[var(--primary)] leading-tight">Mafia</h1>
+              <p className="text-[10px] text-[var(--muted)] uppercase tracking-widest font-semibold">
+                {phase === 'role_reveal' ? 'Role Reveal' : `Day ${dayNumber} · ${phase.replace(/_/g, ' ')}`}
               </p>
             </div>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center gap-2">
             <GameRulesLink gameType="mafia" />
             <PlayerSessionControls
               gameCode={gameCode}
               playerId={myPlayerId!}
               currentName={myName}
-              onRenamed={() => {
-                void load()
-              }}
+              onRenamed={() => void load()}
               onLeft={handlePlayerLeft}
             />
           </div>
         </header>
 
-        {/* Timer Banner */}
-        <PhaseTimer deadline={phaseDeadline} onExpired={triggerAutoAdvance} />
+        <MafiaPhaseTimer deadline={phaseDeadline} onExpired={triggerAutoAdvance} />
 
-        {/* Main Content Grid */}
-        <main className="flex-1 max-w-4xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Left panel: My Secret Role & Status */}
-          <div className="md:col-span-1 glass-card border border-[var(--border)] rounded-2xl p-6 flex flex-col items-center justify-center text-center shadow-xl">
-            <h2 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4">
-              Your Identity
-            </h2>
-            {myState ? (
-              <div className="flex flex-col items-center space-y-3">
-                <div className="text-6xl animate-pulse">
-                  {myRole === 'mafia' ? '🔪' : myRole === 'doctor' ? '🏥' : myRole === 'detective' ? '🔍' : '🏘️'}
-                </div>
-                <div
-                  className={`text-2xl font-extrabold tracking-wider ${myTeam === 'mafia' ? 'text-red-500' : 'text-emerald-400'}`}
-                >
-                  {myRole ? myRole.toUpperCase() : 'VILLAGER'}
-                </div>
-                <div className="text-xs text-muted px-3 py-1 bg-[var(--surface-inset-bg)] rounded-full border border-[var(--border)]">
-                  Team: {myTeam === 'mafia' ? 'Mafia 🔪' : 'Village 🏘️'}
-                </div>
-                <div className="mt-4 text-sm text-slate-300">
-                  {myRole === 'mafia' &&
-                    'Eliminate villagers during the night and avoid getting voted out during the day.'}
-                  {myRole === 'doctor' && 'Protect one player each night from getting eliminated.'}
-                  {myRole === 'detective' && 'Investigate one player each night to uncover their alignment.'}
-                  {myRole === 'villager' && 'Discuss during the day to find the hidden Mafia members.'}
-                </div>
-                {myState.mafiaTeammates.length > 0 && (
-                  <div className="mt-6 w-full text-left bg-red-950/20 border border-red-900/30 rounded-lg p-3">
-                    <div className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-2">Mafia Allies</div>
-                    <div className="text-sm text-red-200">{myState.mafiaTeammates.join(', ')}</div>
-                  </div>
-                )}
-                {myState.detectiveResult && (
-                  <div className="mt-6 w-full text-left bg-emerald-950/20 border border-emerald-900/30 rounded-lg p-3">
-                    <div className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-2">
-                      Investigation Result
-                    </div>
-                    <div className="text-sm text-emerald-200">
-                      <strong>{myState.detectiveResult.targetName}</strong> is{' '}
-                      <span
-                        className={myState.detectiveResult.alignment === 'mafia' ? 'text-red-400' : 'text-emerald-400'}
-                      >
-                        {myState.detectiveResult.alignment.toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <span className="text-4xl text-slate-600 block mb-2">👁️</span>
-                <span className="text-slate-400 font-semibold text-sm">Spectating</span>
-              </div>
-            )}
-            <div className="mt-6 pt-4 border-t border-indigo-950/80 w-full text-center">
-              <span
-                className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${amIAlive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}
-              >
-                {amIAlive ? '💚 ALIVE' : '💀 DEAD'}
-              </span>
-            </div>
-          </div>
+        <main className="flex-1 max-w-5xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+          <MafiaIdentityPanel
+            myState={myState}
+            myPlayerId={myPlayerId}
+            amIAlive={amIAlive}
+            mafiaChatMessages={myState?.mafiaChatMessages ?? []}
+            onSendMafiaMessage={sendMafiaMessage}
+          />
 
-          {/* Right panel: Game Board/Phases & Public Players */}
-          <div className="md:col-span-2 space-y-6">
-            {/* Phase instruction banner */}
-            <div className="glass-card border border-[var(--border)] rounded-2xl p-6 shadow-xl">
-              {phase === 'role_reveal' && (
-                <div className="text-center py-6 space-y-4">
-                  <h3 className="text-xl font-bold text-purple-300">Look at your role Card!</h3>
-                  <p className="text-sm text-slate-300">
-                    Secret roles have been assigned. Do not show your screen to anyone!
-                  </p>
-                  <div className="text-5xl animate-bounce">👁️🕵️🐺</div>
-                </div>
-              )}
+          <div className="md:col-span-2 space-y-4">
+            <MafiaPhaseCard
+              phase={phase}
+              dayNumber={dayNumber}
+              publicPlayers={publicPlayers}
+              myPlayerId={myPlayerId}
+              myState={myState}
+              voteTallies={voteTallies}
+              killedPlayer={killedPlayer}
+              votedPlayer={votedPlayer}
+              lastNightMafiaHadTarget={lastNightMafiaHadTarget}
+              amIAlive={amIAlive}
+              amISpectator={amISpectator}
+              acting={acting}
+              onNightAction={submitNightAction}
+              onDayVote={submitDayVote}
+            />
 
-              {phase === 'night' && (
-                <div>
-                  <h3 className="text-xl font-bold text-purple-300 mb-3">Night Actions</h3>
-                  {amISpectator ? (
-                    <p className="text-sm text-indigo-300">You are watching. Night actions are in progress...</p>
-                  ) : !amIAlive ? (
-                    <p className="text-sm text-red-400">
-                      You are dead and sleeping eternally. Waiting for phase to end.
-                    </p>
-                  ) : myRole === 'villager' ? (
-                    <div className="text-center py-6 space-y-3">
-                      <div className="text-5xl">💤</div>
-                      <p className="text-sm text-indigo-300">
-                        The village is sleeping. Close your eyes and wait for sunrise...
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <p className="text-sm text-slate-300">
-                        {myRole === 'mafia' && 'Vote on a target to eliminate.'}
-                        {myRole === 'doctor' && 'Select a player to save from the Mafia tonight.'}
-                        {myRole === 'detective' && 'Select a player to investigate their alignment.'}
-                      </p>
+            <MafiaPlayersGrid players={publicPlayers} phase={phase} voteTallies={voteTallies} />
 
-                      {myState?.nightActionSubmitted ? (
-                        <div className="p-4 bg-emerald-950/20 border border-emerald-900/40 rounded-lg text-emerald-400 text-sm font-semibold flex items-center space-x-2">
-                          <span>✓</span>
-                          <span>Your night action is submitted. Waiting for others...</span>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4">
-                          {publicPlayers
-                            .filter((p) => p.isAlive && (myRole !== 'doctor' || p.id !== myPlayerId)) // Doctor cannot self heal
-                            .map((p) => (
-                              <button
-                                key={p.id}
-                                disabled={acting}
-                                onClick={() => submitNightAction(p.id)}
-                                className="px-4 py-3 bg-indigo-950/40 border border-indigo-900/40 hover:bg-indigo-900/60 hover:border-purple-500/50 rounded-lg text-left text-sm font-medium transition flex justify-between items-center"
-                              >
-                                <span>{p.name}</span>
-                                <span className="text-xs text-purple-400 uppercase tracking-widest font-bold">
-                                  Select
-                                </span>
-                              </button>
-                            ))}
-                        </div>
-                      )}
-
-                      {myRole === 'mafia' && myState?.mafiaChatMessages && (
-                        <MafiaNightChat
-                          messages={myState.mafiaChatMessages}
-                          onSendMessage={sendMafiaMessage}
-                          myPlayerId={myPlayerId}
-                        />
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {phase === 'day_report' && (
-                <div className="text-center py-6 space-y-4">
-                  <h3 className="text-2xl font-black text-red-500 tracking-wider">SUNRISE</h3>
-                  {killedPlayer ? (
-                    <div className="space-y-2">
-                      <p className="text-lg text-slate-200">Last night, the Mafia eliminated:</p>
-                      <div className="text-3xl font-extrabold text-red-400 underline">{killedPlayer.name}</div>
-                      <p className="text-sm text-slate-400">
-                        They were a <strong>{killedPlayer.role?.toUpperCase()}</strong>
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-lg text-emerald-400 font-semibold">
-                      {lastNightMafiaHadTarget
-                        ? 'The Doctor saved the village! Nobody died.'
-                        : 'The Mafia chose no target. Nobody died.'}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {phase === 'discussion' && (
-                <div className="space-y-4">
-                  <h3 className="text-xl font-bold text-purple-300">Day Discussion</h3>
-                  <p className="text-sm text-slate-300">
-                    Discuss with the room and figure out who the Mafia is. Voice chat is recommended!
-                  </p>
-                  <div className="h-32 bg-slate-950/50 border border-indigo-950/60 rounded-lg flex items-center justify-center">
-                    <span className="text-indigo-400 text-sm italic font-mono animate-pulse">
-                      🔊 Open Discussion Active
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {phase === 'voting' && (
-                <div>
-                  <h3 className="text-xl font-bold text-purple-300 mb-3">Village Voting</h3>
-                  {amISpectator ? (
-                    <p className="text-sm text-indigo-300">You are watching. Voting is in progress...</p>
-                  ) : !amIAlive ? (
-                    <p className="text-sm text-red-400">You are dead and cannot vote.</p>
-                  ) : (
-                    <div className="space-y-4">
-                      <p className="text-sm text-slate-300">
-                        Vote for who you suspect is Mafia. You can change your vote or clear it.
-                      </p>
-
-                      {myState?.dayVoteSubmitted ? (
-                        <div className="space-y-3">
-                          <div className="p-4 bg-emerald-950/20 border border-emerald-900/40 rounded-lg text-emerald-400 text-sm font-semibold flex items-center justify-between">
-                            <span className="flex items-center space-x-2">
-                              <span>✓</span>
-                              <span>Your vote is submitted.</span>
-                            </span>
-                            <button
-                              disabled={acting}
-                              onClick={() => submitDayVote(null)}
-                              className="px-3 py-1 bg-red-950/40 hover:bg-red-900/50 text-red-300 text-xs rounded border border-red-900/40 transition"
-                            >
-                              Change Vote
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4">
-                          {publicPlayers
-                            .filter((p) => p.isAlive)
-                            .map((p) => (
-                              <button
-                                key={p.id}
-                                disabled={acting}
-                                onClick={() => submitDayVote(p.id)}
-                                className="px-4 py-3 bg-indigo-950/40 border border-indigo-900/40 hover:bg-indigo-900/60 hover:border-purple-500/50 rounded-lg text-left text-sm font-medium transition flex justify-between items-center"
-                              >
-                                <span>{p.name}</span>
-                                <span className="text-xs text-purple-400 uppercase tracking-widest font-bold">
-                                  Vote
-                                </span>
-                              </button>
-                            ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {phase === 'elimination' && (
-                <div className="text-center py-6 space-y-4">
-                  <h3 className="text-2xl font-black text-red-500 tracking-wider">VOTE RESULTS</h3>
-                  {votedPlayer ? (
-                    <div className="space-y-2">
-                      <p className="text-lg text-slate-200">The village voted to eliminate:</p>
-                      <div className="text-3xl font-extrabold text-red-400 underline">{votedPlayer.name}</div>
-                      <p className="text-sm text-slate-400">
-                        They were a <strong>{votedPlayer.role?.toUpperCase()}</strong>
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-lg text-slate-400 font-semibold">
-                      The vote ended in a tie or skip. No one was eliminated.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Daytime Public Chat (shown during all daytime phases) */}
             {phase !== 'night' && phase !== 'role_reveal' && (
               <MafiaDayChat
-                messages={dayChatMessages || []}
+                messages={dayChatMessages ?? []}
                 onSendMessage={sendDayMessage}
                 myPlayerId={myPlayerId}
                 disabled={!amIAlive || amISpectator}
               />
             )}
 
-            {/* Players List Panel */}
-            <div className="glass-card border border-[var(--border)] rounded-2xl p-6 shadow-xl">
-              <h3 className="text-sm font-semibold tracking-widest uppercase text-[var(--primary)] mb-4">
-                Players Directory
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {publicPlayers.map((p) => (
-                  <div
-                    key={p.id}
-                    className={`flex items-center justify-between p-3 rounded-lg border transition ${p.isAlive ? 'bg-slate-950/40 border-indigo-950/40' : 'bg-slate-950/20 border-red-950/30 opacity-60'}`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div
-                        className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold ${p.isAlive ? 'bg-indigo-650 text-white' : 'bg-slate-800 text-slate-400'}`}
-                      >
-                        {p.isAlive ? '👤' : '💀'}
-                      </div>
-                      <div>
-                        <span
-                          className={`font-semibold ${p.isAlive ? 'text-slate-100' : 'line-through text-slate-400'}`}
-                        >
-                          {p.name}
-                        </span>
-                        {!p.isAlive && p.role && (
-                          <span className="block text-xs font-semibold text-red-400 uppercase">{p.role}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      {p.isAlive ? (
-                        <span className="text-xs px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full font-bold">
-                          Alive
-                        </span>
-                      ) : (
-                        <span className="text-xs px-2 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-full font-bold">
-                          {p.deathCause === 'mafia_kill' ? 'Killed' : 'Voted out'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {!amIAlive && myPlayerId && (
+              <MafiaGhostChat
+                messages={ghostChatMessages ?? []}
+                onSendMessage={sendGhostMessage}
+                myPlayerId={myPlayerId}
+              />
+            )}
           </div>
         </main>
       </div>
     )
   }
 
-  // Fallback / finished state
+  // ── Finished / game over ──────────────────────────────────────────────────────
+
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col justify-center items-center p-6 text-center">
       <div className="max-w-md w-full glass-card border border-[var(--border)] rounded-2xl p-8 shadow-2xl space-y-6">
@@ -774,15 +441,17 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
         {mafiaState?.winningTeam ? (
           <div className="space-y-2">
-            <p className="text-muted text-sm uppercase tracking-widest font-bold">Winning Team</p>
+            <p className="text-[var(--muted)] text-sm uppercase tracking-widest font-bold">Winning Team</p>
             <div
-              className={`text-3xl font-black ${mafiaState.winningTeam === 'mafia' ? 'text-red-500' : 'text-emerald-400'}`}
+              className={`text-3xl font-black ${
+                mafiaState.winningTeam === 'mafia' ? 'text-red-500' : 'text-emerald-400'
+              }`}
             >
               {mafiaState.winningTeam === 'mafia' ? 'MAFIA 🔪' : 'VILLAGE 🏘️'}
             </div>
           </div>
         ) : (
-          <p className="text-muted">The game has finished!</p>
+          <p className="text-[var(--muted)]">The game has finished!</p>
         )}
 
         <div className="border-t border-[var(--border)] pt-6">
@@ -795,9 +464,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
                 key={p.id}
                 className="flex justify-between items-center text-sm p-2 rounded bg-[var(--surface-inset-bg)] border border-[var(--border)]"
               >
-                <span className="font-semibold text-muted">{p.name}</span>
+                <span className="font-semibold text-[var(--muted)]">{p.name}</span>
                 <span
-                  className={`font-mono text-xs uppercase ${p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}
+                  className={`font-mono text-xs uppercase ${
+                    p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'
+                  }`}
                 >
                   {p.role}
                 </span>
@@ -806,186 +477,10 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           </div>
         </div>
 
-        <button
-          onClick={() => router.push('/')}
-          className="w-full py-3 btn-secondary font-semibold rounded-xl transition"
-        >
+        <button onClick={() => router.push('/')} className="w-full py-3 btn-secondary font-semibold rounded-xl transition">
           Exit to Home
         </button>
       </div>
-    </div>
-  )
-}
-
-function PhaseTimer({ deadline, onExpired }: { deadline: string | null; onExpired: () => void }) {
-  const [timeLeft, setTimeLeft] = useState<number | null>(null)
-
-  useEffect(() => {
-    if (!deadline) {
-      setTimeLeft(null)
-      return
-    }
-    const target = new Date(deadline).getTime()
-    let expiredFired = false
-    const update = () => {
-      const remaining = Math.max(0, Math.round((target - Date.now()) / 1000))
-      setTimeLeft(remaining)
-      if (remaining <= 0 && !expiredFired) {
-        expiredFired = true
-        onExpired()
-      }
-    }
-    update()
-    const timer = setInterval(update, 1000)
-    return () => clearInterval(timer)
-  }, [deadline, onExpired])
-
-  if (timeLeft === null || timeLeft <= 0) return null
-
-  return (
-    <div className="bg-purple-950/20 border-b border-purple-900/30 py-2 flex items-center justify-center space-x-2 text-sm">
-      <span className="animate-pulse">⏳</span>
-      <span className="text-purple-300 font-medium">Time left in phase:</span>
-      <span className="font-mono font-extrabold text-purple-400">{timeLeft}s</span>
-    </div>
-  )
-}
-
-interface MafiaChatProps {
-  messages: MafiaChatMessage[]
-  onSendMessage: (msg: string) => Promise<void>
-  myPlayerId: string | null
-}
-
-function MafiaNightChat({ messages, onSendMessage, myPlayerId }: MafiaChatProps) {
-  const [text, setText] = useState('')
-  const [sending, setSending] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (!text.trim() || sending) return
-    setSending(true)
-    try {
-      await onSendMessage(text.trim())
-      setText('')
-    } finally {
-      setSending(false)
-    }
-  }
-
-  return (
-    <div className="mt-6 border-t border-red-950/40 pt-6">
-      <h4 className="text-sm font-semibold tracking-wider text-red-400 uppercase mb-3">🔴 Mafia Secret Night Chat</h4>
-      <div className="bg-slate-950/60 border border-red-950/30 rounded-lg p-4 h-48 overflow-y-auto space-y-2 flex flex-col justify-end">
-        {messages.length === 0 ? (
-          <p className="text-xs text-slate-500 italic text-center py-4">No messages yet. Align on your target here!</p>
-        ) : (
-          messages.map((m) => {
-            const isMe = m.sender_player_id === myPlayerId
-            return (
-              <div key={m.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                <div
-                  className={`px-3 py-1.5 rounded-lg text-sm max-w-[80%] ${isMe ? 'bg-red-600/70 text-white border border-red-500/20' : 'bg-slate-800 text-slate-200 border border-slate-700/30'}`}
-                >
-                  {!isMe && <span className="block text-[10px] text-red-300 font-bold mb-0.5">{m.sender_name}</span>}
-                  <span>{m.message}</span>
-                </div>
-              </div>
-            )
-          })
-        )}
-      </div>
-      <form onSubmit={handleSubmit} className="mt-2 flex space-x-2">
-        <input
-          type="text"
-          value={text}
-          disabled={sending}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Whisper to other Mafia..."
-          className="flex-1 px-3 py-2 bg-slate-950 border border-red-950/30 rounded-lg text-sm focus:outline-none focus:border-red-500/50 text-slate-100 placeholder:text-slate-600"
-        />
-        <button
-          type="submit"
-          disabled={sending || !text.trim()}
-          className="px-4 py-2 bg-red-750 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition"
-        >
-          Send
-        </button>
-      </form>
-    </div>
-  )
-}
-
-interface MafiaDayChatProps {
-  messages: MafiaChatMessage[]
-  onSendMessage: (msg: string) => Promise<void>
-  myPlayerId: string | null
-  disabled?: boolean
-}
-
-function MafiaDayChat({ messages, onSendMessage, myPlayerId, disabled = false }: MafiaDayChatProps) {
-  const [text, setText] = useState('')
-  const [sending, setSending] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (!text.trim() || sending || disabled) return
-    setSending(true)
-    try {
-      await onSendMessage(text.trim())
-      setText('')
-    } finally {
-      setSending(false)
-    }
-  }
-
-  return (
-    <div className="glass-card p-6 rounded-xl border border-[var(--border)] mt-6">
-      <h4 className="text-sm font-semibold tracking-wider text-[var(--primary)] uppercase mb-3">
-        💬 Town Discussion Chat
-      </h4>
-      <div className="bg-[var(--surface-inset-bg)] border border-[var(--border)] rounded-lg p-4 h-48 overflow-y-auto space-y-2 flex flex-col justify-end font-sans">
-        {messages.length === 0 ? (
-          <p className="text-xs text-muted italic text-center py-4">
-            No messages yet. Share your thoughts or point fingers!
-          </p>
-        ) : (
-          messages.map((m) => {
-            const isMe = m.sender_player_id === myPlayerId
-            return (
-              <div key={m.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                <div
-                  className={`px-3 py-1.5 rounded-lg text-sm max-w-[80%] ${
-                    isMe
-                      ? 'bg-[var(--primary)] text-white border border-[var(--primary-glow)] font-sans'
-                      : 'bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] font-sans'
-                  }`}
-                >
-                  {!isMe && <span className="block text-[10px] text-muted font-bold mb-0.5">{m.sender_name}</span>}
-                  <span>{m.message}</span>
-                </div>
-              </div>
-            )
-          })
-        )}
-      </div>
-      <form onSubmit={handleSubmit} className="mt-2 flex space-x-2">
-        <input
-          type="text"
-          value={text}
-          disabled={sending || disabled}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={disabled ? 'You are dead/spectator and cannot type...' : 'Type your arguments here...'}
-          className="flex-1 px-3 py-2 bg-[var(--background)] border border-[var(--border)] rounded-lg text-sm focus:outline-none focus:border-[var(--primary)] text-[var(--foreground)] placeholder:text-muted"
-        />
-        <button
-          type="submit"
-          disabled={sending || !text.trim() || disabled}
-          className="px-4 py-2 btn-primary text-sm font-semibold rounded-lg transition"
-        >
-          Send
-        </button>
-      </form>
     </div>
   )
 }

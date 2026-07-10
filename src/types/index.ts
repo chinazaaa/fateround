@@ -175,7 +175,7 @@ export interface CodewordsMessage {
   created_at: string
   player_name?: string
 }
-export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate' | 'arctic' | 'naija' | 'mafia'
+export type ThemeId = 'default' | 'neon' | 'retro' | 'elegant' | 'tropical' | 'pirate' | 'arctic' | 'naija'
 export type WyrChoice = 'a' | 'b'
 
 export type ParticipantGender = 'male' | 'female'
@@ -1364,7 +1364,7 @@ export interface BingoClaim {
 // --- MAFIA TYPES ---
 export type MafiaRole = 'villager' | 'mafia' | 'doctor' | 'detective'
 export type MafiaTeam = 'village' | 'mafia'
-export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'discussion' | 'voting' | 'elimination' | 'game_over'
+export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'elimination' | 'game_over'
 
 export interface MafiaSession {
   id: string

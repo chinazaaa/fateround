@@ -7,7 +7,7 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { POLL_INTERVALS, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
-import type { MafiaPhase, MafiaTeam, MafiaRole, Game, GameStatus, Player } from '@/types'
+import type { MafiaPhase, MafiaTeam, MafiaRole, Game, GameStatus, Player, ThemeId } from '@/types'
 import { MAFIA_MIN_PLAYERS } from '@/lib/mafia'
 import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaitingFooter'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
@@ -42,6 +42,7 @@ interface MafiaHostStateResponse {
   detectiveEnabled: boolean
   anonymousVotes: boolean
   replayPending: boolean
+  theme?: ThemeId
   winningTeam: MafiaTeam | null
   players: HostPlayer[]
   lastNightKillPlayerId: string | null
@@ -85,7 +86,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     load()
   }, [load])
 
-  useApplyGameTheme('mafia')
+  useApplyGameTheme(mafiaState?.theme)
 
   // Table sync triggers state reload
   useGameTableSync(gameCode, [{ table: 'games', column: 'id' }, 'mafia_sessions', 'mafia_player_states'], () => {
@@ -241,6 +242,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
     mafia_detective_enabled: mafiaState.detectiveEnabled ?? true,
     mafia_anonymous_votes: mafiaState.anonymousVotes ?? false,
     replay_pending: mafiaState.replayPending,
+    theme: mafiaState.theme,
     created_at: new Date().toISOString(),
   } as unknown as Game
 
@@ -392,10 +394,10 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
               </button>
               <button
                 disabled={acting || phase === 'game_over'}
-                onClick={() => advancePhase('discussion')}
+                onClick={() => advancePhase('day')}
                 className="py-2 bg-indigo-950/50 hover:bg-indigo-900/60 text-xs font-medium rounded border border-indigo-900/40 transition"
               >
-                Force Discussion
+                Force Day
               </button>
             </div>
           </div>
@@ -460,7 +462,7 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
                       </strong>
                     </span>
                   )}
-                  {phase === 'voting' && (
+                  {phase === 'day' && (
                     <span className="text-slate-400">
                       Voted for:{' '}
                       <strong className="text-amber-400">
