@@ -1,5 +1,5 @@
 import type { GameType } from '@fateround/shared'
-import { BATCH_1_GAMES } from '@/components/games/GameRouter'
+import { MOBILE_SUPPORTED_GAMES } from '@/components/games/GameRouter'
 
 export const GAME_LABELS: Partial<Record<GameType, string>> = {
   ayo: 'Ayo',
@@ -11,9 +11,14 @@ export const GAME_LABELS: Partial<Record<GameType, string>> = {
   would_you_rather: 'Would You Rather',
   monopoly: 'Monopoly',
   quick_draw: 'Quick Draw',
+  matching_pairs: 'Matching Pairs',
+  sudoku: 'Sudoku',
+  yahtzee: 'Yahtzee',
+  snake_and_ladder: 'Snakes & Ladders',
+  ludo: 'Ludo',
 }
 
-export const MOBILE_SUPPORTED_GAMES = BATCH_1_GAMES
+export { MOBILE_SUPPORTED_GAMES }
 
 export function gameLabel(gameType: GameType): string {
   return GAME_LABELS[gameType] ?? gameType.replace(/_/g, ' ')

@@ -63,6 +63,7 @@ export interface Game {
   ayo_variant?: string | null
   participant_mode?: ParticipantMode | string | null
   pair_vote_mode?: PairVoteMode | string | null
+  ludo_variant?: string | null
   custom_questions?: unknown[] | null
 }
 
@@ -187,6 +188,8 @@ export interface Round {
   ended_at: string | null
   anime_metadata?: AnimeMetadata | null
   trivia_metadata?: TriviaMetadata | null
+  memory_match_metadata?: MatchingPairsMetadata | null
+  sudoku_metadata?: SudokuMetadata | null
 }
 
 export interface VoteAssignment {
@@ -220,6 +223,178 @@ export interface TriviaAnswer {
   choice_index: number
   is_correct: boolean
   points: number
+}
+
+export type YahtzeeCategory =
+  | 'ones'
+  | 'twos'
+  | 'threes'
+  | 'fours'
+  | 'fives'
+  | 'sixes'
+  | 'three_kind'
+  | 'four_kind'
+  | 'full_house'
+  | 'small_straight'
+  | 'large_straight'
+  | 'yahtzee'
+  | 'chance'
+
+export type YahtzeePhase = 'rolling' | 'finished'
+export type YahtzeeCategoryPoints = Record<YahtzeeCategory, number | null>
+
+export interface YahtzeeSession {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  phase: YahtzeePhase
+  dice: number[]
+  held: boolean[]
+  rolls_remaining: number
+  rolls_this_turn: number
+  status_message: string | null
+  winner_player_id: string | null
+  turn_deadline_at: string | null
+}
+
+export interface YahtzeePlayerScore {
+  id: string
+  game_id: string
+  player_id: string
+  scores: { categories: YahtzeeCategoryPoints }
+  player_order: number
+}
+
+export type MatchingPairsGridSize = 8 | 16
+
+export interface MatchingPairEntry {
+  icon: string
+  color: string
+  pairIndex: number
+}
+
+export interface MatchingPairsPlayerBoard {
+  playerId: string
+  cardOrder: number[]
+}
+
+export interface MatchingPairsMetadata {
+  gridSizePairs: MatchingPairsGridSize
+  pairs: MatchingPairEntry[]
+  playerBoards: MatchingPairsPlayerBoard[]
+  seed: number
+}
+
+export interface MatchingPairsSubmission {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  pair_index: number
+  is_match: boolean
+  streak_at_time: number
+  streak_bonus: number
+  points_after: number
+  submitted_at: string
+}
+
+export interface MatchingPairsProgress {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  pairs_matched: number
+  wrong_attempts: number
+  finished: boolean
+  finish_rank: number | null
+}
+
+export interface SudokuMetadata {
+  puzzle: number[][]
+}
+
+export interface SudokuSubmission {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  cell_row: number | null
+  cell_col: number | null
+  submitted_value: number | null
+  is_correct: boolean
+  points_awarded: number
+}
+
+export type SnakeLadderColor = 'red' | 'blue' | 'green' | 'yellow' | 'purple' | 'orange'
+export type SnakeLadderPhase = 'roll' | 'finished'
+
+export interface SnakeLadderSession {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  phase: SnakeLadderPhase
+  last_roll: number | null
+  last_from: number | null
+  last_to: number | null
+  last_event: string | null
+  last_player_id: string | null
+  consecutive_sixes: number
+  status_message: string | null
+  winner_player_id: string | null
+  turn_deadline_at: string | null
+}
+
+export interface SnakeLadderPlayerState {
+  id: string
+  game_id: string
+  player_id: string
+  color: SnakeLadderColor
+  position: number
+  player_order: number
+}
+
+export type LudoColor = 'red' | 'green' | 'yellow' | 'blue'
+export type LudoPieceZone = 'base' | 'track' | 'home' | 'finished'
+export type LudoPhase = 'roll' | 'move' | 'finished'
+export type LudoVariant = 'modern' | 'traditional'
+
+export interface LudoDiceRoll {
+  d1: number
+  d2: number
+  total: number
+  doubles: boolean
+}
+
+export interface LudoPiece {
+  id: number
+  zone: LudoPieceZone
+  pos: number
+}
+
+export interface LudoSession {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  phase: LudoPhase
+  last_dice: LudoDiceRoll | null
+  remaining_dice: number[] | null
+  consecutive_sixes: number
+  extra_turn: boolean
+  status_message: string | null
+  winner_player_id: string | null
+  turn_deadline_at: string | null
+}
+
+export interface LudoPlayerState {
+  id: string
+  game_id: string
+  player_id: string
+  color: LudoColor
+  pieces: LudoPiece[]
+  player_order: number
 }
 
 export type MobileConfig = {

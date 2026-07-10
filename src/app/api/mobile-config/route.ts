@@ -16,6 +16,14 @@ const BATCH_2_GAMES: GameType[] = [
   'parent_approval',
 ]
 
+const BATCH_3_GAMES: GameType[] = [
+  'matching_pairs',
+  'sudoku',
+  'yahtzee',
+  'snake_and_ladder',
+  'ludo',
+]
+
 /**
  * Server-driven mobile feature flags. Flip `mobileSupportedGames` when a native
  * screen is ready — no app store review required.
@@ -23,7 +31,7 @@ const BATCH_2_GAMES: GameType[] = [
 export async function GET() {
   return NextResponse.json({
     minAppVersion: '0.1.0',
-    mobileSupportedGames: [...BATCH_1_GAMES, ...BATCH_2_GAMES],
+    mobileSupportedGames: [...BATCH_1_GAMES, ...BATCH_2_GAMES, ...BATCH_3_GAMES],
     maintenanceMessage: null,
     forceWebFallbackFor: [] as GameType[],
   })

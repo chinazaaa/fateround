@@ -12,6 +12,12 @@
     "./checkers": "./src/checkers.ts",
     "./ayo": "./src/ayo.ts",
     "./trivia": "./src/trivia.ts",
-    "./poll-games": "./src/poll-games.ts"
+    "./poll-games": "./src/poll-games.ts",
+    "./memory-match": "./src/memory-match.ts",
+    "./sudoku": "./src/sudoku.ts",
+    "./yahtzee": "./src/yahtzee.ts",
+    "./snake-and-ladder": "./src/snake-and-ladder.ts",
+    "./ludo": "./src/ludo.ts",
+    "./batch-3-games": "./src/batch-3-games.ts"
   }
 }

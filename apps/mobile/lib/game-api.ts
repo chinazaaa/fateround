@@ -52,3 +52,57 @@ export function postVote(gameId: string, resumeToken: string, roundId: string, b
     ...body,
   })
 }
+
+export function postMatchingPairsFlip(
+  gameId: string,
+  resumeToken: string,
+  pairIndex: number,
+  isMatch: boolean
+) {
+  return postJson<{ success: boolean; pointsAfter: number; finished?: boolean }>('/api/matching-pairs/flip', {
+    gameId,
+    resumeToken,
+    pairIndex,
+    isMatch,
+  })
+}
+
+export function postSudokuSubmit(
+  gameId: string,
+  resumeToken: string,
+  row: number,
+  col: number,
+  value: number
+) {
+  return postJson<{ success: boolean; isCorrect: boolean; pointsAwarded: number }>('/api/sudoku/submit', {
+    gameId,
+    resumeToken,
+    row,
+    col,
+    value,
+  })
+}
+
+export function postYahtzeeRoll(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/yahtzee/roll', { gameId, resumeToken })
+}
+
+export function postYahtzeeHold(gameId: string, resumeToken: string, held: boolean[]) {
+  return postJson<{ success: boolean }>('/api/yahtzee/hold', { gameId, resumeToken, held })
+}
+
+export function postYahtzeeScore(gameId: string, resumeToken: string, category: string) {
+  return postJson<{ success: boolean }>('/api/yahtzee/score', { gameId, resumeToken, category })
+}
+
+export function postSnakeLadderRoll(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean; roll?: number }>('/api/snake-and-ladder/roll', { gameId, resumeToken })
+}
+
+export function postLudoRoll(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean; dice?: unknown }>('/api/ludo/roll', { gameId, resumeToken })
+}
+
+export function postLudoMove(gameId: string, resumeToken: string, pieceId: number, diceIndex: number) {
+  return postJson<{ success: boolean }>('/api/ludo/move', { gameId, resumeToken, pieceId, diceIndex })
+}
