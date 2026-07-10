@@ -13,6 +13,7 @@
   "dependencies": {
     "@fateround/shared": "file:../../packages/shared",
     "@supabase/supabase-js": "^2.108.1",
+    "chess.js": "^1.4.0",
     "expo": "~57.0.4",
     "expo-constants": "~57.0.3",
     "expo-font": "~57.0.0",

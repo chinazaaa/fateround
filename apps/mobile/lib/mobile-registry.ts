@@ -6,6 +6,7 @@ export const GAME_LABELS: Partial<Record<GameType, string>> = {
   bingo: 'Bingo',
   checkers: 'Checkers',
   chess: 'Chess',
+  scrabble: 'Scrabble',
   tic_tac_toe: 'Tic Tac Toe',
   trivia: 'Trivia',
   would_you_rather: 'Would You Rather',
@@ -24,6 +25,8 @@ export const GAME_LABELS: Partial<Record<GameType, string>> = {
   word_rush: 'Word Rush',
   word_hunt: 'Word Hunt',
   i_call_on: 'I Call On',
+  mafia: 'Mafia',
+  codewords: 'Codewords',
 }
 
 export { MOBILE_SUPPORTED_GAMES }

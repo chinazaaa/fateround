@@ -1,5 +1,5 @@
 export const GAME_SELECT =
-  'id,title,game_type,status,current_round_number,timer_seconds,max_players,allow_viewers,allow_late_players,ayo_variant,participant_mode,pair_vote_mode,custom_questions,ludo_variant,rounds_count,question_source,describe_it_num_teams,describe_it_mode,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,word_rush_mode,word_rush_num_teams,word_rush_prompt_mode,word_rush_difficulty,session_started_at,game_duration_seconds'
+  'id,title,game_type,status,current_round_number,timer_seconds,max_players,allow_viewers,allow_late_players,ayo_variant,participant_mode,pair_vote_mode,custom_questions,ludo_variant,rounds_count,question_source,describe_it_num_teams,describe_it_mode,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,word_rush_mode,word_rush_num_teams,word_rush_prompt_mode,word_rush_difficulty,session_started_at,game_duration_seconds,chess_board_theme,chess_piece_set,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,operative_timer_seconds,codewords_player_picks,codewords_late_join,codewords_randomize_teams,mafia_doctor_enabled,mafia_detective_enabled,mafia_anonymous_votes'
 
 export const PLAYER_SELECT = 'id,game_id,name,gender,joined_at,spectator,is_eliminated'
 
@@ -41,6 +41,15 @@ export const TIC_TAC_TOE_SESSION_SELECT =
 
 export const CHECKERS_SESSION_SELECT =
   'id,game_id,player_red_id,player_black_id,board,current_turn,must_continue_from,status,winner_player_id,is_draw,status_message'
+
+export const CHESS_SESSION_SELECT =
+  'id,game_id,player_white_id,player_black_id,fen,pgn,current_turn,white_time_ms,black_time_ms,turn_started_at,last_move_from,last_move_to,in_check,status,result_reason,winner_player_id,is_draw,status_message,turn_deadline_at,created_at,updated_at'
+
+export const SCRABBLE_SESSION_SELECT =
+  'id,game_id,turn_order,current_turn_index,board,bag,phase,consecutive_passes,last_move,winner_player_id,is_tie,status_message,turn_deadline_at,clock_mode,turn_started_at,created_at,updated_at'
+
+export const SCRABBLE_PLAYER_STATE_SELECT =
+  'id,game_id,player_id,rack,score,player_order,clock_ms_remaining,timed_out,created_at'
 
 export const AYO_SESSION_SELECT =
   'id,game_id,player_a_id,player_b_id,pits,captured_a,captured_b,houses_a,houses_b,a_row_size,b_row_size,current_turn,status,winner_player_id,is_draw,status_message'
@@ -101,3 +110,13 @@ export const NPAT_ANSWER_SELECT =
 
 export const NPAT_MARK_SELECT =
   'id,game_id,round_id,marker_player_id,target_player_id,valid_name,valid_animal,valid_place,valid_thing,valid_food,marked_at'
+
+export const CODEWORDS_BOARD_SELECT =
+  'id,game_id,words,key,starting_team,revealed_indices,current_turn,guesses_remaining,current_clue_word,current_clue_number,winner,assassin_team,spymaster_timer_seconds,operative_timer_seconds,turn_phase,turn_deadline_at,created_at'
+
+export const CODEWORDS_PLAYER_ROLE_SELECT = 'id,game_id,player_id,team,role,created_at'
+
+export const CODEWORDS_GUESS_SELECT =
+  'id,game_id,board_id,player_id,cell_index,word,cell_type,clue_word,clue_number,team,created_at'
+
+export const CODEWORDS_MESSAGE_SELECT = 'id,game_id,player_id,team,text,created_at'

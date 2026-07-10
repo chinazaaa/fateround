@@ -81,6 +81,18 @@ export interface Game {
   session_started_at?: string | null
   game_duration_seconds?: number | null
   rounds_count?: number | null
+  chess_board_theme?: string | null
+  chess_piece_set?: string | null
+  scrabble_dictionary_id?: string | null
+  scrabble_clock_mode?: 'standard' | 'chess' | null
+  scrabble_clock_seconds?: number | null
+  operative_timer_seconds?: number | null
+  codewords_player_picks?: boolean | null
+  codewords_late_join?: boolean | null
+  codewords_randomize_teams?: boolean | null
+  mafia_doctor_enabled?: boolean | null
+  mafia_detective_enabled?: boolean | null
+  mafia_anonymous_votes?: boolean | null
 }
 
 export interface Player {
@@ -125,6 +137,32 @@ export interface CheckersSession {
   winner_player_id: string | null
   is_draw: boolean
   status_message: string | null
+}
+
+export type ChessColor = 'w' | 'b'
+
+export interface ChessSession {
+  id: string
+  game_id: string
+  player_white_id: string
+  player_black_id: string
+  fen: string
+  pgn: string
+  current_turn: ChessColor
+  white_time_ms: number | null
+  black_time_ms: number | null
+  turn_started_at: string | null
+  last_move_from: string | null
+  last_move_to: string | null
+  in_check: boolean
+  status: 'active' | 'finished'
+  result_reason: string | null
+  winner_player_id: string | null
+  is_draw: boolean
+  status_message: string | null
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
 }
 
 export type AyoSide = 'a' | 'b'
@@ -738,6 +776,148 @@ export interface QuiplashVote {
   player_id: string
   chosen_answer_id: string
   voted_at: string
+}
+
+export interface ScrabbleBoardCell {
+  letter: string
+  isBlank: boolean
+}
+
+export type ScrabbleBoard = (ScrabbleBoardCell | null)[][]
+
+export interface ScrabblePlacedTile {
+  row: number
+  col: number
+  letter: string
+  isBlank: boolean
+}
+
+export interface ScrabbleLastMove {
+  player_id: string
+  kind: 'play' | 'exchange' | 'pass'
+  words: string[]
+  score: number
+  tiles: { row: number; col: number }[]
+}
+
+export interface ScrabbleSession {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  board: ScrabbleBoard
+  bag: string[]
+  phase: 'playing' | 'finished'
+  consecutive_passes: number
+  last_move: ScrabbleLastMove | null
+  winner_player_id: string | null
+  is_tie: boolean
+  status_message: string | null
+  turn_deadline_at: string | null
+  clock_mode: 'standard' | 'chess'
+  turn_started_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ScrabblePlayerState {
+  id: string
+  game_id: string
+  player_id: string
+  rack: string[]
+  score: number
+  player_order: number
+  clock_ms_remaining: number | null
+  timed_out: boolean
+  created_at: string
+}
+
+export type CodewordsCellType = 'red' | 'blue' | 'neutral' | 'assassin'
+export type CodewordsTeam = 'red' | 'blue'
+export type CodewordsRole = 'spymaster' | 'operative'
+
+export interface CodewordsBoard {
+  id: string
+  game_id: string
+  words: string[]
+  key: CodewordsCellType[]
+  starting_team: CodewordsTeam
+  revealed_indices: number[]
+  current_turn: CodewordsTeam
+  guesses_remaining: number | null
+  current_clue_word: string | null
+  current_clue_number: number | null
+  winner: CodewordsTeam | null
+  assassin_team: CodewordsTeam | null
+  spymaster_timer_seconds: number
+  operative_timer_seconds: number
+  turn_phase: 'clue' | 'guess'
+  turn_deadline_at: string | null
+  created_at: string
+}
+
+export interface CodewordsPlayerRole {
+  id: string
+  game_id: string
+  player_id: string
+  team: CodewordsTeam
+  role: CodewordsRole
+  created_at: string
+}
+
+export interface CodewordsGuess {
+  id: string
+  game_id: string
+  board_id: string
+  player_id: string
+  cell_index: number
+  word: string
+  cell_type: CodewordsCellType
+  clue_word: string | null
+  clue_number: number | null
+  team: CodewordsTeam
+  created_at: string
+}
+
+export interface CodewordsMessage {
+  id: string
+  game_id: string
+  player_id: string
+  team: CodewordsTeam
+  text: string
+  created_at: string
+}
+
+export type MafiaRole = 'villager' | 'mafia' | 'doctor' | 'detective'
+export type MafiaTeam = 'village' | 'mafia'
+export type MafiaPhase = 'role_reveal' | 'night' | 'day_report' | 'day' | 'elimination' | 'game_over'
+
+export interface MafiaPublicPlayer {
+  id: string
+  name: string
+  isAlive: boolean
+  deathDay: number | null
+  deathCause: 'mafia_kill' | 'village_vote' | null
+  role?: MafiaRole
+}
+
+export interface MafiaChatMessage {
+  id: string
+  game_id: string
+  sender_player_id: string
+  sender_name: string
+  message: string
+  created_at: string
+}
+
+export interface MafiaMyState {
+  role: MafiaRole
+  team: MafiaTeam
+  nightActionSubmitted: boolean
+  dayVoteSubmitted: boolean
+  detectiveResult: { targetName: string; alignment: MafiaTeam } | null
+  mafiaTeammates: string[]
+  mafiaChatMessages?: MafiaChatMessage[]
 }
 
 export type MobileConfig = {

@@ -1,4 +1,5 @@
 import { apiUrl } from '@/lib/config'
+import type { MafiaStateResponse } from '@fateround/shared/mafia'
 
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(apiUrl(path), {
@@ -260,5 +261,118 @@ export function postNpatCallerApprove(gameId: string, resumeToken: string, round
     resumeToken,
     roundId,
     overrides: [],
+  })
+}
+
+export function postChessMove(
+  gameId: string,
+  resumeToken: string,
+  from: string,
+  to: string,
+  promotion?: 'q' | 'r' | 'b' | 'n'
+) {
+  return postJson<{ success: boolean }>('/api/chess/move', { gameId, resumeToken, from, to, promotion })
+}
+
+export function postChessResign(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/chess/resign', { gameId, resumeToken })
+}
+
+export function postChessExpireTurn(gameId: string) {
+  return postJson<{ success: boolean }>('/api/chess/expire-turn', { gameId })
+}
+
+export function postScrabblePlay(
+  gameId: string,
+  resumeToken: string,
+  tiles: { row: number; col: number; letter: string; isBlank: boolean }[]
+) {
+  return postJson<{ success: boolean }>('/api/scrabble/play', { gameId, resumeToken, tiles })
+}
+
+export function postScrabbleExchange(gameId: string, resumeToken: string, tileIndices: number[]) {
+  return postJson<{ success: boolean }>('/api/scrabble/exchange', { gameId, resumeToken, tileIndices })
+}
+
+export function postScrabblePass(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/scrabble/pass', { gameId, resumeToken })
+}
+
+export function postScrabbleExpireTurn(gameId: string) {
+  return postJson<{ success: boolean }>('/api/scrabble/expire-turn', { gameId })
+}
+
+export function postMafiaState(gameCode: string, resumeToken?: string | null) {
+  return postJson<MafiaStateResponse>(`/api/mafia/${gameCode}/state`, {
+    resumeToken: resumeToken ?? undefined,
+  })
+}
+
+export function postMafiaNightAction(gameCode: string, resumeToken: string, targetPlayerId: string) {
+  return postJson<{ success: boolean }>(`/api/mafia/${gameCode}/night-action`, {
+    resumeToken,
+    targetPlayerId,
+  })
+}
+
+export function postMafiaVote(gameCode: string, resumeToken: string, targetPlayerId: string | null) {
+  return postJson<{ success: boolean }>(`/api/mafia/${gameCode}/vote`, { resumeToken, targetPlayerId })
+}
+
+export function postMafiaChat(
+  gameCode: string,
+  resumeToken: string,
+  message: string,
+  scope: 'night' | 'day' | 'ghost'
+) {
+  return postJson<{ success: boolean }>(`/api/mafia/${gameCode}/chat`, { resumeToken, message, scope })
+}
+
+export function postMafiaAdvance(gameCode: string) {
+  return postJson<{ success: boolean }>(`/api/mafia/${gameCode}/advance`, { isAuto: true })
+}
+
+export function postCodewordsRole(
+  gameId: string,
+  resumeToken: string,
+  team: 'red' | 'blue',
+  role: 'spymaster' | 'operative'
+) {
+  return postJson<{ success: boolean; role?: unknown }>('/api/codewords/role', {
+    gameId,
+    resumeToken,
+    team,
+    role,
+  })
+}
+
+export function postCodewordsClue(gameId: string, resumeToken: string, clueWord: string, clueNumber: number) {
+  return postJson<{ success: boolean; board: unknown }>('/api/codewords/clue', {
+    gameId,
+    resumeToken,
+    clueWord,
+    clueNumber,
+  })
+}
+
+export function postCodewordsGuess(gameId: string, resumeToken: string, cellIndex: number) {
+  return postJson<{ success: boolean; board: unknown; cellType?: string }>('/api/codewords/guess', {
+    gameId,
+    resumeToken,
+    cellIndex,
+  })
+}
+
+export function postCodewordsEndTurn(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean; board: unknown }>('/api/codewords/end-turn', { gameId, resumeToken })
+}
+
+export function postCodewordsChat(gameId: string, resumeToken: string, text: string) {
+  return postJson<{ success: boolean }>('/api/codewords/chat', { gameId, resumeToken, text })
+}
+
+export function postCodewordsExpireTurn(gameId: string) {
+  return postJson<{ success: boolean; board?: unknown; skipped?: boolean }>('/api/codewords/expire-turn', {
+    gameId,
   })
 }

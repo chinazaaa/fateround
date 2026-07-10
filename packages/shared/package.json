@@ -29,6 +29,15 @@
     "./word-rush": "./src/word-rush.ts",
     "./quiplash": "./src/quiplash.ts",
     "./npat": "./src/npat.ts",
-    "./batch-5-games": "./src/batch-5-games.ts"
+    "./batch-5-games": "./src/batch-5-games.ts",
+    "./chess": "./src/chess.ts",
+    "./scrabble-constants": "./src/scrabble-constants.ts",
+    "./scrabble-rulesets": "./src/scrabble-rulesets.ts",
+    "./scrabble-dictionary-meta": "./src/scrabble-dictionary-meta.ts",
+    "./scrabble-board": "./src/scrabble-board.ts",
+    "./batch-6-games": "./src/batch-6-games.ts",
+    "./mafia": "./src/mafia.ts",
+    "./codewords": "./src/codewords.ts",
+    "./batch-7-games": "./src/batch-7-games.ts"
   }
 }

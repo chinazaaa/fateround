@@ -1,4 +1,5 @@
 import type { GameType, MobileConfig, PlayerGender } from '@fateround/shared'
+import { NATIVE_GAME_TYPES } from '@/lib/native-games'
 import { apiUrl } from '@/lib/config'
 
 export type JoinPlayerResponse = {
@@ -43,7 +44,7 @@ export function isGameMobileSupported(
   gameType: GameType,
   config: MobileConfig | null
 ): boolean {
-  if (!config) return false
-  if (config.forceWebFallbackFor.includes(gameType)) return false
-  return config.mobileSupportedGames.includes(gameType)
+  if (config?.forceWebFallbackFor.includes(gameType)) return false
+  if (config) return config.mobileSupportedGames.includes(gameType)
+  return NATIVE_GAME_TYPES.includes(gameType)
 }

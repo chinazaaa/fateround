@@ -3,7 +3,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { GameRouter, hasMobilePlayerView } from '@/components/games/GameRouter'
 import { WebFallbackScreen } from '@/components/WebFallbackScreen'
-import { fetchMobileConfig, isGameMobileSupported } from '@/lib/api'
+import { fetchMobileConfig } from '@/lib/api'
 import type { MobileConfig } from '@fateround/shared'
 import { getSupabase, GAME_SELECT } from '@/lib/supabase'
 import type { Game } from '@fateround/shared'
@@ -85,8 +85,8 @@ export default function GameScreen() {
     )
   }
 
-  const nativeSupported = isGameMobileSupported(game.game_type, mobileConfig)
-  if (!nativeSupported || !hasMobilePlayerView(game.game_type)) {
+  const forceWebFallback = mobileConfig?.forceWebFallbackFor.includes(game.game_type) ?? false
+  if (forceWebFallback || !hasMobilePlayerView(game.game_type)) {
     return <WebFallbackScreen gameCode={gameCode} gameType={game.game_type} />
   }
 
