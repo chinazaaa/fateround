@@ -503,6 +503,8 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
           players={players}
           meId={hostPlayerId}
           isHost
+          gameCode={gameCode}
+          hostToken={hostToken}
           minPlayers={YAHTZEE_MIN_PLAYERS}
           onToggleReady={() => {}}
           onStart={() => void startGame()}

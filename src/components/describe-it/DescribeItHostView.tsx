@@ -1008,6 +1008,8 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
           players={players}
           meId={hostPlayerId}
           isHost
+          gameCode={gameCode}
+          hostToken={hostToken}
           minPlayers={minPlayers}
           onToggleReady={() => {}}
           onStart={() => void startGame()}

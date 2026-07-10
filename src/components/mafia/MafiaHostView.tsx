@@ -278,6 +278,8 @@ export function MafiaHostView({ gameCode, hostToken }: { gameCode: string; hostT
                 onToggleReady={() => {}}
                 onStart={() => void startGame()}
                 starting={starting}
+                gameCode={gameCode}
+                hostToken={hostToken}
               />
             </div>
           ) : (

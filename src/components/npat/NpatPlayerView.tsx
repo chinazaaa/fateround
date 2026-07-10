@@ -6,7 +6,9 @@ import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { NpatActiveRound } from '@/components/npat/NpatActiveRound'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { gameTypeConfig } from '@/lib/game-types'
+import { NPAT_MIN_PLAYERS } from '@/lib/npat'
 import { supabase } from '@/lib/supabase'
 import { NPAT_ANSWER_SELECT, NPAT_MARK_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
@@ -41,6 +43,7 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
   const [rounds, setRounds] = useState<Round[]>([])
   const [answers, setAnswers] = useState<NpatAnswer[]>([])
   const [marks, setMarks] = useState<NpatMark[]>([])
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
 
   // Game-specific load: fetch this game's rounds + npat answers/marks (all playerId-
@@ -141,6 +144,31 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
     setScreen('join')
   }
 
+  const toggleReplayReady = useCallback(
+    async (ready: boolean) => {
+      if (!myResumeToken) {
+        toastError('Your player session expired — rejoin to continue')
+        return
+      }
+      setReplayReadyPending(true)
+      try {
+        const res = await fetch('/api/players/ready', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? 'Failed to update ready')
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to update ready')
+      } finally {
+        setReplayReadyPending(false)
+      }
+    },
+    [gameCode, myResumeToken, load, toastError]
+  )
+
   const cfg = gameTypeConfig('i_call_on')
 
   if (screen === 'loading') {
@@ -209,6 +237,23 @@ export function NpatPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   if (screen === 'lobby' && myPlayerId) {
+    if (game?.replay_pending) {
+      return (
+        <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
+          <ReplayReadyRing
+            players={players}
+            meId={myPlayerId}
+            isHost={false}
+            minPlayers={NPAT_MIN_PLAYERS}
+            onToggleReady={(ready) => void toggleReplayReady(ready)}
+            onStart={() => {}}
+            pending={replayReadyPending}
+            gameCode={gameCode}
+            onLeft={handlePlayerLeft}
+          />
+        </GameJoinLobbyShell>
+      )
+    }
     return (
       <GameJoinLobbyShell gameCode={gameCode} onResumed={load}>
         <GameLobbyWaitingPanel

@@ -492,6 +492,8 @@ export function QuickDrawGuessHostView({ gameCode, hostToken }: { gameCode: stri
           players={players}
           meId={hostPlayerId}
           isHost
+          gameCode={gameCode}
+          hostToken={hostToken}
           minPlayers={minPlayers}
           onToggleReady={() => {}}
           onStart={() => void startGame()}

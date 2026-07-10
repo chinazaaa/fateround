@@ -1,5 +1,8 @@
 'use client'
 
+import { TrashIcon } from '@/components/host/host-icons'
+import { LeaveGameButton, leaveButtonQuietClassName } from '@/components/ui/LeaveGameButton'
+import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import type { Player } from '@/types'
 
 /**
@@ -21,6 +24,9 @@ export function ReplayReadyRing({
   onStart,
   pending = false,
   starting = false,
+  gameCode,
+  hostToken,
+  onLeft,
 }: {
   /** Everyone in the room — seated players show as ready, spectators as "not ready yet". */
   players: Player[]
@@ -34,7 +40,17 @@ export function ReplayReadyRing({
   onStart: () => void
   pending?: boolean
   starting?: boolean
+  /** Enables host kick controls beside each player row. */
+  gameCode?: string
+  hostToken?: string
+  /** Player leaves the room (uses `meId` as the player id). */
+  onLeft?: () => void
 }) {
+  const { removePlayer, removingPlayerId } = useHostRemovePlayer(
+    gameCode ?? '',
+    hostToken ?? ''
+  )
+  const canRemovePlayers = isHost && !!gameCode && !!hostToken
   const total = players.length
   const readyCount = players.filter((p) => p.spectator !== true).length
   const canStart = readyCount >= minPlayers
@@ -110,11 +126,28 @@ export function ReplayReadyRing({
                   {isMe ? `${p.name} (you)` : p.name}
                 </span>
               </span>
-              {on ? (
-                <span className="shrink-0 text-xs font-bold text-[var(--primary)]">✅ Ready</span>
-              ) : (
-                <span className="shrink-0 text-xs font-semibold text-faint">not ready</span>
-              )}
+              <div className="flex shrink-0 items-center gap-2">
+                {on ? (
+                  <span className="text-xs font-bold text-[var(--primary)]">✅ Ready</span>
+                ) : (
+                  <span className="text-xs font-semibold text-faint">not ready</span>
+                )}
+                {canRemovePlayers && p.id !== meId ? (
+                  <button
+                    type="button"
+                    onClick={() => void removePlayer(p.id, p.name)}
+                    disabled={removingPlayerId === p.id}
+                    aria-label={`Remove ${p.name}`}
+                    className="rounded-lg p-1 text-faint transition-colors hover:bg-[color-mix(in_srgb,#ef4444_8%,transparent)] hover:text-red-500 disabled:opacity-50"
+                  >
+                    {removingPlayerId === p.id ? (
+                      <span className="px-0.5 text-xs">…</span>
+                    ) : (
+                      <TrashIcon size={15} />
+                    )}
+                  </button>
+                ) : null}
+              </div>
             </div>
           )
         })}
@@ -156,6 +189,16 @@ export function ReplayReadyRing({
             ✋ Tap to get ready
           </button>
         )}
+        {!isHost && gameCode && meId && onLeft ? (
+          <LeaveGameButton
+            gameCode={gameCode}
+            playerId={meId}
+            onLeft={onLeft}
+            confirmTitle="Leave this game?"
+            confirmMessage="You can rejoin with the same name if there is room."
+            className={`${leaveButtonQuietClassName} mt-3`}
+          />
+        ) : null}
       </div>
     </div>
   )
