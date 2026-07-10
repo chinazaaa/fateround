@@ -191,8 +191,16 @@ export function nextTurnIndex(board: MonopolyBoard, states: MonopolyPlayerState[
   return board.current_turn_index
 }
 
-export function phaseForTurn(board: MonopolyBoard, states: MonopolyPlayerState[], turnIndex: number): MonopolyPhase {
+export function phaseForTurn(
+  board: MonopolyBoard,
+  states: MonopolyPlayerState[],
+  turnIndex: number,
+  inJailOverride?: { playerId: string; inJail: boolean }
+): MonopolyPhase {
   const playerId = board.turn_order[turnIndex]
+  if (inJailOverride && inJailOverride.playerId === playerId) {
+    return inJailOverride.inJail ? 'jail' : 'roll'
+  }
   const state = states.find((s) => s.player_id === playerId)
   if (state?.in_jail) return 'jail'
   return 'roll'
@@ -429,21 +437,29 @@ function defaultBoardFields(): Partial<MonopolyBoard> {
 function finishTurnAfterSpaceAction(
   board: MonopolyBoard,
   states: MonopolyPlayerState[],
-  playerId: string
+  playerId: string,
+  inJailOverride?: boolean
 ): { turnIndex: number; phase: MonopolyPhase; consecutiveDoubles: number } {
   const extraRollPending = (board.consecutive_doubles ?? 0) > 0
+  const isPlayerInJail =
+    inJailOverride !== undefined ? inJailOverride : (states.find((s) => s.player_id === playerId)?.in_jail ?? false)
+
   if (extraRollPending) {
-    const playerState = states.find((s) => s.player_id === playerId)
     return {
       turnIndex: board.current_turn_index,
-      phase: playerState?.in_jail ? 'jail' : 'roll',
+      phase: isPlayerInJail ? 'jail' : 'roll',
       consecutiveDoubles: board.consecutive_doubles ?? 0,
     }
   }
   const turnIndex = nextTurnIndex(board, states)
   return {
     turnIndex,
-    phase: phaseForTurn(board, states, turnIndex),
+    phase: phaseForTurn(
+      board,
+      states,
+      turnIndex,
+      inJailOverride !== undefined ? { playerId, inJail: inJailOverride } : undefined
+    ),
     consecutiveDoubles: 0,
   }
 }
@@ -727,11 +743,12 @@ async function updatePlayerAndBoard(
  * atomic board-claim transaction, so a roll that lost the race never moves
  * another player's cash and a winning roll can never lose a transfer.
  */
-function planMultiPlayerCashDeltas(
+export function planMultiPlayerCashDeltas(
   states: MonopolyPlayerState[],
   drawerId: string,
   drawerDelta: number,
-  others: Record<string, number>
+  others: Record<string, number>,
+  currentDrawerCash?: number
 ): {
   drawerCash: number
   error?: string
@@ -739,9 +756,12 @@ function planMultiPlayerCashDeltas(
   otherWrites: { player_id: string; cash_delta: number }[]
 } {
   const drawer = states.find((s) => s.player_id === drawerId)
-  if (!drawer) return { drawerCash: 0, error: 'Player not found', otherWrites: [] }
+  if (!drawer && currentDrawerCash === undefined) {
+    return { drawerCash: 0, error: 'Player not found', otherWrites: [] }
+  }
 
-  const drawerCash = drawer.cash + drawerDelta
+  const baseCash = currentDrawerCash !== undefined ? currentDrawerCash : (drawer?.cash ?? 0)
+  const drawerCash = baseCash + drawerDelta
 
   for (const [id, delta] of Object.entries(others)) {
     const target = states.find((s) => s.player_id === id)
@@ -1115,6 +1135,7 @@ export async function processMonopolyRoll(
   let otherCashWrites: { player_id: string; cash_delta: number }[] = []
 
   if (board.phase === 'jail') {
+    consecutiveDoubles = 0
     jailTurns += 1
     if (dice.doubles) {
       inJail = false
@@ -1189,6 +1210,7 @@ export async function processMonopolyRoll(
         { jail_turns: jailTurns },
         {
           last_dice: dice,
+          consecutive_doubles: 0,
           phase: nextPhase,
           current_turn_index: turnIndex,
           status_message: `Still in jail — rolled ${dice.d1}+${dice.d2} (no doubles). Attempt ${jailTurns}/3.`,
@@ -1299,12 +1321,13 @@ export async function processMonopolyRoll(
         position = MONOPOLY_JAIL_POSITION
         inJail = true
         jailTurns = 0
+        consecutiveDoubles = 0
         extraTurn = false
         phase = 'roll'
       } else {
         if (effect.getOutOfJail) getOutCards += 1
 
-        const multi = planMultiPlayerCashDeltas(states, playerId, effect.cashDelta, effect.playerCashDeltas)
+        const multi = planMultiPlayerCashDeltas(states, playerId, effect.cashDelta, effect.playerCashDeltas, cash)
         if (multi.error) {
           const failedId = multi.failedPlayerId ?? playerId
           const owed =
@@ -1407,6 +1430,7 @@ export async function processMonopolyRoll(
     cash = resolution.cash
     position = resolution.position
     inJail = resolution.inJail
+    if (inJail) consecutiveDoubles = 0
     jailTurns = resolution.jailTurns
     getOutCards = resolution.getOutCards
     phase = resolution.phase
@@ -1803,7 +1827,7 @@ export async function processMonopolyJailPay(
       gameId,
       playerId,
       { in_jail: false, jail_turns: 0, get_out_of_jail_free: state.get_out_of_jail_free - 1 },
-      { phase: 'roll', status_message: 'Used Get Out of Jail Free card — roll to move!' },
+      { phase: 'roll', consecutive_doubles: 0, status_message: 'Used Get Out of Jail Free card — roll to move!' },
       board.updated_at
     )
     return {}
@@ -1815,7 +1839,11 @@ export async function processMonopolyJailPay(
     gameId,
     playerId,
     { cash: state.cash - MONOPOLY_JAIL_FINE, in_jail: false, jail_turns: 0 },
-    { phase: 'roll', status_message: `Paid ${formatMonopolyMoney(MONOPOLY_JAIL_FINE)} — roll to move!` },
+    {
+      phase: 'roll',
+      consecutive_doubles: 0,
+      status_message: `Paid ${formatMonopolyMoney(MONOPOLY_JAIL_FINE)} — roll to move!`,
+    },
     board.updated_at
   )
   return {}
