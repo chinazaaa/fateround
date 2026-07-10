@@ -74,6 +74,7 @@ export const gameTypeEnum = z.enum([
   'matching_pairs',
   'chess',
   'checkers',
+  'ayo',
   'describe_it',
   'scrabble',
   'snake_and_ladder',

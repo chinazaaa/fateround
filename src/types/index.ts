@@ -47,6 +47,7 @@ export type GameType =
   | 'quiplash'
   | 'word_rush'
   | 'quick_draw'
+  | 'ayo'
 
 export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
 export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
@@ -868,7 +869,7 @@ export interface CheckersSession {
   player_black_id: string
   /**
    * 64-char board, indexed by row*8 + col (row 0 = top, col 0 = left). Only dark
-   * squares are occupied. '.' empty, 'r'/'b' man, 'R'/'B' king. Red moves first.
+   * squares are occupied. '.' empty, 'r'/'b' man, 'R'/'B' king. Black moves first.
    */
   board: string
   current_turn: CheckersColor
@@ -888,6 +889,34 @@ export interface CheckersSession {
   last_move_to: string | null
   status: 'active' | 'finished'
   /** capture_all | no_moves | draw_moves | timeout | resignation */
+  result_reason: string | null
+  winner_player_id: string | null
+  is_draw: boolean
+  status_message: string | null
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type AyoSide = 'a' | 'b'
+
+export interface AyoSession {
+  id: string
+  game_id: string
+  player_a_id: string
+  player_b_id: string
+  /** 12 pits — indices 0–5 side A, 6–11 side B. Anti-clockwise sowing. */
+  pits: number[]
+  captured_a: number
+  captured_b: number
+  current_turn: AyoSide
+  a_win_streak: number
+  b_win_streak: number
+  a_time_ms: number | null
+  b_time_ms: number | null
+  turn_started_at: string | null
+  last_pit: number | null
+  status: 'active' | 'finished'
   result_reason: string | null
   winner_player_id: string | null
   is_draw: boolean
