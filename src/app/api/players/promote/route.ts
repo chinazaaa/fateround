@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { promotePlayerSchema } from '@/lib/validation'
-import { parseGameType, isBingoGame, isCodewordsGame } from '@/lib/game-types'
+import { parseGameType, isBingoGame, isCodewordsGame, isQuickDrawGame } from '@/lib/game-types'
 import { createBingoCardForPlayer } from '@/lib/bingo'
 import { assignCodewordsLateJoinOperative } from '@/lib/codewords'
+import { registerQuickDrawLateJoinPlayer } from '@/lib/quick-draw'
 import { assertLobbyPlayerSeatAvailable } from '@/lib/game-limits'
 import { allowLatePlayers, playerIsViewer } from '@/lib/viewers'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -101,6 +102,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: assignError }, { status: 500 })
     }
     if (role) extra.codewordsRole = role
+  }
+
+  if (isQuickDrawGame(gameType)) {
+    const { error: assignError } = await registerQuickDrawLateJoinPlayer(supabase, gameId, authPlayerId)
+    if (assignError) {
+      await supabase.from('players').update({ spectator: true }).eq('id', authPlayerId)
+      return NextResponse.json({ error: assignError }, { status: 500 })
+    }
   }
 
   return NextResponse.json({
