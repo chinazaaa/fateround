@@ -11,9 +11,11 @@ import {
   isPitActive,
   legalMovesForSide,
   sideForPlayer,
+  AYO_PIT_COUNT,
 } from '@/lib/ayo'
 import type { AyoSession, AyoSide, AyoVariant, Player } from '@/types'
 import { AyoCard, AyoTurnBar } from '@/components/ayo/AyoChrome'
+import type { AyoSowAnimationState } from '@/hooks/useAyoSowAnimation'
 import { useAyoTurnSound } from '@/hooks/useAyoTurnSound'
 
 const BOARD_WOOD = '#8b5e34'
@@ -108,6 +110,8 @@ function PitButton({
   interactive,
   selected,
   highlighted,
+  landing,
+  pulsing,
   disabled,
   onClick,
 }: {
@@ -116,6 +120,8 @@ function PitButton({
   interactive: boolean
   selected: boolean
   highlighted: boolean
+  landing?: boolean
+  pulsing?: boolean
   disabled?: boolean
   onClick: () => void
 }) {
@@ -136,15 +142,22 @@ function PitButton({
       disabled={!interactive}
       aria-label={`Pit ${index + 1}, ${count} seeds`}
       className={[
-        'relative aspect-[4/5] rounded-full flex flex-col items-center justify-center border-2 transition-transform',
+        'relative aspect-[4/5] rounded-full flex flex-col items-center justify-center border-2 transition-all duration-200',
         interactive ? 'cursor-pointer hover:scale-[1.03] active:scale-[0.98]' : 'cursor-default',
         selected ? 'ring-2 ring-[var(--primary)] ring-offset-2 ring-offset-[var(--background)]' : '',
-        highlighted ? 'brightness-110' : '',
+        highlighted ? 'brightness-125 scale-[1.04] ring-2 ring-amber-300/70' : '',
+        landing ? 'ring-2 ring-emerald-400/80 ring-offset-2 ring-offset-[var(--background)]' : '',
+        pulsing ? 'animate-pulse' : '',
       ].join(' ')}
       style={{ backgroundColor: PIT_BG, borderColor: PIT_RING }}
     >
       <span className="text-lg sm:text-xl font-black tabular-nums text-amber-100">{count}</span>
       <span className="text-[10px] text-amber-200/70">{'🌰'.repeat(Math.min(count, 4))}</span>
+      {pulsing ? (
+        <span className="absolute -top-1 -right-1 rounded-full bg-amber-200/90 px-1.5 py-0.5 text-[10px] font-black text-amber-950 shadow">
+          +1
+        </span>
+      ) : null}
     </button>
   )
 }
@@ -159,6 +172,7 @@ export function AyoGamePanel({
   onMove,
   onResign,
   acting,
+  sowAnimation,
 }: {
   session: AyoSession
   players: Player[]
@@ -169,6 +183,7 @@ export function AyoGamePanel({
   onMove?: (pitIndex: number) => void
   onResign?: () => void
   acting?: boolean
+  sowAnimation?: AyoSowAnimationState | null
 }) {
   const variant = variantProp ?? 'traditional'
   const config = boardConfigFromSession(session, variant)
@@ -179,7 +194,9 @@ export function AyoGamePanel({
   const mySide = myPlayerId ? sideForPlayer(session, myPlayerId) : null
   const flip = mySide === 'b'
   const finished = session.status === 'finished'
-  const interactive = !!onMove && isMyTurn && !finished && !acting && !!mySide
+  const animating = sowAnimation?.animating === true
+  const displayPits = animating && sowAnimation?.pits.length === AYO_PIT_COUNT ? sowAnimation.pits : session.pits
+  const interactive = !!onMove && isMyTurn && !finished && !acting && !animating && !!mySide
 
   const legal = useMemo(() => {
     if (!interactive || !mySide) return new Set<number>()
@@ -227,11 +244,13 @@ export function AyoGamePanel({
         <PitButton
           key={pitIndex}
           index={pitIndex}
-          count={session.pits[pitIndex]}
+          count={displayPits[pitIndex]}
           disabled={!isPitActive(pitIndex, config)}
           interactive={interactive && legal.has(pitIndex)}
           selected={selected === pitIndex}
-          highlighted={session.last_pit === pitIndex}
+          highlighted={animating ? sowAnimation?.highlightPit === pitIndex : session.last_pit === pitIndex}
+          landing={animating ? sowAnimation?.landingPit === pitIndex : session.last_pit === pitIndex}
+          pulsing={animating && sowAnimation?.pulsePit === pitIndex}
           onClick={() => handlePitClick(pitIndex)}
         />
       ))}
@@ -276,6 +295,13 @@ export function AyoGamePanel({
         className="max-w-lg mx-auto w-full space-y-2 rounded-2xl p-3 sm:p-4 border-2 border-[var(--border-strong)] shadow-lg"
         style={{ backgroundColor: BOARD_WOOD }}
       >
+        {animating && sowAnimation?.seedsInHand != null ? (
+          <div className="flex justify-center">
+            <span className="rounded-full bg-black/45 px-3 py-1 text-xs font-bold tabular-nums text-amber-100 border border-amber-200/30">
+              🌰 {sowAnimation.seedsInHand} in hand
+            </span>
+          </div>
+        ) : null}
         <ScoreTray {...trayFor(topSide)} variant={variant} clock={<AyoClockChip session={session} side={topSide} />} />
         {renderRow(topIndices, topSide)}
         <div className="h-2" />
@@ -291,7 +317,9 @@ export function AyoGamePanel({
         <div className="space-y-2">
           <p className="text-center text-faint text-xs">
             You play the {flip ? 'top' : 'bottom'} row · tap one of your houses to sow anti-clockwise
-            {variant === 'traditional' ? ' · complete fours to win houses' : ''}
+            {variant === 'traditional'
+              ? ' · complete fours to win houses · relay until your last seed hits an empty house'
+              : ''}
             {isMyTurn ? '' : ' · waiting for your opponent'}
           </p>
           {onResign && (
