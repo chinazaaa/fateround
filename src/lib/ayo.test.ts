@@ -8,6 +8,7 @@ import {
   dealWinnerFromHouses,
   legalMoves,
   legalMovesForSide,
+  traceTraditionalSow,
   sowFromPit,
   startingPits,
   shouldEndGameForSide,
@@ -110,6 +111,23 @@ describe('traditional sowFromPit', () => {
     expect(housesB).toBe(0)
     expect(seedsOnBoard(next)).toBe(48)
     expect(next.some((n) => n === 0)).toBe(true)
+  })
+
+  it('trace records relay when last seed of a lap lands in a non-empty pit', () => {
+    const pits = startingPits()
+    pits[3] = 5
+    const trace = traceTraditionalSow(pits, 3, TRADITIONAL_CONFIG)
+    expect(trace.steps.some((step) => step.type === 'relay')).toBe(true)
+    expect(trace.steps.filter((step) => step.type === 'drop').length).toBeGreaterThan(5)
+  })
+
+  it('trace ends on an empty landing pit', () => {
+    const pits = Array(AYO_PIT_COUNT).fill(0)
+    pits[0] = 1
+    const trace = traceTraditionalSow(pits, 0, TRADITIONAL_CONFIG)
+    expect(trace.landingPit).toBe(1)
+    expect(trace.pits[1]).toBe(1)
+    expect(trace.steps.at(-1)?.type).toBe('end')
   })
 })
 

@@ -127,6 +127,31 @@ export function setupAudioUnlock(): () => void {
   }
 }
 
+/** Soft wooden tap when an Ayo seed lands in a pit. */
+export async function playAyoSeedDropSound() {
+  if (typeof window === 'undefined' || isSoundMuted()) return
+
+  try {
+    if (!(await ensureContext()) || !audioCtx) return
+    const ctx = audioCtx
+    const now = ctx.currentTime
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = 'triangle'
+    osc.frequency.setValueAtTime(420, now)
+    osc.frequency.exponentialRampToValueAtTime(280, now + 0.06)
+    gain.gain.setValueAtTime(0, now)
+    gain.gain.linearRampToValueAtTime(0.09, now + 0.008)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1)
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start(now)
+    osc.stop(now + 0.12)
+  } catch {
+    // Browser may block audio until user gesture — ignore silently
+  }
+}
+
 /** Warm chime when the lobby reopens (play again / host reset). */
 export async function playLobbyOpenSound() {
   if (typeof window === 'undefined' || isSoundMuted()) return

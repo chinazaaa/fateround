@@ -9,7 +9,14 @@ import { HostLobbyWaitingFooter } from '@/components/host-lobby/HostLobbyWaiting
 import { HostAyoLobbyPanel } from '@/components/host-lobby/HostAyoLobbyPanel'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
-import { currentTurnPlayerId, AYO_MIN_PLAYERS, isAyoResultsPhase, parseAyoVariant } from '@/lib/ayo'
+import {
+  currentTurnPlayerId,
+  AYO_MIN_PLAYERS,
+  isAyoResultsPhase,
+  parseAyoVariant,
+  boardConfigFromSession,
+} from '@/lib/ayo'
+import { useAyoSowAnimation } from '@/hooks/useAyoSowAnimation'
 import { supabase } from '@/lib/supabase'
 import { GAME_SELECT, PLAYER_SELECT, AYO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
@@ -46,6 +53,7 @@ function setHostMode(gameCode: string, mode: AyoHostMode): void {
 
 export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
+  const { animation: sowAnimation, playSowAnimation } = useAyoSowAnimation()
   const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
@@ -194,18 +202,21 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
   }
 
   const sowPit = async (pitIndex: number) => {
-    if (!hostPlayerId) return
+    if (!hostPlayerId || !session) return
     if (!hostResumeToken) {
       toastError('Your player session expired — rejoin to continue')
       return
     }
+    const config = boardConfigFromSession(session, parseAyoVariant(game?.ayo_variant))
     setHostActing(true)
     try {
-      const res = await fetch('/api/ayo/move', {
+      const animPromise = playSowAnimation(session.pits, pitIndex, config)
+      const apiPromise = fetch('/api/ayo/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gameId: gameCode, resumeToken: hostResumeToken, pitIndex }),
       })
+      const [res] = await Promise.all([apiPromise, animPromise])
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Move failed')
       await load()
@@ -348,6 +359,7 @@ export function AyoHostView({ gameCode, hostToken }: { gameCode: string; hostTok
         onMove={sowPit}
         onResign={resign}
         acting={hostActing}
+        sowAnimation={sowAnimation.animating ? sowAnimation : null}
       />
     </div>
   )
