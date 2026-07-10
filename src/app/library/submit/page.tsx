@@ -17,6 +17,7 @@ type GameType =
   | 'this_or_that'
   | 'never_have_i_ever'
   | 'describe_it'
+  | 'quick_draw'
   | 'codewords'
   | 'pick_a_number'
 
@@ -165,6 +166,12 @@ const GAME_TYPES: { value: GameType; label: string; description: string; columns
     columns: 'word',
   },
   {
+    value: 'quick_draw',
+    label: 'Quick Draw',
+    description: 'Words or drawing prompts for Lie and Guess modes',
+    columns: 'word',
+  },
+  {
     value: 'codewords',
     label: 'Codewords',
     description: 'Single words for the spy word grid',
@@ -230,7 +237,7 @@ export default function SubmitPackPage() {
       const rows = parseCsvRows(text)
       if (gameType === 'trivia') setValidation(validateTrivia(rows))
       else if (gameType === 'would_you_rather' || gameType === 'this_or_that') setValidation(validateWyr(rows))
-      else if (gameType === 'describe_it') setValidation(validateDescribeIt(rows))
+      else if (gameType === 'describe_it' || gameType === 'quick_draw') setValidation(validateDescribeIt(rows))
       else if (gameType === 'codewords') setValidation(validateCodewords(rows))
       else if (gameType === 'pick_a_number') setValidation(validatePrompts(rows, PAN_MIN_POOL))
       else setValidation(validatePrompts(rows)) // covers most_likely_to and never_have_i_ever
@@ -510,6 +517,7 @@ export default function SubmitPackPage() {
                     {(gameType === 'most_likely_to' ||
                       gameType === 'never_have_i_ever' ||
                       gameType === 'describe_it' ||
+                      gameType === 'quick_draw' ||
                       gameType === 'codewords' ||
                       gameType === 'pick_a_number') &&
                       (validation.questions as string[]).slice(0, 3).map((q, i) => (

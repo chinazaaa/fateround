@@ -497,6 +497,8 @@ function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostT
           players={players}
           meId={hostPlayerId}
           isHost
+          gameCode={gameCode}
+          hostToken={hostToken}
           minPlayers={QUICK_DRAW_MIN_PLAYERS}
           onToggleReady={() => {}}
           onStart={() => void startGame()}

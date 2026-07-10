@@ -26,6 +26,7 @@ import { HostLobbySettingsSection } from '@/components/host-lobby/HostLobbySetti
 import { HostLobbySettingBlock } from '@/components/host-lobby/HostLobbySettingBlock'
 import { HostLobbyOptionChips } from '@/components/host-lobby/HostLobbyOptionChips'
 import { HostAllowViewersField } from '@/components/HostAllowViewersField'
+import { HostWordPoolSettings } from '@/components/host-lobby/HostWordPoolSettings'
 import { gameSupportsViewerSetting } from '@/lib/viewers'
 import { useToast } from '@/components/ui/Toast'
 import type { Game, QuickDrawPlayMode } from '@/types'
@@ -298,6 +299,18 @@ export function HostQuickDrawLobbyPanel({ gameCode, hostToken, game, playerCount
           </HostLobbySettingBlock>
         </>
       )}
+
+      <HostLobbySettingBlock title={isGuess ? 'Words' : 'Prompts'}>
+        <HostWordPoolSettings
+          gameCode={gameCode}
+          hostToken={hostToken}
+          game={game}
+          noun={isGuess ? 'words' : 'prompts'}
+          disabled={saveState === 'saving'}
+          onError={toastError}
+          onSaved={(patch) => onGameUpdate({ ...game, ...patch })}
+        />
+      </HostLobbySettingBlock>
 
       {gameSupportsViewerSetting(game.game_type) && game.status === 'waiting' && (
         <HostLobbySettingBlock title="Late joiners">

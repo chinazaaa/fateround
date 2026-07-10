@@ -26,6 +26,7 @@ const VALID_GAME_TYPES = [
   'this_or_that',
   'never_have_i_ever',
   'describe_it',
+  'quick_draw',
   'codewords',
   'pick_a_number',
 ]

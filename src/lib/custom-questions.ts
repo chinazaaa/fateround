@@ -16,6 +16,7 @@ import {
   isTriviaGame,
   isCodewordsGame,
   isDescribeItGame,
+  isQuickDrawGame,
   parseGameType,
 } from '@/lib/game-types'
 import { pickLeastUsed } from '@/lib/question-picker'
@@ -503,6 +504,9 @@ export function questionSampleFile(gameType?: GameType | string): { href: string
   if (isDescribeItGame(gameType)) {
     return { href: '/text-charades-words-sample.csv', download: 'text-charades-words-sample.csv' }
   }
+  if (isQuickDrawGame(gameType)) {
+    return { href: '/text-charades-words-sample.csv', download: 'quick-draw-words-sample.csv' }
+  }
   if (isCodewordsGame(gameType)) {
     return { href: '/codewords-words-sample.csv', download: 'codewords-words-sample.csv' }
   }
@@ -527,6 +531,9 @@ export function questionUploadHint(gameType?: GameType | string): string {
   }
   if (isDescribeItGame(gameType)) {
     return '.csv or .xlsx — one word or phrase per row.'
+  }
+  if (isQuickDrawGame(gameType)) {
+    return '.csv or .xlsx — one word or drawing prompt per row.'
   }
   if (isCodewordsGame(gameType)) {
     return '.csv or .xlsx — one word per row (single words only, no spaces).'
@@ -582,6 +589,7 @@ export function customQuestionCount(game: Pick<Game, 'game_type' | 'question_sou
   }
   if (isTriviaGame(game.game_type)) return parseStoredTriviaQuestions(game.custom_questions).length
   if (isCodewordsGame(game.game_type)) return parseStoredCodewordsWords(game.custom_questions).length
+  if (isQuickDrawGame(game.game_type)) return parseStoredMltQuestions(game.custom_questions).length
   return 0
 }
 
@@ -703,6 +711,25 @@ export function questionSourceOptions(gameType: GameType | string): {
         value: 'custom',
         label: 'Your own',
         hint: `Upload a CSV with at least ${CODEWORDS_MIN_CUSTOM_POOL} single words for your boards.`,
+      },
+    ]
+  }
+  if (isDescribeItGame(gameType) || isQuickDrawGame(gameType)) {
+    return [
+      {
+        value: 'platform',
+        label: 'Platform',
+        hint: 'Use our built-in word bank.',
+      },
+      {
+        value: 'library',
+        label: 'Library',
+        hint: 'Pick a community word pack.',
+      },
+      {
+        value: 'custom',
+        label: 'Your own',
+        hint: 'Upload a CSV or add your own words and prompts.',
       },
     ]
   }

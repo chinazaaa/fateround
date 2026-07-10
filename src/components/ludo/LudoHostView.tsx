@@ -444,6 +444,8 @@ export function LudoHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           players={players}
           meId={hostPlayerId}
           isHost
+          gameCode={gameCode}
+          hostToken={hostToken}
           minPlayers={LUDO_MIN_PLAYERS}
           onToggleReady={() => {}}
           onStart={() => void startGame()}
