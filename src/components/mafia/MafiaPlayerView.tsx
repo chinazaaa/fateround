@@ -143,9 +143,15 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       })
       const data = await res.json()
       if (!res.ok) toastError(data.error ?? 'Action failed')
-      else { toastSuccess('Night action submitted'); await load() }
-    } catch { toastError('Action failed') }
-    finally { setActing(false) }
+      else {
+        toastSuccess('Night action submitted')
+        await load()
+      }
+    } catch {
+      toastError('Action failed')
+    } finally {
+      setActing(false)
+    }
   }
 
   const submitDayVote = async (targetId: string | null) => {
@@ -159,9 +165,15 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
       })
       const data = await res.json()
       if (!res.ok) toastError(data.error ?? 'Vote failed')
-      else { toastSuccess(targetId ? 'Vote submitted' : 'Vote cleared/skipped'); await load() }
-    } catch { toastError('Vote failed') }
-    finally { setActing(false) }
+      else {
+        toastSuccess(targetId ? 'Vote submitted' : 'Vote cleared/skipped')
+        await load()
+      }
+    } catch {
+      toastError('Vote failed')
+    } finally {
+      setActing(false)
+    }
   }
 
   const triggerAutoAdvance = useCallback(async () => {
@@ -172,7 +184,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         body: JSON.stringify({ isAuto: true }),
       })
       await load()
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [gameCode, load])
 
   const sendChat = useCallback(
@@ -190,7 +204,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         } else {
           await load()
         }
-      } catch { toastError('Failed to send message') }
+      } catch {
+        toastError('Failed to send message')
+      }
     },
     [gameCode, myResumeToken, load, toastError]
   )
@@ -202,7 +218,10 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const [replayReadyPending, setReplayReadyPending] = useState(false)
   const toggleReplayReady = useCallback(
     async (ready: boolean) => {
-      if (!myResumeToken) { toastError('Your player session expired — rejoin to continue'); return }
+      if (!myResumeToken) {
+        toastError('Your player session expired — rejoin to continue')
+        return
+      }
       setReplayReadyPending(true)
       try {
         const res = await fetch('/api/players/ready', {
@@ -215,7 +234,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         await load()
       } catch (err) {
         toastError(err instanceof Error ? err.message : 'Failed to update ready')
-      } finally { setReplayReadyPending(false) }
+      } finally {
+        setReplayReadyPending(false)
+      }
     },
     [gameCode, myResumeToken, load, toastError]
   )
@@ -242,7 +263,10 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         <div className="text-center space-y-4">
           <h1 className="text-3xl font-extrabold text-red-500">Room Not Found</h1>
           <p className="text-[var(--muted)]">This game room does not exist or has expired.</p>
-          <button onClick={() => router.push('/')} className="btn-primary px-6 py-2 rounded-md font-semibold transition">
+          <button
+            onClick={() => router.push('/')}
+            className="btn-primary px-6 py-2 rounded-md font-semibold transition"
+          >
             Go Home
           </button>
         </div>
@@ -252,7 +276,11 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   const cfg = gameTypeConfig('mafia')
   const myName = players.find((p) => p.id === myPlayerId)?.name ?? ''
-  const handlePlayerLeft = () => { clearPlayerSession(gameCode); setMyPlayerId(null); void load() }
+  const handlePlayerLeft = () => {
+    clearPlayerSession(gameCode)
+    setMyPlayerId(null)
+    void load()
+  }
 
   if (screen === 'join') {
     const joiningAsViewer = game?.status === 'active'
@@ -466,9 +494,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               >
                 <span className="font-semibold text-[var(--muted)]">{p.name}</span>
                 <span
-                  className={`font-mono text-xs uppercase ${
-                    p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'
-                  }`}
+                  className={`font-mono text-xs uppercase ${p.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}
                 >
                   {p.role}
                 </span>
@@ -477,7 +503,10 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           </div>
         </div>
 
-        <button onClick={() => router.push('/')} className="w-full py-3 btn-secondary font-semibold rounded-xl transition">
+        <button
+          onClick={() => router.push('/')}
+          className="w-full py-3 btn-secondary font-semibold rounded-xl transition"
+        >
           Exit to Home
         </button>
       </div>

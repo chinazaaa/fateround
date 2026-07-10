@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
-import type { MafiaPlayerState, MafiaSession, MafiaRole, MafiaTeam, MafiaPublicPlayer, MafiaMyState, MafiaPhase, MafiaChatMessage } from '@/types'
+import type {
+  MafiaPlayerState,
+  MafiaSession,
+  MafiaTeam,
+  MafiaPublicPlayer,
+  MafiaMyState,
+  MafiaPhase,
+  MafiaChatMessage,
+} from '@/types'
 import { checkMafiaWinCondition } from '@/lib/mafia'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {

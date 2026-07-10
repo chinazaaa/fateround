@@ -119,9 +119,7 @@ export function MafiaPhaseCard({
               {killedPlayer.role && (
                 <p className="text-sm text-[var(--muted)]">
                   They were a{' '}
-                  <span
-                    className={`font-bold ${killedPlayer.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}
-                  >
+                  <span className={`font-bold ${killedPlayer.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}>
                     {killedPlayer.role.toUpperCase()}
                   </span>
                 </p>
@@ -130,9 +128,7 @@ export function MafiaPhaseCard({
           ) : (
             <div className="space-y-2">
               <p
-                className={`text-lg font-bold ${
-                  lastNightMafiaHadTarget ? 'text-emerald-400' : 'text-[var(--muted)]'
-                }`}
+                className={`text-lg font-bold ${lastNightMafiaHadTarget ? 'text-emerald-400' : 'text-[var(--muted)]'}`}
               >
                 {lastNightMafiaHadTarget ? '🏥 The Doctor saved the village!' : '😴 The Mafia chose no target.'}
               </p>
@@ -147,9 +143,7 @@ export function MafiaPhaseCard({
           <div className="flex items-center gap-2">
             <span className="text-xl">☀️</span>
             <div>
-              <h3 className="text-lg font-black text-[var(--foreground)]">
-                Day {dayNumber} — Discuss &amp; Vote
-              </h3>
+              <h3 className="text-lg font-black text-[var(--foreground)]">Day {dayNumber} — Discuss &amp; Vote</h3>
               <p className="text-xs text-[var(--muted)]">Debate and vote out who you think is Mafia</p>
             </div>
           </div>
@@ -236,9 +230,7 @@ export function MafiaPhaseCard({
               {votedPlayer.role && (
                 <p className="text-sm text-[var(--muted)]">
                   They were a{' '}
-                  <span
-                    className={`font-bold ${votedPlayer.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}
-                  >
+                  <span className={`font-bold ${votedPlayer.role === 'mafia' ? 'text-red-400' : 'text-emerald-400'}`}>
                     {votedPlayer.role.toUpperCase()}
                   </span>
                 </p>

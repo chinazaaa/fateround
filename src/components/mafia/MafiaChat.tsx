@@ -6,15 +6,19 @@ import type { MafiaChatMessage } from '@/types'
 // ── Phase Timer ───────────────────────────────────────────────────────────────
 
 export function MafiaPhaseTimer({ deadline, onExpired }: { deadline: string | null; onExpired: () => void }) {
-  const calc = () =>
-    deadline ? Math.max(0, Math.round((new Date(deadline).getTime() - Date.now()) / 1000)) : null
+  const calc = () => (deadline ? Math.max(0, Math.round((new Date(deadline).getTime() - Date.now()) / 1000)) : null)
   const [timeLeft, setTimeLeft] = useState<number | null>(calc)
+  const firedRef = useRef(false)
 
   useEffect(() => {
+    firedRef.current = false
     const t = setInterval(() => {
       const rem = calc()
       setTimeLeft(rem)
-      if (rem !== null && rem <= 0) onExpired()
+      if (rem !== null && rem <= 0 && !firedRef.current) {
+        firedRef.current = true
+        onExpired()
+      }
     }, 1000)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -61,9 +65,7 @@ export function ChatMessages({ messages, myPlayerId, sentBubbleClass }: ChatMess
             <div key={m.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
               <div
                 className={`px-3 py-1.5 rounded-xl text-sm max-w-[85%] ${
-                  isMe
-                    ? sentBubbleClass
-                    : 'bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)]'
+                  isMe ? sentBubbleClass : 'bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)]'
                 }`}
               >
                 {!isMe && (
@@ -152,11 +154,7 @@ export function MafiaDayChat({ messages, onSendMessage, myPlayerId, disabled = f
       <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--primary)] flex items-center gap-1.5">
         💬 Town Discussion
       </p>
-      <ChatMessages
-        messages={messages}
-        myPlayerId={myPlayerId}
-        sentBubbleClass="bg-[var(--primary)] text-white"
-      />
+      <ChatMessages messages={messages} myPlayerId={myPlayerId} sentBubbleClass="bg-[var(--primary)] text-white" />
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           type="text"
@@ -185,8 +183,7 @@ export function MafiaGhostChat({ messages, onSendMessage, myPlayerId }: ChatProp
   return (
     <div className="glass-card border border-[var(--border)] rounded-2xl p-4 space-y-2 opacity-80">
       <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--muted)] flex items-center gap-1.5">
-        👻 Ghost Chat{' '}
-        <span className="normal-case font-normal text-[var(--muted)]">(only the dead can see this)</span>
+        👻 Ghost Chat <span className="normal-case font-normal text-[var(--muted)]">(only the dead can see this)</span>
       </p>
       <ChatMessages
         messages={messages}

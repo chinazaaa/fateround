@@ -111,11 +111,7 @@ export function MafiaIdentityPanel({
       </div>
 
       {myState?.role === 'mafia' && amIAlive && (
-        <MafiaSecretChat
-          messages={mafiaChatMessages}
-          onSendMessage={onSendMafiaMessage}
-          myPlayerId={myPlayerId}
-        />
+        <MafiaSecretChat messages={mafiaChatMessages} onSendMessage={onSendMafiaMessage} myPlayerId={myPlayerId} />
       )}
     </div>
   )
