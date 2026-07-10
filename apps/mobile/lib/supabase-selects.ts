@@ -1,5 +1,5 @@
 export const GAME_SELECT =
-  'id,title,game_type,status,current_round_number,timer_seconds,max_players,allow_viewers,allow_late_players,ayo_variant,participant_mode,pair_vote_mode,custom_questions,ludo_variant'
+  'id,title,game_type,status,current_round_number,timer_seconds,max_players,allow_viewers,allow_late_players,ayo_variant,participant_mode,pair_vote_mode,custom_questions,ludo_variant,rounds_count,question_source,describe_it_num_teams,describe_it_mode,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,word_rush_mode,word_rush_num_teams,word_rush_prompt_mode,word_rush_difficulty,session_started_at,game_duration_seconds'
 
 export const PLAYER_SELECT = 'id,game_id,name,gender,joined_at,spectator,is_eliminated'
 
@@ -7,7 +7,7 @@ export const PARTICIPANT_SELECT =
   'id,game_id,name,gender,photo_url,description,display_order,in_mlt_poll,submitted_by_player_id'
 
 export const ROUND_SELECT =
-  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,status,started_at,ended_at,anime_metadata,trivia_metadata,memory_match_metadata,sudoku_metadata'
+  'id,game_id,round_number,participant_ids,wyr_option_a,wyr_option_b,mlt_question,submitter_player_id,quote_text,quote_author_participant_id,status,started_at,ended_at,anime_metadata,trivia_metadata,memory_match_metadata,sudoku_metadata,ttl_metadata,quiplash_metadata,word_hunt_metadata,npat_metadata'
 
 export const VOTE_SELECT =
   'id,player_id,round_id,game_id,kiss_participant_id,marry_participant_id,kill_participant_id,pair_assignments,wyr_choice,target_player_id,target_participant_id,anime_choice,picked_number,created_at'
@@ -49,3 +49,55 @@ export const BINGO_CARD_SELECT = 'id,game_id,player_id,cells,marked_indices'
 export const BINGO_CALLED_NUMBER_SELECT = 'id,game_id,number'
 export const TRIVIA_ANSWER_SELECT =
   'id,game_id,round_id,player_id,choice_index,is_correct,points'
+
+export const CRAZY8_SESSION_SELECT =
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at'
+
+export const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order'
+
+export const WHOT_SESSION_SELECT =
+  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_card,required_shape,required_number,pick_two_stack,pick_five_stack,status_message,winner_player_id,finish_order,turn_deadline_at'
+
+export const WHOT_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order'
+
+export const TTL_STATEMENT_SELECT =
+  'id,game_id,player_id,statement_a,statement_b,statement_c,lie_index,created_at,updated_at'
+
+export const TTL_GUESS_SELECT = 'id,game_id,round_id,player_id,guessed_index,is_correct,points,guessed_at'
+
+export const DESCRIBE_IT_SESSION_SELECT =
+  'id,game_id,mode,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,roster,current_word,current_clue,current_clues,used_words,turn_deadline_at,break_deadline_at,status,status_message'
+
+export const DESCRIBE_IT_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_at'
+
+export const DESCRIBE_IT_WORD_SELECT =
+  'id,game_id,turn_index,round,team,describer_player_id,word,clue,status,guesser_player_id,created_at'
+
+export const DESCRIBE_IT_GUESS_SELECT = 'id,game_id,turn_index,player_id,team,text,correct,points,created_at'
+
+export const QUIPLASH_SESSION_SELECT =
+  'id,game_id,phase,battle_index,active_battle_id,turn_deadline_at,created_at,updated_at'
+
+export const QUIPLASH_ANSWER_SELECT = 'id,game_id,round_id,player_id,text,is_bye,submitted_at'
+
+export const QUIPLASH_BATTLE_SELECT =
+  'id,game_id,round_id,battle_number,answer_a_id,answer_b_id,winner_answer_id,points_awarded,status,started_at,ended_at'
+
+export const QUIPLASH_VOTE_SELECT = 'id,game_id,battle_id,round_id,player_id,chosen_answer_id,voted_at'
+
+export const WORD_RUSH_SESSION_SELECT =
+  'id,game_id,mode,prompt_mode,difficulty,min_word_length,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,prompt_setter_player_id,roster,start_letter,end_letter,prompt_index,used_pairs,turn_deadline_at,intermission_deadline_at,status,status_message,created_at,updated_at'
+
+export const WORD_RUSH_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_at'
+
+export const WORD_RUSH_ANSWER_SELECT =
+  'id,game_id,turn_index,round,team,team_turn_index,prompt_index,start_letter,end_letter,player_id,text,correct,created_at'
+
+export const WORD_HUNT_SUBMISSION_SELECT =
+  'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
+
+export const NPAT_ANSWER_SELECT =
+  'id,game_id,round_id,player_id,name,animal,place,thing,food,submitted_at,score_name,score_animal,score_place,score_thing,score_food'
+
+export const NPAT_MARK_SELECT =
+  'id,game_id,round_id,marker_player_id,target_player_id,valid_name,valid_animal,valid_place,valid_thing,valid_food,marked_at'

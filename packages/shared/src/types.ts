@@ -65,6 +65,22 @@ export interface Game {
   pair_vote_mode?: PairVoteMode | string | null
   ludo_variant?: string | null
   custom_questions?: unknown[] | null
+  crazy8_action_cards?: boolean | null
+  crazy8_jokers?: boolean | null
+  crazy8_pick2_stacking?: boolean | null
+  whot_pick3_enabled?: boolean | null
+  whot_cards_enabled?: boolean | null
+  whot_number_calls_enabled?: boolean | null
+  whot_pick2_stacking?: boolean | null
+  describe_it_mode?: string | null
+  describe_it_num_teams?: number | null
+  word_rush_mode?: string | null
+  word_rush_num_teams?: number | null
+  word_rush_prompt_mode?: string | null
+  word_rush_difficulty?: string | null
+  session_started_at?: string | null
+  game_duration_seconds?: number | null
+  rounds_count?: number | null
 }
 
 export interface Player {
@@ -190,6 +206,10 @@ export interface Round {
   trivia_metadata?: TriviaMetadata | null
   memory_match_metadata?: MatchingPairsMetadata | null
   sudoku_metadata?: SudokuMetadata | null
+  ttl_metadata?: TtlMetadata | null
+  quiplash_metadata?: QuiplashMetadata | null
+  word_hunt_metadata?: WordHuntMetadata | null
+  npat_metadata?: NpatMetadata | null
 }
 
 export interface VoteAssignment {
@@ -395,6 +415,329 @@ export interface LudoPlayerState {
   color: LudoColor
   pieces: LudoPiece[]
   player_order: number
+}
+
+export type CrazyEightsSuit = 'spades' | 'clubs' | 'hearts' | 'diamonds' | 'joker'
+export type CrazyEightsCalledSuit = 'spades' | 'clubs' | 'hearts' | 'diamonds'
+export type CrazyEightsPhase = 'playing' | 'choose_suit' | 'finished'
+
+export interface CrazyEightsCard {
+  id: string
+  suit: CrazyEightsSuit
+  rank: number
+}
+
+export interface CrazyEightsSession {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  direction: number
+  phase: CrazyEightsPhase
+  draw_pile: CrazyEightsCard[]
+  discard_pile: CrazyEightsCard[]
+  top_card: CrazyEightsCard | null
+  required_suit: CrazyEightsCalledSuit | null
+  pick_two_stack: number
+  joker_penalty: number
+  status_message: string | null
+  winner_player_id: string | null
+  finish_order: string[]
+  turn_deadline_at: string | null
+}
+
+export interface CrazyEightsPlayerHand {
+  id: string
+  game_id: string
+  player_id: string
+  cards: CrazyEightsCard[]
+  player_order: number
+}
+
+export type WhotShape = 'circle' | 'cross' | 'triangle' | 'square' | 'star' | 'whot'
+export type WhotPhase = 'playing' | 'choose_whot' | 'finished'
+
+export interface WhotCard {
+  id: string
+  shape: WhotShape
+  number: number
+}
+
+export interface WhotSession {
+  id: string
+  game_id: string
+  turn_order: string[]
+  current_turn_index: number
+  phase: WhotPhase
+  draw_pile: WhotCard[]
+  discard_pile: WhotCard[]
+  top_card: WhotCard | null
+  required_shape: WhotShape | null
+  required_number: number | null
+  pick_two_stack: number
+  pick_five_stack: number
+  status_message: string | null
+  winner_player_id: string | null
+  finish_order: string[]
+  turn_deadline_at: string | null
+}
+
+export interface WhotPlayerHand {
+  id: string
+  game_id: string
+  player_id: string
+  cards: WhotCard[]
+  player_order: number
+}
+
+export interface TtlMetadata {
+  statements: [string, string, string]
+  lie_index: number
+}
+
+export interface TtlStatement {
+  id: string
+  game_id: string
+  player_id: string
+  statement_a: string
+  statement_b: string
+  statement_c: string
+  lie_index: number
+}
+
+export interface TtlGuess {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  guessed_index: number
+  is_correct: boolean
+  points: number
+}
+
+export type DescribeItPhase = 'turn' | 'break' | 'finished'
+export type DescribeItMode = 'team' | 'individual'
+
+export interface DescribeItSession {
+  id: string
+  game_id: string
+  mode: DescribeItMode
+  num_teams: number
+  total_rounds: number
+  turn_seconds: number
+  phase: DescribeItPhase
+  turn_index: number
+  current_round: number
+  active_team: number
+  describer_player_id: string | null
+  roster: string[]
+  current_word: string | null
+  current_clue: string | null
+  current_clues: string[]
+  used_words?: string[]
+  status: 'active' | 'finished'
+  status_message: string | null
+  turn_deadline_at: string | null
+  break_deadline_at: string | null
+}
+
+export interface DescribeItPlayer {
+  id: string
+  game_id: string
+  player_id: string
+  team: number
+  score: number
+}
+
+export interface DescribeItWord {
+  id: string
+  game_id: string
+  turn_index: number
+  round: number
+  team: number
+  describer_player_id: string | null
+  word: string
+  clue: string | null
+  status: 'guessed' | 'skipped'
+  guesser_player_id: string | null
+}
+
+export interface DescribeItGuess {
+  id: string
+  game_id: string
+  turn_index: number
+  player_id: string
+  team: number
+  text: string
+  correct: boolean
+  points: number
+}
+
+export type NpatPhase = 'letter_pick' | 'writing' | 'marking' | 'host_review' | 'reveal'
+export type NpatCategory = 'name' | 'animal' | 'place' | 'thing' | 'food'
+
+export interface NpatMetadata {
+  letter: string | null
+  phase: NpatPhase
+  phase_started_at: string | null
+  reviewer_assignments: Record<string, string>
+  scores_computed?: boolean
+  used_letters: string[]
+  caller_order: string[]
+  caller_index: number
+  host_overrides?: Record<string, Partial<Record<NpatCategory, boolean>>>
+  disputes?: Array<{ challenger_id: string; target_player_id: string; category: NpatCategory }>
+}
+
+export interface NpatAnswer {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  name: string
+  animal: string
+  place: string
+  thing: string
+  food: string
+  submitted_at: string | null
+  score_name: number | null
+  score_animal: number | null
+  score_place: number | null
+  score_thing: number | null
+  score_food: number | null
+}
+
+export interface NpatMark {
+  id: string
+  game_id: string
+  round_id: string
+  marker_player_id: string
+  target_player_id: string
+  valid_name: boolean
+  valid_animal: boolean
+  valid_place: boolean
+  valid_thing: boolean
+  valid_food: boolean
+  marked_at: string | null
+}
+
+export interface WordHuntMetadata {
+  grid: string[][]
+  valid_words?: string[]
+}
+
+export interface WordHuntSubmission {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  word: string
+  path: number[]
+  points_awarded: number
+  submitted_at: string
+}
+
+export type WordRushPhase = 'playing' | 'awaiting_prompt' | 'intermission' | 'finished'
+export type WordRushMode = 'team' | 'individual'
+export type WordRushPromptMode = 'automatic' | 'manual'
+export type WordRushDifficulty = 'standard' | 'hard'
+
+export interface WordRushSession {
+  id: string
+  game_id: string
+  mode: WordRushMode
+  prompt_mode: WordRushPromptMode
+  difficulty: WordRushDifficulty
+  min_word_length: number
+  num_teams: number
+  total_rounds: number
+  turn_seconds: number
+  phase: WordRushPhase
+  turn_index: number
+  current_round: number
+  active_team: number
+  prompt_setter_player_id: string | null
+  roster: string[]
+  start_letter: string | null
+  end_letter: string | null
+  prompt_index: number
+  used_pairs: string[]
+  turn_deadline_at: string | null
+  intermission_deadline_at: string | null
+  status: 'active' | 'finished'
+  status_message: string | null
+}
+
+export interface WordRushPlayer {
+  id: string
+  game_id: string
+  player_id: string
+  team: number
+  score: number
+}
+
+export interface WordRushAnswer {
+  id: string
+  game_id: string
+  turn_index: number
+  round: number
+  team: number
+  team_turn_index: number | null
+  prompt_index: number
+  start_letter: string
+  end_letter: string
+  player_id: string
+  text: string
+  correct: boolean
+}
+
+export interface QuiplashMetadata {
+  prompt: string
+}
+
+export type QuiplashPhase = 'writing' | 'voting' | 'reveal' | 'finished'
+
+export interface QuiplashSession {
+  id: string
+  game_id: string
+  phase: QuiplashPhase
+  battle_index: number
+  active_battle_id: string | null
+  turn_deadline_at: string | null
+}
+
+export interface QuiplashAnswer {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  text: string
+  is_bye: boolean
+  submitted_at: string
+}
+
+export interface QuiplashBattle {
+  id: string
+  game_id: string
+  round_id: string
+  battle_number: number
+  answer_a_id: string
+  answer_b_id: string
+  winner_answer_id: string | null
+  points_awarded: number
+  status: 'pending' | 'active' | 'finished'
+  started_at: string | null
+  ended_at: string | null
+}
+
+export interface QuiplashVote {
+  id: string
+  game_id: string
+  battle_id: string | null
+  round_id: string | null
+  player_id: string
+  chosen_answer_id: string
+  voted_at: string
 }
 
 export type MobileConfig = {

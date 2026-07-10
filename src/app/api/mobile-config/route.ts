@@ -24,6 +24,10 @@ const BATCH_3_GAMES: GameType[] = [
   'ludo',
 ]
 
+const BATCH_4_GAMES: GameType[] = ['crazy_eights', 'whot', 'two_truths', 'describe_it']
+
+const BATCH_5_GAMES: GameType[] = ['quiplash', 'word_rush', 'word_hunt', 'i_call_on']
+
 /**
  * Server-driven mobile feature flags. Flip `mobileSupportedGames` when a native
  * screen is ready — no app store review required.
@@ -31,7 +35,7 @@ const BATCH_3_GAMES: GameType[] = [
 export async function GET() {
   return NextResponse.json({
     minAppVersion: '0.1.0',
-    mobileSupportedGames: [...BATCH_1_GAMES, ...BATCH_2_GAMES, ...BATCH_3_GAMES],
+    mobileSupportedGames: [...BATCH_1_GAMES, ...BATCH_2_GAMES, ...BATCH_3_GAMES, ...BATCH_4_GAMES, ...BATCH_5_GAMES],
     maintenanceMessage: null,
     forceWebFallbackFor: [] as GameType[],
   })

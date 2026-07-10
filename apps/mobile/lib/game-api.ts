@@ -106,3 +106,159 @@ export function postLudoRoll(gameId: string, resumeToken: string) {
 export function postLudoMove(gameId: string, resumeToken: string, pieceId: number, diceIndex: number) {
   return postJson<{ success: boolean }>('/api/ludo/move', { gameId, resumeToken, pieceId, diceIndex })
 }
+
+export function postCrazyEightsPlay(gameId: string, resumeToken: string, cardId: string) {
+  return postJson<{ success: boolean }>('/api/crazy-eights/play', { gameId, resumeToken, cardId })
+}
+
+export function postCrazyEightsDraw(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/crazy-eights/draw', { gameId, resumeToken })
+}
+
+export function postCrazyEightsChoose(gameId: string, resumeToken: string, suit: string) {
+  return postJson<{ success: boolean }>('/api/crazy-eights/choose', { gameId, resumeToken, suit })
+}
+
+export function postWhotPlay(gameId: string, resumeToken: string, cardId: string) {
+  return postJson<{ success: boolean }>('/api/whot/play', { gameId, resumeToken, cardId })
+}
+
+export function postWhotDraw(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/whot/draw', { gameId, resumeToken })
+}
+
+export function postWhotChooseShape(gameId: string, resumeToken: string, shape: string) {
+  return postJson<{ success: boolean }>('/api/whot/choose', { gameId, resumeToken, shape })
+}
+
+export function postWhotChooseNumber(gameId: string, resumeToken: string, number: number) {
+  return postJson<{ success: boolean }>('/api/whot/choose', { gameId, resumeToken, number })
+}
+
+export function postTtlStatements(
+  gameId: string,
+  resumeToken: string,
+  statementA: string,
+  statementB: string,
+  statementC: string,
+  lieIndex: number
+) {
+  return postJson<{ success: boolean }>('/api/two-truths/statements', {
+    gameId,
+    resumeToken,
+    statementA,
+    statementB,
+    statementC,
+    lieIndex,
+  })
+}
+
+export function postTtlGuess(gameId: string, resumeToken: string, roundId: string, guessedIndex: number) {
+  return postJson<{ success: boolean }>('/api/two-truths/guess', {
+    gameId,
+    resumeToken,
+    roundId,
+    guessedIndex,
+  })
+}
+
+export function postDescribeItTeam(gameId: string, resumeToken: string, team: number) {
+  return postJson<{ success: boolean }>('/api/describe-it/team', { gameId, resumeToken, team })
+}
+
+export function postDescribeItClue(gameId: string, resumeToken: string, clue: string) {
+  return postJson<{ success: boolean }>('/api/describe-it/clue', { gameId, resumeToken, clue })
+}
+
+export function postDescribeItGuess(gameId: string, resumeToken: string, text: string) {
+  return postJson<{ success: boolean; correct?: boolean }>('/api/describe-it/guess', {
+    gameId,
+    resumeToken,
+    text,
+  })
+}
+
+export function postDescribeItSkip(gameId: string, resumeToken: string) {
+  return postJson<{ success: boolean }>('/api/describe-it/skip', { gameId, resumeToken })
+}
+
+export function postQuiplashAnswer(gameId: string, resumeToken: string, roundId: string, text: string) {
+  return postJson<{ success: boolean }>('/api/quiplash/answer', { gameId, resumeToken, roundId, text })
+}
+
+export function postQuiplashVote(gameId: string, resumeToken: string, roundId: string, chosenAnswerId: string) {
+  return postJson<{ success: boolean }>('/api/quiplash/vote', { gameId, resumeToken, roundId, chosenAnswerId })
+}
+
+export function postWordRushTeam(gameId: string, resumeToken: string, team: number) {
+  return postJson<{ success: boolean }>('/api/word-rush/team', { gameId, resumeToken, team })
+}
+
+export function postWordRushSubmit(gameId: string, resumeToken: string, text: string) {
+  return postJson<{ success: boolean; correct?: boolean; points?: number; message?: string }>(
+    '/api/word-rush/submit',
+    { gameId, resumeToken, text }
+  )
+}
+
+export function postWordRushPrompt(
+  gameId: string,
+  resumeToken: string,
+  startLetter: string,
+  endLetter: string,
+  minWordLength?: number
+) {
+  return postJson<{ success: boolean }>('/api/word-rush/prompt', {
+    gameId,
+    resumeToken,
+    startLetter,
+    endLetter,
+    minWordLength,
+  })
+}
+
+export function postWordHuntSubmit(gameId: string, resumeToken: string, word: string, path: number[]) {
+  return postJson<{ success: boolean; pointsAwarded?: number }>('/api/word-hunt/submit', {
+    gameId,
+    resumeToken,
+    word,
+    path,
+  })
+}
+
+export function postNpatLetter(gameId: string, resumeToken: string, roundId: string, letter: string) {
+  return postJson<{ success: boolean }>('/api/npat/letter', { gameId, resumeToken, roundId, letter })
+}
+
+export function postNpatSubmit(
+  gameId: string,
+  resumeToken: string,
+  roundId: string,
+  answers: { name: string; animal: string; place: string; thing: string; food: string }
+) {
+  return postJson<{ success: boolean }>('/api/npat/submit', { gameId, resumeToken, roundId, ...answers })
+}
+
+export function postNpatMark(
+  gameId: string,
+  resumeToken: string,
+  roundId: string,
+  flags: {
+    validName: boolean
+    validAnimal: boolean
+    validPlace: boolean
+    validThing: boolean
+    validFood: boolean
+  }
+) {
+  return postJson<{ success: boolean }>('/api/npat/mark', { gameId, resumeToken, roundId, ...flags })
+}
+
+export function postNpatCallerApprove(gameId: string, resumeToken: string, roundId: string) {
+  return postJson<{ success: boolean }>('/api/npat/caller-approve', {
+    gameId,
+    resumeToken,
+    roundId,
+    overrides: [],
+  })
+}

@@ -16,6 +16,14 @@ export const GAME_LABELS: Partial<Record<GameType, string>> = {
   yahtzee: 'Yahtzee',
   snake_and_ladder: 'Snakes & Ladders',
   ludo: 'Ludo',
+  crazy_eights: 'Crazy Eights',
+  whot: 'Whot',
+  two_truths: 'Two Truths & a Lie',
+  describe_it: 'Describe It',
+  quiplash: 'Quiplash',
+  word_rush: 'Word Rush',
+  word_hunt: 'Word Hunt',
+  i_call_on: 'I Call On',
 }
 
 export { MOBILE_SUPPORTED_GAMES }
