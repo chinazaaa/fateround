@@ -173,6 +173,7 @@ import {
   QUICK_DRAW_TITLE_TIMER_OPTIONS,
   QUICK_DRAW_VOTE_TIMER_OPTIONS,
   clampQuickDrawRounds,
+  formatQuickDrawTurnTimer,
 } from '@/lib/quick-draw'
 import {
   QUICK_DRAW_GUESS_MIN_PLAYERS_INDIVIDUAL,
@@ -1902,7 +1903,7 @@ function CreateGameInner() {
                   >
                     {QUICK_DRAW_DRAW_TIMER_OPTIONS.map((s) => (
                       <option key={s} value={s}>
-                        {s} seconds
+                        {settings.quick_draw_variant === 'guess' ? formatQuickDrawTurnTimer(s) : `${s} seconds`}
                       </option>
                     ))}
                   </select>
