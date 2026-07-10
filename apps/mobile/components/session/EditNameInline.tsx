@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { patchPlayerName } from '@/lib/game-api'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
+import { notifyPlayerSessionChanged } from '@/lib/session-events'
 import { useToast } from '@/components/ui/Toast'
 
 type Props = {
@@ -33,6 +34,7 @@ export function EditNameInline({ gameCode, playerId, currentName, onRenamed, spe
     try {
       const data = await patchPlayerName(gameCode, playerId, trimmed, existing.resumeToken)
       await setPlayerSession(gameCode, playerId, data.playerName, existing.playerGender, existing.resumeToken)
+      notifyPlayerSessionChanged(gameCode)
       onRenamed(data.playerName)
       setName(data.playerName)
       setEditing(false)

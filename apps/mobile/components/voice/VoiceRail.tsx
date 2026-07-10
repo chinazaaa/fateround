@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { AppState, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import {
   AudioSession,
   LiveKitRoom,
@@ -108,10 +108,28 @@ function DisconnectedBar({
 export function VoiceRail({ gameCode, mode, hostToken }: Props) {
   const { show } = useToast()
   const voice = useVoiceRoom({ gameCode, mode, hostToken })
+  const wasConnectedRef = useRef(false)
 
   useEffect(() => {
     if (voice.error) show(voice.error, 'error')
   }, [voice.error, show])
+
+  useEffect(() => {
+    if (voice.token) wasConnectedRef.current = true
+  }, [voice.token])
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if ((nextState === 'background' || nextState === 'inactive') && voice.token) {
+        voice.leave()
+      }
+      if (nextState === 'active' && wasConnectedRef.current && !voice.token) {
+        show('Voice disconnected while the app was in the background. Tap Join voice to reconnect.', 'info')
+        wasConnectedRef.current = false
+      }
+    })
+    return () => sub.remove()
+  }, [voice.token, voice.leave, show])
 
   useEffect(() => {
     if (!voice.token) return

@@ -30,6 +30,7 @@ import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/g
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { MonopolyBoardView } from '@/components/games/monopoly/MonopolyBoardView'
 import { TimerBadge } from '@/components/ui/TimerBadge'
+import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { joinGame } from '@/lib/api'
 import {
@@ -144,6 +145,14 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const turnPlayerId = board ? currentPlayerId(board) : null
   const myState = states.find((s) => s.player_id === bootstrap.myPlayerId)
   const isMyTurn = turnPlayerId === bootstrap.myPlayerId && !myState?.bankrupt
+
+  useGameTurnAlerts({
+    gameCode: bootstrap.code,
+    status: bootstrap.game?.status,
+    isMyTurn,
+    enabled: bootstrap.screen === 'playing',
+  })
+
   const pendingSpace = board?.pending_space != null ? spaceAt(board.pending_space) : null
   const auction = board?.auction_state
   const auctionSpace = auction ? spaceAt(auction.space_index) : null

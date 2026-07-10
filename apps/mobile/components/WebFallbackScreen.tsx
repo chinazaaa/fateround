@@ -15,16 +15,15 @@ export function WebFallbackScreen({ gameCode, gameType, debugReason }: Props) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Play in browser</Text>
+      <Text style={styles.title}>{label}</Text>
       <Text style={styles.body}>
-        {label} is not in the native app yet. You can still join the same room on the web —
-        web and mobile players can play together.
+        This game type is temporarily unavailable in the mobile app. Open the same room on another device — players can still play together.
       </Text>
       {__DEV__ && debugReason ? (
         <Text style={styles.debug}>Dev: {debugReason}</Text>
       ) : null}
       <Pressable style={styles.button} onPress={() => void Linking.openURL(url)}>
-        <Text style={styles.buttonText}>Open {gameCode} on web</Text>
+        <Text style={styles.buttonText}>Open {gameCode.toUpperCase()}</Text>
       </Pressable>
     </View>
   )

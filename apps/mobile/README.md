@@ -2,7 +2,7 @@
 
 React Native app alongside the web client. Same backend, token-based join — no account required to play.
 
-**Full rollout status, gaps, and proposed Batches 10+:** [`docs/mobile-rollout.md`](../../docs/mobile-rollout.md)
+**Full rollout status:** [`docs/mobile-rollout.md`](../../docs/mobile-rollout.md)
 
 ---
 
@@ -10,12 +10,14 @@ React Native app alongside the web client. Same backend, token-based join — no
 
 | | |
 |--|--|
-| **Native player screens** | **40 / 40** game types (Batches 1–9) |
-| **Store-ready UX** | **No** — MVPs only; host, create, polish, push still missing |
-| **Web fallback** | Opens when a type is disabled in `/api/mobile-config` |
+| **Native player screens** | **40 / 40** game types |
+| **Player E2E** | **39 / 40** (Drawful canvas is cross-device) |
+| **Batches 10–15** | **Done** (shell, lifecycle, push, voice, P0–P3 polish) |
+| **Readiness score** | **6 / 7** — only EAS project ID + TestFlight remain |
+| **Biggest gap** | **In-game host** (lobby + start work; mid-game host dashboard does not) |
 
-What works today: enter code → join → core gameplay for every game type.  
-What’s still web-first: **create game, host lobby, leave/edit name, rich finish screens, push notifications, voice chat**, and most visual polish.
+What works: join → play → finish → play-again for almost every type; native create; host lobby; push + voice on priority games.  
+What's still web-first: **in-game host controls**, host-as-player, bingo auto-call sync, advanced create (participants / custom slots).
 
 ---
 
@@ -46,53 +48,36 @@ cd apps/mobile && npm run typecheck
 
 ## Architecture
 
-- **`apps/mobile/`** — Expo Router (`app/index` join, `app/game/[code]`)
+- **`apps/mobile/`** — Expo Router (`app/index` join, `app/create`, `app/host/[code]`, `app/game/[code]`)
 - **`packages/shared/`** — `@fateround/shared` types + pure game logic
 - **`src/`** — Next.js web + API routes (unchanged)
 
-Player views live in `components/games/*PlayerView.tsx`, registered in `GameRouter.tsx`.
-
-Server feature flags: `GET /api/mobile-config` → `mobileSupportedGames`.
-
----
-
-## Phase 0 shell (done)
-
-- Join by code, `resumeToken` in `expo-secure-store`
-- Supabase realtime on `games` / game tables
-- `useGameViewBootstrap` + `useGameTableSync`
-- Minimal `JoinScreen`, `LobbyView`, `GameChrome`
-- `eas.json` scaffold
+Player views: `components/games/*PlayerView.tsx` → `GameRouter.tsx`.  
+Host lobby: `HostLobbyScreen.tsx`.  
+Feature flags: `GET /api/mobile-config`.
 
 ---
 
-## Batches 1–9 — player views (done)
+## Done (summary)
 
-All `GameType` values have a registered native player view. See [`docs/mobile-rollout.md`](../../docs/mobile-rollout.md) for the full per-batch table.
-
-Highlights:
-
-- **Batch 2** — 10 poll games via shared `PollPlayerView`
-- **Batch 7** — mafia (API state), codewords
-- **Batch 8** — monopoly / mahjong phase MVPs; quick_draw guess mode (Drawful still web)
-- **Batch 9** — secret_message, hot_seat, custom, anonymous_messages
+| Batch | What |
+|-------|------|
+| **1–9** | 40 native player views |
+| **10** | Session shell, ⋮ menu, rules links, native create, recent games |
+| **11** | Host lobby, start game, play again |
+| **12** | Lifecycle gates, finish scoreboards, import claim join |
+| **13** | Turn push (13+ games), per-game mute, timer haptics |
+| **14** | Voice on 14 types, rename sync, background disconnect |
+| **15 P0–P3** | Poll/trivia/bingo, boards/cards, party UX, heavy games |
 
 ---
 
-## Next up (Batches 10+)
+## Next up
 
-Not implemented yet — see roadmap in [`docs/mobile-rollout.md`](../../docs/mobile-rollout.md):
-
-1. **Batch 10** — Leave, edit name, header, share link, recent games, toasts
-2. **Batch 11** — Create game + host lobby + start
-3. **Batch 12** — Finish screens, late join, viewer mode, lifecycle parity
-4. **Batch 13** — Push notifications
-5. **Batch 14** — Voice chat (LiveKit)
-6. **Batch 15+** — Per-game UI polish
+See [`docs/mobile-rollout.md`](../../docs/mobile-rollout.md) → **Batch 16 (in-game host)** + TestFlight / EAS project ID.
 
 ---
 
 ## Auth model
 
-Same as web: `resumeToken` for players, `hostToken` for host actions.  
-Host token helpers exist in `lib/secure-session.ts` but **no host UI** uses them yet.
+Same as web: `resumeToken` for players, `hostToken` for host actions (`lib/secure-session.ts`).

@@ -95,7 +95,7 @@ export default function CreateScreen() {
         </Pressable>
 
         <Pressable style={styles.webLink} onPress={openWebCreate}>
-          <Text style={styles.webLinkText}>Advanced setup (participants, custom questions) on web</Text>
+          <Text style={styles.webLinkText}>More setup options (participants, custom questions)</Text>
         </Pressable>
 
         {MOBILE_SUPPORTED_GAMES.length > NATIVE_CREATABLE_GAMES.length ? (

@@ -9,11 +9,27 @@ import {
   isTicTacToeGame,
   isCheckersGame,
   isAyoGame,
+  isChessGame,
+  isWhotGame,
+  isScrabbleGame,
+  isMonopolyGame,
+  isMahjongGame,
+  isCrazyEightsGame,
+  isSnakeAndLadderGame,
+  isYahtzeeGame,
 } from '@/lib/game-types'
 import { currentPlayerId as ludoCurrentPlayerId } from '@/lib/ludo'
 import { currentTurnPlayerId as ticTacToeCurrentTurnPlayerId } from '@/lib/tic-tac-toe'
 import { currentTurnPlayerId as checkersCurrentTurnPlayerId } from '@/lib/checkers'
 import { currentTurnPlayerId as ayoCurrentTurnPlayerId } from '@/lib/ayo'
+import { currentTurnPlayerId as chessCurrentTurnPlayerId } from '@/lib/chess'
+import { currentPlayerId as whotCurrentPlayerId } from '@/lib/whot'
+import { currentTurnPlayerId as scrabbleCurrentTurnPlayerId } from '@/lib/scrabble-board'
+import { currentPlayerId as monopolyCurrentPlayerId } from '@/lib/monopoly'
+import { currentMahjongPlayerId } from '@/lib/mahjong-session'
+import { currentPlayerId as crazyEightsCurrentPlayerId } from '@/lib/crazy-eights'
+import { currentPlayerId as snakeLadderCurrentPlayerId } from '@/lib/snake-and-ladder'
+import { currentPlayerId as yahtzeeCurrentPlayerId } from '@/lib/yahtzee'
 
 export type PushEvent = 'game_started' | 'lobby_reopened' | 'game_ended' | 'your_turn' | 'round_started'
 
@@ -195,6 +211,54 @@ export async function resolveCurrentTurnPlayerId(gameCode: string): Promise<stri
     const { data: session } = await admin.from('ayo_sessions').select('*').eq('game_id', code).maybeSingle()
     if (!session || session.status === 'finished') return null
     return ayoCurrentTurnPlayerId(session)
+  }
+
+  if (isChessGame(gameType)) {
+    const { data: session } = await admin.from('chess_sessions').select('*').eq('game_id', code).maybeSingle()
+    if (!session || session.status === 'finished') return null
+    return chessCurrentTurnPlayerId(session)
+  }
+
+  if (isWhotGame(gameType)) {
+    const { data: session } = await admin.from('whot_sessions').select('*').eq('game_id', code).maybeSingle()
+    if (!session || session.status === 'finished') return null
+    return whotCurrentPlayerId(session)
+  }
+
+  if (isScrabbleGame(gameType)) {
+    const { data: session } = await admin.from('scrabble_sessions').select('*').eq('game_id', code).maybeSingle()
+    if (!session || session.status === 'finished') return null
+    return scrabbleCurrentTurnPlayerId(session)
+  }
+
+  if (isMonopolyGame(gameType)) {
+    const { data: board } = await admin.from('monopoly_boards').select('*').eq('game_id', code).maybeSingle()
+    if (!board || board.phase === 'finished') return null
+    return monopolyCurrentPlayerId(board)
+  }
+
+  if (isMahjongGame(gameType)) {
+    const { data: session } = await admin.from('mahjong_sessions').select('*').eq('game_id', code).maybeSingle()
+    if (!session || session.phase === 'finished') return null
+    return currentMahjongPlayerId(session)
+  }
+
+  if (isCrazyEightsGame(gameType)) {
+    const { data: session } = await admin.from('crazy_eights_sessions').select('*').eq('game_id', code).maybeSingle()
+    if (!session || session.status === 'finished') return null
+    return crazyEightsCurrentPlayerId(session)
+  }
+
+  if (isSnakeAndLadderGame(gameType)) {
+    const { data: session } = await admin.from('snake_ladder_sessions').select('*').eq('game_id', code).maybeSingle()
+    if (!session || session.status === 'finished') return null
+    return snakeLadderCurrentPlayerId(session)
+  }
+
+  if (isYahtzeeGame(gameType)) {
+    const { data: session } = await admin.from('yahtzee_sessions').select('*').eq('game_id', code).maybeSingle()
+    if (!session || session.status === 'finished') return null
+    return yahtzeeCurrentPlayerId(session)
   }
 
   return null

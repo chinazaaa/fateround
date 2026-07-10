@@ -7,7 +7,7 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { useTurnNotifications } from '@/hooks/useTurnNotifications'
+import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { postAyoMove } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { AYO_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -64,7 +64,8 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
   const turnPlayerId = activeSession ? currentTurnPlayerId(activeSession) : null
   const isMyTurn = bootstrap.myPlayerId != null && turnPlayerId === bootstrap.myPlayerId
 
-  useTurnNotifications({
+  useGameTurnAlerts({
+    gameCode: bootstrap.code,
     status: bootstrap.game?.status,
     isMyTurn,
     enabled: bootstrap.screen === 'active',

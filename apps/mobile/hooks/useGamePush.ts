@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react'
 import * as Notifications from 'expo-notifications'
 import { getPlayerSession } from '@/lib/secure-session'
 import { registerGamePush, unsubscribeGamePush, getExpoPushToken } from '@/lib/push-notifications'
+import { isPushMutedForGame } from '@/lib/push-preferences'
+import { subscribePlayerSession } from '@/lib/session-events'
 
 /**
  * Register this device for game lifecycle + turn push notifications once the
@@ -9,11 +11,22 @@ import { registerGamePush, unsubscribeGamePush, getExpoPushToken } from '@/lib/p
  */
 export function useGamePush(gameCode: string) {
   const tokenRef = useRef<string | null>(null)
+  const mutedRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
 
+    const reloadMute = async () => {
+      mutedRef.current = await isPushMutedForGame(gameCode)
+    }
+
+    void reloadMute()
+    const unsub = subscribePlayerSession(gameCode, () => void reloadMute())
+
     const setup = async () => {
+      await reloadMute()
+      if (cancelled || mutedRef.current) return
+
       const session = await getPlayerSession(gameCode)
       if (cancelled || !session?.resumeToken) return
 
@@ -27,6 +40,7 @@ export function useGamePush(gameCode: string) {
 
     return () => {
       cancelled = true
+      unsub()
       const token = tokenRef.current
       if (token) void unsubscribeGamePush(gameCode, token)
     }

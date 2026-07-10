@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useToast } from '@/components/ui/Toast'
+import { pulseTurnAlert } from '@/lib/local-turn-alerts'
 
 /**
  * Foreground turn + game-start alerts when push is disabled or the app is open.
@@ -39,9 +40,15 @@ export function useTurnNotifications({
     const prevMyTurn = prevMyTurnRef.current
 
     if (prevStatus === 'waiting' && status === 'active') {
-      if (announce) show(startMessage, 'info')
+      if (announce) {
+        show(startMessage, 'info')
+        void pulseTurnAlert('turn')
+      }
     } else if (status === 'active' && prevStatus === 'active' && isMyTurn === true && prevMyTurn !== true) {
-      if (announce) show(turnMessage, 'info')
+      if (announce) {
+        show(turnMessage, 'info')
+        void pulseTurnAlert('turn')
+      }
     }
 
     prevStatusRef.current = status

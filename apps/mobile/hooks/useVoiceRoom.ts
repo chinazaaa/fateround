@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchGameRoomCode, postAudioPresence, postAudioToken } from '@/lib/voice-api'
 import { ensureMicPermission } from '@/lib/mic-permission'
 import { getPlayerSession } from '@/lib/secure-session'
+import { subscribePlayerSession } from '@/lib/session-events'
 import type { AudioAuth } from '@/lib/voice-types'
 import { useHostVoiceDisplayName, useHostVoiceIdentity } from '@/hooks/useHostVoiceIdentity'
 
@@ -32,20 +33,21 @@ export function useVoiceRoom({ gameCode, mode, hostToken }: Options) {
   useEffect(() => {
     if (mode !== 'player') return
     let active = true
-    void getPlayerSession(gameCode).then((session) => {
+    const sync = async () => {
+      const session = await getPlayerSession(gameCode)
       if (!active) return
       if (!session?.playerId) {
         setPlayerReady(false)
         setPlayerIdentity(null)
+        setPlayerName('')
         return
       }
       setPlayerIdentity(session.playerId)
       setPlayerName(session.playerName)
       setPlayerReady(true)
-    })
-    return () => {
-      active = false
     }
+    void sync()
+    return subscribePlayerSession(gameCode, () => void sync())
   }, [gameCode, mode])
 
   const identity = mode === 'host' ? hostIdentity : playerIdentity

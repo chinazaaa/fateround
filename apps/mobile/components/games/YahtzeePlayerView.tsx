@@ -17,6 +17,7 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postYahtzeeHold, postYahtzeeRoll, postYahtzeeScore } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -74,6 +75,14 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
 
   const turnPlayerId = session ? currentPlayerId(session) : null
   const isMyTurn = turnPlayerId === bootstrap.myPlayerId
+
+  useGameTurnAlerts({
+    gameCode: bootstrap.code,
+    status: bootstrap.game?.status,
+    isMyTurn,
+    enabled: bootstrap.screen === 'playing',
+  })
+
   const myScore = scores.find((s) => s.player_id === bootstrap.myPlayerId)
   const categories = myScore?.scores.categories
 

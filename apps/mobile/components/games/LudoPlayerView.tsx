@@ -16,7 +16,7 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { useTurnNotifications } from '@/hooks/useTurnNotifications'
+import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { postLudoMove, postLudoRoll } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { LUDO_PLAYER_STATE_SELECT, LUDO_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -71,7 +71,8 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   const turnPlayerId = session ? currentPlayerId(session) : null
   const isMyTurn = turnPlayerId === bootstrap.myPlayerId
 
-  useTurnNotifications({
+  useGameTurnAlerts({
+    gameCode: bootstrap.code,
     status: bootstrap.game?.status,
     isMyTurn,
     enabled: bootstrap.screen === 'playing',

@@ -57,7 +57,7 @@ export default function HomeScreen() {
         </Pressable>
 
         <Pressable style={styles.secondaryButton} onPress={openCreateOnWeb}>
-          <Text style={styles.secondaryButtonText}>Advanced setup on web</Text>
+          <Text style={styles.secondaryButtonText}>More setup options</Text>
         </Pressable>
 
         {recent.length > 0 ? (

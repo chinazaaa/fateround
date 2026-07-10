@@ -15,6 +15,7 @@ import {
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner, WaitingPanel } from '@/components/game/GameChrome'
+import { UnavailableFeaturePanel } from '@/components/ui/UnavailableFeaturePanel'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
@@ -190,7 +191,11 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
   if (!isGuessMode && bootstrap.game) {
     return (
       <GameShell bootstrap={bootstrap} title={batch8GameLabel('quick_draw')} subtitle="Drawful mode">
-        <WaitingPanel message="Drawful (lie) mode needs the web app for canvas drawing. Open this game in your browser to play that variant." />
+        <UnavailableFeaturePanel
+          gameCode={bootstrap.code}
+          title="Canvas drawing"
+          body="This room uses Drawful mode. Touch sketching is not in the mobile app yet — open the same code on another device to draw while others guess here."
+        />
       </GameShell>
     )
   }

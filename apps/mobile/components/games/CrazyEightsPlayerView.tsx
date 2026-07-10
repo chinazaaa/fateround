@@ -28,6 +28,7 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postCrazyEightsChoose, postCrazyEightsDraw, postCrazyEightsPlay } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -92,6 +93,14 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   const rules = parseCrazyEightsRules(bootstrap.game)
   const turnPlayerId = session ? currentPlayerId(session) : null
   const isMyTurn = turnPlayerId === bootstrap.myPlayerId
+
+  useGameTurnAlerts({
+    gameCode: bootstrap.code,
+    status: bootstrap.game?.status,
+    isMyTurn,
+    enabled: bootstrap.screen === 'playing',
+  })
+
   const myHand = hands.find((h) => h.player_id === bootstrap.myPlayerId)
   const penalties = session ? getNormalizedPenalties(session) : { pickTwo: 0, jokerPenalty: 0 }
   const choosingSuit = session?.phase === 'choose_suit' && isMyTurn

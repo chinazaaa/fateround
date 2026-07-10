@@ -12,6 +12,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ScrabbleTile } from '@/components/games/scrabble/ScrabbleTile'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
+import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import {
@@ -88,6 +89,14 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   const myState = playerStates.find((s) => s.player_id === bootstrap.myPlayerId)
   const turnPlayerId = activeSession ? currentTurnPlayerId(activeSession) : null
   const isMyTurn = turnPlayerId === bootstrap.myPlayerId && !myState?.timed_out
+
+  useGameTurnAlerts({
+    gameCode: bootstrap.code,
+    status: bootstrap.game?.status,
+    isMyTurn,
+    enabled: bootstrap.screen === 'playing',
+  })
+
   const tileSet = tileSetForDictionary(bootstrap.game?.scrabble_dictionary_id)
 
   const usedRackIndices = useMemo(() => new Set(pending.map((t) => t.rackIndex)), [pending])

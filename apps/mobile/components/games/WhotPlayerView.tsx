@@ -23,6 +23,7 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
+import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postWhotChooseNumber, postWhotChooseShape, postWhotDraw, postWhotPlay } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -85,6 +86,14 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   const turnPlayerId = session ? currentPlayerId(session) : null
   const isMyTurn = turnPlayerId === bootstrap.myPlayerId
   const myHand = hands.find((h) => h.player_id === bootstrap.myPlayerId)
+
+  useGameTurnAlerts({
+    gameCode: bootstrap.code,
+    status: bootstrap.game?.status,
+    isMyTurn,
+    enabled: bootstrap.screen === 'playing',
+  })
+
   const penalty = session ? getActivePickPenalty(session) : null
   const choosingWhot = session?.phase === 'choose_whot' && isMyTurn
 

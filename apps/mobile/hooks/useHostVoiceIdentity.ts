@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as SecureStore from 'expo-secure-store'
 import { getPlayerSession } from '@/lib/secure-session'
+import { subscribePlayerSession } from '@/lib/session-events'
 
 const hostAudioKey = (gameCode: string) => `host-audio-id:${gameCode.toUpperCase()}`
 
@@ -45,11 +46,7 @@ export function useHostVoiceDisplayName(gameCode: string): string {
       if (active) setName(session?.playerName?.trim() || 'Host')
     }
     void sync()
-    const interval = setInterval(() => void sync(), 5000)
-    return () => {
-      active = false
-      clearInterval(interval)
-    }
+    return subscribePlayerSession(gameCode, () => void sync())
   }, [gameCode])
 
   return name

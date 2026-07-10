@@ -18,6 +18,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { MahjongTableView } from '@/components/games/mahjong/MahjongTableView'
 import { MahjongTileFace } from '@/components/games/mahjong/MahjongTileFace'
 import { TimerBadge } from '@/components/ui/TimerBadge'
+import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { getPlayerSession } from '@/lib/secure-session'
 import {
@@ -86,6 +87,14 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   const myState = bootstrap.myPlayerId ? stateFor(states, bootstrap.myPlayerId) : null
   const turnPlayerId = session ? currentMahjongPlayerId(session) : null
   const isMyTurn = turnPlayerId === bootstrap.myPlayerId
+
+  useGameTurnAlerts({
+    gameCode: bootstrap.code,
+    status: bootstrap.game?.status,
+    isMyTurn,
+    enabled: bootstrap.screen === 'playing',
+  })
+
   const sortedHand = myState ? sortMahjongTiles(myState.hand ?? []) : []
   void timerTick
   const secondsLeft = mahjongSecondsLeft(session?.turn_deadline_at)

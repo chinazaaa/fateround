@@ -4,6 +4,7 @@ import { processMonopolyExpireTurn } from '@/lib/monopoly'
 import { yahtzeeRollSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { scheduleTurnNotification } from '@/lib/push'
 
 // We only need gameId — reuse the roll schema's gameId shape
 const schema = yahtzeeRollSchema.pick({ gameId: true })

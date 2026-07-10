@@ -13,7 +13,7 @@ import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { useTurnNotifications } from '@/hooks/useTurnNotifications'
+import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { postTicTacToeMove } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { TIC_TAC_TOE_SESSION_SELECT } from '@/lib/supabase-selects'
@@ -77,7 +77,8 @@ export function TicTacToePlayerView({ gameCode }: { gameCode: string }) {
   const turnPlayerIdEarly = activeSessionEarly ? currentTurnPlayerId(activeSessionEarly) : null
   const isMyTurnEarly = bootstrap.myPlayerId != null && turnPlayerIdEarly === bootstrap.myPlayerId
 
-  useTurnNotifications({
+  useGameTurnAlerts({
+    gameCode: bootstrap.code,
     status: bootstrap.game?.status,
     isMyTurn: isMyTurnEarly,
     enabled: bootstrap.screen === 'active',

@@ -24,5 +24,7 @@ export async function POST(req: NextRequest) {
   const { error } = await processMahjongExpireTurn(supabase, code)
   if (error) return NextResponse.json({ error }, { status: 400 })
 
+  scheduleTurnNotification(code)
+
   return NextResponse.json({ success: true })
 }

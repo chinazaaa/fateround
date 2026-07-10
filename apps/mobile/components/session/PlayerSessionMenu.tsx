@@ -3,6 +3,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { GameType } from '@fateround/shared'
 import { EditNameInline } from '@/components/session/EditNameInline'
 import { LeaveGameButton } from '@/components/session/LeaveGameButton'
+import { PushMuteToggle } from '@/components/push/PushMuteToggle'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameLabel } from '@/lib/mobile-registry'
 
@@ -66,6 +67,8 @@ export function PlayerSessionMenu({ gameCode, gameType, playerId, playerName, on
                     <GameRulesLink gameType={gameType} />
                   </View>
                 ) : null}
+
+                <PushMuteToggle gameCode={gameCode} />
 
                 <View style={styles.leaveRow}>
                   <LeaveGameButton

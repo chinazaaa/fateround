@@ -3,6 +3,7 @@ import { parseGameType, isChessGame } from '@/lib/game-types'
 import { processChessExpireTurn } from '@/lib/chess'
 import { chessExpireSchema } from '@/lib/validation'
 import { parseJsonBody } from '@/lib/parse-body'
+import { scheduleTurnNotification } from '@/lib/push'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 // System/timer route: any client may poke it, but it only acts once the turn
@@ -23,6 +24,8 @@ export async function POST(req: NextRequest) {
 
   const { error } = await processChessExpireTurn(supabase, code)
   if (error) return NextResponse.json({ error }, { status: 400 })
+
+  scheduleTurnNotification(code)
 
   return NextResponse.json({ success: true })
 }

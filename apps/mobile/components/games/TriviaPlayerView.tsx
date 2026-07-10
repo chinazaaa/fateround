@@ -8,7 +8,7 @@ import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChro
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { TriviaActiveRound } from '@/components/games/trivia/TriviaActiveRound'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { useTurnNotifications } from '@/hooks/useTurnNotifications'
+import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, TRIVIA_ANSWER_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
@@ -59,7 +59,8 @@ export function TriviaPlayerView({ gameCode }: { gameCode: string }) {
     !!bootstrap.game
   )
 
-  useTurnNotifications({
+  useGameTurnAlerts({
+    gameCode: bootstrap.code,
     status: bootstrap.game?.status,
     enabled: bootstrap.screen === 'playing',
     startMessage: 'Trivia started! 🎮',
