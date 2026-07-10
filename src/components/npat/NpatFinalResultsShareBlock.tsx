@@ -16,6 +16,8 @@ export function NpatFinalResultsShareBlock({
   leaderboard,
   highlightPlayerId,
   playAgainButton,
+  returnToLobbyButton,
+  lobbyNote,
   showCreateNewGame = true,
 }: {
   game: Game
@@ -23,6 +25,8 @@ export function NpatFinalResultsShareBlock({
   leaderboard: { id: string; name: string; score: number }[]
   highlightPlayerId?: string | null
   playAgainButton?: ReactNode
+  returnToLobbyButton?: ReactNode
+  lobbyNote?: ReactNode
   showCreateNewGame?: boolean
 }) {
   const captureRef = useRef<HTMLDivElement>(null)
@@ -73,8 +77,11 @@ export function NpatFinalResultsShareBlock({
         </div>
       </div>
       <HostGameFinishedActions
+        variant={returnToLobbyButton ? 'winner' : 'default'}
         gameCode={game.id}
         playAgainButton={playAgainButton}
+        returnToLobbyButton={returnToLobbyButton}
+        lobbyNote={lobbyNote}
         showCreateNewGame={showCreateNewGame}
         shareButton={
           <ShareResults

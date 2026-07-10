@@ -13,6 +13,7 @@ import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { ScrabbleGamePanel } from '@/components/scrabble/ScrabbleBoard'
 import { ScrabbleGameTimerBar } from '@/components/scrabble/ScrabbleGameTimerBar'
 import { gameTypeConfig } from '@/lib/game-types'
+import { SCRABBLE_MIN_PLAYERS } from '@/lib/scrabble'
 import { currentTurnPlayerId, isScrabbleResultsPhase } from '@/lib/scrabble-board'
 import { tileSetForDictionary } from '@/lib/scrabble-rulesets'
 import { supabase } from '@/lib/supabase'
@@ -31,6 +32,7 @@ import { GameJoinLobbyShell } from '@/components/game-lobby/GameJoinLobbyShell'
 import { GameLobbyWaitingPanel } from '@/components/game-lobby/GameLobbyWaitingPanel'
 import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { PlayerSessionControls } from '@/components/ui/PlayerSessionControls'
+import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
@@ -54,6 +56,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   const [playerStates, setPlayerStates] = useState<ScrabblePlayerState[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
+  const [replayReadyPending, setReplayReadyPending] = useState(false)
 
   // Game-specific load: fetch the scrabble session + per-player state (the shared
   // game/players fetch + session resolution lives in useGameViewBootstrap).
@@ -137,6 +140,31 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
     setMyResumeToken(null)
     void load()
   }
+
+  const toggleReplayReady = useCallback(
+    async (ready: boolean) => {
+      if (!myResumeToken) {
+        toastError('Your player session expired — rejoin to continue')
+        return
+      }
+      setReplayReadyPending(true)
+      try {
+        const res = await fetch('/api/players/ready', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ready }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? 'Failed to update ready')
+        await load()
+      } catch (err) {
+        toastError(err instanceof Error ? err.message : 'Failed to update ready')
+      } finally {
+        setReplayReadyPending(false)
+      }
+    },
+    [gameCode, myResumeToken, load, toastError]
+  )
 
   const playWord = async (tiles: ScrabblePlacedTile[]) => {
     if (!myPlayerId) return
@@ -281,6 +309,23 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
 
   if (screen === 'waiting') {
     const me = players.find((p) => p.id === myPlayerId)
+    if (game?.replay_pending) {
+      return (
+        <GameJoinLobbyShell gameCode={gameCode}>
+          <ReplayReadyRing
+            players={players}
+            meId={myPlayerId}
+            isHost={false}
+            minPlayers={SCRABBLE_MIN_PLAYERS}
+            onToggleReady={(ready) => void toggleReplayReady(ready)}
+            onStart={() => {}}
+            pending={replayReadyPending}
+            gameCode={gameCode}
+            onLeft={handlePlayerLeft}
+          />
+        </GameJoinLobbyShell>
+      )
+    }
     return (
       <GameJoinLobbyShell gameCode={gameCode}>
         <GameLobbyWaitingPanel

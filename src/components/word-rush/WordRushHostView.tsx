@@ -778,6 +778,8 @@ export function WordRushHostView({ gameCode, hostToken }: { gameCode: string; ho
           players={players}
           meId={hostPlayerId}
           isHost
+          gameCode={gameCode}
+          hostToken={hostToken}
           minPlayers={minPlayers}
           onToggleReady={() => {}}
           onStart={() => void startGame()}

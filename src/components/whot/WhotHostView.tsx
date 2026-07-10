@@ -620,6 +620,8 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
           players={players}
           meId={hostPlayerId}
           isHost
+          gameCode={gameCode}
+          hostToken={hostToken}
           minPlayers={WHOT_MIN_PLAYERS}
           onToggleReady={() => {}}
           onStart={() => void startGame()}

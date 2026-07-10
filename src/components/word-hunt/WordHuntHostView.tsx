@@ -601,6 +601,8 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
           players={players}
           meId={hostPlayerId}
           isHost
+          gameCode={gameCode}
+          hostToken={hostToken}
           minPlayers={WORD_HUNT_MIN_PLAYERS}
           onToggleReady={() => {}}
           onStart={() => void startGame()}

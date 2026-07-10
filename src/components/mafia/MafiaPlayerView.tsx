@@ -335,6 +335,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
               onToggleReady={(ready) => void toggleReplayReady(ready)}
               onStart={() => {}}
               pending={replayReadyPending}
+              gameCode={gameCode}
+              onLeft={handlePlayerLeft}
             />
           </div>
         </GameJoinLobbyShell>

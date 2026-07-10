@@ -11,6 +11,7 @@ import {
   isWouldYouRather,
   isCodewordsGame,
   isDescribeItGame,
+  isQuickDrawGame,
 } from '@/lib/game-types'
 import { questionSampleFile } from '@/lib/custom-questions'
 import { isPeoplePollGame } from '@/lib/player-participant-pool'
@@ -33,7 +34,8 @@ export function supportsQuestionCustomContentHint(gameType: GameType): boolean {
     isPickANumber(gameType) ||
     isTriviaGame(gameType) ||
     isCodewordsGame(gameType) ||
-    isDescribeItGame(gameType)
+    isDescribeItGame(gameType) ||
+    isQuickDrawGame(gameType)
   )
 }
 
@@ -48,7 +50,7 @@ export function getQuestionCustomContentHint(gameType: GameType): CustomContentH
   const sample = questionSampleFile(gameType)
 
   // Word-list games (Text Charades, Codewords) use plain words, not Q&A — phrase the tip for words.
-  if (isDescribeItGame(gameType) || isCodewordsGame(gameType)) {
+  if (isDescribeItGame(gameType) || isCodewordsGame(gameType) || isQuickDrawGame(gameType)) {
     return {
       headline: 'Any theme you want',
       body: `Any theme works — a fandom, a holiday, inside jokes. Generate a word list with AI, upload your own, or add them by hand.`,

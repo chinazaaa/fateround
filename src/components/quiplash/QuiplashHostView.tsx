@@ -444,6 +444,8 @@ export function QuiplashHostView({ gameCode, hostToken }: { gameCode: string; ho
           players={players}
           meId={hostPlayerId}
           isHost
+          gameCode={gameCode}
+          hostToken={hostToken}
           minPlayers={QUIPLASH_MIN_PLAYERS}
           onToggleReady={() => {}}
           onStart={() => void startGame()}

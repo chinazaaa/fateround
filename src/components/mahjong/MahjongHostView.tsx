@@ -356,6 +356,8 @@ export function MahjongHostView({ gameCode, hostToken }: { gameCode: string; hos
           onToggleReady={() => {}}
           onStart={() => void startGame()}
           starting={starting}
+          gameCode={gameCode}
+          hostToken={hostToken}
         />
         <button
           type="button"
