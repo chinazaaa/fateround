@@ -1,7 +1,6 @@
 'use client'
 
 import { useRef, type ReactNode } from 'react'
-import { MEDALS } from '@/lib/medals'
 import type { DescribeItMode, DescribeItWord, Game, Player } from '@/types'
 import {
   computeDescribeItScores,
@@ -14,6 +13,7 @@ import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActio
 import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeader'
 import { ShareResults } from '@/components/ShareResults'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
+import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 
 export function DescribeItFinalResultsShareBlock({
   game,
@@ -22,6 +22,7 @@ export function DescribeItFinalResultsShareBlock({
   numTeams,
   mode = 'team',
   playerScores = [],
+  highlightPlayerId,
   playAgainButton,
   returnToLobbyButton,
   lobbyNote,
@@ -32,6 +33,7 @@ export function DescribeItFinalResultsShareBlock({
   numTeams: number
   mode?: DescribeItMode
   playerScores?: { player_id: string; score?: number | null }[]
+  highlightPlayerId?: string | null
   playAgainButton?: ReactNode
   returnToLobbyButton?: ReactNode
   lobbyNote?: ReactNode
@@ -45,6 +47,7 @@ export function DescribeItFinalResultsShareBlock({
         game={game}
         players={players}
         playerScores={playerScores}
+        highlightPlayerId={highlightPlayerId}
         playAgainButton={playAgainButton}
         returnToLobbyButton={returnToLobbyButton}
         lobbyNote={lobbyNote}
@@ -145,6 +148,7 @@ function DescribeItIndividualResults({
   game,
   players,
   playerScores,
+  highlightPlayerId,
   playAgainButton,
   returnToLobbyButton,
   lobbyNote,
@@ -153,6 +157,7 @@ function DescribeItIndividualResults({
   game: Game
   players: Player[]
   playerScores: { player_id: string; score?: number | null }[]
+  highlightPlayerId?: string | null
   playAgainButton?: ReactNode
   returnToLobbyButton?: ReactNode
   lobbyNote?: ReactNode
@@ -175,39 +180,13 @@ function DescribeItIndividualResults({
           headline={winnerHeadline}
         />
 
-        <div className="space-y-2">
-          {leaderboard.map((p, i) => {
-            const isWinner = winners.some((w) => w.id === p.id)
-            return (
-              <div
-                key={p.id}
-                className={
-                  isWinner
-                    ? 'flex items-center gap-3 rounded-xl px-4 py-3 border border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_8%,var(--surface))]'
-                    : 'flex items-center gap-3 rounded-xl px-4 py-3 border border-[var(--border)] bg-[var(--surface-inset-bg)]'
-                }
-              >
-                <span
-                  className={`w-7 shrink-0 text-center font-black tabular-nums ${
-                    isWinner ? 'text-lg gradient-title' : 'text-base text-faint'
-                  }`}
-                >
-                  {MEDALS[i] ?? i + 1}
-                </span>
-                <span className={`min-w-0 truncate font-bold ${isWinner ? 'text-[17px]' : 'text-[15px]'}`}>
-                  {p.name}
-                </span>
-                <span
-                  className={`ml-auto shrink-0 text-lg font-black tabular-nums ${
-                    isWinner ? 'gradient-title' : 'text-muted'
-                  }`}
-                >
-                  {p.score} {p.score === 1 ? 'pt' : 'pts'}
-                </span>
-              </div>
-            )
-          })}
-        </div>
+        <PaginatedLeaderboard
+          title="Final leaderboard"
+          rows={leaderboard.map((p, i) => ({ id: p.id, name: p.name, score: p.score, rank: i + 1 }))}
+          highlightId={highlightPlayerId ?? undefined}
+          scoreLabel={(score) => `${score} pt${score === 1 ? '' : 's'}`}
+          emphasizeLeader
+        />
       </div>
 
       <HostGameFinishedActions

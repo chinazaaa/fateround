@@ -44,24 +44,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const session = mafiaSession as MafiaSession
   const playerState = mafiaPlayerState as MafiaPlayerState
 
-  const targetScope = scope === 'day' ? 'day' : 'night'
+  const targetScope = scope === 'day' ? 'day' : scope === 'ghost' ? 'ghost' : 'night'
 
-  // 3. Verify player is alive and phase restrictions match scope
-  if (!playerState.is_alive) {
-    return NextResponse.json({ error: 'Dead players cannot chat' }, { status: 403 })
-  }
-
-  if (targetScope === 'night') {
-    if (playerState.role !== 'mafia') {
-      return NextResponse.json({ error: 'Only Mafia members can use night chat' }, { status: 403 })
-    }
-    if (session.phase !== 'night') {
-      return NextResponse.json({ error: 'Night chat is only active during the night phase' }, { status: 403 })
+  // 3. Verify scope-specific authorization
+  if (targetScope === 'ghost') {
+    // Ghost chat: only eliminated players
+    if (playerState.is_alive) {
+      return NextResponse.json({ error: 'Only eliminated players can use ghost chat' }, { status: 403 })
     }
   } else {
-    const dayPhases = ['day_report', 'discussion', 'voting', 'elimination']
-    if (!dayPhases.includes(session.phase)) {
-      return NextResponse.json({ error: 'Day chat is only active during daytime phases' }, { status: 403 })
+    // All other scopes require the player to be alive
+    if (!playerState.is_alive) {
+      return NextResponse.json({ error: 'Dead players cannot chat' }, { status: 403 })
+    }
+    if (targetScope === 'night') {
+      // Mafia secret chat: alive mafia only, any phase
+      if (playerState.role !== 'mafia') {
+        return NextResponse.json({ error: 'Only Mafia members can use the secret chat' }, { status: 403 })
+      }
+    } else {
+      // Day chat: any alive player during daytime phases
+      const dayPhases = ['day_report', 'day', 'elimination']
+      if (!dayPhases.includes(session.phase)) {
+        return NextResponse.json({ error: 'Day chat is only active during daytime phases' }, { status: 403 })
+      }
     }
   }
 

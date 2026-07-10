@@ -74,6 +74,7 @@ import {
   isMafiaGame,
   isMatchingPairsGame,
   isQuiplashGame,
+  isQuickDrawGame,
 } from '@/lib/game-types'
 import { BOARD_THEMES, PIECE_SETS, useChessAppearance } from '@/lib/chess-appearance'
 import { ChessPieceGlyph } from '@/components/chess/ChessPieceDetailed'
@@ -160,6 +161,25 @@ import {
   QUIPLASH_MAX_ROUNDS,
   clampQuiplashRounds,
 } from '@/lib/quiplash'
+import {
+  QUICK_DRAW_DEFAULT_DRAW_TIMER,
+  QUICK_DRAW_DEFAULT_MAX_PLAYERS,
+  QUICK_DRAW_DEFAULT_ROUNDS,
+  QUICK_DRAW_DEFAULT_TITLE_TIMER,
+  QUICK_DRAW_DEFAULT_VOTE_TIMER,
+  QUICK_DRAW_DRAW_TIMER_OPTIONS,
+  QUICK_DRAW_MAX_ROUNDS,
+  QUICK_DRAW_MIN_ROUNDS,
+  QUICK_DRAW_TITLE_TIMER_OPTIONS,
+  QUICK_DRAW_VOTE_TIMER_OPTIONS,
+  clampQuickDrawRounds,
+  formatQuickDrawTurnTimer,
+} from '@/lib/quick-draw'
+import {
+  QUICK_DRAW_GUESS_MIN_PLAYERS_INDIVIDUAL,
+  QUICK_DRAW_GUESS_MIN_PLAYERS_TEAM,
+  QUICK_DRAW_GUESS_TEAM_OPTIONS,
+} from '@/lib/quick-draw-guess'
 import { TTL_DEFAULT_MAX_PLAYERS, TTL_DEFAULT_TIMER, TTL_TIMER_OPTIONS } from '@/lib/two-truths'
 import {
   MONOPOLY_DEFAULT_MAX_PLAYERS,
@@ -256,6 +276,9 @@ function CreateGameInner() {
     isPublic: false,
     describe_it_num_teams: 2,
     describe_it_mode: 'team',
+    quick_draw_variant: 'lie',
+    quick_draw_play_mode: 'team',
+    quick_draw_num_teams: 2,
     word_rush_num_teams: 2,
     word_rush_mode: 'team',
     word_rush_prompt_mode: 'automatic',
@@ -304,6 +327,9 @@ function CreateGameInner() {
   const [triviaMaxPlayers, setTriviaMaxPlayers] = useState(TRIVIA_DEFAULT_MAX_PLAYERS)
   const [quiplashMaxPlayers, setQuiplashMaxPlayers] = useState(QUIPLASH_DEFAULT_MAX_PLAYERS)
   const [quiplashVoteTimer, setQuiplashVoteTimer] = useState(QUIPLASH_DEFAULT_VOTE_TIMER)
+  const [quickDrawMaxPlayers, setQuickDrawMaxPlayers] = useState(QUICK_DRAW_DEFAULT_MAX_PLAYERS)
+  const [quickDrawTitleTimer, setQuickDrawTitleTimer] = useState(QUICK_DRAW_DEFAULT_TITLE_TIMER)
+  const [quickDrawVoteTimer, setQuickDrawVoteTimer] = useState(QUICK_DRAW_DEFAULT_VOTE_TIMER)
   const [ttlMaxPlayers, setTtlMaxPlayers] = useState(TTL_DEFAULT_MAX_PLAYERS)
   const [monopolyMaxPlayers, setMonopolyMaxPlayers] = useState(MONOPOLY_DEFAULT_MAX_PLAYERS)
   const [monopolyGameDuration, setMonopolyGameDuration] = useState(0)
@@ -405,6 +431,7 @@ function CreateGameInner() {
     setTriviaMaxPlayers((v) => clamp('trivia', v))
     setTtlMaxPlayers((v) => clamp('two_truths', v))
     setQuiplashMaxPlayers((v) => clamp('quiplash', v))
+    setQuickDrawMaxPlayers((v) => clamp('quick_draw', v))
     setMonopolyMaxPlayers((v) => clamp('monopoly', v))
     setYahtzeeMaxPlayers((v) => clamp('yahtzee', v))
     setWhotMaxPlayers((v) => clamp('whot', v))
@@ -464,6 +491,14 @@ function CreateGameInner() {
               anonymous: true,
               rounds_count: QUIPLASH_DEFAULT_ROUNDS,
               timer_seconds: QUIPLASH_DEFAULT_SUBMIT_TIMER,
+            }
+          : {}),
+        ...(isQuickDrawGame(type)
+          ? {
+              participant_mode: 'joiners' as const,
+              anonymous: true,
+              rounds_count: QUICK_DRAW_DEFAULT_ROUNDS,
+              timer_seconds: QUICK_DRAW_DEFAULT_DRAW_TIMER,
             }
           : {}),
         ...(isTwoTruthsGame(type)
@@ -653,6 +688,7 @@ function CreateGameInner() {
   const isMlt = isMostLikelyTo(settings.game_type)
   const isTrivia = isTriviaGame(settings.game_type)
   const isQuiplash = isQuiplashGame(settings.game_type)
+  const isQuickDraw = isQuickDrawGame(settings.game_type)
   const isTwoTruths = isTwoTruthsGame(settings.game_type)
   const isMonopoly = isMonopolyGame(settings.game_type)
   const isYahtzee = isYahtzeeGame(settings.game_type)
@@ -698,7 +734,7 @@ function CreateGameInner() {
   const canCreateImport =
     participants.length >= minPool && hasEnoughForRounds(participants, settings.game_type, participantOpts)
   const canCreateJoiners = !!settings.title.trim()
-  const isLobbyQuestions = isBinaryLobby || isMlt || isTrivia || isPan || isQuiplash
+  const isLobbyQuestions = isBinaryLobby || isMlt || isTrivia || isPan || isQuiplash || isQuickDraw
   const isPeoplePoll = isPeoplePollGame(settings.game_type)
   const isPeoplePollVoters = isPeoplePoll && settings.participant_mode === 'voters'
   const isPlayerSubmissions = (isLobbyQuestions && !isTrivia) || isPeoplePollVoters
@@ -848,6 +884,14 @@ function CreateGameInner() {
             anonymous: true,
             rounds_count: QUIPLASH_DEFAULT_ROUNDS,
             timer_seconds: QUIPLASH_DEFAULT_SUBMIT_TIMER,
+          }
+        : {}),
+      ...(isQuickDrawGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: QUICK_DRAW_DEFAULT_ROUNDS,
+            timer_seconds: QUICK_DRAW_DEFAULT_DRAW_TIMER,
           }
         : {}),
       ...(isTwoTruthsGame(type)
@@ -1304,10 +1348,19 @@ function CreateGameInner() {
                     ? customTriviaQuestions
                     : isQuiplash
                       ? customMltQuestions
-                      : customMltQuestions
+                      : isQuickDraw
+                        ? customMltQuestions
+                        : customMltQuestions
                 : null,
           trivia_category: isTrivia ? triviaCategory : undefined,
           describe_it_mode: isDescribeIt ? settings.describe_it_mode : undefined,
+          quick_draw_variant: isQuickDraw ? settings.quick_draw_variant : undefined,
+          quick_draw_play_mode:
+            isQuickDraw && settings.quick_draw_variant === 'guess' ? settings.quick_draw_play_mode : undefined,
+          quick_draw_num_teams:
+            isQuickDraw && settings.quick_draw_variant === 'guess' && settings.quick_draw_play_mode !== 'individual'
+              ? settings.quick_draw_num_teams
+              : undefined,
           word_rush_mode: isWordRush ? settings.word_rush_mode : undefined,
           word_rush_prompt_mode: isWordRush ? settings.word_rush_prompt_mode : undefined,
           word_rush_difficulty: isWordRush ? settings.word_rush_difficulty : undefined,
@@ -1328,38 +1381,42 @@ function CreateGameInner() {
                   ? triviaMaxPlayers
                   : isQuiplash
                     ? quiplashMaxPlayers
-                    : isTwoTruths
-                      ? ttlMaxPlayers
-                      : isMonopoly
-                        ? monopolyMaxPlayers
-                        : isYahtzee
-                          ? yahtzeeMaxPlayers
-                          : isWhot
-                            ? whotMaxPlayers
-                            : isCrazy8
-                              ? crazy8MaxPlayers
-                              : isLudo
-                                ? ludoMaxPlayers
-                                : isSnakeLadder
-                                  ? snakeLadderMaxPlayers
-                                  : isNpat
-                                    ? npatMaxPlayers
-                                    : isSudoku
-                                      ? sudokuMaxPlayers
-                                      : isWordHunt
-                                        ? wordHuntMaxPlayers
-                                        : isWordRush
-                                          ? wordRushMaxPlayers
-                                          : isMatchingPairs
-                                            ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
-                                            : undefined,
+                    : isQuickDraw
+                      ? quickDrawMaxPlayers
+                      : isTwoTruths
+                        ? ttlMaxPlayers
+                        : isMonopoly
+                          ? monopolyMaxPlayers
+                          : isYahtzee
+                            ? yahtzeeMaxPlayers
+                            : isWhot
+                              ? whotMaxPlayers
+                              : isCrazy8
+                                ? crazy8MaxPlayers
+                                : isLudo
+                                  ? ludoMaxPlayers
+                                  : isSnakeLadder
+                                    ? snakeLadderMaxPlayers
+                                    : isNpat
+                                      ? npatMaxPlayers
+                                      : isSudoku
+                                        ? sudokuMaxPlayers
+                                        : isWordHunt
+                                          ? wordHuntMaxPlayers
+                                          : isWordRush
+                                            ? wordRushMaxPlayers
+                                            : isMatchingPairs
+                                              ? (settings.max_players ?? effectiveLimits.matching_pairs.max)
+                                              : undefined,
           operative_timer_seconds: isCodewords
             ? codewordsOperativeTimer
             : isNpat
               ? npatMarkingTimer
               : isQuiplash
                 ? quiplashVoteTimer
-                : undefined,
+                : isQuickDraw
+                  ? quickDrawTitleTimer
+                  : undefined,
           codewords_player_picks: isCodewords ? codewordsPlayerPicks : undefined,
           codewords_late_join: isCodewords ? lateJoinPolicy === 'viewers_and_players' : undefined,
           codewords_randomize_teams: isCodewords ? codewordsRandomizeTeams : undefined,
@@ -1384,7 +1441,9 @@ function CreateGameInner() {
                       ? sudokuGameDuration
                       : isMatchingPairs
                         ? (settings.game_duration_seconds ?? 0)
-                        : undefined,
+                        : isQuickDraw
+                          ? quickDrawVoteTimer
+                          : undefined,
           whot_pick3_enabled: isWhot ? whotPick3Enabled : undefined,
           whot_pick2_stacking: isWhot ? whotPick2Stacking : undefined,
           whot_cards_enabled: isWhot ? whotCardsEnabled : undefined,
@@ -1719,6 +1778,177 @@ function CreateGameInner() {
                 <p className="text-faint text-sm leading-relaxed">
                   Everyone writes a funny answer to the same prompt. Answers battle head-to-head and the group votes for
                   the funniest — you earn one point per vote.
+                </p>
+              </SettingsGroup>
+            ) : isQuickDraw ? (
+              <SettingsGroup title="Quick Draw">
+                <Field label="Game style">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, quick_draw_variant: 'lie' })}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        settings.quick_draw_variant !== 'guess'
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Lie</span>
+                      <span className="text-faint text-xs sm:text-sm">
+                        Drawful-style — fool everyone with fake titles
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, quick_draw_variant: 'guess' })}
+                      className={[
+                        'rounded-2xl border-2 px-4 py-4 text-left',
+                        settings.quick_draw_variant === 'guess'
+                          ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                          : 'border-[var(--border-strong)] text-muted',
+                      ].join(' ')}
+                    >
+                      <span className="font-bold block text-base">Guess</span>
+                      <span className="text-faint text-xs sm:text-sm">
+                        Draw a word — teammates guess (or solo free-for-all)
+                      </span>
+                    </button>
+                  </div>
+                </Field>
+                {settings.quick_draw_variant === 'guess' && (
+                  <>
+                    <Field label="Mode">
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setSettings({ ...settings, quick_draw_play_mode: 'team' })}
+                          className={[
+                            'rounded-2xl border-2 px-4 py-4 text-left',
+                            settings.quick_draw_play_mode !== 'individual'
+                              ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                              : 'border-[var(--border-strong)] text-muted',
+                          ].join(' ')}
+                        >
+                          <span className="font-bold block text-base">Teams</span>
+                          <span className="text-faint text-xs sm:text-sm">Teams race to guess drawings</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSettings({ ...settings, quick_draw_play_mode: 'individual' })}
+                          className={[
+                            'rounded-2xl border-2 px-4 py-4 text-left',
+                            settings.quick_draw_play_mode === 'individual'
+                              ? 'border-[var(--foreground)]/30 bg-[var(--surface-inset-bg)]'
+                              : 'border-[var(--border-strong)] text-muted',
+                          ].join(' ')}
+                        >
+                          <span className="font-bold block text-base">Individual</span>
+                          <span className="text-faint text-xs sm:text-sm">Everyone draws — fastest guess wins</span>
+                        </button>
+                      </div>
+                    </Field>
+                    {settings.quick_draw_play_mode !== 'individual' && (
+                      <Field label="Teams">
+                        <select
+                          value={settings.quick_draw_num_teams}
+                          onChange={(e) => setSettings({ ...settings, quick_draw_num_teams: Number(e.target.value) })}
+                          className="input-field w-full"
+                        >
+                          {QUICK_DRAW_GUESS_TEAM_OPTIONS.map((n) => (
+                            <option key={n} value={n}>
+                              {n} teams
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    )}
+                  </>
+                )}
+                <Field label={`Max players (${effectiveLimits.quick_draw.min}–${effectiveLimits.quick_draw.max})`}>
+                  <select
+                    value={quickDrawMaxPlayers}
+                    onChange={(e) => setQuickDrawMaxPlayers(Number(e.target.value))}
+                    className="input-field w-full"
+                  >
+                    {playerCountOptions(effectiveLimits.quick_draw.min, effectiveLimits.quick_draw.max).map((n) => (
+                      <option key={n} value={n}>
+                        {n} players
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Rounds">
+                  <ChipGrid>
+                    {Array.from(
+                      { length: QUICK_DRAW_MAX_ROUNDS - QUICK_DRAW_MIN_ROUNDS + 1 },
+                      (_, i) => i + QUICK_DRAW_MIN_ROUNDS
+                    ).map((n) => (
+                      <Chip
+                        key={n}
+                        active={settings.rounds_count === n}
+                        onClick={() => setSettings((prev) => ({ ...prev, rounds_count: clampQuickDrawRounds(n) }))}
+                        className="!px-0 w-full"
+                      >
+                        {n}
+                      </Chip>
+                    ))}
+                  </ChipGrid>
+                </Field>
+                <Field label={settings.quick_draw_variant === 'guess' ? 'Turn timer' : 'Draw timer'}>
+                  <select
+                    value={settings.timer_seconds}
+                    onChange={(e) => setSettings({ ...settings, timer_seconds: Number(e.target.value) })}
+                    className="input-field w-full"
+                  >
+                    {QUICK_DRAW_DRAW_TIMER_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {settings.quick_draw_variant === 'guess' ? formatQuickDrawTurnTimer(s) : `${s} seconds`}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {settings.quick_draw_variant !== 'guess' && (
+                  <>
+                    <Field label="Title timer">
+                      <select
+                        value={quickDrawTitleTimer}
+                        onChange={(e) => setQuickDrawTitleTimer(Number(e.target.value))}
+                        className="input-field w-full"
+                      >
+                        {QUICK_DRAW_TITLE_TIMER_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {s} seconds
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Vote timer">
+                      <select
+                        value={quickDrawVoteTimer}
+                        onChange={(e) => setQuickDrawVoteTimer(Number(e.target.value))}
+                        className="input-field w-full"
+                      >
+                        {QUICK_DRAW_VOTE_TIMER_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {s} seconds
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </>
+                )}
+                {showViewerToggle && (
+                  <Field label="Late joiners">
+                    <LateJoinPolicyToggle value={lateJoinPolicy} onChange={setLateJoinPolicy} />
+                  </Field>
+                )}
+                <p className="text-faint text-sm leading-relaxed">
+                  {settings.quick_draw_variant === 'guess'
+                    ? settings.quick_draw_play_mode === 'individual'
+                      ? `Take turns drawing a secret word while everyone races to guess. ${QUICK_DRAW_GUESS_MIN_PLAYERS_INDIVIDUAL}+ players.`
+                      : `Teams take turns drawing while teammates guess as many words as possible. ${QUICK_DRAW_GUESS_MIN_PLAYERS_TEAM}+ players.`
+                    : 'Everyone draws a weird prompt on their phone. Others write fake titles to fool the room, then vote on which title is real — artists and fakers both earn points.'}
                 </p>
               </SettingsGroup>
             ) : isTwoTruths ? (
@@ -3117,38 +3347,29 @@ function CreateGameInner() {
                 </Field>
                 <Field label="Special Roles">
                   <div className="flex flex-col space-y-2 mt-2">
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.mafia_doctor_enabled !== false}
-                        onChange={(e) => setSettings({ ...settings, mafia_doctor_enabled: e.target.checked })}
-                        className="rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500"
-                      />
-                      <span className="text-sm text-slate-300">Include Doctor (protects one player each night)</span>
-                    </label>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.mafia_detective_enabled !== false}
-                        onChange={(e) => setSettings({ ...settings, mafia_detective_enabled: e.target.checked })}
-                        className="rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500"
-                      />
-                      <span className="text-sm text-slate-300">
-                        Include Detective (investigates one player each night)
-                      </span>
-                    </label>
+                    <Toggle
+                      label="Doctor"
+                      description="Protects one player each night"
+                      value={settings.mafia_doctor_enabled !== false}
+                      onChange={(v) => setSettings({ ...settings, mafia_doctor_enabled: v })}
+                    />
+                    <Toggle
+                      label="Detective"
+                      description="Investigates one player each night"
+                      value={settings.mafia_detective_enabled !== false}
+                      onChange={(v) => setSettings({ ...settings, mafia_detective_enabled: v })}
+                    />
                   </div>
                 </Field>
                 <Field label="Voting Rules">
-                  <label className="flex items-center space-x-2 cursor-pointer mt-2">
-                    <input
-                      type="checkbox"
-                      checked={settings.mafia_anonymous_votes !== false}
-                      onChange={(e) => setSettings({ ...settings, mafia_anonymous_votes: e.target.checked })}
-                      className="rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500"
+                  <div className="mt-2">
+                    <Toggle
+                      label="Anonymous Votes"
+                      description="Hide who voted for whom during the day phase"
+                      value={settings.mafia_anonymous_votes !== false}
+                      onChange={(v) => setSettings({ ...settings, mafia_anonymous_votes: v })}
                     />
-                    <span className="text-sm text-slate-300">Anonymous Votes (do not show who voted for whom)</span>
-                  </label>
+                  </div>
                 </Field>
                 {showViewerToggle && (
                   <Field label="Late joiners">

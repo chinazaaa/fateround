@@ -1279,4 +1279,47 @@ export const GAME_LANDING_RULES: Record<GameType, GameLandingRuleSection[]> = {
       ],
     },
   ],
+
+  quick_draw: [
+    {
+      title: 'Two ways to play',
+      points: [
+        'Lie mode (Drawful-style): draw a weird prompt, others write fake titles, everyone votes on the real one.',
+        'Guess mode (Pictionary-style): draw a secret word while teammates (or everyone) race to guess it.',
+      ],
+    },
+    {
+      title: 'Lie mode',
+      points: [
+        'Each round everyone gets a unique weird prompt to draw.',
+        'Non-artists write fake titles; everyone votes on which title is real.',
+        'Artists earn points when people pick the real title; fakers earn points for fooling the room.',
+      ],
+    },
+    {
+      title: 'Guess mode',
+      points: [
+        'Teams or individual free-for-all — host picks when creating the game.',
+        'The drawer sees a secret word and sketches it live on their phone.',
+        'Teammates (or all other players) type guesses; correct guesses score points and advance to the next word.',
+        'Team mode: most words guessed wins. Individual mode: fastest correct guesses score the most.',
+      ],
+    },
+    {
+      title: 'Lie mode tips',
+      points: [
+        'Bad drawings are funnier — don’t stress about art skills.',
+        'The real title is mixed in with the fakes; bold lies often win.',
+        'Spectators can watch but cannot draw, title, or vote.',
+      ],
+    },
+    {
+      title: 'Guess mode tips',
+      points: [
+        'Stick to simple shapes — teammates guess from your sketch, not your art degree.',
+        'Use the eraser and undo if you mess up; speed matters more than polish.',
+        'In team mode, only players on the active team can score guesses during that turn.',
+      ],
+    },
+  ],
 }
