@@ -126,7 +126,8 @@ export function HostWordPoolSettings({ gameCode, hostToken, game, noun, disabled
       {wordSource === 'library' && (
         <div className="surface-inset border border-theme rounded-xl p-3 space-y-2">
           <LibraryPackBrowser
-            gameType="describe_it"
+            gameType="quick_draw"
+            alsoIncludeGameTypes={['describe_it']}
             noun={noun}
             onPick={async (questions) => {
               const incoming = parseStoredDescribeItWords(questions)
@@ -134,7 +135,7 @@ export function HostWordPoolSettings({ gameCode, hostToken, game, noun, disabled
               await applyWords(incoming.join('\n'))
             }}
           />
-          <p className="text-faint text-[11px]">Word packs are shared with Text Charades.</p>
+          <p className="text-faint text-[11px]">Includes Quick Draw and Text Charades word packs.</p>
         </div>
       )}
 

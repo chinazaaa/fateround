@@ -399,12 +399,18 @@ function CreateGameInner() {
   useEffect(() => {
     if (questionSource !== 'library') return
     const gt = LIBRARY_GAME_TYPE_MAP[settings.game_type]
-    if (!gt) return
+    if (!gt && !isQuickDrawGame(settings.game_type)) return
     setLibraryPackSearch('')
     setLibraryPacksLoading(true)
-    fetch(`/api/library?game_type=${gt}&page_size=100`)
-      .then((r) => r.json())
-      .then((d) => setLibraryPacks(d.packs ?? []))
+    const types = isQuickDrawGame(settings.game_type) ? ['quick_draw', 'describe_it'] : gt ? [gt] : []
+    Promise.all(types.map((type) => fetch(`/api/library?game_type=${type}&page_size=100`).then((r) => r.json())))
+      .then((results) => {
+        const byId = new Map<string, (typeof libraryPacks)[number]>()
+        for (const d of results) {
+          for (const pack of d.packs ?? []) byId.set(pack.id, pack)
+        }
+        setLibraryPacks([...byId.values()])
+      })
       .finally(() => setLibraryPacksLoading(false))
   }, [questionSource, settings.game_type])
 
@@ -662,7 +668,7 @@ function CreateGameInner() {
           if (!d.pack?.questions) return
           const gt = d.pack.game_type
           const qs = d.pack.questions
-          if (gt === 'describe_it') {
+          if (gt === 'describe_it' || gt === 'quick_draw') {
             const words = parseDescribeItWords((qs as string[]).join('\n')).join('\n')
             setQuestionSource('custom')
             if (isQuickDrawGame(settings.game_type) || packGameType === 'quick_draw') {
@@ -1992,7 +1998,7 @@ function CreateGameInner() {
                         {settings.quick_draw_variant === 'guess' ? 'words' : 'prompts'} from this pack.
                       </p>
                     )}
-                    <p className="text-faint text-[11px] text-center">Word packs are shared with Text Charades.</p>
+                    <p className="text-faint text-[11px] text-center">Includes Quick Draw and Text Charades word packs.</p>
                   </div>
                 )}
 

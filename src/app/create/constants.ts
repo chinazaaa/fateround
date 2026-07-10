@@ -8,6 +8,6 @@ export const LIBRARY_GAME_TYPE_MAP: Record<string, string> = {
   never_have_i_ever: 'never_have_i_ever',
   pick_a_number: 'pick_a_number',
   describe_it: 'describe_it',
-  quick_draw: 'describe_it',
+  quick_draw: 'quick_draw',
   codewords: 'codewords',
 }
