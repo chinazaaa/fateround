@@ -248,11 +248,7 @@ export async function POST(req: NextRequest) {
           existing.spectator !== true &&
           existing.is_eliminated !== true
         ) {
-          const { error: assignError } = await registerQuickDrawLateJoinPlayer(
-            getSupabaseAdmin(),
-            gameId,
-            existing.id
-          )
+          const { error: assignError } = await registerQuickDrawLateJoinPlayer(getSupabaseAdmin(), gameId, existing.id)
           if (assignError) return NextResponse.json({ error: assignError }, { status: 500 })
         }
         return jsonPlayerJoin(roomMemberId, existing, gameRow as Game)
