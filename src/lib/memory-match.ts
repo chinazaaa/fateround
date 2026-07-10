@@ -350,6 +350,83 @@ export function tallyMatchingPairsScore(
   }
 }
 
+/**
+ * A leaderboard row with a player name attached — the shape returned by
+ * buildCumulativeLeaderboard.
+ */
+export type MatchingPairsLeaderboardRow = MatchingPairsPlayerScore & { name: string }
+
+/**
+ * Build a cumulative leaderboard across ALL completed rounds.
+ * Groups submissions and progress by (playerId, roundId), scores each round
+ * independently via tallyMatchingPairsScore, then sums finalScore across rounds.
+ */
+export function buildCumulativeLeaderboard(
+  allSubmissions: MatchingPairsSubmission[],
+  allProgress: MatchingPairsProgress[],
+  playerMap: Map<string, string>,
+  gridSizePairs: MatchingPairsGridSize,
+  sessionStartedAt: string | null
+): MatchingPairsLeaderboardRow[] {
+  const playerIds = new Set(allProgress.map((p) => p.player_id))
+  const rows: MatchingPairsLeaderboardRow[] = []
+
+  for (const playerId of playerIds) {
+    const playerSubs = allSubmissions.filter((s) => s.player_id === playerId)
+    const playerProgs = allProgress.filter((p) => p.player_id === playerId)
+
+    const roundIds = new Set(playerSubs.map((s) => s.round_id))
+    for (const prog of playerProgs) roundIds.add(prog.round_id)
+
+    let cumulativeScore = 0
+    let cumulativePairs = 0
+    let cumulativeWrong = 0
+    let placement = 999
+    let finalProg: MatchingPairsProgress | null = null
+
+    for (const rid of roundIds) {
+      const roundSubs = playerSubs.filter((s) => s.round_id === rid)
+      const roundProg = playerProgs.find((p) => p.round_id === rid)
+      if (!roundProg) continue
+      const score = tallyMatchingPairsScore(roundSubs, roundProg, gridSizePairs, sessionStartedAt)
+      cumulativeScore += score.finalScore
+      cumulativePairs += score.pairsMatched
+      cumulativeWrong += score.wrongAttempts
+      finalProg = roundProg
+      if (roundProg.finish_rank !== null && roundProg.finish_rank < placement) {
+        placement = roundProg.finish_rank
+      }
+    }
+
+    if (!finalProg) continue
+
+    rows.push({
+      playerId,
+      pairsMatched: cumulativePairs,
+      wrongAttempts: cumulativeWrong,
+      streakBonusTotal: 0,
+      longestStreak: 0,
+      perfectGame: false,
+      placement,
+      placementBonus: 0,
+      wrongPenaltyTotal: cumulativeWrong * MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY,
+      cleanStreakMultiplierBonus: 0,
+      speedParBonus: 0,
+      finalScore: cumulativeScore,
+      timeTakenMs: null,
+      name: playerMap.get(playerId) ?? 'Unknown',
+    })
+  }
+
+  return rows.sort((a, b) => {
+    if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
+    const rankA = a.placement ?? 999
+    const rankB = b.placement ?? 999
+    if (rankA !== rankB) return rankA - rankB
+    return (a.wrongAttempts ?? 0) - (b.wrongAttempts ?? 0)
+  })
+}
+
 // ── Randomization ─────────────────────────────────────────────────────────────
 
 /** Simple xorshift32 RNG (same as Sudoku/WordHunt for consistency). */

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { MatchingPairsPlayerView } from '@/components/matching-pairs/MatchingPairsPlayerView'
 import { MatchingPairsGameTimerBar } from '@/components/matching-pairs/MatchingPairsGameTimerBar'
-import { MatchingPairsStatDetails } from '@/components/matching-pairs/MatchingPairsStatDetails'
+import { MatchingPairsStatDetails, MatchingPairsFinalBreakdown } from '@/components/matching-pairs/MatchingPairsStatDetails'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
@@ -20,6 +20,8 @@ import {
   parseMatchingPairsMetadata,
   tallyMatchingPairsScore,
   formatMatchingPairsGridSize,
+  buildCumulativeLeaderboard,
+  type MatchingPairsLeaderboardRow,
   MATCHING_PAIRS_MIN_PLAYERS,
   type MatchingPairsSubmission,
   type MatchingPairsProgress,
@@ -107,8 +109,8 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         if (meta) setGridSizePairs(meta.gridSizePairs)
 
         const [{ data: subData }, { data: progData }] = await Promise.all([
-          supabase.from('memory_match_submissions').select(MEMORY_MATCH_SUBMISSION_SELECT).eq('round_id', roundData.id),
-          supabase.from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT).eq('round_id', roundData.id),
+          supabase.from('memory_match_submissions').select(MEMORY_MATCH_SUBMISSION_SELECT).eq('game_id', gameCode),
+          supabase.from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT).eq('game_id', gameCode),
         ])
         setSubmissions((subData ?? []) as MatchingPairsSubmission[])
         setProgressRows((progData ?? []) as MatchingPairsProgress[])
@@ -342,7 +344,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         return
       }
       // Save the stored session BEFORE clearing it (clearPlayerSession destroys it,
-      // so the post-load fixup below needs the original to re-match by name).
+      // so the post-load fixup below needs the original to re-match by name or ID).
       const storedSession = getPlayerSession(gameCode)
       if (!sameSettings) {
         clearPlayerSession(gameCode)
@@ -352,18 +354,26 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       }
       setTab('manage')
       await load()
-      // Use a fresh roster query (instead of the stale `players` closure state
-      // that hasn't been re-rendered after load()) to check whether the host's
-      // stored player still exists in the game.
+      // Re-check the fresh roster to restore the host's session if their player row
+      // still exists (preserved by resetSpectatorsForLobby on the server). Without
+      // this, "Return to lobby" would silently drop the host's seat.
       const { data: freshPlayers } = await supabase.from('players').select('id, name').eq('game_id', gameCode)
-      if (storedSession && freshPlayers && !freshPlayers.some((p) => p.id === storedSession.playerId)) {
-        const matchingPlayer = (freshPlayers as { id: string; name: string }[]).find(
-          (p) => p.name === storedSession.playerName
-        )
-        if (matchingPlayer) {
-          setPlayerSession(gameCode, matchingPlayer.id, storedSession.playerName, 'both', storedSession.resumeToken)
-          setHostPlayerId(matchingPlayer.id)
+      if (storedSession && freshPlayers) {
+        if (freshPlayers.some((p) => p.id === storedSession.playerId)) {
+          // Same player ID survived — restore the session.
+          setPlayerSession(gameCode, storedSession.playerId, storedSession.playerName, 'both', storedSession.resumeToken)
+          setHostPlayerId(storedSession.playerId)
           setHostPlayerName(storedSession.playerName)
+        } else {
+          // Player row was recreated — match by name.
+          const matchingPlayer = (freshPlayers as { id: string; name: string }[]).find(
+            (p) => p.name === storedSession.playerName
+          )
+          if (matchingPlayer) {
+            setPlayerSession(gameCode, matchingPlayer.id, storedSession.playerName, 'both', storedSession.resumeToken)
+            setHostPlayerId(matchingPlayer.id)
+            setHostPlayerName(storedSession.playerName)
+          }
         }
       }
     } finally {
@@ -391,13 +401,16 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     if (ok) void resetGame(false)
   }
 
-  // Compute per-player leaderboard from submissions + progress.
+  // Per-round leaderboard from the current round's submissions + progress.
   // Ranked by final score descending (primary), then finish rank as tiebreaker.
   const leaderboard = useMemo<MatchingPairsPlayerScore[]>(() => {
-    if (!progressRows.length) return []
-    return progressRows
+    if (!roundId) return []
+    const roundProgress = progressRows.filter((p) => p.round_id === roundId)
+    if (!roundProgress.length) return []
+    const roundSubmissions = submissions.filter((s) => s.round_id === roundId)
+    return roundProgress
       .map((prog) => {
-        const playerSubs = submissions.filter((s) => s.player_id === prog.player_id)
+        const playerSubs = roundSubmissions.filter((s) => s.player_id === prog.player_id)
         return tallyMatchingPairsScore(playerSubs, prog, gridSizePairs, game?.session_started_at)
       })
       .sort((a, b) => {
@@ -407,7 +420,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
         if (rankA !== rankB) return rankA - rankB
         return (a.wrongAttempts ?? 0) - (b.wrongAttempts ?? 0)
       })
-  }, [submissions, progressRows, gridSizePairs, game?.session_started_at])
+  }, [submissions, progressRows, roundId, gridSizePairs, game?.session_started_at])
 
   const playerMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -415,10 +428,16 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
     return m
   }, [players])
 
-  const hostWonMp =
-    leaderboard.length > 1 && leaderboard[0]?.playerId === hostPlayerId && leaderboard[0]?.finalScore > 0
+  // Cumulative leaderboard across all completed rounds — determines final ranking.
+  const cumulativeLeaderboard = useMemo<MatchingPairsLeaderboardRow[]>(() => {
+    if (!submissions.length && !progressRows.length) return []
+    return buildCumulativeLeaderboard(submissions, progressRows, playerMap, gridSizePairs, game?.session_started_at ?? null)
+  }, [submissions, progressRows, playerMap, gridSizePairs, game?.session_started_at])
 
-  const winnerId = leaderboard[0]?.playerId
+  const hostWonMp =
+    cumulativeLeaderboard.length > 1 && cumulativeLeaderboard[0]?.playerId === hostPlayerId && cumulativeLeaderboard[0]?.finalScore > 0
+
+  const winnerId = cumulativeLeaderboard[0]?.playerId
   const isHostWinner = !!winnerId && winnerId === hostPlayerId
   const winnerName = isHostWinner ? hostPlayerName : winnerId ? (playerMap.get(winnerId) ?? winnerId) : 'Someone'
 
@@ -449,6 +468,24 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
           Round {currentRoundNumber}/{totalRounds} complete!
         </p>
       </div>
+
+      {cumulativeLeaderboard.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-wider text-muted">Cumulative standings</p>
+          {cumulativeLeaderboard.map((row, i) => (
+            <div
+              key={row.playerId}
+              className="flex items-center justify-between gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--card-strong)] px-4 py-2.5 text-sm"
+            >
+              <span>
+                <strong>#{i + 1}</strong> {row.name}
+              </span>
+              <span className="font-bold tabular-nums">{row.finalScore.toLocaleString()} pts</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <PaginatedLeaderboard
         title="Round standings"
         rows={leaderboard.map((s, i) => ({
@@ -514,6 +551,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {progressRows
+          .filter((p) => p.round_id === roundId)
           .sort((a, b) => b.pairs_matched - a.pairs_matched)
           .map((prog) => {
             const name = playerMap.get(prog.player_id) ?? 'Unknown'
@@ -683,20 +721,29 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
             }
             stats={[
               {
-                value: (leaderboard[0]?.finalScore ?? 0).toLocaleString(),
+                value: (cumulativeLeaderboard[0]?.finalScore ?? 0).toLocaleString(),
                 label: 'Points total',
               },
             ]}
           />
           <PaginatedLeaderboard
             title="Final leaderboard"
-            rows={leaderboard.map((s, i) => ({
-              id: s.playerId,
+            rows={cumulativeLeaderboard.map((row, i) => ({
+              id: row.playerId,
               rank: i + 1,
-              name: playerMap.get(s.playerId) ?? 'Unknown',
-              score: s.finalScore,
-              correctCount: s.pairsMatched,
-              expandDetails: <MatchingPairsStatDetails score={s} gridSizePairs={gridSizePairs} />,
+              name: row.name,
+              score: row.finalScore,
+              correctCount: row.pairsMatched,
+              expandDetails: (
+                <MatchingPairsFinalBreakdown
+                  playerId={row.playerId}
+                  allSubmissions={submissions}
+                  allProgress={progressRows}
+                  gridSizePairs={gridSizePairs}
+                  sessionStartedAt={game?.session_started_at ?? null}
+                  totalRounds={totalRounds}
+                />
+              ),
             }))}
             totalQuestions={gridSizePairs}
             scoreLabel={(n) => `${n} pts`}

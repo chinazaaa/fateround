@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { GamePlayerChrome } from '@/components/GamePlayerChrome'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { PaginatedLeaderboard } from '@/components/PaginatedLeaderboard'
-import { MatchingPairsStatDetails } from '@/components/matching-pairs/MatchingPairsStatDetails'
+import { MatchingPairsStatDetails, MatchingPairsFinalBreakdown } from '@/components/matching-pairs/MatchingPairsStatDetails'
 import { MatchingPairsGameTimerBar } from '@/components/matching-pairs/MatchingPairsGameTimerBar'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
@@ -22,6 +22,8 @@ import {
   getPlayerBoard,
   tallyMatchingPairsScore,
   computeStreakBonus,
+  buildCumulativeLeaderboard,
+  type MatchingPairsLeaderboardRow,
   MATCHING_PAIRS_FLIP_BACK_MS,
   MATCHING_PAIRS_POINTS_PER_PAIR,
   MATCHING_PAIRS_STREAK_BONUS,
@@ -80,10 +82,6 @@ type MatchingPairsGameState = {
   hasBoard: boolean
   ownFinished: boolean
   roundFinished: boolean
-}
-
-type MatchingPairsLeaderboardRow = ReturnType<typeof tallyMatchingPairsScore> & {
-  name: string
 }
 
 function buildInitialBoard(cardOrder: number[]): LocalBoard {
@@ -782,7 +780,16 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             name: row.name,
             score: row.finalScore,
             correctCount: row.pairsMatched,
-            expandDetails: <MatchingPairsStatDetails score={row} gridSizePairs={meta?.gridSizePairs ?? 0} />,
+            expandDetails: (
+              <MatchingPairsFinalBreakdown
+                playerId={row.playerId}
+                allSubmissions={allSubmissions}
+                allProgress={allProgress}
+                gridSizePairs={meta?.gridSizePairs ?? 8}
+                sessionStartedAt={game?.session_started_at ?? null}
+                totalRounds={game?.rounds_count ?? 1}
+              />
+            ),
           }))}
           totalQuestions={meta?.gridSizePairs}
           highlightId={myPlayerId ?? undefined}
@@ -826,7 +833,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             rows={roundLeaderboard.map((row, i) => ({
               id: row.playerId,
               rank: i + 1,
-              name: row.name,
+              name: playerMap.get(row.playerId) ?? 'Unknown',
               score: row.finalScore,
               correctCount: row.pairsMatched,
               expandDetails: (
@@ -1014,77 +1021,6 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       `}</style>
     </MatchingPairsPlayShell>
   )
-}
-
-// ── Cumulative leaderboard helper ─────────────────────────────────────────────
-
-function buildCumulativeLeaderboard(
-  allSubmissions: MatchingPairsSubmission[],
-  allProgress: MatchingPairsProgress[],
-  playerMap: Map<string, string>,
-  gridSizePairs: MatchingPairsGridSize,
-  sessionStartedAt: string | null
-): MatchingPairsLeaderboardRow[] {
-  const playerIds = new Set(allProgress.map((p) => p.player_id))
-  const rows: MatchingPairsLeaderboardRow[] = []
-
-  for (const playerId of playerIds) {
-    const playerSubs = allSubmissions.filter((s) => s.player_id === playerId)
-    const playerProgs = allProgress.filter((p) => p.player_id === playerId)
-
-    // Group submissions and progress by round_id, compute per-round scores, then sum.
-    const roundIds = new Set(playerSubs.map((s) => s.round_id))
-    for (const prog of playerProgs) roundIds.add(prog.round_id)
-
-    let cumulativeScore = 0
-    let cumulativePairs = 0
-    let cumulativeWrong = 0
-    let placement = 999
-    let finalProg = null as MatchingPairsProgress | null
-
-    for (const rid of roundIds) {
-      const roundSubs = playerSubs.filter((s) => s.round_id === rid)
-      const roundProg = playerProgs.find((p) => p.round_id === rid)
-      if (!roundProg) continue
-      const score = tallyMatchingPairsScore(roundSubs, roundProg, gridSizePairs, sessionStartedAt)
-      cumulativeScore += score.finalScore
-      cumulativePairs += score.pairsMatched
-      cumulativeWrong += score.wrongAttempts
-      // Track the most recent round's progress for tiebreaker display
-      finalProg = roundProg
-      if (roundProg.finish_rank !== null && roundProg.finish_rank < placement) {
-        placement = roundProg.finish_rank
-      }
-    }
-
-    // If no rounds at all, skip
-    if (!finalProg) continue
-
-    rows.push({
-      playerId,
-      pairsMatched: cumulativePairs,
-      wrongAttempts: cumulativeWrong,
-      streakBonusTotal: 0,
-      longestStreak: 0,
-      perfectGame: false,
-      placement,
-      placementBonus: 0,
-      wrongPenaltyTotal: cumulativeWrong * 100,
-      cleanStreakMultiplierBonus: 0,
-      speedParBonus: 0,
-      finalScore: cumulativeScore,
-      timeTakenMs: null,
-      name: playerMap.get(playerId) ?? 'Unknown',
-    })
-  }
-
-  return rows.sort((a, b) => {
-    if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
-    const rankA = a.placement ?? 999
-    const rankB = b.placement ?? 999
-    if (rankA !== rankB) return rankA - rankB
-    return (a.wrongAttempts ?? 0) - (b.wrongAttempts ?? 0)
-  })
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
