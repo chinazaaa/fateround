@@ -12,6 +12,7 @@ import { HostLobbyPlayersSection } from '@/components/host-lobby/HostLobbyPlayer
 import { HostQuickDrawLobbyPanel } from '@/components/host-lobby/HostQuickDrawLobbyPanel'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { QuickDrawGuessHostView } from '@/components/quick-draw/QuickDrawGuessHostView'
+import { DescribeItLoadingScreen } from '@/components/describe-it/DescribeItChrome'
 import {
   getQuickDrawHostMode,
   setQuickDrawHostMode,
@@ -59,6 +60,23 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 type HostTab = 'play' | 'manage'
 
 export function QuickDrawHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
+  const [guessMode, setGuessMode] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    void supabase
+      .from('games')
+      .select('quick_draw_variant')
+      .eq('id', gameCode)
+      .maybeSingle()
+      .then(({ data }) => setGuessMode(isQuickDrawGuessVariant(data?.quick_draw_variant)))
+  }, [gameCode])
+
+  if (guessMode === null) return <DescribeItLoadingScreen />
+  if (guessMode) return <QuickDrawGuessHostView gameCode={gameCode} hostToken={hostToken} />
+  return <QuickDrawLieHostView gameCode={gameCode} hostToken={hostToken} />
+}
+
+function QuickDrawLieHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
   const { confirm } = useConfirm()
   const [game, setGame] = useState<Game | null>(null)
@@ -279,10 +297,6 @@ export function QuickDrawHostView({ gameCode, hostToken }: { gameCode: string; h
         <p className="text-muted">Loading…</p>
       </div>
     )
-  }
-
-  if (isQuickDrawGuessVariant(game.quick_draw_variant)) {
-    return <QuickDrawGuessHostView gameCode={gameCode} hostToken={hostToken} />
   }
 
   const hostPlayer = hostPlayerId ? (players.find((p) => p.id === hostPlayerId) ?? null) : null
