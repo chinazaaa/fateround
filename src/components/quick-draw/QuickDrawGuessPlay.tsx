@@ -135,7 +135,11 @@ export function QuickDrawGuessPlayPanel({
   const myTeam = teamRows.find((r) => r.player_id === myPlayerId)?.team ?? null
   const isDrawer = !!myPlayerId && session.drawer_player_id === myPlayerId
   const onActiveTeam = myTeam === activeTeam
-  const inRoster = !!myPlayerId && session.roster.includes(myPlayerId)
+  // Individual mode: gate on the live guess roster (teamRows), not session.roster — late
+  // joiners are seeded into quick_draw_guess_players but never into the frozen snapshot.
+  const inRoster = isIndividual
+    ? !!myPlayerId && teamRows.some((r) => r.player_id === myPlayerId)
+    : !!myPlayerId && session.roster.includes(myPlayerId)
   const myGuessedThisTurn = guesses.some(
     (g) => g.turn_index === session.turn_index && g.player_id === myPlayerId && g.correct
   )
