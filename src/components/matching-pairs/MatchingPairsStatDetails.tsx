@@ -83,6 +83,7 @@ export function MatchingPairsFinalBreakdown({
   allProgress,
   gridSizePairs,
   sessionStartedAt,
+  roundStartedAtMap,
   totalRounds,
 }: {
   playerId: string
@@ -90,20 +91,30 @@ export function MatchingPairsFinalBreakdown({
   allProgress: MatchingPairsProgress[]
   gridSizePairs: MatchingPairsGridSize
   sessionStartedAt: string | null
+  roundStartedAtMap?: Map<string, string>
   totalRounds: number
 }) {
   const playerSubs = allSubmissions.filter((s) => s.player_id === playerId)
   const playerProgs = allProgress.filter((p) => p.player_id === playerId)
 
-  // Collect unique round IDs for this player, sorted by chronologically
-  // (by the earliest record in each round).
-  const roundIds = [...new Set([...playerSubs.map((s) => s.round_id), ...playerProgs.map((p) => p.round_id)])].sort(
-    (a, b) => {
-      const aTime = playerProgs.find((p) => p.round_id === a)?.created_at ?? ''
-      const bTime = playerProgs.find((p) => p.round_id === b)?.created_at ?? ''
-      return aTime.localeCompare(bTime)
-    }
-  )
+  // Derive the global round order from ALL game records so that late joiners
+  // still see the correct round number (e.g. "Round 2" not "Round 1").
+  const allRoundIds = [
+    ...new Set([...allSubmissions.map((s) => s.round_id), ...allProgress.map((p) => p.round_id)]),
+  ].sort((a, b) => {
+    const aTime =
+      allProgress.find((p) => p.round_id === a)?.created_at ??
+      allSubmissions.find((s) => s.round_id === a)?.created_at ??
+      ''
+    const bTime =
+      allProgress.find((p) => p.round_id === b)?.created_at ??
+      allSubmissions.find((s) => s.round_id === b)?.created_at ??
+      ''
+    return aTime.localeCompare(bTime)
+  })
+  // Keep only the rounds this player actually participated in.
+  const playerRoundSet = new Set([...playerSubs.map((s) => s.round_id), ...playerProgs.map((p) => p.round_id)])
+  const roundIds = allRoundIds.filter((rid) => playerRoundSet.has(rid))
 
   // Single round — use the cumulative block just like before.
   if (totalRounds <= 1) {
@@ -120,7 +131,8 @@ export function MatchingPairsFinalBreakdown({
         const roundSubs = playerSubs.filter((s) => s.round_id === rid)
         const roundProg = playerProgs.find((p) => p.round_id === rid)
         if (!roundProg) return null
-        const score = tallyMatchingPairsScore(roundSubs, roundProg, gridSizePairs, sessionStartedAt)
+        const roundStart = roundStartedAtMap?.get(rid) ?? sessionStartedAt
+        const score = tallyMatchingPairsScore(roundSubs, roundProg, gridSizePairs, sessionStartedAt, roundStart)
         return (
           <div key={rid}>
             <p className="text-xs font-bold text-muted mb-1.5 uppercase tracking-wider">Round {i + 1}</p>

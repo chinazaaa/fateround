@@ -304,9 +304,11 @@ export function tallyMatchingPairsScore(
     const timerAnchor = roundStartedAt ?? sessionStartedAt
     if (timerAnchor) {
       const memorizedMs = (gridSizePairs >= 16 ? 5 : 3) * 1000
+      const memorizeSeconds = memorizedMs / 1000
       const startMs = new Date(timerAnchor).getTime() + memorizedMs
       const elapsedMs = new Date(progress.finished_at).getTime() - startMs
-      if (timerSeconds && timerSeconds > 0 && elapsedMs >= timerSeconds * 1000) {
+      const playTimerSeconds = timerSeconds != null ? Math.max(0, timerSeconds - memorizeSeconds) : null
+      if (playTimerSeconds != null && playTimerSeconds > 0 && elapsedMs >= playTimerSeconds * 1000) {
         // Finished after the time limit — no speed bonus.
       } else if (elapsedMs > 0) {
         const parMs = gridSizePairs * 15 * 1000
@@ -340,12 +342,15 @@ export function tallyMatchingPairsScore(
       timeTakenMs = new Date(progress.finished_at).getTime() - new Date(progress.created_at).getTime()
     }
     // Mark as unfinished if the player didn't match all pairs before the time limit.
+    // timerSeconds includes memorization, so subtract it for a play-time comparison.
+    const memorizeSeconds = gridSizePairs >= 16 ? 5 : 3
+    const playTimerLimit = timerSeconds != null ? Math.max(0, timerSeconds - memorizeSeconds) : null
     if (
       pairsMatched < gridSizePairs &&
-      timerSeconds &&
-      timerSeconds > 0 &&
+      playTimerLimit != null &&
+      playTimerLimit > 0 &&
       timeTakenMs !== null &&
-      timeTakenMs >= timerSeconds * 1000
+      timeTakenMs >= playTimerLimit * 1000
     ) {
       timeTakenMs = -1
     }

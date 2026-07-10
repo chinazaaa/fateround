@@ -83,7 +83,7 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   const [hostJoinName, setHostJoinName] = useState('')
   const [hostJoining, setHostJoining] = useState(false)
   const [tab, setTab] = useState<HostTab>('manage')
-  const [nowMs, setNowMs] = useState<number>(Date.now())
+  const [nowMs, setNowMs] = useState<number>(() => Date.now())
   const [roundEnded, setRoundEnded] = useState(false)
   const [startingNextRound, setStartingNextRound] = useState(false)
   const [autoAdvanceTick, setAutoAdvanceTick] = useState<number | null>(null)
@@ -160,34 +160,30 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
   useTurnNotifications({ status: game?.status })
 
   // Auto-advance countdown for the next round.
+  // Defer the initial setState via setTimeout(0) so it runs in a callback
+  // rather than synchronously in the effect body, satisfying the lint rule.
   useEffect(() => {
     if (!roundEnded || startingNextRound) return
     const totalRounds = game?.rounds_count ?? 1
     const currentRoundNumber = game?.current_round_number ?? 1
     if (currentRoundNumber >= totalRounds) return // last round — no auto-advance
-    setAutoAdvanceTick(ROUND_RESULTS_AUTO_ADVANCE_SECONDS)
-    const t = setInterval(() => {
-      setAutoAdvanceTick((prev) => {
-        if (prev === null || prev <= 1) {
-          clearInterval(t)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-    return () => clearInterval(t)
-  }, [roundEnded, startingNextRound, game?.rounds_count, game?.current_round_number])
 
-  // Auto-advance trigger when countdown reaches 0.
-  useEffect(() => {
-    if (autoAdvanceTick !== 0) return
-    setAutoAdvanceTick(null)
-    if (game?.status !== 'active') return
-    const totalRounds = game?.rounds_count ?? 1
-    const currentRoundNumber = game?.current_round_number ?? 1
-    if (currentRoundNumber >= totalRounds) return
-    void handleStartNextRound()
-  }, [autoAdvanceTick, handleStartNextRound, game?.status, game?.rounds_count, game?.current_round_number])
+    let count = ROUND_RESULTS_AUTO_ADVANCE_SECONDS
+
+    const init = setTimeout(() => setAutoAdvanceTick(count), 0)
+    const t = setInterval(() => {
+      count--
+      if (count <= 0) {
+        clearInterval(t)
+        setAutoAdvanceTick(0)
+        if (game?.status === 'active') void handleStartNextRound()
+      } else {
+        setAutoAdvanceTick(count)
+      }
+    }, 1000)
+
+    return () => { clearTimeout(init); clearInterval(t) }
+  }, [roundEnded, startingNextRound, game?.rounds_count, game?.current_round_number, game?.status, handleStartNextRound])
 
   useEffect(() => {
     void load()
@@ -218,7 +214,9 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
           // Optimistic local update so the host's progress bar reacts instantly.
           const updated = payload.new as import('@/lib/memory-match').MatchingPairsProgress
           setProgressRows((prev) => {
-            const idx = prev.findIndex((p) => p.player_id === updated.player_id)
+            // Use composite key (round_id, player_id) so a later round's update
+            // cannot overwrite an earlier round's row when all rounds coexist.
+            const idx = prev.findIndex((p) => p.round_id === updated.round_id && p.player_id === updated.player_id)
             if (idx >= 0) {
               // Reject stale updates — an older payload arriving after a newer one
               // (due to network timing) must not regress the displayed state.
@@ -792,11 +790,12 @@ export function MatchingPairsHostView({ gameCode, hostToken }: { gameCode: strin
                   allProgress={progressRows}
                   gridSizePairs={gridSizePairs}
                   sessionStartedAt={game?.session_started_at ?? null}
+                  roundStartedAtMap={roundStartedAtMap}
                   totalRounds={totalRounds}
                 />
               ),
             }))}
-            totalQuestions={gridSizePairs}
+            totalQuestions={gridSizePairs * totalRounds}
             scoreLabel={(n) => `${n} pts`}
             emphasizeLeader
           />

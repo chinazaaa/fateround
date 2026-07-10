@@ -835,11 +835,12 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
                 allProgress={allProgress}
                 gridSizePairs={meta?.gridSizePairs ?? 8}
                 sessionStartedAt={game?.session_started_at ?? null}
+                roundStartedAtMap={roundStartedAtMap}
                 totalRounds={game?.rounds_count ?? 1}
               />
             ),
           }))}
-          totalQuestions={meta?.gridSizePairs}
+          totalQuestions={meta ? meta.gridSizePairs * (game?.rounds_count ?? 1) : undefined}
           highlightId={myPlayerId ?? undefined}
           scoreLabel={(n) => `${n} pts`}
           emphasizeLeader
