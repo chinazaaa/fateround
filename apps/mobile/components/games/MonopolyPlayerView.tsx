@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   type MonopolyBoard,
   type MonopolyPlayerState,
@@ -36,7 +36,6 @@ import {
   themedSpaceName,
 } from '@/components/games/monopoly/monopoly-theme'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
-import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { joinGame } from '@/lib/api'
@@ -59,7 +58,7 @@ import {
   type TradeProposal,
 } from '@/components/games/monopoly/MonopolyManagePanel'
 import { MonopolyTradeModal } from '@/components/games/monopoly/MonopolyTradeModal'
-import { normalizePendingTrade } from '@/components/games/monopoly/manage-logic'
+import { getMonopolyBuildActionCount, normalizePendingTrade } from '@/components/games/monopoly/manage-logic'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase } from '@/lib/supabase'
 import { MONOPOLY_BOARD_SELECT, MONOPOLY_PLAYER_STATE_SELECT } from '@/lib/supabase-selects'
@@ -83,6 +82,17 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const [manageError, setManageError] = useState<string | null>(null)
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
+
+  // Scroll-to-panel nudges: mobile renders the Build & trade panel inline (always
+  // in the tree) but it lives far below the fold, so the web "open Build & trade"
+  // nudges become "jump to Build & trade" affordances here. We capture the panel's
+  // y offset in the scroll view and animate a single shared value on show.
+  const scrollRef = useRef<ScrollView>(null)
+  const managePanelYRef = useRef(0)
+  const nudgeAnim = useRef(new Animated.Value(0)).current
+  const scrollToManagePanel = useCallback(() => {
+    scrollRef.current?.scrollTo({ y: Math.max(managePanelYRef.current - 12, 0), animated: true })
+  }, [])
 
   const loadGameState = useCallback(async (): Promise<{ state: MonopolyBoard | null; ok: boolean }> => {
     const code = gameCode.toUpperCase()
@@ -198,6 +208,25 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
   const showJail = !!(isMyTurn && board?.phase === 'jail' && myState?.in_jail)
   const showAuction = !!(board?.phase === 'auction' && auction && isMyAuctionTurn)
   const showRaiseFunds = !!(isMyDebt && board?.phase === 'raise_funds' && debt)
+
+  // In-flow nudges that jump the player to the always-inline Build & trade panel.
+  // The incoming-trade case is already served by the full-screen MonopolyTradeModal
+  // (which demands an immediate Accept/Decline), so only the build + raise-cash
+  // nudges are surfaced here. Declared before any early return so the animation
+  // effect below always runs (Rules of Hooks).
+  const buildActions =
+    board && bootstrap.myPlayerId ? getMonopolyBuildActionCount(board, bootstrap.myPlayerId) : 0
+  const showBuildNudge = !isViewer && !myState?.bankrupt && buildActions > 0
+  const showRaiseCashNudge = !isViewer && showRaiseFunds
+  const showAnyNudge = showBuildNudge || showRaiseCashNudge
+
+  useEffect(() => {
+    if (showAnyNudge) {
+      nudgeAnim.setValue(0)
+      Animated.timing(nudgeAnim, { toValue: 1, duration: 260, useNativeDriver: true }).start()
+    }
+    // Re-run when the set of visible nudges changes so each new nudge fades in.
+  }, [showAnyNudge, showBuildNudge, showRaiseCashNudge, nudgeAnim])
 
   void timerTick
   const secondsLeft = secondsUntilMonopolyDeadline(board?.turn_deadline_at)
@@ -403,9 +432,215 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           ? 'Unowned'
           : null
 
+  const nudgeStyle = {
+    opacity: nudgeAnim,
+    transform: [{ translateY: nudgeAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }],
+  }
+
+  // The turn UI lives INSIDE the board center (mirrors web MonopolyBoardCenter):
+  // currently-on + cash always show; dice show when idle; the contextual action
+  // panel (roll / buy / rent / jail / auction / raise-funds) replaces the dice.
+  const hasActionPanel = showBuy || showRent || showJail || showAuction || showRaiseFunds
+  const boardCenter = (
+    <View style={styles.center}>
+      {myState ? (
+        <>
+          {mySpace ? (
+            <Text style={styles.centerOn} numberOfLines={1}>
+              On {themedSpaceName(mySpace.name, myState.position, themeId)}
+            </Text>
+          ) : null}
+          <Text style={styles.centerCashLabel}>{myState.bankrupt ? 'BANKRUPT' : 'YOUR CASH'}</Text>
+          <Text style={[styles.centerCash, myState.bankrupt && styles.centerCashBankrupt]}>
+            {formatThemedMoney(myState.cash, themeId)}
+          </Text>
+        </>
+      ) : null}
+
+      {!hasActionPanel && board.last_dice ? (
+        <View style={styles.dieRow}>
+          <View style={styles.die}>
+            <Text style={styles.dieText}>{board.last_dice.d1}</Text>
+          </View>
+          <View style={styles.die}>
+            <Text style={styles.dieText}>{board.last_dice.d2}</Text>
+          </View>
+          <Text style={styles.dieTotal}>
+            {board.last_dice.total}
+            {board.last_dice.doubles ? ' ••' : ''}
+          </Text>
+        </View>
+      ) : null}
+
+      {secondsLeft > 0 ? (
+        <View style={styles.centerTimer}>
+          <Text style={styles.centerTimerText}>{secondsLeft}s</Text>
+        </View>
+      ) : null}
+
+      {showRoll ? (
+        <Pressable
+          style={[styles.centerPrimary, acting && styles.btnDisabled]}
+          disabled={acting}
+          onPress={() => void act(() => postMonopolyRoll(bootstrap.code, bootstrap.myResumeToken!))}
+        >
+          <Text style={styles.centerPrimaryText}>🎲 Roll</Text>
+        </Pressable>
+      ) : null}
+
+      {showBuy && pendingSpace ? (
+        <View style={styles.centerPanel}>
+          <Text style={styles.centerTitle} numberOfLines={1}>
+            {themedSpaceName(pendingSpace.name, pendingSpace.index, themeId)}
+          </Text>
+          <Text style={styles.centerSub}>{formatThemedMoney(pendingSpace.price ?? 0, themeId)}</Text>
+          <View style={styles.centerRow}>
+            <Pressable
+              style={[styles.centerPrimary, styles.centerFlex, acting && styles.btnDisabled]}
+              disabled={acting || (myState?.cash ?? 0) < (pendingSpace.price ?? 0)}
+              onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'buy'))}
+            >
+              <Text style={styles.centerPrimaryText}>Buy</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.centerSecondary, styles.centerFlex, acting && styles.btnDisabled]}
+              disabled={acting}
+              onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'auction'))}
+            >
+              <Text style={styles.centerSecondaryText}>Auction</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.centerSecondary, styles.centerFlex, acting && styles.btnDisabled]}
+              disabled={acting}
+              onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'pass'))}
+            >
+              <Text style={styles.centerSecondaryText}>Pass</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {showRent && pendingSpace ? (
+        <View style={styles.centerPanel}>
+          <Text style={styles.centerTitle} numberOfLines={1}>
+            Rent · {themedSpaceName(pendingSpace.name, pendingSpace.index, themeId)}
+          </Text>
+          <Pressable
+            style={[styles.centerPrimary, acting && styles.btnDisabled]}
+            disabled={acting}
+            onPress={() => void act(() => postMonopolyRent(bootstrap.code, bootstrap.myResumeToken!))}
+          >
+            <Text style={styles.centerPrimaryText}>Pay rent</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {showJail ? (
+        <View style={styles.centerPanel}>
+          <Text style={styles.centerTitle}>In jail</Text>
+          <Text style={styles.centerSub}>
+            {(myState?.jail_turns ?? 0) + 1}/3 · pay {formatThemedMoney(MONOPOLY_JAIL_FINE, themeId)}
+          </Text>
+          <View style={styles.centerRow}>
+            <Pressable
+              style={[styles.centerPrimary, styles.centerFlex, acting && styles.btnDisabled]}
+              disabled={acting}
+              onPress={() => void act(() => postMonopolyRoll(bootstrap.code, bootstrap.myResumeToken!))}
+            >
+              <Text style={styles.centerPrimaryText}>Roll</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.centerSecondary, styles.centerFlex, acting && styles.btnDisabled]}
+              disabled={acting || (myState?.cash ?? 0) < MONOPOLY_JAIL_FINE}
+              onPress={() => void act(() => postMonopolyJail(bootstrap.code, bootstrap.myResumeToken!, 'pay'))}
+            >
+              <Text style={styles.centerSecondaryText}>Pay fine</Text>
+            </Pressable>
+          </View>
+          {(myState?.get_out_of_jail_free ?? 0) > 0 ? (
+            <Pressable
+              style={[styles.centerSecondary, acting && styles.btnDisabled]}
+              disabled={acting}
+              onPress={() => void act(() => postMonopolyJail(bootstrap.code, bootstrap.myResumeToken!, 'card'))}
+            >
+              <Text style={styles.centerSecondaryText}>Use jail card</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
+      {showAuction && auction && auctionSpace ? (
+        <View style={styles.centerPanel}>
+          <Text style={styles.centerTitle} numberOfLines={1}>
+            Auction · {themedSpaceName(auctionSpace.name, auction.space_index, themeId)}
+          </Text>
+          <Text style={styles.centerSub}>
+            High: {auction.high_bid > 0 ? formatThemedMoney(auction.high_bid, themeId) : 'None'}
+          </Text>
+          <TextInput
+            style={styles.centerInput}
+            value={bidAmount}
+            onChangeText={setBidAmount}
+            keyboardType="number-pad"
+            placeholder={`Min ${auction.high_bid + 1}`}
+            placeholderTextColor={theme.textFaint}
+          />
+          <View style={styles.centerRow}>
+            <Pressable
+              style={[styles.centerPrimary, styles.centerFlex, acting && styles.btnDisabled]}
+              disabled={acting || !bidAmount || Number(bidAmount) <= auction.high_bid}
+              onPress={() =>
+                void act(() =>
+                  postMonopolyAuction(bootstrap.code, bootstrap.myResumeToken!, 'bid', Number(bidAmount))
+                )
+              }
+            >
+              <Text style={styles.centerPrimaryText}>Bid</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.centerSecondary, styles.centerFlex, acting && styles.btnDisabled]}
+              disabled={acting}
+              onPress={() => void act(() => postMonopolyAuction(bootstrap.code, bootstrap.myResumeToken!, 'pass'))}
+            >
+              <Text style={styles.centerSecondaryText}>Pass</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {showRaiseFunds && debt ? (
+        <View style={styles.centerPanel}>
+          <Text style={styles.centerTitle}>Raise {formatThemedMoney(debt.amount, themeId)}</Text>
+          <View style={styles.centerRow}>
+            <Pressable
+              style={[styles.centerPrimary, styles.centerFlex, acting && styles.btnDisabled]}
+              disabled={acting || (myState?.cash ?? 0) < debt.amount}
+              onPress={() => void act(() => postMonopolySettleDebt(bootstrap.code, bootstrap.myResumeToken!, 'pay'))}
+            >
+              <Text style={styles.centerPrimaryText}>Pay</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.centerSecondary, styles.centerFlex, acting && styles.btnDisabled]}
+              disabled={acting}
+              onPress={() => void act(() => postMonopolyForfeit(bootstrap.code, bootstrap.myResumeToken!))}
+            >
+              <Text style={styles.centerSecondaryText}>Forfeit</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {!isMyTurn && !showAuction && !showRaiseFunds ? (
+        <Text style={styles.centerWaiting} numberOfLines={1}>
+          {turnName}&apos;s turn
+        </Text>
+      ) : null}
+    </View>
+  )
+
   return (
     <GameShell bootstrap={bootstrap} title={batch8GameLabel('monopoly')} subtitle={monopolyPhaseLabel(board.phase)}>
-      <ScrollView contentContainerStyle={styles.playContent}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.playContent}>
         <TurnBanner
           isMyTurn={!!isMyTurn}
           text={
@@ -417,26 +652,10 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           }
         />
 
-        {myState && mySpace ? (
-          <View style={styles.chromeRow}>
-            <View style={styles.chromeSpace}>
-              <Text style={styles.chromeLabel}>You're on</Text>
-              <Text style={styles.chromeSpaceName} numberOfLines={1}>
-                {themedSpaceName(mySpace.name, myState.position, themeId)}
-              </Text>
-              {spaceOwnerLabel ? (
-                <Text style={styles.chromeSpaceOwner} numberOfLines={1}>
-                  {spaceOwnerLabel}
-                </Text>
-              ) : null}
-            </View>
-            <View style={[styles.chromeCash, myState.bankrupt && styles.chromeCashBankrupt]}>
-              <Text style={styles.chromeLabel}>{myState.bankrupt ? 'Bankrupt' : 'Your cash'}</Text>
-              <Text style={[styles.chromeCashValue, myState.bankrupt && styles.chromeCashValueBankrupt]}>
-                {formatThemedMoney(myState.cash, themeId)}
-              </Text>
-            </View>
-          </View>
+        {spaceOwnerLabel ? (
+          <Text style={styles.spaceOwnerLine} numberOfLines={1}>
+            {spaceOwnerLabel}
+          </Text>
         ) : null}
 
         {isViewer && me ? (
@@ -457,6 +676,26 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : null}
 
+        {showRaiseCashNudge ? (
+          <Animated.View style={nudgeStyle}>
+            <Pressable style={[styles.nudge, styles.nudgeDanger]} onPress={scrollToManagePanel}>
+              <Text style={[styles.nudgeText, styles.nudgeDangerText]}>
+                ⚠️ Raise cash — mortgage or sell buildings below
+              </Text>
+            </Pressable>
+          </Animated.View>
+        ) : null}
+
+        {showBuildNudge ? (
+          <Animated.View style={nudgeStyle}>
+            <Pressable style={[styles.nudge, styles.nudgeBuild]} onPress={scrollToManagePanel}>
+              <Text style={[styles.nudgeText, styles.nudgeBuildText]}>
+                🏠 You can build on your properties — tap to jump to Build &amp; trade
+              </Text>
+            </Pressable>
+          </Animated.View>
+        ) : null}
+
         <MonopolyBoardView
           states={states}
           players={bootstrap.players}
@@ -464,16 +703,8 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           pendingSpace={board.pending_space}
           myPlayerId={bootstrap.myPlayerId}
           themeId={themeId}
+          center={isViewer ? undefined : boardCenter}
         />
-
-        {secondsLeft > 0 ? <TimerBadge seconds={secondsLeft} /> : null}
-
-        {board.last_dice ? (
-          <Text style={styles.dice}>
-            Dice: {board.last_dice.d1} + {board.last_dice.d2} = {board.last_dice.total}
-            {board.last_dice.doubles ? ' (doubles)' : ''}
-          </Text>
-        ) : null}
 
         {board.last_card_event ? (
           <View style={styles.cardEvent}>
@@ -501,170 +732,29 @@ export function MonopolyPlayerView({ gameCode }: { gameCode: string }) {
           })}
         </View>
 
-        {showRoll ? (
-          <Pressable
-            style={[styles.primaryBtn, acting && styles.btnDisabled]}
-            disabled={acting}
-            onPress={() => void act(() => postMonopolyRoll(bootstrap.code, bootstrap.myResumeToken!))}
-          >
-            <Text style={styles.primaryBtnText}>Roll dice</Text>
-          </Pressable>
-        ) : null}
-
-        {showBuy && pendingSpace ? (
-          <View style={styles.actionPanel}>
-            <Text style={styles.actionTitle}>{themedSpaceName(pendingSpace.name, pendingSpace.index, themeId)}</Text>
-            <Text style={styles.actionSub}>Price {formatThemedMoney(pendingSpace.price ?? 0, themeId)}</Text>
-            <View style={styles.actionRow}>
-              <Pressable
-                style={[styles.primaryBtn, styles.flexBtn, acting && styles.btnDisabled]}
-                disabled={acting || (myState?.cash ?? 0) < (pendingSpace.price ?? 0)}
-                onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'buy'))}
-              >
-                <Text style={styles.primaryBtnText}>Buy</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.secondaryBtn, styles.flexBtn, acting && styles.btnDisabled]}
-                disabled={acting}
-                onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'auction'))}
-              >
-                <Text style={styles.secondaryBtnText}>Auction</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.secondaryBtn, styles.flexBtn, acting && styles.btnDisabled]}
-                disabled={acting}
-                onPress={() => void act(() => postMonopolyBuy(bootstrap.code, bootstrap.myResumeToken!, 'pass'))}
-              >
-                <Text style={styles.secondaryBtnText}>Pass</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
-
-        {showRent && pendingSpace ? (
-          <View style={styles.actionPanel}>
-            <Text style={styles.actionTitle}>Pay rent — {themedSpaceName(pendingSpace.name, pendingSpace.index, themeId)}</Text>
-            <Pressable
-              style={[styles.primaryBtn, acting && styles.btnDisabled]}
-              disabled={acting}
-              onPress={() => void act(() => postMonopolyRent(bootstrap.code, bootstrap.myResumeToken!))}
-            >
-              <Text style={styles.primaryBtnText}>Pay rent</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {showJail ? (
-          <View style={styles.actionPanel}>
-            <Text style={styles.actionTitle}>In jail</Text>
-            <Text style={styles.actionSub}>
-              Attempt {(myState?.jail_turns ?? 0) + 1}/3 — roll for doubles or pay {formatThemedMoney(MONOPOLY_JAIL_FINE, themeId)}.
-            </Text>
-            <View style={styles.actionRow}>
-              <Pressable
-                style={[styles.primaryBtn, styles.flexBtn, acting && styles.btnDisabled]}
-                disabled={acting}
-                onPress={() => void act(() => postMonopolyRoll(bootstrap.code, bootstrap.myResumeToken!))}
-              >
-                <Text style={styles.primaryBtnText}>Roll doubles</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.secondaryBtn, styles.flexBtn, acting && styles.btnDisabled]}
-                disabled={acting || (myState?.cash ?? 0) < MONOPOLY_JAIL_FINE}
-                onPress={() => void act(() => postMonopolyJail(bootstrap.code, bootstrap.myResumeToken!, 'pay'))}
-              >
-                <Text style={styles.secondaryBtnText}>Pay fine</Text>
-              </Pressable>
-            </View>
-            {(myState?.get_out_of_jail_free ?? 0) > 0 ? (
-              <Pressable
-                style={[styles.secondaryBtn, acting && styles.btnDisabled]}
-                disabled={acting}
-                onPress={() => void act(() => postMonopolyJail(bootstrap.code, bootstrap.myResumeToken!, 'card'))}
-              >
-                <Text style={styles.secondaryBtnText}>Use get-out-of-jail card</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
-
-        {showAuction && auction && auctionSpace ? (
-          <View style={styles.actionPanel}>
-            <Text style={styles.actionTitle}>Auction — {themedSpaceName(auctionSpace.name, auction.space_index, themeId)}</Text>
-            <Text style={styles.actionSub}>
-              High bid: {auction.high_bid > 0 ? formatThemedMoney(auction.high_bid, themeId) : 'None'}
-            </Text>
-            <TextInput
-              style={styles.bidInput}
-              value={bidAmount}
-              onChangeText={setBidAmount}
-              keyboardType="number-pad"
-              placeholder={`Min ${auction.high_bid + 1}`}
-              placeholderTextColor={theme.textFaint}
-            />
-            <View style={styles.actionRow}>
-              <Pressable
-                style={[styles.primaryBtn, styles.flexBtn, acting && styles.btnDisabled]}
-                disabled={acting || !bidAmount || Number(bidAmount) <= auction.high_bid}
-                onPress={() =>
-                  void act(() =>
-                    postMonopolyAuction(bootstrap.code, bootstrap.myResumeToken!, 'bid', Number(bidAmount))
-                  )
-                }
-              >
-                <Text style={styles.primaryBtnText}>Bid</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.secondaryBtn, styles.flexBtn, acting && styles.btnDisabled]}
-                disabled={acting}
-                onPress={() => void act(() => postMonopolyAuction(bootstrap.code, bootstrap.myResumeToken!, 'pass'))}
-              >
-                <Text style={styles.secondaryBtnText}>Pass</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
-
         {showRaiseFunds && debt ? (
-          <View style={styles.actionPanel}>
-            <Text style={styles.actionTitle}>Raise {formatThemedMoney(debt.amount, themeId)}</Text>
-            <Text style={styles.actionSub}>{formatThemedText(debt.reason, themeId)}</Text>
-            <View style={styles.actionRow}>
-              <Pressable
-                style={[styles.primaryBtn, styles.flexBtn, acting && styles.btnDisabled]}
-                disabled={acting || (myState?.cash ?? 0) < debt.amount}
-                onPress={() => void act(() => postMonopolySettleDebt(bootstrap.code, bootstrap.myResumeToken!, 'pay'))}
-              >
-                <Text style={styles.primaryBtnText}>Pay debt</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.secondaryBtn, styles.flexBtn, acting && styles.btnDisabled]}
-                disabled={acting}
-                onPress={() => void act(() => postMonopolyForfeit(bootstrap.code, bootstrap.myResumeToken!))}
-              >
-                <Text style={styles.secondaryBtnText}>Forfeit</Text>
-              </Pressable>
-            </View>
-          </View>
+          <Text style={styles.raiseReason}>{formatThemedText(debt.reason, themeId)}</Text>
         ) : null}
 
         {manageError ? <Text style={styles.errorText}>{manageError}</Text> : null}
 
         {isViewer ? null : (
-          <MonopolyManagePanel
-            board={board}
-            myPlayerId={bootstrap.myPlayerId}
-            myState={myState}
-            states={states}
-            players={bootstrap.players}
-            acting={acting}
-            themeId={themeId}
-            onBuild={onBuild}
-            onMortgage={onMortgage}
-            onProposeTrade={onProposeTrade}
-            onCancelTrade={onCancelTrade}
-            onRepairTrade={onRepairTrade}
-          />
+          <View onLayout={(e) => (managePanelYRef.current = e.nativeEvent.layout.y)}>
+            <MonopolyManagePanel
+              board={board}
+              myPlayerId={bootstrap.myPlayerId}
+              myState={myState}
+              states={states}
+              players={bootstrap.players}
+              acting={acting}
+              themeId={themeId}
+              onBuild={onBuild}
+              onMortgage={onMortgage}
+              onProposeTrade={onProposeTrade}
+              onCancelTrade={onCancelTrade}
+              onRepairTrade={onRepairTrade}
+            />
+          </View>
         )}
       </ScrollView>
 
@@ -767,6 +857,17 @@ const makeStyles = (theme: Theme) =>
     marginBottom: 3,
   },
   bannerText: { color: theme.text, fontSize: 14, lineHeight: 20 },
+  nudge: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  nudgeText: { fontSize: 14, fontWeight: '700', lineHeight: 19 },
+  nudgeBuild: { backgroundColor: theme.primarySoft, borderColor: theme.borderAccent },
+  nudgeBuildText: { color: theme.primary },
+  nudgeDanger: { backgroundColor: '#ef44441a', borderColor: '#ef444455' },
+  nudgeDangerText: { color: '#ef4444' },
   errorText: { color: theme.primary, fontSize: 13, fontWeight: '600' },
   dice: { color: theme.text, fontSize: 16, fontWeight: '600' },
   cardEvent: { backgroundColor: theme.surface, borderRadius: 12, padding: 12, gap: 4 },
@@ -798,6 +899,64 @@ const makeStyles = (theme: Theme) =>
   },
   secondaryBtnText: { color: theme.text, fontWeight: '600', fontSize: 15 },
   btnDisabled: { opacity: 0.5 },
+  spaceOwnerLine: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
+  raiseReason: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
+  // Board-center turn UI. Sits on the (dark) board centre, so it carries its own
+  // translucent dark card and uses light text for readability on any edition palette.
+  center: {
+    alignItems: 'center',
+    gap: 3,
+    width: '100%',
+    backgroundColor: 'rgba(15,23,42,0.42)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  centerOn: { color: 'rgba(255,255,255,0.82)', fontSize: 9, fontWeight: '700', textAlign: 'center' },
+  centerCashLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 8, fontWeight: '800', letterSpacing: 0.6 },
+  centerCash: { color: '#ffffff', fontSize: 20, fontWeight: '800' },
+  centerCashBankrupt: { color: '#fca5a5' },
+  dieRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  die: { width: 22, height: 22, borderRadius: 5, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
+  dieText: { color: '#111827', fontSize: 13, fontWeight: '800' },
+  dieTotal: { color: '#ffffff', fontSize: 12, fontWeight: '700', marginLeft: 2 },
+  centerTimer: { backgroundColor: 'rgba(0,0,0,0.35)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 1, marginTop: 2 },
+  centerTimerText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
+  centerPanel: { alignItems: 'center', gap: 4, marginTop: 4, alignSelf: 'stretch' },
+  centerTitle: { color: '#ffffff', fontSize: 12, fontWeight: '800', textAlign: 'center' },
+  centerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 10, textAlign: 'center' },
+  centerRow: { flexDirection: 'row', gap: 6, marginTop: 4, alignSelf: 'stretch' },
+  centerFlex: { flex: 1 },
+  centerPrimary: {
+    backgroundColor: '#f59e0b',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  centerPrimaryText: { color: '#1f2937', fontWeight: '800', fontSize: 13 },
+  centerSecondary: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  centerSecondaryText: { color: '#ffffff', fontWeight: '700', fontSize: 12 },
+  centerInput: {
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 8,
+    color: '#111827',
+    fontSize: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  centerWaiting: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '700', marginTop: 2 },
   bidInput: {
     backgroundColor: theme.bg,
     borderColor: theme.border,

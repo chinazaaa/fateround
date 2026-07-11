@@ -170,6 +170,9 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        submitLabel="Join Bingo"
+        hint="You'll get a random card when the host starts. Called numbers turn blue on your card — tap them to mark them green."
+        footer={<BingoCardLegend />}
       />
     )
   }
@@ -190,7 +193,7 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         </GameShell>
       )
     }
-    return <LobbyView {...lobbyProps!} onLeft={onLeft} />
+    return <LobbyView {...lobbyProps!} onLeft={onLeft} activity={<BingoCardLegend />} />
   }
   if (!bootstrap.game) return <GameLoading />
 

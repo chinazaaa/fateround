@@ -18,6 +18,7 @@ export const CREATE_THEMES: CreateThemeOption[] = [
 ]
 
 export const MONOPOLY_EDITION_THEMES: CreateThemeOption[] = [
+  { id: 'default', label: 'Classic', emoji: '🎩' },
   { id: 'pirate', label: 'Pirate', emoji: '🏴‍☠️' },
   { id: 'arctic', label: 'Arctic', emoji: '🧭' },
   { id: 'naija', label: 'Naija', emoji: '🇳🇬' },

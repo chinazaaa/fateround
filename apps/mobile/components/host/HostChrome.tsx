@@ -12,6 +12,7 @@ import { HostControlsSheet } from '@/components/host/HostControlsSheet'
 import { HostViewProvider } from '@/components/host/HostViewContext'
 import { GameRouter, hasMobilePlayerView } from '@/components/games/GameRouter'
 import { HeaderAction } from '@/components/ui/HeaderAction'
+import { SettingsButton } from '@/components/ui/SettingsSheet'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { getPlayerSession, type PlayerSession } from '@/lib/secure-session'
@@ -83,6 +84,7 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
             <Text style={styles.backIcon}>←</Text>
           </Pressable>
           <View style={styles.toolbarActions}>
+            <SettingsButton />
             {showHostControls ? (
               <HeaderAction label="⚙ Host settings" onPress={() => setControlsOpen(true)} />
             ) : (

@@ -11,7 +11,7 @@ import type {
   Player,
 } from '@fateround/shared'
 import { batch7GameLabel } from '@fateround/shared/batch-7-games'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import {
   cellBackground,
   codewordsPlayerPicks,
@@ -30,7 +30,11 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { CodewordsAchievementPosts } from '@/components/games/CodewordsAchievementPosts'
 import { CodewordsTimerBar } from '@/components/games/CodewordsTimerBar'
+import { CodewordsWaitingActivity } from '@/components/games/CodewordsWaitingActivity'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
+import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
 import {
   CodewordsBoardReveal,
   CodewordsEndGameStats,
@@ -40,6 +44,7 @@ import { codewordsOperativeLeaderboard } from '@/components/games/codewords-stat
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import {
   postCodewordsChat,
   postCodewordsClue,
@@ -72,7 +77,17 @@ const ROLE_DESCRIPTIONS: Record<CodewordsRole, string> = {
   operative: 'Tap words on the grid to guess based on your spymaster’s clue.',
 }
 
-type Screen = 'loading' | 'join' | 'waiting' | 'pick_role' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'late_join_choice'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'pick_role'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 type CodewordsState = {
   board: CodewordsBoard | null
@@ -132,7 +147,15 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
   const computeScreen = useCallback(
     (game: Game, playerId: string | null, state: CodewordsState): Screen => {
-      if (!playerId) return 'join'
+      if (!playerId) {
+        // No session yet: offer the platform pre-join gates (watch-or-play for a
+        // late opener, "game started — waiting for lobby", or "game ended").
+        const pre = preJoinScreen(game, false)
+        if (pre === 'game_started_waiting') return 'game_started_waiting'
+        if (pre === 'late_join_choice') return 'late_join_choice'
+        if (pre === 'game_ended') return 'game_ended'
+        return 'join'
+      }
       if (game.status === 'waiting') {
         const myRole = state.roles.find((r) => r.player_id === playerId)
         if (
@@ -164,6 +187,9 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     computeScreen,
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+
+  // Watch-or-play prompt for a late opener (fetched only on that screen).
+  const lateJoin = useLateJoinContext(gameCode, bootstrap.game, bootstrap.screen === 'late_join_choice')
 
   useGameTableSync(
     gameCode,
@@ -228,6 +254,32 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
+  if (bootstrap.screen === 'late_join_choice' && bootstrap.game) {
+    return (
+      <LateJoinChoiceScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        context={lateJoin.context}
+        contextLoading={lateJoin.loading}
+        nameInput={bootstrap.joinName}
+        onNameChange={bootstrap.setJoinName}
+        joining={bootstrap.joining}
+        error={bootstrap.error}
+        onJoinAsViewer={() => void bootstrap.join(undefined, { joinAsViewer: true })}
+        onJoinAsPlayer={() => void bootstrap.join(undefined, { joinAsViewer: false })}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     return (
       <JoinScreen
@@ -371,7 +423,11 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'waiting' && bootstrap.game && lobbyProps) {
     return (
-      <LobbyView {...lobbyProps!} onLeft={onLeft} />
+      <LobbyView
+        {...lobbyProps!}
+        onLeft={onLeft}
+        activity={<CodewordsWaitingActivity myRole={myRole} isSpectator={isViewer} />}
+      />
     )
   }
 

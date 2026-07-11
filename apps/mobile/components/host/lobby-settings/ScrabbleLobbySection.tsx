@@ -7,7 +7,7 @@ import {
   formatSessionDuration,
   turnTimerOptionsFor,
 } from '@fateround/shared/create-board-games'
-import { SCRABBLE_DICTIONARY_LABELS, SCRABBLE_DICTIONARY_OPTIONS } from '@fateround/shared/scrabble-dictionary-meta'
+import { SCRABBLE_DICTIONARY_OPTIONS, SCRABBLE_DICTIONARY_SHORT_LABELS } from '@fateround/shared/scrabble-dictionary-meta'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
 import { TimerPicker } from '@/components/create/TimerPicker'
 import type { Theme } from '@/constants/theme'
@@ -81,7 +81,7 @@ export function ScrabbleLobbySection({ value, onChange }: Props) {
           value={value.dictionaryId}
           options={SCRABBLE_DICTIONARY_OPTIONS.map((id) => ({
             value: id,
-            label: SCRABBLE_DICTIONARY_LABELS[id].split(' · ')[0] ?? id,
+            label: SCRABBLE_DICTIONARY_SHORT_LABELS[id] ?? id,
           }))}
           onChange={(v) => onChange({ dictionaryId: v })}
         />

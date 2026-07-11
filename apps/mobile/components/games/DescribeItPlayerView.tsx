@@ -29,6 +29,7 @@ import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { DescribeItAchievementPosts } from '@/components/games/DescribeItAchievementPosts'
+import { DescribeItShareCard } from '@/components/games/DescribeItShareCard'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
 import { TeamBadge } from '@/components/party/TeamBadge'
@@ -342,17 +343,24 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             winnerPlayerId={top && top.score > 0 ? top.id : null}
             roundKey={session.id}
             notice={
-              bootstrap.myPlayerId ? (
-                <DescribeItAchievementPosts
-                  guesses={guesses}
-                  roster={session.roster ?? []}
-                  players={bootstrap.players}
-                  isIndividual
-                  myPlayerId={bootstrap.myPlayerId}
-                  gameCode={bootstrap.code}
-                  roundKey={session.id}
+              <>
+                <DescribeItShareCard
+                  mode="individual"
+                  board={board}
+                  highlightPlayerId={bootstrap.myPlayerId}
                 />
-              ) : null
+                {bootstrap.myPlayerId ? (
+                  <DescribeItAchievementPosts
+                    guesses={guesses}
+                    roster={session.roster ?? []}
+                    players={bootstrap.players}
+                    isIndividual
+                    myPlayerId={bootstrap.myPlayerId}
+                    gameCode={bootstrap.code}
+                    roundKey={session.id}
+                  />
+                ) : null}
+              </>
             }
           />
         </GameShell>
@@ -383,12 +391,12 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
           detail={winnerLabel ? undefined : 'No words guessed'}
           leaderboard={toLeaderboardRows(scores.map((row) => ({ name: teamLabel(row.team), score: row.score })))}
           notice={
-            topGuessers.length > 0 ? (
-              <Text style={styles.topGuessers}>
-                Top guesser{topGuessers.length > 1 ? 's' : ''}:{' '}
-                {topGuessers.map((g) => `${g.name} (${g.count})`).join(' · ')}
-              </Text>
-            ) : null
+            <DescribeItShareCard
+              mode="team"
+              teamScores={scores}
+              winners={winners}
+              topGuessers={topGuessers}
+            />
           }
         />
       </GameShell>
@@ -573,7 +581,6 @@ const makeStyles = (theme: Theme) =>
   gateHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
   // emerald success — kept consistent across themes for the "you got it" note
   gotIt: { color: '#10b981', fontSize: 14, fontWeight: '700', textAlign: 'center', marginTop: 4 },
-  topGuessers: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
   soloCard: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 4 },
   soloTitle: { color: theme.text, fontSize: 15, fontWeight: '800', textAlign: 'center' },
   soloBody: { color: theme.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 19 },

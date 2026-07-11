@@ -11,6 +11,7 @@ import { PlayerSessionMenu } from '@/components/session/PlayerSessionMenu'
 import { HostNominationBanner } from '@/components/session/HostNominationBanner'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HeaderAction } from '@/components/ui/HeaderAction'
+import { SettingsButton } from '@/components/ui/SettingsSheet'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -96,6 +97,7 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
           </Pressable>
 
           <View style={styles.toolbarActions}>
+            <SettingsButton />
             <HeaderAction label="Share" onPress={onShare} />
             {hasHostToken ? (
               <HeaderAction label="Host" accent onPress={() => void openHost()} />

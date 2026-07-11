@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import 'react-native-reanimated'
 import { ToastProvider } from '@/components/ui/Toast'
 import { ThemeProvider, useTheme, useThemeMode } from '@/constants/theme-context'
+import { PreferencesProvider } from '@/constants/preferences-context'
 
 export { ErrorBoundary } from 'expo-router'
 
@@ -43,9 +44,11 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <ToastProvider>
-          <ThemedStack />
-        </ToastProvider>
+        <PreferencesProvider>
+          <ToastProvider>
+            <ThemedStack />
+          </ToastProvider>
+        </PreferencesProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   )

@@ -29,6 +29,7 @@ import { GameTimerBar } from '@/components/games/cards/GameTimerBar'
 import { PlayingCardFace } from '@/components/games/cards/PlayingCardFace'
 import { useTurnDeadlineSeconds } from '@/components/games/cards/useTurnDeadlineSeconds'
 import { TimerBadge } from '@/components/ui/TimerBadge'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import {
@@ -207,6 +208,7 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
             : 'No account needed — enter a display name and play.'
         }
         submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
+        footer={<GameRulesLink gameType="crazy_eights" variant="subtle" />}
       />
     )
   }

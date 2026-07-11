@@ -10,6 +10,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.fateround.app",
+      "associatedDomains": [
+        "applinks:fateround.com"
+      ],
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -30,6 +33,17 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "fateround.com", "pathPrefix": "/game" },
+            { "scheme": "https", "host": "fateround.com", "pathPrefix": "/host" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
       "permissions": [
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS",

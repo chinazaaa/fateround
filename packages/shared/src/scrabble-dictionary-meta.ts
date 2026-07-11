@@ -19,6 +19,20 @@ export const SCRABBLE_DICTIONARY_LABELS: Record<ScrabbleDictionaryId, string> = 
   spanish: 'Español · FISE',
 }
 
+/**
+ * Compact labels for narrow chip/segmented pickers. Unlike splitting the full
+ * label on ' · ' (which collapses all three English lists to just "English"),
+ * these stay short while keeping every option distinct.
+ */
+export const SCRABBLE_DICTIONARY_SHORT_LABELS: Record<ScrabbleDictionaryId, string> = {
+  enable: 'English · Standard',
+  collins: 'English · Collins',
+  twl: 'English · TWL',
+  french: 'Français',
+  german: 'Deutsch',
+  spanish: 'Español',
+}
+
 /** Short blurb shown under the picker, optional UI use. */
 export const SCRABBLE_DICTIONARY_BLURBS: Record<ScrabbleDictionaryId, string> = {
   enable: 'Open public-domain list — a great default.',

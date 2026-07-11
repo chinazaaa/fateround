@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "3JUY592462.com.fateround.app",
+        "paths": ["/game/*", "/host/*"]
+      }
+    ]
+  }
+}

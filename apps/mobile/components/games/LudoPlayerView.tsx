@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { type LudoDiceRoll, type LudoPlayerState, type LudoSession } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import {
@@ -37,6 +37,7 @@ const ROLL_MIN_MS = 700
 
 export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
+  const { height: windowHeight } = useWindowDimensions()
   const [session, setSession] = useState<LudoSession | null>(null)
   const [states, setStates] = useState<LudoPlayerState[]>([])
   const [acting, setActing] = useState(false)
@@ -182,6 +183,9 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
   }
 
   const turnName = bootstrap.players.find((p) => p.id === turnPlayerId)?.name ?? 'Someone'
+  // Cap the pinned move list so a long list scrolls within the footer instead of
+  // shoving the board off-screen.
+  const movesMaxHeight = Math.round(windowHeight * 0.3)
 
   return (
     <GameShell
@@ -193,15 +197,17 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
       myPlayerId={bootstrap.myPlayerId}
       onPromoted={() => bootstrap.load()}
     >
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <LudoTurnBar
-          gameCode={bootstrap.code}
-          session={session}
-          turnPlayerName={turnName}
-          isMyTurn={isMyTurn}
-          active={bootstrap.game.status === 'active'}
-        />
+      {/* Turn/timer bar pinned to the top — always visible without scrolling. */}
+      <LudoTurnBar
+        gameCode={bootstrap.code}
+        session={session}
+        turnPlayerName={turnName}
+        isMyTurn={isMyTurn}
+        active={bootstrap.game.status === 'active'}
+      />
 
+      {/* Only the (tall) board scrolls. */}
+      <ScrollView style={styles.boardScroll} contentContainerStyle={styles.boardScrollContent}>
         <LudoBoard
           states={states}
           players={bootstrap.players}
@@ -214,7 +220,11 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
           variant={variant}
           turnPlayerId={turnPlayerId}
         />
+        {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
+      </ScrollView>
 
+      {/* Dice + roll / move controls pinned to the bottom — reachable every turn. */}
+      <View style={styles.footer}>
         <View style={styles.diceCard}>
           {session.phase === 'move' && remainingDice.length > 0 ? (
             <LudoRemainingDice remaining={remainingDice} />
@@ -228,8 +238,6 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
             <Text style={styles.bonus}>Bonus: {session.consecutive_sixes}/3</Text>
           ) : null}
         </View>
-
-        {session.status_message ? <Text style={styles.status}>{session.status_message}</Text> : null}
 
         {isMyTurn && session.phase === 'roll' ? (
           <>
@@ -245,13 +253,15 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         ) : null}
 
         {isMyTurn && session.phase === 'move' && legalMoves.length > 0 ? (
-          <LudoMoveList
-            moves={legalMoves}
-            myColor={myState?.color}
-            remainingDice={remainingDice}
-            acting={acting}
-            onMovePiece={(pieceId, diceIndex) => void movePiece(pieceId, diceIndex)}
-          />
+          <ScrollView style={{ maxHeight: movesMaxHeight }} showsVerticalScrollIndicator={false}>
+            <LudoMoveList
+              moves={legalMoves}
+              myColor={myState?.color}
+              remainingDice={remainingDice}
+              acting={acting}
+              onMovePiece={(pieceId, diceIndex) => void movePiece(pieceId, diceIndex)}
+            />
+          </ScrollView>
         ) : null}
 
         {isMyTurn && session.phase === 'move' && legalMoves.length === 0 ? (
@@ -259,14 +269,21 @@ export function LudoPlayerView({ gameCode }: { gameCode: string }) {
         ) : null}
 
         {!isMyTurn ? <Text style={styles.hint}>Waiting for {turnName}…</Text> : null}
-      </ScrollView>
+      </View>
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  scroll: { gap: 12, paddingBottom: 24 },
+  boardScroll: { flex: 1 },
+  boardScrollContent: { gap: 12, paddingVertical: 8, alignItems: 'center' },
+  footer: {
+    gap: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: theme.surfaceHover,
+  },
   status: { color: theme.textMuted, textAlign: 'center' },
   diceCard: {
     alignItems: 'center',

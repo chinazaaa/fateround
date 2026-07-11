@@ -20,6 +20,7 @@ import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner, WaitingPanel } from '@/components/game/GameChrome'
 import { QuickDrawLiePlayerView } from '@/components/games/QuickDrawLiePlayerView'
+import { QuickDrawShareCard } from '@/components/games/QuickDrawShareCard'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
@@ -323,14 +324,48 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
           leaderboard={scoreListLeaderboard(board)}
           winnerPlayerId={hasWinner ? top.id : null}
           roundKey={session?.id ?? null}
+          notice={
+            <QuickDrawShareCard
+              mode="individual"
+              board={board}
+              highlightPlayerId={bootstrap.myPlayerId}
+            />
+          }
         />
       )
     }
     const scores = computeQuickDrawGuessScores(words, numTeams)
     const winners = quickDrawGuessWinningTeams(scores)
     const winnerLabel = winners.map((t) => teamLabel(t)).join(' & ')
+    // Fun end-of-match stat: who guessed the most words (mirrors web share card).
+    const guessCounts = new Map<string, number>()
+    for (const w of words) {
+      if (w.status === 'guessed' && w.guesser_player_id) {
+        guessCounts.set(w.guesser_player_id, (guessCounts.get(w.guesser_player_id) ?? 0) + 1)
+      }
+    }
+    const nameById = new Map(bootstrap.players.map((p) => [p.id, p.name]))
+    const topGuessers = [...guessCounts.entries()]
+      .map(([id, count]) => ({ name: nameById.get(id) ?? 'Player', count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3)
     return (
-      <GameFinishPanel bootstrap={bootstrap} title="Final results" subtitle="Team scores" detail={winnerLabel ? `${winnerLabel} wins` : undefined} leaderboard={toLeaderboardRows(scores.map((row) => ({ name: teamLabel(row.team), score: row.score })))} />
+      <GameFinishPanel
+        bootstrap={bootstrap}
+        emoji={winners.length > 0 ? '🏆' : '🏁'}
+        title="Final results"
+        subtitle="Team scores"
+        detail={winnerLabel ? `${winnerLabel} wins` : undefined}
+        leaderboard={toLeaderboardRows(scores.map((row) => ({ name: teamLabel(row.team), score: row.score })))}
+        notice={
+          <QuickDrawShareCard
+            mode="team"
+            teamScores={scores}
+            winners={winners}
+            topGuessers={topGuessers}
+          />
+        }
+      />
     )
   }
 

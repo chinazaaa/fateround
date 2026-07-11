@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import type { MonopolyPlayerState, Player } from '@fateround/shared'
 import {
@@ -58,6 +58,7 @@ export function MonopolyBoardView({
   pendingSpace,
   myPlayerId,
   themeId,
+  center,
 }: {
   states: MonopolyPlayerState[]
   players: Player[]
@@ -65,10 +66,13 @@ export function MonopolyBoardView({
   pendingSpace?: number | null
   myPlayerId?: string | null
   themeId?: string | null
+  /** Content rendered inside the board's empty center (turn UI: cash, dice, actions). */
+  center?: ReactNode
 }) {
   const { width } = useWindowDimensions()
   const cellSize = Math.min(Math.floor((width - 24) / MONOPOLY_GRID_SIZE), 34)
   const boardPx = cellSize * MONOPOLY_GRID_SIZE
+  const innerPx = cellSize * (MONOPOLY_GRID_SIZE - 2)
   const palette = getBoardPalette(themeId)
 
   const tokensBySpace = useMemo(() => {
@@ -196,6 +200,17 @@ export function MonopolyBoardView({
           ))}
         </View>
       ) : null}
+
+      {center != null ? (
+        <View
+          style={[
+            styles.centerSlot,
+            { top: cellSize, left: cellSize, width: innerPx, height: innerPx },
+          ]}
+        >
+          {center}
+        </View>
+      ) : null}
     </View>
   )
 }
@@ -249,4 +264,10 @@ const styles = StyleSheet.create({
   },
   snowLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   snowflake: { position: 'absolute' },
+  centerSlot: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 6,
+  },
 })

@@ -39,8 +39,9 @@ export function PollFinalRounds({ game, gameType, rounds, participants, votes, p
     if (!myVote) return []
     if (isPickANumber(gameType)) return []
     if (isBinaryChoiceGame(gameType) || isNeverHaveIEver(gameType)) {
-      if (myVote.wyr_choice === 'a') return [round.wyr_option_a ?? 'Option A']
-      if (myVote.wyr_choice === 'b') return [round.wyr_option_b ?? (isNeverHaveIEver(gameType) ? "I haven't" : 'Option B')]
+      const nhie = isNeverHaveIEver(gameType)
+      if (myVote.wyr_choice === 'a') return [nhie ? '✋ I have' : round.wyr_option_a ?? 'Option A']
+      if (myVote.wyr_choice === 'b') return [nhie ? "🙅 I haven't" : round.wyr_option_b ?? 'Option B']
       return []
     }
     if (isMostLikelyTo(gameType)) {

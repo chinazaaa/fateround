@@ -1,7 +1,7 @@
 export const GAME_SELECT =
   'id,title,game_type,status,current_round_number,timer_seconds,max_players,allow_viewers,allow_late_players,is_public,theme,replay_pending,pending_host_player_id,tournament_id,ayo_variant,participant_mode,pair_vote_mode,player_questions_enabled,player_questions_order,custom_questions,custom_slots,gender_based,ludo_variant,rounds_count,question_source,trivia_category,created_at,describe_it_num_teams,describe_it_mode,crazy8_action_cards,crazy8_jokers,crazy8_pick2_stacking,whot_pick3_enabled,whot_cards_enabled,whot_number_calls_enabled,whot_pick2_stacking,word_rush_mode,word_rush_num_teams,word_rush_prompt_mode,word_rush_difficulty,session_started_at,game_duration_seconds,anonymous_messages_trimmed_at,chess_board_theme,chess_piece_set,scrabble_dictionary_id,scrabble_clock_mode,scrabble_clock_seconds,operative_timer_seconds,codewords_player_picks,codewords_late_join,codewords_randomize_teams,mafia_doctor_enabled,mafia_detective_enabled,mafia_anonymous_votes,quick_draw_variant,quick_draw_play_mode,quick_draw_num_teams,mahjong_ruleset,mahjong_rule_options,bingo_call_mode,bingo_call_interval_seconds'
 
-export const PLAYER_SELECT = 'id,game_id,name,gender,joined_at,spectator,is_eliminated,monopoly_token,participant_id'
+export const PLAYER_SELECT = 'id,game_id,name,gender,joined_at,spectator,is_eliminated,lives_remaining,eliminated_at,monopoly_token,participant_id'
 
 export const PARTICIPANT_SELECT =
   'id,game_id,name,gender,photo_url,description,display_order,in_mlt_poll,submitted_by_player_id'
@@ -116,6 +116,9 @@ export const CODEWORDS_BOARD_SELECT =
   'id,game_id,words,key,starting_team,revealed_indices,current_turn,guesses_remaining,current_clue_word,current_clue_number,winner,assassin_team,spymaster_timer_seconds,operative_timer_seconds,turn_phase,turn_deadline_at,created_at'
 
 export const CODEWORDS_PLAYER_ROLE_SELECT = 'id,game_id,player_id,team,role,created_at'
+
+export const HOT_SEAT_SUBMISSIONS_SELECT =
+  'id,game_id,round_id,player_id,text,submission_type,created_at'
 
 export const CODEWORDS_GUESS_SELECT =
   'id,game_id,board_id,player_id,cell_index,word,cell_type,clue_word,clue_number,team,created_at'

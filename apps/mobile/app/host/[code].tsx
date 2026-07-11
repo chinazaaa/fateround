@@ -19,7 +19,7 @@ type Phase = 'checking' | 'ready' | 'denied' | 'notFound'
 export default function HostScreen() {
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
-  const params = useLocalSearchParams<{ code: string; hostToken?: string }>()
+  const params = useLocalSearchParams<{ code: string; hostToken?: string; token?: string }>()
   const router = useRouter()
   const gameCode = typeof params.code === 'string' ? normalizeGameCode(params.code) : ''
   const [phase, setPhase] = useState<Phase>('checking')
@@ -32,12 +32,16 @@ export default function HostScreen() {
     }
     let cancelled = false
     const run = async () => {
-      // A deep link may carry the token as a query param — capture it first.
-      const linked = typeof params.hostToken === 'string' ? params.hostToken.trim() : ''
+      // A deep link may carry the host token as a query param — capture it first.
+      // Custom-scheme links use `hostToken`; web/universal host links use `token`
+      // (see hostGameUrl), so accept either.
+      const linked =
+        (typeof params.hostToken === 'string' ? params.hostToken.trim() : '') ||
+        (typeof params.token === 'string' ? params.token.trim() : '')
       if (linked) {
         await setHostToken(gameCode, linked)
         // Drop the token from the URL so it isn't left in navigation history.
-        router.setParams({ hostToken: undefined })
+        router.setParams({ hostToken: undefined, token: undefined })
       }
       const stored = await getHostToken(gameCode)
       if (cancelled) return

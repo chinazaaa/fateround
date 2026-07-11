@@ -8,7 +8,7 @@ import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
-import { ThemeModeButton } from '@/components/ui/ThemeModeToggle'
+import { SettingsButton } from '@/components/ui/SettingsSheet'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 import { WEB_BASE_URL } from '@/lib/config'
@@ -73,7 +73,7 @@ export default function HomeScreen() {
         }
       >
         <View style={styles.topBar}>
-          <ThemeModeButton />
+          <SettingsButton />
         </View>
 
         <View style={styles.hero}>

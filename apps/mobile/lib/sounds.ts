@@ -23,6 +23,9 @@ export type SoundName = keyof typeof SOURCES
 
 const players: Partial<Record<SoundName, AudioPlayer>> = {}
 let muted = false
+// User preference (Settings › Sound effects). Defaults to on; the
+// PreferencesProvider mirrors the persisted choice here on launch + change.
+let soundEnabled = true
 
 export function setSoundMuted(value: boolean) {
   muted = value
@@ -32,8 +35,13 @@ export function isSoundMuted() {
   return muted
 }
 
+/** Toggle the user's sound-effects preference. When off, `playSound` no-ops. */
+export function setSoundsEnabled(value: boolean) {
+  soundEnabled = value
+}
+
 export function playSound(name: SoundName) {
-  if (muted) return
+  if (muted || !soundEnabled) return
   try {
     let player = players[name]
     if (!player) {

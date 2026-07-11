@@ -53,7 +53,17 @@ import {
   MemoryCard,
   type FlashType,
 } from '@/components/games/matching-pairs/MatchingPairsPlayUi'
-import { buildCumulativeMatchingPairsScores } from '@/components/games/matching-pairs/matchingPairsScore'
+import {
+  buildCumulativeMatchingPairsScores,
+  type MatchingPairsProgressWithTiming,
+} from '@/components/games/matching-pairs/matchingPairsScore'
+import { MatchingPairsBreakdownList } from '@/components/games/matching-pairs/MatchingPairsBreakdown'
+
+// The shared MEMORY_MATCH_PROGRESS_SELECT / MatchingPairsProgress type omit the
+// `finished_at` + `created_at` columns (both exist on memory_match_progress).
+// Fetch them here so the speed-par bonus + time-taken can be scored at web
+// parity without editing the shared select/type.
+const MEMORY_MATCH_PROGRESS_SELECT_TIMED = `${MEMORY_MATCH_PROGRESS_SELECT},finished_at,created_at`
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 type CardState = 'hidden' | 'flipped' | 'matched'
@@ -75,8 +85,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const [submissions, setSubmissions] = useState<MatchingPairsSubmission[]>([])
   const [progress, setProgress] = useState<MatchingPairsProgress | null>(null)
   const [allProgress, setAllProgress] = useState<MatchingPairsProgress[]>([])
-  // Progress rows across every round (for cumulative final scoring).
-  const [gameProgress, setGameProgress] = useState<MatchingPairsProgress[]>([])
+  // Progress rows across every round (for cumulative final scoring). Timed
+  // variant includes finished_at/created_at for the speed-par bonus.
+  const [gameProgress, setGameProgress] = useState<MatchingPairsProgressWithTiming[]>([])
   const [finishRank, setFinishRank] = useState<number | null>(null)
   const [board, setBoard] = useState<BoardState | null>(null)
   const [points, setPoints] = useState(0)
@@ -110,7 +121,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           .from('memory_match_submissions')
           .select(MEMORY_MATCH_SUBMISSION_SELECT)
           .eq('game_id', gameCode.toUpperCase()),
-        getSupabase().from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT).eq('game_id', gameCode.toUpperCase()),
+        getSupabase().from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT_TIMED).eq('game_id', gameCode.toUpperCase()),
       ])
 
       if (roundRes.error || subsRes.error || progRes.error) return { state: null, ok: false }
@@ -122,7 +133,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
       const allSubs = (subsRes.data as MatchingPairsSubmission[]) ?? []
       setSubmissions(allSubs)
-      setGameProgress((progRes.data as MatchingPairsProgress[]) ?? [])
+      setGameProgress((progRes.data as MatchingPairsProgressWithTiming[]) ?? [])
       return { state: null, ok: true }
     },
     [gameCode]
@@ -348,21 +359,39 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'finished') {
     // Authoritative scoring parity: score each round via tallyMatchingPairsScore
-    // (base + streak + placement + perfect + clean-streak, minus penalty) and sum
-    // across rounds — matching the web final standings. Speed-par bonus is the one
-    // web factor omitted (mobile progress select has no finish timestamp).
+    // (base + streak + placement + perfect + clean-streak + speed-par, minus
+    // penalty) and sum across rounds — matching the web final standings. The
+    // speed-par bonus uses finished_at/created_at fetched via the timed select.
     const gridSizePairs = meta?.gridSizePairs ?? 8
-    const scored = buildCumulativeMatchingPairsScores(submissions, gameProgress, gridSizePairs)
+    const sessionStartedAt = bootstrap.game?.session_started_at ?? null
+    const timerSeconds = bootstrap.game?.timer_seconds ?? null
+    const totalRoundsPlayed = bootstrap.game?.rounds_count ?? 1
+    // Round start anchors (per round) from each round's earliest progress row —
+    // mirrors web's roundStartedAtMap; used for the speed-par bonus.
+    const roundStartedAtMap = new Map<string, string>()
+    for (const p of gameProgress) {
+      if (p.created_at && !roundStartedAtMap.has(p.round_id)) roundStartedAtMap.set(p.round_id, p.created_at)
+    }
+    const scored = buildCumulativeMatchingPairsScores(
+      submissions,
+      gameProgress,
+      gridSizePairs,
+      sessionStartedAt,
+      roundStartedAtMap,
+      timerSeconds
+    )
     const nameOf = (id: string) => bootstrap.players.find((p) => p.id === id)?.name ?? 'Player'
-    const entries = scored
-      .filter((row) => bootstrap.players.some((p) => p.id === row.playerId && !p.spectator))
-      .map((row) => {
-        const bits = [`${row.pairsMatched} pair${row.pairsMatched === 1 ? '' : 's'}`]
-        if (row.longestStreak > 1) bits.push(`🔥${row.longestStreak}`)
-        if (row.wrongAttempts > 0) bits.push(`${row.wrongAttempts} miss${row.wrongAttempts === 1 ? '' : 'es'}`)
-        if (row.perfectGame) bits.push('⭐ Perfect')
-        return { id: row.playerId, name: nameOf(row.playerId), points: row.finalScore, detail: bits.join(' · ') }
-      })
+    const visibleRows = scored.filter((row) =>
+      bootstrap.players.some((p) => p.id === row.playerId && !p.spectator)
+    )
+    const entries = visibleRows.map((row) => {
+      const bits = [`${row.pairsMatched} pair${row.pairsMatched === 1 ? '' : 's'}`]
+      if (row.longestStreak > 1) bits.push(`🔥${row.longestStreak}`)
+      if (row.wrongAttempts > 0) bits.push(`${row.wrongAttempts} miss${row.wrongAttempts === 1 ? '' : 'es'}`)
+      if (row.speedParBonusTotal > 0) bits.push(`⚡+${row.speedParBonusTotal}`)
+      if (row.perfectGame) bits.push('⭐ Perfect')
+      return { id: row.playerId, name: nameOf(row.playerId), points: row.finalScore, detail: bits.join(' · ') }
+    })
     const top = [...entries].sort((a, b) => b.points - a.points)[0]
     const winnerId = top && top.points > 0 ? top.id : null
     return (
@@ -375,6 +404,23 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           leaderboard={pointsLeaderboard(entries, bootstrap.myPlayerId)}
           winnerPlayerId={winnerId}
           roundKey={bootstrap.game?.session_started_at ?? undefined}
+          notice={
+            <MatchingPairsBreakdownList
+              entries={visibleRows.map((row) => ({
+                playerId: row.playerId,
+                name: nameOf(row.playerId),
+                finalScore: row.finalScore,
+              }))}
+              allSubmissions={submissions}
+              allProgress={gameProgress}
+              gridSizePairs={gridSizePairs}
+              sessionStartedAt={sessionStartedAt}
+              roundStartedAtMap={roundStartedAtMap}
+              totalRounds={totalRoundsPlayed}
+              timerSeconds={timerSeconds}
+              myPlayerId={bootstrap.myPlayerId}
+            />
+          }
         />
       </GameShell>
     )

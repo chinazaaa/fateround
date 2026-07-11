@@ -97,7 +97,13 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   const join = useCallback(
     async (
       name?: string,
-      options?: { joinAsViewer?: boolean; participantId?: string; gender?: import('@fateround/shared').PlayerGender }
+      options?: {
+        joinAsViewer?: boolean
+        participantId?: string
+        gender?: import('@fateround/shared').PlayerGender
+        identityGender?: import('@fateround/shared').ParticipantGender
+        pollGender?: import('@fateround/shared').ParticipantGender
+      }
     ) => {
       const playerName = (name ?? joinName).trim()
       if (!playerName && !options?.participantId) {
@@ -116,6 +122,8 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
           joinAsViewer: options?.joinAsViewer,
           participantId: options?.participantId,
           gender: options?.gender,
+          identityGender: options?.identityGender,
+          pollGender: options?.pollGender,
         })
 
         const gender = data.playerGender ?? 'both'

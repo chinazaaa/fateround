@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Animated, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Chess, type Square } from 'chess.js'
 import type { ChessColor, ChessSession, Game, Player } from '@fateround/shared'
 import {
@@ -400,6 +400,11 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title="Chess" subtitle={`Code ${bootstrap.code}`}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
       {isViewer && bootstrap.myPlayerId && me && bootstrap.game ? (
         <ViewerModeBanner
           gameCode={bootstrap.code}
@@ -432,12 +437,12 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
         <>
           <View style={styles.clocks}>
             <ClockChip
-              label="White"
+              label={white?.name ?? 'White'}
               ms={liveChessClockMs(activeSession, 'w')}
               active={activeSession.current_turn === 'w'}
             />
             <ClockChip
-              label="Black"
+              label={black?.name ?? 'Black'}
               ms={liveChessClockMs(activeSession, 'b')}
               active={activeSession.current_turn === 'b'}
             />
@@ -528,6 +533,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           <Text style={styles.resignText}>Resign</Text>
         </Pressable>
       ) : null}
+      </ScrollView>
 
       <Modal visible={!!promotionMove} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
@@ -590,7 +596,9 @@ function ClockChip({ label, ms, active }: { label: string; ms: number; active: b
         lowTime ? { opacity: pulse } : null,
       ]}
     >
-      <Text style={[styles.clockLabel, lowTime && styles.clockLowText]}>{label}</Text>
+      <Text style={[styles.clockLabel, lowTime && styles.clockLowText]} numberOfLines={1}>
+        {label}
+      </Text>
       <Text style={[styles.clockValue, lowTime && styles.clockLowText]}>{formatChessClock(ms)}</Text>
     </Animated.View>
   )
@@ -598,6 +606,8 @@ function ClockChip({ label, ms, active }: { label: string; ms: number; active: b
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+  scroll: { flex: 1, marginHorizontal: -16 },
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 14 },
   board: { alignSelf: 'center', borderWidth: 2, borderColor: theme.border, borderRadius: 8, overflow: 'hidden' },
   row: { flexDirection: 'row' },
   square: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
@@ -629,8 +639,8 @@ const makeStyles = (theme: Theme) =>
   clockActive: { borderWidth: 1, borderColor: theme.primary },
   clockLow: { backgroundColor: 'rgba(244,63,94,0.18)', borderWidth: 1, borderColor: '#f43f5e' },
   clockLowText: { color: '#fb7185' },
-  clockLabel: { color: theme.textMuted, fontWeight: '600' },
-  clockValue: { color: theme.text, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  clockLabel: { color: theme.textMuted, fontWeight: '600', flexShrink: 1, marginRight: 6 },
+  clockValue: { color: theme.text, fontWeight: '800', fontVariant: ['tabular-nums'], flexShrink: 0 },
   timeNote: { color: theme.textFaint, fontSize: 11, textAlign: 'center', marginTop: -2, marginBottom: 6 },
   coordRank: { position: 'absolute', top: 1, left: 2, fontSize: 8, fontWeight: '700' },
   coordFile: { position: 'absolute', bottom: 1, right: 2, fontSize: 8, fontWeight: '700' },

@@ -149,7 +149,7 @@ export function GameFinishedScreen({
             <View key={`${row.name}-${index}`} style={[styles.leaderboardRow, row.highlight && styles.leaderboardHighlight]}>
               <Text style={styles.leaderboardRank}>{rankBadge(index)}</Text>
               <Text style={styles.leaderboardName} numberOfLines={1}>
-                {row.name}
+                {row.name?.trim() ? row.name : 'Player'}
                 {row.you ? <Text style={styles.leaderboardYou}> (you)</Text> : null}
               </Text>
               <Text style={styles.leaderboardScore}>

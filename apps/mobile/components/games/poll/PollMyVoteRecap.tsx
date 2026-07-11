@@ -43,8 +43,11 @@ export function PollMyVoteRecap({ game, gameType, round, myVote, participants, p
   const items: RecapItem[] = []
 
   if (isBinaryChoiceGame(gameType) || isNeverHaveIEver(gameType)) {
-    if (myVote.wyr_choice === 'a') items.push({ key: 'a', label: round.wyr_option_a ?? 'Option A' })
-    else if (myVote.wyr_choice === 'b') items.push({ key: 'b', label: round.wyr_option_b ?? 'Option B' })
+    const nhie = isNeverHaveIEver(gameType)
+    if (myVote.wyr_choice === 'a')
+      items.push({ key: 'a', label: nhie ? '✋ I have' : round.wyr_option_a ?? 'Option A' })
+    else if (myVote.wyr_choice === 'b')
+      items.push({ key: 'b', label: nhie ? "🙅 I haven't" : round.wyr_option_b ?? 'Option B' })
   } else if (isPickANumber(gameType)) {
     if (myVote.picked_number != null) items.push({ key: 'pan', label: `#${myVote.picked_number}` })
   } else if (isMostLikelyTo(gameType)) {

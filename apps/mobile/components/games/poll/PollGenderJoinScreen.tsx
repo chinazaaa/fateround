@@ -13,7 +13,7 @@ type Props = {
   joining: boolean
   error: string | null
   onChangeName: (value: string) => void
-  onJoin: (gender: PlayerGender) => void
+  onJoin: (gender: PlayerGender, identityGender: ParticipantGender, pollGender: ParticipantGender) => void
 }
 
 /** Join screen for gender-based poll games: name + "I am" + vote-on-both toggle. */
@@ -74,7 +74,7 @@ export function PollGenderJoinScreen({ gameCode, joinName, joining, error, onCha
 
       <Pressable
         style={[styles.button, (joining || !canJoin) && styles.buttonDisabled]}
-        onPress={() => onJoin(playerGenderFromJoin(identity, voteBoth))}
+        onPress={() => onJoin(playerGenderFromJoin(identity, voteBoth), identity, voteBoth ? identity : identity)}
         disabled={joining || !canJoin}
       >
         {/* White spinner/label on the solid rose button — correct in both schemes. */}

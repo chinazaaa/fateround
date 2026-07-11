@@ -13,14 +13,17 @@ import {
   parseWhotRules,
   whotSecondsLeft,
 } from '@fateround/shared/whot'
-import { playerIsViewer } from '@fateround/shared/viewers'
+import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import { CardTableArea } from '@/components/games/cards/CardTableArea'
 import { GameTimerBar } from '@/components/games/cards/GameTimerBar'
 import { CrazyEightsRoster } from '@/components/games/cards/CrazyEightsRoster'
 import { WhotCardFace } from '@/components/games/cards/WhotCardFace'
 import { WhotShapeIcon } from '@/components/games/cards/WhotShapeIcon'
 import { useTurnDeadlineSeconds } from '@/components/games/cards/useTurnDeadlineSeconds'
-import { TimerBadge } from '@/components/ui/TimerBadge'
+// Per-seat turn countdown chip (names the active seat) — replaces the bare TimerBadge.
+import { WhotTurnTimerChip } from '@/components/games/WhotTurnTimerChip'
+import { GameEndedScreen } from '@/components/lifecycle/GameEndedScreen'
+import { GameStartedWaitingScreen } from '@/components/lifecycle/GameStartedWaitingScreen'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
@@ -36,7 +39,15 @@ import { WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-se
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { cardHandLeaderboard } from '@/lib/finish-leaderboards'
 
-type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
+type Screen =
+  | 'loading'
+  | 'join'
+  | 'game_started_waiting'
+  | 'game_ended'
+  | 'waiting'
+  | 'playing'
+  | 'finished'
+  | 'not_found'
 
 const WHOT_CALL_SHAPES: WhotShape[] = ['circle', 'triangle', 'cross', 'square', 'star']
 const WHOT_CALL_NUMBERS = [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14]
@@ -64,7 +75,16 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const computeScreen = useCallback((game: Game, playerId: string | null): Screen => {
-    if (!playerId) return 'join'
+    if (!playerId) {
+      // No session yet: offer the platform pre-join gates. Whot never seats late
+      // joiners as players, so there's no watch-or-play choice — either the lobby
+      // is open (join), the host started with viewers disabled ("game in progress —
+      // waiting for lobby"), or the game already ended ("this game has ended").
+      const pre = preJoinScreen(game, false)
+      if (pre === 'game_started_waiting') return 'game_started_waiting'
+      if (pre === 'game_ended') return 'game_ended'
+      return 'join'
+    }
     if (game.status === 'waiting') return 'waiting'
     if (game.status === 'finished') return 'finished'
     return 'playing'
@@ -173,6 +193,16 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
+  if (bootstrap.screen === 'game_ended') return <GameEndedScreen game={bootstrap.game} />
+  if (bootstrap.screen === 'game_started_waiting' && bootstrap.game) {
+    return (
+      <GameStartedWaitingScreen
+        gameCode={bootstrap.code}
+        game={bootstrap.game}
+        onLobbyOpen={() => void bootstrap.load()}
+      />
+    )
+  }
   if (bootstrap.screen === 'join' && bootstrap.game) {
     // Mid-game: the only way in is as a read-only viewer (whot never seats late
     // joiners as players — spectatorForActiveJoin forces spectator). Present the
@@ -288,7 +318,7 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
         text={isWatching ? `Spectating — ${turnName}'s turn` : session.status_message ?? `${turnName}'s turn`}
         isMyTurn={isMyTurn && !isWatching}
       />
-      {timerSeconds > 0 ? <TimerBadge seconds={timerSeconds} /> : null}
+      {timerSeconds > 0 ? <WhotTurnTimerChip turnName={turnName} seconds={timerSeconds} /> : null}
 
       {isWatching ? (
         <View style={styles.watchBanner}>

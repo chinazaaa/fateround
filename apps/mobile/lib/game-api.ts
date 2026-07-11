@@ -310,6 +310,16 @@ export function postWordRushShuffle(gameCode: string, hostToken: string) {
   return postJson<{ ok?: boolean }>('/api/word-rush/shuffle', { gameId: gameCode.toUpperCase(), hostToken })
 }
 
+/** Word Rush host: even out team sizes (waiting-only, team mode). */
+export function postWordRushBalance(gameCode: string, hostToken: string) {
+  return postJson<{ ok?: boolean }>('/api/word-rush/balance', { gameId: gameCode.toUpperCase(), hostToken })
+}
+
+/** Word Rush host: skip the rest of the current round for everyone (active only). */
+export function postWordRushEndRound(gameCode: string, hostToken: string) {
+  return postJson<{ success?: boolean }>('/api/word-rush/end-round', { gameId: gameCode.toUpperCase(), hostToken })
+}
+
 export function postQuickDrawGuessTeamHost(gameCode: string, hostToken: string, playerId: string, team: number) {
   return postJson<{ success?: boolean }>('/api/quick-draw/guess-team', {
     gameId: gameCode.toUpperCase(),
@@ -907,6 +917,7 @@ export function postWordRushSettings(
     numTeams?: number
     turnSeconds?: number
     rounds?: number
+    maxPlayers?: number
   }
 ) {
   return postJson<{ ok?: boolean }>('/api/word-rush/settings', {

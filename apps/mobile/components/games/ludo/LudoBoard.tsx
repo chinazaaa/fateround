@@ -189,8 +189,19 @@ export function LudoBoard({
   turnPlayerId?: string | null
 }) {
   const styles = useThemedStyles(makeStyles)
-  const { width } = useWindowDimensions()
-  const cellSize = Math.min(Math.floor((width - 24) / BOARD_SIZE), 24)
+  const { width, height } = useWindowDimensions()
+  // Size the board to whichever is tighter — the screen width, or the vertical
+  // space left after the turn bar, player cards, dice, and roll controls. The
+  // ~470px reserve keeps the whole board (plus those controls) on-screen on
+  // shorter phones instead of overflowing; taller phones still hit the 24px cap.
+  const cellSize = Math.max(
+    Math.min(
+      Math.floor((width - 24) / BOARD_SIZE),
+      Math.floor((height - 470) / BOARD_SIZE),
+      24
+    ),
+    14
+  )
   const boardPx = cellSize * BOARD_SIZE
   const starSize = Math.max(Math.round(cellSize * 0.55), 9)
   const arrowSize = Math.max(Math.round(cellSize * 0.42), 7)

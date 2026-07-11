@@ -186,6 +186,9 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
           multiline
           maxLength={MAX_CHARS}
           editable={!sending && !joining}
+          blurOnSubmit
+          returnKeyType="send"
+          onSubmitEditing={() => void sendMessage()}
         />
         <Text style={styles.counter}>
           {messageInput.length}/{MAX_CHARS}

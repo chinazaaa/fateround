@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
   type SnakeLadderPlayerState,
   type SnakeLadderSession,
@@ -17,12 +17,12 @@ import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
 import { SNAKE_LADDER_PLAYER_STATE_SELECT, SNAKE_LADDER_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
-import { snakeLadderLeaderboard } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { SnakeLadderBoard } from '@/components/games/snake-ladder/SnakeLadderBoard'
 import { SnakeLadderDie } from '@/components/games/snake-ladder/SnakeLadderDie'
 import { SnakeLadderTurnBar } from '@/components/games/snake-ladder/SnakeLadderTurnBar'
+import { SnakeLadderShareCard } from '@/components/games/snake-ladder/SnakeLadderShareCard'
 import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
@@ -195,9 +195,25 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
 
   if (effectiveScreen === 'finished') {
     const winner = bootstrap.players.find((p) => p.id === session.winner_player_id)
+    const endedEarly = !session.winner_player_id
     return (
       <GameShell bootstrap={bootstrap} title={batch3GameLabel('snake_and_ladder')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title={winner ? `${winner.name} wins!` : 'Game over'} subtitle="Final standings" leaderboard={snakeLadderLeaderboard(standings, bootstrap.myPlayerId)} winnerPlayerId={session.winner_player_id} roundKey={session.id} />
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title={winner ? `${winner.name} wins!` : 'Game over'}
+          subtitle="Final standings"
+          winnerPlayerId={session.winner_player_id}
+          roundKey={session.id}
+          notice={
+            <SnakeLadderShareCard
+              standings={standings}
+              winnerName={winner?.name ?? null}
+              endedEarly={endedEarly}
+              highlightPlayerId={bootstrap.myPlayerId}
+              hideHeader
+            />
+          }
+        />
       </GameShell>
     )
   }
@@ -206,50 +222,56 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('snake_and_ladder')} subtitle={session.status_message ?? bootstrap.code}>
-      {holdWinner ? (
-        <View style={styles.winBanner}>
-          <Text style={styles.winBannerTitle}>🏆 {holdWinner.name} wins!</Text>
-          <Text style={styles.winBannerSub}>Final results in a moment…</Text>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {holdWinner ? (
+          <View style={styles.winBanner}>
+            <Text style={styles.winBannerTitle}>🏆 {holdWinner.name} wins!</Text>
+            <Text style={styles.winBannerSub}>Final results in a moment…</Text>
+          </View>
+        ) : (
+          <View style={styles.turnBarWrap}>
+            <SnakeLadderTurnBar
+              turnPlayerName={turnPlayerName}
+              isMyTurn={isMyTurn}
+              secondsLeft={secondsLeft}
+              hasTimer={hasTimer}
+            />
+          </View>
+        )}
+
+        <SnakeLadderBoard states={states} highlightSquare={session.last_to} />
+
+        <View style={styles.list}>
+          {roster.map((row) => {
+            const isTurn = row.playerId === turnPlayerId
+            const isMe = row.playerId === bootstrap.myPlayerId
+            return (
+              <View key={row.playerId} style={[styles.row, isTurn && styles.rowTurn]}>
+                <View style={[styles.dot, { backgroundColor: COLOR_HEX[row.color] ?? '#64748b' }]} />
+                <Text style={styles.name}>
+                  {row.name}
+                  {isMe ? ' (you)' : ''}
+                </Text>
+                <Text style={styles.pos}>{row.position === 0 ? 'Start' : row.position >= 100 ? 'Home!' : `Sq ${row.position}`}</Text>
+              </View>
+            )
+          })}
         </View>
-      ) : (
-        <View style={styles.turnBarWrap}>
-          <SnakeLadderTurnBar
-            turnPlayerName={turnPlayerName}
-            isMyTurn={isMyTurn}
-            secondsLeft={secondsLeft}
-            hasTimer={hasTimer}
-          />
+
+        <View style={styles.dieRow}>
+          <SnakeLadderDie value={session.last_roll ?? 1} rolling={rolling} />
+          {session.last_roll && !rolling ? (
+            <Text style={styles.rollInfo}>
+              Last roll: {session.last_roll}
+              {session.last_from != null && session.last_to != null ? `\n${session.last_from} → ${session.last_to}` : ''}
+            </Text>
+          ) : null}
         </View>
-      )}
-
-      <SnakeLadderBoard states={states} highlightSquare={session.last_to} />
-
-      <View style={styles.list}>
-        {roster.map((row) => {
-          const isTurn = row.playerId === turnPlayerId
-          const isMe = row.playerId === bootstrap.myPlayerId
-          return (
-            <View key={row.playerId} style={[styles.row, isTurn && styles.rowTurn]}>
-              <View style={[styles.dot, { backgroundColor: COLOR_HEX[row.color] ?? '#64748b' }]} />
-              <Text style={styles.name}>
-                {row.name}
-                {isMe ? ' (you)' : ''}
-              </Text>
-              <Text style={styles.pos}>{row.position === 0 ? 'Start' : row.position >= 100 ? 'Home!' : `Sq ${row.position}`}</Text>
-            </View>
-          )
-        })}
-      </View>
-
-      <View style={styles.dieRow}>
-        <SnakeLadderDie value={session.last_roll ?? 1} rolling={rolling} />
-        {session.last_roll && !rolling ? (
-          <Text style={styles.rollInfo}>
-            Last roll: {session.last_roll}
-            {session.last_from != null && session.last_to != null ? `\n${session.last_from} → ${session.last_to}` : ''}
-          </Text>
-        ) : null}
-      </View>
+      </ScrollView>
 
       {holdWin ? null : (
         <Pressable style={[styles.btn, (!isMyTurn || acting || rolling) && styles.btnDisabled]} disabled={!isMyTurn || acting || rolling} onPress={() => void roll()}>
@@ -262,6 +284,8 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+  scroll: { flex: 1, marginHorizontal: -16 },
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 8 },
   list: { gap: 8, marginTop: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, backgroundColor: theme.surface, borderRadius: 12, borderWidth: 1, borderColor: 'transparent' },
   rowTurn: { borderColor: theme.primary, backgroundColor: theme.primarySoft },

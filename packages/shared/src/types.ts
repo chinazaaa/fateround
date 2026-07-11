@@ -125,6 +125,8 @@ export interface Player {
   joined_at: string
   spectator?: boolean
   is_eliminated?: boolean
+  lives_remaining?: number | null
+  eliminated_at?: string | null
   monopoly_token?: string | null
   participant_id?: string | null
 }

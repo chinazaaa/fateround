@@ -1,3 +1,4 @@
+import type { RefObject } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import type { MahjongPlayerState, MahjongSession, Player } from '@fateround/shared'
 import { MAHJONG_SEAT_LABELS, playerName } from '@fateround/shared/mahjong'
@@ -62,12 +63,24 @@ export function MahjongTableView({
   players,
   turnPlayerId,
   myPlayerId,
+  canDiscard = false,
+  dragActive = false,
+  dragOverPond = false,
+  pondRef,
 }: {
   session: MahjongSession
   states: MahjongPlayerState[]
   players: Player[]
   turnPlayerId: string | null
   myPlayerId?: string | null
+  /** Whether the local player can currently discard (enables the drop zone). */
+  canDiscard?: boolean
+  /** A hand tile is currently being dragged. */
+  dragActive?: boolean
+  /** The dragged tile is hovering over the discard pond. */
+  dragOverPond?: boolean
+  /** Ref assigned to the pond View so the parent can measure it in-window. */
+  pondRef?: RefObject<View | null>
 }) {
   const styles = useThemedStyles(makeStyles)
   const bySeat = (seat: string) => states.find((s) => s.seat === seat)
@@ -150,7 +163,14 @@ export function MahjongTableView({
             </View>
           ) : null}
 
-          <View style={styles.pond}>
+          <View
+            ref={pondRef}
+            style={[
+              styles.pond,
+              canDiscard && styles.pondArmed,
+              dragOverPond && styles.pondOver,
+            ]}
+          >
             <Text style={styles.pondLabel}>Discard</Text>
             {lastDiscardTile ? (
               <>
@@ -161,6 +181,12 @@ export function MahjongTableView({
               <Text style={styles.pondEmpty}>—</Text>
             )}
           </View>
+
+          {canDiscard ? (
+            <Text style={styles.dropHint}>
+              {dragActive ? 'Release here to discard.' : 'Drag a tile here, or tap it below.'}
+            </Text>
+          ) : null}
         </View>
         {seatPanel('east', 'right')}
       </View>
@@ -233,8 +259,13 @@ const makeStyles = (theme: Theme) =>
       gap: 4,
       padding: 8,
     },
+    // Armed = the local player can discard onto this zone (subtle rose ring).
+    pondArmed: { borderColor: theme.primary },
+    // Over = a dragged tile is hovering the zone (stronger highlight).
+    pondOver: { borderColor: theme.primary, backgroundColor: '#15803d' },
     // pondLabel/pondBy/pondEmpty sit on the fixed green felt — kept light-on-felt.
     pondLabel: { color: '#86efac', fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
     pondBy: { color: '#d1d5db', fontSize: 11 },
     pondEmpty: { color: '#6b7280', fontSize: 20 },
+    dropHint: { color: theme.primaryMuted, fontSize: 11, fontWeight: '700', textAlign: 'center' },
   })

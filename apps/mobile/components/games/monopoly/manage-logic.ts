@@ -210,6 +210,28 @@ export function canRemoveHotel(
   return owners[String(spaceIndex)] === ownerId && buildingLevel(buildings, spaceIndex) === MONOPOLY_HOTEL_LEVEL
 }
 
+// Count how many build actions (houses + hotels) the player can currently make.
+// Mirrors web src/components/monopoly/monopoly-manage-utils.ts so the mobile
+// "you can build" nudge fires on exactly the same condition.
+export function getMonopolyBuildActionCount(
+  board: { property_owners?: unknown; property_buildings?: unknown; mortgaged_properties?: unknown; houses_in_bank?: number; hotels_in_bank?: number },
+  myPlayerId: string
+): number {
+  const owners = parsePropertyOwners(board.property_owners)
+  const buildings = parseBuildings(board.property_buildings)
+  const mortgaged = parseMortgaged(board.mortgaged_properties)
+  const housesInBank = board.houses_in_bank ?? 32
+  const hotelsInBank = board.hotels_in_bank ?? 12
+  let count = 0
+
+  for (const space of playerProperties(owners, myPlayerId)) {
+    if (canAddHouse(space.index, myPlayerId, owners, buildings, mortgaged, housesInBank)) count += 1
+    if (canAddHotel(space.index, myPlayerId, owners, buildings, mortgaged, hotelsInBank)) count += 1
+  }
+
+  return count
+}
+
 // ---------------------------------------------------------------------------
 // Color portfolio
 // ---------------------------------------------------------------------------

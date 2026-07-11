@@ -1,4 +1,4 @@
-import type { GameType, MobileConfig, PlayerGender } from '@fateround/shared'
+import type { GameType, MobileConfig, ParticipantGender, PlayerGender } from '@fateround/shared'
 import { NATIVE_GAME_TYPES } from '@/lib/native-games'
 import { apiUrl } from '@/lib/config'
 
@@ -39,6 +39,8 @@ export async function joinGame(input: {
   monopolyToken?: string | null
   participantId?: string | null
   gender?: PlayerGender
+  identityGender?: ParticipantGender
+  pollGender?: ParticipantGender
 }): Promise<JoinPlayerResponse> {
   const res = await fetch(apiUrl('/api/players'), {
     method: 'POST',
@@ -51,6 +53,8 @@ export async function joinGame(input: {
       joinAsViewer: input.joinAsViewer,
       monopolyToken: input.monopolyToken ?? undefined,
       participantId: input.participantId ?? undefined,
+      identityGender: input.identityGender ?? undefined,
+      pollGender: input.pollGender ?? undefined,
     }),
   })
   const data = (await res.json()) as JoinPlayerResponse & { error?: string }

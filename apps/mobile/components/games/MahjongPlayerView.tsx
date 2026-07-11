@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { type Game, type Player } from '@fateround/shared'
 import { batch8GameLabel } from '@fateround/shared/batch-8-games'
@@ -18,6 +18,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { MahjongTableView } from '@/components/games/mahjong/MahjongTableView'
 import { MahjongResultsCard } from '@/components/games/mahjong/MahjongResultsCard'
 import { MahjongTileFace } from '@/components/games/mahjong/MahjongTileFace'
+import { DraggableHandTile, type PondRect } from '@/components/games/mahjong/DraggableHandTile'
 import {
   canDeclareMahjongForRuleset,
   canRonWithDiscard,
@@ -50,7 +51,19 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
   const [mahjongState, setMahjongState] = useState<MahjongStateResponse | null>(null)
   const [acting, setActing] = useState(false)
   const [timerTick, setTimerTick] = useState(0)
+  const [dragActive, setDragActive] = useState(false)
+  const [dragOverPond, setDragOverPond] = useState(false)
+  const pondRef = useRef<View | null>(null)
+  const pondRectRef = useRef<PondRect | null>(null)
   const styles = useThemedStyles(makeStyles)
+
+  const measurePond = useCallback(() => {
+    const node = pondRef.current
+    if (!node) return
+    node.measureInWindow((x, y, width, height) => {
+      pondRectRef.current = { x, y, width, height }
+    })
+  }, [])
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: MahjongStateResponse | null; ok: boolean }> => {
@@ -298,6 +311,10 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
           players={bootstrap.players}
           turnPlayerId={turnPlayerId}
           myPlayerId={bootstrap.myPlayerId}
+          canDiscard={canDiscard && !acting}
+          dragActive={dragActive}
+          dragOverPond={dragOverPond}
+          pondRef={pondRef}
         />
 
         {isViewer ? (
@@ -307,13 +324,22 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
             <Text style={styles.section}>Your hand ({sortedHand.length})</Text>
             <View style={styles.tileRow}>
               {sortedHand.map((tile) => (
-                <Pressable
+                <DraggableHandTile
                   key={tile}
-                  disabled={!canDiscard || acting}
-                  onPress={() => discard(tile)}
-                >
-                  <MahjongTileFace tile={tile} selected={canDiscard} />
-                </Pressable>
+                  tile={tile}
+                  enabled={canDiscard && !acting}
+                  getPondRect={() => pondRectRef.current}
+                  onDiscard={discard}
+                  onDragStart={() => {
+                    measurePond()
+                    setDragActive(true)
+                  }}
+                  onDragEnd={() => {
+                    setDragActive(false)
+                    setDragOverPond(false)
+                  }}
+                  onDragOverChange={setDragOverPond}
+                />
               ))}
             </View>
 

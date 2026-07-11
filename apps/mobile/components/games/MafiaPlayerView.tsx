@@ -152,6 +152,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
         error={bootstrap.error}
         onChangeName={bootstrap.setJoinName}
         onJoin={() => void bootstrap.join()}
+        footer={<GameRulesLink gameType="mafia" variant="subtle" />}
       />
     )
   }

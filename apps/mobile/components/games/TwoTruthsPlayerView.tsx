@@ -374,13 +374,31 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
       />
     ) : null
 
+  // Mirrors web's <EliminationBanner> on the live-play screen: an eliminated
+  // player gets a clear "you're out, keep watching" message instead of only the
+  // generic Spectating banner (whose late-join copy is wrong for elimination).
+  const eliminationBanner = me?.is_eliminated ? (
+    <View style={styles.elimBanner}>
+      <Text style={styles.elimTitle}>You have been eliminated</Text>
+      <Text style={styles.elimBody}>You can still watch and chat</Text>
+    </View>
+  ) : null
+
+  // Render order matches web: elimination notice first, then spectator banner.
+  const liveBanners = (
+    <>
+      {eliminationBanner}
+      {viewerBanner}
+    </>
+  )
+
   if (!currentRound || currentRound.status === 'pending') {
     const upcomingName = upcomingRound
       ? playerDisplayName(upcomingRound.submitter_player_id, bootstrap.players)
       : null
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={bootstrap.code}>
-        {viewerBanner}
+        {liveBanners}
         <Text style={styles.waiting}>Waiting for the next round…</Text>
         {upcomingRound ? (
           <View style={styles.upNext}>
@@ -429,7 +447,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   if (currentRound.status === 'finished') {
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={roundSubtitle}>
-        {viewerBanner}
+        {liveBanners}
         {submitterBadge}
         <Text style={styles.featured}>{featuredName}&apos;s two truths &amp; a lie</Text>
         {metadata ? (
@@ -466,7 +484,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   if (isFeatured) {
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={roundSubtitle}>
-        {viewerBanner}
+        {liveBanners}
         {submitterBadge}
         <Text style={styles.featured}>Your turn — others are guessing your lie</Text>
         {metadata ? (
@@ -488,7 +506,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={roundSubtitle}>
-      {viewerBanner}
+      {liveBanners}
       {submitterBadge}
       <Text style={styles.featured}>Which is {featuredName}&apos;s lie?</Text>
       {timerActive && !myGuess && !timeExpired ? <TimerBadge seconds={secondsLeft} /> : null}
@@ -646,4 +664,17 @@ const makeStyles = (theme: Theme) =>
   },
   choiceText: { color: theme.text, fontSize: 16, flex: 1, lineHeight: 22 },
   locked: { color: theme.textMuted, textAlign: 'center', marginTop: 12 },
+  // Eliminated notice — red accent, mirrors web's <EliminationBanner>.
+  elimBanner: {
+    backgroundColor: '#ef44441a',
+    borderColor: '#ef444455',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    gap: 2,
+  },
+  elimTitle: { color: '#dc2626', fontWeight: '700', fontSize: 14 },
+  elimBody: { color: theme.textFaint, fontSize: 12 },
 })

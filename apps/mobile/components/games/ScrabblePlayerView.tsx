@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import {
+  LayoutAnimation,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  UIManager,
+  useWindowDimensions,
+  View,
+} from 'react-native'
 import type { Game, Player, ScrabblePlacedTile, ScrabblePlayerState, ScrabbleSession } from '@fateround/shared'
 import { batch6GameLabel } from '@fateround/shared/batch-6-games'
 import { SCRABBLE_BOARD_SIZE, scrabblePremiumAt } from '@fateround/shared/scrabble-constants'
@@ -14,6 +25,8 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ScrabbleTile } from '@/components/games/scrabble/ScrabbleTile'
 import { ScrabbleGameTimerBar } from '@/components/games/scrabble/ScrabbleGameTimerBar'
 import { ScrabbleScoreboard, type ScrabbleScoreRow } from '@/components/games/scrabble/ScrabbleScoreboard'
+import { ScrabbleShareCard, type ScrabbleShareStanding } from '@/components/games/scrabble/ScrabbleShareCard'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { formatScrabbleClock, useScrabbleChessClock } from '@/components/games/scrabble/useScrabbleChessClock'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
@@ -36,6 +49,20 @@ type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_fou
 
 type PendingTile = ScrabblePlacedTile & { rackIndex: number }
 
+// LayoutAnimation needs an explicit opt-in on Android; enables the smooth rack
+// reflow when tiles are shuffled or manually reordered.
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true)
+}
+
+const animateRack = () =>
+  LayoutAnimation.configureNext(
+    LayoutAnimation.create(180, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity)
+  )
+
 export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   const [session, setSession] = useState<ScrabbleSession | null>(null)
   const [playerStates, setPlayerStates] = useState<ScrabblePlayerState[]>([])
@@ -48,6 +75,10 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   // Cosmetic rack ordering (shuffle aid). Holds rack indices in display order; null =
   // natural order. Mirrors web ScrabbleBoard rackOrder / 🔀 Shuffle.
   const [rackOrder, setRackOrder] = useState<number[] | null>(null)
+  // Manual rack reorder: tap-to-swap (no drag library available). Holds the
+  // display slot picked as the first half of a swap; the next tap completes it.
+  const [reorderMode, setReorderMode] = useState(false)
+  const [reorderPick, setReorderPick] = useState<number | null>(null)
   const styles = useThemedStyles(makeStyles)
 
   const loadGameState = useCallback(
@@ -190,7 +221,43 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
       const j = Math.floor(Math.random() * (i + 1))
       ;[idx[i], idx[j]] = [idx[j], idx[i]!]
     }
+    animateRack()
     setRackOrder(idx)
+    setReorderPick(null)
+  }
+
+  // Tap-to-swap manual reorder (pragmatic stand-in for drag-to-reorder — no
+  // drag/gesture library is available). Operates on display slots so the rack
+  // reflows through the natural-order fallback correctly.
+  const swapRackSlots = (a: number, b: number) => {
+    if (a === b) return
+    const order = orderedRackIndices.slice()
+    const tmp = order[a]!
+    order[a] = order[b]!
+    order[b] = tmp
+    animateRack()
+    setRackOrder(order)
+  }
+
+  const toggleReorderMode = () => {
+    setReorderMode((prev) => !prev)
+    setReorderPick(null)
+    setSelectedRackIndex(null)
+  }
+
+  const handleRackTilePress = (slot: number, index: number, letter: string) => {
+    if (reorderMode) {
+      if (reorderPick == null) {
+        setReorderPick(slot)
+      } else if (reorderPick === slot) {
+        setReorderPick(null)
+      } else {
+        swapRackSlots(reorderPick, slot)
+        setReorderPick(null)
+      }
+      return
+    }
+    onRackPress(index, letter)
   }
 
   const lastMove = activeSession?.last_move ?? null
@@ -212,6 +279,8 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
     setExchangeMode(false)
     setExchangeIndices([])
     setBlankPicker(null)
+    setReorderMode(false)
+    setReorderPick(null)
   }
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -288,6 +357,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
             : 'No account needed — enter a display name and play.'
         }
         submitLabel={joiningAsViewer ? 'Join as viewer' : 'Join game'}
+        footer={<GameRulesLink gameType={bootstrap.game.game_type} />}
       />
     )
   }
@@ -298,18 +368,39 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'finished' || activeSession.phase === 'finished') {
     const winner = bootstrap.players.find((p) => p.id === activeSession.winner_player_id)
-    const title = activeSession.is_tie ? 'Tie game!' : winner ? `${winner.name} wins!` : 'Game over'
-    const scores = playerStates
-      .slice()
-      .sort((a, b) => b.score - a.score)
-      .map((s) => {
-        const name = bootstrap.players.find((p) => p.id === s.player_id)?.name ?? 'Player'
-        return `${name}: ${s.score}`
-      })
-      .join(' · ')
+    const isTie = activeSession.is_tie === true
+    const endedEarly = !winner && !isTie
+    const title = isTie ? 'Tie game!' : winner ? `${winner.name} wins!` : 'Game over'
+    const sorted = playerStates.slice().sort((a, b) => b.score - a.score)
+    const shareStandings: ScrabbleShareStanding[] = sorted.map((s, i) => ({
+      playerId: s.player_id,
+      name: bootstrap.players.find((p) => p.id === s.player_id)?.name ?? 'Player',
+      score: s.score,
+      rank: i + 1,
+    }))
+    const scores = shareStandings.map((s) => `${s.name}: ${s.score}`).join(' · ')
     return (
       <GameShell bootstrap={bootstrap} title={batch6GameLabel('scrabble')} subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={scores || activeSession.status_message || undefined} leaderboard={scoreListLeaderboard(playerStates.slice().sort((a, b) => b.score - a.score).map((s) => ({ name: bootstrap.players.find((p) => p.id === s.player_id)?.name ?? 'Player', score: s.score })))} />
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title={title}
+          subtitle="Final standings"
+          detail={scores || activeSession.status_message || undefined}
+          leaderboard={scoreListLeaderboard(
+            shareStandings.map((s) => ({ name: s.name, score: s.score }))
+          )}
+          winnerPlayerId={activeSession.winner_player_id}
+          roundKey={activeSession.id}
+          notice={
+            <ScrabbleShareCard
+              standings={shareStandings}
+              winnerName={winner?.name ?? null}
+              isTie={isTie}
+              endedEarly={endedEarly}
+              highlightPlayerId={bootstrap.myPlayerId}
+            />
+          }
+        />
       </GameShell>
     )
   }
@@ -320,6 +411,12 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title="Scrabble" subtitle={`Code ${bootstrap.code}`}>
+      <ScrollView
+        style={styles.pageScroll}
+        contentContainerStyle={styles.pageScrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
       {isViewer && me && bootstrap.myPlayerId ? (
         <ViewerModeBanner
           gameCode={bootstrap.code}
@@ -420,26 +517,42 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
       {myState && rackLength > 0 && !isViewer ? (
         <>
           <View style={styles.rackHeader}>
-            <Text style={styles.rackHeaderText}>Your rack</Text>
-            {rackLength >= 2 ? (
-              <Pressable style={styles.shuffleBtn} hitSlop={8} onPress={shuffleRack}>
-                <Text style={styles.shuffleText}>🔀 Shuffle</Text>
-              </Pressable>
+            <Text style={styles.rackHeaderText}>
+              {reorderMode ? 'Tap two tiles to swap' : 'Your rack'}
+            </Text>
+            {rackLength >= 2 && !exchangeMode ? (
+              <View style={styles.rackHeaderActions}>
+                <Pressable
+                  style={[styles.shuffleBtn, reorderMode && styles.shuffleBtnActive]}
+                  hitSlop={8}
+                  onPress={toggleReorderMode}
+                >
+                  <Text style={[styles.shuffleText, reorderMode && styles.shuffleTextActive]}>
+                    {reorderMode ? '✓ Done' : '↔ Reorder'}
+                  </Text>
+                </Pressable>
+                <Pressable style={styles.shuffleBtn} hitSlop={8} onPress={shuffleRack}>
+                  <Text style={styles.shuffleText}>🔀 Shuffle</Text>
+                </Pressable>
+              </View>
             ) : null}
           </View>
           <View style={styles.rack}>
-            {orderedRackIndices.map((index) => {
+            {orderedRackIndices.map((index, slot) => {
               const letter = myState.rack[index]
               if (letter == null) return null
               const used = usedRackIndices.has(index)
-              const selected = selectedRackIndex === index
+              const selected = reorderMode ? reorderPick === slot : selectedRackIndex === index
               const exchanging = exchangeIndices.includes(index)
               const points = letter !== '?' ? tileSet.values[letter] ?? undefined : undefined
+              // Reorder mode is always tappable (cosmetic); play/exchange taps
+              // stay gated on the active turn.
+              const disabled = reorderMode ? false : !isMyTurn || acting || (used && !exchangeMode)
               return (
                 <Pressable
                   key={index}
-                  disabled={!isMyTurn || acting || (used && !exchangeMode)}
-                  onPress={() => onRackPress(index, letter)}
+                  disabled={disabled}
+                  onPress={() => handleRackTilePress(slot, index, letter)}
                 >
                   <ScrabbleTile
                     letter={letter}
@@ -490,6 +603,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
           )}
         </View>
       ) : null}
+      </ScrollView>
 
       <Modal visible={!!blankPicker} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
@@ -543,6 +657,10 @@ function ActionBtn({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+  // The whole game surface scrolls vertically so the board, rack, and action
+  // buttons are all reachable on short screens (GameShell itself doesn't scroll).
+  pageScroll: { flex: 1, marginHorizontal: -16 },
+  pageScrollContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 },
   timedOutBanner: {
     color: theme.textMuted,
     backgroundColor: theme.surface,
@@ -578,6 +696,7 @@ const makeStyles = (theme: Theme) =>
     fontSize: 12,
     fontWeight: '600',
   },
+  rackHeaderActions: { flexDirection: 'row', gap: 8 },
   shuffleBtn: {
     borderWidth: 1,
     borderColor: theme.border,
@@ -586,7 +705,9 @@ const makeStyles = (theme: Theme) =>
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
+  shuffleBtnActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
   shuffleText: { color: theme.text, fontSize: 12, fontWeight: '700' },
+  shuffleTextActive: { color: theme.primaryMuted },
   board: { alignSelf: 'center', borderWidth: 2, borderColor: theme.border, marginVertical: 8 },
   boardRow: { flexDirection: 'row' },
   cell: {

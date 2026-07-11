@@ -14,6 +14,7 @@ import {
   postDescribeItBalance,
   postDescribeItTeamHost,
   postQuickDrawGuessTeamHost,
+  postWordRushBalance,
   postWordRushShuffle,
   postWordRushTeamHost,
 } from '@/lib/game-api'
@@ -25,12 +26,16 @@ const TEAM_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308']
 
 type TeamRow = { player_id: string; team: number }
 
+type AutoAction = { label: string; run: () => Promise<unknown> }
+
 type Config = {
   table: string
   select: string
   numTeams: number
   assign: (playerId: string, team: number) => Promise<unknown>
-  autoAction: { label: string; run: () => Promise<unknown> } | null
+  autoAction: AutoAction | null
+  /** Extra one-tap team actions rendered alongside the primary auto-action. */
+  autoActions?: AutoAction[]
 }
 
 function teamLobbyConfig(game: Game, gameCode: string, hostToken: string): Config | null {
@@ -50,7 +55,12 @@ function teamLobbyConfig(game: Game, gameCode: string, hostToken: string): Confi
       select: WORD_RUSH_PLAYER_SELECT,
       numTeams: clampWordRushTeams(game.word_rush_num_teams),
       assign: (playerId, team) => postWordRushTeamHost(gameCode, hostToken, playerId, team),
-      autoAction: { label: '🔀 Shuffle teams', run: () => postWordRushShuffle(gameCode, hostToken) },
+      autoAction: null,
+      // Word Rush mirrors web: both even auto-balance and a full random shuffle.
+      autoActions: [
+        { label: '⚖️ Auto-balance', run: () => postWordRushBalance(gameCode, hostToken) },
+        { label: '🔀 Shuffle teams', run: () => postWordRushShuffle(gameCode, hostToken) },
+      ],
     }
   }
   if (gt === 'quick_draw' && game.quick_draw_variant === 'guess' && game.quick_draw_play_mode !== 'individual') {
@@ -78,7 +88,7 @@ export function TeamRosterHostLobby({ gameCode, hostToken, game, players }: Prop
   const config = useMemo(() => teamLobbyConfig(game, gameCode, hostToken), [game, gameCode, hostToken])
   const [rows, setRows] = useState<TeamRow[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [autoBusy, setAutoBusy] = useState(false)
+  const [autoBusy, setAutoBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const table = config?.table
@@ -124,20 +134,21 @@ export function TeamRosterHostLobby({ gameCode, hostToken, game, players }: Prop
     }
   }
 
-  const runAuto = async () => {
-    if (!config.autoAction || autoBusy) return
-    setAutoBusy(true)
+  const runAuto = async (action: AutoAction) => {
+    if (autoBusy) return
+    setAutoBusy(action.label)
     setError(null)
     try {
-      await config.autoAction.run()
+      await action.run()
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update teams')
     } finally {
-      setAutoBusy(false)
+      setAutoBusy(null)
     }
   }
 
+  const autoActions: AutoAction[] = config.autoActions ?? (config.autoAction ? [config.autoAction] : [])
   const teams = Array.from({ length: config.numTeams }, (_, i) => i + 1)
 
   return (
@@ -178,10 +189,19 @@ export function TeamRosterHostLobby({ gameCode, hostToken, game, players }: Prop
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {config.autoAction ? (
-        <Pressable style={[styles.auto, autoBusy && styles.disabled]} disabled={autoBusy} onPress={() => void runAuto()}>
-          <Text style={styles.autoText}>{autoBusy ? 'Updating…' : config.autoAction.label}</Text>
-        </Pressable>
+      {autoActions.length > 0 ? (
+        <View style={styles.autoRow}>
+          {autoActions.map((action) => (
+            <Pressable
+              key={action.label}
+              style={[styles.auto, styles.autoFlex, autoBusy != null && styles.disabled]}
+              disabled={autoBusy != null}
+              onPress={() => void runAuto(action)}
+            >
+              <Text style={styles.autoText}>{autoBusy === action.label ? 'Updating…' : action.label}</Text>
+            </Pressable>
+          ))}
+        </View>
       ) : null}
     </View>
   )
@@ -219,6 +239,8 @@ const makeStyles = (theme: Theme) =>
   },
   chipText: { color: theme.textMuted, fontSize: 12, fontWeight: '700' },
   error: { color: theme.error, fontSize: 13 },
+  autoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: theme.space.xs },
+  autoFlex: { flexGrow: 1, flexBasis: 0, marginTop: 0 },
   auto: {
     backgroundColor: theme.bgElevated,
     borderWidth: 1,

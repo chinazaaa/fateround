@@ -15,6 +15,17 @@ Notifications.setNotificationHandler({
 
 export type PushPlatform = 'ios' | 'android' | 'unknown'
 
+// User preference (Settings › Notifications). Defaults to on; the
+// PreferencesProvider mirrors the persisted choice here on launch + change.
+// When off, `registerGamePush` opts out so no permission prompt / subscription
+// happens.
+let notificationsEnabled = true
+
+/** Toggle the user's notifications preference. When off, new push registration is skipped. */
+export function setPushEnabled(value: boolean) {
+  notificationsEnabled = value
+}
+
 export function pushSupportedOnDevice(): boolean {
   return Device.isDevice
 }
@@ -92,6 +103,9 @@ export async function unsubscribeGamePush(gameCode: string, expoPushToken: strin
 }
 
 export async function registerGamePush(gameCode: string, resumeToken: string): Promise<boolean> {
+  // Respect the user's opt-out: skip permission prompt + subscription entirely.
+  if (!notificationsEnabled) return false
+
   const permitted = await requestPushPermission()
   if (!permitted) return false
 

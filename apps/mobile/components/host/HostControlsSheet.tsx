@@ -6,6 +6,7 @@ import { gameSupportsViewerSetting, lateJoinPolicyFromGame } from '@fateround/sh
 import { patchGameSettings, postFinishGame, postPlayAgain, removePlayerAsHost } from '@/lib/game-api'
 import { SettingToggle } from '@/components/create/SettingToggle'
 import { LateJoinPolicyPicker } from '@/components/create/LateJoinPolicyPicker'
+import { WordRushHostRoundControl } from '@/components/games/WordRushHostRoundControl'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
 
@@ -178,6 +179,10 @@ export function HostControlsSheet({
           <Pressable style={styles.secondaryBtn} onPress={onTransfer}>
             <Text style={styles.secondaryBtnText}>Transfer host to another player</Text>
           </Pressable>
+
+          {active && game.game_type === 'word_rush' ? (
+            <WordRushHostRoundControl gameCode={gameCode} hostToken={hostToken} onReload={onReload} />
+          ) : null}
 
           {active ? (
             <Pressable

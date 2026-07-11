@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScrollView, StyleSheet, Text } from 'react-native'
 import {
   type YahtzeeCategory,
@@ -18,6 +18,8 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { YahtzeeDiceTray } from '@/components/games/YahtzeeDiceTray'
 import { YahtzeeScorecardGrid } from '@/components/games/YahtzeeScorecardGrid'
+import { YahtzeeShareCard } from '@/components/games/YahtzeeShareCard'
+import { useToast } from '@/components/ui/Toast'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
@@ -35,6 +37,7 @@ type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_fou
 
 export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
+  const { show: showToast } = useToast()
   const [session, setSession] = useState<YahtzeeSession | null>(null)
   const [scores, setScores] = useState<YahtzeePlayerScore[]>([])
   const [localHeld, setLocalHeld] = useState<boolean[]>([false, false, false, false, false])
@@ -83,12 +86,30 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   const turnPlayerId = session ? currentPlayerId(session) : null
   const isMyTurn = turnPlayerId === bootstrap.myPlayerId
 
+  // Foreground game-started + your-turn toasts. Enabled from the lobby so the
+  // waiting→active transition fires the "Game started" ping (not just once
+  // already in-play).
   useGameTurnAlerts({
     gameCode: bootstrap.code,
     status: bootstrap.game?.status,
     isMyTurn,
-    enabled: bootstrap.screen === 'playing',
+    enabled: bootstrap.screen === 'waiting' || bootstrap.screen === 'playing',
+    startMessage: 'Yahtzee starting! 🎲',
   })
+
+  // Game-finished toast — fires once when the game reaches the finished screen
+  // (mirrors the web finish flow's confirmation). The rich standings are shown
+  // by GameFinishPanel; this is the lightweight foreground ping.
+  const finishToastedRef = useRef(false)
+  useEffect(() => {
+    if (bootstrap.screen === 'finished' && !finishToastedRef.current) {
+      finishToastedRef.current = true
+      showToast('Game over — final scores are in! 🏁', 'info')
+    } else if (bootstrap.screen === 'playing' || bootstrap.screen === 'waiting') {
+      // Reset so a "Play again" round can toast again on its own finish.
+      finishToastedRef.current = false
+    }
+  }, [bootstrap.screen, showToast])
 
   // Turn timer: count down from turn_deadline_at during the rolling phase, and
   // ask the server to expire the turn once the deadline passes.
@@ -180,6 +201,14 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
           leaderboard={scoreListLeaderboard(totals.map((row) => ({ name: row.name, score: row.total })))}
           winnerPlayerId={scores.length > 1 ? session.winner_player_id : null}
           roundKey={session.id}
+          notice={
+            <YahtzeeShareCard
+              scores={scores}
+              players={bootstrap.players}
+              winnerName={totals[0]?.name ?? null}
+              highlightPlayerId={bootstrap.myPlayerId}
+            />
+          }
         />
       </GameShell>
     )

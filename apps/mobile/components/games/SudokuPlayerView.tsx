@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native'
 import { type Game, type Round, type SudokuSubmission } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import {
@@ -61,6 +61,11 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [flashUnits, setFlashUnits] = useState<SudokuUnitFlash[]>([])
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
+  // Value that just landed correctly — every visible cell holding it briefly scale-pulses.
+  // A single shared Animated.Value drives all matching cells at once (no per-cell values):
+  // simpler than the web's 81 staggered cell animations but reads the same.
+  const [pulseValue, setPulseValue] = useState<number | null>(null)
+  const pulseAnim = useRef(new Animated.Value(1)).current
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Viewers watch one player's board at a time (null = auto-pick the leader).
@@ -224,6 +229,19 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     }, 550)
   }, [])
 
+  // Scale-pulse every visible cell showing the just-placed value (grow, then settle).
+  const triggerCorrectPulse = useCallback(
+    (value: number) => {
+      setPulseValue(value)
+      pulseAnim.setValue(1)
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.22, duration: 160, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 260, useNativeDriver: true }),
+      ]).start(() => setPulseValue(null))
+    },
+    [pulseAnim]
+  )
+
   // Clean up timers on unmount.
   useEffect(() => {
     return () => {
@@ -240,7 +258,9 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     setUndoStack([])
     setSelected(null)
     setHighlightNumber(null)
-  }, [sessionKey])
+    setPulseValue(null)
+    pulseAnim.setValue(1)
+  }, [sessionKey, pulseAnim])
 
   const isCellEditable = useCallback(
     (row: number, col: number): boolean => {
@@ -301,6 +321,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         if (puzzle && bootstrap.myPlayerId) {
           triggerUnitFlash(getNewlyCompletedUnits(puzzle, submissions, bootstrap.myPlayerId, row, col))
         }
+        triggerCorrectPulse(value)
         setWrongDraft(row, col, false)
       } else {
         showToast(`✗ Wrong! ${SUDOKU_WRONG_PENALTY} pts`, false)
@@ -504,6 +525,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
                   const flashing = !viewing && isCellInFlashingUnits(r, c, flashUnits)
                   const highlighted =
                     highlightNumber != null && value === highlightNumber && value > 0 && !selectedCell
+                  const pulsing = !viewing && pulseValue != null && value === pulseValue && value > 0
                   const baseBg = mine ? SUDOKU_MY_CELL_COLOR : ownerColor ?? undefined
                   const bg = flashing ? '#fbbf24' : highlighted ? 'rgba(56,189,248,0.30)' : baseBg
                   return (
@@ -518,15 +540,16 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
                       disabled={viewing}
                       onPress={() => handleCellSelect(r, c)}
                     >
-                      <Text
+                      <Animated.Text
                         style={[
                           styles.cellText,
                           mine && styles.cellTextSolved,
                           wrong && styles.cellTextWrong,
+                          pulsing ? { transform: [{ scale: pulseAnim }] } : null,
                         ]}
                       >
                         {value > 0 ? value : ''}
-                      </Text>
+                      </Animated.Text>
                     </Pressable>
                   )
                 })}

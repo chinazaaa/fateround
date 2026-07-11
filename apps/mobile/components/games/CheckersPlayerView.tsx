@@ -4,6 +4,7 @@ import { colorForPlayer, currentTurnPlayerId, legalStepsFromSquare } from '@fate
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { CheckersBoard } from '@/components/games/checkers/CheckersBoard'
+import { CheckersFinalBoard } from '@/components/games/checkers/CheckersFinalBoard'
 import {
   checkersIsTimed,
   checkersResultDetail,
@@ -205,7 +206,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
       .join(' · ')
     return (
       <GameShell bootstrap={bootstrap} title="Checkers" subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={detail || undefined} leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} winnerPlayerId={activeSession.winner_player_id} roundKey={activeSession.id} />
+        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={detail || undefined} leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} winnerPlayerId={activeSession.winner_player_id} roundKey={activeSession.id} notice={<CheckersFinalBoard session={activeSession} players={bootstrap.players} highlightPlayerId={bootstrap.myPlayerId} />} />
       </GameShell>
     )
   }

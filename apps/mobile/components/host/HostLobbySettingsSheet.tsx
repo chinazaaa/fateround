@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Game, GameType } from '@fateround/shared'
 import {
   POLL_ROUND_TIMER_OPTIONS,
+  TRIVIA_MAX_ROUNDS,
+  TRIVIA_MIN_ROUNDS,
   formatPollRoundTimer,
   hasPartyRoomSettings,
   partyRoundOptions,
+  questionRoundPickerOptions,
 } from '@fateround/shared/create-party-games'
 import {
   gameSupportsViewerSetting,
@@ -129,6 +132,7 @@ const LOBBY_MAX_PLAYERS_GAMES = new Set<GameType>([
   'ayo',
   'describe_it',
   'quick_draw',
+  'word_rush',
 ])
 
 /** Party games that play a single round — no editable "Rounds" control (mirrors web create). */
@@ -314,6 +318,20 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     category: game.trivia_category === 'tech' ? 'tech' : 'general',
     custom: customContentStateFromGame(game),
   }))
+  const triviaPoolCount =
+    isTrivia && trivia.custom.source !== 'platform' ? customContentCount('trivia', trivia.custom) : 0
+  const triviaRoundOptions = useMemo(() => {
+    if (!isTrivia || triviaPoolCount <= 0) return roundOptions
+    return questionRoundPickerOptions(Math.min(triviaPoolCount, TRIVIA_MAX_ROUNDS)).filter(
+      (n) => n >= TRIVIA_MIN_ROUNDS && n <= TRIVIA_MAX_ROUNDS
+    )
+  }, [isTrivia, triviaPoolCount, roundOptions])
+  useEffect(() => {
+    if (triviaRoundOptions.length === 0) return
+    if (!triviaRoundOptions.includes(roundsCount)) {
+      setRoundsCount(triviaRoundOptions[triviaRoundOptions.length - 1] ?? roundsCount)
+    }
+  }, [triviaRoundOptions, roundsCount])
   const [shuffling, setShuffling] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -371,7 +389,8 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
 
     // Everything else (max players, card house-rules, per-game timers) goes to lobby-settings.
     const board: BoardLobbyPatch = {}
-    if (showMaxPlayers && maxPlayers != null && maxPlayers !== game.max_players) board.max_players = maxPlayers
+    if (showMaxPlayers && maxPlayers != null && maxPlayers !== game.max_players && gameType !== 'word_rush')
+      board.max_players = maxPlayers
     if (isCardGame) {
       if (card.timerSeconds !== game.timer_seconds) board.timer_seconds = card.timerSeconds
       if (card.gameDurationSeconds !== game.game_duration_seconds) board.game_duration_seconds = card.gameDurationSeconds
@@ -463,6 +482,7 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
           numTeams?: number
           turnSeconds?: number
           rounds?: number
+          maxPlayers?: number
         } = {}
         if (team.mode !== game.word_rush_mode) p.mode = team.mode
         if (team.promptMode !== game.word_rush_prompt_mode) p.promptMode = team.promptMode
@@ -470,6 +490,7 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
         if (team.mode === 'team' && team.numTeams !== game.word_rush_num_teams) p.numTeams = team.numTeams
         if (team.turnSeconds !== game.timer_seconds) p.turnSeconds = team.turnSeconds
         if (team.rounds !== game.rounds_count) p.rounds = team.rounds
+        if (showMaxPlayers && maxPlayers != null && maxPlayers !== game.max_players) p.maxPlayers = maxPlayers
         if (Object.keys(p).length > 0) teamCall = () => postWordRushSettings(gameCode, hostToken, p)
       }
     }
@@ -583,14 +604,14 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
               <RoundCountPicker
                 label="Rounds"
                 value={roundsCount}
-                options={roundOptions}
+                options={triviaRoundOptions}
                 onChange={setRoundsCount}
               />
             ) : null}
 
             {showTimer ? (
               <TimerPicker
-                label="Time per round"
+                label={isTrivia ? 'Time per question' : 'Time per round'}
                 value={timerSeconds}
                 options={timerOptions}
                 format={formatPollRoundTimer}

@@ -135,7 +135,9 @@ const flashStyles = StyleSheet.create({
   missSub: { fontSize: 13, color: ACCENT.miss, fontWeight: '700', marginTop: 2 },
 })
 
-// ── Memory card with styled back + match pulse ────────────────────────────────
+// ── Memory card with a 3D rotateY flip + match pulse ──────────────────────────
+
+const FLIP_DURATION_MS = 260
 
 export function MemoryCard({
   state,
@@ -154,8 +156,20 @@ export function MemoryCard({
   disabled: boolean
   onPress: () => void
 }) {
+  // 0 = back showing, 1 = face showing. One Animated.Value per card drives a
+  // real rotateY flip with two backface-hidden faces (front = icon, back = "?").
+  const flip = useRef(new Animated.Value(showFace ? 1 : 0)).current
   const pulse = useRef(new Animated.Value(1)).current
   const wasMatched = useRef(state === 'matched')
+
+  useEffect(() => {
+    Animated.timing(flip, {
+      toValue: showFace ? 1 : 0,
+      duration: FLIP_DURATION_MS,
+      easing: Easing.inOut(Easing.ease),
+      useNativeDriver: true,
+    }).start()
+  }, [showFace, flip])
 
   useEffect(() => {
     const nowMatched = state === 'matched'
@@ -170,37 +184,60 @@ export function MemoryCard({
 
   const matched = state === 'matched'
 
+  // Back face rotates 0°→180° (hidden once past 90°); front face is pre-rotated
+  // 180° and swings to 360° so it faces the viewer at the end of the flip.
+  const backRotate = flip.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] })
+  const frontRotate = flip.interpolate({ inputRange: [0, 1], outputRange: ['180deg', '360deg'] })
+
+  const faceBase = [cardStyles.face, { width: size, height: size }]
+
   return (
     <Pressable disabled={disabled} onPress={onPress}>
       <Animated.View
-        style={[
-          cardStyles.card,
-          { width: size, height: size, transform: [{ scale: pulse }] },
-          showFace
-            ? { borderColor: color, backgroundColor: `${color}22` }
-            : cardStyles.cardBack,
-          matched && cardStyles.cardMatched,
-        ]}
+        style={[cardStyles.cardOuter, { width: size, height: size, transform: [{ scale: pulse }] }]}
       >
-        {showFace ? (
-          <Text style={cardStyles.icon}>{icon}</Text>
-        ) : (
+        {/* Back face (?) */}
+        <Animated.View
+          style={[
+            ...faceBase,
+            cardStyles.cardBack,
+            { transform: [{ perspective: 800 }, { rotateY: backRotate }] },
+          ]}
+        >
           <View style={cardStyles.backBubble}>
             <Text style={cardStyles.backMark}>?</Text>
           </View>
-        )}
+        </Animated.View>
+        {/* Front face (icon) */}
+        <Animated.View
+          style={[
+            ...faceBase,
+            cardStyles.faceFront,
+            { borderColor: color, backgroundColor: `${color}22` },
+            matched && cardStyles.cardMatched,
+            { transform: [{ perspective: 800 }, { rotateY: frontRotate }] },
+          ]}
+        >
+          <Text style={cardStyles.icon}>{icon}</Text>
+        </Animated.View>
       </Animated.View>
     </Pressable>
   )
 }
 
 const cardStyles = StyleSheet.create({
-  card: {
+  cardOuter: { position: 'relative' },
+  face: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
     borderRadius: 12,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
+    backfaceVisibility: 'hidden',
   },
+  faceFront: {},
   // Decorative back face — brand indigo, consistent across themes.
   cardBack: { borderColor: '#4f46e5', backgroundColor: '#6366f1' },
   cardMatched: { opacity: 0.85 },
