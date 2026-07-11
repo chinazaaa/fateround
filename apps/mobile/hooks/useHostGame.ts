@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { uniqueTopic } from '@/lib/realtime'
 import type { Game, Player } from '@fateround/shared'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 
@@ -23,7 +24,7 @@ export function useHostGame(gameCode: string) {
     void reload()
     const supabase = getSupabase()
     const channel = supabase
-      .channel(`host-game-${gameCode}`)
+      .channel(uniqueTopic(`host-game-${gameCode}`))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },

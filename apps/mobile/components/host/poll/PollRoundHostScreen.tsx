@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { uniqueTopic } from '@/lib/realtime'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Game, Participant, Player, Round, Vote } from '@fateround/shared'
 import { isMostLikelyTo, parseGameType, pollGameLabel } from '@fateround/shared/poll-games'
@@ -47,7 +48,7 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
     void loadPollData()
     const supabase = getSupabase()
     const channel = supabase
-      .channel(`host-poll-${gameCode}`)
+      .channel(uniqueTopic(`host-poll-${gameCode}`))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
@@ -102,7 +103,7 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
   const roundLabel = pollGameLabel(game.game_type)
 
   return (
-    <HostChrome gameCode={gameCode} hostToken={hostToken} game={game}>
+    <HostChrome gameCode={gameCode} hostToken={hostToken} game={game} players={players} onReload={onReload}>
       <View style={styles.statsRow}>
         <Text style={styles.stat}>Players: {activePlayers.length}</Text>
         <Text style={styles.stat}>

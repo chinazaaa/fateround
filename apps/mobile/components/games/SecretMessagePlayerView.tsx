@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { uniqueTopic } from '@/lib/realtime'
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { batch9GameLabel } from '@fateround/shared/batch-9-games'
 import { GameLoading, GameNotFound, GameShell, WaitingPanel } from '@/components/game/GameChrome'
@@ -75,7 +76,7 @@ export function SecretMessagePlayerView({ gameCode }: { gameCode: string }) {
   useEffect(() => {
     const supabase = getSupabase()
     const channel = supabase
-      .channel(`secret-sender-${code}`)
+      .channel(uniqueTopic(`secret-sender-${code}`))
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${code}` },

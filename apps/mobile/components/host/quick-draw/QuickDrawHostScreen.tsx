@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { uniqueTopic } from '@/lib/realtime'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import type {
   Game,
@@ -109,7 +110,7 @@ export function QuickDrawHostScreen({ gameCode, hostToken, game, players, onRelo
     const tables = isGuess
       ? ['quick_draw_guess_sessions', 'quick_draw_guess_words', 'quick_draw_guess_guesses']
       : ['quick_draw_sessions', 'quick_draw_drawings', 'quick_draw_titles', 'quick_draw_votes', 'rounds']
-    const channel = supabase.channel(`host-qd-${gameCode}`)
+    const channel = supabase.channel(uniqueTopic(`host-qd-${gameCode}`))
     for (const table of tables) {
       channel.on(
         'postgres_changes',
@@ -195,7 +196,7 @@ export function QuickDrawHostScreen({ gameCode, hostToken, game, players, onRelo
   const lieCountdown = lieSession ? phaseDeadlineCountdown(lieSession.turn_deadline_at) : 0
 
   return (
-    <HostChrome gameCode={gameCode} hostToken={hostToken} game={game}>
+    <HostChrome gameCode={gameCode} hostToken={hostToken} game={game} players={players} onReload={onReload}>
       <View style={styles.statsRow}>
         <Text style={styles.stat}>Players: {activePlayers.length}</Text>
         <Text style={styles.stat}>{isGuess ? 'Guess mode' : 'Drawful mode'}</Text>

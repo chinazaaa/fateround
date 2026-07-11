@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getSupabase } from '@/lib/supabase'
+import { uniqueTopic } from '@/lib/realtime'
 
 /**
  * Tracks `games.pending_host_player_id` for a game in realtime (with an initial
@@ -31,7 +32,7 @@ export function useHostNomination(gameCode: string): {
     refetch()
     const supabase = getSupabase()
     const channel = supabase
-      .channel(`host-nomination-${gameCode}`)
+      .channel(uniqueTopic(`host-nomination-${gameCode}`))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },

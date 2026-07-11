@@ -140,7 +140,7 @@ export function CheckersPlayerView({ gameCode }: { gameCode: string }) {
     const title = activeSession.is_draw ? 'Draw!' : winner ? `${winner.name} wins!` : 'Game over'
     return (
       <GameShell bootstrap={bootstrap} title="Checkers" subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={activeSession.status_message} leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} />
+        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={activeSession.status_message} leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} winnerPlayerId={activeSession.winner_player_id} roundKey={activeSession.id} />
       </GameShell>
     )
   }

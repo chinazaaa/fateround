@@ -607,7 +607,21 @@ export type LobbySettingsPatch = {
   is_public?: boolean
   rounds_count?: number
   timer_seconds?: number
+  operative_timer_seconds?: number
+  game_duration_seconds?: number
   late_join_policy?: 'lobby_only' | 'viewers_only' | 'viewers_and_players'
+  scrabble_dictionary_id?: string
+  scrabble_clock_mode?: 'standard' | 'chess'
+  scrabble_clock_seconds?: number
+  pair_vote_mode?: 'one_each' | 'any'
+  player_questions_enabled?: boolean
+  player_questions_order?: 'players_first' | 'uploaded_first' | 'mixed'
+  ai_questions_enabled?: boolean
+  ai_questions_config?: {
+    ratio: 'all_ai' | 'mostly_ai' | 'half' | 'mostly_platform'
+    theme?: string
+    customPrompt?: string
+  } | null
 }
 
 /** Update editable lobby settings while waiting. Server clamps/validates per game. */
@@ -653,6 +667,99 @@ export function postLobbySettings(gameCode: string, hostToken: string, patch: Bo
   return postJson<{ ok?: boolean }>(`/api/games/${gameCode.toUpperCase()}/lobby-settings`, {
     hostToken,
     ...patch,
+  })
+}
+
+/** Bingo call mode / interval (dedicated route, waiting-only). */
+export function postBingoSettings(
+  gameCode: string,
+  hostToken: string,
+  patch: { bingo_call_mode?: 'manual' | 'auto'; bingo_call_interval_seconds?: number; max_players?: number }
+) {
+  return postJson<{ ok?: boolean }>('/api/bingo/settings', {
+    gameId: gameCode.toUpperCase(),
+    hostToken,
+    ...patch,
+  })
+}
+
+/** Describe It lobby settings (dedicated route, camelCase, waiting-only). */
+export function postDescribeItSettings(
+  gameCode: string,
+  hostToken: string,
+  patch: { mode?: 'team' | 'individual'; numTeams?: number; turnSeconds?: number; rounds?: number }
+) {
+  return postJson<{ ok?: boolean }>('/api/describe-it/settings', {
+    gameId: gameCode.toUpperCase(),
+    hostToken,
+    ...patch,
+  })
+}
+
+/** Word Rush lobby settings (dedicated route, camelCase, waiting-only). */
+export function postWordRushSettings(
+  gameCode: string,
+  hostToken: string,
+  patch: {
+    mode?: 'team' | 'individual'
+    promptMode?: 'automatic' | 'manual'
+    difficulty?: 'standard' | 'hard'
+    numTeams?: number
+    turnSeconds?: number
+    rounds?: number
+  }
+) {
+  return postJson<{ ok?: boolean }>('/api/word-rush/settings', {
+    gameId: gameCode.toUpperCase(),
+    hostToken,
+    ...patch,
+  })
+}
+
+/** Codewords spymaster/operative timers (dedicated route, waiting-only). */
+export function postCodewordsTimers(
+  gameCode: string,
+  hostToken: string,
+  patch: { max_players?: number; spymasterTimerSeconds?: number; operativeTimerSeconds?: number }
+) {
+  return postJson<{ ok?: boolean }>('/api/codewords/timers', {
+    gameId: gameCode.toUpperCase(),
+    hostToken,
+    ...patch,
+  })
+}
+
+/** Codewords — reshuffle team/role assignments (requires randomize mode). */
+export function postCodewordsRandomizeTeams(gameCode: string, hostToken: string) {
+  return postJson<{ ok?: boolean }>('/api/codewords/randomize-teams', {
+    gameId: gameCode.toUpperCase(),
+    hostToken,
+  })
+}
+
+/** Codewords — host assigns a player to a team + role (lobby team management). */
+export function postCodewordsHostRole(
+  gameCode: string,
+  hostToken: string,
+  playerId: string,
+  team: 'red' | 'blue',
+  role: 'spymaster' | 'operative'
+) {
+  return postJson<{ ok?: boolean }>('/api/codewords/host-role', {
+    gameId: gameCode.toUpperCase(),
+    hostToken,
+    playerId,
+    team,
+    role,
+  })
+}
+
+/** Codewords — host benches a player (removes their team/role assignment). */
+export function deleteCodewordsHostRole(gameCode: string, hostToken: string, playerId: string) {
+  return jsonRequest<{ ok?: boolean }>('/api/codewords/host-role', 'DELETE', {
+    gameId: gameCode.toUpperCase(),
+    hostToken,
+    playerId,
   })
 }
 
@@ -807,5 +914,14 @@ export function leaveGame(gameCode: string, playerId: string, resumeToken: strin
     gameCode: gameCode.toUpperCase(),
     playerId,
     resumeToken,
+  })
+}
+
+/** Host removes another player. Authorized by the host token (works mid-game). */
+export function removePlayerAsHost(gameCode: string, playerId: string, hostToken: string) {
+  return jsonRequest<{ success: boolean }>('/api/players', 'DELETE', {
+    gameCode: gameCode.toUpperCase(),
+    playerId,
+    hostToken,
   })
 }

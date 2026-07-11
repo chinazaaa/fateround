@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { uniqueTopic } from '@/lib/realtime'
 import {
   ActivityIndicator,
   FlatList,
@@ -126,7 +127,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     if (screen !== 'active') return
     const supabase = getSupabase()
     const channel = supabase
-      .channel(`anon-mobile-${code}`)
+      .channel(uniqueTopic(`anon-mobile-${code}`))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'anonymous_messages', filter: `game_id=eq.${code}` },

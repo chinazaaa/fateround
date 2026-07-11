@@ -2,43 +2,61 @@ import { ReactNode, useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import type { Game } from '@fateround/shared'
+import type { Game, Player } from '@fateround/shared'
 import { gameLabel } from '@/lib/mobile-registry'
 import { gameHasMobileVoice } from '@/lib/voice-games'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { TransferHostSheet } from '@/components/host/TransferHostSheet'
+import { HostControlsSheet } from '@/components/host/HostControlsSheet'
+import { HostViewProvider } from '@/components/host/HostViewContext'
 import { GameRouter, hasMobilePlayerView } from '@/components/games/GameRouter'
 import { HeaderAction } from '@/components/ui/HeaderAction'
 import { theme } from '@/constants/theme'
-import { getPlayerSession } from '@/lib/secure-session'
+import { getPlayerSession, type PlayerSession } from '@/lib/secure-session'
 
 type Props = {
   gameCode: string
   hostToken: string
   game: Game
-  children: ReactNode
+  /** Legacy "Manage" tab content — used by host-run games (bingo, trivia, …). */
+  children?: ReactNode
+  /**
+   * Play-first mode (games where the host plays like a player, e.g. Ayo/Whot):
+   * no tab toggle, the game is always shown, and host controls live behind a
+   * ⚙ Host button. Requires `players` + `onReload`.
+   */
+  playFirst?: boolean
+  players?: Player[]
+  onReload?: () => void
 }
 
 type HostTab = 'manage' | 'play'
 
-export function HostChrome({ gameCode, hostToken, game, children }: Props) {
+export function HostChrome({ gameCode, hostToken, game, children, playFirst, players, onReload }: Props) {
   const router = useRouter()
   const code = gameCode.toUpperCase()
   const typeLabel = gameLabel(game.game_type)
   const [shareOpen, setShareOpen] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
-  const [resumeToken, setResumeToken] = useState<string | null>(null)
+  const [controlsOpen, setControlsOpen] = useState(false)
+  const [session, setSession] = useState<PlayerSession | null>(null)
+  // Legacy tabs (host-run games like bingo/trivia): default to their Manage
+  // control surface. Play-along games use playFirst and never see these tabs.
   const [tab, setTab] = useState<HostTab>('manage')
+  const resumeToken = session?.resumeToken ?? null
+  const hostPlayerId = session?.playerId ?? null
 
   useEffect(() => {
-    void getPlayerSession(gameCode).then((session) => {
-      setResumeToken(session?.resumeToken ?? null)
-    })
+    void getPlayerSession(gameCode).then(setSession)
   }, [gameCode])
 
   // Play tab embeds the host's own player experience (join screen if not seated yet).
   const canPlay = hasMobilePlayerView(game.game_type)
+  // The ⚙ Host controls sheet (players + remove, settings, end game, play again)
+  // is available to any host screen that hands us the roster — both play-first
+  // games and host-run games (bingo/trivia/…), which keep their Manage tab too.
+  const showHostControls = !!players && !!onReload
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -56,7 +74,11 @@ export function HostChrome({ gameCode, hostToken, game, children }: Props) {
             <Text style={styles.backIcon}>←</Text>
           </Pressable>
           <View style={styles.toolbarActions}>
-            <HeaderAction label="Transfer" onPress={() => setTransferOpen(true)} />
+            {showHostControls ? (
+              <HeaderAction label="⚙ Host settings" onPress={() => setControlsOpen(true)} />
+            ) : (
+              <HeaderAction label="Transfer" onPress={() => setTransferOpen(true)} />
+            )}
             <HeaderAction label="Share code" accent onPress={() => setShareOpen(true)} />
           </View>
         </View>
@@ -76,7 +98,7 @@ export function HostChrome({ gameCode, hostToken, game, children }: Props) {
           ) : null}
         </View>
 
-        {canPlay ? (
+        {!playFirst && canPlay ? (
           <View style={styles.tabs}>
             {(['play', 'manage'] as HostTab[]).map((t) => {
               const active = tab === t
@@ -96,10 +118,12 @@ export function HostChrome({ gameCode, hostToken, game, children }: Props) {
         ) : null}
       </View>
 
-      {tab === 'play' && canPlay ? (
-        <View style={styles.playBody}>
-          <GameRouter gameCode={gameCode} gameType={game.game_type} />
-        </View>
+      {playFirst || (tab === 'play' && canPlay) ? (
+        <HostViewProvider value={{ hostToken, hostPlayerId, onReload: () => onReload?.() }}>
+          <View style={styles.playBody}>
+            <GameRouter gameCode={gameCode} gameType={game.game_type} />
+          </View>
+        </HostViewProvider>
       ) : (
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {children}
@@ -118,6 +142,22 @@ export function HostChrome({ gameCode, hostToken, game, children }: Props) {
         visible={transferOpen}
         onClose={() => setTransferOpen(false)}
       />
+      {showHostControls ? (
+        <HostControlsSheet
+          visible={controlsOpen}
+          onClose={() => setControlsOpen(false)}
+          gameCode={gameCode}
+          hostToken={hostToken}
+          game={game}
+          players={players ?? []}
+          hostPlayerId={hostPlayerId}
+          onReload={() => onReload?.()}
+          onTransfer={() => {
+            setControlsOpen(false)
+            setTransferOpen(true)
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   )
 }

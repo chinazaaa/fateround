@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { uniqueTopic } from '@/lib/realtime'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { BingoCalledNumber, Game, Player } from '@fateround/shared'
 import { formatBingoNumber } from '@fateround/shared/bingo'
@@ -52,7 +53,7 @@ export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }
     void loadBingo()
     const supabase = getSupabase()
     const channel = supabase
-      .channel(`host-bingo-${gameCode}`)
+      .channel(uniqueTopic(`host-bingo-${gameCode}`))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bingo_called_numbers', filter: `game_id=eq.${gameCode}` },
@@ -118,7 +119,7 @@ export function BingoHostScreen({ gameCode, hostToken, game, players, onReload }
   const activePlayers = players.filter((p) => !p.spectator)
 
   return (
-    <HostChrome gameCode={gameCode} hostToken={hostToken} game={game}>
+    <HostChrome gameCode={gameCode} hostToken={hostToken} game={game} players={players} onReload={onReload}>
       <View style={styles.statsRow}>
         <Text style={styles.stat}>Players: {activePlayers.length}</Text>
         <Text style={styles.stat}>Called: {calledNumbers.length}/75</Text>

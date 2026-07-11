@@ -177,6 +177,8 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
             ? winnerLeaderboard(winnerClaim?.player_id, bootstrap.players, bootstrap.myPlayerId)
             : undefined
         }
+        winnerPlayerId={winnerClaim?.player_id ?? null}
+        roundKey={winnerClaim?.id ?? null}
       />
     )
   }

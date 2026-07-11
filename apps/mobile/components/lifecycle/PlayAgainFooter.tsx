@@ -1,9 +1,11 @@
 import { useEffect } from 'react'
+import { uniqueTopic } from '@/lib/realtime'
 import { StyleSheet, Text } from 'react-native'
 import type { Game } from '@fateround/shared'
 import { SurfaceCard } from '@/components/ui/SurfaceCard'
 import { theme } from '@/constants/theme'
 import { getSupabase } from '@/lib/supabase'
+import { useIsHostView } from '@/components/host/HostViewContext'
 
 type Props = {
   gameCode: string
@@ -16,12 +18,14 @@ type Props = {
  * host play-again (`waiting` + `replay_pending`) and reloads when that happens.
  */
 export function PlayAgainFooter({ gameCode, game, onReplayReady }: Props) {
+  const isHost = useIsHostView()
+
   useEffect(() => {
     if (game.status !== 'finished') return
 
     const supabase = getSupabase()
     const channel = supabase
-      .channel(`play-again-${gameCode}`)
+      .channel(uniqueTopic(`play-again-${gameCode}`))
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
@@ -44,7 +48,9 @@ export function PlayAgainFooter({ gameCode, game, onReplayReady }: Props) {
   return (
     <SurfaceCard style={styles.wrap}>
       <Text style={styles.hint}>
-        If the host starts another round, you'll get a ready-up prompt in the lobby.
+        {isHost
+          ? 'Tap ⚙ Host to play again or return to the lobby.'
+          : "If the host starts another round, you'll get a ready-up prompt in the lobby."}
       </Text>
     </SurfaceCard>
   )

@@ -65,6 +65,8 @@ export interface Game {
   participant_mode?: ParticipantMode | string | null
   participant_filter?: string | null
   pair_vote_mode?: PairVoteMode | string | null
+  player_questions_enabled?: boolean | null
+  player_questions_order?: 'players_first' | 'uploaded_first' | 'mixed' | string | null
   ludo_variant?: string | null
   custom_questions?: unknown[] | null
   gender_based?: boolean | null

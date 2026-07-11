@@ -1,5 +1,6 @@
-import type { Participant, Player, TriviaAnswer, Vote } from '@fateround/shared'
+import type { AyoSession, AyoSide, Participant, Player, TriviaAnswer, Vote } from '@fateround/shared'
 import type { FinishedLeaderboardRow } from '@/components/game/GameChrome'
+import type { AyoVariant } from '@/lib/ayo-sow'
 
 export function toLeaderboardRows(
   entries: Array<{ name: string; score: number | string }>,
@@ -95,6 +96,53 @@ export function winnerLeaderboard(
     rows.push({ name: p.name, score: '—', highlight: p.id === myPlayerId })
   }
   return rows
+}
+
+/**
+ * Ayo finish standings: each player's houses won (traditional) or captured
+ * seeds (oware), winner highlighted, with an "Ọta champion" tag on a ≥3 streak.
+ * Mirrors the web final-results block.
+ */
+export function ayoLeaderboard(
+  session: AyoSession,
+  players: Player[],
+  variant: AyoVariant,
+  myPlayerId?: string | null
+): FinishedLeaderboardRow[] {
+  const seedsOnSide = (side: AyoSide) => {
+    const start = side === 'a' ? 0 : 6
+    const size = side === 'a' ? session.a_row_size : session.b_row_size
+    let sum = 0
+    for (let i = start; i < start + size; i += 1) sum += session.pits[i] ?? 0
+    return sum
+  }
+  const scoreFor = (side: AyoSide) =>
+    variant === 'oware'
+      ? (side === 'a' ? session.captured_a : session.captured_b) + seedsOnSide(side)
+      : side === 'a'
+        ? session.houses_a
+        : session.houses_b
+
+  const sides: { side: AyoSide; pid: string; streak: number }[] = [
+    { side: 'a', pid: session.player_a_id, streak: session.a_win_streak },
+    { side: 'b', pid: session.player_b_id, streak: session.b_win_streak },
+  ]
+  return sides
+    .map(({ side, pid, streak }) => ({
+      pid,
+      streak,
+      name: players.find((p) => p.id === pid)?.name ?? 'Player',
+      score: scoreFor(side),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .map((row) => ({
+      name: row.name,
+      score: row.score,
+      scoreSuffix: variant === 'oware' ? 'seeds' : 'houses',
+      detail: row.streak >= 3 ? 'Ọta champion' : undefined,
+      you: !!myPlayerId && row.pid === myPlayerId,
+      highlight: row.pid === session.winner_player_id,
+    }))
 }
 
 export function mltVoteLeaderboard(votes: Vote[], participants: Participant[]): FinishedLeaderboardRow[] {

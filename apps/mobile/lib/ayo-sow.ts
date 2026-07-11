@@ -22,6 +22,24 @@ export function parseAyoVariant(raw: unknown): AyoVariant {
   return raw === 'oware' ? 'oware' : 'traditional'
 }
 
+/** Human-readable reason a game ended, e.g. "by resignation". Ported from web. */
+export function ayoResultDetail(reason: string | null | undefined, variant: AyoVariant = 'traditional'): string {
+  switch (reason) {
+    case 'most_houses':
+      return 'with the most houses won'
+    case 'match_won':
+      return variant === 'traditional' ? 'match won — all opponent houses taken' : 'match won'
+    case 'most_seeds':
+      return 'with the most captured seeds'
+    case 'timeout':
+      return 'on time'
+    case 'resignation':
+      return 'by resignation'
+    default:
+      return ''
+  }
+}
+
 function sideOfPit(pit: number): AyoSide {
   return pit < AYO_PITS_PER_SIDE ? 'a' : 'b'
 }

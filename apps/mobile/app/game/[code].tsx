@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { uniqueTopic } from '@/lib/realtime'
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { GameRouter, resolveMobilePlayerView } from '@/components/games/GameRouter'
@@ -44,7 +45,7 @@ export default function GameScreen() {
     void load()
     const supabase = getSupabase()
     const channel = supabase
-      .channel(`game-meta-${gameCode}`)
+      .channel(uniqueTopic(`game-meta-${gameCode}`))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },

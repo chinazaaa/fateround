@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { ScrollView, StyleSheet } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import {
@@ -6,6 +7,9 @@ import {
 } from '@/components/game/GameChrome'
 import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
 import { PlayAgainFooter } from '@/components/lifecycle/PlayAgainFooter'
+import { HostFinishedActions } from '@/components/lifecycle/HostFinishedActions'
+import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
+import { useHostView } from '@/components/host/HostViewContext'
 import { theme } from '@/constants/theme'
 
 type BootstrapLike = {
@@ -25,6 +29,15 @@ type Props = {
   primaryAction?: { label: string; onPress: () => void }
   showPlayAgain?: boolean
   emoji?: string
+  /** Extra content rendered under the standings. */
+  notice?: ReactNode
+  /**
+   * Winner's player id. When it's the local player, the finish screen posts the
+   * win to the community leaderboard (and shows the confirmation).
+   */
+  winnerPlayerId?: string | null
+  /** Distinct value per round (e.g. session id) so a replay posts again. */
+  roundKey?: string | null
 }
 
 export function GameFinishPanel({
@@ -36,9 +49,16 @@ export function GameFinishPanel({
   primaryAction,
   showPlayAgain = true,
   emoji = '🏁',
+  notice,
+  winnerPlayerId,
+  roundKey,
 }: Props) {
   const game = bootstrap.game
+  const host = useHostView()
   if (!game) return null
+
+  const winner = winnerPlayerId ? bootstrap.players.find((p) => p.id === winnerPlayerId) : null
+  const iWon = !!winner && !!bootstrap.myPlayerId && winner.id === bootstrap.myPlayerId
 
   return (
     <ScrollView
@@ -54,7 +74,18 @@ export function GameFinishPanel({
         primaryAction={primaryAction}
         emoji={emoji}
       />
-      {showPlayAgain ? (
+      {notice}
+      {iWon && winner ? (
+        <PostWinToCommunity
+          gameType={game.game_type}
+          gameCode={bootstrap.code}
+          winnerName={winner.name}
+          roundKey={roundKey ?? null}
+        />
+      ) : null}
+      {host ? (
+        <HostFinishedActions gameCode={bootstrap.code} host={host} />
+      ) : showPlayAgain ? (
         <PlayAgainFooter gameCode={bootstrap.code} game={game} onReplayReady={bootstrap.load} />
       ) : null}
       <GameFinishedActions

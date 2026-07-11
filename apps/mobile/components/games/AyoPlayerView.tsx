@@ -7,7 +7,7 @@ import { LobbyView } from '@/components/LobbyView'
 import { AyoBoard } from '@/components/games/ayo/AyoBoard'
 import { useAyoSowAnimation } from '@/hooks/useAyoSowAnimation'
 import { useAyoClockExpiry } from '@/hooks/useAyoClockExpiry'
-import { parseAyoVariant } from '@/lib/ayo-sow'
+import { parseAyoVariant, ayoResultDetail } from '@/lib/ayo-sow'
 import { playAyoSeedDrop, playAyoTurnChime } from '@/lib/ayo-sounds'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
@@ -17,7 +17,7 @@ import { postAyoMove } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { AYO_SESSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
-import { winnerLeaderboard } from '@/lib/finish-leaderboards'
+import { ayoLeaderboard } from '@/lib/finish-leaderboards'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'active' | 'finished' | 'not_found'
 
@@ -131,10 +131,25 @@ export function AyoPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'finished') {
     const winner = bootstrap.players.find((p) => p.id === activeSession.winner_player_id)
-    const title = activeSession.is_draw ? 'Draw!' : winner ? `${winner.name} wins!` : 'Game over'
+    const variant = parseAyoVariant(bootstrap.game?.ayo_variant)
+    const title = activeSession.is_draw ? 'Draw!' : winner ? `${winner.name} · Ọta wins!` : 'Game over'
+    const reason = ayoResultDetail(activeSession.result_reason, variant)
+    const subtitle = reason ? reason.charAt(0).toUpperCase() + reason.slice(1) : 'Final standings'
+    const detail =
+      variant === 'traditional' && activeSession.match_round
+        ? `Round ${activeSession.match_round}`
+        : activeSession.status_message
     return (
       <GameShell bootstrap={bootstrap} title="Ayo" subtitle={bootstrap.code}>
-        <GameFinishPanel bootstrap={bootstrap} title={title} subtitle="Final standings" detail={activeSession.status_message} leaderboard={activeSession.is_draw ? undefined : winnerLeaderboard(activeSession.winner_player_id, bootstrap.players, bootstrap.myPlayerId)} />
+        <GameFinishPanel
+          bootstrap={bootstrap}
+          title={title}
+          subtitle={subtitle}
+          detail={detail}
+          leaderboard={ayoLeaderboard(activeSession, bootstrap.players, variant, bootstrap.myPlayerId)}
+          winnerPlayerId={activeSession.winner_player_id}
+          roundKey={activeSession.id}
+        />
       </GameShell>
     )
   }

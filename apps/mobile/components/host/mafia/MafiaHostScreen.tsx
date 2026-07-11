@@ -102,7 +102,7 @@ export function MafiaHostScreen({ gameCode, hostToken, game, players, onReload }
   const alive = roster.filter((p) => p.isAlive)
 
   return (
-    <HostChrome gameCode={gameCode} hostToken={hostToken} game={game}>
+    <HostChrome gameCode={gameCode} hostToken={hostToken} game={game} players={players} onReload={onReload}>
       {state ? (
         <View style={styles.phaseCard}>
           <Text style={styles.phaseLabel}>Phase</Text>

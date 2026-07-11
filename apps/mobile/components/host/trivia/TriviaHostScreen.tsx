@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { uniqueTopic } from '@/lib/realtime'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Game, Player, Round, TriviaAnswer } from '@fateround/shared'
 import {
@@ -45,7 +46,7 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
     void load()
     const supabase = getSupabase()
     const channel = supabase
-      .channel(`host-trivia-${gameCode}`)
+      .channel(uniqueTopic(`host-trivia-${gameCode}`))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
@@ -121,7 +122,7 @@ export function TriviaHostScreen({ gameCode, hostToken, game, players, onReload 
   }
 
   return (
-    <HostChrome gameCode={gameCode} hostToken={hostToken} game={game}>
+    <HostChrome gameCode={gameCode} hostToken={hostToken} game={game} players={players} onReload={onReload}>
       <View style={styles.statsRow}>
         <Text style={styles.stat}>Players: {activePlayers.length}</Text>
         <Text style={styles.stat}>

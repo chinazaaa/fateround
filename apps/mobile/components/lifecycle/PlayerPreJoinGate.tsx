@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useEffect, useState } from 'react'
+import { uniqueTopic } from '@/lib/realtime'
 import type { Game } from '@fateround/shared'
 import { normalizeGameCode } from '@fateround/shared'
 import { preJoinScreen } from '@fateround/shared/viewers'
@@ -51,7 +52,7 @@ export function PlayerPreJoinGate({ gameCode, children }: Props) {
   useEffect(() => {
     if (hasPlayer || !game) return
     const channel = getSupabase()
-      .channel(`prejoin-${code}`)
+      .channel(uniqueTopic(`prejoin-${code}`))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'games', filter: `id=eq.${code}` },

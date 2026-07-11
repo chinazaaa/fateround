@@ -17,7 +17,17 @@ import { TimerPicker } from '@/components/create/TimerPicker'
 import { LateJoinPolicyPicker } from '@/components/create/LateJoinPolicyPicker'
 import { MaxPlayersPicker } from '@/components/create/MaxPlayersPicker'
 import { SegmentedControl } from '@/components/create/SegmentedControl'
-import { patchGameSettings, postLobbySettings, type BoardLobbyPatch, type LobbySettingsPatch } from '@/lib/game-api'
+import {
+  patchGameSettings,
+  postBingoSettings,
+  postCodewordsRandomizeTeams,
+  postCodewordsTimers,
+  postDescribeItSettings,
+  postLobbySettings,
+  postWordRushSettings,
+  type BoardLobbyPatch,
+  type LobbySettingsPatch,
+} from '@/lib/game-api'
 import { useGamePlayerLimits } from '@/hooks/useGamePlayerLimits'
 import {
   CardHouseRulesSection,
@@ -42,6 +52,48 @@ import {
   isDurationGame,
   type DurationGameState,
 } from '@/components/host/lobby-settings/DurationGamesSection'
+import {
+  ScrabbleLobbySection,
+  isScrabbleLobbyGame,
+  type ScrabbleLobbyState,
+} from '@/components/host/lobby-settings/ScrabbleLobbySection'
+import {
+  ICallOnLobbySection,
+  isICallOnLobbyGame,
+  type ICallOnLobbyState,
+} from '@/components/host/lobby-settings/ICallOnLobbySection'
+import {
+  PollQuestionsSection,
+  hasPollQuestionSettings,
+  supportsPlayerQuestions,
+  type PollQuestionsState,
+} from '@/components/host/lobby-settings/PollQuestionsSection'
+import {
+  BingoLobbySection,
+  isBingoLobbyGame,
+  type BingoLobbyState,
+} from '@/components/host/lobby-settings/BingoLobbySection'
+import {
+  MahjongLobbySection,
+  isMahjongLobbyGame,
+  type MahjongLobbyState,
+} from '@/components/host/lobby-settings/MahjongLobbySection'
+import {
+  TeamRoundGamesSection,
+  isTeamRoundGame,
+  type TeamRoundState,
+} from '@/components/host/lobby-settings/TeamRoundGamesSection'
+import {
+  QuickDrawLobbySection,
+  isQuickDrawLobbyGame,
+  type QuickDrawLobbyState,
+} from '@/components/host/lobby-settings/QuickDrawLobbySection'
+import {
+  CodewordsLobbySection,
+  isCodewordsLobbyGame,
+  type CodewordsLobbyState,
+} from '@/components/host/lobby-settings/CodewordsLobbySection'
+import { isPairGame } from '@fateround/shared/poll-games'
 import { theme } from '@/constants/theme'
 
 /** Games whose max-players is editable via the shared lobby-settings route. */
@@ -78,11 +130,31 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
   const { limits } = useGamePlayerLimits()
   const isCardGame = isCardHouseRuleGame(gameType)
   const isVariantGame = isBoardVariantGame(gameType)
+  const isTeamRound = isTeamRoundGame(gameType)
+  const isQuickDraw = isQuickDrawLobbyGame(gameType)
+  const isCodewords = isCodewordsLobbyGame(gameType)
   const isMafia = isMafiaLobbyGame(gameType)
   const isQuiplash = isQuiplashLobbyGame(gameType)
-  const ownsTimer = isCardGame || isVariantGame || isMafia || isQuiplash
+  const isDuration = isDurationGame(gameType)
+  const isScrabble = isScrabbleLobbyGame(gameType)
+  const isICallOn = isICallOnLobbyGame(gameType)
+  const showPollQuestions = hasPollQuestionSettings(gameType)
+  const isBingo = isBingoLobbyGame(gameType)
+  const isMahjong = isMahjongLobbyGame(gameType)
+  const ownsTimer =
+    isCardGame ||
+    isVariantGame ||
+    isMafia ||
+    isQuiplash ||
+    isDuration ||
+    isScrabble ||
+    isICallOn ||
+    isMahjong ||
+    isTeamRound ||
+    isQuickDraw ||
+    isCodewords
   const roundOptions = partyRoundOptions(gameType)
-  const showRounds = roundOptions.length > 1 && game.rounds_count != null
+  const showRounds = !isTeamRound && !isQuickDraw && roundOptions.length > 1 && game.rounds_count != null
   // Games with their own section render their own timer(s).
   const showTimer = !ownsTimer && game.timer_seconds != null && game.timer_seconds > 0
   const showLateJoin = gameSupportsViewerSetting(gameType)
@@ -125,8 +197,79 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     timerSeconds: game.timer_seconds ?? 0,
     voteTimer: game.operative_timer_seconds ?? 0,
   }))
+  const [duration, setDuration] = useState<DurationGameState>(() => ({
+    timerSeconds: game.timer_seconds ?? 0,
+    gameDurationSeconds: game.game_duration_seconds ?? 0,
+    largeGrid: (game.game_duration_seconds ?? 0) >= 16,
+  }))
+  const [scrabble, setScrabble] = useState<ScrabbleLobbyState>(() => ({
+    clockMode: game.scrabble_clock_mode === 'chess' ? 'chess' : 'standard',
+    clockSeconds: game.scrabble_clock_seconds ?? 600,
+    timerSeconds: game.timer_seconds ?? 0,
+    gameDurationSeconds: game.game_duration_seconds ?? 0,
+    dictionaryId: game.scrabble_dictionary_id ?? 'enable',
+  }))
+  const [icallon, setIcallon] = useState<ICallOnLobbyState>(() => ({
+    gameDurationSeconds: game.game_duration_seconds ?? 0,
+    timerSeconds: game.timer_seconds ?? 0,
+    markingTimer: game.operative_timer_seconds ?? 0,
+  }))
+  const [poll, setPoll] = useState<PollQuestionsState>(() => ({
+    pairVoteMode: game.pair_vote_mode === 'any' ? 'any' : 'one_each',
+    playerQuestionsEnabled: game.player_questions_enabled ?? true,
+    playerQuestionsOrder:
+      game.player_questions_order === 'uploaded_first'
+        ? 'uploaded_first'
+        : game.player_questions_order === 'mixed'
+          ? 'mixed'
+          : 'players_first',
+  }))
+  const [bingo, setBingo] = useState<BingoLobbyState>(() => ({
+    callMode: game.bingo_call_mode === 'auto' ? 'auto' : 'manual',
+    callInterval: game.bingo_call_interval_seconds ?? 5,
+  }))
+  const [mahjong, setMahjong] = useState<MahjongLobbyState>(() => ({
+    timerSeconds: game.timer_seconds ?? 0,
+    ruleset: game.mahjong_ruleset ?? 'fate_round',
+  }))
+  const [quickDraw, setQuickDraw] = useState<QuickDrawLobbyState>(() => ({
+    variant: game.quick_draw_variant === 'guess' ? 'guess' : 'lie',
+    playMode: game.quick_draw_play_mode === 'individual' ? 'individual' : 'team',
+    numTeams: game.quick_draw_num_teams ?? 2,
+    rounds: game.rounds_count ?? 3,
+    drawTimer: game.timer_seconds ?? 0,
+    titleTimer: game.operative_timer_seconds ?? 0,
+    voteTimer: game.game_duration_seconds ?? 0,
+  }))
+  const [team, setTeam] = useState<TeamRoundState>(() => ({
+    mode: (gameType === 'word_rush' ? game.word_rush_mode : game.describe_it_mode) === 'individual' ? 'individual' : 'team',
+    numTeams: (gameType === 'word_rush' ? game.word_rush_num_teams : game.describe_it_num_teams) ?? 2,
+    turnSeconds: game.timer_seconds ?? 0,
+    rounds: game.rounds_count ?? 3,
+    promptMode: game.word_rush_prompt_mode === 'manual' ? 'manual' : 'automatic',
+    difficulty: game.word_rush_difficulty === 'hard' ? 'hard' : 'standard',
+  }))
+  const [codewords, setCodewords] = useState<CodewordsLobbyState>(() => ({
+    spymasterTimer: game.timer_seconds ?? 0,
+    operativeTimer: game.operative_timer_seconds ?? 0,
+  }))
+  const [shuffling, setShuffling] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const onShuffle = async () => {
+    if (shuffling) return
+    setShuffling(true)
+    setError(null)
+    try {
+      await postCodewordsRandomizeTeams(gameCode, hostToken)
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not shuffle teams')
+    } finally {
+      setShuffling(false)
+    }
+  }
 
   const save = async () => {
     if (saving) return
@@ -136,6 +279,32 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     if (showRounds && roundsCount !== game.rounds_count) patch.rounds_count = roundsCount
     if (showTimer && timerSeconds !== game.timer_seconds) patch.timer_seconds = timerSeconds
     if (showLateJoin && lateJoin !== lateJoinPolicyFromGame(game)) patch.late_join_policy = lateJoin
+    if (isScrabble) {
+      if (scrabble.clockMode !== game.scrabble_clock_mode) patch.scrabble_clock_mode = scrabble.clockMode
+      if (scrabble.dictionaryId !== game.scrabble_dictionary_id) patch.scrabble_dictionary_id = scrabble.dictionaryId
+      if (scrabble.clockMode === 'chess') {
+        if (scrabble.clockSeconds !== game.scrabble_clock_seconds) patch.scrabble_clock_seconds = scrabble.clockSeconds
+      } else {
+        if (scrabble.timerSeconds !== game.timer_seconds) patch.timer_seconds = scrabble.timerSeconds
+        if (scrabble.gameDurationSeconds !== game.game_duration_seconds)
+          patch.game_duration_seconds = scrabble.gameDurationSeconds
+      }
+    }
+    if (isICallOn) {
+      if (icallon.gameDurationSeconds !== game.game_duration_seconds)
+        patch.game_duration_seconds = icallon.gameDurationSeconds
+      if (icallon.timerSeconds !== game.timer_seconds) patch.timer_seconds = icallon.timerSeconds
+      if (icallon.markingTimer !== game.operative_timer_seconds) patch.operative_timer_seconds = icallon.markingTimer
+    }
+    if (showPollQuestions) {
+      if (isPairGame(gameType) && poll.pairVoteMode !== game.pair_vote_mode) patch.pair_vote_mode = poll.pairVoteMode
+      if (supportsPlayerQuestions(gameType)) {
+        if (poll.playerQuestionsEnabled !== game.player_questions_enabled)
+          patch.player_questions_enabled = poll.playerQuestionsEnabled
+        if (poll.playerQuestionsOrder !== game.player_questions_order)
+          patch.player_questions_order = poll.playerQuestionsOrder
+      }
+    }
 
     // Everything else (max players, card house-rules, per-game timers) goes to lobby-settings.
     const board: BoardLobbyPatch = {}
@@ -155,6 +324,25 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
         if (card.crazy8Pick2Stacking !== game.crazy8_pick2_stacking) board.crazy8_pick2_stacking = card.crazy8Pick2Stacking
       }
     }
+    if (isMahjong) {
+      if (mahjong.timerSeconds !== game.timer_seconds) board.timer_seconds = mahjong.timerSeconds
+      if (mahjong.ruleset !== game.mahjong_ruleset) board.mahjong_ruleset = mahjong.ruleset
+    }
+    if (isQuickDraw) {
+      if (quickDraw.variant !== game.quick_draw_variant) board.quick_draw_variant = quickDraw.variant
+      if (quickDraw.rounds !== game.rounds_count) board.rounds_count = quickDraw.rounds
+      if (quickDraw.drawTimer !== game.timer_seconds) board.timer_seconds = quickDraw.drawTimer
+      if (quickDraw.variant === 'guess') {
+        if (quickDraw.playMode !== game.quick_draw_play_mode) board.quick_draw_play_mode = quickDraw.playMode
+        if (quickDraw.playMode === 'team' && quickDraw.numTeams !== game.quick_draw_num_teams)
+          board.quick_draw_num_teams = quickDraw.numTeams
+      } else {
+        if (quickDraw.titleTimer !== game.operative_timer_seconds)
+          board.operative_timer_seconds = quickDraw.titleTimer
+        if (quickDraw.voteTimer !== game.game_duration_seconds)
+          board.game_duration_seconds = quickDraw.voteTimer
+      }
+    }
     if (isVariantGame) {
       if (variant.timerSeconds !== game.timer_seconds) board.timer_seconds = variant.timerSeconds
       if (gameType === 'ludo' && variant.ludoVariant !== game.ludo_variant) board.ludo_variant = variant.ludoVariant
@@ -170,9 +358,69 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
       if (quiplash.timerSeconds !== game.timer_seconds) board.timer_seconds = quiplash.timerSeconds
       if (quiplash.voteTimer !== game.operative_timer_seconds) board.operative_timer_seconds = quiplash.voteTimer
     }
+    if (isDuration) {
+      if (gameType === 'sudoku') {
+        if (duration.gameDurationSeconds !== game.game_duration_seconds)
+          board.game_duration_seconds = duration.gameDurationSeconds
+      } else if (gameType === 'word_hunt') {
+        if (duration.timerSeconds !== game.timer_seconds) board.timer_seconds = duration.timerSeconds
+      } else {
+        // matching_pairs
+        if (duration.timerSeconds !== game.timer_seconds) board.timer_seconds = duration.timerSeconds
+        const grid = duration.largeGrid ? 16 : 0
+        if (grid !== (game.game_duration_seconds ?? 0)) board.game_duration_seconds = grid
+      }
+    }
+
+    // Bingo has its own dedicated route.
+    const bingoPatch: { bingo_call_mode?: 'manual' | 'auto'; bingo_call_interval_seconds?: number } = {}
+    if (isBingo) {
+      if (bingo.callMode !== game.bingo_call_mode) bingoPatch.bingo_call_mode = bingo.callMode
+      if (bingo.callMode === 'auto' && bingo.callInterval !== game.bingo_call_interval_seconds)
+        bingoPatch.bingo_call_interval_seconds = bingo.callInterval
+    }
+
+    // Describe It / Word Rush use their own dedicated routes.
+    let teamCall: (() => Promise<unknown>) | null = null
+    if (isTeamRound) {
+      if (gameType === 'describe_it') {
+        const p: { mode?: 'team' | 'individual'; numTeams?: number; turnSeconds?: number; rounds?: number } = {}
+        if (team.mode !== game.describe_it_mode) p.mode = team.mode
+        if (team.mode === 'team' && team.numTeams !== game.describe_it_num_teams) p.numTeams = team.numTeams
+        if (team.turnSeconds !== game.timer_seconds) p.turnSeconds = team.turnSeconds
+        if (team.rounds !== game.rounds_count) p.rounds = team.rounds
+        if (Object.keys(p).length > 0) teamCall = () => postDescribeItSettings(gameCode, hostToken, p)
+      } else {
+        const p: {
+          mode?: 'team' | 'individual'
+          promptMode?: 'automatic' | 'manual'
+          difficulty?: 'standard' | 'hard'
+          numTeams?: number
+          turnSeconds?: number
+          rounds?: number
+        } = {}
+        if (team.mode !== game.word_rush_mode) p.mode = team.mode
+        if (team.promptMode !== game.word_rush_prompt_mode) p.promptMode = team.promptMode
+        if (team.difficulty !== game.word_rush_difficulty) p.difficulty = team.difficulty
+        if (team.mode === 'team' && team.numTeams !== game.word_rush_num_teams) p.numTeams = team.numTeams
+        if (team.turnSeconds !== game.timer_seconds) p.turnSeconds = team.turnSeconds
+        if (team.rounds !== game.rounds_count) p.rounds = team.rounds
+        if (Object.keys(p).length > 0) teamCall = () => postWordRushSettings(gameCode, hostToken, p)
+      }
+    }
+
+    // Codewords timers use their own route.
+    const cwPatch: { spymasterTimerSeconds?: number; operativeTimerSeconds?: number } = {}
+    if (isCodewords) {
+      if (codewords.spymasterTimer !== game.timer_seconds) cwPatch.spymasterTimerSeconds = codewords.spymasterTimer
+      if (codewords.operativeTimer !== game.operative_timer_seconds)
+        cwPatch.operativeTimerSeconds = codewords.operativeTimer
+    }
 
     const hasBoard = Object.keys(board).length > 0
-    if (Object.keys(patch).length === 0 && !hasBoard) {
+    const hasBingo = Object.keys(bingoPatch).length > 0
+    const hasCw = Object.keys(cwPatch).length > 0
+    if (Object.keys(patch).length === 0 && !hasBoard && !hasBingo && !teamCall && !hasCw) {
       onClose()
       return
     }
@@ -181,6 +429,9 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
     try {
       if (Object.keys(patch).length > 0) await patchGameSettings(gameCode, hostToken, patch)
       if (hasBoard) await postLobbySettings(gameCode, hostToken, board)
+      if (hasBingo) await postBingoSettings(gameCode, hostToken, bingoPatch)
+      if (teamCall) await teamCall()
+      if (hasCw) await postCodewordsTimers(gameCode, hostToken, cwPatch)
       onSaved()
       onClose()
     } catch (err) {
@@ -265,6 +516,63 @@ export function HostLobbySettingsSheet({ gameCode, hostToken, game, visible, onC
               <QuiplashLobbySection
                 value={quiplash}
                 onChange={(p) => setQuiplash((prev) => ({ ...prev, ...p }))}
+              />
+            ) : null}
+
+            {isDuration ? (
+              <DurationGamesSection
+                gameType={gameType}
+                value={duration}
+                onChange={(p) => setDuration((prev) => ({ ...prev, ...p }))}
+              />
+            ) : null}
+
+            {isScrabble ? (
+              <ScrabbleLobbySection value={scrabble} onChange={(p) => setScrabble((prev) => ({ ...prev, ...p }))} />
+            ) : null}
+
+            {isICallOn ? (
+              <ICallOnLobbySection value={icallon} onChange={(p) => setIcallon((prev) => ({ ...prev, ...p }))} />
+            ) : null}
+
+            {showPollQuestions ? (
+              <PollQuestionsSection
+                gameType={gameType}
+                value={poll}
+                onChange={(p) => setPoll((prev) => ({ ...prev, ...p }))}
+              />
+            ) : null}
+
+            {isBingo ? (
+              <BingoLobbySection value={bingo} onChange={(p) => setBingo((prev) => ({ ...prev, ...p }))} />
+            ) : null}
+
+            {isMahjong ? (
+              <MahjongLobbySection value={mahjong} onChange={(p) => setMahjong((prev) => ({ ...prev, ...p }))} />
+            ) : null}
+
+            {isTeamRound ? (
+              <TeamRoundGamesSection
+                gameType={gameType}
+                value={team}
+                onChange={(p) => setTeam((prev) => ({ ...prev, ...p }))}
+              />
+            ) : null}
+
+            {isQuickDraw ? (
+              <QuickDrawLobbySection
+                value={quickDraw}
+                onChange={(p) => setQuickDraw((prev) => ({ ...prev, ...p }))}
+              />
+            ) : null}
+
+            {isCodewords ? (
+              <CodewordsLobbySection
+                value={codewords}
+                onChange={(p) => setCodewords((prev) => ({ ...prev, ...p }))}
+                canShuffle={game.codewords_randomize_teams === true}
+                shuffling={shuffling}
+                onShuffle={() => void onShuffle()}
               />
             ) : null}
 

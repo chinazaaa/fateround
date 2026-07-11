@@ -15,12 +15,16 @@ import { gameHasMobileVoice } from '@/lib/voice-games'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HostLobbyPlayCard } from '@/components/host/HostLobbyPlayCard'
+import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { HostLobbySettingsSheet } from '@/components/host/HostLobbySettingsSheet'
+import { GameRouter, hasMobilePlayerView } from '@/components/games/GameRouter'
+import { CodewordsHostLobby } from '@/components/host/lobby/CodewordsHostLobby'
 import { clearPlayerSession, getPlayerSession, type PlayerSession } from '@/lib/secure-session'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostPlayerReconciliation } from '@/hooks/useHostPlayerReconciliation'
 import { useGamePlayerLimits } from '@/hooks/useGamePlayerLimits'
 import { isLobbyLimitGameType } from '@fateround/shared/lobby-limits'
+import { uniqueTopic } from '@/lib/realtime'
 
 type Props = {
   gameCode: string
@@ -40,6 +44,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [lobbyTab, setLobbyTab] = useState<'manage' | 'play'>('manage')
   const [hostSession, setHostSession] = useState<PlayerSession | null>(null)
   const hostPlayerId = hostSession?.playerId ?? null
   const resumeToken = hostSession?.resumeToken ?? null
@@ -60,7 +65,7 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
     void load()
     const supabase = getSupabase()
     const channel = supabase
-      .channel(`host-lobby-${gameCode}`)
+      .channel(uniqueTopic(`host-lobby-${gameCode}`))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
@@ -126,6 +131,10 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
   }
 
   const activePlayers = players.filter((p) => !p.spectator)
+  const seated = !!hostSession?.playerId
+  // A seated host can drop into their own player lobby (team/role pickers, etc.).
+  const canPlayTab = seated && !!game && hasMobilePlayerView(game.game_type) && game.status !== 'finished'
+  const showPlay = canPlayTab && lobbyTab === 'play'
   const finished = game?.status === 'finished'
   const replayLobby = game?.status === 'waiting' && game.replay_pending === true
   const readyCount = activePlayers.length
@@ -138,6 +147,28 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
       {game && gameHasMobileVoice(game.game_type) ? (
         <VoiceRail gameCode={gameCode} mode="host" hostToken={hostToken} />
       ) : null}
+
+      {canPlayTab ? (
+        <View style={styles.tabs}>
+          {(['manage', 'play'] as const).map((t) => {
+            const active = lobbyTab === t
+            return (
+              <Pressable key={t} style={[styles.tab, active && styles.tabActive]} onPress={() => setLobbyTab(t)}>
+                <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                  {t === 'manage' ? 'Manage' : 'Play'}
+                </Text>
+              </Pressable>
+            )
+          })}
+        </View>
+      ) : null}
+
+      {showPlay && game ? (
+        <View style={styles.playBody}>
+          <GameRouter gameCode={gameCode} gameType={game.game_type} />
+        </View>
+      ) : (
+      <>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>Hosting</Text>
         <Text style={styles.title}>{game?.title || 'Game'}</Text>
@@ -146,6 +177,16 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
           <Text style={styles.codeLabel}>Game code — tap for link & QR</Text>
           <Text style={styles.code}>{gameCode}</Text>
         </Pressable>
+
+        {replayLobby && hostPlayerId ? (
+          <ReplayReadyRing
+            gameCode={gameCode}
+            players={players}
+            myPlayerId={hostPlayerId}
+            myResumeToken={resumeToken}
+            onReload={() => void load()}
+          />
+        ) : null}
 
         {game && !finished ? (
           <Pressable style={styles.settingsBtn} onPress={() => setSettingsOpen(true)}>
@@ -167,6 +208,10 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
             </View>
           ))
         )}
+
+        {!finished && game?.game_type === 'codewords' ? (
+          <CodewordsHostLobby gameCode={gameCode} hostToken={hostToken} game={game} players={players} />
+        ) : null}
 
         {!finished ? (
           <HostLobbyPlayCard
@@ -245,6 +290,8 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
           </>
         )}
       </View>
+      </>
+      )}
       <ShareGameSheet
         visible={shareOpen}
         gameCode={gameCode}
@@ -268,6 +315,22 @@ export function HostLobbyScreen({ gameCode, hostToken }: Props) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0b0b0f' },
+  tabs: {
+    flexDirection: 'row',
+    marginHorizontal: 24,
+    marginTop: 12,
+    backgroundColor: '#17171d',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#2a2a35',
+    padding: 3,
+    gap: 3,
+  },
+  tab: { flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center' },
+  tabActive: { backgroundColor: '#f43f5e' },
+  tabText: { color: '#9ca3af', fontSize: 14, fontWeight: '800' },
+  tabTextActive: { color: '#fff' },
+  playBody: { flex: 1 },
   centered: {
     flex: 1,
     backgroundColor: '#0b0b0f',

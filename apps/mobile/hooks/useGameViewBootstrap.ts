@@ -5,6 +5,7 @@ import { joinGame } from '@/lib/api'
 import { recordRecentGame } from '@/lib/recent-games'
 import { getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
+import { uniqueTopic } from '@/lib/realtime'
 
 export type UseGameViewBootstrapOptions<Screen extends string, GameState> = {
   gameCode: string
@@ -167,6 +168,11 @@ export function useGameTableSync(
   const reloadRef = useRef(reload)
   reloadRef.current = reload
 
+  // Call sites pass a fresh `tables` array literal each render; keying the
+  // effect on the serialized contents (not array identity) stops it from
+  // re-subscribing every render.
+  const tablesKey = JSON.stringify(tables)
+
   useEffect(() => {
     if (!enabled || !gameCode || tables.length === 0) return
 
@@ -185,7 +191,7 @@ export function useGameTableSync(
       }, 90)
     }
 
-    let channel = supabase.channel(`sync-${gameCode}`)
+    let channel = supabase.channel(uniqueTopic(`sync-${gameCode}`))
     for (const { table, column } of norm) {
       channel = channel.on(
         'postgres_changes',
@@ -200,5 +206,7 @@ export function useGameTableSync(
       if (debounce) clearTimeout(debounce)
       void supabase.removeChannel(channel)
     }
-  }, [enabled, gameCode, tables])
+    // `tables` is intentionally keyed via tablesKey (contents, not identity).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, gameCode, tablesKey])
 }
