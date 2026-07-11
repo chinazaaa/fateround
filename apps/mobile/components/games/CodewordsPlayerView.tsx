@@ -608,14 +608,17 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
         {isOperative ? (
           <>
             <Text style={styles.chatTitle}>Team chat</Text>
-            <ScrollView style={styles.chatLog} nestedScrollEnabled>
-              {teamMessages.map((m) => (
+            {/* Plain View (not a nested ScrollView) so it doesn't trap touches
+                inside KeyboardAwareGameScroll; show the most recent messages and
+                let the page scroll handle overflow. */}
+            <View style={styles.chatLog}>
+              {teamMessages.slice(-12).map((m) => (
                 <Text key={m.id} style={styles.chatLine}>
                   <Text style={styles.chatName}>{playerNameById.get(m.player_id) ?? 'Player'}: </Text>
                   {m.text}
                 </Text>
               ))}
-            </ScrollView>
+            </View>
             <View style={styles.chatRow}>
               <TextInput
                 style={styles.input}
@@ -751,7 +754,7 @@ const makeStyles = (theme: Theme) =>
     // white on the rose / dark action buttons — intentional
     actionText: { color: '#fff', fontWeight: '800' },
     chatTitle: { color: theme.textMuted, fontWeight: '700', marginTop: 12, marginBottom: 4 },
-    chatLog: { maxHeight: 100, backgroundColor: theme.surface, borderRadius: 8, padding: 8 },
+    chatLog: { backgroundColor: theme.surface, borderRadius: 8, padding: 8, gap: 2 },
     chatLine: { color: theme.textSecondary, fontSize: 13, marginBottom: 4 },
     chatName: { color: theme.text, fontWeight: '700' },
     chatRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 8, marginBottom: 16 },

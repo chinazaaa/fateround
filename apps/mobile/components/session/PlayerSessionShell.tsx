@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -42,8 +42,13 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
   // as a pill next to the game-type pill instead of a floating body subtitle.
   const [headerBadge, setHeaderBadge] = useState<string | null>(null)
 
+  const reloadSeqRef = useRef(0)
   const reloadSession = useCallback(async () => {
+    const seq = ++reloadSeqRef.current
     const [session, storedHostToken] = await Promise.all([getPlayerSession(gameCode), getHostToken(gameCode)])
+    // A newer reload started while this read was in flight — drop this result so
+    // a slow earlier read can't overwrite the fresher session state.
+    if (seq !== reloadSeqRef.current) return
     setPlayerId(session?.playerId ?? null)
     setPlayerName(session?.playerName ?? '')
     setResumeToken(session?.resumeToken ?? null)
@@ -67,12 +72,12 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
     else router.replace('/')
   }
 
-  const onShare = () => {
-    // Re-read the stored session first: the shell loads it once on mount (on the
-    // join screen, before a resume token exists), so without this the share sheet
-    // would be missing the player's own link right after they join. reloadSession
-    // updates state and the open sheet re-renders with the resume token.
-    void reloadSession()
+  const onShare = async () => {
+    // Refresh the stored session BEFORE opening: the shell loads it once on mount
+    // (on the join screen, before a resume token exists), so without awaiting this
+    // the share sheet would open with a stale/missing resume + host token right
+    // after the player joins.
+    await reloadSession()
     setShareOpen(true)
   }
 
@@ -108,7 +113,7 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
 
             <View style={styles.toolbarActions}>
               <SettingsButton />
-              <HeaderAction label="Share" onPress={onShare} />
+              <HeaderAction label="Share" onPress={() => void onShare()} />
               {hasHostToken ? <HeaderAction label="Host" accent onPress={() => void openHost()} /> : null}
               {playerId && !gameEnded ? (
                 <PlayerSessionMenu
