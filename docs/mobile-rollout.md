@@ -22,7 +22,7 @@ Living doc for the React Native / Expo app in `apps/mobile/`.
 
 Batches 1–9 were about **coverage**: every game type can open a native screen and perform core player actions.  
 Batches 10–17 added **shell, lifecycle, notifications, voice, polish, host mode, and Drawful canvas**.  
-**Next priority:** **custom content create** (Batch 21), **host + play parity** (Batch 23), + device QA / TestFlight.
+**Next priority:** **host + play parity** (Batch 23), **participants + custom game** (Batch 22), + device QA / TestFlight. (Batch 21 manual custom content shipped; library packs deferred.)
 
 ### Player E2E exceptions (Jul 2026)
 
@@ -176,7 +176,7 @@ Mobile can **create**, **lobby**, **start**, **run mid-game**, **play along**, a
 - [x] **Host playing along** — join as player while keeping host token (`HostPlayAlongCard`)
 - [x] **Bingo auto-call sync** — `useBingoAutoCall` on bingo host screen + manual call button
 
-**Still thinner than web:** host+play lobby UX *(Batch 23)*; custom content *(Batches 21–22)*; poll host animations.
+**Still thinner than web:** host+play lobby UX *(Batch 23)*; library packs + file import + custom game slots *(Batch 22)*; poll host animations. (Manual custom questions/words now native — Batch 21.)
 
 ### Host + play (play along)
 
@@ -319,11 +319,14 @@ Batches 10–20 core work is **done**. Next: **custom content create (21–22)**
 
 **Shipped:** `packages/shared/src/create-party-games.ts`, `apps/mobile/lib/create-settings/party-games.ts`, `PartyRoomSettingsPanel.tsx`, wired into `CreateWizardShell` + `buildCreatePayload`.
 
-### Batch 21 — Custom content (questions & words) *(planned)*
+### Batch 21 — Custom content (questions & words) ✅ *(manual entry)*
 
-- [ ] Manual entry: custom WYR, MLT, trivia Q&A, describe-it words, quick-draw prompts
-- [ ] Optional: library question packs (read-only pick from server)
-- [ ] Trivia `question_source`: platform \| custom \| library
+- [x] Manual entry: custom WYR / This-or-That pairs, MLT / NHIE / Pick-a-Number / Quiplash prompts, trivia Q&A (question + 2–4 answers + correct + category), describe-it & quick-draw words, codewords single-word pool
+- [x] `question_source`: platform \| custom toggle per supported game (`CustomContentPanel`)
+- [x] Client-side minimums mirror `POST /api/games` (rounds-count floor, Pick-a-Number ≥5, Codewords ≥25 single words)
+- [ ] Deferred: library question packs (read-only pick from `/api/library`) — `question_source: 'library'` stays web-only for now
+
+**Shipped:** `apps/mobile/lib/create-settings/custom-content.ts` (kinds, payload, validation), `apps/mobile/components/create/CustomContentPanel.tsx` (source toggle + list/pair/trivia editors), wired into `CreateWizardShell` + `buildCreatePayload` + `validateCreateState`.
 
 ### Batch 22 — Participants & Custom Game *(planned)*
 

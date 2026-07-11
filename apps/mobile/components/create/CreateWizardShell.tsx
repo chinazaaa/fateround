@@ -9,6 +9,7 @@ import { StepIndicator } from '@/components/create/StepIndicator'
 import { UniversalLobbyFields } from '@/components/create/UniversalLobbyFields'
 import { GameRoomSettingsPanel } from '@/components/create/GameRoomSettingsPanel'
 import { PartyRoomSettingsPanel } from '@/components/create/PartyRoomSettingsPanel'
+import { CustomContentPanel } from '@/components/create/CustomContentPanel'
 import { AmbientBackground } from '@/components/ui/AmbientBackground'
 import { AppButton } from '@/components/ui/AppButton'
 import { FormField } from '@/components/ui/FormField'
@@ -162,6 +163,13 @@ export function CreateWizardShell() {
               party={state.party}
               onChange={(partyPatch) => patchState({ party: { ...state.party, ...partyPatch } })}
             />
+
+            <CustomContentPanel
+              gameType={state.gameType}
+              custom={state.custom}
+              roundsCount={state.party.roundsCount}
+              onChange={(customPatch) => patchState({ custom: { ...state.custom, ...customPatch } })}
+            />
           </>
         ) : (
           <PeopleStepPlaceholder />
@@ -178,7 +186,7 @@ export function CreateWizardShell() {
 
         {step === 'setup' ? (
           <Pressable style={styles.webLink} onPress={() => void Linking.openURL(`${WEB_BASE_URL}/create`)}>
-            <Text style={styles.webLinkText}>Need custom questions, import lists, or custom game slots?</Text>
+            <Text style={styles.webLinkText}>Need library packs, file import, or custom game slots?</Text>
             <Text style={styles.webLinkAction}>Full setup on web →</Text>
           </Pressable>
         ) : null}

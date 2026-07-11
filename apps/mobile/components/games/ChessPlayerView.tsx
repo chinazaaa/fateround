@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Chess, type Square } from 'chess.js'
 import type { ChessSession, Game, Player } from '@fateround/shared'
 import {
@@ -13,6 +13,7 @@ import {
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/game/GameChrome'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -43,6 +44,7 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
   const [acting, setActing] = useState(false)
   const [promotionMove, setPromotionMove] = useState<{ from: string; to: string } | null>(null)
   const [clockTick, setClockTick] = useState(0)
+  const [resignOpen, setResignOpen] = useState(false)
 
   const loadGameState = useCallback(
     async (_game: Game, _players: Player[]): Promise<{ state: ChessSession | null; ok: boolean }> => {
@@ -192,24 +194,21 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
 
   const resign = () => {
     if (!bootstrap.myResumeToken) return
-    Alert.alert('Resign?', 'Your opponent will win.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Resign',
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            setActing(true)
-            try {
-              await postChessResign(bootstrap.code, bootstrap.myResumeToken!)
-              await bootstrap.load()
-            } finally {
-              setActing(false)
-            }
-          })()
-        },
-      },
-    ])
+    setResignOpen(true)
+  }
+
+  const confirmResign = () => {
+    if (!bootstrap.myResumeToken) return
+    void (async () => {
+      setActing(true)
+      try {
+        await postChessResign(bootstrap.code, bootstrap.myResumeToken!)
+        setResignOpen(false)
+        await bootstrap.load()
+      } finally {
+        setActing(false)
+      }
+    })()
   }
 
   if (bootstrap.screen === 'loading') return <GameLoading />
@@ -350,6 +349,17 @@ export function ChessPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         </View>
       </Modal>
+
+      <ConfirmDialog
+        visible={resignOpen}
+        title="Resign?"
+        message="Your opponent will win."
+        confirmLabel="Resign"
+        destructive
+        confirming={acting}
+        onConfirm={confirmResign}
+        onCancel={() => setResignOpen(false)}
+      />
     </GameShell>
   )
 }

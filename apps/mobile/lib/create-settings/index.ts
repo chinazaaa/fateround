@@ -25,11 +25,19 @@ import {
   partyRoomSettingsPayload,
   type PartyRoomSettings,
 } from '@/lib/create-settings/party-games'
+import {
+  customContentPayload,
+  defaultCustomContentState,
+  validateCustomContent,
+  type CustomContentState,
+} from '@/lib/create-settings/custom-content'
 
 export type { GameRoomSettings } from '@/lib/create-settings/board-games'
 export { hasGameRoomSettings, BATCH_19_BOARD_GAMES } from '@/lib/create-settings/board-games'
 export type { PartyRoomSettings } from '@/lib/create-settings/party-games'
 export { hasPartyRoomSettings, BATCH_20_PARTY_GAMES, isPollPartyGame } from '@/lib/create-settings/party-games'
+export type { CustomContentState } from '@/lib/create-settings/custom-content'
+export { supportsCustomContent } from '@/lib/create-settings/custom-content'
 
 export type CreateWizardStep = 'setup' | 'people'
 
@@ -42,6 +50,7 @@ export type CreateWizardState = {
   lateJoinPolicy: LateJoinPolicy
   room: GameRoomSettings
   party: PartyRoomSettings
+  custom: CustomContentState
 }
 
 export type CreateSettingsRegistryEntry = {
@@ -80,6 +89,7 @@ export function createInitialState(
     lateJoinPolicy: defaultLateJoinPolicyForGameType(gameType),
     room: defaultGameRoomSettings(gameType),
     party: defaultPartyRoomSettings(gameType),
+    custom: defaultCustomContentState(),
   }
 }
 
@@ -99,6 +109,7 @@ export function applyGameTypeChange(
     ),
     room: defaultGameRoomSettings(gameType),
     party: defaultPartyRoomSettings(gameType),
+    custom: defaultCustomContentState(),
   }
 }
 
@@ -110,6 +121,8 @@ export const CREATE_SETTINGS_REGISTRY: Partial<Record<GameType, CreateSettingsRe
 
 export function validateCreateState(state: CreateWizardState): string | null {
   if (!state.title.trim()) return 'Enter a game title'
+  const customError = validateCustomContent(state.gameType, state.custom, state.party.roundsCount)
+  if (customError) return customError
   const entry = CREATE_SETTINGS_REGISTRY[state.gameType]
   return entry?.validate?.(state) ?? null
 }
@@ -130,7 +143,7 @@ export function buildCreatePayload(state: CreateWizardState, limits: GamePlayerL
     game_type: gameType,
     theme: state.theme,
     isPublic: state.isPublic,
-    question_source: 'platform',
+    ...customContentPayload(gameType, state.custom),
     participants: [],
     ...(usesNativeJoinersMode(gameType)
       ? {

@@ -10,6 +10,7 @@ import { VoiceRail } from '@/components/voice/VoiceRail'
 import { PlayerSessionMenu } from '@/components/session/PlayerSessionMenu'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HeaderAction } from '@/components/ui/HeaderAction'
+import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { theme } from '@/constants/theme'
 
 type Props = {
@@ -107,6 +108,11 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
               {game.title}
             </Text>
           ) : null}
+          {game?.game_type ? (
+            <View style={styles.rulesRow}>
+              <GameRulesLink gameType={game.game_type} variant="subtle" />
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -196,5 +202,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  rulesRow: { marginTop: 2 },
   body: { flex: 1 },
 })

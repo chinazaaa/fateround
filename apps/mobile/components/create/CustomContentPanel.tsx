@@ -1,0 +1,386 @@
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import type { GameType } from '@fateround/shared'
+import { SegmentedControl } from '@/components/create/SegmentedControl'
+import { SurfaceCard } from '@/components/ui/SurfaceCard'
+import { theme } from '@/constants/theme'
+import {
+  MAX_TRIVIA_CHOICES,
+  customContentCopy,
+  customContentCount,
+  customContentKind,
+  customContentMinimum,
+  customContentNoun,
+  emptyTriviaDraft,
+  supportsCustomContent,
+  type CustomContentState,
+  type TriviaDraft,
+  type WyrPairDraft,
+} from '@/lib/create-settings/custom-content'
+
+type Props = {
+  gameType: GameType
+  custom: CustomContentState
+  roundsCount: number
+  onChange: (patch: Partial<CustomContentState>) => void
+}
+
+export function CustomContentPanel({ gameType, custom, roundsCount, onChange }: Props) {
+  if (!supportsCustomContent(gameType)) return null
+
+  const kind = customContentKind(gameType)
+  const copy = customContentCopy(gameType)
+  const noun = customContentNoun(gameType)
+  const heading = noun === 'words' ? 'Words' : 'Questions'
+  const count = customContentCount(gameType, custom)
+  const min = customContentMinimum(gameType, roundsCount)
+  const enough = count >= min
+
+  return (
+    <SurfaceCard>
+      <View style={styles.wrap}>
+        <Text style={styles.heading}>{heading}</Text>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Source</Text>
+          <SegmentedControl
+            value={custom.source}
+            options={[
+              { value: 'platform', label: 'Platform', hint: 'Use our built-in pool.' },
+              { value: 'custom', label: 'Your own', hint: copy.sourceHint },
+            ]}
+            onChange={(source) => onChange({ source })}
+          />
+        </View>
+
+        {custom.source === 'custom' ? (
+          <>
+            <Text style={styles.hint}>{copy.hint}</Text>
+
+            {kind === 'binary' ? (
+              <PairEditor custom={custom} onChange={onChange} />
+            ) : kind === 'trivia' ? (
+              <TriviaEditor custom={custom} onChange={onChange} />
+            ) : (
+              <ListEditor custom={custom} placeholder={copy.placeholder} onChange={onChange} />
+            )}
+
+            <Pressable style={styles.addButton} onPress={() => addItem(kind, custom, onChange)}>
+              <Text style={styles.addButtonText}>＋ {copy.addLabel}</Text>
+            </Pressable>
+
+            <Text style={[styles.count, enough ? styles.countOk : styles.countLow]}>
+              {count} / {min} {noun}
+              {enough ? ' ✓' : ' needed'}
+            </Text>
+          </>
+        ) : null}
+      </View>
+    </SurfaceCard>
+  )
+}
+
+function addItem(
+  kind: ReturnType<typeof customContentKind>,
+  custom: CustomContentState,
+  onChange: Props['onChange']
+) {
+  if (kind === 'binary') onChange({ pairs: [...custom.pairs, { optionA: '', optionB: '' }] })
+  else if (kind === 'trivia') onChange({ trivia: [...custom.trivia, emptyTriviaDraft()] })
+  else onChange({ prompts: [...custom.prompts, ''] })
+}
+
+function ListEditor({
+  custom,
+  placeholder,
+  onChange,
+}: {
+  custom: CustomContentState
+  placeholder: string
+  onChange: Props['onChange']
+}) {
+  const setItem = (idx: number, value: string) =>
+    onChange({ prompts: custom.prompts.map((p, i) => (i === idx ? value : p)) })
+  const removeItem = (idx: number) =>
+    onChange({ prompts: custom.prompts.filter((_, i) => i !== idx) })
+
+  return (
+    <View style={styles.list}>
+      {custom.prompts.map((value, idx) => (
+        <View key={idx} style={styles.row}>
+          <TextInput
+            style={styles.rowInput}
+            value={value}
+            onChangeText={(t) => setItem(idx, t)}
+            placeholder={placeholder}
+            placeholderTextColor={theme.textFaint}
+            autoCapitalize="sentences"
+            autoCorrect
+          />
+          {custom.prompts.length > 1 ? (
+            <RemoveButton onPress={() => removeItem(idx)} />
+          ) : null}
+        </View>
+      ))}
+    </View>
+  )
+}
+
+function PairEditor({
+  custom,
+  onChange,
+}: {
+  custom: CustomContentState
+  onChange: Props['onChange']
+}) {
+  const setPair = (idx: number, patch: Partial<WyrPairDraft>) =>
+    onChange({ pairs: custom.pairs.map((p, i) => (i === idx ? { ...p, ...patch } : p)) })
+  const removePair = (idx: number) => onChange({ pairs: custom.pairs.filter((_, i) => i !== idx) })
+
+  return (
+    <View style={styles.list}>
+      {custom.pairs.map((pair, idx) => (
+        <View key={idx} style={styles.itemCard}>
+          <View style={styles.itemHeader}>
+            <Text style={styles.itemLabel}>Prompt {idx + 1}</Text>
+            {custom.pairs.length > 1 ? <RemoveButton onPress={() => removePair(idx)} /> : null}
+          </View>
+          <TextInput
+            style={styles.rowInput}
+            value={pair.optionA}
+            onChangeText={(optionA) => setPair(idx, { optionA })}
+            placeholder="Option A"
+            placeholderTextColor={theme.textFaint}
+            autoCapitalize="sentences"
+          />
+          <TextInput
+            style={styles.rowInput}
+            value={pair.optionB}
+            onChangeText={(optionB) => setPair(idx, { optionB })}
+            placeholder="Option B"
+            placeholderTextColor={theme.textFaint}
+            autoCapitalize="sentences"
+          />
+        </View>
+      ))}
+    </View>
+  )
+}
+
+function TriviaEditor({
+  custom,
+  onChange,
+}: {
+  custom: CustomContentState
+  onChange: Props['onChange']
+}) {
+  const setQ = (idx: number, patch: Partial<TriviaDraft>) =>
+    onChange({ trivia: custom.trivia.map((q, i) => (i === idx ? { ...q, ...patch } : q)) })
+  const removeQ = (idx: number) => onChange({ trivia: custom.trivia.filter((_, i) => i !== idx) })
+
+  const setChoice = (qIdx: number, cIdx: number, value: string) => {
+    const q = custom.trivia[qIdx]
+    setQ(qIdx, { choices: q.choices.map((c, i) => (i === cIdx ? value : c)) })
+  }
+  const addChoice = (qIdx: number) => {
+    const q = custom.trivia[qIdx]
+    if (q.choices.length >= MAX_TRIVIA_CHOICES) return
+    setQ(qIdx, { choices: [...q.choices, ''] })
+  }
+  const removeChoice = (qIdx: number, cIdx: number) => {
+    const q = custom.trivia[qIdx]
+    if (q.choices.length <= 2) return
+    const choices = q.choices.filter((_, i) => i !== cIdx)
+    let correctIndex = q.correctIndex
+    if (cIdx === correctIndex) correctIndex = 0
+    else if (cIdx < correctIndex) correctIndex -= 1
+    setQ(qIdx, { choices, correctIndex })
+  }
+
+  return (
+    <View style={styles.list}>
+      {custom.trivia.map((q, qIdx) => (
+        <View key={qIdx} style={styles.itemCard}>
+          <View style={styles.itemHeader}>
+            <Text style={styles.itemLabel}>Question {qIdx + 1}</Text>
+            {custom.trivia.length > 1 ? <RemoveButton onPress={() => removeQ(qIdx)} /> : null}
+          </View>
+          <TextInput
+            style={styles.rowInput}
+            value={q.question}
+            onChangeText={(question) => setQ(qIdx, { question })}
+            placeholder="Question"
+            placeholderTextColor={theme.textFaint}
+            autoCapitalize="sentences"
+            multiline
+          />
+          <Text style={styles.choiceHint}>Tap the circle to mark the correct answer.</Text>
+          {q.choices.map((choice, cIdx) => {
+            const correct = cIdx === q.correctIndex
+            return (
+              <View key={cIdx} style={styles.row}>
+                <Pressable
+                  style={[styles.radio, correct && styles.radioOn]}
+                  onPress={() => setQ(qIdx, { correctIndex: cIdx })}
+                  hitSlop={8}
+                >
+                  {correct ? <View style={styles.radioDot} /> : null}
+                </Pressable>
+                <TextInput
+                  style={styles.rowInput}
+                  value={choice}
+                  onChangeText={(t) => setChoice(qIdx, cIdx, t)}
+                  placeholder={`Answer ${cIdx + 1}`}
+                  placeholderTextColor={theme.textFaint}
+                  autoCapitalize="sentences"
+                />
+                {q.choices.length > 2 ? (
+                  <RemoveButton onPress={() => removeChoice(qIdx, cIdx)} />
+                ) : null}
+              </View>
+            )
+          })}
+          {q.choices.length < MAX_TRIVIA_CHOICES ? (
+            <Pressable style={styles.addChoice} onPress={() => addChoice(qIdx)}>
+              <Text style={styles.addChoiceText}>＋ Add answer</Text>
+            </Pressable>
+          ) : null}
+          <SegmentedControl
+            value={q.category}
+            options={[
+              { value: 'general', label: 'General' },
+              { value: 'tech', label: 'Tech' },
+            ]}
+            onChange={(category) => setQ(qIdx, { category: category as TriviaDraft['category'] })}
+          />
+        </View>
+      ))}
+    </View>
+  )
+}
+
+function RemoveButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable style={styles.remove} onPress={onPress} hitSlop={8}>
+      <Text style={styles.removeText}>✕</Text>
+    </Pressable>
+  )
+}
+
+const styles = StyleSheet.create({
+  wrap: { gap: theme.space.md },
+  heading: {
+    color: theme.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  field: { gap: theme.space.sm },
+  label: {
+    color: theme.text,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  hint: {
+    color: theme.textFaint,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  list: { gap: theme.space.sm },
+  row: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
+  rowInput: {
+    flex: 1,
+    backgroundColor: theme.bgElevated,
+    borderColor: theme.border,
+    borderWidth: 1,
+    borderRadius: theme.radius.md,
+    color: theme.text,
+    fontSize: 16,
+    paddingHorizontal: theme.space.md,
+    paddingVertical: 12,
+  },
+  itemCard: {
+    backgroundColor: theme.bgElevated,
+    borderColor: theme.border,
+    borderWidth: 1,
+    borderRadius: theme.radius.md,
+    padding: theme.space.md,
+    gap: theme.space.sm,
+  },
+  itemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  itemLabel: {
+    color: theme.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  choiceHint: {
+    color: theme.textFaint,
+    fontSize: 12,
+  },
+  remove: {
+    width: 34,
+    height: 34,
+    borderRadius: theme.radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  removeText: {
+    color: theme.textMuted,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  radio: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: theme.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOn: {
+    borderColor: theme.success,
+  },
+  radioDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: theme.success,
+  },
+  addButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: theme.space.sm,
+    paddingHorizontal: theme.space.md,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: theme.primary,
+    backgroundColor: theme.primarySoft,
+  },
+  addButtonText: {
+    color: theme.primaryMuted,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  addChoice: {
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+  },
+  addChoiceText: {
+    color: theme.primaryMuted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  count: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  countOk: { color: theme.success },
+  countLow: { color: theme.textMuted },
+})

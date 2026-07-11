@@ -2,7 +2,6 @@ import { ReactNode } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
-import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import type { BootstrapLike } from '@/lib/bootstrap-props'
 import { shellPropsFromBootstrap } from '@/lib/bootstrap-props'
@@ -31,7 +30,6 @@ export function GameNotFound({ gameCode }: { gameCode: string }) {
 }
 
 export function GameShell({
-  title,
   subtitle,
   bootstrap,
   gameCode,
@@ -41,6 +39,9 @@ export function GameShell({
   onPromoted,
   children,
 }: {
+  // `title` is still accepted from callers but is now rendered by
+  // PlayerSessionShell's header (the game-type pill), so GameShell no longer
+  // draws it — that avoids stacking a second "Bingo / Code XXXX" header.
   title: string
   subtitle?: string
   bootstrap?: BootstrapLike
@@ -59,15 +60,18 @@ export function GameShell({
   const me = pid && roster ? roster.find((p) => p.id === pid) : undefined
   const showViewerBanner = !!(g && me && code && playerIsViewer(me, g))
 
+  // Suppress subtitles that only repeat the game code (e.g. "Code 8HDLLU" or
+  // the bare code) — the session header already shows the code as its hero
+  // text. Subtitles carrying real context ("Pick your team", phase labels) stay.
+  const codeUpper = code?.trim().toUpperCase()
+  const subUpper = subtitle?.trim().toUpperCase()
+  const subtitleIsJustCode =
+    !!subUpper && !!codeUpper && (subUpper === codeUpper || subUpper === `CODE ${codeUpper}`)
+  const showSubtitle = !!subtitle && !subtitleIsJustCode
+
   return (
     <View style={styles.shell}>
-      <Text style={styles.shellTitle}>{title}</Text>
-      {subtitle ? <Text style={styles.shellSubtitle}>{subtitle}</Text> : null}
-      {g?.game_type ? (
-        <View style={styles.rulesWrap}>
-          <GameRulesLink gameType={g.game_type} variant="subtle" />
-        </View>
-      ) : null}
+      {showSubtitle ? <Text style={styles.shellSubtitle}>{subtitle}</Text> : null}
       {showViewerBanner ? (
         <ViewerModeBanner
           gameCode={code!}
@@ -195,18 +199,11 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 14,
   },
-  shellTitle: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
   shellSubtitle: {
     color: '#9ca3af',
     fontSize: 15,
     lineHeight: 21,
   },
-  rulesWrap: { marginTop: 2, marginBottom: 4 },
   panel: {
     backgroundColor: '#17171d',
     borderRadius: 18,
