@@ -93,6 +93,7 @@ export function GameFinishPanel({
         gameType={game.game_type}
         gameTitle={game.title}
         resultTitle={title}
+        resultDetail={detail}
         leaderboard={leaderboard}
       />
     </ScrollView>

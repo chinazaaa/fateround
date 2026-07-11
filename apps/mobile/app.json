@@ -70,7 +70,8 @@
       "@config-plugins/react-native-webrtc",
       "expo-audio",
       "expo-image",
-      "expo-asset"
+      "expo-asset",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true

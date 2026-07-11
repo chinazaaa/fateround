@@ -200,6 +200,87 @@ export function postDescribeItTeam(gameId: string, resumeToken: string, team: nu
   return postJson<{ success: boolean }>('/api/describe-it/team', { gameId, resumeToken, team })
 }
 
+// --- Player-submitted lobby questions (poll suite) --------------------------
+
+export function postPlayerQuestionWyr(gameCode: string, resumeToken: string, optionA: string, optionB: string) {
+  return postJson<{ success?: boolean }>('/api/player-questions', {
+    gameId: gameCode.toUpperCase(),
+    resumeToken,
+    questionType: 'wyr',
+    optionA,
+    optionB,
+  })
+}
+
+export function postPlayerQuestionMlt(gameCode: string, resumeToken: string, questionText: string) {
+  return postJson<{ success?: boolean }>('/api/player-questions', {
+    gameId: gameCode.toUpperCase(),
+    resumeToken,
+    questionType: 'mlt',
+    questionText,
+  })
+}
+
+export function deletePlayerQuestion(resumeToken: string, questionId: string) {
+  return jsonRequest<{ success?: boolean }>('/api/player-questions', 'DELETE', { questionId, resumeToken })
+}
+
+/** Voters-mode name submission (players add candidates to be voted on). */
+export function postPlayerParticipant(
+  gameCode: string,
+  resumeToken: string,
+  name: string,
+  gender?: 'male' | 'female'
+) {
+  return postJson<{ success?: boolean }>('/api/player-participants', {
+    gameId: gameCode.toUpperCase(),
+    resumeToken,
+    name,
+    ...(gender ? { gender } : {}),
+  })
+}
+
+export function deletePlayerParticipant(resumeToken: string, participantId: string) {
+  return jsonRequest<{ success?: boolean }>('/api/player-participants', 'DELETE', { participantId, resumeToken })
+}
+
+// --- Host lobby team management (host-auth: hostToken + playerId) -----------
+
+export function postDescribeItTeamHost(gameCode: string, hostToken: string, playerId: string, team: number) {
+  return postJson<{ success?: boolean }>('/api/describe-it/team', {
+    gameId: gameCode.toUpperCase(),
+    hostToken,
+    playerId,
+    team,
+  })
+}
+
+export function postDescribeItBalance(gameCode: string, hostToken: string) {
+  return postJson<{ ok?: boolean }>('/api/describe-it/balance', { gameId: gameCode.toUpperCase(), hostToken })
+}
+
+export function postWordRushTeamHost(gameCode: string, hostToken: string, playerId: string, team: number) {
+  return postJson<{ success?: boolean }>('/api/word-rush/team', {
+    gameId: gameCode.toUpperCase(),
+    hostToken,
+    playerId,
+    team,
+  })
+}
+
+export function postWordRushShuffle(gameCode: string, hostToken: string) {
+  return postJson<{ ok?: boolean }>('/api/word-rush/shuffle', { gameId: gameCode.toUpperCase(), hostToken })
+}
+
+export function postQuickDrawGuessTeamHost(gameCode: string, hostToken: string, playerId: string, team: number) {
+  return postJson<{ success?: boolean }>('/api/quick-draw/guess-team', {
+    gameId: gameCode.toUpperCase(),
+    hostToken,
+    playerId,
+    team,
+  })
+}
+
 export function postDescribeItClue(gameId: string, resumeToken: string, clue: string) {
   return postJson<{ success: boolean }>('/api/describe-it/clue', { gameId, resumeToken, clue })
 }

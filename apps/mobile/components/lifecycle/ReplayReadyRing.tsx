@@ -10,6 +10,8 @@ type Props = {
   myResumeToken: string | null
   minPlayers?: number
   onReload: () => void | Promise<unknown>
+  /** Host-only: when set, each other player's row shows a Remove control. */
+  onRemovePlayer?: (player: Player) => void
 }
 
 export function ReplayReadyRing({
@@ -19,6 +21,7 @@ export function ReplayReadyRing({
   myResumeToken,
   minPlayers = 2,
   onReload,
+  onRemovePlayer,
 }: Props) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -75,6 +78,11 @@ export function ReplayReadyRing({
               </View>
               <Text style={styles.name}>{isMe ? `${p.name} (you)` : p.name}</Text>
               <Text style={[styles.status, on && styles.statusReady]}>{on ? 'Ready' : 'Not ready'}</Text>
+              {onRemovePlayer && !isMe ? (
+                <Pressable onPress={() => onRemovePlayer(p)} hitSlop={8}>
+                  <Text style={styles.remove}>Remove</Text>
+                </Pressable>
+              ) : null}
             </View>
           )
         })}
@@ -194,6 +202,11 @@ const styles = StyleSheet.create({
   },
   statusReady: {
     color: '#fda4af',
+  },
+  remove: {
+    color: '#f87171',
+    fontSize: 13,
+    fontWeight: '700',
   },
   primaryButton: {
     backgroundColor: '#f43f5e',

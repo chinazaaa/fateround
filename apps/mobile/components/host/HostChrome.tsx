@@ -53,6 +53,13 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
 
   // Play tab embeds the host's own player experience (join screen if not seated yet).
   const canPlay = hasMobilePlayerView(game.game_type)
+  // When the game is over, show the shared finished screen (winner + standings +
+  // inline host actions) rather than the in-game Manage controls (e.g. bingo's
+  // number caller) or the Play/Manage tabs. Requires the host to be seated as a
+  // player; a host-only host falls back to the game's own finished controls.
+  const finished = game.status === 'finished'
+  const seated = !!hostPlayerId
+  const showPlayView = canPlay && (playFirst || tab === 'play' || (finished && seated))
   // The ⚙ Host controls sheet (players + remove, settings, end game, play again)
   // is available to any host screen that hands us the roster — both play-first
   // games and host-run games (bingo/trivia/…), which keep their Manage tab too.
@@ -98,7 +105,7 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
           ) : null}
         </View>
 
-        {!playFirst && canPlay ? (
+        {!playFirst && canPlay && !finished ? (
           <View style={styles.tabs}>
             {(['play', 'manage'] as HostTab[]).map((t) => {
               const active = tab === t
@@ -118,7 +125,7 @@ export function HostChrome({ gameCode, hostToken, game, children, playFirst, pla
         ) : null}
       </View>
 
-      {playFirst || (tab === 'play' && canPlay) ? (
+      {showPlayView ? (
         <HostViewProvider value={{ hostToken, hostPlayerId, onReload: () => onReload?.() }}>
           <View style={styles.playBody}>
             <GameRouter gameCode={gameCode} gameType={game.game_type} />

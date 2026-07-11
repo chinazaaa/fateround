@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { Game } from '@fateround/shared'
@@ -49,6 +49,13 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
     void reloadSession()
   }, [reloadSession])
 
+  // If you're the host of this game, don't sit in the player shell (with a
+  // "Host" button to click) — go straight to the full host experience, which
+  // is host + play combined with all host controls inline.
+  useEffect(() => {
+    if (hasHostToken) router.replace(`/host/${gameCode}`)
+  }, [hasHostToken, gameCode, router])
+
   const goHome = () => {
     if (router.canGoBack()) router.back()
     else router.replace('/')
@@ -64,6 +71,17 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
   const onLeft = async () => {
     await clearPlayerSession(gameCode)
     router.replace('/')
+  }
+
+  // Host is being redirected to /host — avoid flashing the player shell.
+  if (hasHostToken) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <View style={styles.redirecting}>
+          <ActivityIndicator color={theme.primary} size="large" />
+        </View>
+      </SafeAreaView>
+    )
   }
 
   return (
@@ -137,6 +155,7 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.bg },
+  redirecting: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
     borderBottomWidth: 1,
     borderBottomColor: theme.surfaceHover,

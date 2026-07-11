@@ -472,11 +472,14 @@ The mobile host lobby was generic (roster + Start). These batches add the game-s
 |-------|-------|--------|
 | **L1** | Host **Play** access in the lobby — `HostLobbyScreen` gets a Manage/Play switch; a seated host drops into their own player lobby (team/role pickers) via embedded `GameRouter` | ✅ |
 | **L2** | **Codewords** host team management — `CodewordsHostLobby` (assign team+role, bench, shuffle; realtime `codewords_player_roles`); `postCodewordsHostRole`/`deleteCodewordsHostRole` | ✅ |
-| **L3** | **Describe It / Word Rush / Quick Draw (guess)** host team management — shared N-team roster + move + balance/shuffle | ⏳ |
-| **L4** | **Player question submission** in lobby — poll suite (WYR/ToT/MLT/NHIE/Pick-a-Number) → `/api/player-questions` | ⏳ |
-| **L5** | **Two Truths** statements + **Who-Said-This** quotes + voter names — `/api/two-truths/statements`, `/api/wst-quotes`, `/api/player-participants` | ⏳ |
+| **L3** | **Describe It / Word Rush / Quick Draw (guess)** host team management — shared `TeamRosterHostLobby` (N-team move + auto-balance/shuffle; realtime on the `*_players` tables) | ✅ |
+| **L4** | **Player question submission** in lobby — `PlayerQuestionSubmit` for poll suite (WYR/ToT → 2 options, MLT/NHIE/Pick-a-Number → text) → `/api/player-questions`, in `PollPlayerView`'s activity slot | ✅ |
+| **L5** | **Two Truths** statements *(already shipped in `TwoTruthsPlayerView`)* + **voter name submission** (`PlayerNameSubmit`, voters-mode people-polls → `/api/player-participants`) | ✅ |
 
+**Deferred:** Who-Said-This lobby quote pool (`/api/wst-quotes`) — niche, needs participant-attribution UI + no dedicated mobile WST view yet.
 **No lobby work:** most board games (auto-assign at start), Mafia (roles at start), Quiplash/Sudoku/Word Hunt/Bingo/NPAT (generic). Monopoly token pick already ships in `HostLobbyPlayCard`.
+
+**Lobby shipped:** host — `CodewordsHostLobby` (team+role), `TeamRosterHostLobby` (N-team), Manage/Play switch on `HostLobbyScreen`; player — `PlayerQuestionSubmit`, `PlayerNameSubmit` (in `PollPlayerView` activity). API helpers: `postCodewordsHostRole`/`deleteCodewordsHostRole`, `postDescribeItTeamHost`/`postDescribeItBalance`, `postWordRushTeamHost`/`postWordRushShuffle`, `postQuickDrawGuessTeamHost`, `postPlayerQuestionWyr`/`postPlayerQuestionMlt`/`deletePlayerQuestion`, `postPlayerParticipant`/`deletePlayerParticipant`.
 
 ### Batch 10 — Session & navigation shell ✅
 

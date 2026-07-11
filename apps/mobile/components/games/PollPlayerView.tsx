@@ -43,6 +43,8 @@ import { playerIsViewer } from '@fateround/shared/viewers'
 import { JoinScreen } from '@/components/JoinScreen'
 import { ParticipantClaimJoinScreen } from '@/components/join/ParticipantClaimJoinScreen'
 import { LobbyView } from '@/components/LobbyView'
+import { PlayerQuestionSubmit, lobbyAllowsPlayerQuestions } from '@/components/games/lobby/PlayerQuestionSubmit'
+import { PlayerNameSubmit, lobbyAllowsPlayerNames } from '@/components/games/lobby/PlayerNameSubmit'
 import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ParticipantPhotoCard } from '@/components/games/poll/ParticipantPhotoCard'
@@ -330,19 +332,40 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
       me?.participant_id != null
         ? pollState.participants.find((p) => p.id === me.participant_id)
         : null
+    const hasSession = !!bootstrap.game && !!bootstrap.myPlayerId && !!bootstrap.myResumeToken
+    const canSubmitQuestions = hasSession && lobbyAllowsPlayerQuestions(bootstrap.game!)
+    const canSubmitNames = hasSession && lobbyAllowsPlayerNames(bootstrap.game!)
     return (
       <LobbyView
         {...lobbyProps!}
         onLeft={onLeft}
         activity={
-          me?.participant_id ? (
-            <ParticipantPhotoCard
-              gameCode={bootstrap.code}
-              participantId={me.participant_id}
-              participant={myParticipant}
-              onPhotoUpdated={updateParticipantPhoto}
-            />
-          ) : undefined
+          <>
+            {me?.participant_id ? (
+              <ParticipantPhotoCard
+                gameCode={bootstrap.code}
+                participantId={me.participant_id}
+                participant={myParticipant}
+                onPhotoUpdated={updateParticipantPhoto}
+              />
+            ) : null}
+            {canSubmitQuestions && gameType ? (
+              <PlayerQuestionSubmit
+                gameCode={bootstrap.code}
+                gameType={gameType}
+                playerId={bootstrap.myPlayerId!}
+                resumeToken={bootstrap.myResumeToken!}
+              />
+            ) : null}
+            {canSubmitNames ? (
+              <PlayerNameSubmit
+                gameCode={bootstrap.code}
+                playerId={bootstrap.myPlayerId!}
+                resumeToken={bootstrap.myResumeToken!}
+                genderBased={bootstrap.game?.gender_based === true}
+              />
+            ) : null}
+          </>
         }
       />
     )
