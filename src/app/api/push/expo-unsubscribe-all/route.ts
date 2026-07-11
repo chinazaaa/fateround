@@ -24,10 +24,7 @@ export async function POST(req: NextRequest) {
     .eq('expo_push_token', data.expoPushToken)
 
   if (error) {
-    return NextResponse.json(
-      { error: internalErrorMessage('push/expo-unsubscribe-all', error) },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: internalErrorMessage('push/expo-unsubscribe-all', error) }, { status: 500 })
   }
 
   return NextResponse.json({ success: true })

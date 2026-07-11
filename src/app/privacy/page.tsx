@@ -31,8 +31,8 @@ export default function PrivacyPolicyPage() {
             <p>
               <strong>Information you provide.</strong> When you join a game you choose a display name. Some
               &ldquo;people&rdquo; poll games ask for an optional gender so rounds can be matched. As you play, we
-              process the content you create in a game — answers, votes, guesses, drawings, quotes, and any chat messages
-              — and, for games that use profile pictures, a photo you choose to upload.
+              process the content you create in a game — answers, votes, guesses, drawings, quotes, and any chat
+              messages — and, for games that use profile pictures, a photo you choose to upload.
             </p>
             <p>
               <strong>Voice chat.</strong> If you turn on voice chat, your microphone audio is streamed in real time to
@@ -40,14 +40,14 @@ export default function PrivacyPolicyPage() {
               by us.
             </p>
             <p>
-              <strong>Push notifications.</strong> If you opt in, we store a push token (an Expo push token in the mobile
-              app, or a Web Push subscription in the browser) so we can send game notifications, such as when the host
-              starts the game or it&rsquo;s your turn. You can turn these off at any time in Settings, which removes your
-              device&rsquo;s subscription.
+              <strong>Push notifications.</strong> If you opt in, we store a push token (an Expo push token in the
+              mobile app, or a Web Push subscription in the browser) so we can send game notifications, such as when the
+              host starts the game or it&rsquo;s your turn. You can turn these off at any time in Settings, which
+              removes your device&rsquo;s subscription.
             </p>
             <p>
-              <strong>Usage and device data.</strong> In production we use Google Analytics to understand how the site is
-              used — for example pages viewed, general device and browser type, and approximate region. We also keep
+              <strong>Usage and device data.</strong> In production we use Google Analytics to understand how the site
+              is used — for example pages viewed, general device and browser type, and approximate region. We also keep
               standard server logs. We use cookies and local storage to keep you in your game session and to remember
               your preferences (theme, sound, notifications).
             </p>
@@ -63,8 +63,8 @@ export default function PrivacyPolicyPage() {
 
           <Section title="How your information is shared">
             <p>
-              <strong>Other players.</strong> By design, your display name, your uploaded photo, and your in-game actions
-              are visible to the other players in your room — that is the game.
+              <strong>Other players.</strong> By design, your display name, your uploaded photo, and your in-game
+              actions are visible to the other players in your room — that is the game.
             </p>
             <p>
               <strong>Service providers.</strong> We share data only with the providers that help us run the service:
@@ -84,8 +84,8 @@ export default function PrivacyPolicyPage() {
               </li>
             </ul>
             <p>
-              We do <strong>not</strong> sell your personal information. We may disclose information if required by law or
-              to protect the rights, safety, and security of our users and the service.
+              We do <strong>not</strong> sell your personal information. We may disclose information if required by law
+              or to protect the rights, safety, and security of our users and the service.
             </p>
           </Section>
 
@@ -93,8 +93,8 @@ export default function PrivacyPolicyPage() {
             <p>
               Game rooms are temporary. The data created in a game is tied to its room and is cleaned up after the game
               ends as part of our routine housekeeping. Uploaded photos are stored for the room and are removed when
-              replaced or when the room is cleaned up. Push tokens are kept until you turn notifications off or the token
-              expires. You can ask us to delete data associated with you at any time using the contact below.
+              replaced or when the room is cleaned up. Push tokens are kept until you turn notifications off or the
+              token expires. You can ask us to delete data associated with you at any time using the contact below.
             </p>
           </Section>
 
@@ -109,8 +109,8 @@ export default function PrivacyPolicyPage() {
           <Section title="Children">
             <p>
               {SITE_NAME} is not directed to children under 13 (or the minimum age of digital consent in your country),
-              and we do not knowingly collect personal information from them. If you believe a child has provided us with
-              personal information, please contact us and we will remove it.
+              and we do not knowingly collect personal information from them. If you believe a child has provided us
+              with personal information, please contact us and we will remove it.
             </p>
           </Section>
 
@@ -130,8 +130,8 @@ export default function PrivacyPolicyPage() {
 
           <Section title="Changes to this policy">
             <p>
-              We may update this policy from time to time. When we do, we will revise the &ldquo;Last updated&rdquo; date
-              above. Continued use of {SITE_NAME} after a change means you accept the updated policy.
+              We may update this policy from time to time. When we do, we will revise the &ldquo;Last updated&rdquo;
+              date above. Continued use of {SITE_NAME} after a change means you accept the updated policy.
             </p>
           </Section>
 
