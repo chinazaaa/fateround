@@ -23,6 +23,8 @@ type Props = {
   isTie: boolean
   endedEarly: boolean
   highlightPlayerId?: string | null
+  /** Hide the winner hero/title on the visible card (when a parent already shows it). */
+  hideHeader?: boolean
 }
 
 /**
@@ -32,7 +34,7 @@ type Props = {
  * snapshots a light branded copy of the card to a PNG for image sharing
  * (falling back to text if capture/share fails).
  */
-export function ScrabbleShareCard({ standings, winnerName, isTie, endedEarly, highlightPlayerId }: Props) {
+export function ScrabbleShareCard({ standings, winnerName, isTie, endedEarly, highlightPlayerId, hideHeader }: Props) {
   const styles = useThemedStyles(makeStyles)
   const { error: toastError } = useToast()
   const captureCardRef = useRef<View>(null)
@@ -71,8 +73,12 @@ export function ScrabbleShareCard({ standings, winnerName, isTie, endedEarly, hi
     <View style={styles.wrap}>
       {/* Visible, theme-aware tailored card. */}
       <View style={styles.card}>
-        <Text style={styles.hero}>{hero}</Text>
-        <Text style={styles.heroTitle}>{heroTitle}</Text>
+        {hideHeader ? null : (
+          <>
+            <Text style={styles.hero}>{hero}</Text>
+            <Text style={styles.heroTitle}>{heroTitle}</Text>
+          </>
+        )}
         <View style={styles.standings}>
           {standings.map((row) => {
             const isWinner = !isTie && !endedEarly && row.rank === 1

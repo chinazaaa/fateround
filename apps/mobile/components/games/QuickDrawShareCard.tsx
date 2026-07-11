@@ -22,6 +22,8 @@ type TeamModeProps = {
   winners: number[]
   /** Fun end-of-match stat: who guessed the most words. */
   topGuessers: { name: string; count: number }[]
+  /** Hide the winner hero/title on the visible card (when a parent already shows it). */
+  hideHeader?: boolean
 }
 
 type IndividualModeProps = {
@@ -29,6 +31,8 @@ type IndividualModeProps = {
   /** Ranked players from quickDrawGuessIndividualLeaderboard. */
   board: DescribeItPlayerScore[]
   highlightPlayerId?: string | null
+  /** Hide the winner hero/title on the visible card (when a parent already shows it). */
+  hideHeader?: boolean
 }
 
 type Props = TeamModeProps | IndividualModeProps
@@ -73,8 +77,12 @@ export function QuickDrawShareCard(props: Props) {
     <View style={styles.wrap}>
       {/* Visible, theme-aware tailored card. */}
       <View style={styles.card}>
-        <Text style={styles.hero}>{model.emoji}</Text>
-        <Text style={styles.heroTitle}>{model.headline}</Text>
+        {props.hideHeader ? null : (
+          <>
+            <Text style={styles.hero}>{model.emoji}</Text>
+            <Text style={styles.heroTitle}>{model.headline}</Text>
+          </>
+        )}
         <View style={styles.standings}>
           {model.rows.map((row) => (
             <View key={row.key} style={[styles.row, row.winner && styles.rowWinner]}>

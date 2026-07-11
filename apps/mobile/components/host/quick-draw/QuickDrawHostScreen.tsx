@@ -199,7 +199,7 @@ export function QuickDrawHostScreen({ gameCode, hostToken, game, players, onRelo
   const lieCountdown = lieSession ? phaseDeadlineCountdown(lieSession.turn_deadline_at) : 0
 
   return (
-    <HostChrome gameCode={gameCode} hostToken={hostToken} game={game} players={players} onReload={onReload}>
+    <HostChrome gameCode={gameCode} hostToken={hostToken} game={game} players={players} onReload={onReload} playFirst>
       <View style={styles.statsRow}>
         <Text style={styles.stat}>Players: {activePlayers.length}</Text>
         <Text style={styles.stat}>{isGuess ? 'Guess mode' : 'Drawful mode'}</Text>

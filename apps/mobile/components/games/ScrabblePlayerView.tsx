@@ -386,9 +386,6 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
           title={title}
           subtitle="Final standings"
           detail={scores || activeSession.status_message || undefined}
-          leaderboard={scoreListLeaderboard(
-            shareStandings.map((s) => ({ name: s.name, score: s.score }))
-          )}
           winnerPlayerId={activeSession.winner_player_id}
           roundKey={activeSession.id}
           notice={
@@ -398,6 +395,7 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
               isTie={isTie}
               endedEarly={endedEarly}
               highlightPlayerId={bootstrap.myPlayerId}
+              hideHeader
             />
           }
         />
