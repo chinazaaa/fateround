@@ -47,6 +47,8 @@
     "./monopoly-tokens": "./src/monopoly-tokens.ts",
     "./mahjong": "./src/mahjong.ts",
     "./quick-draw-guess": "./src/quick-draw-guess.ts",
+    "./quick-draw-strokes": "./src/quick-draw-strokes.ts",
+    "./quick-draw-lie": "./src/quick-draw-lie.ts",
     "./batch-9-games": "./src/batch-9-games.ts",
     "./anonymous-messages": "./src/anonymous-messages.ts",
     "./hot-seat": "./src/hot-seat.ts",

@@ -1088,10 +1088,17 @@ export type QuickDrawVariant = 'lie' | 'guess'
 export type QuickDrawPlayMode = 'team' | 'individual'
 export type QuickDrawGuessPhase = 'turn' | 'break' | 'finished'
 
+export interface QuickDrawStroke {
+  color: string
+  width: number
+  points: [number, number][]
+  tool?: 'pen' | 'eraser'
+}
+
 export interface QuickDrawDrawingStrokeData {
   width: number
   height: number
-  strokes: unknown[]
+  strokes: QuickDrawStroke[]
 }
 
 export interface QuickDrawGuessSession {
@@ -1150,6 +1157,55 @@ export interface QuickDrawGuessGuess {
   correct: boolean
   points: number
   created_at: string
+}
+
+export type QuickDrawLiePhase = 'drawing' | 'titling' | 'voting' | 'reveal' | 'finished'
+
+export interface QuickDrawSession {
+  id: string
+  game_id: string
+  phase: QuickDrawLiePhase
+  drawing_index: number
+  turn_deadline_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface QuickDrawAssignment {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  prompt: string
+  created_at: string
+}
+
+export interface QuickDrawDrawing {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  stroke_data: QuickDrawDrawingStrokeData
+  submitted_at: string
+}
+
+export interface QuickDrawTitle {
+  id: string
+  game_id: string
+  drawing_id: string
+  player_id: string | null
+  text: string
+  is_real: boolean
+  submitted_at: string
+}
+
+export interface QuickDrawVote {
+  id: string
+  game_id: string
+  drawing_id: string
+  player_id: string
+  chosen_title_id: string
+  voted_at: string
 }
 
 export type MobileConfig = {

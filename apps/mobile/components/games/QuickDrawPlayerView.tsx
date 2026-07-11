@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
-import { type Game, type Player, type QuickDrawGuessGuess, type QuickDrawGuessPlayer, type QuickDrawGuessSession, type QuickDrawGuessWord } from '@fateround/shared'
+import { type Game, type Player, type QuickDrawDrawingStrokeData, type QuickDrawGuessGuess, type QuickDrawGuessPlayer, type QuickDrawGuessSession, type QuickDrawGuessWord } from '@fateround/shared'
 import { batch8GameLabel } from '@fateround/shared/batch-8-games'
 import {
   clampQuickDrawNumTeams,
@@ -12,10 +12,11 @@ import {
   quickDrawGuessWinningTeams,
   teamLabel,
 } from '@fateround/shared/quick-draw-guess'
+import { emptyStrokeData, normalizeStrokeData } from '@fateround/shared/quick-draw-strokes'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
 import { GameLoading, GameNotFound, GameShell, TurnBanner, WaitingPanel } from '@/components/game/GameChrome'
-import { UnavailableFeaturePanel } from '@/components/ui/UnavailableFeaturePanel'
+import { QuickDrawLiePlayerView } from '@/components/games/QuickDrawLiePlayerView'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
 import { RoundBreakCard } from '@/components/party/RoundBreakCard'
@@ -23,10 +24,11 @@ import { TeamBadge } from '@/components/party/TeamBadge'
 import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
 import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
 import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
+import { LiveDrawingCanvas } from '@/components/quick-draw/DrawingCanvas'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postQuickDrawGuess, postQuickDrawGuessSkip, postQuickDrawGuessTeam } from '@/lib/game-api'
+import { postQuickDrawGuess, postQuickDrawGuessSkip, postQuickDrawGuessStrokes, postQuickDrawGuessTeam } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import {
   QUICK_DRAW_GUESS_GUESS_SELECT,
@@ -185,19 +187,31 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
     session?.phase === 'break'
   )
 
+  const strokeData = normalizeStrokeData(session?.current_stroke_data ?? emptyStrokeData())
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const syncStrokes = useCallback(
+    (data: QuickDrawDrawingStrokeData) => {
+      if (!bootstrap.myResumeToken || !isDrawer) return
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+      syncTimerRef.current = setTimeout(() => {
+        void postQuickDrawGuessStrokes(bootstrap.code, bootstrap.myResumeToken!, data)
+      }, 400)
+    },
+    [bootstrap.code, bootstrap.myResumeToken, isDrawer]
+  )
+
+  useEffect(() => {
+    return () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+    }
+  }, [])
+
   if (bootstrap.screen === 'loading') return <GameLoading />
   if (bootstrap.screen === 'not_found') return <GameNotFound gameCode={bootstrap.code} />
 
   if (!isGuessMode && bootstrap.game) {
-    return (
-      <GameShell bootstrap={bootstrap} title={batch8GameLabel('quick_draw')} subtitle="Drawful mode">
-        <UnavailableFeaturePanel
-          gameCode={bootstrap.code}
-          title="Canvas drawing"
-          body="This room uses Drawful mode. Touch sketching is not in the mobile app yet — open the same code on another device to draw while others guess here."
-        />
-      </GameShell>
-    )
+    return <QuickDrawLiePlayerView gameCode={gameCode} />
   }
 
   if (bootstrap.screen === 'join' && bootstrap.game) {
@@ -255,7 +269,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
     session.phase === 'break'
       ? 'Round break'
       : isDrawer
-        ? 'You are drawing — sketch on paper or describe verbally'
+        ? 'You are drawing'
         : canGuess
           ? 'Guess the word!'
           : `${drawerName} is drawing`
@@ -307,19 +321,22 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
           <Text style={styles.status}>{session.status_message}</Text>
         ) : null}
 
-        {isDrawer && session.current_word ? (
-          <View style={styles.wordBox}>
-            <Text style={styles.wordLabel}>Your word</Text>
-            <Text style={styles.word}>{session.current_word}</Text>
-            <Text style={styles.wordHint}>Sketch on paper or describe without saying the word.</Text>
-            <Pressable
-              style={[styles.secondaryBtn, acting && styles.btnDisabled]}
-              disabled={acting}
-              onPress={() => void act(() => postQuickDrawGuessSkip(bootstrap.code, bootstrap.myResumeToken!))}
-            >
-              <Text style={styles.secondaryBtnText}>Skip word</Text>
-            </Pressable>
-          </View>
+        {session.phase === 'turn' ? (
+          isDrawer && session.current_word ? (
+            <LiveDrawingCanvas
+              prompt={session.current_word}
+              resetKey={`${session.turn_index}-${session.current_word}`}
+              onStrokeChange={syncStrokes}
+              onSkip={() => void act(() => postQuickDrawGuessSkip(bootstrap.code, bootstrap.myResumeToken!))}
+              skipDisabled={acting}
+            />
+          ) : (
+            <LiveDrawingCanvas
+              strokeData={strokeData}
+              readOnly
+              resetKey={`${session.turn_index}-watch`}
+            />
+          )
         ) : null}
 
         {canGuess ? (

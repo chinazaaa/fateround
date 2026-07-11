@@ -11,7 +11,7 @@ React Native app alongside the web client. Same backend, token-based join — no
 | | |
 |--|--|
 | **Native player screens** | **40 / 40** game types |
-| **Player E2E** | **39 / 40** (Drawful canvas is cross-device) |
+| **Player E2E** | **40 / 40** |
 | **Batches 10–15** | **Done** (shell, lifecycle, push, voice, P0–P3 polish) |
 | **Readiness score** | **6 / 7** — only EAS project ID + TestFlight remain |
 | **Biggest gap** | **In-game host** (lobby + start work; mid-game host dashboard does not) |
@@ -66,6 +66,7 @@ Feature flags: `GET /api/mobile-config`.
 | **10** | Session shell, ⋮ menu, rules links, native create, recent games |
 | **11** | Host lobby, start game, play again |
 | **16** | In-game host dashboard, play-along, bingo auto-call |
+| **17** | Drawful canvas, Quick Draw host, poll host results |
 | **12** | Lifecycle gates, finish scoreboards, import claim join |
 | **13** | Turn push (13+ games), per-game mute, timer haptics |
 | **14** | Voice on 14 types, rename sync, background disconnect |
@@ -75,7 +76,7 @@ Feature flags: `GET /api/mobile-config`.
 
 ## Next up
 
-See [`docs/mobile-rollout.md`](../../docs/mobile-rollout.md) → **Quick Draw Drawful canvas** + TestFlight / EAS project ID.
+See [`docs/mobile-rollout.md`](../../docs/mobile-rollout.md) → **TestFlight / EAS project ID**.
 
 ---
 

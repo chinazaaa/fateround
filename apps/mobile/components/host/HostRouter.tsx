@@ -4,6 +4,7 @@ import { BingoHostScreen } from '@/components/host/bingo/BingoHostScreen'
 import { GenericHostScreen } from '@/components/host/GenericHostScreen'
 import { MafiaHostScreen } from '@/components/host/mafia/MafiaHostScreen'
 import { PollRoundHostScreen } from '@/components/host/poll/PollRoundHostScreen'
+import { QuickDrawHostScreen } from '@/components/host/quick-draw/QuickDrawHostScreen'
 import { TriviaHostScreen } from '@/components/host/trivia/TriviaHostScreen'
 
 type Props = {
@@ -46,6 +47,18 @@ export function HostRouter({ gameCode, hostToken, game, players, onReload }: Pro
   if (type === 'mafia') {
     return (
       <MafiaHostScreen
+        gameCode={gameCode}
+        hostToken={hostToken}
+        game={game}
+        players={players}
+        onReload={onReload}
+      />
+    )
+  }
+
+  if (type === 'quick_draw') {
+    return (
+      <QuickDrawHostScreen
         gameCode={gameCode}
         hostToken={hostToken}
         game={game}

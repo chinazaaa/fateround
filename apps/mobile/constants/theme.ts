@@ -1,0 +1,31 @@
+/** Fate Round mobile design tokens — aligned with web dark theme. */
+export const theme = {
+  bg: '#0b0b0f',
+  bgElevated: '#121218',
+  surface: '#17171d',
+  surfaceHover: '#1c1c24',
+  border: '#2a2a35',
+  borderAccent: '#f43f5e44',
+  primary: '#f43f5e',
+  primarySoft: '#3f1d2b',
+  primaryMuted: '#fda4af',
+  text: '#ffffff',
+  textSecondary: '#d1d5db',
+  textMuted: '#9ca3af',
+  textFaint: '#6b7280',
+  error: '#f87171',
+  success: '#4ade80',
+  radius: {
+    sm: 10,
+    md: 14,
+    lg: 18,
+    pill: 999,
+  },
+  space: {
+    xs: 6,
+    sm: 10,
+    md: 16,
+    lg: 24,
+    xl: 32,
+  },
+} as const

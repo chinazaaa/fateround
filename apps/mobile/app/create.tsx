@@ -1,12 +1,17 @@
 import { useState } from 'react'
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import type { GameType } from '@fateround/shared'
+import { GameTypePicker } from '@/components/create/GameTypePicker'
+import { AmbientBackground } from '@/components/ui/AmbientBackground'
+import { AppButton } from '@/components/ui/AppButton'
+import { FormField } from '@/components/ui/FormField'
 import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
+import { SurfaceCard } from '@/components/ui/SurfaceCard'
+import { theme } from '@/constants/theme'
 import { createGame } from '@/lib/game-api'
 import { WEB_BASE_URL } from '@/lib/config'
-import { gameLabel, MOBILE_SUPPORTED_GAMES } from '@/lib/mobile-registry'
 import { NATIVE_CREATABLE_GAMES } from '@/lib/native-create'
 import { setHostToken } from '@/lib/secure-session'
 
@@ -36,119 +41,115 @@ export default function CreateScreen() {
     }
   }
 
-  const openWebCreate = () => {
-    void Linking.openURL(`${WEB_BASE_URL}/create`)
-  }
-
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <AmbientBackground />
       <KeyboardFormScreen contentContainerStyle={styles.container}>
-        <Pressable style={styles.back} onPress={() => router.canGoBack() ? router.back() : router.replace('/')}>
-          <Text style={styles.backText}>← Back</Text>
+        <Pressable
+          style={styles.back}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+        >
+          <Text style={styles.backText}>← Home</Text>
         </Pressable>
 
-        <Text style={styles.heading}>Create a game</Text>
-        <Text style={styles.subtitle}>Pick a game type and share the code — no sign-in required.</Text>
+        <View style={styles.hero}>
+          <Text style={styles.kicker}>Host a room</Text>
+          <Text style={styles.heading}>Create a game</Text>
+          <Text style={styles.subtitle}>Pick a game, share the code, and start when everyone's in.</Text>
+        </View>
 
-        <Text style={styles.label}>Game title</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Friday game night"
-          placeholderTextColor="#6b7280"
-          value={title}
-          onChangeText={setTitle}
-          maxLength={100}
-          autoCapitalize="sentences"
-          autoCorrect={false}
-        />
+        <SurfaceCard>
+          <FormField
+            label="Game title"
+            hint="Shown in the lobby — e.g. Friday night trivia"
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Friday game night"
+            maxLength={100}
+            autoCapitalize="sentences"
+            autoCorrect={false}
+          />
+        </SurfaceCard>
 
-        <Text style={styles.label}>Game type</Text>
-        <View style={styles.typeList}>
-          {NATIVE_CREATABLE_GAMES.map((type) => {
-            const selected = type === gameType
-            return (
-              <Pressable
-                key={type}
-                style={[styles.typeChip, selected && styles.typeChipSelected]}
-                onPress={() => setGameType(type)}
-              >
-                <Text style={[styles.typeChipText, selected && styles.typeChipTextSelected]}>
-                  {gameLabel(type)}
-                </Text>
-              </Pressable>
-            )
-          })}
+        <View style={styles.typeSection}>
+          <Text style={styles.typeHeading}>Game type</Text>
+          <GameTypePicker options={NATIVE_CREATABLE_GAMES} value={gameType} onChange={setGameType} />
         </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <Pressable
-          style={[styles.createBtn, (creating || !title.trim()) && styles.createBtnDisabled]}
+        <AppButton
+          label="Create & host"
           onPress={() => void onCreate()}
-          disabled={creating || !title.trim()}
-        >
-          {creating ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.createBtnText}>Create & host</Text>
-          )}
-        </Pressable>
+          loading={creating}
+          disabled={!title.trim()}
+        />
 
-        <Pressable style={styles.webLink} onPress={openWebCreate}>
-          <Text style={styles.webLinkText}>More setup options (participants, custom questions)</Text>
+        <Pressable style={styles.webLink} onPress={() => void Linking.openURL(`${WEB_BASE_URL}/create`)}>
+          <Text style={styles.webLinkText}>Need custom questions or participant lists?</Text>
+          <Text style={styles.webLinkAction}>Open full setup on web →</Text>
         </Pressable>
-
-        {MOBILE_SUPPORTED_GAMES.length > NATIVE_CREATABLE_GAMES.length ? (
-          <Text style={styles.hint}>
-            Some game types need extra setup — use the web create flow for those.
-          </Text>
-        ) : null}
       </KeyboardFormScreen>
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0b0b0f' },
-  container: { padding: 24, gap: 12, paddingBottom: 40 },
-  back: { alignSelf: 'flex-start', marginBottom: 8 },
-  backText: { color: '#fda4af', fontSize: 16, fontWeight: '600' },
-  heading: { color: '#fff', fontSize: 28, fontWeight: '800' },
-  subtitle: { color: '#9ca3af', fontSize: 15, lineHeight: 22, marginBottom: 8 },
-  label: { color: '#d1d5db', fontSize: 14, fontWeight: '600', marginTop: 4 },
-  input: {
-    backgroundColor: '#17171d',
-    borderColor: '#2a2a35',
-    borderWidth: 1,
-    borderRadius: 12,
-    color: '#fff',
-    fontSize: 17,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+  safe: { flex: 1, backgroundColor: theme.bg },
+  container: {
+    paddingHorizontal: theme.space.lg,
+    paddingBottom: 40,
+    gap: theme.space.lg,
   },
-  typeList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  typeChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#2a2a35',
-    backgroundColor: '#17171d',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  back: { alignSelf: 'flex-start', marginTop: theme.space.xs },
+  backText: { color: theme.primaryMuted, fontSize: 16, fontWeight: '700' },
+  hero: {
+    gap: theme.space.xs,
+    paddingBottom: theme.space.xs,
   },
-  typeChipSelected: { borderColor: '#f43f5e', backgroundColor: '#3f1d2b' },
-  typeChipText: { color: '#9ca3af', fontSize: 13, fontWeight: '600' },
-  typeChipTextSelected: { color: '#fff' },
-  error: { color: '#f87171', fontSize: 14 },
-  createBtn: {
-    backgroundColor: '#f43f5e',
-    borderRadius: 12,
-    paddingVertical: 16,
+  kicker: {
+    color: theme.primaryMuted,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+  heading: {
+    color: theme.text,
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  subtitle: {
+    color: theme.textMuted,
+    fontSize: 16,
+    lineHeight: 24,
+    maxWidth: 340,
+  },
+  typeSection: { gap: theme.space.sm },
+  typeHeading: {
+    color: theme.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  error: {
+    color: theme.error,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  webLink: {
     alignItems: 'center',
-    marginTop: 12,
+    gap: 4,
+    paddingVertical: theme.space.sm,
   },
-  createBtnDisabled: { opacity: 0.5 },
-  createBtnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  webLink: { paddingVertical: 12, alignItems: 'center' },
-  webLinkText: { color: '#9ca3af', fontSize: 13, textDecorationLine: 'underline', textAlign: 'center' },
-  hint: { color: '#6b7280', fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  webLinkText: {
+    color: theme.textFaint,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  webLinkAction: {
+    color: theme.primaryMuted,
+    fontSize: 14,
+    fontWeight: '700',
+  },
 })

@@ -4,7 +4,6 @@ import type { Game, GameType, Player } from '@fateround/shared'
 import {
   postFinishGame,
   postPlayAgain,
-  postQuickDrawGuessAdvance,
   postTwoTruthsAdvance,
 } from '@/lib/game-api'
 import { gameLabel } from '@/lib/mobile-registry'
@@ -21,7 +20,6 @@ type Props = {
 
 function needsAdvanceControl(gameType: GameType, game: Game): boolean {
   if (gameType === 'two_truths') return true
-  if (gameType === 'quick_draw' && game.quick_draw_variant === 'guess') return true
   return false
 }
 
@@ -62,11 +60,7 @@ export function GenericHostScreen({ gameCode, hostToken, game, players, onReload
           style={[styles.primaryBtn, acting === 'advance' && styles.btnDisabled]}
           disabled={!!acting}
           onPress={() =>
-            void run('advance', () =>
-              game.game_type === 'quick_draw'
-                ? postQuickDrawGuessAdvance(gameCode, hostToken)
-                : postTwoTruthsAdvance(gameCode, { hostToken, force: true })
-            )
+            void run('advance', () => postTwoTruthsAdvance(gameCode, { hostToken, force: true }))
           }
         >
           {acting === 'advance' ? (

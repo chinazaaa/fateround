@@ -3,10 +3,14 @@ import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-nat
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { normalizeGameCode } from '@fateround/shared'
-import { getRecentGames, type RecentGame } from '@/lib/recent-games'
+import { AmbientBackground } from '@/components/ui/AmbientBackground'
+import { AppButton } from '@/components/ui/AppButton'
+import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
+import { SurfaceCard } from '@/components/ui/SurfaceCard'
+import { theme } from '@/constants/theme'
 import { WEB_BASE_URL } from '@/lib/config'
 import { gameLabel } from '@/lib/mobile-registry'
-import { KeyboardFormScreen } from '@/components/ui/KeyboardFormScreen'
+import { getRecentGames, type RecentGame } from '@/lib/recent-games'
 
 export default function HomeScreen() {
   const router = useRouter()
@@ -17,57 +21,70 @@ export default function HomeScreen() {
     void getRecentGames().then(setRecent)
   }, [])
 
+  const canJoin = normalizeGameCode(gameCode).length >= 4
+
   const onJoin = () => {
     const code = normalizeGameCode(gameCode)
     if (code.length < 4) return
     router.push(`/game/${code}`)
   }
 
-  const openCreateOnWeb = () => {
-    void Linking.openURL(`${WEB_BASE_URL}/create`)
-  }
-
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <AmbientBackground />
       <KeyboardFormScreen contentContainerStyle={styles.container}>
-        <Text style={styles.brand}>Fate Round</Text>
-        <Text style={styles.subtitle}>Join a party game with a code — no sign-in required.</Text>
+        <View style={styles.hero}>
+          <Text style={styles.kicker}>Party games</Text>
+          <Text style={styles.brand}>Fate Round</Text>
+          <Text style={styles.tagline}>Join friends with a code. No account, no fuss.</Text>
+        </View>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Game code"
-          placeholderTextColor="#6b7280"
-          value={gameCode}
-          onChangeText={(value) => setGameCode(value.toUpperCase())}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          maxLength={12}
-        />
+        <SurfaceCard accent>
+          <Text style={styles.cardLabel}>Join a game</Text>
+          <TextInput
+            style={styles.codeInput}
+            placeholder="ABCD12"
+            placeholderTextColor={theme.textFaint}
+            value={gameCode}
+            onChangeText={(value) => setGameCode(value.toUpperCase())}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            maxLength={12}
+            returnKeyType="go"
+            onSubmitEditing={onJoin}
+          />
+          <AppButton label="Join game" onPress={onJoin} disabled={!canJoin} />
+        </SurfaceCard>
 
-        <Pressable
-          style={[styles.button, gameCode.trim().length < 4 && styles.buttonDisabled]}
-          onPress={onJoin}
-          disabled={gameCode.trim().length < 4}
-        >
-          <Text style={styles.buttonText}>Join game</Text>
-        </Pressable>
-
-        <Pressable style={styles.button} onPress={() => router.push('/create')}>
-          <Text style={styles.buttonText}>Create a game</Text>
-        </Pressable>
-
-        <Pressable style={styles.secondaryButton} onPress={openCreateOnWeb}>
-          <Text style={styles.secondaryButtonText}>More setup options</Text>
-        </Pressable>
+        <View style={styles.actions}>
+          <AppButton
+            label="Create a game"
+            variant="secondary"
+            onPress={() => router.push('/create')}
+            style={styles.flexBtn}
+          />
+          <AppButton
+            label="Advanced setup on web"
+            variant="ghost"
+            onPress={() => void Linking.openURL(`${WEB_BASE_URL}/create`)}
+          />
+        </View>
 
         {recent.length > 0 ? (
-          <View style={styles.recentSection}>
-            <Text style={styles.recentTitle}>Recent games</Text>
+          <View style={styles.recentBlock}>
+            <Text style={styles.sectionTitle}>Recent</Text>
             {recent.map((entry) => (
-              <Pressable key={entry.code} style={styles.recentRow} onPress={() => router.push(`/game/${entry.code}`)}>
+              <Pressable
+                key={entry.code}
+                style={({ pressed }) => [styles.recentRow, pressed && styles.recentRowPressed]}
+                onPress={() => router.push(`/game/${entry.code}`)}
+              >
+                <View style={styles.recentBadge}>
+                  <Text style={styles.recentBadgeText}>{entry.code.slice(0, 2)}</Text>
+                </View>
                 <View style={styles.recentMeta}>
                   <Text style={styles.recentCode}>{entry.code}</Text>
-                  <Text style={styles.recentLabel}>
+                  <Text style={styles.recentLabel} numberOfLines={1}>
                     {entry.title || (entry.gameType ? gameLabel(entry.gameType as never) : 'Game')}
                   </Text>
                 </View>
@@ -76,86 +93,112 @@ export default function HomeScreen() {
             ))}
           </View>
         ) : null}
-
-        <Text style={styles.footerHint}>Host link opens automatically when you create and return to the app.</Text>
       </KeyboardFormScreen>
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0b0b0f' },
+  safe: { flex: 1, backgroundColor: theme.bg },
   container: {
-    padding: 24,
-    gap: 12,
+    paddingHorizontal: theme.space.lg,
+    paddingTop: theme.space.md,
     paddingBottom: 40,
+    gap: theme.space.lg,
+  },
+  hero: {
+    alignItems: 'center',
+    paddingTop: theme.space.sm,
+    paddingBottom: theme.space.xs,
+    gap: theme.space.xs,
+  },
+  kicker: {
+    color: theme.primaryMuted,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
   },
   brand: {
-    color: '#fff',
-    fontSize: 34,
+    color: theme.text,
+    fontSize: 40,
     fontWeight: '800',
-    marginTop: 24,
+    letterSpacing: -0.5,
+    textAlign: 'center',
   },
-  subtitle: {
-    color: '#9ca3af',
+  tagline: {
+    color: theme.textMuted,
     fontSize: 16,
     lineHeight: 24,
-    marginBottom: 12,
-  },
-  input: {
-    backgroundColor: '#17171d',
-    borderColor: '#2a2a35',
-    borderWidth: 1,
-    borderRadius: 12,
-    color: '#fff',
-    fontSize: 24,
-    letterSpacing: 4,
     textAlign: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    maxWidth: 280,
+    marginTop: 4,
   },
-  button: {
-    backgroundColor: '#f43f5e',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
+  cardLabel: {
+    color: theme.primaryMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    borderRadius: 12,
+  codeInput: {
+    backgroundColor: theme.bg,
+    borderColor: theme.border,
     borderWidth: 1,
-    borderColor: '#2a2a35',
-    paddingVertical: 14,
-    alignItems: 'center',
+    borderRadius: theme.radius.md,
+    color: theme.text,
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: 6,
+    textAlign: 'center',
+    paddingVertical: 18,
+    paddingHorizontal: theme.space.md,
   },
-  secondaryButtonText: {
-    color: '#d1d5db',
-    fontSize: 15,
-    fontWeight: '600',
+  actions: {
+    gap: theme.space.xs,
+    alignItems: 'stretch',
   },
-  recentSection: { marginTop: 16, gap: 8 },
-  recentTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  flexBtn: { width: '100%' },
+  recentBlock: { gap: theme.space.sm },
+  sectionTitle: {
+    color: theme.text,
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
   recentRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#17171d',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    backgroundColor: theme.surface,
+    borderRadius: theme.radius.md,
     borderWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
+    padding: theme.space.md,
+    gap: theme.space.md,
   },
-  recentMeta: { flex: 1 },
-  recentCode: { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 2 },
-  recentLabel: { color: '#9ca3af', fontSize: 13, marginTop: 2 },
-  recentChevron: { color: '#6b7280', fontSize: 22 },
-  footerHint: { color: '#6b7280', fontSize: 12, lineHeight: 18, marginTop: 8 },
+  recentRowPressed: { opacity: 0.85 },
+  recentBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: theme.primarySoft,
+    borderWidth: 1,
+    borderColor: theme.borderAccent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recentBadgeText: {
+    color: theme.primaryMuted,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  recentMeta: { flex: 1, gap: 2 },
+  recentCode: {
+    color: theme.text,
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: 2,
+  },
+  recentLabel: { color: theme.textMuted, fontSize: 14 },
+  recentChevron: { color: theme.textFaint, fontSize: 24, fontWeight: '300' },
 })

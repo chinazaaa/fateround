@@ -18,7 +18,7 @@ Living doc for the React Native / Expo app in `apps/mobile/`.
 | **Push notifications (Batch 13)** | **Done** — turn push for 13+ games, per-game mute, local haptics; EAS project ID deferred |
 | **Voice chat (Batch 14)** | **Done** — 14 game types, rename sync, background disconnect; device QA with TestFlight |
 | **Game UI polish (Batch 15)** | **P0–P3 core done** — poll/trivia/bingo, boards/cards, party UX, heavy games |
-| **Web fallback** | Still used when `mobile-config` disables a type, advanced create setup, or Drawful canvas |
+| **Web fallback** | Still used when `mobile-config` disables a type or advanced create setup |
 
 Batches 1–9 were about **coverage**: every game type can open a native screen and perform core player actions.  
 Batches 10–15 added **shell, lifecycle, notifications, voice, and visual polish**.  
@@ -29,7 +29,7 @@ Batches 10–15 added **shell, lifecycle, notifications, voice, and visual polis
 | Case | Native player? | Notes |
 |------|----------------|-------|
 | **39 game types** | ✅ Full player flow | Join, lobby, play, finish, play-again waiting |
-| **Quick Draw — Drawful (canvas)** | ⚠️ Cross-device | Guess mode is native; canvas uses `UnavailableFeaturePanel` (open same code elsewhere) |
+| **Quick Draw** | ✅ Native | Drawful (lie) + guess modes with touch canvas; host dashboard for both |
 | **`custom` game type** | ✅ Play | Create needs web slot builder |
 | **Import-mode polls / hot seat** | ✅ Claim join | `ParticipantClaimJoinScreen`; host still adds names on web |
 | **Host-driven mid-game** | ⚠️ Players OK | Trivia auto-advances from any client; bingo auto-call sync not ported to mobile |
@@ -76,7 +76,7 @@ All types in `GameType` are registered in `MOBILE_SUPPORTED_GAMES` and `mobile-c
 | **5** | quiplash, word_rush, word_hunt, i_call_on | 4 | |
 | **6** | chess, scrabble | 2 | |
 | **7** | mafia, codewords | 2 | Mafia uses API state; codewords uses Supabase + API |
-| **8** | monopoly, mahjong, quick_draw | 3 | Quick Draw **guess** mode native; **Drawful canvas → web**. Boards polished in Batch 15 P3 |
+| **8** | monopoly, mahjong, quick_draw | 3 | Quick Draw **guess + Drawful** native with touch canvas (Batch 17) |
 | **9** | secret_message, hot_seat, custom, anonymous_messages | 4 | Auto-join for inbox games |
 
 **Cumulative: 40 games.**
@@ -156,7 +156,7 @@ POST helpers for moves/votes/actions per game; GET for mahjong state, hot-seat r
 ## What's **not** done (known gaps)
 
 Remaining work before App Store / Play Store marketing.  
-**Host mode core is done (Batch 16)** — remaining gaps are Drawful canvas, richer poll host UX vs web, and release QA.
+**Host mode + Drawful canvas done (Batches 16–17)** — remaining gap is release QA (EAS / TestFlight).
 
 ### Host mode
 
@@ -177,7 +177,7 @@ Mobile can **create**, **lobby**, **start**, **run mid-game**, **play along**, a
 - [x] **Host playing along** — join as player while keeping host token (`HostPlayAlongCard`)
 - [x] **Bingo auto-call sync** — `useBingoAutoCall` on bingo host screen + manual call button
 
-**Still thinner than web:** poll-family full results/leaderboards on host, Quick Draw Drawful canvas host, advanced create settings (participant import, custom slots).
+**Still thinner than web:** advanced create settings (participant import, custom slots), poll host animations.
 
 ### App shell & session
 
@@ -220,7 +220,7 @@ Batch 15 **P0–P3 core is done** for priority games. Remaining gaps are non-pri
 | **P0** | Poll suite, trivia, bingo | ✅ Core done | Gender filters, results animations |
 | **P1** | Ludo, checkers, chess, crazy8, whot | ✅ Core done | Motion / deal animations |
 | **P2** | describe_it, quiplash, word_rush | ✅ Core done | — |
-| **P3** | monopoly, scrabble, mahjong, quick_draw **guess** | ✅ Core done | Drawful **canvas** still cross-device |
+| **P3** | monopoly, scrabble, mahjong, quick_draw | ✅ Core done | — |
 | **—** | Other 30+ game types | MVP playable | Visual parity vs web, animation pass |
 
 Detail:
@@ -230,7 +230,7 @@ Detail:
 - [x] **Board/card** — checkers, ludo, chess highlight, crazy8/whot cards (P1)
 - [x] **Party** — describe_it, word_rush, quiplash team/score UX (P2)
 - [x] **Heavy** — monopoly board, scrabble tiles, mahjong table, quick_draw guess (P3)
-- [ ] **Quick Draw Drawful (canvas)** — `UnavailableFeaturePanel`; no native sketch surface
+- [x] **Quick Draw (guess + Drawful):** native touch canvas (`DrawingCanvas`), stroke sync, full Drawful player flow *(Batch 17)*
 - [ ] **Anonymous room** — text feed only; no GIFs, reactions, reply threading
 - [ ] **Remaining games** — logic-first MVPs (matching_pairs, sudoku, mafia, etc.)
 - [ ] **Mahjong** — simplified claim UI (no full chow/pung/kong picker like web)
@@ -245,7 +245,7 @@ Detail:
 
 ## Proposed next batches
 
-Batches 10–16 core work is **done**. Prioritize **Drawful canvas + device QA** next.
+Batches 10–17 core work is **done**. Prioritize **device QA + TestFlight** next.
 
 ### Batch 10 — Session & navigation shell ✅
 
@@ -263,7 +263,8 @@ Batches 10–16 core work is **done**. Prioritize **Drawful canvas + device QA**
 - [x] Per-game host screens: bingo (call + auto-sync), trivia (auto-advance + force), poll/hot_seat/custom (end/next/finish), Mafia (phase advance), generic (board/party games + two-truths/quick-draw guess advance)
 - [x] `useBingoAutoCall`, `useTriviaAutoAdvance`, host API helpers in `game-api.ts`
 - [x] `HostPlayAlongCard` — join own game as player while retaining host token
-- [ ] Web-only host richness: full poll results dashboard, Drawful canvas host, advanced create settings
+- [x] Poll host: round results (`PollRoundResults`), vote progress, MLT cumulative leaderboard *(Batch 17)*
+- [ ] Web-only host richness: advanced create settings
 
 ### Batch 12 — Lifecycle & finish UX ✅
 
@@ -311,6 +312,16 @@ Pick games by traffic / complexity, not all at once:
 - [x] **Word Rush:** live scores, team roster picker, letter-pair prompt display, intermission recap, recent-correct feed, turn timer
 - [x] **Quiplash:** live leaderboard, Write/Vote/Results stepper, reveal recap with vote pts + top highlight, solo-round banner, next-round countdown
 
+### Batch 17 — Drawful canvas + host polish ✅
+
+**Done (Jul 2026).**
+
+- [x] `react-native-svg` drawing surface — pen, eraser, colors, undo/clear
+- [x] **Guess mode:** live canvas for drawer, readonly preview for guessers, stroke sync via `/api/quick-draw/guess-strokes`
+- [x] **Drawful (lie) mode:** full mobile player (`QuickDrawLiePlayerView`) — draw, fake titles, vote, reveal
+- [x] **Quick Draw host:** `QuickDrawHostScreen` — phase advance, live drawing preview, leaderboard
+- [x] **Poll host polish:** `PollRoundResults` between rounds, vote-in progress, MLT overall leaderboard
+
 #### Batch 15 P3 (Jul 2026)
 
 - [x] Shared `@fateround/shared/monopoly-board-layout` (11×11 grid, color hex, short labels)
@@ -318,7 +329,7 @@ Pick games by traffic / complexity, not all at once:
 - [x] **Scrabble:** `ScrabbleTile` wood-style rack/board tiles, responsive board grid, live leaderboard, turn deadline badge
 - [x] **Mahjong:** `MahjongTableView` four-seat table + discard pond, `MahjongTileFace` colored tile faces, visual melds, turn timer
 - [x] **Quick Draw (guess mode):** team roster picker, live scoreboards, timers, guess feed (P3)
-- [x] **Quick Draw (Drawful canvas):** not native — cross-device panel only (see gaps)
+- [x] **Quick Draw (Drawful canvas):** native touch canvas + full lie-mode flow (Batch 17)
 
 ---
 
@@ -365,7 +376,7 @@ Client check: `isGameMobileSupported()` in `apps/mobile/lib/api.ts`.
 Use this before marketing “native app”:
 
 - [x] Host can **create, start, and run** a game on device (lobby + in-game host dashboard)
-- [x] Player can join, play, see results, leave, rejoin (39/40 types; Drawful canvas uses cross-device panel)
+- [x] Player can join, play, see results, leave, rejoin (**40/40** types including Drawful canvas)
 - [x] No dead-end “use web” copy on happy paths (`UnavailableFeaturePanel`, “More setup options”)
 - [x] Turn notification for async games (server push + foreground alerts + haptics on 13+ turn-based types)
 - [x] Voice chat implemented (14 types, background handling; physical QA pending TestFlight)

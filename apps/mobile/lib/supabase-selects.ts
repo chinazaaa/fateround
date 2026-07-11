@@ -138,6 +138,16 @@ export const QUICK_DRAW_GUESS_WORD_SELECT =
 
 export const QUICK_DRAW_GUESS_GUESS_SELECT = 'id,game_id,turn_index,player_id,team,text,correct,points,created_at'
 
+export const QUICK_DRAW_SESSION_SELECT = 'id,game_id,phase,drawing_index,turn_deadline_at,created_at,updated_at'
+
+export const QUICK_DRAW_ASSIGNMENT_SELECT = 'id,game_id,round_id,player_id,prompt,created_at'
+
+export const QUICK_DRAW_DRAWING_SELECT = 'id,game_id,round_id,player_id,stroke_data,submitted_at'
+
+export const QUICK_DRAW_TITLE_SELECT = 'id,game_id,drawing_id,player_id,text,is_real,submitted_at'
+
+export const QUICK_DRAW_VOTE_SELECT = 'id,game_id,drawing_id,player_id,chosen_title_id,voted_at'
+
 export const ANONYMOUS_MESSAGE_SELECT =
   'id,game_id,player_id,text,created_at,reply_to_id,reply_to_text,message_type,media_url'
 

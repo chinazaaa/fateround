@@ -9,7 +9,8 @@ import { clearPlayerSession, getHostToken, getPlayerSession } from '@/lib/secure
 import { gameHasMobileVoice } from '@/lib/voice-games'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { PlayerSessionMenu } from '@/components/session/PlayerSessionMenu'
-import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { HeaderAction } from '@/components/ui/HeaderAction'
+import { theme } from '@/constants/theme'
 
 type Props = {
   gameCode: string
@@ -19,25 +20,36 @@ type Props = {
 
 export function PlayerSessionShell({ gameCode, game, children }: Props) {
   const router = useRouter()
-  const label = game ? gameLabel(game.game_type) : undefined
+  const code = gameCode.toUpperCase()
+  const typeLabel = game ? gameLabel(game.game_type) : undefined
 
   const [playerId, setPlayerId] = useState<string | null>(null)
   const [playerName, setPlayerName] = useState('')
+  const [hasHostToken, setHasHostToken] = useState(false)
 
   const reloadSession = useCallback(async () => {
-    const session = await getPlayerSession(gameCode)
+    const [session, hostToken] = await Promise.all([
+      getPlayerSession(gameCode),
+      getHostToken(gameCode),
+    ])
     setPlayerId(session?.playerId ?? null)
     setPlayerName(session?.playerName ?? '')
+    setHasHostToken(!!hostToken)
   }, [gameCode])
 
   useEffect(() => {
     void reloadSession()
   }, [reloadSession])
 
+  const goHome = () => {
+    if (router.canGoBack()) router.back()
+    else router.replace('/')
+  }
+
   const onShare = async () => {
     try {
       await Share.share({
-        message: `Join my game on Fate Round — code ${gameCode.toUpperCase()}\n${gameWebUrl(gameCode)}`,
+        message: `Join my game on Fate Round — code ${code}\n${gameWebUrl(gameCode)}`,
       })
     } catch {
       // dismissed
@@ -57,40 +69,49 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Pressable style={styles.headerSide} onPress={() => router.canGoBack() ? router.back() : router.replace('/')}>
-          <Text style={styles.back}>←</Text>
-        </Pressable>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerCode}>{gameCode.toUpperCase()}</Text>
-          {game?.title ? <Text style={styles.headerTitle} numberOfLines={1}>{game.title}</Text> : label ? <Text style={styles.headerMeta}>{label}</Text> : null}
-          {game?.game_type ? (
-            <View style={styles.rulesRow}>
-              <GameRulesLink gameType={game.game_type} variant="subtle" />
-            </View>
-          ) : null}
+        <View style={styles.toolbar}>
+          <Pressable style={styles.backBtn} onPress={goHome} hitSlop={8}>
+            <Text style={styles.backIcon}>←</Text>
+          </Pressable>
+
+          <View style={styles.toolbarActions}>
+            <HeaderAction label="Share" onPress={() => void onShare()} />
+            {hasHostToken ? (
+              <HeaderAction label="Host" accent onPress={() => void openHost()} />
+            ) : null}
+            {playerId ? (
+              <PlayerSessionMenu
+                gameCode={gameCode}
+                gameType={game?.game_type}
+                playerId={playerId}
+                playerName={playerName}
+                onRenamed={(name) => {
+                  setPlayerName(name)
+                  void reloadSession()
+                }}
+                onLeft={() => void onLeft()}
+              />
+            ) : null}
+          </View>
         </View>
-        <View style={styles.headerActions}>
-          <Pressable style={styles.iconBtn} onPress={() => void onShare()}>
-            <Text style={styles.iconText}>Share</Text>
-          </Pressable>
-          <Pressable style={styles.iconBtn} onPress={() => void openHost()}>
-            <Text style={styles.iconText}>Host</Text>
-          </Pressable>
-          {playerId ? (
-            <PlayerSessionMenu
-              gameCode={gameCode}
-              gameType={game?.game_type}
-              playerId={playerId}
-              playerName={playerName}
-              onRenamed={(name) => {
-                setPlayerName(name)
-                void reloadSession()
-              }}
-              onLeft={() => void onLeft()}
-            />
+
+        <View style={styles.meta}>
+          <View style={styles.codeRow}>
+            <Text style={styles.code}>{code}</Text>
+            {typeLabel ? (
+              <View style={styles.typePill}>
+                <Text style={styles.typePillText}>{typeLabel}</Text>
+              </View>
+            ) : null}
+          </View>
+          {game?.title ? (
+            <Text style={styles.title} numberOfLines={1}>
+              {game.title}
+            </Text>
           ) : null}
         </View>
       </View>
+
       {game && gameHasMobileVoice(game.game_type) ? (
         <VoiceRail gameCode={gameCode} mode="player" />
       ) : null}
@@ -100,25 +121,75 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0b0b0f' },
+  safe: { flex: 1, backgroundColor: theme.bg },
   header: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.surfaceHover,
+    paddingBottom: theme.space.md,
+    gap: theme.space.md,
+  },
+  toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1c1c24',
-    gap: 8,
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.space.md,
+    paddingTop: theme.space.xs,
+    gap: theme.space.sm,
   },
-  headerSide: { width: 36, alignItems: 'center' },
-  back: { color: '#fff', fontSize: 22, fontWeight: '600' },
-  headerCenter: { flex: 1, alignItems: 'center', minWidth: 0 },
-  headerCode: { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 2 },
-  headerTitle: { color: '#9ca3af', fontSize: 12, marginTop: 2 },
-  headerMeta: { color: '#fda4af', fontSize: 11, fontWeight: '600', marginTop: 2, textTransform: 'uppercase' },
-  rulesRow: { marginTop: 4 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  iconBtn: { paddingHorizontal: 8, paddingVertical: 6 },
-  iconText: { color: '#fda4af', fontSize: 12, fontWeight: '700' },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backIcon: { color: theme.text, fontSize: 20, fontWeight: '600' },
+  toolbarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.xs,
+    flexShrink: 1,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
+  meta: {
+    paddingHorizontal: theme.space.lg,
+    gap: 6,
+  },
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.sm,
+    flexWrap: 'wrap',
+  },
+  code: {
+    color: theme.text,
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: 3,
+  },
+  typePill: {
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.primarySoft,
+    borderWidth: 1,
+    borderColor: theme.borderAccent,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  typePillText: {
+    color: theme.primaryMuted,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  title: {
+    color: theme.textMuted,
+    fontSize: 15,
+    fontWeight: '600',
+  },
   body: { flex: 1 },
 })

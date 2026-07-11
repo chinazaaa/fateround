@@ -595,6 +595,45 @@ export function postQuickDrawGuessAdvance(gameId: string, hostToken: string) {
   })
 }
 
+export function postQuickDrawGuessStrokes(gameId: string, resumeToken: string, strokeData: unknown) {
+  return postJson<{ success?: boolean }>('/api/quick-draw/guess-strokes', {
+    gameId: gameId.toUpperCase(),
+    resumeToken,
+    strokeData,
+  })
+}
+
+export function postQuickDrawDraw(gameId: string, resumeToken: string, roundId: string, strokeData: unknown) {
+  return postJson<{ success?: boolean }>('/api/quick-draw/draw', {
+    gameId: gameId.toUpperCase(),
+    resumeToken,
+    roundId,
+    strokeData,
+  })
+}
+
+export function postQuickDrawTitle(gameId: string, resumeToken: string, drawingId: string, text: string) {
+  return postJson<{ success?: boolean }>('/api/quick-draw/title', {
+    gameId: gameId.toUpperCase(),
+    resumeToken,
+    drawingId,
+    text,
+  })
+}
+
+export function postQuickDrawVote(gameId: string, resumeToken: string, drawingId: string, chosenTitleId: string) {
+  return postJson<{ success?: boolean }>('/api/quick-draw/vote', {
+    gameId: gameId.toUpperCase(),
+    resumeToken,
+    drawingId,
+    chosenTitleId,
+  })
+}
+
+export function postQuickDrawAdvance(gameId: string) {
+  return postJson<{ ok?: boolean }>('/api/quick-draw/advance', { gameId: gameId.toUpperCase() })
+}
+
 export function postMafiaAdvanceHost(gameId: string, hostToken: string, nextPhase?: string) {
   return postJson<{ success?: boolean }>(`/api/mafia/${gameId.toUpperCase()}/advance`, {
     hostToken,

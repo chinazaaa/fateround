@@ -7,6 +7,8 @@ import { PushMuteToggle } from '@/components/push/PushMuteToggle'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameLabel } from '@/lib/mobile-registry'
 
+import { theme } from '@/constants/theme'
+
 type Props = {
   gameCode: string
   gameType?: GameType | string | null
@@ -28,7 +30,7 @@ export function PlayerSessionMenu({ gameCode, gameType, playerId, playerName, on
   return (
     <>
       <Pressable style={styles.menuBtn} onPress={() => setOpen(true)} hitSlop={8}>
-        <Text style={styles.menuIcon}>⋮</Text>
+        <Text style={styles.menuIcon}>⋯</Text>
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
@@ -97,32 +99,41 @@ export function PlayerSessionMenu({ gameCode, gameType, playerId, playerName, on
 }
 
 const styles = StyleSheet.create({
-  menuBtn: { paddingHorizontal: 10, paddingVertical: 6 },
-  menuIcon: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 22 },
+  menuBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuIcon: { color: theme.text, fontSize: 18, fontWeight: '800', lineHeight: 20 },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#17171d',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingHorizontal: 20,
-    paddingTop: 16,
+    backgroundColor: theme.surface,
+    borderTopLeftRadius: theme.radius.lg,
+    borderTopRightRadius: theme.radius.lg,
+    paddingHorizontal: theme.space.lg,
+    paddingTop: theme.space.md,
     paddingBottom: 32,
     borderTopWidth: 1,
-    borderColor: '#2a2a35',
+    borderColor: theme.border,
     gap: 4,
   },
-  sheetTitle: { color: '#fff', fontSize: 18, fontWeight: '800', letterSpacing: 2, textAlign: 'center' },
-  sheetMeta: { color: '#9ca3af', fontSize: 13, textAlign: 'center', marginBottom: 12 },
-  row: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#2a2a35' },
-  rowText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  sheetTitle: { color: theme.text, fontSize: 20, fontWeight: '800', letterSpacing: 2, textAlign: 'center' },
+  sheetMeta: { color: theme.textMuted, fontSize: 14, textAlign: 'center', marginBottom: 12 },
+  row: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.border },
+  rowText: { color: theme.text, fontSize: 16, fontWeight: '600' },
   editBlock: { gap: 12, paddingVertical: 8 },
   cancelEdit: { alignSelf: 'flex-start', paddingVertical: 8 },
-  cancelEditText: { color: '#9ca3af', fontSize: 14 },
+  cancelEditText: { color: theme.textMuted, fontSize: 14 },
   leaveRow: { paddingTop: 16 },
   dismiss: { paddingTop: 16, alignItems: 'center' },
-  dismissText: { color: '#9ca3af', fontSize: 15, fontWeight: '600' },
+  dismissText: { color: theme.textMuted, fontSize: 15, fontWeight: '600' },
 })

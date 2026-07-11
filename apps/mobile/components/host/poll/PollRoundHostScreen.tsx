@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
-import type { Game, Player, Round } from '@fateround/shared'
-import { pollGameLabel } from '@fateround/shared/poll-games'
+import type { Game, Participant, Player, Round, Vote } from '@fateround/shared'
+import { isMostLikelyTo, parseGameType, pollGameLabel } from '@fateround/shared/poll-games'
 import {
   postEndRound,
   postFinishGame,
@@ -9,9 +9,12 @@ import {
   postPlayAgain,
 } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
-import { ROUND_SELECT } from '@/lib/supabase-selects'
+import { PARTICIPANT_SELECT, ROUND_SELECT, VOTE_SELECT } from '@/lib/supabase-selects'
+import { PollRoundResults } from '@/components/games/poll/PollRoundResults'
 import { HostChrome } from '@/components/host/HostChrome'
 import { HostPlayAlongCard } from '@/components/host/HostPlayAlongCard'
+import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
+import { mltVoteLeaderboard } from '@/lib/finish-leaderboards'
 
 type Props = {
   gameCode: string
@@ -23,33 +26,48 @@ type Props = {
 
 export function PollRoundHostScreen({ gameCode, hostToken, game, players, onReload }: Props) {
   const [rounds, setRounds] = useState<Round[]>([])
+  const [participants, setParticipants] = useState<Participant[]>([])
+  const [votes, setVotes] = useState<Vote[]>([])
   const [acting, setActing] = useState<'end' | 'next' | 'finish' | 'replay' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const gameType = parseGameType(game.game_type)
 
-  const loadRounds = useCallback(async () => {
-    const res = await getSupabase()
-      .from('rounds')
-      .select(ROUND_SELECT)
-      .eq('game_id', gameCode)
-      .order('round_number')
-    if (!res.error) setRounds((res.data as Round[]) ?? [])
+  const loadPollData = useCallback(async () => {
+    const [roundsRes, participantsRes, votesRes] = await Promise.all([
+      getSupabase().from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).order('round_number'),
+      getSupabase().from('participants').select(PARTICIPANT_SELECT).eq('game_id', gameCode).order('display_order'),
+      getSupabase().from('votes').select(VOTE_SELECT).eq('game_id', gameCode),
+    ])
+    if (!roundsRes.error) setRounds((roundsRes.data as Round[]) ?? [])
+    if (!participantsRes.error) setParticipants((participantsRes.data as Participant[]) ?? [])
+    if (!votesRes.error) setVotes((votesRes.data as Vote[]) ?? [])
   }, [gameCode])
 
   useEffect(() => {
-    void loadRounds()
+    void loadPollData()
     const supabase = getSupabase()
     const channel = supabase
       .channel(`host-poll-${gameCode}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameCode}` },
-        () => void loadRounds()
+        () => void loadPollData()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'votes', filter: `game_id=eq.${gameCode}` },
+        () => void loadPollData()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'participants', filter: `game_id=eq.${gameCode}` },
+        () => void loadPollData()
       )
       .subscribe()
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [gameCode, loadRounds])
+  }, [gameCode, loadPollData])
 
   const activeRound = useMemo(
     () => rounds.find((r) => r.status === 'active') ?? null,
@@ -62,13 +80,17 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
   const betweenRounds = game.status === 'active' && !activeRound && !!lastFinished
   const isLastRound = (game.current_round_number ?? 0) >= (game.rounds_count ?? 0)
   const activePlayers = players.filter((p) => !p.spectator)
+  const activeRoundVotes = activeRound ? votes.filter((v) => v.round_id === activeRound.id) : []
+  const cumulativeMlt = isMostLikelyTo(gameType)
+    ? mltVoteLeaderboard(votes, participants)
+    : []
 
   const run = async (action: 'end' | 'next' | 'finish' | 'replay', fn: () => Promise<unknown>) => {
     setActing(action)
     setError(null)
     try {
       await fn()
-      await loadRounds()
+      await loadPollData()
       onReload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Action failed')
@@ -97,8 +119,27 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
               activeRound.wyr_option_a ||
               `Round ${activeRound.round_number}`}
           </Text>
-          <Text style={styles.cardHint}>Votes are open — end the round when everyone has voted or time is up.</Text>
+          <Text style={styles.cardHint}>
+            {activeRoundVotes.length}/{activePlayers.length} votes in
+          </Text>
         </View>
+      ) : null}
+
+      {game.status === 'active' && betweenRounds && lastFinished ? (
+        <>
+          <PollRoundResults
+            game={game}
+            gameType={gameType}
+            round={lastFinished}
+            participants={participants}
+            votes={votes}
+            players={players}
+          />
+        </>
+      ) : null}
+
+      {cumulativeMlt.length > 0 ? (
+        <LeaderboardPanel title="Overall votes" rows={cumulativeMlt.map((row) => ({ id: row.name, name: row.name, score: row.score }))} />
       ) : null}
 
       {game.status === 'active' && betweenRounds ? (
@@ -106,8 +147,8 @@ export function PollRoundHostScreen({ gameCode, hostToken, game, players, onRelo
           <Text style={styles.cardLabel}>Between rounds</Text>
           <Text style={styles.cardHint}>
             {isLastRound
-              ? 'Last round finished — finish the game or start the next round if more were added.'
-              : 'Results are showing — start the next round when ready.'}
+              ? 'Last round finished — finish the game when ready.'
+              : 'Results are in — start the next round when ready.'}
           </Text>
         </View>
       ) : null}
