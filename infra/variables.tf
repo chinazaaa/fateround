@@ -200,7 +200,7 @@ variable "vapid_subject" {
 }
 
 variable "otel_exporter_otlp_endpoint" {
-  description = "OTEL_EXPORTER_OTLP_ENDPOINT — OTLP/HTTP base URL for trace+metric export (e.g. https://otlp-gateway-<region>.grafana.net/otlp for Grafana Cloud, or http://localhost:4318 to route via an on-box collector). Empty disables all OpenTelemetry export; src/instrumentation.ts no-ops without it."
+  description = "OTEL_EXPORTER_OTLP_ENDPOINT — OTLP/HTTP base URL for trace+metric export (e.g. https://otlp-gateway-<region>.grafana.net/otlp for Grafana Cloud). Empty disables all OpenTelemetry export; src/instrumentation.ts no-ops without it. (An on-box collector would need a container-reachable host — host.docker.internal or host networking, not the container's own localhost — but the MVP exports directly to the backend and runs no collector.)"
   type        = string
   default     = ""
 }

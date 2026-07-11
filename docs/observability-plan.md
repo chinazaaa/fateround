@@ -2,9 +2,10 @@
 
 Planned work to stop flying blind in production. Today FateRound runs on a **single AWS EC2**
 box (Caddy origin-TLS → Next.js container on `:8080`, behind Cloudflare) with Supabase as the
-backend and a self-hosted LiveKit — and there is **no external uptime monitoring and no
-tracing/metrics**. If the box wedges, a route gets slow, or a Supabase/LiveKit dependency
-degrades, we find out from users. Two complementary tracks fix that:
+backend and a self-hosted LiveKit. A `/api/health` endpoint now ships (Track 1a below), but there
+is still **no external uptime monitoring wired to it and no tracing/metrics export**. If the box
+wedges, a route gets slow, or a Supabase/LiveKit dependency degrades, we find out from users. Two
+complementary tracks fix that:
 
 - **UptimeRobot** — external, black-box _"is it up?"_ + alerting. Cheap, fast to land.
 - **OpenTelemetry** — internal, white-box _"why is it slow / erroring?"_ traces + metrics.
@@ -18,9 +19,8 @@ Do **UptimeRobot first** (small, high value), then OTel.
 **Goal:** know within minutes if prod (`fateround.com`) or dev (`dev.fateround.com`) is down,
 with alerts to a channel we actually watch. Single-EC2 = no redundancy, so an early ping matters.
 
-### 1a. Add a health endpoint  (code — this repo)
-Add `GET /api/health` (there is none today — nearest existing ops surface is the freeze-recovery
-`/api/describe-it/tick`). Two levels so the external check stays cheap:
+### 1a. Add a health endpoint  (code — this repo)  ✅ DONE (PR #393, live in prod)
+`GET /api/health` (PR #393) — two levels so the external check stays cheap:
 - **Liveness (default):** returns `200 {"status":"ok","commit":<GIT_SHA>}` immediately — no I/O.
   Proves the container is up and serving. This is what UptimeRobot polls.
 - **Readiness (`?deep=1`):** additionally does a short, timeout-guarded `SELECT 1` against
@@ -69,8 +69,10 @@ instead of guessing from a single box with no APM.
   **Remaining to light it up:** create the backend stack (below), then set the endpoint + headers
   in `terraform.<env>.tfvars` and `terraform apply` (replaces the instance) — no code change.
 - **Chose direct OTLP export** (app → backend) over an on-box collector for the MVP: one fewer
-  process on the single box, and the endpoint is env-driven so we can later point it at a
-  `localhost:4318` collector without a code change if buffering/backend-swap becomes worth it.
+  process on the single box, and the endpoint is env-driven so we can later point it at an on-box
+  collector without a code change if buffering/backend-swap becomes worth it (that would export to
+  the collector over `host.docker.internal`/host networking — the container can't reach the host's
+  own `localhost`).
 
 ### 2b. Custom spans + metrics (incremental)
 - Spans around Supabase calls and the external integrations (LiveKit / Klipy / Anthropic) so the

@@ -129,7 +129,9 @@ resource "aws_ssm_parameter" "otel_exporter_otlp_endpoint" {
 }
 
 resource "aws_ssm_parameter" "otel_exporter_otlp_headers" {
-  count = var.otel_exporter_otlp_headers != "" ? 1 : 0
+  # Gated on the endpoint too: with export off, the auth header has no purpose and
+  # shouldn't sit in SSM (or get injected into the container) just because it's set.
+  count = var.otel_exporter_otlp_endpoint != "" && var.otel_exporter_otlp_headers != "" ? 1 : 0
   name  = "/${var.name_prefix}/OTEL_EXPORTER_OTLP_HEADERS"
   type  = "SecureString"
   value = var.otel_exporter_otlp_headers
@@ -137,7 +139,8 @@ resource "aws_ssm_parameter" "otel_exporter_otlp_headers" {
 }
 
 resource "aws_ssm_parameter" "otel_resource_attributes" {
-  count = var.otel_resource_attributes != "" ? 1 : 0
+  # Resource attributes are only meaningful when something is actually exporting.
+  count = var.otel_exporter_otlp_endpoint != "" && var.otel_resource_attributes != "" ? 1 : 0
   name  = "/${var.name_prefix}/OTEL_RESOURCE_ATTRIBUTES"
   type  = "String"
   value = var.otel_resource_attributes
