@@ -17,6 +17,11 @@ import { GameLoading, GameNotFound, GameShell, TurnBanner } from '@/components/g
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { MahjongTableView } from '@/components/games/mahjong/MahjongTableView'
 import { MahjongTileFace } from '@/components/games/mahjong/MahjongTileFace'
+import {
+  canDeclareMahjongForRuleset,
+  mahjongSelfKongOptions,
+  type MahjongSelfKongOption,
+} from '@/components/games/mahjong/mahjong-self-actions'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTurnAlerts } from '@/hooks/useGameTurnAlerts'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
@@ -138,6 +143,17 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
       )
     )
 
+  const declareSelfKong = (option: MahjongSelfKongOption) =>
+    void act(() =>
+      postMahjongClaim(
+        gameCode.toUpperCase(),
+        bootstrap.myPlayerId!,
+        bootstrap.myResumeToken!,
+        'kong',
+        [option.tile]
+      )
+    )
+
   const declareRiichi = () =>
     void act(() =>
       postMahjongRiichi(gameCode.toUpperCase(), bootstrap.myPlayerId!, bootstrap.myResumeToken!)
@@ -195,6 +211,13 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
 
   const turnName = playerName(bootstrap.players, turnPlayerId)
   const canDiscard = isMyTurn && session.phase === 'discard' && sortedHand.length > 0
+  const canSelfWin =
+    isMyTurn &&
+    session.phase === 'discard' &&
+    !!myState &&
+    canDeclareMahjongForRuleset(myState.hand, myState.melds, session.ruleset)
+  const selfKongOptions: MahjongSelfKongOption[] =
+    isMyTurn && session.phase === 'discard' ? mahjongSelfKongOptions(myState) : []
   const inClaimWindow = session.phase === 'claim' && session.last_discard != null
   const alreadyPassed = bootstrap.myPlayerId ? session.claim_passes.includes(bootstrap.myPlayerId) : false
   const canClaim = inClaimWindow && !alreadyPassed && !isMyTurn
@@ -288,6 +311,35 @@ export function MahjongPlayerView({ gameCode }: { gameCode: string }) {
                 <Text style={styles.secondaryBtnText}>Pass</Text>
               </Pressable>
             </View>
+          </View>
+        ) : null}
+
+        {canSelfWin || selfKongOptions.length > 0 ? (
+          <View style={styles.actionPanel}>
+            <Text style={styles.actionTitle}>Your turn</Text>
+            {canSelfWin ? (
+              <Pressable
+                style={[styles.primaryBtn, acting && styles.btnDisabled]}
+                disabled={acting}
+                onPress={claimMahjong}
+              >
+                <Text style={styles.primaryBtnText}>Mahjong</Text>
+              </Pressable>
+            ) : null}
+            {selfKongOptions.length > 0 ? (
+              <View style={styles.actionRow}>
+                {selfKongOptions.map((option) => (
+                  <Pressable
+                    key={`self-kong-${option.source}-${option.tile}`}
+                    style={[styles.meldBtn, styles.flexBtn, acting && styles.btnDisabled]}
+                    disabled={acting}
+                    onPress={() => declareSelfKong(option)}
+                  >
+                    <Text style={styles.meldBtnText}>{option.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
           </View>
         ) : null}
 

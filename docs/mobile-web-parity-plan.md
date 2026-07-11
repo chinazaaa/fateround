@@ -14,6 +14,28 @@ _Goal: bring the mobile app to feature parity with web across all 28 audited gam
 
 ---
 
+## Progress tracker
+
+_This markdown is the **live source of truth** for what's done. The HTML report is a generated snapshot. Check items off (`- [x]`) as they land. Status: ⬜ pending · 🔨 in progress · ✅ done · ⚠️ partial (see notes)._
+
+**Phase 0 — ship-blockers**
+
+- [ ] ⬜ **P0.1 Monopoly** — build/hotel/sell, mortgage/unmortgage, trade builder + accept/decline, properties list + set tracker
+- [ ] ⬜ **P0.2a Secret Message** — host inbox view (read received messages)
+- [ ] ⬜ **P0.2b Anonymous Messages** — host view (start/watch/moderate/end)
+- [ ] ⬜ **P0.3a Poll — Pick a Number** — turn-based picker flow
+- [ ] ⬜ **P0.3b Poll — Gender voting** — gender select at join + per-round gating
+- [ ] ⬜ **P0.4a Matching Pairs** — memorize phase + multi-round scoring/results
+- [ ] ⬜ **P0.4b Sudoku** — live standings + opponent cell-ownership colors
+- [ ] ⬜ **P0.4c Mahjong** — self-draw win (tsumo) + concealed/added kong
+- [ ] ⬜ **P0.4d Word Hunt** — countdown timer + time-up enforcement
+- [ ] ⬜ **P0.4e Snake & Ladder** — render the visual board (grid, snakes, ladders, tokens)
+- [ ] ⬜ **P0.4f I Call On / NPAT** — live scoreboard (answers + marks)
+
+**Phase 1 — shared infrastructure** · **Phase 2 — per-game high** · **Phase 3 — polish** — not started.
+
+---
+
 ## Audit coverage
 
 There are **39 game types** total. This audit covered 27 game-by-game, the 10-game poll family only *generically* (one shared pass), and did not reach 2. Track the gaps below as a follow-up.

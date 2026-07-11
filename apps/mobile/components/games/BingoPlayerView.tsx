@@ -274,7 +274,7 @@ const makeStyles = (theme: Theme) =>
   bingoBtnDisabled: { opacity: 0.7 },
   // white on the solid rose bingo button — intentional
   bingoBtnText: { color: '#fff', fontSize: 20, fontWeight: '900', letterSpacing: 2 },
-  error: { color: '#fb7185', textAlign: 'center', fontSize: 14 },
+  error: { color: theme.error, textAlign: 'center', fontSize: 14 },
   legend: { color: theme.textFaint, fontSize: 12, textAlign: 'center', marginTop: 8 },
   waitingCard: { color: theme.textMuted, textAlign: 'center', marginTop: 24 },
 })

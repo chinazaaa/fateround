@@ -440,7 +440,7 @@ const CELL = 64
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  pickHint: { color: '#a1a1aa', marginBottom: 12, textAlign: 'center' },
+  pickHint: { color: theme.textMuted, marginBottom: 12, textAlign: 'center' },
   pickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 12 },
   pickBtn: {
     paddingHorizontal: 16,
@@ -454,9 +454,9 @@ const makeStyles = (theme: Theme) =>
   scoreRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   scoreRed: { color: '#fca5a5', fontWeight: '800' },
   scoreBlue: { color: '#93c5fd', fontWeight: '800' },
-  clueCard: { backgroundColor: '#1e1e28', borderRadius: 8, padding: 12, marginBottom: 8 },
-  clueLabel: { color: '#a1a1aa', fontSize: 12, fontWeight: '700' },
-  clueWord: { color: '#fafafa', fontSize: 18, fontWeight: '900' },
+  clueCard: { backgroundColor: theme.surface, borderRadius: 8, padding: 12, marginBottom: 8 },
+  clueLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '700' },
+  clueWord: { color: theme.text, fontSize: 18, fontWeight: '900' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 4, marginVertical: 8 },
   cell: {
     width: CELL,
@@ -494,12 +494,12 @@ const makeStyles = (theme: Theme) =>
     paddingVertical: 12,
     alignItems: 'center',
   },
-  endTurnBtn: { backgroundColor: '#52525b', marginTop: 8 },
+  endTurnBtn: { backgroundColor: theme.textFaint, marginTop: 8 },
   // white on the rose / dark action buttons — intentional
   actionText: { color: '#fff', fontWeight: '800' },
-  chatTitle: { color: '#a1a1aa', fontWeight: '700', marginTop: 12, marginBottom: 4 },
-  chatLog: { maxHeight: 100, backgroundColor: '#1e1e28', borderRadius: 8, padding: 8 },
-  chatLine: { color: '#d4d4d8', fontSize: 13, marginBottom: 4 },
-  chatName: { color: '#fafafa', fontWeight: '700' },
+  chatTitle: { color: theme.textMuted, fontWeight: '700', marginTop: 12, marginBottom: 4 },
+  chatLog: { maxHeight: 100, backgroundColor: theme.surface, borderRadius: 8, padding: 8 },
+  chatLine: { color: theme.textSecondary, fontSize: 13, marginBottom: 4 },
+  chatName: { color: theme.text, fontWeight: '700' },
   chatRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 8, marginBottom: 16 },
 })

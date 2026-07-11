@@ -197,7 +197,7 @@ const makeStyles = (theme: Theme) =>
     paddingVertical: 14,
   },
   error: {
-    color: '#fb7185',
+    color: theme.error,
     fontSize: 14,
     textAlign: 'center',
   },

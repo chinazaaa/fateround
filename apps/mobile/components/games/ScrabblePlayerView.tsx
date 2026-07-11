@@ -453,18 +453,18 @@ const makeStyles = (theme: Theme) =>
   // white on the solid rose primary button — intentional
   actionTextPrimary: { color: '#fff' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 16 },
-  modalScroll: { backgroundColor: '#1e1e28', borderRadius: 12, padding: 16 },
-  modalTitle: { color: '#fafafa', fontSize: 18, fontWeight: '800', marginBottom: 12 },
+  modalScroll: { backgroundColor: theme.surface, borderRadius: 12, padding: 16 },
+  modalTitle: { color: theme.text, fontSize: 18, fontWeight: '800', marginBottom: 12 },
   letterGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
   letterBtn: {
     width: 40,
     height: 40,
     borderRadius: 8,
-    backgroundColor: '#2a2a35',
+    backgroundColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  letterBtnText: { color: '#fafafa', fontWeight: '800', fontSize: 16 },
+  letterBtnText: { color: theme.text, fontWeight: '800', fontSize: 16 },
   promoCancel: { padding: 12, marginTop: 8 },
-  promoCancelText: { color: '#a1a1aa', textAlign: 'center' },
+  promoCancelText: { color: theme.textMuted, textAlign: 'center' },
 })

@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { type Game, type Round, type SudokuSubmission } from '@fateround/shared'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import {
   buildPlayerDisplayGrid,
+  buildPlayerSolvedGrid,
   parseSudokuMetadata,
   playerHasSolvedCell,
 } from '@fateround/shared/sudoku'
@@ -19,6 +20,16 @@ import { postSudokuSubmit } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, SUDOKU_SUBMISSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
+import {
+  buildCellOwnerGrid,
+  formatMinutesSeconds,
+  getPlayerTimeSpent,
+  ordinal,
+  playerCompletionPercent,
+  sudokuPlayerColor,
+  SUDOKU_MY_CELL_COLOR,
+  tallySudokuScores,
+} from '@/components/games/sudoku/standings'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -30,6 +41,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
   const [selected, setSelected] = useState<[number, number] | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [nowMs, setNowMs] = useState<number>(() => Date.now())
 
   const loadGameState = useCallback(
     async (game: Game): Promise<{ state: boolean; ok: boolean }> => {
@@ -90,10 +102,42 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     !!bootstrap.game
   )
 
+  // Tick once a second while playing so the live time column stays fresh.
+  useEffect(() => {
+    if (bootstrap.screen !== 'playing') return
+    const id = setInterval(() => setNowMs(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [bootstrap.screen])
+
   const displayGrid = useMemo(() => {
     if (!puzzle || !bootstrap.myPlayerId) return null
     return buildPlayerDisplayGrid(puzzle, submissions, bootstrap.myPlayerId, drafts)
   }, [puzzle, submissions, bootstrap.myPlayerId, drafts])
+
+  // First correct solver per empty cell — drives each cell's owner color.
+  const cellOwners = useMemo(() => buildCellOwnerGrid(submissions), [submissions])
+  const mySolvedCells = useMemo(
+    () => (bootstrap.myPlayerId ? buildPlayerSolvedGrid(submissions, bootstrap.myPlayerId) : undefined),
+    [submissions, bootstrap.myPlayerId]
+  )
+
+  // Per-player colors assigned by join order (spectators excluded, matching web).
+  const activePlayers = useMemo(
+    () => bootstrap.players.filter((p) => p.spectator !== true),
+    [bootstrap.players]
+  )
+  const playerColors = useMemo(() => {
+    const map: Record<string, string> = {}
+    activePlayers.forEach((p, i) => {
+      map[p.id] = sudokuPlayerColor(i)
+    })
+    return map
+  }, [activePlayers])
+
+  const standings = useMemo(
+    () => tallySudokuScores(submissions, activePlayers),
+    [submissions, activePlayers]
+  )
 
   const pickNumber = async (value: number) => {
     if (!selected || !puzzle || !bootstrap.myResumeToken || !bootstrap.myPlayerId || submitting) return
@@ -158,34 +202,68 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
+  const me = bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
+  const myRank = standings.findIndex((r) => r.player_id === bootstrap.myPlayerId) + 1
+  const myCompletion =
+    puzzle && bootstrap.myPlayerId ? playerCompletionPercent(puzzle, submissions, bootstrap.myPlayerId) : 0
+  const myTime = getPlayerTimeSpent(
+    bootstrap.game,
+    submissions,
+    bootstrap.myPlayerId || '',
+    myCompletion,
+    nowMs,
+    me?.joined_at
+  )
+
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('sudoku')} subtitle={bootstrap.code}>
       {!displayGrid ? (
         <Text style={styles.waiting}>Waiting for puzzle…</Text>
       ) : (
         <>
+          {/* My status header */}
+          <View style={styles.statusRow}>
+            <View style={styles.statusLeft}>
+              <View style={[styles.swatch, { backgroundColor: SUDOKU_MY_CELL_COLOR }]} />
+              <View>
+                <Text style={styles.statusName}>{me?.name ?? 'Me'}</Text>
+                <Text style={styles.statusMeta}>
+                  {myRank > 0 ? ordinal(myRank) : '—'} · {myCompletion}%
+                </Text>
+              </View>
+            </View>
+            {bootstrap.game?.session_started_at ? (
+              <View style={styles.timePill}>
+                <Text style={styles.timePillText}>⏱ {formatMinutesSeconds(myTime)}</Text>
+              </View>
+            ) : null}
+          </View>
+
           <View style={styles.board}>
             {displayGrid.map((row, r) => (
               <View key={r} style={styles.row}>
                 {row.map((value, c) => {
                   const given = puzzle![r]![c] !== 0
-                  const solved =
-                    bootstrap.myPlayerId != null &&
-                    playerHasSolvedCell(submissions, bootstrap.myPlayerId, r, c)
+                  const mine = mySolvedCells?.[r]?.[c] === true
+                  const owner = !given && !mine ? cellOwners[r]![c] : null
+                  const ownerColor = owner ? playerColors[owner] ?? sudokuPlayerColor(0) : null
                   const selectedCell = selected?.[0] === r && selected?.[1] === c
+                  const bg = mine ? SUDOKU_MY_CELL_COLOR : ownerColor ?? undefined
                   return (
                     <Pressable
                       key={`${r}-${c}`}
                       style={[
                         styles.cell,
                         given && styles.cellGiven,
-                        solved && styles.cellSolved,
+                        bg ? { backgroundColor: bg } : null,
                         selectedCell && styles.cellSelected,
                       ]}
-                      disabled={given || solved}
+                      disabled={given || mine}
                       onPress={() => setSelected([r, c])}
                     >
-                      <Text style={styles.cellText}>{value > 0 ? value : ''}</Text>
+                      <Text style={[styles.cellText, mine && styles.cellTextSolved]}>
+                        {value > 0 ? value : ''}
+                      </Text>
                     </Pressable>
                   )
                 })}
@@ -205,43 +283,156 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
             ))}
           </View>
           {message ? <Text style={styles.message}>{message}</Text> : null}
+
+          {/* Live standings */}
+          {standings.length > 0 ? (
+            <View style={styles.standings}>
+              {standings.map((rowData, i) => {
+                const pct = puzzle ? playerCompletionPercent(puzzle, submissions, rowData.player_id) : 0
+                const color = playerColors[rowData.player_id] ?? sudokuPlayerColor(0)
+                const playerSolved = buildPlayerSolvedGrid(submissions, rowData.player_id)
+                const timeSecs = getPlayerTimeSpent(
+                  bootstrap.game,
+                  submissions,
+                  rowData.player_id,
+                  pct,
+                  nowMs,
+                  activePlayers.find((p) => p.id === rowData.player_id)?.joined_at
+                )
+                const isMe = rowData.player_id === bootstrap.myPlayerId
+                return (
+                  <View key={rowData.player_id} style={[styles.standRow, isMe && styles.standRowMe]}>
+                    <MiniGrid puzzle={puzzle} playerSolved={playerSolved} color={color} styles={styles} />
+                    <View style={[styles.swatchSm, { backgroundColor: color }]} />
+                    <View style={styles.standInfo}>
+                      <Text style={styles.standName} numberOfLines={1}>
+                        {rowData.name}
+                      </Text>
+                      <Text style={styles.standMeta} numberOfLines={1}>
+                        {ordinal(i + 1)} of {standings.length} · {pct}%
+                        {bootstrap.game?.session_started_at ? ` · ⏱ ${formatMinutesSeconds(timeSecs)}` : ''}
+                      </Text>
+                    </View>
+                    <Text style={styles.standPoints}>{rowData.points} pts</Text>
+                  </View>
+                )
+              })}
+            </View>
+          ) : null}
         </>
       )}
     </GameShell>
   )
 }
 
+function MiniGrid({
+  puzzle,
+  playerSolved,
+  color,
+  styles,
+}: {
+  puzzle: number[][] | null
+  playerSolved: boolean[][]
+  color: string
+  styles: ReturnType<typeof makeStyles>
+}) {
+  if (!puzzle) return <View style={styles.miniGrid} />
+  return (
+    <View style={styles.miniGrid}>
+      {Array.from({ length: 81 }, (_, i) => {
+        const row = Math.floor(i / 9)
+        const col = i % 9
+        const owned = playerSolved[row]?.[col]
+        const given = puzzle[row]?.[col] !== 0
+        const bg = owned ? color : given ? 'rgba(148,163,184,0.35)' : 'transparent'
+        return <View key={i} style={[styles.miniCell, { backgroundColor: bg }]} />
+      })}
+    </View>
+  )
+}
+
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  waiting: { color: theme.textMuted, textAlign: 'center', marginTop: 24 },
-  // Sudoku grid is a functional board (Step D) — frame + cell state colors left as-is.
-  board: { alignSelf: 'center', borderWidth: 2, borderColor: '#374151', marginTop: 8 },
-  row: { flexDirection: 'row' },
-  cell: {
-    width: 34,
-    height: 34,
-    borderWidth: 1,
-    borderColor: '#374151',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#111827',
-  },
-  cellGiven: { backgroundColor: '#1f2937' },
-  cellSolved: { backgroundColor: '#14532d' },
-  cellSelected: { borderColor: '#f43f5e' },
-  // White digit on the dark grid cell — intentional (case 2).
-  cellText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  pad: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 16 },
-  padKey: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  padText: { color: theme.text, fontSize: 18, fontWeight: '700' },
-  message: { color: '#fcd34d', textAlign: 'center', marginTop: 12 },
-})
+    waiting: { color: theme.textMuted, textAlign: 'center', marginTop: 24 },
+    statusRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 8,
+      marginBottom: 4,
+      paddingHorizontal: 2,
+    },
+    statusLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    swatch: { width: 16, height: 16, borderRadius: 4 },
+    statusName: { color: theme.text, fontWeight: '700', fontSize: 15 },
+    statusMeta: { color: theme.textMuted, fontSize: 13, marginTop: 1 },
+    timePill: {
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    timePillText: { color: theme.textMuted, fontWeight: '600', fontSize: 13 },
+    // Sudoku grid is a functional board (Step D) — frame + cell state colors left as-is.
+    board: { alignSelf: 'center', borderWidth: 2, borderColor: '#374151', marginTop: 8 },
+    row: { flexDirection: 'row' },
+    cell: {
+      width: 34,
+      height: 34,
+      borderWidth: 1,
+      borderColor: '#374151',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#111827',
+    },
+    cellGiven: { backgroundColor: '#1f2937' },
+    cellSelected: { borderColor: '#f43f5e' },
+    // White digit on the dark grid cell — intentional (case 2).
+    cellText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+    // Dark digit on the pastel-green "my solved" cell so the value stays readable.
+    cellTextSolved: { color: '#0b1220' },
+    pad: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 16 },
+    padKey: {
+      width: 44,
+      height: 44,
+      borderRadius: 10,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    padText: { color: theme.text, fontSize: 18, fontWeight: '700' },
+    message: { color: '#fcd34d', textAlign: 'center', marginTop: 12 },
+    standings: { marginTop: 20, gap: 8 },
+    standRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      borderWidth: 1,
+      borderColor: 'transparent',
+      backgroundColor: theme.surfaceHover,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+    },
+    standRowMe: { borderColor: theme.border, backgroundColor: theme.surface },
+    standInfo: { flex: 1, minWidth: 0 },
+    standName: { color: theme.text, fontWeight: '600', fontSize: 14 },
+    standMeta: { color: theme.textMuted, fontSize: 12, marginTop: 1 },
+    standPoints: { color: theme.text, fontWeight: '700', fontSize: 14 },
+    swatchSm: { width: 12, height: 12, borderRadius: 3 },
+    miniGrid: {
+      width: 36,
+      height: 36,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 3,
+      overflow: 'hidden',
+    },
+    miniCell: { width: '11.11%', height: '11.11%' },
+  })

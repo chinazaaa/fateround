@@ -25,6 +25,7 @@ import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
+import { ICallOnScoreboard } from '@/components/games/i_call_on/ICallOnScoreboard'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -179,6 +180,21 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
+  const roundAnswers = answers.filter((a) => a.round_id === currentRound.id)
+  const roundMarks = marks.filter((m) => m.round_id === currentRound.id)
+  const scoreboard = (showScores: boolean, maskAnswers: boolean) => (
+    <ICallOnScoreboard
+      letter={metadata.letter}
+      players={bootstrap.players}
+      answers={roundAnswers}
+      marks={roundMarks}
+      metadata={metadata}
+      showScores={showScores}
+      maskAnswers={maskAnswers}
+      myPlayerId={bootstrap.myPlayerId}
+    />
+  )
+
   if (metadata.phase === 'letter_pick') {
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Round ${currentRound.round_number}`}>
@@ -203,27 +219,30 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   if (metadata.phase === 'writing') {
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
-        {myAnswer?.submitted_at ? (
-          <Text style={styles.locked}>Answers submitted — waiting for marking…</Text>
-        ) : (
-          <ScrollView contentContainerStyle={styles.form}>
-            {NPAT_CATEGORIES.map((category) => (
-              <View key={category} style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel}>{NPAT_CATEGORY_LABELS[category]}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={form[category]}
-                  onChangeText={(text) => setForm((prev) => ({ ...prev, [category]: text }))}
-                  placeholder={`${NPAT_CATEGORY_LABELS[category]} starting with ${metadata.letter}`}
-                  placeholderTextColor={theme.textFaint}
-                />
-              </View>
-            ))}
-            <Pressable style={styles.primaryBtn} disabled={acting} onPress={submitAnswers}>
-              <Text style={styles.primaryText}>Submit answers</Text>
-            </Pressable>
-          </ScrollView>
-        )}
+        <ScrollView contentContainerStyle={styles.form}>
+          {myAnswer?.submitted_at ? (
+            <Text style={styles.locked}>Answers submitted — waiting for marking…</Text>
+          ) : (
+            <>
+              {NPAT_CATEGORIES.map((category) => (
+                <View key={category} style={styles.fieldBlock}>
+                  <Text style={styles.fieldLabel}>{NPAT_CATEGORY_LABELS[category]}</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={form[category]}
+                    onChangeText={(text) => setForm((prev) => ({ ...prev, [category]: text }))}
+                    placeholder={`${NPAT_CATEGORY_LABELS[category]} starting with ${metadata.letter}`}
+                    placeholderTextColor={theme.textFaint}
+                  />
+                </View>
+              ))}
+              <Pressable style={styles.primaryBtn} disabled={acting} onPress={submitAnswers}>
+                <Text style={styles.primaryText}>Submit answers</Text>
+              </Pressable>
+            </>
+          )}
+          {scoreboard(false, true)}
+        </ScrollView>
       </GameShell>
     )
   }
@@ -232,6 +251,7 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
     const targetName = bootstrap.players.find((p) => p.id === reviewTargetId)?.name ?? 'Player'
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Mark ${targetName}'s answers`}>
+        <ScrollView contentContainerStyle={styles.form}>
         {!reviewTargetAnswer ? (
           <Text style={styles.waiting}>Waiting for assignment…</Text>
         ) : myMark?.marked_at ? (
@@ -267,6 +287,8 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
             </Pressable>
           </>
         )}
+        {scoreboard(false, false)}
+        </ScrollView>
       </GameShell>
     )
   }
@@ -274,20 +296,26 @@ export function ICallOnPlayerView({ gameCode }: { gameCode: string }) {
   if (metadata.phase === 'host_review') {
     return (
       <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Letter ${metadata.letter ?? '?'}`}>
-        {isCaller ? (
-          <Pressable style={styles.primaryBtn} disabled={acting} onPress={approveRound}>
-            <Text style={styles.primaryText}>Approve round</Text>
-          </Pressable>
-        ) : (
-          <Text style={styles.waiting}>Waiting for caller approval…</Text>
-        )}
+        <ScrollView contentContainerStyle={styles.form}>
+          {isCaller ? (
+            <Pressable style={styles.primaryBtn} disabled={acting} onPress={approveRound}>
+              <Text style={styles.primaryText}>Approve round</Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.waiting}>Waiting for caller approval…</Text>
+          )}
+          {scoreboard(false, false)}
+        </ScrollView>
       </GameShell>
     )
   }
 
   return (
     <GameShell bootstrap={bootstrap} title={batch5GameLabel('i_call_on')} subtitle={`Round ${currentRound.round_number}`}>
-      <Text style={styles.waiting}>Reveal — next round starting soon…</Text>
+      <ScrollView contentContainerStyle={styles.form}>
+        <Text style={styles.waiting}>Reveal — next round starting soon…</Text>
+        {scoreboard(true, false)}
+      </ScrollView>
     </GameShell>
   )
 }

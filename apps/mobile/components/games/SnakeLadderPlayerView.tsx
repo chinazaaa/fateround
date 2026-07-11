@@ -20,6 +20,7 @@ import { usePlayerSessionActions } from '@/lib/player-session'
 import { snakeLadderLeaderboard } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
+import { SnakeLadderBoard } from '@/components/games/snake-ladder/SnakeLadderBoard'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -134,14 +135,23 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title={batch3GameLabel('snake_and_ladder')} subtitle={session.status_message ?? bootstrap.code}>
+      <SnakeLadderBoard states={states} highlightSquare={session.last_to} />
+
       <View style={styles.list}>
-        {standings.map((row) => (
-          <View key={row.playerId} style={styles.row}>
-            <View style={[styles.dot, { backgroundColor: COLOR_HEX[row.color] ?? '#64748b' }]} />
-            <Text style={styles.name}>{row.name}</Text>
-            <Text style={styles.pos}>{row.position === 0 ? 'Start' : row.position >= 100 ? 'Home!' : `Sq ${row.position}`}</Text>
-          </View>
-        ))}
+        {standings.map((row) => {
+          const isTurn = row.playerId === turnPlayerId
+          const isMe = row.playerId === bootstrap.myPlayerId
+          return (
+            <View key={row.playerId} style={[styles.row, isTurn && styles.rowTurn]}>
+              <View style={[styles.dot, { backgroundColor: COLOR_HEX[row.color] ?? '#64748b' }]} />
+              <Text style={styles.name}>
+                {row.name}
+                {isMe ? ' (you)' : ''}
+              </Text>
+              <Text style={styles.pos}>{row.position === 0 ? 'Start' : row.position >= 100 ? 'Home!' : `Sq ${row.position}`}</Text>
+            </View>
+          )
+        })}
       </View>
 
       {session.last_roll ? (
@@ -160,8 +170,9 @@ export function SnakeLadderPlayerView({ gameCode }: { gameCode: string }) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  list: { gap: 8, marginTop: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, backgroundColor: theme.surface, borderRadius: 12 },
+  list: { gap: 8, marginTop: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, backgroundColor: theme.surface, borderRadius: 12, borderWidth: 1, borderColor: 'transparent' },
+  rowTurn: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
   dot: { width: 14, height: 14, borderRadius: 7 },
   name: { color: theme.text, flex: 1, fontWeight: '600' },
   pos: { color: '#fcd34d', fontWeight: '700' },

@@ -113,7 +113,7 @@ const makeStyles = (theme: Theme) =>
     lineHeight: 16,
   },
   error: {
-    color: '#fb7185',
+    color: theme.error,
     fontSize: 12,
     textAlign: 'center',
   },

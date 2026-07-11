@@ -248,7 +248,7 @@ const makeStyles = (theme: Theme) =>
     textAlign: 'center',
   },
   error: {
-    color: '#fb7185',
+    color: theme.error,
     fontSize: 13,
     textAlign: 'center',
   },

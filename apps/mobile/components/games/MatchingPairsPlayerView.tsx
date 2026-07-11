@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import {
   type Game,
@@ -18,14 +18,19 @@ import {
   pairIcon,
   parseMatchingPairsMetadata,
 } from '@fateround/shared/memory-match'
+import {
+  ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
+  finalResultsAutoRevealSeconds,
+} from '@fateround/shared/round-timing'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { JoinScreen } from '@/components/JoinScreen'
 import { LobbyView } from '@/components/LobbyView'
-import { GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
+import { GameFinishedScreen, GameLoading, GameNotFound, GameShell } from '@/components/game/GameChrome'
 import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
+import { useDeadlineCountdown } from '@/hooks/useDeadlineCountdown'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postMatchingPairsFlip } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
@@ -46,6 +51,9 @@ type BoardState = {
   locked: boolean
 }
 
+/** Face-up preview time before the board flips down: longer for the big grid. */
+const getMemorizeSeconds = (gridSizePairs: number) => (gridSizePairs >= 16 ? 5 : 3)
+
 export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const styles = useThemedStyles(makeStyles)
   const [round, setRound] = useState<Round | null>(null)
@@ -55,6 +63,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const [board, setBoard] = useState<BoardState | null>(null)
   const [points, setPoints] = useState(0)
   const [streak, setStreak] = useState(0)
+  // Memorization phase — null when inactive, else the seconds remaining.
+  const [memorizeCountdown, setMemorizeCountdown] = useState<number | null>(null)
+  const memorizeRoundRef = useRef<string | null>(null)
   const flipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadGameState = useCallback(
@@ -155,6 +166,13 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         else break
       }
       setStreak(currentStreak)
+
+      // Start the memorize preview for a fresh round (no flips yet, round still active).
+      const roundActive = (roundData as Round).status !== 'finished'
+      if (mySubs.length === 0 && game.status === 'active' && roundActive && memorizeRoundRef.current !== roundData.id) {
+        memorizeRoundRef.current = roundData.id
+        setMemorizeCountdown(getMemorizeSeconds(parsedMeta.gridSizePairs))
+      }
     },
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
@@ -166,6 +184,22 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     !!bootstrap.game
   )
 
+  // ── Memorization countdown ────────────────────────────────────────────────
+  useEffect(() => {
+    if (memorizeCountdown === null || memorizeCountdown <= 0) return
+    const t = setTimeout(
+      () => setMemorizeCountdown((c) => (c !== null ? (c <= 1 ? null : c - 1) : null)),
+      1000
+    )
+    return () => clearTimeout(t)
+  }, [memorizeCountdown])
+
+  useEffect(() => {
+    return () => {
+      if (flipTimeoutRef.current) clearTimeout(flipTimeoutRef.current)
+    }
+  }, [])
+
   const mySubs = useMemo(
     () =>
       bootstrap.myPlayerId
@@ -175,10 +209,38 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   const finished = progress?.finished ?? false
+  const memorizing = memorizeCountdown !== null
   const layout = meta ? matchingPairsGridLayout(meta.gridSizePairs) : { cols: 4, rows: 4 }
 
+  // ── Multi-round state ─────────────────────────────────────────────────────
+  const totalRounds = bootstrap.game?.rounds_count ?? 1
+  const currentRoundNumber = bootstrap.game?.current_round_number ?? 1
+  const isLastRound = currentRoundNumber >= totalRounds
+  const showingRoundResults =
+    bootstrap.screen === 'playing' && bootstrap.game?.status === 'active' && round?.status === 'finished'
+
+  const nextRoundCountdown = useDeadlineCountdown(
+    round?.ended_at ?? null,
+    isLastRound ? finalResultsAutoRevealSeconds(bootstrap.game?.game_type) : ROUND_RESULTS_AUTO_ADVANCE_SECONDS,
+    showingRoundResults
+  )
+
+  // Per-round standings for the interstitial (best points this round per player).
+  const roundStandings = useMemo(() => {
+    if (!round) return []
+    const roundSubs = submissions.filter((s) => s.round_id === round.id)
+    return bootstrap.players
+      .filter((p) => !p.spectator)
+      .map((p) => {
+        const ps = roundSubs.filter((s) => s.player_id === p.id)
+        const pts = ps.reduce((max, s) => Math.max(max, s.points_after), 0)
+        const pairs = ps.filter((s) => s.is_match).length
+        return { id: p.id, name: p.name, points: pts, detail: `${pairs} pair${pairs === 1 ? '' : 's'}` }
+      })
+  }, [round, submissions, bootstrap.players])
+
   const onCardPress = async (index: number) => {
-    if (!board || !meta || !bootstrap.myResumeToken || finished || board.locked) return
+    if (!board || !meta || !bootstrap.myResumeToken || finished || board.locked || memorizing) return
     if (board.cardStates[index] === 'matched' || board.cardStates[index] === 'flipped') return
 
     if (board.firstFlipped === null) {
@@ -248,11 +310,16 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   if (!bootstrap.game) return <GameLoading />
 
   if (bootstrap.screen === 'finished') {
+    // Cumulative across all rounds: sum each player's best score per round.
     const entries = bootstrap.players
       .filter((p) => !p.spectator)
       .map((p) => {
         const subs = submissions.filter((s) => s.player_id === p.id)
-        const pts = subs.reduce((max, s) => Math.max(max, s.points_after), 0)
+        const bestByRound = new Map<string, number>()
+        for (const s of subs) {
+          bestByRound.set(s.round_id, Math.max(bestByRound.get(s.round_id) ?? 0, s.points_after))
+        }
+        const pts = [...bestByRound.values()].reduce((a, b) => a + b, 0)
         const pairs = subs.filter((s) => s.is_match).length
         return { id: p.id, name: p.name, points: pts, detail: `${pairs} pair${pairs === 1 ? '' : 's'}` }
       })
@@ -271,8 +338,46 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
+  const roundLabel = totalRounds > 1 ? `Round ${currentRoundNumber}/${totalRounds} · ` : ''
+
+  // ── Round-results interstitial (multi-round, between rounds) ───────────────
+  if (showingRoundResults) {
+    const myTotal = pointsLeaderboard(roundStandings, bootstrap.myPlayerId).find((r) => r.you)
+    const nextLine = isLastRound
+      ? nextRoundCountdown > 0
+        ? `Final results in ${nextRoundCountdown}…`
+        : 'Tallying final results…'
+      : nextRoundCountdown > 0
+        ? `Next round in ${nextRoundCountdown}…`
+        : 'Starting next round…'
+    return (
+      <GameShell
+        bootstrap={bootstrap}
+        title={batch3GameLabel('matching_pairs')}
+        subtitle={`${roundLabel}Score ${points}`}
+      >
+        <GameFinishedScreen
+          title={`Round ${currentRoundNumber}/${totalRounds} complete!`}
+          subtitle={nextLine}
+          detail={myTotal ? `Your score: ${myTotal.score} pts` : undefined}
+          leaderboard={pointsLeaderboard(roundStandings, bootstrap.myPlayerId)}
+        />
+      </GameShell>
+    )
+  }
+
   return (
-    <GameShell bootstrap={bootstrap} title={batch3GameLabel('matching_pairs')} subtitle={`Score ${points} · Streak ${streak}`}>
+    <GameShell
+      bootstrap={bootstrap}
+      title={batch3GameLabel('matching_pairs')}
+      subtitle={`${roundLabel}Score ${points} · Streak ${streak}`}
+    >
+      {memorizing && (
+        <View style={styles.memorizeBanner}>
+          <Text style={styles.memorizeText}>Memorize card positions!</Text>
+          <Text style={styles.memorizeCount}>{memorizeCountdown}s</Text>
+        </View>
+      )}
       {!board || !meta ? (
         <Text style={styles.waiting}>Loading board…</Text>
       ) : finished ? (
@@ -281,7 +386,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         <View style={[styles.grid, { width: layout.cols * 72 }]}>
           {board.cardOrder.map((pairIndex, index) => {
             const state = board.cardStates[index]
-            const showFace = state === 'flipped' || state === 'matched'
+            const showFace = memorizing || state === 'flipped' || state === 'matched'
             return (
               <Pressable
                 key={index}
@@ -290,7 +395,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
                   showFace && { borderColor: pairColor(meta, pairIndex), backgroundColor: '#1f2937' },
                   state === 'matched' && styles.cardMatched,
                 ]}
-                disabled={state === 'matched' || board.locked}
+                disabled={memorizing || state === 'matched' || board.locked}
                 onPress={() => void onCardPress(index)}
               >
                 <Text style={styles.cardText}>{showFace ? pairIcon(meta, pairIndex) : '?'}</Text>
@@ -310,6 +415,20 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
   waiting: { color: theme.textMuted, textAlign: 'center', marginTop: 24, fontSize: 16 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignSelf: 'center', marginTop: 12 },
+  memorizeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 8,
+    // Preview banner — brand indigo, kept consistent across themes.
+    backgroundColor: '#6366f1',
+  },
+  memorizeText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  memorizeCount: { color: '#fff', fontWeight: '800', fontSize: 24 },
   // Memory-match tiles are a functional board — card face/back colors left as-is.
   card: {
     width: 64,

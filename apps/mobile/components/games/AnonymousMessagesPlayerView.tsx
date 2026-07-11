@@ -487,6 +487,6 @@ const makeStyles = (theme: Theme) =>
   },
   // white on the solid rose send button — intentional
   sendBtnText: { color: '#fff', fontWeight: '700' },
-  error: { color: '#fb7185', fontSize: 14 },
+  error: { color: theme.error, fontSize: 14 },
   btnDisabled: { opacity: 0.5 },
 })

@@ -16,6 +16,7 @@ import { getSupabase } from '@/lib/supabase'
 import { ROUND_SELECT, WORD_HUNT_SUBMISSION_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { pointsLeaderboard } from '@/lib/finish-leaderboards'
+import { useWordHuntTimer } from '@/components/games/word-hunt/useWordHuntTimer'
 
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 
@@ -92,6 +93,13 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
     !!bootstrap.game
   )
 
+  const { label: timeLabel, timeUp, secondsLeft } = useWordHuntTimer(
+    gameCode,
+    bootstrap.game,
+    () => void bootstrap.load()
+  )
+  const urgent = secondsLeft <= 10
+
   const mySubmissions = useMemo(
     () => submissions.filter((s) => s.player_id === bootstrap.myPlayerId),
     [submissions, bootstrap.myPlayerId]
@@ -104,12 +112,13 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
   const previewPoints = currentWord ? wordHuntPoints(currentWord.length) : 0
 
   const tapCell = (index: number) => {
+    if (timeUp) return
     setSelectedPath((path) => toggleWordHuntPath(path, index))
     setMessage(null)
   }
 
   const submitWord = async () => {
-    if (!bootstrap.myResumeToken || !grid || !roundId || submitting) return
+    if (!bootstrap.myResumeToken || !grid || !roundId || submitting || timeUp) return
     const check = validateWordHuntSubmissionClient(grid, selectedPath, validWords, foundWords)
     if (!check.ok) {
       setMessage(check.error)
@@ -186,15 +195,24 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
 
   return (
     <GameShell bootstrap={bootstrap} title={batch5GameLabel('word_hunt')} subtitle={`${mySubmissions.length} words found`}>
-      <View style={styles.grid}>
+      <View style={[styles.timerPill, urgent && styles.timerPillUrgent, timeUp && styles.timerPillUp]}>
+        <Text style={[styles.timerText, urgent && styles.timerTextUrgent]}>
+          {timeUp ? '0:00' : timeLabel}
+        </Text>
+      </View>
+
+      {timeUp ? <Text style={styles.timeUpNotice}>Time's up!</Text> : null}
+
+      <View style={[styles.grid, timeUp && styles.gridDisabled]}>
         {grid.flatMap((row, rowIndex) =>
           row.map((letter, colIndex) => {
             const index = rowIndex * 4 + colIndex
-            const selected = selectedPath.includes(index)
+            const selected = !timeUp && selectedPath.includes(index)
             return (
               <Pressable
                 key={index}
                 style={[styles.cell, selected && styles.cellSelected]}
+                disabled={timeUp}
                 onPress={() => tapCell(index)}
               >
                 <Text style={styles.cellText}>{letter}</Text>
@@ -205,15 +223,17 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
       </View>
 
       <View style={styles.wordRow}>
-        <Text style={styles.currentWord}>{currentWord || 'Tap letters in order'}</Text>
-        {currentWord ? <Text style={styles.points}>{previewPoints} pts</Text> : null}
+        <Text style={styles.currentWord}>
+          {timeUp ? 'Time is up' : currentWord || 'Tap letters in order'}
+        </Text>
+        {!timeUp && currentWord ? <Text style={styles.points}>{previewPoints} pts</Text> : null}
       </View>
 
       {message ? <Text style={styles.message}>{message}</Text> : null}
 
       <Pressable
-        style={[styles.primaryBtn, (!currentWord || submitting) && styles.primaryBtnDisabled]}
-        disabled={!currentWord || submitting}
+        style={[styles.primaryBtn, (!currentWord || submitting || timeUp) && styles.primaryBtnDisabled]}
+        disabled={!currentWord || submitting || timeUp}
         onPress={() => void submitWord()}
       >
         <Text style={styles.primaryText}>Submit word</Text>
@@ -233,12 +253,39 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
   waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
+  timerPill: {
+    alignSelf: 'center',
+    backgroundColor: theme.surface,
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 6,
+    marginBottom: 12,
+  },
+  // Functional urgent-red state color, not in the token table — kept fixed.
+  timerPillUrgent: { backgroundColor: '#dc2626' },
+  timerPillUp: { backgroundColor: '#dc2626' },
+  timerText: {
+    color: theme.text,
+    fontSize: 20,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  // White on the solid red urgent pill — correct in both schemes.
+  timerTextUrgent: { color: '#fff' },
+  timeUpNotice: {
+    color: '#dc2626',
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
     justifyContent: 'center',
   },
+  gridDisabled: { opacity: 0.5 },
   // Word-hunt letter grid is a functional board (Step D) — cell colors left as-is.
   cell: {
     width: '22%',

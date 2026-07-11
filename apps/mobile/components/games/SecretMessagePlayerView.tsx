@@ -188,7 +188,7 @@ const makeStyles = (theme: Theme) =>
     textAlignVertical: 'top',
   },
   counter: { color: theme.textFaint, fontSize: 12, textAlign: 'right' },
-  error: { color: '#fb7185', fontSize: 14 },
+  error: { color: theme.error, fontSize: 14 },
   sent: { color: '#86efac', fontSize: 14 },
   button: {
     backgroundColor: theme.primary,

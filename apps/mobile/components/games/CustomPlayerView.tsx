@@ -239,5 +239,5 @@ const makeStyles = (theme: Theme) =>
   // white on the solid rose submit button — intentional
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   btnDisabled: { opacity: 0.5 },
-  error: { color: '#fb7185', fontSize: 14 },
+  error: { color: theme.error, fontSize: 14 },
 })
