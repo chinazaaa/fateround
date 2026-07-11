@@ -102,10 +102,7 @@ async function sendWebPush(
   }
 }
 
-async function sendExpoPush(
-  tokens: { id: string; expo_push_token: string }[],
-  payload: PushPayload
-): Promise<void> {
+async function sendExpoPush(tokens: { id: string; expo_push_token: string }[], payload: PushPayload): Promise<void> {
   if (tokens.length === 0) return
 
   const admin = getSupabaseAdmin()
@@ -141,10 +138,7 @@ export async function notifyGameEvent(gameCode: string, event: PushEvent, bodyOv
     admin.from('mobile_push_tokens').select('id, expo_push_token').eq('game_id', code),
   ])
 
-  await Promise.all([
-    sendWebPush(webSubs ?? [], payload),
-    sendExpoPush(expoTokens ?? [], payload),
-  ])
+  await Promise.all([sendWebPush(webSubs ?? [], payload), sendExpoPush(expoTokens ?? [], payload)])
 }
 
 /**
@@ -161,22 +155,11 @@ export async function notifyPlayerEvent(
   const payload = buildPayload(event, code, bodyOverride)
 
   const [{ data: webSubs }, { data: expoTokens }] = await Promise.all([
-    admin
-      .from('push_subscriptions')
-      .select('id, endpoint, p256dh, auth')
-      .eq('game_id', code)
-      .eq('player_id', playerId),
-    admin
-      .from('mobile_push_tokens')
-      .select('id, expo_push_token')
-      .eq('game_id', code)
-      .eq('player_id', playerId),
+    admin.from('push_subscriptions').select('id, endpoint, p256dh, auth').eq('game_id', code).eq('player_id', playerId),
+    admin.from('mobile_push_tokens').select('id, expo_push_token').eq('game_id', code).eq('player_id', playerId),
   ])
 
-  await Promise.all([
-    sendWebPush(webSubs ?? [], payload),
-    sendExpoPush(expoTokens ?? [], payload),
-  ])
+  await Promise.all([sendWebPush(webSubs ?? [], payload), sendExpoPush(expoTokens ?? [], payload)])
 }
 
 /** Resolve the player whose turn it is now for supported turn-based games. */
@@ -281,8 +264,7 @@ export function scheduleTurnNotification(gameCode: string): void {
 export function scheduleRoundStartedNotification(gameCode: string, roundNumber?: number): void {
   after(async () => {
     try {
-      const body =
-        typeof roundNumber === 'number' ? `Round ${roundNumber} is live — jump back in!` : undefined
+      const body = typeof roundNumber === 'number' ? `Round ${roundNumber} is live — jump back in!` : undefined
       await notifyGameEvent(gameCode, 'round_started', body)
     } catch (err) {
       console.error(`push notify (round_started) failed for ${gameCode}`, err)

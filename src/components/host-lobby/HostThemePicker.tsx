@@ -33,7 +33,7 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
       isMonopoly
         ? THEMES.filter((theme) => MONOPOLY_EDITIONS.some((e) => e.themeId === theme.id))
         : THEMES.filter((theme) => theme.id !== 'pirate' && theme.id !== 'arctic' && theme.id !== 'naija'),
-    [isMonopoly],
+    [isMonopoly]
   )
 
   const selectTheme = async (themeId: ThemeId) => {
@@ -66,9 +66,7 @@ export function HostThemePicker({ gameCode, hostToken, game, onGameUpdate }: Pro
       >
         {options.map((theme) => {
           const edition = isMonopoly ? MONOPOLY_EDITIONS.find((e) => e.themeId === theme.id) : null
-          const displayTheme = edition
-            ? { ...theme, label: edition.editionName, emoji: edition.editionEmoji }
-            : theme
+          const displayTheme = edition ? { ...theme, label: edition.editionName, emoji: edition.editionEmoji } : theme
           return (
             <ThemePreviewCard
               key={theme.id}

@@ -22,7 +22,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     .eq('expo_push_token', data.expoPushToken)
 
   if (error) {
-    return NextResponse.json({ error: internalErrorMessage('games/code/push/expo-unsubscribe', error) }, { status: 500 })
+    return NextResponse.json(
+      { error: internalErrorMessage('games/code/push/expo-unsubscribe', error) },
+      { status: 500 }
+    )
   }
 
   return NextResponse.json({ success: true })
