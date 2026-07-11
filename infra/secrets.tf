@@ -116,6 +116,34 @@ resource "aws_ssm_parameter" "spotify_client_secret" {
   tags  = { Name = "${var.name_prefix}-spotify-client-secret" }
 }
 
+# OpenTelemetry export (optional). Created only when an OTLP endpoint is configured;
+# without it the app's src/instrumentation.ts is a no-op, so absence keeps telemetry
+# off and never breaks a deploy. The endpoint + resource attributes are non-secret
+# (a URL and env labels); the headers carry the backend auth token, so SecureString.
+resource "aws_ssm_parameter" "otel_exporter_otlp_endpoint" {
+  count = var.otel_exporter_otlp_endpoint != "" ? 1 : 0
+  name  = "/${var.name_prefix}/OTEL_EXPORTER_OTLP_ENDPOINT"
+  type  = "String"
+  value = var.otel_exporter_otlp_endpoint
+  tags  = { Name = "${var.name_prefix}-otel-otlp-endpoint" }
+}
+
+resource "aws_ssm_parameter" "otel_exporter_otlp_headers" {
+  count = var.otel_exporter_otlp_headers != "" ? 1 : 0
+  name  = "/${var.name_prefix}/OTEL_EXPORTER_OTLP_HEADERS"
+  type  = "SecureString"
+  value = var.otel_exporter_otlp_headers
+  tags  = { Name = "${var.name_prefix}-otel-otlp-headers" }
+}
+
+resource "aws_ssm_parameter" "otel_resource_attributes" {
+  count = var.otel_resource_attributes != "" ? 1 : 0
+  name  = "/${var.name_prefix}/OTEL_RESOURCE_ATTRIBUTES"
+  type  = "String"
+  value = var.otel_resource_attributes
+  tags  = { Name = "${var.name_prefix}-otel-resource-attributes" }
+}
+
 # Cloudflare Origin Certificate for Caddy (only when origin TLS is enabled).
 # base64-encoded so multi-line PEM survives SSM/CLI round-trips intact.
 resource "aws_ssm_parameter" "origin_cert" {

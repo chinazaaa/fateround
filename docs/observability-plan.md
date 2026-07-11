@@ -57,16 +57,20 @@ arg, mirroring the existing `NEXT_PUBLIC_*` plumbing).
 issuance, Klipy GIFs, Anthropic AI-questions) as distributed traces, plus a few business metrics —
 instead of guessing from a single box with no APM.
 
-### 2a. App instrumentation (code — this repo)
-- Add `src/instrumentation.ts` using **`@vercel/otel`** (framework-agnostic — runs on our
-  self-hosted Node container, not just Vercel; auto-instruments `fetch` + Next.js server spans
-  with the least code). Raw `@opentelemetry/sdk-node` is the fallback if we need finer control.
-- Export via **OTLP** to an **OTel Collector running on the EC2 box** (systemd unit, same pattern
-  as Caddy + the tick timer), which batches/retries and forwards to the chosen backend. Keeps
-  exporter creds off the app and lets us swap backends without redeploying.
-- Config via env, per-environment (dev/prod), added to SSM + build args like the other secrets:
-  `OTEL_SERVICE_NAME=fateround`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_RESOURCE_ATTRIBUTES`
-  (env, commit), and a sampling ratio.
+### 2a. App instrumentation (code — this repo)  ✅ DONE + wired (dormant)
+- ✅ `src/instrumentation.ts` uses **`@vercel/otel`** (framework-agnostic — runs on our
+  self-hosted Node container; auto-instruments `fetch` + Next.js server spans with the least
+  code). It is a deliberate **no-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set**, so it ships
+  dark. Raw `@opentelemetry/sdk-node` remains the fallback if we need finer control. (PR #400.)
+- ✅ Runtime config wired through **SSM → container** in `infra/` — `OTEL_EXPORTER_OTLP_ENDPOINT`,
+  `OTEL_EXPORTER_OTLP_HEADERS` (SecureString), `OTEL_RESOURCE_ATTRIBUTES` — count-gated on the
+  endpoint being set (mirrors the VAPID/Spotify optional-secret pattern) and read optionally at
+  deploy time. `service.name` defaults to `fateround` in code, so no `OTEL_SERVICE_NAME` needed.
+  **Remaining to light it up:** create the backend stack (below), then set the endpoint + headers
+  in `terraform.<env>.tfvars` and `terraform apply` (replaces the instance) — no code change.
+- **Chose direct OTLP export** (app → backend) over an on-box collector for the MVP: one fewer
+  process on the single box, and the endpoint is env-driven so we can later point it at a
+  `localhost:4318` collector without a code change if buffering/backend-swap becomes worth it.
 
 ### 2b. Custom spans + metrics (incremental)
 - Spans around Supabase calls and the external integrations (LiveKit / Klipy / Anthropic) so the
@@ -76,20 +80,25 @@ instead of guessing from a single box with no APM.
 - Correlate logs later (pino → OTLP, or ship to the same backend) — phase 3, optional.
 
 ### Decisions to make
-- **Backend:** Grafana Cloud (traces+metrics+logs, generous free tier) vs Honeycomb (best trace
-  UX, free 20M events/mo) vs Axiom. Recommend starting with **Grafana Cloud** (one backend for all
-  three signals) unless we want Honeycomb's trace exploration.
+- **Backend (still open — the one remaining blocker to lighting OTel up):** Grafana Cloud
+  (traces+metrics+logs, generous free tier) vs Honeycomb (best trace UX, free 20M events/mo) vs
+  Axiom. Recommend starting with **Grafana Cloud** (one backend for all three signals) unless we
+  want Honeycomb's trace exploration. Create the stack, grab its OTLP endpoint + auth header, drop
+  them into `terraform.<env>.tfvars` (`otel_exporter_otlp_endpoint` / `otel_exporter_otlp_headers`).
 - **Sampling:** head sampling (~10–20% of traces) but **always-sample errors**; revisit if volume
-  is low enough to keep 100%.
-- **Collector on-box vs direct OTLP export** from the app. Prefer the on-box collector (buffering
-  + backend-swap without redeploy); direct export is simpler if we want to skip running one more
-  process on the single box.
+  is low enough to keep 100%. Not yet wired (defaulting to 100% on a single low-traffic box is
+  fine to start) — add `OTEL_TRACES_SAMPLER` env when volume warrants.
+- **Collector on-box vs direct OTLP export** — ✅ resolved: **direct export** for the MVP (see 2a).
+  Revisit an on-box collector only if we need buffering or backend-swap-without-redeploy.
 
 ---
 
 ## Sequencing
-1. `/api/health` endpoint + UptimeRobot monitors + one alert channel  → immediate safety net.
-2. `@vercel/otel` + OTLP → collector → backend; validate traces for the hot API routes.
+1. ✅ `/api/health` endpoint (PR #393) — live in prod. ⏳ UptimeRobot monitors + one alert channel
+   still to be configured in the dashboard (external, no code).
+2. ✅ `@vercel/otel` app instrumentation (PR #400) + ✅ SSM→container env wiring for direct OTLP
+   export. ⏳ Create the backend stack (Grafana Cloud), set the endpoint+headers in tfvars, apply,
+   and validate traces for the hot API routes.
 3. Custom Supabase/external spans + business metrics; (optional) log correlation and a status page.
 
 _Both are infra/ops initiatives, tracked in [architecture-debt.md](./architecture-debt.md) under
