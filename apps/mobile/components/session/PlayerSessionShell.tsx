@@ -8,6 +8,7 @@ import { clearPlayerSession, getHostToken, getPlayerSession } from '@/lib/secure
 import { gameHasMobileVoice } from '@/lib/voice-games'
 import { VoiceRail } from '@/components/voice/VoiceRail'
 import { PlayerSessionMenu } from '@/components/session/PlayerSessionMenu'
+import { HeaderBadgeContext } from '@/components/session/HeaderBadgeContext'
 import { HostNominationBanner } from '@/components/session/HostNominationBanner'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { HeaderAction } from '@/components/ui/HeaderAction'
@@ -37,12 +38,12 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
   const [hostToken, setHostToken] = useState<string | null>(null)
   const [resumeToken, setResumeToken] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
+  // Optional mode/phase label a game view registers via useHeaderBadge — shown
+  // as a pill next to the game-type pill instead of a floating body subtitle.
+  const [headerBadge, setHeaderBadge] = useState<string | null>(null)
 
   const reloadSession = useCallback(async () => {
-    const [session, storedHostToken] = await Promise.all([
-      getPlayerSession(gameCode),
-      getHostToken(gameCode),
-    ])
+    const [session, storedHostToken] = await Promise.all([getPlayerSession(gameCode), getHostToken(gameCode)])
     setPlayerId(session?.playerId ?? null)
     setPlayerName(session?.playerName ?? '')
     setResumeToken(session?.resumeToken ?? null)
@@ -90,149 +91,167 @@ export function PlayerSessionShell({ gameCode, game, children }: Props) {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <View style={styles.toolbar}>
-          <Pressable style={styles.backBtn} onPress={goHome} hitSlop={8}>
-            <Text style={styles.backIcon}>←</Text>
-          </Pressable>
+    <HeaderBadgeContext.Provider value={setHeaderBadge}>
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <View style={styles.header}>
+          <View style={styles.toolbar}>
+            <Pressable style={styles.backBtn} onPress={goHome} hitSlop={8}>
+              <Text style={styles.backIcon}>←</Text>
+            </Pressable>
 
-          <View style={styles.toolbarActions}>
-            <SettingsButton />
-            <HeaderAction label="Share" onPress={onShare} />
-            {hasHostToken ? (
-              <HeaderAction label="Host" accent onPress={() => void openHost()} />
-            ) : null}
-            {playerId && !gameEnded ? (
-              <PlayerSessionMenu
-                gameCode={gameCode}
-                gameType={game?.game_type}
-                playerId={playerId}
-                playerName={playerName}
-                onRenamed={(name) => {
-                  setPlayerName(name)
-                  void reloadSession()
-                }}
-                onLeft={() => void onLeft()}
-              />
-            ) : null}
+            <View style={styles.toolbarActions}>
+              <SettingsButton />
+              <HeaderAction label="Share" onPress={onShare} />
+              {hasHostToken ? <HeaderAction label="Host" accent onPress={() => void openHost()} /> : null}
+              {playerId && !gameEnded ? (
+                <PlayerSessionMenu
+                  gameCode={gameCode}
+                  gameType={game?.game_type}
+                  playerId={playerId}
+                  playerName={playerName}
+                  onRenamed={(name) => {
+                    setPlayerName(name)
+                    void reloadSession()
+                  }}
+                  onLeft={() => void onLeft()}
+                />
+              ) : null}
+            </View>
           </View>
-        </View>
 
-        <View style={styles.meta}>
-          <View style={styles.codeRow}>
-            <Text style={styles.code}>{code}</Text>
-            {typeLabel ? (
-              <View style={styles.typePill}>
-                <Text style={styles.typePillText}>{typeLabel}</Text>
+          <View style={styles.meta}>
+            <View style={styles.codeRow}>
+              <Text style={styles.code}>{code}</Text>
+              {typeLabel ? (
+                <View style={styles.typePill}>
+                  <Text style={styles.typePillText}>{typeLabel}</Text>
+                </View>
+              ) : null}
+              {headerBadge ? (
+                <View style={styles.modePill}>
+                  <Text style={styles.modePillText}>{headerBadge}</Text>
+                </View>
+              ) : null}
+            </View>
+            {game?.title ? (
+              <Text style={styles.title} numberOfLines={1}>
+                {game.title}
+              </Text>
+            ) : null}
+            {game?.game_type ? (
+              <View style={styles.rulesRow}>
+                <GameRulesLink gameType={game.game_type} variant="subtle" />
               </View>
             ) : null}
           </View>
-          {game?.title ? (
-            <Text style={styles.title} numberOfLines={1}>
-              {game.title}
-            </Text>
-          ) : null}
-          {game?.game_type ? (
-            <View style={styles.rulesRow}>
-              <GameRulesLink gameType={game.game_type} variant="subtle" />
-            </View>
-          ) : null}
         </View>
-      </View>
 
-      {game && gameHasMobileVoice(game.game_type) ? (
-        <VoiceRail gameCode={gameCode} mode="player" />
-      ) : null}
-      {!gameEnded ? (
-        <HostNominationBanner gameCode={gameCode} playerId={playerId} resumeToken={resumeToken} />
-      ) : null}
-      <View style={styles.body}>{children}</View>
-      <ShareGameSheet
-        visible={shareOpen}
-        gameCode={gameCode}
-        hostToken={hostToken}
-        resumeToken={resumeToken}
-        onClose={() => setShareOpen(false)}
-      />
-    </SafeAreaView>
+        {game && gameHasMobileVoice(game.game_type) ? <VoiceRail gameCode={gameCode} mode="player" /> : null}
+        {!gameEnded ? <HostNominationBanner gameCode={gameCode} playerId={playerId} resumeToken={resumeToken} /> : null}
+        <View style={styles.body}>{children}</View>
+        <ShareGameSheet
+          visible={shareOpen}
+          gameCode={gameCode}
+          hostToken={hostToken}
+          resumeToken={resumeToken}
+          onClose={() => setShareOpen(false)}
+        />
+      </SafeAreaView>
+    </HeaderBadgeContext.Provider>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.bg },
-  redirecting: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header: {
-    borderBottomWidth: 1,
-    borderBottomColor: theme.surfaceHover,
-    paddingBottom: theme.space.md,
-    gap: theme.space.md,
-  },
-  toolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.space.md,
-    paddingTop: theme.space.xs,
-    gap: theme.space.sm,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backIcon: { color: theme.text, fontSize: 20, fontWeight: '600' },
-  toolbarActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.space.xs,
-    flexShrink: 1,
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-  },
-  meta: {
-    paddingHorizontal: theme.space.lg,
-    gap: 6,
-  },
-  codeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.space.sm,
-    flexWrap: 'wrap',
-  },
-  code: {
-    color: theme.text,
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: 3,
-  },
-  typePill: {
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.primarySoft,
-    borderWidth: 1,
-    borderColor: theme.borderAccent,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  typePillText: {
-    color: theme.primaryMuted,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  title: {
-    color: theme.textMuted,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  rulesRow: { marginTop: 2 },
-  // Cap + center the game content so it doesn't stretch edge-to-edge on iPad.
-  body: { flex: 1, ...centeredContent },
-})
+    safe: { flex: 1, backgroundColor: theme.bg },
+    redirecting: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    header: {
+      borderBottomWidth: 1,
+      borderBottomColor: theme.surfaceHover,
+      paddingBottom: theme.space.md,
+      gap: theme.space.md,
+    },
+    toolbar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: theme.space.md,
+      paddingTop: theme.space.xs,
+      gap: theme.space.sm,
+    },
+    backBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    backIcon: { color: theme.text, fontSize: 20, fontWeight: '600' },
+    toolbarActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.space.xs,
+      flexShrink: 1,
+      flexWrap: 'wrap',
+      justifyContent: 'flex-end',
+    },
+    meta: {
+      paddingHorizontal: theme.space.lg,
+      gap: 6,
+    },
+    codeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.space.sm,
+      flexWrap: 'wrap',
+    },
+    code: {
+      color: theme.text,
+      fontSize: 26,
+      fontWeight: '800',
+      letterSpacing: 3,
+    },
+    typePill: {
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.primarySoft,
+      borderWidth: 1,
+      borderColor: theme.borderAccent,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    typePillText: {
+      color: theme.primaryMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+    },
+    // Secondary pill for a mode/phase badge — subtler than the game-type pill so
+    // the two read as a hierarchy (game type, then mode) rather than two peers.
+    modePill: {
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    modePillText: {
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+    },
+    title: {
+      color: theme.textMuted,
+      fontSize: 15,
+      fontWeight: '600',
+    },
+    rulesRow: { marginTop: 2 },
+    // Cap + center the game content so it doesn't stretch edge-to-edge on iPad.
+    body: { flex: 1, ...centeredContent },
+  })

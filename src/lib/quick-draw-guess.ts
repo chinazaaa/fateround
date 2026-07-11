@@ -702,6 +702,27 @@ export async function assignQuickDrawGuessLateJoinTeam(
       .from('quick_draw_guess_players')
       .upsert({ game_id: gameId, player_id: playerId, team: 1, score: 0 }, { onConflict: 'game_id,player_id' })
     if (error) return { team: 1, error: internalErrorMessage('quick-draw-guess:assignLateJoinIndividual', error) }
+
+    // The drawer rotation reads from the session's fixed `roster` snapshot, not the live
+    // player list — so a late joiner who is only added to quick_draw_guess_players can guess
+    // and score but never becomes the drawer. Append them to the roster so an upcoming round
+    // rotates a drawing turn onto them (team mode already picks up late joiners via teamRoster).
+    const { data: sess } = await supabase
+      .from('quick_draw_guess_sessions')
+      .select('roster, status')
+      .eq('game_id', gameId)
+      .maybeSingle()
+    if (sess && sess.status !== 'finished') {
+      const roster = Array.isArray(sess.roster) ? (sess.roster as string[]) : []
+      if (!roster.includes(playerId)) {
+        const { error: rosterError } = await supabase
+          .from('quick_draw_guess_sessions')
+          .update({ roster: [...roster, playerId], updated_at: new Date().toISOString() })
+          .eq('game_id', gameId)
+        if (rosterError)
+          return { team: 1, error: internalErrorMessage('quick-draw-guess:assignLateJoinRoster', rosterError) }
+      }
+    }
     return { team: 1 }
   }
   const numTeams = clampQuickDrawNumTeams(game.quick_draw_num_teams)

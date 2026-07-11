@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
-import { type Game, type Player, type QuickDrawDrawingStrokeData, type QuickDrawGuessGuess, type QuickDrawGuessPlayer, type QuickDrawGuessSession, type QuickDrawGuessWord } from '@fateround/shared'
+import {
+  type Game,
+  type Player,
+  type QuickDrawDrawingStrokeData,
+  type QuickDrawGuessGuess,
+  type QuickDrawGuessPlayer,
+  type QuickDrawGuessSession,
+  type QuickDrawGuessWord,
+} from '@fateround/shared'
 import { batch8GameLabel } from '@fateround/shared/batch-8-games'
 import {
   clampQuickDrawNumTeams,
@@ -31,10 +39,17 @@ import { TeamPickerGrid } from '@/components/party/TeamPickerGrid'
 import { TeamScoreGrid } from '@/components/party/TeamScoreGrid'
 import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
 import { LiveDrawingCanvas } from '@/components/quick-draw/DrawingCanvas'
+import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
-import { postQuickDrawGuess, postQuickDrawGuessSkip, postQuickDrawGuessStrokes, postQuickDrawGuessTeam } from '@/lib/game-api'
+import {
+  postQuickDrawGuess,
+  postQuickDrawGuessSkip,
+  postQuickDrawGuessStrokes,
+  postQuickDrawGuessTeam,
+} from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import {
   QUICK_DRAW_GUESS_GUESS_SELECT,
@@ -67,6 +82,10 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
   const [guesses, setGuesses] = useState<QuickDrawGuessGuess[]>([])
   const [guessText, setGuessText] = useState('')
   const [acting, setActing] = useState(false)
+  // Disabled while a stroke is in progress so drawing on the canvas doesn't
+  // scroll the page (the native scroll gesture otherwise steals the drag).
+  const [scrollEnabled, setScrollEnabled] = useState(true)
+  const scrollRef = useRef<ScrollView>(null)
   const styles = useThemedStyles(makeStyles)
   const theme = useTheme()
 
@@ -143,12 +162,20 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
 
   const mode = clampQuickDrawPlayMode(bootstrap.game?.quick_draw_play_mode ?? session?.mode)
   const numTeams = clampQuickDrawNumTeams(bootstrap.game?.quick_draw_num_teams ?? session?.num_teams)
+  // Surface the mode (or active team) as a header pill during play instead of a
+  // floating "Individual" subtitle. Only in guess mode — the lie variant renders
+  // its own view below.
+  useHeaderBadge(
+    isGuessMode && bootstrap.screen === 'playing' && session
+      ? mode === 'team'
+        ? teamLabel(session.active_team)
+        : 'Individual'
+      : null
+  )
   const myTeamRow = teamRows.find((r) => r.player_id === bootstrap.myPlayerId)
   const isDrawer = session?.drawer_player_id === bootstrap.myPlayerId
   const onMyTeam = mode === 'individual' || myTeamRow?.team === session?.active_team
-  const mePlayer = bootstrap.myPlayerId
-    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
-    : undefined
+  const mePlayer = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   const isViewer = !!(mePlayer && bootstrap.game && playerIsViewer(mePlayer, bootstrap.game))
   // Individual mode: once I've guessed the word correctly this turn, the guess box
   // is replaced by a "You got it!" note so I can't keep submitting (mirrors web
@@ -156,9 +183,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
   const myGuessedThisTurn =
     mode === 'individual' &&
     !!session &&
-    guesses.some(
-      (g) => g.turn_index === session.turn_index && g.player_id === bootstrap.myPlayerId && g.correct
-    )
+    guesses.some((g) => g.turn_index === session.turn_index && g.player_id === bootstrap.myPlayerId && g.correct)
   const canGuess = session?.phase === 'turn' && !isDrawer && !isViewer && onMyTeam
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -193,10 +218,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
     return map
   }, [teamRows, bootstrap.players])
 
-  const liveTeamScores = useMemo(
-    () => computeQuickDrawGuessScores(words, numTeams),
-    [words, numTeams]
-  )
+  const liveTeamScores = useMemo(() => computeQuickDrawGuessScores(words, numTeams), [words, numTeams])
 
   const liveIndividualScores = useMemo(
     () => quickDrawGuessIndividualLeaderboard(teamRows, bootstrap.players),
@@ -225,14 +247,8 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
       })
   }, [guesses, bootstrap.players, bootstrap.myPlayerId, mode, session?.turn_index])
 
-  const turnSecondsLeft = useAbsoluteDeadline(
-    session?.turn_deadline_at,
-    session?.phase === 'turn'
-  )
-  const breakSecondsLeft = useAbsoluteDeadline(
-    session?.break_deadline_at,
-    session?.phase === 'break'
-  )
+  const turnSecondsLeft = useAbsoluteDeadline(session?.turn_deadline_at, session?.phase === 'turn')
+  const breakSecondsLeft = useAbsoluteDeadline(session?.break_deadline_at, session?.phase === 'break')
 
   const strokeData = normalizeStrokeData(session?.current_stroke_data ?? emptyStrokeData())
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -279,13 +295,15 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
     // (readiness = holding a seat), using quick-draw's own min-player thresholds.
     if (bootstrap.game.replay_pending) {
       return (
-        <GameShell bootstrap={bootstrap} title={batch8GameLabel('quick_draw')} subtitle="Play again">
+        <GameShell bootstrap={bootstrap} title={batch8GameLabel('quick_draw')}>
           <ReplayReadyRing
             gameCode={bootstrap.code}
             players={bootstrap.players}
             myPlayerId={bootstrap.myPlayerId}
             myResumeToken={bootstrap.myResumeToken ?? null}
-            minPlayers={mode === 'individual' ? QUICK_DRAW_GUESS_MIN_PLAYERS_INDIVIDUAL : QUICK_DRAW_GUESS_MIN_PLAYERS_TEAM}
+            minPlayers={
+              mode === 'individual' ? QUICK_DRAW_GUESS_MIN_PLAYERS_INDIVIDUAL : QUICK_DRAW_GUESS_MIN_PLAYERS_TEAM
+            }
             onReload={() => bootstrap.load()}
           />
         </GameShell>
@@ -323,12 +341,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
           winnerPlayerId={hasWinner ? top.id : null}
           roundKey={session?.id ?? null}
           notice={
-            <QuickDrawShareCard
-              mode="individual"
-              board={board}
-              highlightPlayerId={bootstrap.myPlayerId}
-              hideHeader
-            />
+            <QuickDrawShareCard mode="individual" board={board} highlightPlayerId={bootstrap.myPlayerId} hideHeader />
           }
         />
       )
@@ -356,13 +369,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
         subtitle="Team scores"
         detail={winnerLabel ? `${winnerLabel} wins` : undefined}
         notice={
-          <QuickDrawShareCard
-            mode="team"
-            teamScores={scores}
-            winners={winners}
-            topGuessers={topGuessers}
-            hideHeader
-          />
+          <QuickDrawShareCard mode="team" teamScores={scores} winners={winners} topGuessers={topGuessers} hideHeader />
         }
       />
     )
@@ -393,14 +400,13 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
   return (
     <GameShell
       title={batch8GameLabel('quick_draw')}
-      subtitle={mode === 'team' ? teamLabel(session.active_team) : 'Individual'}
       gameCode={bootstrap.code}
       game={bootstrap.game}
       players={bootstrap.players}
       myPlayerId={bootstrap.myPlayerId}
       onPromoted={() => bootstrap.load()}
     >
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAwareGameScroll ref={scrollRef} contentContainerStyle={styles.content} scrollEnabled={scrollEnabled}>
         <TurnBanner text={statusText} isMyTurn={isDrawer || canGuess} />
 
         {isViewer && mePlayer && bootstrap.myPlayerId ? (
@@ -463,15 +469,19 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
               prompt={session.current_word}
               resetKey={`${session.turn_index}-${session.current_word}`}
               onStrokeChange={syncStrokes}
-              onSkip={() => void act(() => postQuickDrawGuessSkip(bootstrap.code, bootstrap.myResumeToken!))}
+              onDrawActiveChange={(active) => setScrollEnabled(!active)}
+              // Skip-word only exists in team mode (a team races through many
+              // words per turn); individual mode has one word per turn. Mirrors
+              // web QuickDrawGuessPlay's `!isIndividual` gate.
+              onSkip={
+                mode === 'team'
+                  ? () => void act(() => postQuickDrawGuessSkip(bootstrap.code, bootstrap.myResumeToken!))
+                  : undefined
+              }
               skipDisabled={acting}
             />
           ) : (
-            <LiveDrawingCanvas
-              strokeData={strokeData}
-              readOnly
-              resetKey={`${session.turn_index}-watch`}
-            />
+            <LiveDrawingCanvas strokeData={strokeData} readOnly resetKey={`${session.turn_index}-watch`} />
           )
         ) : null}
 
@@ -488,6 +498,11 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
               autoCapitalize="none"
               autoCorrect={false}
               maxLength={80}
+              onFocus={() => {
+                // Lift the guess box above the software keyboard — the input sits
+                // near the bottom of the scroll, so scroll it into view on focus.
+                setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150)
+              }}
               onSubmitEditing={() =>
                 guessText.trim() &&
                 void act(() => postQuickDrawGuess(bootstrap.code, bootstrap.myResumeToken!, guessText.trim()))
@@ -496,7 +511,9 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
             <Pressable
               style={[styles.primaryBtn, acting && styles.btnDisabled]}
               disabled={acting || !guessText.trim()}
-              onPress={() => void act(() => postQuickDrawGuess(bootstrap.code, bootstrap.myResumeToken!, guessText.trim()))}
+              onPress={() =>
+                void act(() => postQuickDrawGuess(bootstrap.code, bootstrap.myResumeToken!, guessText.trim()))
+              }
             >
               <Text style={styles.primaryBtnText}>Guess</Text>
             </Pressable>
@@ -504,49 +521,49 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
         ) : null}
 
         <ActivityFeed title="Recent guesses" items={guessFeed} emptyText="No guesses yet" />
-      </ScrollView>
+      </KeyboardAwareGameScroll>
     </GameShell>
   )
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  teamRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  teamRowLabel: { color: theme.textMuted, fontSize: 14 },
-  content: { paddingBottom: 32, gap: 12 },
-  status: { color: theme.textSecondary, fontSize: 14 },
-  // emerald success — kept consistent across themes for the "you got it" note
-  gotIt: { color: '#10b981', fontSize: 15, fontWeight: '700', textAlign: 'center' },
-  wordBox: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 8, alignItems: 'center' },
-  wordLabel: { color: theme.textMuted, fontSize: 12, textTransform: 'uppercase' },
-  word: { color: theme.text, fontSize: 32, fontWeight: '800', textAlign: 'center' },
-  wordHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
-  guessBox: { gap: 10 },
-  input: {
-    backgroundColor: theme.surface,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    color: theme.text,
-    fontSize: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  // white on the solid rose button — intentional
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  secondaryBtn: {
-    backgroundColor: theme.border,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { color: theme.text, fontWeight: '600', fontSize: 15 },
-  btnDisabled: { opacity: 0.5 },
-})
+    teamRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    teamRowLabel: { color: theme.textMuted, fontSize: 14 },
+    content: { paddingBottom: 32, gap: 12 },
+    status: { color: theme.textSecondary, fontSize: 14 },
+    // emerald success — kept consistent across themes for the "you got it" note
+    gotIt: { color: '#10b981', fontSize: 15, fontWeight: '700', textAlign: 'center' },
+    wordBox: { backgroundColor: theme.surface, borderRadius: 12, padding: 16, gap: 8, alignItems: 'center' },
+    wordLabel: { color: theme.textMuted, fontSize: 12, textTransform: 'uppercase' },
+    word: { color: theme.text, fontSize: 32, fontWeight: '800', textAlign: 'center' },
+    wordHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center' },
+    guessBox: { gap: 10 },
+    input: {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 12,
+      color: theme.text,
+      fontSize: 16,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 10,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    // white on the solid rose button — intentional
+    primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+    secondaryBtn: {
+      backgroundColor: theme.border,
+      borderRadius: 10,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      alignItems: 'center',
+    },
+    secondaryBtnText: { color: theme.text, fontWeight: '600', fontSize: 15 },
+    btnDisabled: { opacity: 0.5 },
+  })

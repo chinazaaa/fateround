@@ -151,7 +151,7 @@ export default function GameScreen() {
   }
 
   return (
-    <GameThemeProvider theme={game.status === 'finished' ? 'default' : game.theme}>
+    <GameThemeProvider theme={game.theme}>
       <PlayerSessionShell gameCode={gameCode} game={game}>
         <GamePushSetup gameCode={gameCode} />
         <GameRouter gameCode={gameCode} gameType={gameType} />

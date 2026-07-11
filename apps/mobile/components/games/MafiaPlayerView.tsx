@@ -18,13 +18,7 @@ import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { getPlayerSession } from '@/lib/secure-session'
-import {
-  postMafiaAdvance,
-  postMafiaChat,
-  postMafiaNightAction,
-  postMafiaState,
-  postMafiaVote,
-} from '@/lib/game-api'
+import { postMafiaAdvance, postMafiaChat, postMafiaNightAction, postMafiaState, postMafiaVote } from '@/lib/game-api'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -90,11 +84,8 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const state = mafiaState ?? bootstrap.gameState
   const myState = state?.myState ?? null
   const amIAlive = state?.players.find((p) => p.id === bootstrap.myPlayerId)?.isAlive ?? false
-  const amISpectator =
-    !!bootstrap.myPlayerId && !!state && !state.players.some((p) => p.id === bootstrap.myPlayerId)
-  const myPlayerRow = bootstrap.myPlayerId
-    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
-    : undefined
+  const amISpectator = !!bootstrap.myPlayerId && !!state && !state.players.some((p) => p.id === bootstrap.myPlayerId)
+  const myPlayerRow = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   const isViewer = !!(bootstrap.game && myPlayerRow && playerIsViewer(myPlayerRow, bootstrap.game))
   const killedPlayer = state?.lastNightKillPlayerId
     ? state.players.find((p) => p.id === state.lastNightKillPlayerId)
@@ -112,7 +103,9 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   useEffect(() => {
     if (!state?.phaseDeadline || state.phase === 'game_over') return
     if (secondsUntilMafiaDeadline(state.phaseDeadline) > 0) return
-    void postMafiaAdvance(gameCode.toUpperCase()).then(() => bootstrap.load()).catch(() => {})
+    void postMafiaAdvance(gameCode.toUpperCase())
+      .then(() => bootstrap.load())
+      .catch(() => {})
   }, [state?.phaseDeadline, state?.phase, timerTick, gameCode, bootstrap.load])
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -126,8 +119,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
-  const showDayVotes =
-    state?.phase === 'day' && !(state.anonymousVotes && !myState?.dayVoteSubmitted)
+  const showDayVotes = state?.phase === 'day' && !(state.anonymousVotes && !myState?.dayVoteSubmitted)
 
   const sendChat = useCallback(
     async (msg: string, scope: 'night' | 'day' | 'ghost') => {
@@ -163,11 +155,7 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
 
   if (bootstrap.screen === 'finished') {
     const winner =
-      state.winningTeam === 'mafia'
-        ? 'Mafia wins!'
-        : state.winningTeam === 'village'
-          ? 'Village wins!'
-          : 'Game over'
+      state.winningTeam === 'mafia' ? 'Mafia wins!' : state.winningTeam === 'village' ? 'Village wins!' : 'Game over'
     const teamOf = (role?: string) => (role === 'mafia' ? 'mafia' : 'village')
     const leaderboard = [...state.players]
       .sort((a, b) => {
@@ -195,10 +183,12 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
   const phase = state.phase
 
   return (
-    <GameShell bootstrap={bootstrap} title="Mafia" subtitle={`Day ${state.dayNumber} · ${bootstrap.code}`}>
+    <GameShell bootstrap={bootstrap} title="Mafia" subtitle={`Day ${state.dayNumber}`}>
       <TurnBanner
         text={`${mafiaPhaseLabel(phase)}${secondsLeft > 0 ? ` · ${secondsLeft}s` : ''}`}
-        isMyTurn={phase === 'night' && amIAlive && !!myState && myState.role !== 'villager' && !myState.nightActionSubmitted}
+        isMyTurn={
+          phase === 'night' && amIAlive && !!myState && myState.role !== 'villager' && !myState.nightActionSubmitted
+        }
       />
 
       {isViewer && bootstrap.game && bootstrap.myPlayerId && myPlayerRow ? (
@@ -213,10 +203,6 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           />
         </View>
       ) : null}
-
-      <View style={styles.rulesRow}>
-        <GameRulesLink gameType="mafia" />
-      </View>
 
       {myState ? (
         <View style={styles.identityCard}>
@@ -430,6 +416,10 @@ export function MafiaPlayerView({ gameCode }: { gameCode: string }) {
           onSend={(msg) => sendChat(msg, 'ghost')}
         />
       ) : null}
+
+      <View style={styles.rulesRow}>
+        <GameRulesLink gameType="mafia" />
+      </View>
     </GameShell>
   )
 }
@@ -504,102 +494,108 @@ function MafiaChatSection({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  identityCard: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    alignItems: 'center',
-    gap: 4,
-  },
-  identityEmoji: { fontSize: 36 },
-  identityRole: { color: theme.text, fontSize: 20, fontWeight: '900' },
-  identityTeam: { color: theme.textMuted, fontWeight: '600' },
-  identityDesc: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
-  allies: { color: '#fca5a5', fontSize: 13, marginTop: 8 },
-  investigation: { color: '#86efac', fontSize: 13, marginTop: 8 },
-  statusPill: {
-    marginTop: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  statusPillText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
-  statusAlive: { backgroundColor: '#10b98118', borderColor: '#10b98155' },
-  statusDead: { backgroundColor: '#f43f5e18', borderColor: '#f43f5e55' },
-  statusAliveText: { color: '#34d399' },
-  statusDeadText: { color: '#fb7185' },
-  bannerWrap: { marginBottom: 12 },
-  rulesRow: { alignItems: 'flex-end', marginBottom: 8 },
-  phaseCard: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-  },
-  phaseTitle: { color: theme.text, fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
-  phaseText: { color: theme.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 8 },
-  phaseOk: { color: '#86efac', fontWeight: '700', textAlign: 'center', marginBottom: 8 },
-  centerBlock: { alignItems: 'center', gap: 8 },
-  targetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
-  targetBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: theme.border,
-    minWidth: '45%',
-  },
-  skipBtn: { borderWidth: 1, borderColor: theme.border },
-  targetText: { color: theme.text, fontWeight: '700' },
-  targetHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 },
-  voteBadge: {
-    backgroundColor: '#f43f5e22',
-    borderColor: '#f43f5e55',
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 1,
-  },
-  voteBadgeText: { color: '#fb7185', fontSize: 12, fontWeight: '800' },
-  pipRow: { flexDirection: 'row', gap: 2, marginTop: 4, flexWrap: 'wrap' },
-  pip: { color: '#fb7185', fontSize: 10 },
-  voteCastRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  changeVoteLink: { color: theme.textMuted, fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
-  skipFullBtn: {
-    marginTop: 10,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.border,
-    alignItems: 'center',
-  },
-  skipFullText: { color: theme.textSecondary, fontWeight: '700' },
-  sectionTitle: { color: theme.textMuted, fontWeight: '700', marginBottom: 6, marginTop: 4 },
-  mafiaChatTitle: { color: '#f87171' },
-  playerList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
-  playerChip: { color: theme.text, backgroundColor: theme.border, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  playerDead: { opacity: 0.55 },
-  chatLog: { maxHeight: 120, backgroundColor: theme.surface, borderRadius: 8, padding: 8, marginBottom: 8 },
-  chatLine: { color: theme.textSecondary, fontSize: 13, marginBottom: 4 },
-  chatEmpty: { color: theme.textMuted, fontSize: 12, fontStyle: 'italic', textAlign: 'center', paddingVertical: 16 },
-  chatName: { color: theme.text, fontWeight: '700' },
-  chatRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  chatInput: {
-    flex: 1,
-    backgroundColor: theme.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: theme.text,
-  },
-  chatSend: {
-    backgroundColor: theme.primary,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-  },
-  // white on the solid rose send button — intentional
-  chatSendText: { color: '#fff', fontWeight: '800' },
-})
+    identityCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 12,
+      alignItems: 'center',
+      gap: 4,
+    },
+    identityEmoji: { fontSize: 36 },
+    identityRole: { color: theme.text, fontSize: 20, fontWeight: '900' },
+    identityTeam: { color: theme.textMuted, fontWeight: '600' },
+    identityDesc: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
+    allies: { color: '#fca5a5', fontSize: 13, marginTop: 8 },
+    investigation: { color: '#86efac', fontSize: 13, marginTop: 8 },
+    statusPill: {
+      marginTop: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 5,
+      borderRadius: 999,
+      borderWidth: 1,
+    },
+    statusPillText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
+    statusAlive: { backgroundColor: '#10b98118', borderColor: '#10b98155' },
+    statusDead: { backgroundColor: '#f43f5e18', borderColor: '#f43f5e55' },
+    statusAliveText: { color: '#34d399' },
+    statusDeadText: { color: '#fb7185' },
+    bannerWrap: { marginBottom: 12 },
+    rulesRow: { alignItems: 'flex-end', marginBottom: 8 },
+    phaseCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 12,
+    },
+    phaseTitle: { color: theme.text, fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
+    phaseText: { color: theme.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 8 },
+    phaseOk: { color: '#86efac', fontWeight: '700', textAlign: 'center', marginBottom: 8 },
+    centerBlock: { alignItems: 'center', gap: 8 },
+    targetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
+    targetBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 8,
+      backgroundColor: theme.border,
+      minWidth: '45%',
+    },
+    skipBtn: { borderWidth: 1, borderColor: theme.border },
+    targetText: { color: theme.text, fontWeight: '700' },
+    targetHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 },
+    voteBadge: {
+      backgroundColor: '#f43f5e22',
+      borderColor: '#f43f5e55',
+      borderWidth: 1,
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 1,
+    },
+    voteBadgeText: { color: '#fb7185', fontSize: 12, fontWeight: '800' },
+    pipRow: { flexDirection: 'row', gap: 2, marginTop: 4, flexWrap: 'wrap' },
+    pip: { color: '#fb7185', fontSize: 10 },
+    voteCastRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+    changeVoteLink: { color: theme.textMuted, fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
+    skipFullBtn: {
+      marginTop: 10,
+      paddingVertical: 12,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.border,
+      alignItems: 'center',
+    },
+    skipFullText: { color: theme.textSecondary, fontWeight: '700' },
+    sectionTitle: { color: theme.textMuted, fontWeight: '700', marginBottom: 6, marginTop: 4 },
+    mafiaChatTitle: { color: '#f87171' },
+    playerList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+    playerChip: {
+      color: theme.text,
+      backgroundColor: theme.border,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+    },
+    playerDead: { opacity: 0.55 },
+    chatLog: { maxHeight: 120, backgroundColor: theme.surface, borderRadius: 8, padding: 8, marginBottom: 8 },
+    chatLine: { color: theme.textSecondary, fontSize: 13, marginBottom: 4 },
+    chatEmpty: { color: theme.textMuted, fontSize: 12, fontStyle: 'italic', textAlign: 'center', paddingVertical: 16 },
+    chatName: { color: theme.text, fontWeight: '700' },
+    chatRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+    chatInput: {
+      flex: 1,
+      backgroundColor: theme.border,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      color: theme.text,
+    },
+    chatSend: {
+      backgroundColor: theme.primary,
+      borderRadius: 8,
+      paddingHorizontal: 16,
+      justifyContent: 'center',
+    },
+    // white on the solid rose send button — intentional
+    chatSendText: { color: '#fff', fontWeight: '800' },
+  })

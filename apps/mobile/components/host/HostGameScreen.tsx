@@ -48,11 +48,11 @@ export function HostGameScreen({ gameCode, hostToken }: Props) {
 
   const inLobby = game.status === 'waiting'
 
-  // Apply the game's chosen edition/theme across the lobby and in-game views.
-  // Reading it here means a theme change from the lobby settings sheet re-applies
-  // live (useHostGame reloads on the `games` change).
+  // Apply the game's chosen edition/theme across the lobby, in-game, and finished
+  // views. Reading it here means a theme change from the lobby settings sheet
+  // re-applies live (useHostGame reloads on the `games` change).
   return (
-    <GameThemeProvider theme={game.status === 'finished' ? 'default' : game.theme}>
+    <GameThemeProvider theme={game.theme}>
       {inLobby ? (
         <HostLobbyScreen gameCode={gameCode} hostToken={hostToken} />
       ) : (

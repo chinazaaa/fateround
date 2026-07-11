@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { type Game, type Player, type Round, type TtlGuess, type TtlStatement } from '@fateround/shared'
 import { batch4GameLabel } from '@fateround/shared/batch-4-games'
 import {
@@ -19,6 +19,7 @@ import { ViewerModeBanner } from '@/components/lifecycle/ViewerModeBanner'
 import { LateJoinChoiceScreen } from '@/components/lifecycle/LateJoinChoiceScreen'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { KeyboardAwareGameScroll } from '@/components/ui/KeyboardAwareGameScroll'
 import { LeaderboardPanel } from '@/components/ui/LeaderboardPanel'
 import { TimerBadge } from '@/components/ui/TimerBadge'
 import { TwoTruthsSubmitterBadge } from '@/components/games/TwoTruthsSubmitterBadge'
@@ -101,13 +102,9 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     !!bootstrap.game
   )
 
-  const myStatement = bootstrap.myPlayerId
-    ? statements.find((s) => s.player_id === bootstrap.myPlayerId)
-    : undefined
+  const myStatement = bootstrap.myPlayerId ? statements.find((s) => s.player_id === bootstrap.myPlayerId) : undefined
 
-  const me = bootstrap.myPlayerId
-    ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId)
-    : undefined
+  const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   // Watch-only: a spectator/eliminated/late player watches the live round read-only.
   const isViewer = !!(me && bootstrap.game && playerIsViewer(me, bootstrap.game))
 
@@ -124,8 +121,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const myGuess = currentRound
     ? guesses.find((g) => g.player_id === bootstrap.myPlayerId && g.round_id === currentRound.id)
     : undefined
-  const revealSeconds =
-    currentRound?.status === 'finished' ? revealCountdownSeconds(currentRound.ended_at) : null
+  const revealSeconds = currentRound?.status === 'finished' ? revealCountdownSeconds(currentRound.ended_at) : null
 
   // Running standings shown throughout play (mirrors web's live PaginatedLeaderboard).
   const liveScores = useMemo(
@@ -136,17 +132,12 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   // Next player whose statements are coming up (for the between-round preview).
   const upcomingRound = useMemo(() => {
     if (bootstrap.game?.status !== 'active') return null
-    return (
-      rounds
-        .filter((r) => r.status === 'pending')
-        .sort((a, b) => a.round_number - b.round_number)[0] ?? null
-    )
+    return rounds.filter((r) => r.status === 'pending').sort((a, b) => a.round_number - b.round_number)[0] ?? null
   }, [rounds, bootstrap.game?.status])
 
   // Round countdown + auto-lock when the guessing time runs out.
   const timerSeconds = bootstrap.game?.timer_seconds ?? 0
-  const timerActive =
-    !!currentRound && currentRound.status === 'active' && !isFeatured && timerSeconds > 0
+  const timerActive = !!currentRound && currentRound.status === 'active' && !isFeatured && timerSeconds > 0
   const secondsLeft = useDeadlineCountdown(currentRound?.started_at, timerSeconds, timerActive)
 
   // Reset the per-round expiry flag whenever the round changes.
@@ -158,8 +149,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     if (timerActive && !myGuess && secondsLeft <= 0) setTimeExpired(true)
   }, [timerActive, myGuess, secondsLeft])
 
-  const canSubmitStatements =
-    !!stmtA.trim() && !!stmtB.trim() && !!stmtC.trim() && lieIndex != null
+  const canSubmitStatements = !!stmtA.trim() && !!stmtB.trim() && !!stmtC.trim() && lieIndex != null
 
   const submitStatements = async () => {
     if (!bootstrap.myResumeToken || submitting || lieIndex == null || !canSubmitStatements) return
@@ -237,16 +227,14 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={bootstrap.code}>
           <Text style={styles.waiting}>Statements submitted — waiting for host to start…</Text>
           <View style={styles.reviewCard}>
-            {[myStatement.statement_a, myStatement.statement_b, myStatement.statement_c].map(
-              (text, index) => (
-                <View key={index} style={styles.reviewRow}>
-                  <Text style={[styles.reviewBadge, index === myStatement.lie_index && styles.reviewBadgeLie]}>
-                    {index === myStatement.lie_index ? 'LIE' : formatTtlChoiceLabel(index)}
-                  </Text>
-                  <Text style={styles.reviewText}>{text}</Text>
-                </View>
-              )
-            )}
+            {[myStatement.statement_a, myStatement.statement_b, myStatement.statement_c].map((text, index) => (
+              <View key={index} style={styles.reviewRow}>
+                <Text style={[styles.reviewBadge, index === myStatement.lie_index && styles.reviewBadgeLie]}>
+                  {index === myStatement.lie_index ? 'LIE' : formatTtlChoiceLabel(index)}
+                </Text>
+                <Text style={styles.reviewText}>{text}</Text>
+              </View>
+            ))}
           </View>
           <Pressable style={styles.secondaryBtn} onPress={startEditing}>
             <Text style={styles.secondaryText}>Edit my statements</Text>
@@ -263,11 +251,8 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         title={batch4GameLabel('two_truths')}
         subtitle={editingStatements ? 'Update your statements' : 'Submit your statements'}
       >
-        <ScrollView contentContainerStyle={styles.form}>
+        <KeyboardAwareGameScroll contentContainerStyle={styles.form}>
           <Text style={styles.help}>Write two truths and one lie. Tap which one is the lie.</Text>
-          <View style={styles.rulesRow}>
-            <GameRulesLink gameType="two_truths" variant="subtle" />
-          </View>
           {[0, 1, 2].map((index) => {
             const value = index === 0 ? stmtA : index === 1 ? stmtB : stmtC
             const setValue = index === 0 ? setStmtA : index === 1 ? setStmtB : setStmtC
@@ -299,23 +284,18 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
             onPress={() => void submitStatements()}
           >
             <Text style={styles.primaryText}>
-              {submitting
-                ? 'Submitting…'
-                : editingStatements
-                  ? 'Update statements'
-                  : 'Submit statements'}
+              {submitting ? 'Submitting…' : editingStatements ? 'Update statements' : 'Submit statements'}
             </Text>
           </Pressable>
           {editingStatements && myStatement ? (
-            <Pressable
-              style={styles.secondaryBtn}
-              disabled={submitting}
-              onPress={() => setEditingStatements(false)}
-            >
+            <Pressable style={styles.secondaryBtn} disabled={submitting} onPress={() => setEditingStatements(false)}>
               <Text style={styles.secondaryText}>Cancel</Text>
             </Pressable>
           ) : null}
-        </ScrollView>
+          <View style={styles.rulesRow}>
+            <GameRulesLink gameType="two_truths" variant="subtle" />
+          </View>
+        </KeyboardAwareGameScroll>
       </GameShell>
     )
   }
@@ -393,9 +373,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   )
 
   if (!currentRound || currentRound.status === 'pending') {
-    const upcomingName = upcomingRound
-      ? playerDisplayName(upcomingRound.submitter_player_id, bootstrap.players)
-      : null
+    const upcomingName = upcomingRound ? playerDisplayName(upcomingRound.submitter_player_id, bootstrap.players) : null
     return (
       <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={bootstrap.code}>
         {liveBanners}
@@ -408,9 +386,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
               highlightPlayerId={bootstrap.myPlayerId}
               size="sm"
             />
-            {upcomingName ? (
-              <Text style={styles.upNextLabel}>Up next: {upcomingName}&apos;s statements</Text>
-            ) : null}
+            {upcomingName ? <Text style={styles.upNextLabel}>Up next: {upcomingName}&apos;s statements</Text> : null}
           </View>
         ) : null}
       </GameShell>
@@ -468,9 +444,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         ) : null}
         {myGuess ? (
           <Text style={[styles.revealResult, myGuess.is_correct && styles.revealResultWin]}>
-            {myGuess.is_correct
-              ? `Correct! +${myGuess.points} pts`
-              : 'Not the lie — better luck next round'}
+            {myGuess.is_correct ? `Correct! +${myGuess.points} pts` : 'Not the lie — better luck next round'}
           </Text>
         ) : null}
         <Text style={styles.waiting}>
@@ -531,9 +505,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
       {isViewer ? (
         <Text style={styles.locked}>Watching only — you can&apos;t guess this round.</Text>
       ) : myGuess ? (
-        <Text style={styles.locked}>
-          Guess locked in — results when everyone finishes or time runs out.
-        </Text>
+        <Text style={styles.locked}>Guess locked in — results when everyone finishes or time runs out.</Text>
       ) : lockedOut ? (
         <Text style={styles.locked}>Time&apos;s up — waiting for results…</Text>
       ) : null}
@@ -544,137 +516,137 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-  waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
-  help: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
-  rulesRow: { alignItems: 'flex-start' },
-  rulesRowCentered: { alignItems: 'center', marginTop: 16 },
-  lieHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
-  upNext: { alignItems: 'center', gap: 8, marginTop: 16 },
-  upNextLabel: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
-  badgeRow: { alignItems: 'center', marginBottom: 4 },
-  choiceBody: { flex: 1, gap: 4 },
-  lieTag: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700' },
-  revealResult: {
-    color: theme.textMuted,
-    fontSize: 15,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginTop: 12,
-    backgroundColor: theme.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    overflow: 'hidden',
-  },
-  revealResultWin: { color: '#059669', borderColor: '#05966955' },
-  form: { gap: 12, paddingBottom: 24 },
-  fieldBlock: { gap: 8 },
-  lieToggle: { alignSelf: 'flex-start' },
-  lieBadge: {
-    color: theme.textMuted,
-    fontWeight: '700',
-    fontSize: 13,
-    backgroundColor: theme.surface,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  // white text on the solid rose "LIE" badge — intentional
-  lieBadgeActive: { color: '#fff', backgroundColor: theme.primary },
-  input: {
-    backgroundColor: theme.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    color: theme.text,
-    padding: 12,
-    minHeight: 72,
-    fontSize: 16,
-  },
-  primaryBtn: {
-    backgroundColor: theme.primary,
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  primaryBtnDisabled: { opacity: 0.5 },
-  // white on the solid rose button — intentional
-  primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  secondaryBtn: {
-    backgroundColor: theme.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  secondaryText: { color: theme.text, fontWeight: '700', fontSize: 15 },
-  reviewCard: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 14,
-    gap: 10,
-    marginTop: 16,
-  },
-  reviewRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  reviewBadge: {
-    color: theme.textMuted,
-    fontWeight: '800',
-    fontSize: 12,
-    backgroundColor: theme.bg,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    minWidth: 34,
-    textAlign: 'center',
-  },
-  // white text on the solid rose "LIE" badge — intentional
-  reviewBadgeLie: { color: '#fff', backgroundColor: theme.primary },
-  reviewText: { color: theme.text, fontSize: 15, flex: 1, lineHeight: 21 },
-  featured: { color: theme.text, fontSize: 18, fontWeight: '700' },
-  choices: { gap: 10, marginTop: 8 },
-  choice: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  choiceSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-  choiceReveal: { borderColor: '#fbbf24' },
-  choiceBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: theme.primary,
-    // white on the solid rose badge — intentional
-    color: '#fff',
-    textAlign: 'center',
-    lineHeight: 32,
-    fontWeight: '800',
-  },
-  choiceText: { color: theme.text, fontSize: 16, flex: 1, lineHeight: 22 },
-  locked: { color: theme.textMuted, textAlign: 'center', marginTop: 12 },
-  // Eliminated notice — red accent, mirrors web's <EliminationBanner>.
-  elimBanner: {
-    backgroundColor: '#ef44441a',
-    borderColor: '#ef444455',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    gap: 2,
-  },
-  elimTitle: { color: '#dc2626', fontWeight: '700', fontSize: 14 },
-  elimBody: { color: theme.textFaint, fontSize: 12 },
-})
+    waiting: { color: theme.textMuted, fontSize: 16, textAlign: 'center', marginTop: 24 },
+    help: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
+    rulesRow: { alignItems: 'flex-start' },
+    rulesRowCentered: { alignItems: 'center', marginTop: 16 },
+    lieHint: { color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
+    upNext: { alignItems: 'center', gap: 8, marginTop: 16 },
+    upNextLabel: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
+    badgeRow: { alignItems: 'center', marginBottom: 4 },
+    choiceBody: { flex: 1, gap: 4 },
+    lieTag: { color: theme.primaryMuted, fontSize: 12, fontWeight: '700' },
+    revealResult: {
+      color: theme.textMuted,
+      fontSize: 15,
+      fontWeight: '700',
+      textAlign: 'center',
+      marginTop: 12,
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      overflow: 'hidden',
+    },
+    revealResultWin: { color: '#059669', borderColor: '#05966955' },
+    form: { gap: 12, paddingBottom: 24 },
+    fieldBlock: { gap: 8 },
+    lieToggle: { alignSelf: 'flex-start' },
+    lieBadge: {
+      color: theme.textMuted,
+      fontWeight: '700',
+      fontSize: 13,
+      backgroundColor: theme.surface,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 6,
+    },
+    // white text on the solid rose "LIE" badge — intentional
+    lieBadgeActive: { color: '#fff', backgroundColor: theme.primary },
+    input: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      color: theme.text,
+      padding: 12,
+      minHeight: 72,
+      fontSize: 16,
+    },
+    primaryBtn: {
+      backgroundColor: theme.primary,
+      borderRadius: 10,
+      padding: 14,
+      alignItems: 'center',
+      marginTop: 8,
+    },
+    primaryBtnDisabled: { opacity: 0.5 },
+    // white on the solid rose button — intentional
+    primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    secondaryBtn: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 14,
+      alignItems: 'center',
+      marginTop: 12,
+    },
+    secondaryText: { color: theme.text, fontWeight: '700', fontSize: 15 },
+    reviewCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 14,
+      gap: 10,
+      marginTop: 16,
+    },
+    reviewRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    reviewBadge: {
+      color: theme.textMuted,
+      fontWeight: '800',
+      fontSize: 12,
+      backgroundColor: theme.bg,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      minWidth: 34,
+      textAlign: 'center',
+    },
+    // white text on the solid rose "LIE" badge — intentional
+    reviewBadgeLie: { color: '#fff', backgroundColor: theme.primary },
+    reviewText: { color: theme.text, fontSize: 15, flex: 1, lineHeight: 21 },
+    featured: { color: theme.text, fontSize: 18, fontWeight: '700' },
+    choices: { gap: 10, marginTop: 8 },
+    choice: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    choiceSelected: { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+    choiceReveal: { borderColor: '#fbbf24' },
+    choiceBadge: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      backgroundColor: theme.primary,
+      // white on the solid rose badge — intentional
+      color: '#fff',
+      textAlign: 'center',
+      lineHeight: 32,
+      fontWeight: '800',
+    },
+    choiceText: { color: theme.text, fontSize: 16, flex: 1, lineHeight: 22 },
+    locked: { color: theme.textMuted, textAlign: 'center', marginTop: 12 },
+    // Eliminated notice — red accent, mirrors web's <EliminationBanner>.
+    elimBanner: {
+      backgroundColor: '#ef44441a',
+      borderColor: '#ef444455',
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      alignItems: 'center',
+      gap: 2,
+    },
+    elimTitle: { color: '#dc2626', fontWeight: '700', fontSize: 14 },
+    elimBody: { color: theme.textFaint, fontSize: 12 },
+  })
