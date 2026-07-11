@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   type DescribeItGuess,
   type DescribeItPlayer,
@@ -448,6 +448,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
           />
         ) : (
           <LeaderboardPanel
+            embedded
             title="Leaderboard"
             rows={liveIndividualScores.map((row) => ({
               id: row.id,
@@ -505,13 +506,16 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             ) : (
               <View style={styles.panel}>
                 {(session.current_clues?.length ?? 0) > 0 ? (
-                  <ScrollView style={styles.clueScroll} nestedScrollEnabled>
+                  // Plain View, not a nested ScrollView — the outer page scroll
+                  // owns scrolling, so clues flow inline and don't swallow the
+                  // drag gesture needed to reach the guess input below.
+                  <View style={styles.clueList}>
                     {session.current_clues!.map((clue, index) => (
                       <Text key={index} style={styles.clueItem}>
                         {clue}
                       </Text>
                     ))}
-                  </ScrollView>
+                  </View>
                 ) : (
                   <Text style={styles.waiting}>Waiting for the first clue…</Text>
                 )}
@@ -548,7 +552,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
               </View>
             )}
 
-            <ActivityFeed title="Recent guesses" items={guessFeed} emptyText="No guesses yet" />
+            <ActivityFeed embedded title="Recent guesses" items={guessFeed} emptyText="No guesses yet" />
           </>
         )}
       </KeyboardAwareGameScroll>
@@ -572,7 +576,6 @@ const makeStyles = (theme: Theme) =>
     wordLabel: { color: theme.textMuted, fontSize: 13 },
     word: { color: theme.text, fontSize: 28, fontWeight: '800' },
     clueList: { gap: 6 },
-    clueScroll: { maxHeight: 120 },
     content: { paddingBottom: 32, gap: 14 },
     clueItem: { color: theme.textSecondary, fontSize: 15, lineHeight: 22 },
     input: {

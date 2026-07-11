@@ -303,6 +303,7 @@ export function QuickDrawLiePlayerView({ gameCode }: { gameCode: string }) {
         {countdown > 0 && session.phase !== 'reveal' ? <TimerBadge seconds={countdown} /> : null}
 
         <LeaderboardPanel
+          embedded
           title="Leaderboard"
           rows={leaderboard.map((row) => ({
             id: row.id,

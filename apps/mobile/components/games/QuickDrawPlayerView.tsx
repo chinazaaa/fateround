@@ -439,6 +439,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
           />
         ) : (
           <LeaderboardPanel
+            embedded
             title="Leaderboard"
             rows={liveIndividualScores.map((row) => ({
               id: row.id,
@@ -520,7 +521,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
           </View>
         ) : null}
 
-        <ActivityFeed title="Recent guesses" items={guessFeed} emptyText="No guesses yet" />
+        <ActivityFeed embedded title="Recent guesses" items={guessFeed} emptyText="No guesses yet" />
       </KeyboardAwareGameScroll>
     </GameShell>
   )
